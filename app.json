@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Anatrox",
+    "slug": "anatrox-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "anatrox",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Anatrox to access your camera for progress photos."
+        }
+      ],
+      [
+        "expo-barcode-scanner",
+        {
+          "cameraPermission": "Allow Anatrox to scan food barcodes."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.anatrox",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera for progress photos and barcode scanning.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for voice coaching features.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save progress photos."
+      }
+    },
+    "android": {
+      "package": "com.yourcompany.anatrox",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "extra": {
+      "firebaseApiKey": "process.env.EXPO_PUBLIC_FIREBASE_API_KEY",
+      "firebaseAuthDomain": "process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
+      "firebaseProjectId": "process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID",
+      "firebaseStorageBucket": "process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET",
+      "firebaseMessagingSenderId": "process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+      "firebaseAppId": "process.env.EXPO_PUBLIC_FIREBASE_APP_ID"
+    }
+  }
+}
