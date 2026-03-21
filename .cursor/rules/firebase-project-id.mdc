@@ -1,0 +1,13 @@
+---
+description: Never bulk-rename Firebase project ID or env; production data lives in anatrox-auth
+alwaysApply: true
+---
+
+# Firebase project ID and branding renames
+
+- **Production Firebase project ID** is `anatrox-auth`. All user data and auth live there. It must not be changed to match app display names (e.g. Coach Connect).
+- **Do not** run bulk find-and-replace of `anatrox` → `coachconnect` (or similar) across the repo without **explicitly excluding**:
+  - `.env`, `.env.*`, and `**/.env*`
+  - `EXPO_PUBLIC_FIREBASE_*` values and any `firebaseConfig` / `projectId` literals tied to the live project
+  - `app.config.js` / `google-services` / Firebase plist JSON where the project id is the backend identity
+- Display name, bundle id, and marketing copy may change; **the Firebase `projectId` cannot** unless you are intentionally migrating projects (separate, deliberate work).

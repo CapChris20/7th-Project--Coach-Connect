@@ -1,0 +1,1077 @@
+================================================================================
+ANATROX AI - HOME PAGES & DATA FLOW ANALYSIS
+================================================================================
+Generated: Analysis of Trainer and Client Home Pages with Data Flow Documentation
+
+================================================================================
+1. TRAINER HOME PAGE (TrainerApp.js + PremiumTrainerDashboard.jsx)
+================================================================================
+
+MAIN FILE: src/app/TrainerApp.js
+DASHBOARD COMPONENT: src/trainer/components/PremiumTrainerDashboard.jsx
+
+FEATURES:
+---------
+
+A. Header Section:
+   - App branding: "ANATROX"
+   - Profile button (opens ProfileScreen)
+   - Settings button (opens SettingsScreen)
+   - FluidGlass component for iOS-style glass morphism effect
+
+B. Client Selector Bar (when multiple clients):
+   - Horizontal scrollable list of client chips
+   - Active client highlighted with primary color
+   - Click to switch between clients
+   - Only shows when trainer has more than 1 client
+
+C. Premium Trainer Dashboard (Two Modes):
+
+   1. ALL CLIENTS MODE (when no clientId selected):
+      - Header: "Clients" with total count
+      - Stats Summary Card:
+        * Active Clients count
+        * Pending Clients count
+        * Total Revenue (calculated: activeCount * 200)
+      - Quick Actions Row:
+        * "+ New Client" button
+        * "Programs" button
+        * "Reports" button
+      - Segmented Control:
+        * Filter by: Active | Pending | Inactive
+      - Clients List (Grouped Inset Style):
+        * Circular avatar (or placeholder with initial)
+        * Client name
+        * Last activity status
+        * Status pip (color-coded: active/pending/inactive)
+        * Chevron indicator
+        * Tap to select client
+
+   2. SINGLE CLIENT MODE (when clientId provided):
+      - Client Header:
+        * Client avatar with online indicator
+        * Client name
+        * Status badge
+        * Remove client button
+        * Verified badge
+      - Quick Actions:
+        * Message button (opens ConversationsListScreen)
+        * Call button (TODO: implement)
+        * Schedule button (TODO: implement)
+        * Progress button (switches to Progress tab)
+      - Tab Navigation:
+        * Calendar - View client's workout schedule
+        * Nutrition - View client's nutrition tracking
+        * Progress - View client's progress metrics
+        * Messages - Direct messaging with client
+        * Notes & Files - Trainer notes and file uploads
+      - Tab Content Views:
+        * CalendarView: Weekly workout calendar with workout cards
+        * NutritionView: Today's macro breakdown, meal logs
+        * ProgressView: Weight trends, body measurements, goals
+        * MessagesView: Real-time chat interface
+        * NotesView: Text notes and file attachments
+
+D. Bottom Navigation Bar:
+   - Home button (returns to dashboard)
+   - Plus button (opens CreateModal)
+   - Voice button (opens VoiceAIHomeScreen)
+   - Workout button (opens WorkoutLibraryScreen)
+   - Nutrition button (opens MealPlanHomeScreen)
+   - Profile button (opens ProfileScreen)
+
+E. Modal Screens:
+   - CreateModal: Quick actions for creating content
+   - ConversationsListScreen: List of all conversations
+   - TrainerMessagingScreen: Individual conversation view
+   - ProfileScreen: User profile management
+   - SettingsScreen: App settings
+   - WorkoutLibraryScreen: Workout program library
+   - MealPlanHomeScreen: Nutrition planning
+   - VoiceAIHomeScreen: AI voice assistant
+
+DATA LOADING:
+-------------
+- Real-time client list via Firestore onSnapshot
+- Auto-selects first client if available
+- Subscribes to unread message count
+- Fetches client data from:
+  * trainer_clients/{trainerUid}/clients/{clientId}
+  * users/{clientId} (for updated profile info)
+  * trainer_clients/{trainerUid}/clients/{clientId}/workouts (for calendar)
+
+================================================================================
+2. CLIENT HOME PAGE (ClientApp.js + PremiumHomeScreen.js)
+================================================================================
+
+MAIN FILE: src/app/ClientApp.js
+HOME SCREEN: src/client/screens/PremiumHomeScreen.js
+
+FEATURES:
+---------
+
+A. Welcome Header:
+   - Personalized greeting (Good morning/afternoon/evening)
+   - User's first name
+   - Streak indicator (🔥 X day streak)
+   - "Go Premium" button
+   - Notification bell icon
+
+B. Video Rail (Auto-scrolling):
+   - Continuous horizontal scroll of workout videos
+   - 4 video assets in rotation
+   - Seamless infinite loop
+   - Auto-plays on mount
+
+C. Hero Card (Today's Focus):
+   - If NO workout assigned:
+     * "Generate Your Workout Plan" card
+     * "Create a personalized workout based on your goals"
+     * "Generate Workout" button
+   - If workout EXISTS:
+     * "Today's Workout" title
+     * Workout name
+     * Circular progress indicator
+     * Exercise count
+     * Duration estimate
+     * "Start Workout" button
+
+D. Quick Stats Section (Horizontal Scroll):
+   - Streak: Current workout streak count
+   - Calories: Consumed/Goal (e.g., "1200/2000")
+   - Water: Daily water intake (e.g., "2L")
+   - Sleep: Sleep hours (placeholder: "--")
+
+E. Secondary Grid (Overview):
+   - Steps: Daily step count (placeholder: "--")
+   - Weight: Current weight in lbs
+   - Heart Rate: Current heart rate (placeholder: "--")
+   - Activity: Activity time in minutes
+
+F. Upcoming Section:
+   - List of upcoming items:
+     * Workout sessions
+     * Messages/notifications
+   - Shows time and type icon
+   - Empty state if no upcoming items
+
+G. Discover Grid (2x3):
+   - Find Trainers: Browse and connect with trainers
+   - Workouts: Custom workout plans
+   - Recipes: Healthy meal recipes
+   - Challenges: Fitness challenges
+   - Analytics: Progress tracking
+   - Goals: Set fitness goals
+
+H. Bottom Navigation Bar:
+   - Home button (returns to home)
+   - Plus button (opens ConversationsListScreen)
+   - Voice button (opens VoiceAIHomeScreen)
+   - Workout button (opens WorkoutLibraryScreen)
+   - Nutrition button (opens MealPlanHomeScreen)
+   - Profile button (opens ProfileScreen)
+
+DATA LOADING:
+-------------
+- Fetches today's workouts from workoutService
+- Calculates calorie goal based on:
+  * BMR (Basal Metabolic Rate)
+  * TDEE (Total Daily Energy Expenditure)
+  * Primary goal (lose_fat, build_muscle, maintain_health, athletic_performance)
+- Fetches nutrition logs for today
+- Calculates workout streak from completed workouts
+- Fetches trainer data if client has assigned trainer
+- Subscribes to unread message count
+- Pull-to-refresh functionality
+
+CALCULATIONS:
+-------------
+- Calorie Goal:
+  * BMR calculated using Mifflin-St Jeor equation
+  * Activity level estimated from daysPerWeek
+  * TDEE = BMR * activity multiplier
+  * Goal adjusted: TDEE ± 300-500 based on primaryGoal
+
+- Workout Streak:
+  * Groups completed workouts by date
+  * Counts consecutive days starting from today
+  * Breaks on first missing day
+
+================================================================================
+3. DATA FLOW BETWEEN TRAINER AND CLIENT
+================================================================================
+
+FIRESTORE COLLECTIONS STRUCTURE:
+--------------------------------
+
+A. Primary System: trainer_clients Subcollection
+   Path: trainer_clients/{trainerUid}/clients/{clientUid}
+   
+   Data Structure:
+   {
+     id: clientUid,
+     name: "Client Name",
+     email: "client@email.com",
+     photoURL: "https://...",
+     height: 70, // inches
+     weight: 180, // lbs
+     age: 30,
+     gender: "male",
+     goals: "lose_fat",
+     fitnessLevel: "intermediate",
+     equipmentAccess: ["dumbbells", "barbell"],
+     daysPerWeek: 4,
+     injuries: null,
+     phone: "+1234567890",
+     bio: "Client bio",
+     role: "client",
+     status: "active", // active | pending | inactive
+     joinedAt: timestamp,
+     createdAt: timestamp,
+     updatedAt: timestamp,
+     lastActivity: timestamp
+   }
+
+   Subcollections:
+   - trainer_clients/{trainerUid}/clients/{clientUid}/workouts/{workoutId}
+   - trainer_clients/{trainerUid}/clients/{clientUid}/progress/{progressId}
+   - trainer_clients/{trainerUid}/clients/{clientUid}/messages/{messageId}
+
+B. Users Collection
+   Path: users/{userId}
+   
+   Client Document:
+   {
+     uid: userId,
+     email: "client@email.com",
+     name: "Client Name",
+     role: "client",
+     trainerId: trainerUid, // Set when trainer adds client
+     trainerAssignedAt: timestamp,
+     // ... other user profile data
+   }
+   
+   Trainer Document:
+   {
+     uid: userId,
+     email: "trainer@email.com",
+     name: "Trainer Name",
+     role: "trainer",
+     bio: "Trainer bio",
+     credentials: "NASM-CPT",
+     specializations: ["Strength Training", "HIIT"],
+     location: "New York, NY",
+     photoURL: "https://...",
+     rating: 4.9,
+     reviewCount: 50
+   }
+
+C. Messages Collection
+   Path: messages/{combinedUid}/messages/{messageId}
+   Format: combinedUid = "{trainerUid}_{clientUid}" (sorted alphabetically)
+   
+   Message Document:
+   {
+     senderUid: userId,
+     receiverUid: userId,
+     text: "Message content",
+     timestamp: timestamp,
+     read: false,
+     readAt: null
+   }
+
+D. Conversations Collection
+   Path: conversations/{conversationId}
+   
+   Conversation Document:
+   {
+     participants: [trainerUid, clientUid],
+     lastMessage: "Last message text",
+     lastMessageAt: timestamp,
+     unreadCount: { [userId]: count },
+     createdAt: timestamp
+   }
+
+E. Workouts Collection (Legacy/Alternative)
+   Path: workouts/{trainerUid}/clients/{clientUid}/workouts/{workoutId}
+   
+   Workout Document:
+   {
+     name: "Workout Name",
+     exercises: [...],
+     date: timestamp,
+     duration: 45, // minutes
+     completed: false,
+     completedAt: null,
+     createdAt: timestamp
+   }
+
+DATA FLOW PATTERNS:
+-------------------
+
+1. TRAINER ADDS CLIENT:
+   Flow: TrainerMarketplaceModal → clientCRMService.createOrUpdateClient()
+   
+   Steps:
+   a. Trainer accepts client request from marketplace
+   b. Validate roles (trainer role, client role)
+   c. Check for existing relationship
+   d. Create document in trainer_clients/{trainerUid}/clients/{clientUid}
+   e. Sync all client data from users/{clientUid} to CRM
+   f. Auto-create conversation in conversations collection
+   g. Update users/{clientUid} with trainerId field
+   h. Initialize welcome message in messages collection
+   
+   Result:
+   - Client appears in trainer's dashboard
+   - Conversation automatically created
+   - Client can see trainer in their app
+   - Real-time updates via Firestore listeners
+
+2. TRAINER VIEWS CLIENT DATA:
+   Flow: PremiumTrainerDashboard → Firestore queries
+   
+   Steps:
+   a. Fetch client list from trainer_clients/{trainerUid}/clients
+   b. For each client, fetch updated info from users/{clientUid}
+   c. Merge data (users collection is source of truth)
+   d. Display in dashboard with real-time updates
+   
+   Data Sources:
+   - Client profile: trainer_clients + users (merged)
+   - Workouts: trainer_clients/{trainerUid}/clients/{clientUid}/workouts
+   - Progress: trainer_clients/{trainerUid}/clients/{clientUid}/progress
+   - Nutrition: users/{clientUid}/nutrition_logs (or separate collection)
+   - Messages: messages/{combinedUid}/messages
+
+3. CLIENT VIEWS THEIR DATA:
+   Flow: PremiumHomeScreen → Multiple data sources
+   
+   Steps:
+   a. Fetch user data from users/{clientUid}
+   b. Fetch today's workouts from workoutService
+   c. Fetch nutrition logs for today
+   d. Calculate stats (calories, streak, etc.)
+   e. Fetch trainer info if trainerId exists
+   f. Subscribe to real-time updates
+   
+   Data Sources:
+   - Profile: users/{clientUid}
+   - Workouts: workoutService (queries user's workouts)
+   - Nutrition: nutritionService (queries user's food logs)
+   - Trainer: users/{trainerId} (if assigned)
+   - Messages: conversations collection
+
+4. TRAINER ASSIGNS WORKOUT TO CLIENT:
+   Flow: Trainer → WorkoutLibraryScreen → Firestore write
+   
+   Steps:
+   a. Trainer creates/selects workout
+   b. Assign to client via:
+      trainer_clients/{trainerUid}/clients/{clientUid}/workouts/{workoutId}
+   c. Client's home screen updates via real-time listener
+   d. Workout appears in client's "Today's Workout" hero card
+   
+   Data Path:
+   - Write: trainer_clients/{trainerUid}/clients/{clientUid}/workouts
+   - Read: Client queries same path or workoutService filters by userId
+
+5. CLIENT COMPLETES WORKOUT:
+   Flow: Client → ActiveWorkoutScreen → Firestore update
+   
+   Steps:
+   a. Client starts workout from home screen
+   b. Logs exercises, sets, reps
+   c. Marks workout as completed
+   d. Updates workout document with:
+      * completed: true
+      * completedAt: timestamp
+      * exerciseData: [...]
+   e. Trainer sees completion in real-time
+   f. Updates client's lastActivity timestamp
+   
+   Data Path:
+   - Update: trainer_clients/{trainerUid}/clients/{clientUid}/workouts/{workoutId}
+   - Also: May write to user's workout history collection
+
+6. MESSAGING FLOW:
+   Flow: Trainer/Client → MessagesView → Firestore messages
+   
+   Steps:
+   a. Get or create conversation via getOrCreateConversation()
+   b. Send message to messages/{combinedUid}/messages
+   c. Update conversation document with lastMessage
+   d. Update unreadCount for receiver
+   e. Real-time listener updates UI for both parties
+   
+   Data Path:
+   - Messages: messages/{combinedUid}/messages/{messageId}
+   - Conversation: conversations/{conversationId}
+   - Unread counts: conversations/{conversationId}.unreadCount
+
+7. PROGRESS TRACKING FLOW:
+   Flow: Trainer → ProgressView → Firestore progress
+   
+   Steps:
+   a. Trainer views client's progress tab
+   b. Fetches from: trainer_clients/{trainerUid}/clients/{clientUid}/progress
+   c. Displays weight trends, measurements, photos
+   d. Client can also log progress (if permissions allow)
+   
+   Data Path:
+   - Progress entries: trainer_clients/{trainerUid}/clients/{clientUid}/progress/{progressId}
+   - Analytics calculated from progress history
+
+REAL-TIME UPDATES:
+------------------
+- Trainer dashboard uses onSnapshot for client list
+- Client home screen uses onSnapshot for workouts
+- Messages use onSnapshot for real-time chat
+- Unread counts update in real-time
+- Workout completions sync immediately
+- Progress updates reflect instantly
+
+DATA SYNCHRONIZATION:
+---------------------
+- users/{clientId} is source of truth for client profile
+- trainer_clients/{trainerUid}/clients/{clientUid} syncs from users collection
+- syncClientDataFromUsers() function ensures CRM stays updated
+- When client updates profile, trainer's CRM can be synced
+- Two-way sync for messages (both can read/write)
+- One-way sync for workouts (trainer assigns, client completes)
+
+SECURITY & PERMISSIONS:
+----------------------
+Firestore Rules:
+- trainer_clients: Trainer can create/read/update/delete their clients
+- Client can read their own data in trainer_clients
+- Messages: Only participants can read/write
+- Workouts: Trainer can create/update, both can read
+- Progress: Trainer can create/update, both can read
+
+================================================================================
+4. KEY SERVICES & UTILITIES
+================================================================================
+
+A. clientCRMService.js:
+   - createOrUpdateClient(): Adds client to trainer's CRM
+   - getTrainerClients(): Fetches all clients for trainer
+   - removeClient(): Removes client from CRM
+   - syncClientDataFromUsers(): Syncs latest client data
+   - addProgress(): Logs client progress
+   - getProgressHistory(): Gets all progress entries
+   - createTask(): Creates task for client
+   - getTasks(): Gets all tasks
+   - createNote(): Creates text note
+   - getNotes(): Gets all notes
+
+B. workoutService.js:
+   - getTodaysWorkouts(): Gets today's workouts for user
+   - startWorkout(): Starts a workout session
+   - completeWorkout(): Marks workout as completed
+   - getWorkoutHistory(): Gets completed workouts
+   - addTodaysWorkout(): Adds workout to today's list
+
+C. nutritionService.js:
+   - getFoodLogsForDate(): Gets food logs for specific date
+   - calculateMacroTotals(): Calculates total macros
+   - getDailyGoals(): Gets daily nutrition goals
+
+D. trainerMessaging.js:
+   - getOrCreateConversation(): Creates or gets conversation ID
+   - Ensures conversation exists before messaging
+
+E. conversationService.js:
+   - subscribeToUnreadCount(): Real-time unread message count
+   - Updates badge on home screens
+
+================================================================================
+5. UI COMPONENTS & DESIGN PATTERNS
+================================================================================
+
+TRAINER DASHBOARD:
+- iOS 18 Design Language
+- Pure black background (#000000)
+- Ambient gradient overlays (purple, green, teal)
+- BlurView components for glass morphism
+- Segmented controls for filtering
+- Grouped inset list style (iOS Settings aesthetic)
+- Haptic feedback on interactions
+- Circular avatars with status pips
+
+CLIENT HOME SCREEN:
+- MyFitnessPal + Apple Fitness+ aesthetic
+- Dark mode card-based design
+- Circular progress indicators
+- Video rail with auto-scroll
+- Hero card for primary action
+- Grid layouts for stats and discover
+- Pull-to-refresh functionality
+- Smooth animations
+
+================================================================================
+6. STATE MANAGEMENT
+================================================================================
+
+TRAINER APP:
+- useState for screen visibility (showProfile, showSettings, etc.)
+- useState for selectedClientId
+- useState for trainerClients array
+- useState for unreadMessageCount
+- useEffect for real-time Firestore subscriptions
+- Auto-selection of first client on load
+
+CLIENT APP:
+- useState for screen visibility
+- useState for trainerData
+- useState for unreadMessageCount
+- useState for workout/nutrition data
+- useEffect for data fetching on mount
+- useEffect for real-time subscriptions
+
+================================================================================
+7. NAVIGATION FLOW
+================================================================================
+
+TRAINER:
+Home → Select Client → Dashboard (Tabs) → Individual Views
+  ↓
+Bottom Nav → Workout Library / Nutrition / Voice / Profile
+  ↓
+Create Modal → Quick Actions
+  ↓
+Conversations → Individual Messages
+
+CLIENT:
+Home → Hero Card → Start Workout / Generate Workout
+  ↓
+Bottom Nav → Workout Library / Nutrition / Voice / Profile
+  ↓
+Discover → Find Trainers → Trainer Search → Message Trainer
+  ↓
+Conversations → Individual Messages
+
+================================================================================
+8. COMPLETE FIREBASE ERROR REFERENCE
+================================================================================
+
+This section documents ALL Firebase errors that appear in the codebase,
+their causes, and how to fix them permanently.
+
+================================================================================
+A. FIRESTORE PERMISSION ERRORS (CRITICAL)
+================================================================================
+
+1. "Missing or insufficient permissions" / "FirebaseError: Missing or insufficient permissions"
+   Error Code: permission-denied
+   
+   WHERE IT HAPPENS:
+   - Nutrition page when loading food logs
+   - When trying to save nutrition goals
+   - When trainer tries to add client to CRM
+   - When trying to read/write to trainer_clients collection
+   - When accessing any collection without proper rules
+   
+   COLLECTIONS AFFECTED:
+   - nutrition_logs - Food logs (user's food entries)
+   - nutrition_goals - Nutrition goals (user's calorie/macro targets)
+   - trainer_clients/{trainerUid}/clients/{clientUid} - CRM system
+   - clients - Legacy CRM collection
+   - app_errors - Error logging collection
+   - Any collection missing from firestore.rules
+   
+   ROOT CAUSE:
+   Firestore security rules don't allow the operation
+   
+   FIX:
+   1. Go to https://console.firebase.google.com/
+   2. Select project: coachconnect-auth
+   3. Go to Firestore Database → Rules tab
+   4. Copy rules from firestore.rules file
+   5. Paste and click "Publish"
+   6. Wait 30 seconds for rules to propagate
+   
+   FILES TO CHECK:
+   - firestore.rules - Main rules file
+   - src/nutrition/services/nutritionService.js - Has error handling
+   - src/trainer/services/clientCRMService.js - CRM operations
+   
+   STATUS: 🔴 CRITICAL - Blocks core features
+
+2. "Failed to load food logs: [FirebaseError: Missing or insufficient permissions.]"
+   WHERE: Nutrition screen, MealPlanHomeScreen
+   FIX: Add nutrition_logs rules (already in firestore.rules lines 118-133)
+   
+3. "Failed to load goals, using default: Missing or insufficient permissions."
+   WHERE: Nutrition screen, getDailyGoals()
+   FIX: Add nutrition_goals rules (already in firestore.rules lines 136-151)
+   
+4. "Failed to add client: FirebaseError: Missing or insufficient permissions"
+   WHERE: Trainer adding client to CRM
+   FIX: Ensure trainer_clients rules exist (firestore.rules lines 177-200)
+
+================================================================================
+B. FIREBASE AUTHENTICATION ERRORS
+================================================================================
+
+1. "Firebase authentication is not initialized"
+   WHERE: LoginScreen, SignupScreen, AuthScreen
+   CAUSE: auth object is null
+   FIX: Check src/app/config.js - ensure Firebase config is loaded
+   
+2. "Firebase is not initialized"
+   WHERE: Various screens when db or auth is null
+   CAUSE: Firebase app initialization failed
+   FIX: Check .env file has all EXPO_PUBLIC_FIREBASE_* variables
+
+AUTH ERROR CODES (from LoginScreen.js, SignupScreen.js, AuthScreen.js):
+
+3. auth/user-not-found
+   MESSAGE: "No account found with this email address."
+   WHERE: Login attempts
+   FIX: User needs to sign up first
+   
+4. auth/wrong-password
+   MESSAGE: "Incorrect password. Please try again."
+   WHERE: Login attempts
+   FIX: User entered wrong password
+   
+5. auth/invalid-email
+   MESSAGE: "Invalid email address."
+   WHERE: Login/Signup
+   FIX: Validate email format before submission
+   
+6. auth/user-disabled
+   MESSAGE: "This account has been disabled."
+   WHERE: Login attempts
+   FIX: Admin action required
+   
+7. auth/too-many-requests
+   MESSAGE: "Too many failed attempts. Please try again later."
+   WHERE: Login attempts
+   FIX: Rate limiting - wait before retrying
+   
+8. auth/email-already-in-use
+   MESSAGE: "An account with this email already exists."
+   WHERE: Signup
+   FIX: User should login instead
+   
+9. auth/weak-password
+   MESSAGE: "Password is too weak. Please use a stronger password."
+   WHERE: Signup
+   FIX: Enforce stronger password requirements
+   
+10. auth/account-exists-with-different-credential
+    MESSAGE: "An account already exists with this email. Please sign in with email/password first."
+    WHERE: Google Sign-In
+    FIX: User needs to link accounts
+   
+11. auth/popup-blocked
+    MESSAGE: "Popup was blocked. Please allow popups and try again."
+    WHERE: Google Sign-In
+    FIX: Browser settings - allow popups
+   
+12. auth/popup-closed-by-user
+    MESSAGE: "Sign-in was cancelled."
+    WHERE: Google Sign-In
+    FIX: User action - not an error
+   
+13. auth/operation-not-allowed
+    MESSAGE: "Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods."
+    WHERE: Google Sign-In
+    FIX: Enable Google provider in Firebase Console
+
+================================================================================
+C. FIREBASE INITIALIZATION ERRORS
+================================================================================
+
+1. "Firebase configuration is missing: [list of missing vars]"
+   WHERE: src/app/config.js line 38
+   CAUSE: Missing EXPO_PUBLIC_FIREBASE_* environment variables
+   FIX: 
+   - Check .env file exists
+   - Ensure all required vars are set:
+     * EXPO_PUBLIC_FIREBASE_API_KEY
+     * EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+     * EXPO_PUBLIC_FIREBASE_PROJECT_ID
+     * EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+     * EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+     * EXPO_PUBLIC_FIREBASE_APP_ID
+   - Restart Expo dev server after updating .env
+
+2. "Cannot initialize Firebase - missing required config values"
+   WHERE: src/app/config.js line 52
+   CAUSE: apiKey or projectId missing
+   FIX: Same as above
+
+3. "Firebase initialization error: [error message]"
+   WHERE: src/app/config.js line 63
+   CAUSE: Invalid Firebase config or network issue
+   FIX: Verify config values are correct
+
+4. "Failed to get Firebase auth: [error message]"
+   WHERE: src/app/config.js line 86
+   CAUSE: Auth already initialized or initialization failed
+   FIX: Usually non-critical - app tries to get existing instance
+
+5. "Firebase Storage not initialized"
+   WHERE: src/shared/services/storage.js (multiple locations)
+   CAUSE: storage object is null
+   FIX: Ensure Firebase Storage is enabled in Firebase Console
+
+================================================================================
+D. FIRESTORE QUERY ERRORS
+================================================================================
+
+1. "Failed to load food logs"
+   WHERE: nutritionService.js, getFoodLogsForDate()
+   CAUSE: Permission denied or collection doesn't exist
+   FIX: Check firestore.rules for nutrition_logs rules
+
+2. "Failed to load goals, using default"
+   WHERE: nutritionService.js, getDailyGoals()
+   CAUSE: Permission denied or document doesn't exist
+   FIX: Check firestore.rules for nutrition_goals rules
+
+3. "Error fetching clients"
+   WHERE: PremiumTrainerDashboard, TrainerApp
+   CAUSE: Permission denied or trainer_clients collection access issue
+   FIX: Check firestore.rules for trainer_clients rules
+
+4. "Error fetching user data for [clientId]"
+   WHERE: PremiumTrainerDashboard, clientCRMService
+   CAUSE: Permission denied reading users collection
+   FIX: Check firestore.rules for users collection rules
+
+5. "Error loading clients"
+   WHERE: MessagesView, TrainerApp
+   CAUSE: Permission denied or query issue
+   FIX: Check firestore.rules and ensure user is authenticated
+
+6. "Error loading messages"
+   WHERE: MessagesView
+   CAUSE: Permission denied reading messages collection
+   FIX: Check firestore.rules for messages collection rules
+
+7. "Error fetching progress data"
+   WHERE: ProgressView
+   CAUSE: Permission denied reading progress subcollection
+   FIX: Check firestore.rules for trainer_clients/{trainerUid}/clients/{clientUid}/progress
+
+8. "Error fetching nutrition data"
+   WHERE: NutritionView
+   CAUSE: Permission denied or query issue
+   FIX: Check firestore.rules for nutrition_logs
+
+9. "Error fetching workouts"
+   WHERE: PremiumTrainerDashboard, WorkoutLibraryScreen
+   CAUSE: Permission denied or query issue
+   FIX: Check firestore.rules for workouts collection
+
+10. "Error loading workout history"
+    WHERE: WorkoutHistoryScreen
+    CAUSE: Permission denied reading completedWorkouts
+    FIX: Check firestore.rules for completedWorkouts collection
+
+11. "Error loading active workout"
+    WHERE: ActiveWorkoutScreen
+    CAUSE: Permission denied reading activeWorkouts
+    FIX: Check firestore.rules for activeWorkouts collection
+
+12. "Error loading chats"
+    WHERE: ChatListScreen
+    CAUSE: Permission denied reading conversations
+    FIX: Check firestore.rules for conversations collection
+
+13. "Error fetching trainers"
+    WHERE: TrainerSearchScreen
+    CAUSE: Permission denied or query issue
+    FIX: Check firestore.rules for users collection (trainer search)
+
+14. "Error loading trainer data"
+    WHERE: ClientApp
+    CAUSE: Permission denied reading users collection
+    FIX: Check firestore.rules for users collection
+
+================================================================================
+E. FIRESTORE INDEX ERRORS
+================================================================================
+
+1. "failed-precondition" / "The query requires an index"
+   Error Code: failed-precondition
+   WHERE: workoutService.js, any query with multiple where clauses
+   CAUSE: Firestore requires composite index for complex queries
+   FIX:
+   1. Check terminal for index creation link
+   2. Click the link to create index in Firebase Console
+   3. Wait for index to build (can take minutes)
+   4. Or add index manually in Firebase Console → Firestore → Indexes
+
+2. "Index not found" errors
+   WHERE: Complex queries with orderBy and where
+   FIX: Create composite index as shown in error message
+
+================================================================================
+F. FIRESTORE DATA ERRORS
+================================================================================
+
+1. "Client not found"
+   WHERE: PremiumTrainerDashboard when clientId doesn't exist
+   CAUSE: Client document doesn't exist in trainer_clients collection
+   FIX: Ensure client was properly added via clientCRMService
+
+2. "User document does not exist for clientId"
+   WHERE: syncClientDataFromUsers()
+   CAUSE: Client user document missing from users collection
+   FIX: Ensure user signed up properly
+
+3. "Client already linked to trainer"
+   WHERE: TrainerMarketplaceModal
+   CAUSE: Relationship already exists
+   FIX: Check before creating relationship
+
+4. "Invalid user roles or missing users"
+   WHERE: TrainerMarketplaceModal
+   CAUSE: User roles don't match (trainer/client)
+   FIX: Verify user roles in users collection
+
+================================================================================
+G. FIREBASE STORAGE ERRORS
+================================================================================
+
+1. "Firebase Storage not initialized"
+   WHERE: src/shared/services/storage.js (5 locations)
+   CAUSE: storage object is null
+   FIX: 
+   - Ensure Firebase Storage is enabled in Firebase Console
+   - Check Firebase config includes storageBucket
+   - Verify storage initialization in src/app/config.js
+
+2. Storage upload errors
+   WHERE: uploadProfileImage(), image uploads
+   CAUSE: Permission denied or storage rules
+   FIX: Check Firebase Storage rules in Firebase Console
+
+================================================================================
+H. NETWORK/CONNECTION ERRORS
+================================================================================
+
+1. "unavailable" / "Service unavailable"
+   Error Code: unavailable
+   WHERE: Any Firestore operation
+   CAUSE: Network issue or Firebase service down
+   FIX: Check internet connection, retry operation
+
+2. "deadline-exceeded" / "Request timeout"
+   Error Code: deadline-exceeded
+   WHERE: Long-running queries
+   CAUSE: Query took too long
+   FIX: Optimize query or add timeout handling
+
+3. "ECONNABORTED" / Network timeout
+   WHERE: API calls, food search
+   CAUSE: Request timeout
+   FIX: Increase timeout or retry logic
+
+================================================================================
+I. GOOGLE SIGN-IN ERRORS
+================================================================================
+
+1. "Google OAuth error: [error message]"
+   WHERE: LoginScreen, SignupScreen, AuthScreen
+   CAUSE: Google OAuth configuration issue
+   FIX:
+   - Enable Google Sign-In in Firebase Console → Authentication → Sign-in methods
+   - Configure OAuth consent screen in Google Cloud Console
+   - Add authorized domains
+   - Verify OAuth client IDs match
+
+2. "Google Sign-In Not Ready"
+   WHERE: LoginScreen, SignupScreen
+   CAUSE: Google OAuth request not initialized
+   FIX: Check Google.useAuthRequest() configuration
+
+================================================================================
+J. ERROR LOGGING ERRORS
+================================================================================
+
+1. "Failed to log error to Firestore: permission-denied"
+   WHERE: utils/logError.js
+   CAUSE: app_errors collection rules don't allow create
+   FIX: Check firestore.rules for app_errors collection (line 163-166)
+
+2. "Firestore db not available - error not logged to Firestore"
+   WHERE: utils/logError.js
+   CAUSE: db is null (Firebase not initialized)
+   FIX: Ensure Firebase is properly initialized
+
+================================================================================
+K. COMPLETE ERROR CODE REFERENCE
+================================================================================
+
+FIRESTORE ERROR CODES:
+- permission-denied: Security rules blocked the operation
+- not-found: Document/collection doesn't exist
+- already-exists: Document already exists (on create)
+- failed-precondition: Index required or invalid query
+- aborted: Operation was aborted
+- out-of-range: Invalid argument value
+- unimplemented: Operation not supported
+- internal: Internal Firebase error
+- unavailable: Service unavailable (network issue)
+- deadline-exceeded: Operation timed out
+- unauthenticated: User not authenticated
+- resource-exhausted: Quota exceeded
+
+AUTH ERROR CODES:
+- auth/user-not-found: No user with that email
+- auth/wrong-password: Incorrect password
+- auth/invalid-email: Invalid email format
+- auth/user-disabled: Account disabled
+- auth/too-many-requests: Rate limited
+- auth/email-already-in-use: Email already registered
+- auth/weak-password: Password too weak
+- auth/account-exists-with-different-credential: Account exists with different provider
+- auth/popup-blocked: Browser blocked popup
+- auth/popup-closed-by-user: User closed popup
+- auth/operation-not-allowed: Provider not enabled
+
+================================================================================
+L. QUICK FIX CHECKLIST
+================================================================================
+
+TO FIX ALL FIRESTORE PERMISSION ERRORS:
+□ 1. Open Firebase Console → Firestore → Rules
+□ 2. Copy entire contents of firestore.rules file
+□ 3. Paste into Firebase Console
+□ 4. Click "Publish"
+□ 5. Wait 30 seconds
+□ 6. Test app - errors should be gone
+
+TO FIX FIREBASE INITIALIZATION ERRORS:
+□ 1. Check .env file exists in project root
+□ 2. Verify all EXPO_PUBLIC_FIREBASE_* variables are set
+□ 3. Restart Expo dev server: npx expo start --clear
+□ 4. Check terminal for "Firebase initialized successfully"
+
+TO FIX GOOGLE SIGN-IN ERRORS:
+□ 1. Firebase Console → Authentication → Sign-in methods
+□ 2. Enable Google provider
+□ 3. Google Cloud Console → OAuth consent screen
+□ 4. Add authorized domains
+□ 5. Verify OAuth client IDs match
+
+TO FIX INDEX ERRORS:
+□ 1. Check terminal for index creation link
+□ 2. Click link to auto-create index
+□ 3. Or manually create in Firebase Console → Firestore → Indexes
+□ 4. Wait for index to build
+
+TO FIX STORAGE ERRORS:
+□ 1. Firebase Console → Storage
+□ 2. Enable Storage if not enabled
+□ 3. Check Storage rules allow uploads
+□ 4. Verify storageBucket in Firebase config
+
+================================================================================
+M. ERROR PREVENTION BEST PRACTICES
+================================================================================
+
+1. ALWAYS check if db/auth/storage is initialized before use:
+   if (!db) return;
+   if (!auth) return;
+   if (!storage) return;
+
+2. ALWAYS wrap Firestore operations in try-catch:
+   try {
+     const doc = await getDoc(docRef);
+   } catch (error) {
+     console.error('Error:', error);
+     // Handle error
+   }
+
+3. ALWAYS check authentication before Firestore operations:
+   if (!auth.currentUser) {
+     // Redirect to login
+     return;
+   }
+
+4. ALWAYS validate data before writing:
+   if (!userId || !data) {
+     throw new Error('Missing required parameters');
+   }
+
+5. ALWAYS handle permission-denied errors gracefully:
+   if (error.code === 'permission-denied') {
+     // Show user-friendly message
+     // Log error for debugging
+   }
+
+6. ALWAYS check if document exists before reading:
+   if (!doc.exists()) {
+     // Handle missing document
+     return null;
+   }
+
+7. ALWAYS use serverTimestamp() for timestamps:
+   createdAt: serverTimestamp()
+
+8. ALWAYS validate Firestore rules match your queries:
+   - Check collection names match
+   - Check field names match (userId vs user_id)
+   - Check authentication requirements
+
+================================================================================
+N. COMMON ERROR PATTERNS TO WATCH FOR
+================================================================================
+
+TERMINAL PATTERNS:
+- "FirebaseError" - Any Firebase error
+- "Missing or insufficient permissions" - Permission error
+- "Failed to load" - Data loading failure
+- "Error fetching" - Query failure
+- "Error loading" - Read operation failure
+- "Error creating" - Write operation failure
+- "Error updating" - Update operation failure
+- "Error deleting" - Delete operation failure
+- "permission-denied" - Security rule issue
+- "failed-precondition" - Index required
+- "unavailable" - Network/service issue
+
+CONSOLE ERROR PATTERNS:
+- console.error('Error fetching...') - Data fetch failed
+- console.error('Error loading...') - Data load failed
+- console.warn('Failed to load...') - Fallback used
+- Alert.alert('Error', 'Firebase...') - User-facing error
+
+================================================================================
+O. DEBUGGING FIREBASE ERRORS
+================================================================================
+
+STEP 1: Check Terminal Output
+- Look for exact error message
+- Note which collection/operation failed
+- Check error code
+
+STEP 2: Check Firebase Console
+- Firestore → Rules: Verify rules exist
+- Firestore → Data: Check if collection exists
+- Firestore → Indexes: Check if index needed
+- Authentication → Users: Verify user exists
+
+STEP 3: Check Code
+- Verify db/auth/storage is initialized
+- Check authentication state
+- Verify collection/field names match rules
+- Check query structure matches rules
+
+STEP 4: Test Fix
+- Update rules if needed
+- Create index if needed
+- Restart app
+- Test operation again
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+

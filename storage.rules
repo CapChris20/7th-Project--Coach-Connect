@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Conversation attachments
+    match /conversations/{conversationId}/attachments/{allPaths=**} {
+      allow read, write: if request.auth != null
+        && (
+          conversationId.matches('^conv_' + request.auth.uid + '_.*')
+          || conversationId.matches('^conv_.*_' + request.auth.uid + '$')
+        );
+    }
+    // User notes & files — client or their trainer can read/write
+    match /users/{userId}/notes_and_files/{allPaths=**} {
+      allow read, write: if request.auth != null && (
+        request.auth.uid == userId ||
+        firestore.get(/databases/(default)/documents/users/$(userId)).data.trainerId == request.auth.uid ||
+        firestore.get(/databases/(default)/documents/users/$(userId)).data.trainer_id == request.auth.uid
+      );
+    }
+
+    // Progress photos
+    // Path: progressPhotos/{clientId}/{fileName}
+    match /progressPhotos/{clientId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        request.auth.uid == clientId ||
+        firestore.exists(/databases/(default)/documents/trainer_clients/$(request.auth.uid)/clients/$(clientId))
+      );
+    }
+
+    // Profile photos — allow user to manage their own profile photo
+    // Path: profile_photos/{uid}
+    match /profile_photos/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

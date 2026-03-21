@@ -1,0 +1,23 @@
+{
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "javascript.preferences.importModuleSpecifier": "relative",
+  "typescript.suggest.paths": true,
+  "javascript.suggest.paths": true,
+  "typescript.preferences.includePackageJsonAutoImports": "on",
+  "javascript.preferences.includePackageJsonAutoImports": "on",
+  "files.exclude": {
+    "**/.expo": true,
+    "**/node_modules": true,
+    "**/.metro": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.expo": true,
+    "**/.metro": true,
+    "**/build": true,
+    "**/dist": true
+  }
+}
+
+
+
