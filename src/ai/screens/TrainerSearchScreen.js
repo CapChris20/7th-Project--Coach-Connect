@@ -442,6 +442,7 @@ const TrainerSearchScreen = ({
   isDark = true,
   onHomePress,
   onPlusPress,
+  onVoicePress,
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
@@ -671,6 +672,7 @@ const TrainerSearchScreen = ({
         <BottomNavBar
           onHomePress={onHomePress}
           onPlusPress={onPlusPress}
+          onVoicePress={onVoicePress}
           onNutritionPress={onNutritionPress}
           onWorkoutPress={onWorkoutPress}
           onMessagesPress={onMessagesPress}

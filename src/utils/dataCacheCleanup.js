@@ -2,6 +2,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CACHE_KEYS_TO_CLEAR = [
+  // Legacy global AI toggle — per-user preference lives in `user_ai_enabled_<uid>` (see AIContext).
+  'aiEnabled',
   'COACHCONNECT_FOOD_CACHE',
   'COACHCONNECT_USER_PREFERENCES',
   'COACHCONNECT_DASHBOARD_STATE',

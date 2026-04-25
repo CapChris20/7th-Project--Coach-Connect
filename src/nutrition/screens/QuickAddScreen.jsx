@@ -1,6 +1,6 @@
 /**
  * Full-page Quick Add (manual food log).
- * Replaces the small modal with a long form: name, quantity, calories, protein, carbs, fat, sodium, fiber, sugar, serving.
+ * Essentials first; macros and serving details in an optional section.
  */
 import React, { useState } from 'react';
 import {
@@ -28,9 +28,9 @@ function getColors(isDark) {
         cardBg: 'rgba(255,255,255,0.06)',
         cardBorder: 'rgba(255,255,255,0.1)',
         text: '#ffffff',
-        textMuted: 'rgba(255,255,255,0.5)',
+        textMuted: 'rgba(255,255,255,0.55)',
         textVeryMuted: 'rgba(255,255,255,0.35)',
-        inputBg: 'rgba(255,255,255,0.06)',
+        inputFill: 'rgba(255,255,255,0.07)',
       }
     : {
         ...ACCENT,
@@ -40,8 +40,25 @@ function getColors(isDark) {
         text: '#1a0a2e',
         textMuted: 'rgba(26,10,46,0.6)',
         textVeryMuted: 'rgba(26,10,46,0.4)',
-        inputBg: 'rgba(0,0,0,0.05)',
+        inputFill: 'rgba(255,255,255,0.95)',
       };
+}
+
+function FieldShell({ leftColor, isDark, colors, children }) {
+  return (
+    <View
+      style={[
+        s.fieldShell,
+        {
+          backgroundColor: colors.inputFill,
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+          borderLeftColor: leftColor,
+        },
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export default function QuickAddScreen({ mealType = 'snacks', onSave, onBack }) {
@@ -51,6 +68,7 @@ export default function QuickAddScreen({ mealType = 'snacks', onSave, onBack }) 
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [calories, setCalories] = useState('');
+  const [showMacros, setShowMacros] = useState(false);
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
@@ -60,10 +78,16 @@ export default function QuickAddScreen({ mealType = 'snacks', onSave, onBack }) 
   const [servingSize, setServingSize] = useState('3.5');
   const [servingUnit, setServingUnit] = useState('g');
 
-  const num = (v) => (v === '' || v === null) ? 0 : Number(v) || 0;
-  const qty = Math.max(0.001, num(quantity));
+  const num = (v) => (v === '' || v === null ? 0 : Number(v) || 0);
+  const qty = Math.max(0.25, num(quantity));
   const cal = num(calories);
   const isValid = name.trim() && cal > 0;
+
+  const bumpQty = (delta) => {
+    const n = num(quantity);
+    const next = Math.max(0.25, Math.round((n + delta) * 4) / 4);
+    setQuantity(String(next));
+  };
 
   const handleSave = () => {
     if (!isValid) return;
@@ -87,8 +111,6 @@ export default function QuickAddScreen({ mealType = 'snacks', onSave, onBack }) 
   };
 
   const mealLabel = mealType ? mealType.charAt(0).toUpperCase() + mealType.slice(1) : 'Meal';
-
-  const inputStyle = [s.input, { backgroundColor: colors.inputBg, borderColor: colors.cardBorder, color: colors.text }];
   const labelStyle = [s.label, { color: colors.textMuted }];
 
   return (
@@ -101,72 +123,118 @@ export default function QuickAddScreen({ mealType = 'snacks', onSave, onBack }) 
           <Text style={[s.title, { color: colors.text }]}>Quick Add</Text>
           <View style={s.backBtn} />
         </View>
-        <View style={{ marginHorizontal: 16, borderRadius: 18, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.hotPink + '40', marginBottom: 14, padding: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View>
-              <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>{mealLabel}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>Manual entry • totals update instantly</Text>
-            </View>
-            <View style={[s.mealBadge, { backgroundColor: colors.inputBg, borderColor: colors.hotPink + '60', marginHorizontal: 0, marginBottom: 0 }]}>
-              <Text style={[s.mealBadgeText, { color: colors.hotPink }]}>Quick</Text>
-            </View>
-          </View>
+
+        <View
+          style={{
+            marginHorizontal: 16,
+            borderRadius: 18,
+            backgroundColor: colors.cardBg,
+            borderWidth: 1,
+            borderColor: colors.cardBorder,
+            marginBottom: 12,
+            padding: 14,
+          }}
+        >
+          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }}>{mealLabel}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Manual entry • totals update instantly</Text>
         </View>
 
         <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={{ borderRadius: 22, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cyan + '40', padding: 16 }}>
-              <Text style={labelStyle}>Food name (required)</Text>
-              <TextInput style={inputStyle} placeholder="e.g. Almond milk" placeholderTextColor={colors.textMuted} value={name} onChangeText={setName} />
+          <View style={{ borderRadius: 22, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, padding: 16 }}>
+            <Text style={labelStyle}>Food name (required)</Text>
+            <FieldShell leftColor={colors.cyan} isDark={isDark} colors={colors}>
+              <TextInput
+                style={[s.fieldInput, { color: colors.text }]}
+                placeholder="Start typing a food name…"
+                placeholderTextColor={colors.textVeryMuted}
+                value={name}
+                onChangeText={setName}
+              />
+            </FieldShell>
 
-              <Text style={labelStyle}>Quantity (servings)</Text>
-              <TextInput style={inputStyle} placeholder="1" placeholderTextColor={colors.textMuted} value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
-
-              <Text style={labelStyle}>Calories (required)</Text>
-              <TextInput style={inputStyle} placeholder="e.g. 60" placeholderTextColor={colors.textMuted} value={calories} onChangeText={setCalories} keyboardType="numeric" />
-
-              <View style={s.row}>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Protein (oz)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={protein} onChangeText={setProtein} keyboardType="decimal-pad" />
-                </View>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Carbs (oz)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={carbs} onChangeText={setCarbs} keyboardType="decimal-pad" />
-                </View>
+            <Text style={labelStyle}>Quantity (servings)</Text>
+            <FieldShell leftColor={colors.hotPink} isDark={isDark} colors={colors}>
+              <View style={s.qtyRow}>
+                <TouchableOpacity onPress={() => bumpQty(-0.25)} style={s.qtyBtn} activeOpacity={0.75}>
+                  <Ionicons name="remove" size={22} color={colors.text} />
+                </TouchableOpacity>
+                <TextInput
+                  style={[s.fieldInput, s.qtyInput, { color: colors.text }]}
+                  value={quantity}
+                  onChangeText={setQuantity}
+                  keyboardType="decimal-pad"
+                  textAlign="center"
+                />
+                <TouchableOpacity onPress={() => bumpQty(0.25)} style={s.qtyBtn} activeOpacity={0.75}>
+                  <Ionicons name="add" size={22} color={colors.text} />
+                </TouchableOpacity>
               </View>
+            </FieldShell>
 
-              <View style={s.row}>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Fat (oz)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={fat} onChangeText={setFat} keyboardType="decimal-pad" />
-                </View>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Sodium (mg)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={sodium} onChangeText={setSodium} keyboardType="numeric" />
-                </View>
+            <Text style={labelStyle}>Calories (required)</Text>
+            <FieldShell leftColor={colors.orange} isDark={isDark} colors={colors}>
+              <TextInput
+                style={[s.fieldInput, { color: colors.text }]}
+                placeholder="e.g. 320"
+                placeholderTextColor={colors.textVeryMuted}
+                value={calories}
+                onChangeText={setCalories}
+                keyboardType="numeric"
+              />
+            </FieldShell>
+
+            <TouchableOpacity
+              style={[s.macroToggle, { borderColor: colors.purple + '55' }]}
+              onPress={() => setShowMacros((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: colors.text, fontSize: 14, fontWeight: '700' }}>
+                {showMacros ? 'Hide macros & serving' : 'Add macros'}
+              </Text>
+              <Ionicons name={showMacros ? 'chevron-up' : 'chevron-down'} size={20} color={colors.purple} />
+            </TouchableOpacity>
+
+            {showMacros ? (
+              <View style={{ marginTop: 4 }}>
+                <Text style={[labelStyle, { marginTop: 0 }]}>Protein (oz)</Text>
+                <FieldShell leftColor={colors.purple} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={protein} onChangeText={setProtein} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Carbs (oz)</Text>
+                <FieldShell leftColor={colors.cyan} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={carbs} onChangeText={setCarbs} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Fat (oz)</Text>
+                <FieldShell leftColor={colors.orange} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={fat} onChangeText={setFat} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Sodium (mg)</Text>
+                <FieldShell leftColor={colors.green} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={sodium} onChangeText={setSodium} keyboardType="numeric" />
+                </FieldShell>
+                <Text style={labelStyle}>Fiber (oz)</Text>
+                <FieldShell leftColor={colors.green} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={fiber} onChangeText={setFiber} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Sugar (oz)</Text>
+                <FieldShell leftColor={colors.hotPink} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="0" placeholderTextColor={colors.textVeryMuted} value={sugar} onChangeText={setSugar} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Serving size (oz per serving)</Text>
+                <FieldShell leftColor={colors.cyan} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="3.5" placeholderTextColor={colors.textVeryMuted} value={servingSize} onChangeText={setServingSize} keyboardType="decimal-pad" />
+                </FieldShell>
+                <Text style={labelStyle}>Serving unit (e.g. g, ml, cup)</Text>
+                <FieldShell leftColor={colors.purple} isDark={isDark} colors={colors}>
+                  <TextInput style={[s.fieldInput, { color: colors.text }]} placeholder="g" placeholderTextColor={colors.textVeryMuted} value={servingUnit} onChangeText={setServingUnit} />
+                </FieldShell>
               </View>
-
-              <View style={s.row}>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Fiber (oz)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={fiber} onChangeText={setFiber} keyboardType="decimal-pad" />
-                </View>
-                <View style={s.half}>
-                  <Text style={labelStyle}>Sugar (oz)</Text>
-                  <TextInput style={inputStyle} placeholder="0" placeholderTextColor={colors.textMuted} value={sugar} onChangeText={setSugar} keyboardType="decimal-pad" />
-                </View>
-              </View>
-
-              <Text style={labelStyle}>Serving size (oz per serving)</Text>
-              <TextInput style={inputStyle} placeholder="3.5" placeholderTextColor={colors.textMuted} value={servingSize} onChangeText={setServingSize} keyboardType="decimal-pad" />
-
-              <Text style={labelStyle}>Serving unit (e.g. g, ml, cup)</Text>
-              <TextInput style={inputStyle} placeholder="g" placeholderTextColor={colors.textMuted} value={servingUnit} onChangeText={setServingUnit} />
+            ) : null}
           </View>
 
           <TouchableOpacity onPress={handleSave} disabled={!isValid} activeOpacity={0.85} style={[s.saveWrap, !isValid && s.saveDisabled]}>
-            <LinearGradient colors={isValid ? [colors.hotPink, colors.orange, colors.purple] : ['#444', '#333']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
-              <Text style={s.saveText}>Save to {mealLabel}</Text>
+            <LinearGradient colors={isValid ? [colors.hotPink, '#EC4899'] : ['#444', '#333']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
+              <Text style={s.saveText}>Log Food</Text>
             </LinearGradient>
           </TouchableOpacity>
           <View style={{ height: 40 }} />
@@ -182,16 +250,40 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 20, fontWeight: '800' },
-  mealBadge: { alignSelf: 'flex-start', marginHorizontal: 16, marginBottom: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
-  mealBadgeText: { fontSize: 13, fontWeight: '600' },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 24 },
-  label: { fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 12 },
-  input: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, borderWidth: 1 },
-  row: { flexDirection: 'row', gap: 12 },
-  half: { flex: 1 },
-  saveWrap: { marginTop: 28 },
-  saveDisabled: { opacity: 0.6 },
+  label: { fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 14 },
+  fieldShell: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    overflow: 'hidden',
+  },
+  fieldInput: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  qtyRow: { flexDirection: 'row', alignItems: 'center' },
+  qtyBtn: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyInput: { flex: 1, paddingVertical: 10 },
+  macroToggle: {
+    marginTop: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  saveWrap: { marginTop: 22 },
+  saveDisabled: { opacity: 0.55 },
   saveBtn: { borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-  saveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  saveText: { color: '#fff', fontSize: 17, fontWeight: '800' },
 });

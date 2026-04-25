@@ -1,55 +1,77 @@
-export default {
+// Expo loads .env before this runs, so process.env has your keys
+module.exports = {
   expo: {
-    name: 'CoachConnect',
+    name: 'Anatrox',
     slug: 'anatrox-app',
-    scheme: 'coachconnect',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/icon.png',
-    userInterfaceStyle: 'automatic',
+    userInterfaceStyle: 'light',
+    scheme: 'anatrox',
+    plugins: [
+      ['expo-camera', { cameraPermission: 'Allow Anatrox to access your camera for progress photos.' }],
+      ['expo-barcode-scanner', { cameraPermission: 'Allow Anatrox to scan food barcodes.' }],
+      ['expo-image-picker', {
+        photosPermission: 'Allow Anatrox to access your photos to add images to chats.',
+        cameraPermission: 'Allow Anatrox to take photos for progress tracking.',
+      }],
+      'expo-asset',
+      'expo-font',
+      [
+        'expo-notifications',
+        {
+          icon: './assets/IMG_2562.png',
+          color: '#FF6B9D',
+          defaultChannel: 'default',
+        }
+      ],
+      'expo-apple-authentication',
+    ],
     ios: {
-      bundleIdentifier: 'com.chrisshina.coachconnect',
+      supportsTablet: true,
+      bundleIdentifier: 'com.yourcompany.anatrox',
       buildNumber: '1',
-      supportsTablet: false,
       usesAppleSignIn: true,
       infoPlist: {
-        NSCameraUsageDescription: 'CoachConnect uses your camera to upload progress photos.',
-        NSPhotoLibraryUsageDescription: 'CoachConnect accesses your photo library to upload progress photos and profile pictures.',
-        NSMicrophoneUsageDescription: 'CoachConnect uses your microphone for voice features.',
-        NSUserNotificationsUsageDescription: 'CoachConnect sends you workout reminders and updates from your trainer.',
+        NSCameraUsageDescription: 'This app uses the camera for progress photos and barcode scanning.',
+        NSMicrophoneUsageDescription: 'This app uses the microphone for voice coaching features.',
+        NSPhotoLibraryUsageDescription: 'This app needs access to your photo library to save progress photos.',
+        // Allow insecure HTTP loads to local dev API (LAN IP / localhost).
+        // Without this, iOS may block `http://192.168.x.x:4000` with "Network request failed".
+        NSAppTransportSecurity: {
+          NSExceptionDomains: {
+            localhost: {
+              NSExceptionAllowsInsecureHTTPLoads: true,
+              NSIncludesSubdomains: true,
+            },
+            '127.0.0.1': {
+              NSExceptionAllowsInsecureHTTPLoads: true,
+              NSIncludesSubdomains: true,
+            },
+            '192.168.0.178': {
+              NSExceptionAllowsInsecureHTTPLoads: true,
+              NSIncludesSubdomains: true,
+            },
+          },
+        },
       },
     },
+    newArchEnabled: true,
     android: {
-      package: 'com.chrisshina.coachconnect',
+      package: 'com.yourcompany.anatrox',
       versionCode: 1,
-      adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
-        backgroundColor: '#0A0A0F',
-      },
-      permissions: [
-        'CAMERA',
-        'READ_MEDIA_IMAGES',
-        'READ_MEDIA_VIDEO',
-        'RECORD_AUDIO',
-        'NOTIFICATIONS',
-      ],
+      permissions: ['CAMERA', 'RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'],
     },
     extra: {
       eas: {
-        projectId: '79b8563c-1e15-49e0-8a8b-76f5d1f316b6',
+        projectId: "79b8563c-1e15-49e0-8a8b-76f5d1f316b6"
       },
-      apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:4000',
+      firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+      firebaseAuthDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+      firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+      firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+      firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.178:4000',
     },
-    plugins: [
-      'expo-camera',
-      'expo-image-picker',
-      'expo-document-picker',
-      'expo-notifications',
-      'expo-apple-authentication',
-    ],
-    updates: {
-      fallbackToCacheTimeout: 0,
-    },
-    assetBundlePatterns: ['**/*'],
   },
 };

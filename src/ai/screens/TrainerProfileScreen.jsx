@@ -69,6 +69,7 @@ const TrainerProfileScreen = ({
   onSettingsPress,
   onHomePress,
   onPlusPress,
+  onVoicePress,
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
@@ -401,6 +402,7 @@ const TrainerProfileScreen = ({
         <BottomNavBar
           onHomePress={onHomePress}
           onPlusPress={onPlusPress}
+          onVoicePress={onVoicePress}
           onNutritionPress={onNutritionPress}
           onWorkoutPress={onWorkoutPress}
           onMessagesPress={onMessagesPress}

@@ -17,7 +17,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as XLSX from 'xlsx';
+import XLSX from '../../utils/xlsx';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_PADDING = 10;

@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginBottom: 4,
   },
-  caloriesValue: { fd
+  caloriesValue: {
     fontSize: 28,
     fontWeight: '700',
     color: colors.white,

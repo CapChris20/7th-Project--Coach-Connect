@@ -64,7 +64,7 @@ service cloud.firestore {
 ## Steps
 
 1. **Open**: https://console.firebase.google.com/
-2. **Select**: `anatrox-auth` project
+2. **Select**: `coachconnect-auth` project
 3. **Go to**: Firestore Database → **Rules**
 4. **DELETE** all existing rules
 5. **PASTE** the rules above

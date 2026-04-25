@@ -24,9 +24,8 @@ import { Animated as RNAnimated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../shared/ui/ThemeContext';
-import Loader from '../Loader';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCredential, GoogleAuthProvider, updateProfile, OAuthProvider } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCredential, signOut, GoogleAuthProvider, updateProfile, OAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../app/config';
 import * as Google from 'expo-auth-session/providers/google';
@@ -45,6 +44,56 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
+
+/** Shown when Client/Trainer toggle does not match the account's role in Firestore */
+const ROLE_MISMATCH_TITLE = 'Wrong account type';
+const ROLE_MISMATCH_MESSAGE =
+  'The account you entered is on the opposite side. Please change the Client / Trainer toggle at the top to match your account, then try again.';
+const ROLE_MISMATCH_NEXT_VIEW_KEY = 'auth_role_mismatch_next_view';
+let roleMismatchNextViewInMemory = null;
+
+async function readNormalizedFirestoreRole(uid) {
+  if (!db || !uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    const raw = snap.data()?.role;
+    if (raw == null || String(raw).trim() === '') return null;
+    const s = String(raw).toLowerCase().trim();
+    if (s === 'trainer') return 'trainer';
+    if (s === 'client') return 'client';
+    return null;
+  } catch (e) {
+    console.warn('readNormalizedFirestoreRole:', e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * If the user's Firestore profile role does not match the Client/Trainer toggle, sign out and alert.
+ * @returns {Promise<boolean>} true = continue login; false = mismatch (user signed out)
+ */
+async function ensureRoleMatchesToggle(uid, selectedRole) {
+  const expected = selectedRole === 'trainer' ? 'trainer' : 'client';
+  const actual = await readNormalizedFirestoreRole(uid);
+  if (actual == null) {
+    console.log('[Auth] No role on user profile; skipping Client/Trainer login gate');
+    return true;
+  }
+  if (actual === expected) return true;
+  console.log('[Auth] Login role mismatch — profile:', actual, 'toggle:', expected);
+  try {
+    // Prevent bounce-back to the welcome view after we force sign-out.
+    // AuthGate will remount AuthScreen, which defaults to 'welcome'.
+    roleMismatchNextViewInMemory = 'login';
+    await AsyncStorage.setItem(ROLE_MISMATCH_NEXT_VIEW_KEY, 'login').catch(() => {});
+    await signOut(auth);
+  } catch (e) {
+    console.warn('signOut after role mismatch:', e?.message || e);
+  }
+  Alert.alert(ROLE_MISMATCH_TITLE, ROLE_MISMATCH_MESSAGE);
+  return false;
+}
 
 const googleIcon = require('../assets/icons/Illustration-of-Google-icon-on-transparent-background-PNG.png');
 const appleLogo = require('../assets/icons/apple-logo.png');
@@ -71,48 +120,14 @@ const LIGHT = {
   wordmark: 'rgba(0,0,0,0.35)',
   heading: '#0A0A0F',
   subtitle: 'rgba(0,0,0,0.5)',
-  toggleBg: 'rgba(0,0,0,0.06)',
-  toggleBorder: 'rgba(0,0,0,0.1)',
-  toggleIcon: 'rgba(0,0,0,0.6)',
+  // Higher contrast for light mode so the theme toggle is visible.
+  toggleBg: 'rgba(124,58,237,0.10)',
+  toggleBorder: 'rgba(124,58,237,0.28)',
+  toggleIcon: 'rgba(124,58,237,0.95)',
   lottieGlow: 'rgba(124,58,237,0.1)',
   signinMuted: 'rgba(0,0,0,0.45)',
   signinLink: '#7C3AED',
 };
-
-function ThemeToggle({ isDark, onToggle, variant = 'pill' }) {
-  const token = isDark ? DARK : LIGHT;
-  const common = {
-    borderWidth: 1,
-    borderColor: token.toggleBorder,
-    backgroundColor: token.toggleBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  return (
-    <TouchableOpacity
-      onPress={onToggle}
-      activeOpacity={0.75}
-      style={
-        variant === 'circle'
-          ? {
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              ...common,
-            }
-          : {
-              paddingHorizontal: 14,
-              paddingVertical: 7,
-              borderRadius: 20,
-              ...common,
-            }
-      }
-    >
-      <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={token.toggleIcon} />
-    </TouchableOpacity>
-  );
-}
 
 function FloatingInput({
   label,
@@ -124,17 +139,6 @@ function FloatingInput({
   isDark = true,
 }) {
   const [focused, setFocused] = useState(false);
-  const labelColor = focused
-    ? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(15,23,42,0.65)')
-    : (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.40)');
-  const placeholderColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.30)';
-  const valueColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const bg = focused
-    ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)')
-    : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)');
-  const border = focused
-    ? (isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)')
-    : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.10)');
   return (
     <View style={{ marginBottom: 14 }}>
       <Text
@@ -145,7 +149,9 @@ function FloatingInput({
           textTransform: 'uppercase',
           marginBottom: 6,
           marginLeft: 2,
-          color: labelColor,
+          color: focused
+            ? (isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.65)')
+            : (isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.45)'),
         }}
       >
         {label}
@@ -154,7 +160,7 @@ function FloatingInput({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={placeholderColor}
+        placeholderTextColor={isDark ? 'rgba(255,255,255,0.28)' : 'rgba(15,23,42,0.35)'}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoCapitalize="none"
@@ -166,14 +172,21 @@ function FloatingInput({
           borderRadius: 12,
           borderWidth: 1,
           fontSize: 15,
-          color: valueColor,
-          backgroundColor: bg,
-          borderColor: border,
+          color: isDark ? '#FFFFFF' : '#0F172A',
+          backgroundColor: focused
+            ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)')
+            : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.78)'),
+          borderColor: focused
+            ? (isDark ? 'rgba(255,255,255,0.30)' : 'rgba(124,58,237,0.35)')
+            : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.16)'),
         }}
       />
     </View>
   );
 }
+
+/** Logo-aligned gradient (pink → purple → indigo), same family as navbar / brand */
+const ROLE_TOGGLE_GRADIENT = ['#E94EAD', '#A348D0', '#6B3AD9'];
 
 function RoleToggle({ role, onRoleChange, isDark = true }) {
   const slideAnim = useRef(new RNAnimated.Value(role === 'client' ? 0 : 1)).current;
@@ -198,10 +211,10 @@ function RoleToggle({ role, onRoleChange, isDark = true }) {
       style={{
         width: '100%',
         height: 48,
-        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,58,237,0.08)',
         borderRadius: 50,
         borderWidth: 1,
-        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.10)',
+        borderColor: isDark ? 'rgba(233,78,173,0.22)' : 'rgba(163,72,208,0.35)',
         flexDirection: 'row',
         padding: 4,
         marginBottom: 28,
@@ -209,20 +222,30 @@ function RoleToggle({ role, onRoleChange, isDark = true }) {
       }}
     >
       <RNAnimated.View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           top: 4,
           bottom: 4,
           left: slideLeft,
           width: '50%',
-          backgroundColor: isDark ? '#FFFFFF' : '#0A0A0F',
           borderRadius: 50,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.4,
-          shadowRadius: 8,
+          overflow: 'hidden',
+          shadowColor: '#6B3AD9',
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: isDark ? 0.45 : 0.35,
+          shadowRadius: 10,
+          elevation: 8,
         }}
-      />
+      >
+        <LinearGradient
+          colors={ROLE_TOGGLE_GRADIENT}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </RNAnimated.View>
       {['client', 'trainer'].map((r) => (
         <TouchableOpacity
           key={r}
@@ -235,10 +258,9 @@ function RoleToggle({ role, onRoleChange, isDark = true }) {
               fontSize: 14,
               fontWeight: '700',
               textTransform: 'capitalize',
-              color:
-                role === r
-                  ? (isDark ? '#0A0A0F' : '#FFFFFF')
-                  : (isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)'),
+              color: role === r
+                ? '#FFFFFF'
+                : (isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.5)'),
             }}
           >
             {r === 'client' ? 'Client' : 'Trainer'}
@@ -419,35 +441,46 @@ function SocialGlassButton({
 }
 
 export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPasswordPress }) {
-  const { colors, typography, spacing, isDark, themeMode = 'dark' } = useTheme();
+  const { colors, typography, spacing, isDark, themeMode = 'dark', toggleTheme: toggleThemeContext } = useTheme();
   const insets = useSafeAreaInsets();
   const [focusedField, setFocusedField] = useState(null);
-  const [currentView, setCurrentView] = useState('welcome'); // 'welcome' | 'signup' | 'login'
+  const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
 
-  const [isDarkLanding, setIsDarkLanding] = useState(true);
+  // Auth screen local theme state, synced with ThemeContext (so Welcome + Sign Up match)
+  const [isDarkLanding, setIsDarkLanding] = useState(isDark);
   const bgAnim = useRef(new RNAnimated.Value(1)).current;
-  const wordmarkAnim = useRef(new RNAnimated.Value(0)).current;
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((val) => {
       if (val !== null) {
         const dark = val === 'dark';
         setIsDarkLanding(dark);
+        // Keep ThemeContext in sync so Signup components using useTheme() match.
+        toggleThemeContext?.(dark ? 'dark' : 'light');
         bgAnim.setValue(dark ? 1 : 0);
       }
     });
   }, []);
 
   useEffect(() => {
-    wordmarkAnim.setValue(0);
-    RNAnimated.timing(wordmarkAnim, { toValue: 1, duration: 520, useNativeDriver: true }).start();
-  }, [currentView, wordmarkAnim]);
+    // If we just bounced due to client/trainer role mismatch, keep them on the sign-in view.
+    AsyncStorage.getItem(ROLE_MISMATCH_NEXT_VIEW_KEY)
+      .then((val) => {
+        if (val === 'login') setCurrentView('login');
+      })
+      .finally(() => {
+        roleMismatchNextViewInMemory = null;
+        AsyncStorage.removeItem(ROLE_MISMATCH_NEXT_VIEW_KEY).catch(() => {});
+      });
+  }, []);
 
   const toggleTheme = () => {
     const next = !isDarkLanding;
     setIsDarkLanding(next);
     AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
+    // Sync ThemeContext so Signup (and any shared UI) matches Welcome toggle.
+    toggleThemeContext?.(next ? 'dark' : 'light');
     RNAnimated.timing(bgAnim, {
       toValue: next ? 1 : 0,
       duration: 250,
@@ -497,11 +530,27 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   });
 
-  // Handle Google OAuth response
+  /** Latest screen for Google OAuth callback (signup vs login) */
+  const currentViewRef = useRef(currentView);
   useEffect(() => {
-    if (response?.type === 'success') {
-      handleGoogleResponse(response.authentication);
-    } else if (response?.type === 'error') {
+    currentViewRef.current = currentView;
+  }, [currentView]);
+
+  const handleGoogleSignUpRef = useRef(async () => {});
+  const handleGoogleSignInRef = useRef(async () => {});
+
+  useEffect(() => {
+    if (!response) return;
+    if (response.type === 'success') {
+      setIsLoadingGoogle(false);
+      const authentication = response.authentication;
+      const view = currentViewRef.current;
+      if (view === 'signup') {
+        void handleGoogleSignUpRef.current?.(authentication);
+      } else {
+        void handleGoogleSignInRef.current?.(authentication);
+      }
+    } else if (response.type === 'error') {
       setIsLoadingGoogle(false);
       console.error('Google OAuth error:', response.error);
       setAuthError('Google sign-in failed. Please try again.');
@@ -554,11 +603,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   };
 
   const handleSignup = async () => {
+    console.log('🚀 Starting signup process...');
+    console.log('📝 Form data:', { name: name.trim(), email: email.trim(), role, bioLength: bio.length, credentialsLength: credentials.length, locationLength: location.length });
     
     if (!validateSignupForm()) {
+      console.log('❌ Form validation failed:', signupErrors);
       return;
     }
     
+    console.log('✅ Form validation passed');
     
     if (!auth || !db) {
       console.error('❌ Firebase not initialized:', { auth: !!auth, db: !!db });
@@ -566,13 +619,16 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       return;
     }
 
+    console.log('✅ Firebase initialized, creating user...');
     setSignupLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      console.log('✅ User created in Firebase Auth:', userCredential.user.uid);
       
       let photoURL = null;
       
       if (profileImageUri && role === 'trainer') {
+        console.log('📷 Uploading profile image...');
         setUploadingImage(true);
         try {
           const uploadResult = await uploadProfileImage(userCredential.user.uid, { uri: profileImageUri });
@@ -582,6 +638,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               displayName: name.trim(),
               photoURL: photoURL,
             });
+            console.log('✅ Profile image uploaded and user profile updated');
           }
         } catch (uploadError) {
           console.error('❌ Error uploading profile image:', uploadError);
@@ -592,6 +649,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         await updateProfile(userCredential.user, {
           displayName: name.trim(),
         });
+        console.log('✅ User profile updated (no image)');
       }
       
       // Prepare user data
@@ -608,13 +666,17 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         userData.credentials = credentials.trim();
         userData.specializations = specializations.split(',').map(s => s.trim()).filter(s => s.length > 0);
         userData.location = location.trim();
+        console.log('👨‍🏫 Adding trainer-specific data:', { bioLength: userData.bio.length, credentials: userData.credentials, specializationsCount: userData.specializations.length, location: userData.location });
       }
       
+      console.log('💾 Saving user data to Firestore...');
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+      console.log('✅ User data saved to Firestore');
       
+      console.log('🎉 Signup successful:', userCredential.user.email, 'Role:', role);
       
       if (onSignupSuccess) {
-        onSignupSuccess(userCredential.user);
+        onSignupSuccess(userCredential.user, role);
       }
     } catch (error) {
       console.error('❌ Signup error:', error);
@@ -672,14 +734,18 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           authProvider: 'google',
         };
         await setDoc(userRef, userData);
+        console.log('New user created with Google sign-up:', userCredential.user.email, 'Role:', role);
       } else {
+        const ok = await ensureRoleMatchesToggle(userCredential.user.uid, role);
+        if (!ok) return;
         await setDoc(userRef, {
           updatedAt: new Date().toISOString(),
         }, { merge: true });
+        console.log('Existing user signed in with Google:', userCredential.user.email);
       }
       
       if (onSignupSuccess) {
-        onSignupSuccess(userCredential.user);
+        onSignupSuccess(userCredential.user, role);
       }
     } catch (error) {
       console.error('Google sign-up error:', error);
@@ -733,7 +799,11 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     setLoginLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
-      
+      console.log('Login successful:', userCredential.user.email);
+
+      const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
+      if (!roleOk) return;
+
       if (onLoginSuccess) {
         onLoginSuccess(userCredential.user);
       }
@@ -786,20 +856,35 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       
       const userRef = doc(db, 'users', userCredential.user.uid);
       const userDoc = await getDoc(userRef);
-      
+
+      if (userDoc.exists()) {
+        const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
+        if (!roleOk) return;
+      }
+
       if (!userDoc.exists()) {
         await setDoc(userRef, {
           uid: userCredential.user.uid,
           email: userCredential.user.email || '',
           name: userCredential.user.displayName || 'User',
-          role: 'client',
+          role,
           title: 'Coach Connect Invite Code',
           createdAt: new Date().toISOString(),
           authProvider: 'google',
         });
+        console.log('User document created for Google sign-in');
+      } else {
+        await setDoc(
+          userRef,
+          {
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       }
-      
-      
+
+      console.log('Google sign-in successful:', userCredential.user.email);
+
       if (onLoginSuccess) {
         onLoginSuccess(userCredential.user);
       }
@@ -826,6 +911,9 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       setLoginLoading(false);
     }
   };
+
+  handleGoogleSignUpRef.current = handleGoogleSignUp;
+  handleGoogleSignInRef.current = handleGoogleSignIn;
 
   const handleAppleAuth = async ({ mode }) => {
     if (Platform.OS !== 'ios') {
@@ -870,45 +958,108 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           paddingBottom: 8,
         }}
       >
-        <ThemeToggle isDark={isDarkLanding} onToggle={toggleTheme} />
-      </View>
-
-      {/* Welcome wordmark (bigger + centered) */}
-      <View style={{ alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
-        <RNAnimated.View
+        <TouchableOpacity
+          onPress={toggleTheme}
+          activeOpacity={0.75}
           style={{
-            opacity: wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
-            transform: [
-              { translateY: wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
-            ],
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            borderRadius: 20,
+            borderWidth: 1,
+            backgroundColor: t.toggleBg,
+            borderColor: t.toggleBorder,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          <RNAnimated.Text
+          <Ionicons
+            name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
+            size={18}
+            color={t.toggleIcon}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Welcome wordmark with bordered card */}
+      <View style={{ width: '100%', alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
+        <LinearGradient
+          colors={['#7C3AED', '#EC4899']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{
+            width: '88%',
+            maxWidth: 460,
+            borderRadius: 22,
+            padding: 2,
+            ...(Platform.OS === 'ios'
+              ? {
+                  shadowColor: '#7C3AED',
+                  shadowOffset: { width: 0, height: 12 },
+                  shadowOpacity: 0.22,
+                  shadowRadius: 18,
+                }
+              : { elevation: 4 }),
+          }}
+        >
+          <View
             style={{
-              fontSize: 44,
-              fontWeight: '900',
-              letterSpacing: 4,
-              textAlign: 'center',
-              color: t.heading,
-              transform: [{ translateX: wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-18, 0] }) }],
+              borderRadius: 20,
+              paddingVertical: 18,
+              paddingHorizontal: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.62)' : 'rgba(255,255,255,0.10)',
+              borderWidth: 1,
+              borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.14)',
             }}
           >
-            COACH
-          </RNAnimated.Text>
-          <RNAnimated.Text
-            style={{
-              marginTop: -6,
-              fontSize: 44,
-              fontWeight: '900',
-              letterSpacing: 4,
-              textAlign: 'center',
-              color: t.heading,
-              transform: [{ translateX: wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
-            }}
-          >
-            CONNECT
-          </RNAnimated.Text>
-        </RNAnimated.View>
+            <Text
+              style={{
+                fontSize: 44,
+                fontWeight: '900',
+                letterSpacing: 2,
+                textAlign: 'center',
+                color: t.heading,
+              }}
+            >
+              {'COACH\nCONNECT'}
+            </Text>
+
+            <LinearGradient
+              colors={['rgba(255,107,157,0.28)', 'rgba(124,58,237,0.22)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{
+                marginTop: 14,
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: isDarkLanding ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.18)',
+                ...(Platform.OS === 'ios'
+                  ? {
+                      shadowColor: '#EC4899',
+                      shadowOffset: { width: 0, height: 10 },
+                      shadowOpacity: 0.20,
+                      shadowRadius: 18,
+                    }
+                  : { elevation: 3 }),
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: '900',
+                  letterSpacing: 0.4,
+                  color: '#FFFFFF',
+                  textAlign: 'center',
+                }}
+              >
+                "One Day or Day One!"
+              </Text>
+            </LinearGradient>
+          </View>
+        </LinearGradient>
       </View>
 
       {/* Lottie animations */}
@@ -1060,6 +1211,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     const placeholderTextColor = isDarkLanding ? 'rgba(255,255,255,0.35)' : '#6B7280';
     
     // Debug logging for role state
+    console.log('🔍 renderSignupView - Current role state:', { role, selectedRole, currentView });
+    console.log('🔍 Should show trainer fields:', role === 'trainer');
     const signupStyles = StyleSheet.create({
       container: {
         flex: 1,
@@ -1315,10 +1468,43 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
           >
-            <View style={signupStyles.header}>
-              <Text style={signupStyles.logo}>COACH CONNECT</Text>
-              <Text style={signupStyles.subtitle}>Create Your Account</Text>
-            </View>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            paddingHorizontal: 20,
+            marginBottom: spacing.xl,
+            marginTop: 6,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={signupStyles.logo}>COACH CONNECT</Text>
+            <Text style={signupStyles.subtitle}>Create Your Account</Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={toggleTheme}
+            activeOpacity={0.75}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderRadius: 20,
+              borderWidth: 1,
+              backgroundColor: t.toggleBg,
+              borderColor: t.toggleBorder,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: 12,
+            }}
+          >
+            <Ionicons
+              name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
+              size={18}
+              color={t.toggleIcon}
+            />
+          </TouchableOpacity>
+        </View>
 
             {/* DEBUG: Show current role */}
             <View style={{ backgroundColor: 'blue', padding: 10, margin: 10, borderRadius: 5 }}>
@@ -1334,6 +1520,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   <TouchableOpacity
                     style={[signupStyles.roleButton, role === 'client' && signupStyles.roleButtonActive]}
                     onPress={() => {
+                      console.log('👤 Client role selected');
                       setRole('client');
                       setSelectedRole('client');
                     }}
@@ -1347,6 +1534,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   <TouchableOpacity
                     style={[signupStyles.roleButton, role === 'trainer' && signupStyles.roleButtonActive]}
                     onPress={() => {
+                      console.log('👨‍🏫 Trainer role selected');
                       setRole('trainer');
                       setSelectedRole('trainer');
                     }}
@@ -1514,11 +1702,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 onPress={handleSignup}
                 disabled={signupLoading}
               >
-                {signupLoading ? (
-                  <Loader />
-                ) : (
-                  <Text style={signupStyles.signupButtonText}>Create Account</Text>
-                )}
+                <Text style={signupStyles.signupButtonText}>Create Account</Text>
               </TouchableOpacity>
 
               <View style={signupStyles.divider}>
@@ -1796,11 +1980,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 onPress={handleLogin}
                 disabled={loginLoading}
               >
-                {loginLoading ? (
-                  <Loader />
-                ) : (
-                  <Text style={loginStyles.loginButtonText}>Sign In</Text>
-                )}
+                <Text style={loginStyles.loginButtonText}>Sign In</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1866,41 +2046,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
     const onApple = () => handleAppleAuth('signup');
 
-    const page = isDarkLanding
-      ? {
-          bg: '#0A0A0F',
-          text: '#FFFFFF',
-          sub: 'rgba(255,255,255,0.45)',
-          wordmark: 'rgba(255,255,255,0.35)',
-          border: 'rgba(255,255,255,0.16)',
-          divider: 'rgba(255,255,255,0.08)',
-          socialBg: 'rgba(255,255,255,0.05)',
-          socialBorder: 'rgba(255,255,255,0.10)',
-          socialText: '#FFFFFF',
-          appleTint: '#FFFFFF',
-          link: '#C084FC',
-        }
-      : {
-          bg: '#F5F5F7',
-          text: '#0A0A0F',
-          sub: 'rgba(15,23,42,0.55)',
-          wordmark: 'rgba(15,23,42,0.45)',
-          border: 'rgba(0,0,0,0.10)',
-          divider: 'rgba(0,0,0,0.10)',
-          socialBg: 'rgba(0,0,0,0.04)',
-          socialBorder: 'rgba(0,0,0,0.08)',
-          socialText: '#0A0A0F',
-          appleTint: '#0A0A0F',
-          link: '#7C3AED',
-        };
-
-    const wmOpacity = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-    const wmTranslateY = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] });
-    const wmTranslateX1 = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
-    const wmTranslateX2 = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
-
     return (
-      <View style={{ flex: 1, backgroundColor: page.bg }}>
+      <View style={{ flex: 1, backgroundColor: t.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1918,7 +2065,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back + wordmark + theme toggle */}
+            {/* Back + wordmark */}
             <View
               style={{
                 flexDirection: 'row',
@@ -1936,12 +2083,12 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 36,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: page.border,
+                  borderColor: 'rgba(255,255,255,0.16)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chevron-back" size={20} color={isDarkLanding ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.9)'} />
+                <Ionicons name="chevron-back" size={20} color={t.heading} />
               </TouchableOpacity>
 
               <Text
@@ -1950,51 +2097,32 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   fontWeight: '700',
                   letterSpacing: 4,
                   textTransform: 'uppercase',
-                  color: page.wordmark,
+                  color: t.wordmark,
                 }}
               >
-                {/* Spacer: keep layout stable */}
+                CoachConnect
               </Text>
 
-              <RNAnimated.View
-                pointerEvents="none"
+              <TouchableOpacity
+                onPress={toggleTheme}
+                activeOpacity={0.75}
                 style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  backgroundColor: t.toggleBg,
+                  borderColor: t.toggleBorder,
                   alignItems: 'center',
-                  opacity: wmOpacity,
-                  transform: [{ translateY: wmTranslateY }],
+                  justifyContent: 'center',
                 }}
               >
-                <RNAnimated.Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '900',
-                    letterSpacing: 5,
-                    textTransform: 'uppercase',
-                    color: page.wordmark,
-                    transform: [{ translateX: wmTranslateX1 }],
-                  }}
-                >
-                  Coach
-                </RNAnimated.Text>
-                <RNAnimated.Text
-                  style={{
-                    marginTop: 2,
-                    fontSize: 11,
-                    fontWeight: '900',
-                    letterSpacing: 5,
-                    textTransform: 'uppercase',
-                    color: page.wordmark,
-                    transform: [{ translateX: wmTranslateX2 }],
-                  }}
-                >
-                  Connect
-                </RNAnimated.Text>
-              </RNAnimated.View>
-
-              <ThemeToggle isDark={isDarkLanding} onToggle={toggleTheme} variant="circle" />
+                <Ionicons
+                  name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
+                  size={18}
+                  color={t.toggleIcon}
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Heading */}
@@ -2002,7 +2130,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               style={{
                 fontSize: 30,
                 fontWeight: '800',
-                color: page.text,
+                color: t.heading,
                 textAlign: 'center',
                 letterSpacing: -0.8,
                 marginBottom: 8,
@@ -2015,7 +2143,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             <Text
               style={{
                 fontSize: 14,
-                color: page.sub,
+                color: t.subtitle,
                 textAlign: 'center',
                 marginBottom: 28,
               }}
@@ -2121,20 +2249,16 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   opacity: signupLoading ? 0.7 : 1,
                 }}
               >
-                {signupLoading ? (
-                  <Loader />
-                ) : (
-                  <Text
-                    style={{
-                      color: '#FFFFFF',
-                      fontSize: 17,
-                      fontWeight: '700',
-                      letterSpacing: 0.2,
-                    }}
-                  >
-                    Create Account
-                  </Text>
-                )}
+                <Text
+                  style={{
+                    color: '#FFFFFF',
+                    fontSize: 17,
+                    fontWeight: '700',
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  Create Account
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -2151,14 +2275,14 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={{
                   flex: 1,
                   height: 1,
-                  backgroundColor: page.divider,
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.14)',
                 }}
               />
               <Text
                 style={{
                   fontSize: 12,
                   fontWeight: '500',
-                  color: isDarkLanding ? 'rgba(255,255,255,0.30)' : 'rgba(15,23,42,0.35)',
+                  color: isDarkLanding ? 'rgba(255,255,255,0.3)' : 'rgba(15,23,42,0.35)',
                   marginHorizontal: 12,
                 }}
               >
@@ -2168,7 +2292,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={{
                   flex: 1,
                   height: 1,
-                  backgroundColor: page.divider,
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.14)',
                 }}
               />
             </View>
@@ -2190,8 +2314,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 52,
                   borderRadius: 12,
                   borderWidth: 1,
-                  backgroundColor: page.socialBg,
-                  borderColor: page.socialBorder,
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.14)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
@@ -2200,13 +2324,13 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               >
                 <Image
                   source={appleLogo}
-                  style={{ width: 20, height: 20, resizeMode: 'contain', tintColor: page.appleTint }}
+                  style={{ width: 20, height: 20, resizeMode: 'contain', tintColor: isDarkLanding ? '#FFFFFF' : '#0F172A' }}
                 />
                 <Text
                   style={{
                     fontSize: 14,
                     fontWeight: '600',
-                    color: page.socialText,
+                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
                   }}
                 >
                   Apple
@@ -2221,8 +2345,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 52,
                   borderRadius: 12,
                   borderWidth: 1,
-                  backgroundColor: page.socialBg,
-                  borderColor: page.socialBorder,
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.14)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
@@ -2237,7 +2361,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   style={{
                     fontSize: 14,
                     fontWeight: '600',
-                    color: page.socialText,
+                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
                   }}
                 >
                   Google
@@ -2250,7 +2374,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               <Text
                 style={{
                   fontSize: 14,
-                  color: isDarkLanding ? 'rgba(255,255,255,0.4)' : 'rgba(15,23,42,0.55)',
+                  color: 'rgba(255,255,255,0.4)',
                 }}
               >
                 Already have an account?{' '}
@@ -2260,7 +2384,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   style={{
                     fontSize: 14,
                     fontWeight: '600',
-                    color: page.link,
+                    color: '#C084FC',
                   }}
                 >
                   Sign In
@@ -2274,33 +2398,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   };
 
   const renderLoginViewLiquid = () => {
-    const page = isDarkLanding
-      ? {
-          bg: '#0A0A0F',
-          text: '#FFFFFF',
-          sub: 'rgba(255,255,255,0.45)',
-          wordmark: 'rgba(255,255,255,0.35)',
-          border: 'rgba(255,255,255,0.16)',
-          divider: 'rgba(255,255,255,0.08)',
-          socialBg: 'rgba(255,255,255,0.05)',
-          socialBorder: 'rgba(255,255,255,0.10)',
-          socialText: '#FFFFFF',
-          appleTint: '#FFFFFF',
-          link: '#C084FC',
-        }
-      : {
-          bg: '#F5F5F7',
-          text: '#0A0A0F',
-          sub: 'rgba(15,23,42,0.55)',
-          wordmark: 'rgba(15,23,42,0.45)',
-          border: 'rgba(0,0,0,0.10)',
-          divider: 'rgba(0,0,0,0.10)',
-          socialBg: 'rgba(0,0,0,0.04)',
-          socialBorder: 'rgba(0,0,0,0.08)',
-          socialText: '#0A0A0F',
-          appleTint: '#0A0A0F',
-          link: '#7C3AED',
-        };
+    const placeholderTextColor = 'rgba(255,255,255,0.35)';
 
     const onGoogle = () => {
       if (!request) {
@@ -2315,13 +2413,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
     const onApple = () => handleAppleAuth('login');
 
-    const wmOpacity = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-    const wmTranslateY = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] });
-    const wmTranslateX1 = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
-    const wmTranslateX2 = wordmarkAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
-
     return (
-      <View style={{ flex: 1, backgroundColor: page.bg }}>
+      <View style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -2339,7 +2432,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back + wordmark + theme toggle */}
+            {/* Back + wordmark */}
             <View
               style={{
                 flexDirection: 'row',
@@ -2357,12 +2450,12 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 36,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: page.border,
+                  borderColor: 'rgba(255,255,255,0.16)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chevron-back" size={20} color={isDarkLanding ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.9)'} />
+                <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.9)" />
               </TouchableOpacity>
 
               <Text
@@ -2371,51 +2464,13 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   fontWeight: '700',
                   letterSpacing: 4,
                   textTransform: 'uppercase',
-                  color: page.wordmark,
+                color: isDarkLanding ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.45)',
                 }}
               >
-                {/* Spacer: keep layout stable */}
+                CoachConnect
               </Text>
 
-              <RNAnimated.View
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  alignItems: 'center',
-                  opacity: wmOpacity,
-                  transform: [{ translateY: wmTranslateY }],
-                }}
-              >
-                <RNAnimated.Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '900',
-                    letterSpacing: 5,
-                    textTransform: 'uppercase',
-                    color: page.wordmark,
-                    transform: [{ translateX: wmTranslateX1 }],
-                  }}
-                >
-                  Coach
-                </RNAnimated.Text>
-                <RNAnimated.Text
-                  style={{
-                    marginTop: 2,
-                    fontSize: 11,
-                    fontWeight: '900',
-                    letterSpacing: 5,
-                    textTransform: 'uppercase',
-                    color: page.wordmark,
-                    transform: [{ translateX: wmTranslateX2 }],
-                  }}
-                >
-                  Connect
-                </RNAnimated.Text>
-              </RNAnimated.View>
-
-              <ThemeToggle isDark={isDarkLanding} onToggle={toggleTheme} variant="circle" />
+              <View style={{ width: 36 }} />
             </View>
 
             {/* Heading */}
@@ -2423,7 +2478,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               style={{
                 fontSize: 30,
                 fontWeight: '800',
-                color: page.text,
+                color: '#FFFFFF',
                 textAlign: 'center',
                 letterSpacing: -0.8,
                 marginBottom: 8,
@@ -2436,7 +2491,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             <Text
               style={{
                 fontSize: 14,
-                color: page.sub,
+                color: 'rgba(255,255,255,0.45)',
                 textAlign: 'center',
                 marginBottom: 28,
               }}
@@ -2542,20 +2597,16 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   opacity: loginLoading ? 0.7 : 1,
                 }}
               >
-                {loginLoading ? (
-                  <Loader />
-                ) : (
-                  <Text
-                    style={{
-                      color: '#FFFFFF',
-                      fontSize: 17,
-                      fontWeight: '700',
-                      letterSpacing: 0.2,
-                    }}
-                  >
-                    Sign In
-                  </Text>
-                )}
+                <Text
+                  style={{
+                    color: '#FFFFFF',
+                    fontSize: 17,
+                    fontWeight: '700',
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  Sign In
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
 

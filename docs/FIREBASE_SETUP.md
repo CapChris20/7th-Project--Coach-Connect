@@ -1,11 +1,11 @@
-# Firebase Setup Guide for Anatrox AI
+# Firebase Setup Guide for CoachConnect AI
 
 ## 🚀 Quick Setup Steps
 
 ### 1. Create Firebase Project
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Click "Create a project"
-3. Enter project name: `anatrox-auth`
+3. Enter project name: `coachconnect-auth`
 4. Enable Google Analytics (optional)
 5. Click "Create project"
 
@@ -36,7 +36,7 @@
 1. Go to "Project settings" (gear icon)
 2. Scroll down to "Your apps" section
 3. Click "Add app" and select the web icon (`</>`)
-4. Enter app nickname: `Anatrox Web App`
+4. Enter app nickname: `CoachConnect Web App`
 5. Check "Also set up Firebase Hosting" (optional)
 6. Click "Register app"
 7. Copy the Firebase configuration object
@@ -48,9 +48,9 @@
 ```bash
 # Copy these values from Firebase Console > Project Settings > General > Your apps
 EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key_here
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=anatrox-auth.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=anatrox-auth
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=anatrox-auth.appspot.com
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=coachconnect-auth.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=coachconnect-auth
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=coachconnect-auth.appspot.com
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id_here
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id_here
 ```
@@ -58,7 +58,7 @@ EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id_here
 ### 7. Test Firebase Connection
 Run your app and check the console logs. You should see:
 ```
-Firebase initialized successfully for project: anatrox-auth
+Firebase initialized successfully for project: coachconnect-auth
 ```
 
 ## 🔧 Firebase Services Configured

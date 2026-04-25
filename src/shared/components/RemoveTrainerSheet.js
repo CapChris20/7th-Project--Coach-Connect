@@ -14,8 +14,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { collection, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../app/config';
+import { db, functions } from '../../app/config';
 
 const REASONS = [
   'Not seeing results',

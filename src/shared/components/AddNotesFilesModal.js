@@ -245,9 +245,8 @@ export default function AddNotesFilesModal({
               </ScrollView>
             ) : (
               <>
-                {/* ORIGINAL OPTIONS GRID (Photo / Video / Note / PDF/Doc / Spreadsheet for clients) */}
                 <View style={styles.optionsGrid}>
-                  {OPTIONS.filter((opt) => !opt.clientOnly || addedBy === 'client').map((opt) => (
+                  {OPTIONS.filter((opt) => opt.key !== 'spreadsheet' && (!opt.clientOnly || addedBy === 'client')).map((opt) => (
                     <TouchableOpacity
                       key={opt.key}
                       style={styles.optionCard}
@@ -256,7 +255,6 @@ export default function AddNotesFilesModal({
                         else if (opt.key === 'photo') handlePhoto();
                         else if (opt.key === 'video') handleVideo();
                         else if (opt.key === 'doc') handleDoc();
-                        else if (opt.key === 'spreadsheet') handleSpreadsheet();
                       }}
                       activeOpacity={0.85}
                     >
@@ -267,6 +265,24 @@ export default function AddNotesFilesModal({
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                {addedBy === 'client' && (
+                  <View style={styles.spreadsheetRow}>
+                    {OPTIONS.filter((opt) => opt.key === 'spreadsheet').map((opt) => (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.optionCard, { width: '48%' }]}
+                        onPress={() => handleSpreadsheet()}
+                        activeOpacity={0.85}
+                      >
+                        <LinearGradient colors={opt.gradient} style={styles.optionIconWrap}>
+                          <Ionicons name={opt.icon} size={28} color="#fff" />
+                        </LinearGradient>
+                        <Text style={[styles.optionLabel, { color: textColor }]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
 
                 {/* EXTRA TRAINER-ONLY DOC/SPREADSHEET ACTIONS UNDER THE GRID */}
                 {addedBy === 'trainer' && (

@@ -147,7 +147,7 @@ export default function NutritionView({ clientId }) {
         <Text style={styles.subtitle}>Today's macro breakdown</Text>
       </View>
 
-      {nutritionData.map((item, index) => (
+      {(nutritionData || []).map((item, index) => (
         <View key={index} style={styles.macroCard}>
           <View style={styles.macroHeader}>
             <Text style={styles.macroLabel}>{item.label}</Text>
@@ -174,7 +174,7 @@ export default function NutritionView({ clientId }) {
             <Text style={styles.emptySubtitle}>Client hasn't logged any meals yet</Text>
           </View>
         ) : (
-          meals.map((meal, index) => (
+          (meals || []).map((meal, index) => (
             <View key={index} style={styles.mealCard}>
               <View style={styles.mealInfo}>
                 <Text style={styles.mealName}>{meal.name}</Text>

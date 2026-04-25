@@ -1,316 +1,165 @@
-# Anatrox - AI-Powered Fitness App
+# CoachConnect AI - Fitness Coach App
 
-A comprehensive React Native Expo fitness application with AI-powered meal planning, workout tracking, body progress monitoring, and voice coaching features.
+A comprehensive React Native fitness application with AI-powered coaching, workout tracking, nutrition logging, and trainer-client connections.
 
-## 🚀 Features
+## What This App Does
 
-- **AI Meal Planning**: Personalized meal plans using Claude AI
-- **Workout Tracking**: Exercise library with progress monitoring
-- **Body Progress**: Photo comparison and measurement tracking
-- **Voice Coaching**: AI-powered voice assistant for fitness guidance
-- **Nutrition Analytics**: Macro tracking and food database integration
-- **Progress Dashboard**: Comprehensive analytics and insights
+### For Clients
+- **Workout Tracking**: Create workouts, track exercises with sets/reps, use rest timers, view workout history
+- **Nutrition Logging**: Log meals, track macros (calories, protein, carbs, fat), scan barcodes, set nutrition goals
+- **Voice AI Coach**: Conversational AI assistant for fitness/nutrition questions (voice and text)
+- **Trainer Discovery**: Browse trainer directory, view profiles, initiate messaging
+- **Progress Tracking**: Log body measurements, track weight, view analytics and charts
+- **Profile Management**: Edit profile, manage settings, view stats
 
-## 📱 Tech Stack
+### For Trainers
+- **Client Management**: View client list, see client details and progress
+- **Messaging**: Communicate with clients via real-time messaging
+- **Profile Management**: Edit trainer profile (bio, certifications, specialties, location)
+- **Workout Assignment**: Assign workouts to clients (feature exists)
 
-- **Framework**: React Native with Expo SDK 52
-- **Navigation**: React Navigation 6
-- **State Management**: Zustand
-- **Backend**: Firebase (Auth, Firestore, Storage)
-- **Database**: Supabase
-- **AI Services**: Claude AI, OpenAI
-- **APIs**: ExerciseDB, OpenFoodFacts, Stripe
-- **Styling**: React Native StyleSheet with custom theme
+## Tech Stack
 
-## 🛠 Setup Instructions
+- **Framework**: React Native with Expo SDK ~52.0.0
+- **Backend**: Firebase (Authentication, Firestore, Storage)
+- **AI Services**: OpenAI (GPT-4o-mini, Whisper STT, TTS)
+- **Web Search**: Serper API (for detailed text responses)
+- **Server**: Express.js (runs on port 4000, proxies OpenAI/Serper APIs)
+- **State Management**: React hooks (useState, useEffect)
+- **Navigation**: Custom modal-based navigation (no React Navigation stack)
+
+## How Trainer Discovery Works
+
+**This app uses a TRAINER DIRECTORY, not a marketplace.**
+
+### Discovery Features (V1)
+- **Opt-in Discoverability**: Trainers appear in directory when `role == 'trainer'` in Firestore
+- **Directory List**: All trainers are listed (sorted alphabetically)
+- **Basic Filters**: Search by name, specialization, location, or bio
+- **Client Request Flow**: Clients can message trainers directly from the directory
+- **Trainer Approve**: Trainers receive messages and can respond (approval via messaging)
+
+### Not Included (V1)
+- Reviews or ratings
+- Rankings or popularity sorting
+- Featured trainers
+- Trainer pricing
+- Subscription requirements for access
+
+## How to Run Locally
 
 ### Prerequisites
-
-- Node.js (v18 or higher)
+- Node.js (v18+)
 - Expo CLI (`npm install -g @expo/cli`)
-- iOS Simulator (for iOS development)
-- Android Studio (for Android development)
+- iOS Simulator or Android Studio (for mobile development)
 
 ### Installation
 
-1. **Clone and Install Dependencies**
+1. **Install dependencies**
    ```bash
-   cd "7th Project- Anatrox AI"
    npm install
    ```
 
-2. **Environment Configuration**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Fill in your API keys in `.env`:
-   - Firebase configuration (from Firebase Console)
-   - Supabase URL and anon key
-   - Claude API key (from console.anthropic.com)
-   - OpenAI API key (from platform.openai.com)
-   - ExerciseDB API key (from RapidAPI.com)
-   - Stripe publishable key
+2. **Set up environment variables**
+   Create a `.env` file in the root directory with:
+   ```env
+   # Firebase
+   EXPO_PUBLIC_FIREBASE_API_KEY=your_key
+   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_domain
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_bucket
+   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 
-3. **Start Development Server**
+   # OpenAI
+   EXPO_PUBLIC_OPENAI_API_KEY=your_key
+
+   # Serper (optional, for web search)
+   SERPER_API_KEY=your_key
+
+   # Server URL (optional, defaults to localhost:4000)
+   EXPO_PUBLIC_API_BASE_URL=http://localhost:4000
+   ```
+
+3. **Start the backend server** (in a separate terminal)
+   ```bash
+   npm run server
+   ```
+   Server runs on `http://localhost:4000`
+
+4. **Start Expo development server**
    ```bash
    npm start
    ```
 
-### API Setup Guide
+5. **Run on device/simulator**
+   - Press `i` for iOS simulator
+   - Press `a` for Android emulator
+   - Scan QR code with Expo Go app (for physical device)
 
-#### Firebase Setup
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project
-3. Enable Authentication, Firestore, and Storage
-4. Copy configuration keys to `.env`
+## Required Environment Variables
 
-#### Supabase Setup
-1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
-2. Create a new project
-3. Go to Settings > API
-4. Copy URL and anon key to `.env`
+### Firebase (Required)
+- `EXPO_PUBLIC_FIREBASE_API_KEY`
+- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+- `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `EXPO_PUBLIC_FIREBASE_APP_ID`
 
-#### Claude AI Setup
-1. Go to [Anthropic Console](https://console.anthropic.com/)
-2. Create an API key
-3. Add to `.env` as `EXPO_PUBLIC_CLAUDE_API_KEY`
+### OpenAI (Required for Voice AI)
+- `EXPO_PUBLIC_OPENAI_API_KEY`
 
-#### OpenAI Setup
-1. Go to [OpenAI Platform](https://platform.openai.com/)
-2. Create an API key
-3. Add to `.env` as `EXPO_PUBLIC_OPENAI_API_KEY`
+### Serper API (Optional - enables web search for detailed responses)
+- `SERPER_API_KEY` (server-side only)
 
-#### ExerciseDB Setup
-1. Go to [RapidAPI](https://rapidapi.com/)
-2. Subscribe to ExerciseDB API
-3. Copy API key to `.env`
+### Server URL (Optional)
+- `EXPO_PUBLIC_API_BASE_URL` (defaults to `http://localhost:4000`)
 
-#### Stripe Setup
-1. Go to [Stripe Dashboard](https://dashboard.stripe.com/)
-2. Get publishable key from Developers > API Keys
-3. Add to `.env` as `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 src/
-├── navigation/          # Navigation components
-├── screens/            # All app screens
-│   ├── auth/           # Authentication screens
-│   ├── profile/        # User profile screens
-│   ├── body/           # Body tracking screens
-│   ├── nutrition/      # Nutrition screens
-│   ├── workout/        # Workout screens
-│   ├── voice/          # Voice coaching screens
-│   └── dashboard/      # Analytics screens
-├── components/         # Reusable components
-│   ├── common/         # Common UI components
-│   ├── charts/        # Chart components
-│   ├── body/           # Body tracking components
-│   ├── nutrition/      # Nutrition components
-│   └── workout/        # Workout components
-├── services/           # API services
-│   ├── firebase/       # Firebase services
-│   ├── supabase/       # Supabase services
-│   ├── ai/             # AI services
-│   ├── api/             # External APIs
-│   └── voice/           # Voice services
-├── hooks/              # Custom React hooks
-├── store/              # Zustand stores
-├── utils/              # Utility functions
-└── config/             # Configuration files
+├── app/                    # App-level components (AuthGate, TrainerApp, ClientApp)
+├── login/                  # Authentication and onboarding screens
+├── client-page/            # Client-only screens
+├── trainer-page/           # Trainer-only screens (CRM)
+├── workout/                # Workout screens and components
+├── workouts/               # Additional workout screens (JSX)
+├── nutrition/              # Nutrition screens and components
+├── voice-ai/               # Voice AI screens and components
+├── ai/                     # AI chat screens and components
+├── bottom-navbar/          # Bottom navigation component
+├── extra/                  # Shared utilities
+│   ├── api/                # API services (Firebase, OpenAI, etc.)
+│   ├── app/                # App config, theme, constants
+│   └── components/         # Shared UI components
+└── ui/                     # UI library components
 ```
 
-## 🤖 Development Work Distribution: AI vs Manual
+## Known Limitations
 
-This table outlines what AI can generate automatically versus what requires manual implementation and customization.
+1. **Payment Backend**: Stripe integration incomplete (frontend SDK integrated, backend endpoints are placeholders)
+2. **Push Notifications**: UI exists but notification sending not implemented
+3. **Navigation TODOs**: Some screens (progress, programs) exist but navigation not fully wired
+4. **Trainer Analytics**: Placeholder UI only, not implemented
+5. **Meal Plan Creation**: Flow incomplete
 
-### 📊 Work Distribution Legend
-- **AI Work (80-100%)**: AI generates complete, functional code
-- **AI Work (50-80%)**: AI generates structure, you customize logic/business rules
-- **Manual Work (80-100%)**: Requires your domain knowledge, API integration, or custom logic
-- **Review/Testing**: Both AI and you collaborate on testing and refinement
+## What Is Intentionally NOT Implemented (V1)
 
-### 🎯 Screens
+- Trainer reviews/ratings (this is a directory, not a marketplace)
+- Trainer rankings or popularity sorting
+- Marketplace-style features (pricing, subscriptions for access)
+- Advanced trainer discovery filters (beyond basic search)
 
-| Screen | AI Work | Your Work | Complexity |
-|--------|---------|-----------|------------|
-| **ChatListScreen.js** | 90% - Component structure, UI layout, Firestore queries, real-time listeners | 10% - Business logic rules, notification preferences, filtering logic | Medium |
-| **ChatScreen.js** | 85% - Message rendering, input handling, Firestore integration, typing indicators | 15% - Message formatting rules, attachment handling, custom emoji reactions | High |
-| **ConversationSettingsScreen.js** | 80% - Settings UI, toggle switches, modal components | 20% - Privacy settings logic, block/unblock rules, notification settings | Low |
-| **SupplementSearchScreen.js** | 70% - Search UI, input handling, filtering components | 30% - Search algorithm, supplement data structure, categorization logic | Medium |
-| **SupplementDetailScreen.js** | 85% - Detail view layout, data rendering, navigation | 15% - Supplement data schema, dosage calculations, interaction warnings | Medium |
-| **SupplementListScreen.js** | 75% - List rendering, filtering UI, pagination | 25% - Category organization, sorting logic, filter combinations | Low |
-| **ClientManagementScreen.js** | 80% - Client list UI, card components, navigation | 20% - Client data structure, trainer-client relationship logic, permissions | Medium |
-| **ClientDetailScreen.js** | 85% - Dashboard layout, data visualization, tab navigation | 15% - Progress metrics calculation, chart data formatting, workout history logic | High |
-| **AssignWorkoutScreen.js** | 70% - Workout selection UI, exercise picker, form components | 30% - Workout assignment logic, schedule rules, notification triggers | High |
-| **ClientDashboardScreen.js** | 85% - Dashboard layout, chart components, data display | 15% - Progress calculations, goal tracking logic, achievement system | Medium |
-| **SignupScreen.js** (Update) | 60% - Role toggle UI, form structure | 40% - Role selection logic, user type routing, profile setup differences | Medium |
-| **DashboardScreen.js** (Update) | 65% - Conditional rendering structure, tab navigation | 35% - Trainer vs Client dashboard logic, role-based data fetching, permissions | High |
+## Additional Documentation
 
-### 🧩 Components
+- `docs/CODEBASE_AUDIT.md` - Comprehensive codebase audit
+- `docs/CLEANUP_REPORT.md` - Dead code and duplication audit
+- `docs/TRAINER_DISCOVERY_V1_SCOPE.md` - Trainer discovery scope definition
+- `docs/CURRENT_STATE.txt` - Current feature status and next steps
 
-| Component | AI Work | Your Work | Complexity |
-|-----------|---------|-----------|------------|
-| **MessageBubble.js** | 90% - Bubble styling, message rendering, timestamp formatting | 10% - Custom message types, media rendering, link previews | Low |
-| **ChatPreviewCard.js** | 85% - Card layout, avatar display, last message preview | 15% - Unread count logic, timestamp formatting, status indicators | Low |
-| **TypingIndicator.js** | 95% - Animation logic, dot indicators, timing | 5% - Customization of animation speed/style | Low |
+## License
 
-### 🔧 Services
-
-| Service | AI Work | Your Work | Complexity |
-|---------|---------|-----------|------------|
-| **chatService.js** | 85% - Firestore message CRUD, real-time listeners, query structure | 15% - Message validation rules, security rules, rate limiting | High |
-| **conversationService.js** | 75% - Conversation CRUD, participant management, metadata handling | 25% - Conversation rules, privacy settings, notification logic | Medium |
-| **supplementGPT.js** | 70% - OpenAI API integration, prompt structure, response handling | 30% - Prompt engineering, response parsing, error handling, cost optimization | High |
-| **ai/index.js** | 95% - Export structure, module organization | 5% - Custom exports if needed | Low |
-| **supplements.js** (data) | 40% - Data structure template | 60% - **Manual data entry** - Supplement database, categories, dosages, interactions | High |
-
-### 🗂️ Navigation
-
-| File | AI Work | Your Work | Complexity |
-|------|---------|-----------|------------|
-| **MainNavigator.js** (Update) | 70% - Tab navigator structure, screen definitions | 30% - Role-based navigation logic, conditional tab rendering, permissions | High |
-
-### 📝 Summary Statistics
-
-| Category | Total Files | Avg AI Work | Avg Your Work | Notes |
-|----------|-------------|-------------|---------------|-------|
-| **New Screens** | 10 | 78% | 22% | Most screens are UI-heavy, AI excels here |
-| **New Components** | 3 | 90% | 10% | Components are highly reusable, AI generates well |
-| **New Services** | 4 | 79% | 21% | Services need your business logic and API keys |
-| **Data Files** | 1 | 40% | 60% | **Critical**: Supplement database requires manual research |
-| **Updated Files** | 3 | 65% | 35% | Integration with existing codebase requires your knowledge |
-
-### 🎯 Key Manual Work Areas
-
-1. **Supplement Database (`supplements.js`)**
-   - **Why Manual**: Requires domain expertise, research, and accuracy
-   - **Your Work**: Research supplement data, dosages, interactions, side effects
-   - **Time Estimate**: 8-12 hours for comprehensive database
-
-2. **Business Logic & Rules**
-   - Trainer-client relationship management
-   - Workout assignment permissions
-   - Chat moderation rules
-   - Role-based access control
-
-3. **API Integration & Configuration**
-   - Firebase security rules
-   - Firestore data structure design
-   - OpenAI prompt engineering for supplements
-   - Real-time synchronization logic
-
-4. **Testing & Refinement**
-   - Test all screens on iOS/Android
-   - Verify real-time chat functionality
-   - Test role-based navigation
-   - Validate supplement search accuracy
-
-### 💡 Development Strategy
-
-1. **Phase 1: AI-Generated Structure** (AI: 80%, You: 20%)
-   - Let AI generate all screen/component structures
-   - Review and adjust as needed
-
-2. **Phase 2: Data & Business Logic** (AI: 30%, You: 70%)
-   - Manually create supplement database
-   - Implement role-based logic
-   - Set up Firestore security rules
-
-3. **Phase 3: Integration** (AI: 50%, You: 50%)
-   - Connect services to screens
-   - Implement navigation flows
-   - Test user journeys
-
-4. **Phase 4: Polish & Testing** (AI: 20%, You: 80%)
-   - Manual testing on devices
-   - UI/UX refinements
-   - Performance optimization
-   - Bug fixes
-
-### ⚠️ Important Notes
-
-- **Supplement Database**: This is the biggest manual task. Consider using an external API or purchasing a supplement database.
-- **Firebase Security Rules**: Critical for production - must be manually configured based on your app's security requirements.
-- **Role-Based Logic**: Trainer vs Client features require careful planning of user flows and permissions.
-- **Real-Time Chat**: Test thoroughly on both iOS and Android - real-time features can be platform-specific.
-
-## 🎨 Styling
-
-The app uses a custom theme system with React Native StyleSheet:
-
-```javascript
-import { colors, typography, spacing } from './src/config/theme';
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.background,
-    padding: spacing.md,
-  },
-  title: {
-    ...typography.h2,
-    color: colors.text,
-  },
-});
-```
-
-## 🔧 Available Scripts
-
-- `npm start` - Start Expo development server
-- `npm run android` - Run on Android device/emulator
-- `npm run ios` - Run on iOS simulator
-- `npm run web` - Run on web browser
-
-## 📱 Platform Support
-
-- iOS (iOS 13+)
-- Android (API 21+)
-- Web (limited functionality)
-
-## 🔐 Permissions
-
-The app requires the following permissions:
-- Camera (for progress photos and barcode scanning)
-- Microphone (for voice coaching)
-- Photo Library (for saving progress photos)
-
-## 🚀 Deployment
-
-### Development Build
-```bash
-expo build:android
-expo build:ios
-```
-
-### Production Build
-```bash
-expo build:android --type app-bundle
-expo build:ios --type archive
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For support and questions:
-- Check the documentation
-- Open an issue on GitHub
-- Contact the development team
-
----
-
-**Anatrox** - Your AI-powered fitness companion 🏋️‍♀️💪
-
+[Add license information here]
 

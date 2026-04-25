@@ -17,6 +17,7 @@ import { getFoodLogsForDate, calculateMacroTotals } from '../../nutrition/servic
 import { fetchWorkoutHistory, getActiveWorkout } from '../../workouts/services/workoutService';
 import { calculateBMR, calculateTDEE } from '../../app/calculations';
 import { Icon } from 'react-native-feather';
+import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';
 
 const { width } = Dimensions.get('window');
 
@@ -83,9 +84,9 @@ export default function DashboardScreen({ navigation }) {
   const [calorieGoal, setCalorieGoal] = useState(2000);
 
   const [quickActions] = useState([
-    { label: 'Messages', icon: 'MessageSquare' },
+    { label: 'Messages', useGradientChat: true },
     { label: 'Photo Gallery', imageSource: require('../../assets/icons/picture.png') },
-    { label: 'AI Workouts', imageSource: require('../../assets/Ai Workouts.png') },
+    { label: 'AI Workouts', imageSource: require('../../assets/ai_workouts.png') },
   ]);
 
   // Fetch real data on mount
@@ -268,8 +269,10 @@ export default function DashboardScreen({ navigation }) {
           <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
             {action.imageSource ? (
               <Image source={action.imageSource} style={{ width: action.label === 'AI Workouts' ? 100 : 70, height: action.label === 'AI Workouts' ? 130 : 70 }} resizeMode="contain" />
+            ) : action.useGradientChat || action.label === 'Messages' ? (
+              <GradientChatBubblesIcon size={50} />
             ) : (
-              <Icon name={action.icon} size={28} color={textColor} />
+              <Icon name={action.icon} size={50} color={textColor} />
             )}
             {action.label === 'Messages' && false && ( // Add unread count logic here if needed
               <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: BADGE_COLOR, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>

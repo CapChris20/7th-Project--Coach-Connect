@@ -72,6 +72,8 @@ class FoodSearchProvider {
     const cacheKey = `search_${query}_${limit}`;
     try {
       console.log('🍔 Searching foods for:', query);
+      const q = String(query || '').trim();
+      if (!q) return [];
       
       // Check cache first
       const cached = this.getFromCache(cacheKey);
@@ -80,9 +82,28 @@ class FoodSearchProvider {
         return Array.isArray(cached) ? cached : [];
       }
 
-      const url = `${this.serverUrl}/api/food/search?query=${encodeURIComponent(query)}&limit=${limit}`;
       const appSecret = process.env.EXPO_PUBLIC_APP_SECRET;
-      console.log('🔑 APP_SECRET being sent:', appSecret ? 'SET' : 'UNDEFINED');
+      const serverUrl = this.serverUrl;
+      const hasServer = !!serverUrl && serverUrl !== 'null' && serverUrl !== 'undefined';
+      const hasSecret = !!appSecret;
+      console.log('🔑 APP_SECRET being sent:', hasSecret ? 'SET' : 'UNDEFINED');
+
+      // If server URL or secret is missing, fall back immediately.
+      if (!hasServer || !hasSecret) {
+        console.warn('🍔 Server URL/secret missing. Using cached + Open Food Facts fallback.');
+        const [cachedFoods, off] = await Promise.all([
+          this.getCachedFoods().catch(() => []),
+          searchOpenFoodFactsDirect(q, limit).catch(() => []),
+        ]);
+        const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
+          (f?.name || '').toLowerCase().includes(q.toLowerCase()),
+        );
+        const merged = [...local, ...off].slice(0, limit);
+        this.setCache(cacheKey, merged);
+        return merged;
+      }
+
+      const url = `${serverUrl}/api/food/search?query=${encodeURIComponent(q)}&limit=${limit}`;
       
       // Call server endpoint
       const response = await fetch(url, {
@@ -94,7 +115,23 @@ class FoodSearchProvider {
       });
 
       if (!response.ok) {
-        throw new Error(`Food search failed: ${response.status}`);
+        // Treat auth/config/server issues as "fallback-worthy" so search still works.
+        const status = response.status;
+        const fallbackStatus = status === 401 || status === 403 || status === 404 || status === 429 || status >= 500;
+        if (fallbackStatus) {
+          console.warn(`🍔 Server search failed (${status}). Using cached + Open Food Facts fallback.`);
+          const [cachedFoods, off] = await Promise.all([
+            this.getCachedFoods().catch(() => []),
+            searchOpenFoodFactsDirect(q, limit).catch(() => []),
+          ]);
+          const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
+            (f?.name || '').toLowerCase().includes(q.toLowerCase()),
+          );
+          const merged = [...local, ...off].slice(0, limit);
+          this.setCache(cacheKey, merged);
+          return merged;
+        }
+        throw new Error(`Food search failed: ${status}`);
       }
 
       const data = await response.json();
@@ -108,11 +145,19 @@ class FoodSearchProvider {
       if (isNetwork) {
         console.warn('🍔 Server unreachable. Using Open Food Facts directly so search still works.');
         try {
-          const fallbackResults = await searchOpenFoodFactsDirect(query, limit);
-          if (fallbackResults.length > 0) {
-            this.setCache(cacheKey, fallbackResults);
-            console.log(`🍔 Open Food Facts fallback returned ${fallbackResults.length} results`);
-            return fallbackResults;
+          const [cachedFoods, off] = await Promise.all([
+            this.getCachedFoods().catch(() => []),
+            searchOpenFoodFactsDirect(String(query || '').trim(), limit).catch(() => []),
+          ]);
+          const q = String(query || '').trim();
+          const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
+            (f?.name || '').toLowerCase().includes(q.toLowerCase()),
+          );
+          const merged = [...local, ...off].slice(0, limit);
+          if (merged.length > 0) {
+            this.setCache(cacheKey, merged);
+            console.log(`🍔 Fallback returned ${merged.length} results`);
+            return merged;
           }
         } catch (fallbackErr) {
           console.warn('🍔 Fallback search failed:', fallbackErr?.message || fallbackErr);

@@ -19,7 +19,7 @@ import {
 } from '../services/nutritionService';
 import NutritionOnboardingScreen from './NutritionOnboardingScreen';
 import NutritionScreen from './NutritionScreen';
-import QuickAddScreen from './QuickAddScreen';
+import QuickAddNutrition from './QuickAddNutrition';
 import FoodSearchScreen from './FoodSearchScreen';
 import BarcodeScannerScreen from './BarcodeScannerScreen';
 import NutritionSettingsScreen from './NutritionSettingsScreen';
@@ -50,7 +50,6 @@ export const NutritionContainer = ({
   const [editAmountValue, setEditAmountValue] = useState('');
   const [editQuantityValue, setEditQuantityValue] = useState('');
   const [showNutritionSettings, setShowNutritionSettings] = useState(false);
-  const [waterCount, setWaterCount] = useState(0);
   const [logError, setLogError] = useState(null);
   const pendingLogs = useRef(new Set());
   const { isDark } = useTheme();
@@ -79,11 +78,6 @@ export const NutritionContainer = ({
           setLogs(logsData);
         }
 
-        const trackingRef = doc(db, 'users', uid, 'daily_tracking', today);
-        const trackingSnap = await getDoc(trackingRef);
-        const water = trackingSnap?.data()?.waterIntake;
-        const cups = typeof water === 'number' ? Math.max(0, Math.min(8, Math.round(water))) : 0;
-        setWaterCount(cups);
       } catch (err) {
         console.error('NutritionContainer load error:', err);
       } finally {
@@ -173,33 +167,6 @@ export const NutritionContainer = ({
   const handleOpenQuickAdd = (mealType) => {
     setActiveMealType(typeof mealType === 'string' ? mealType.toLowerCase() : 'snacks');
     setShowQuickAdd(true);
-  };
-
-  const handleAddWater = async () => {
-    if (!uid || !db) return;
-    const next = Math.min(8, waterCount + 1);
-    setWaterCount(next);
-    try {
-      const trackingRef = doc(db, 'users', uid, 'daily_tracking', today);
-      await setDoc(trackingRef, { waterIntake: next }, { merge: true });
-      if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
-    } catch (err) {
-      console.warn('Failed to save water intake:', err);
-      setWaterCount(waterCount);
-    }
-  };
-
-  const handleSetWater = async (cups) => {
-    if (!uid || !db) return;
-    const next = Math.min(8, Math.max(0, Math.round(Number(cups)) || 0));
-    setWaterCount(next);
-    try {
-      const trackingRef = doc(db, 'users', uid, 'daily_tracking', today);
-      await setDoc(trackingRef, { waterIntake: next }, { merge: true });
-      if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
-    } catch (err) {
-      console.warn('Failed to save water intake:', err);
-    }
   };
 
   const handleGoalsUpdated = async (newGoals) => {
@@ -329,7 +296,7 @@ export const NutritionContainer = ({
     }
   };
 
-  const screenBg = isDark ? '#0A0A0F' : '#F5F3FF';
+  const screenBg = isDark ? '#0A0A0F' : '#F2F2F7';
   if (loading) {
     return (
       <View
@@ -393,10 +360,42 @@ export const NutritionContainer = ({
   if (showQuickAdd) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
-        <QuickAddScreen
-          mealType={activeMealType}
-          onSave={handleFoodAdded}
-          onBack={() => setShowQuickAdd(false)}
+        <View style={{ paddingTop: 8 }}>
+          <CoachConnectHeader title="Quick Add" isDark={isDark} onBack={() => setShowQuickAdd(false)} />
+        </View>
+        <QuickAddNutrition
+          onLogFood={(entry) => {
+            const num = (v) => {
+              const n = Number(v);
+              return typeof n === 'number' && !Number.isNaN(n) ? n : 0;
+            };
+
+            // QuickAddNutrition UI already collects macros in grams.
+            const food = {
+              name: entry?.name || 'Food Item',
+              calories: num(entry?.calories),
+              protein: Math.round(num(entry?.protein) * 10) / 10,
+              carbs: Math.round(num(entry?.carbs) * 10) / 10,
+              fat: Math.round(num(entry?.fat) * 10) / 10,
+              fiber: Math.round(num(entry?.fiber) * 10) / 10,
+              sugar: Math.round(num(entry?.sugar) * 10) / 10,
+              sodium: num(entry?.sodium), // mg
+              servingGrams: Math.round(num(entry?.servingSize)) || 100,
+              servingSize: num(entry?.quantity) || 1,
+              servingUnit: (entry?.servingUnit || 'g').trim() || 'g',
+              source: 'manual',
+            };
+
+            handleFoodAdded(food, activeMealType);
+          }}
+        />
+        <BottomNavBar
+          onHomePress={onHomePress}
+          onPlusPress={onPlusPress}
+          onVoicePress={onVoicePress}
+          onNutritionPress={onNutritionPress}
+          onWorkoutPress={onWorkoutPress}
+          onMessagesPress={onMessagesPress}
         />
       </SafeAreaView>
     );
@@ -419,20 +418,17 @@ export const NutritionContainer = ({
         macros={macros}
         meals={meals}
         weekData={weekData}
-        waterCount={waterCount}
         onLog={handleLog}
         onScan={handleScan}
         onManualSave={handleFoodAdded}
         onRemoveLog={handleRemoveLog}
         onEditLog={handleEditLog}
-        onAddWater={handleAddWater}
-        onSetWater={handleSetWater}
         onSearch={() => setShowFoodSearch(true)}
         onOpenSettings={() => setShowNutritionSettings(true)}
         onQuickAdd={handleOpenQuickAdd}
       />
       {showNutritionSettings && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: isDark ? '#0A0A0F' : '#F5F3F7' }}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: isDark ? '#0A0A0F' : '#F2F2F7' }}>
           <NutritionSettingsScreen
             currentGoals={{
               calories: goals?.calories ?? 2000,

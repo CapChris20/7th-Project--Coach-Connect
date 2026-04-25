@@ -23,6 +23,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
+import { useAI } from '../../contexts/AIContext';
 
 const SectionHeader = ({ title, colors }) => <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>;
 
@@ -38,6 +39,7 @@ const SettingsRow = ({ label, value, onPress, children, colors }) => (
 
 export default function SettingsScreen({ onNavigate }) {
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
+  const { aiEnabled, toggleAI } = useAI();
   const [weightUnit, setWeightUnit] = useState('lbs');
   const [workoutReminders, setWorkoutReminders] = useState(false);
   const [reminderTime, setReminderTime] = useState(new Date());
@@ -180,6 +182,26 @@ export default function SettingsScreen({ onNavigate }) {
           </SettingsRow>
         </View>
 
+        <SectionHeader title="AI FEATURES" colors={colors} />
+        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>AI-Powered Features</Text>
+              <Text style={[styles.aiDescription, { color: colors.textSecondary }]}>
+                {aiEnabled
+                  ? 'AI Fitness Coach and Workout Generator are enabled.'
+                  : 'AI features are disabled. Use trainer-powered coaching.'}
+              </Text>
+            </View>
+            <Switch
+              value={!!aiEnabled}
+              onValueChange={(v) => toggleAI(v)}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: '#FF6B9D' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
         {showTimePicker && <DateTimePicker value={reminderTime} mode={'time'} is24Hour={true} display="default" onChange={onTimeChange} />}
 
         <SectionHeader title="ACCOUNT" colors={colors} />
@@ -251,6 +273,7 @@ export default function SettingsScreen({ onNavigate }) {
           onVoicePress={() => onNavigate('voice')}
           onWorkoutPress={() => onNavigate('workout')}
           onNutritionPress={() => onNavigate('nutrition')}
+          onMessagesPress={() => onNavigate('messages')}
         />
       )}
       </SafeAreaView>
@@ -264,6 +287,7 @@ const styles = StyleSheet.create({
   sectionContainer: { borderRadius: 16, borderWidth: 1, marginBottom: 24, overflow: 'hidden' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
   rowLabel: { fontSize: 14 },
+  aiDescription: { fontSize: 12, marginTop: 6, lineHeight: 16 },
   rowValueContainer: { flexDirection: 'row', alignItems: 'center' },
   rowValue: { fontSize: 14 },
   chevron: { fontSize: 20, marginLeft: 8 },

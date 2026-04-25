@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +20,9 @@ import {
   Modal,
   ScrollView,
   Image,
+  Dimensions,
+  StyleSheet,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +39,8 @@ import Markdown from 'react-native-markdown-display';
 import { getApiBase } from '../../shared/services/baseUrl';
 
 const GRAD = ['#7C3AED', '#EC4899'];
+const { width: SW } = Dimensions.get('window');
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 // ─── Theme tokens (same as home screen) ──────────────────────────────────────
 const DARK = {
@@ -53,6 +59,9 @@ const DARK = {
   inputBarBorder: 'rgba(255,255,255,0.08)',
   aiBubbleBg: 'rgba(255,255,255,0.1)',
   aiBubbleBorder: 'rgba(255,255,255,0.15)',
+  msgReceivedBg: 'rgba(255,255,255,0.07)',
+  msgReceivedBorder: 'rgba(255,255,255,0.1)',
+  msgTimestamp: 'rgba(255,255,255,0.35)',
 };
 
 const LIGHT = {
@@ -71,6 +80,9 @@ const LIGHT = {
   inputBarBorder: '#E5E7EB',
   aiBubbleBg: '#FFFFFF',
   aiBubbleBorder: '#E5E7EB',
+  msgReceivedBg: 'rgba(0,0,0,0.04)',
+  msgReceivedBorder: 'rgba(0,0,0,0.08)',
+  msgTimestamp: 'rgba(0,0,0,0.45)',
 };
 
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -183,6 +195,228 @@ function shouldUseWebAuto(userText) {
   const long = t.length >= 120;
   const hasQuoted = /"[^"]{6,}"/.test(raw);
   return (long && hasNumbers) || hasQuoted;
+}
+
+// ─── Feature explanation cards (inline in AI messages) ────────────────────────
+const FEATURE_COLORS = {
+  analysis: '#C084FC', // purple
+  generation: '#FF6B9D', // pink
+  optimization: '#06B6D4', // cyan
+  goals: '#10B981', // green
+  tracking: '#F97316', // orange
+};
+
+const inferFlowType = (userText) => {
+  const t = String(userText || '').toLowerCase();
+  if (!t.trim()) return 'general';
+  if (t.includes('form') || t.includes('check') || t.includes('video') || t.includes('squat') || t.includes('bench')) return 'form';
+  if (t.includes('macro') || t.includes('calorie') || t.includes('protein') || t.includes('nutrition') || t.includes('meal')) return 'nutrition';
+  if (t.includes('progress') || t.includes('plateau') || t.includes('last 30') || t.includes('data')) return 'progress';
+  if (t.includes('workout') || t.includes('plan') || t.includes('split') || t.includes('hypertrophy')) return 'workout';
+  return 'general';
+};
+
+const buildFeatureCards = ({ userText, userProfile }) => {
+  const flow = inferFlowType(userText);
+  const goalRaw = userProfile?.primaryGoal || userProfile?.goal || userProfile?.fitnessGoal || '';
+  const goal =
+    String(goalRaw || '')
+      .replace(/_/g, ' ')
+      .trim() || 'Fitness';
+
+  const days =
+    userProfile?.availableDays ||
+    userProfile?.daysPerWeek ||
+    userProfile?.trainingDays ||
+    userProfile?.workoutsPerWeek ||
+    null;
+
+  const level = userProfile?.experienceLevel || userProfile?.fitnessLevel || userProfile?.level || null;
+
+  // Ensure items is always an array
+  const ensureArray = (arr) => (Array.isArray(arr) ? arr : []);
+
+  if (flow === 'form') {
+    return [
+      {
+        key: 'video',
+        icon: 'camera-outline',
+        title: 'ANALYZING VIDEO',
+        color: FEATURE_COLORS.tracking,
+        items: [
+          { label: 'Quality', value: 'Checking lighting & stability' },
+          { label: 'Angle', value: 'Detecting camera view' },
+          { label: 'Exercise', value: 'Identifying movement' },
+        ],
+      },
+      {
+        key: 'assessment',
+        icon: 'settings-outline',
+        title: 'FORM ASSESSMENT',
+        color: FEATURE_COLORS.analysis,
+        items: [
+          { label: 'Range of motion', value: 'Evaluating depth & control' },
+          { label: 'Stability', value: 'Tracking bar/path consistency' },
+          { label: 'Risk', value: 'Flagging common breakdowns' },
+        ],
+      },
+      {
+        key: 'recs',
+        icon: 'bulb-outline',
+        title: 'RECOMMENDATIONS',
+        color: FEATURE_COLORS.goals,
+        items: [
+          { label: 'Cues', value: 'Simple fixes you can apply' },
+          { label: 'Drills', value: '1–2 accessory drills' },
+          { label: 'Next set', value: 'What to focus on immediately' },
+        ],
+      },
+    ];
+  }
+
+  if (flow === 'nutrition') {
+    return [
+      {
+        key: 'data',
+        icon: 'bar-chart-outline',
+        title: 'ANALYZING YOUR DATA',
+        color: FEATURE_COLORS.tracking,
+        items: [
+          { label: 'Goal', value: toTitleCase(goal) },
+          { label: 'Activity', value: days ? `${days} days/week` : 'Estimating from training' },
+          { label: 'Baseline', value: 'Checking intake consistency' },
+        ],
+      },
+      {
+        key: 'calc',
+        icon: 'calculator-outline',
+        title: 'CALCULATING INTAKE',
+        color: FEATURE_COLORS.generation,
+        items: [
+          { label: 'Calories', value: 'Setting a sustainable target' },
+          { label: 'Protein', value: 'Prioritizing muscle retention' },
+          { label: 'Carbs/Fat', value: 'Balancing for performance' },
+        ],
+      },
+      {
+        key: 'plan',
+        icon: 'flag-outline',
+        title: 'MEAL PLAN',
+        color: FEATURE_COLORS.goals,
+        items: [
+          { label: 'Structure', value: 'Simple daily template' },
+          { label: 'Timing', value: 'Pre/post-workout emphasis' },
+          { label: 'Adherence', value: 'Easy swaps & options' },
+        ],
+      },
+    ];
+  }
+
+  if (flow === 'progress') {
+    return [
+      {
+        key: 'scan',
+        icon: 'analytics-outline',
+        title: 'ANALYZING PROGRESS',
+        color: FEATURE_COLORS.tracking,
+        items: [
+          { label: 'Period', value: 'Reviewing recent trend' },
+          { label: 'Workouts', value: 'Looking for progression signals' },
+          { label: 'Recovery', value: 'Checking fatigue patterns' },
+        ],
+      },
+      {
+        key: 'wins',
+        icon: 'trending-up-outline',
+        title: 'IMPROVEMENTS',
+        color: FEATURE_COLORS.goals,
+        items: [
+          { label: 'Strength', value: 'Noting PRs & rep gains' },
+          { label: 'Volume', value: 'Tracking weekly sets' },
+          { label: 'Consistency', value: 'Sessions completed' },
+        ],
+      },
+      {
+        key: 'next',
+        icon: 'trophy-outline',
+        title: 'NEXT MILESTONE',
+        color: FEATURE_COLORS.generation,
+        items: [
+          { label: 'Target', value: 'Setting a clear next goal' },
+          { label: 'Plan', value: 'Adjusting the next week' },
+          { label: 'Timeline', value: 'Keeping expectations realistic' },
+        ],
+      },
+    ];
+  }
+
+  // workout / general
+  return [
+    {
+      key: 'analysis',
+      icon: 'settings-outline',
+      title: 'ANALYZING YOUR PROFILE',
+      color: FEATURE_COLORS.analysis,
+      items: [
+        { label: 'Fitness level', value: level ? toTitleCase(level) : 'Estimating from your inputs' },
+        { label: 'Goal', value: toTitleCase(goal) },
+        { label: 'Available days', value: days ? `${days}/week` : 'Optimizing around your schedule' },
+      ],
+    },
+    {
+      key: 'generate',
+      icon: 'list-outline',
+      title: 'GENERATING WORKOUT PLAN',
+      color: FEATURE_COLORS.generation,
+      items: [
+        { label: 'Split type', value: 'Choosing best weekly structure' },
+        { label: 'Rep range', value: 'Aligning with your goal' },
+        { label: 'Volume', value: 'Setting weekly sets per muscle' },
+      ],
+    },
+    {
+      key: 'opt',
+      icon: 'sync-outline',
+      title: 'OPTIMIZATION',
+      color: FEATURE_COLORS.optimization,
+      items: [
+        { label: 'Recovery timing', value: 'Spacing muscle groups properly' },
+        { label: 'Progression', value: 'Built-in overload strategy' },
+        { label: 'Week 1', value: 'Ready to execute' },
+      ],
+    },
+  ];
+};
+
+function FeatureCard({ t, icon, title, color, items }) {
+  return (
+    <View
+      style={{
+        backgroundColor: t.cardBg,
+        borderWidth: 1,
+        borderColor: t.cardBorder,
+        borderLeftWidth: 3,
+        borderLeftColor: color,
+        borderRadius: 12,
+        padding: 14,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <Ionicons name={icon} size={16} color={color} />
+        <Text style={{ fontSize: 11, letterSpacing: 0.5, fontWeight: '800', color: t.textSecondary }}>
+          {title}
+        </Text>
+      </View>
+      <View style={{ gap: 8 }}>
+        {(items || []).slice(0, 4).map((it, idx) => (
+          <View key={`${title}_${idx}`}>
+            <Text style={{ fontSize: 13, color: t.textPrimary, fontWeight: '500' }}>{it.label}</Text>
+            <Text style={{ fontSize: 14, color, fontWeight: '800', marginTop: 2 }}>{it.value}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 async function postAICoach(payload) {
@@ -352,114 +586,100 @@ function AttachActionSheet({ visible, onClose, onPhotoLibrary, onCamera, onFile,
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ message, t, showAiCoachLabel }) {
-  const isUser = message.role === 'user';
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-      <View style={{ maxWidth: '80%' }}>
-        {!isUser && showAiCoachLabel ? (
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: '600',
-              color: '#C084FC',
-              marginBottom: 4,
-              marginLeft: 4,
-              letterSpacing: 0.3,
-            }}
-          >
-            CoachConnect AI
-          </Text>
-        ) : null}
+function MessageBubble({ message, t }) {
+  const sent = message.role === 'user';
+  const atts = Array.isArray(message.attachments) ? message.attachments : [];
+  const firstImage = atts.find((a) => a?.preview);
+  const firstFile = !firstImage ? atts.find((a) => a && !a.preview) : null;
+  const hasText = !!String(message.text || '').trim();
 
-        {message.attachments && message.attachments.length > 0 && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
-            {message.attachments.map((att) =>
-              att.preview ? (
-                <Image
-                  key={att.id}
-                  source={{ uri: att.preview }}
-                  style={{ width: 120, height: 90, borderRadius: 10 }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  key={att.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                    borderRadius: 8,
-                    backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : t.chipBg,
-                  }}
-                >
-                  <Ionicons name="document-outline" size={14} color={isUser ? '#fff' : t.textSecondary} />
-                  <Text style={{ fontSize: 12, color: isUser ? '#fff' : t.textPrimary }} numberOfLines={1}>
-                    {att.name}
-                  </Text>
-                </View>
-              )
-            )}
+  const renderContent = () => {
+    if (!hasText && firstImage?.preview) {
+      return <Image source={{ uri: firstImage.preview }} style={{ width: 220, height: 160 }} resizeMode="cover" />;
+    }
+    if (!hasText && firstFile) {
+      return (
+        <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="document-outline" size={28} color={sent ? '#ffffff' : t.textPrimary} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: sent ? '#ffffff' : t.textPrimary }} numberOfLines={1}>
+              {firstFile.name || 'File'}
+            </Text>
+            <Text style={{ fontSize: 11, marginTop: 2, color: sent ? 'rgba(255,255,255,0.6)' : t.msgTimestamp }} numberOfLines={1}>
+              Tap to view
+            </Text>
           </View>
-        )}
+        </View>
+      );
+    }
+    if (sent) {
+      return <Text style={{ color: '#ffffff', fontSize: 14, lineHeight: 20 }}>{String(message.text || '')}</Text>;
+    }
+    return (
+      <Markdown
+        style={{
+          body: { color: t.textPrimary, fontSize: 14, lineHeight: 20 },
+          strong: { color: t.textPrimary, fontWeight: '800' },
+          em: { color: t.textPrimary },
+          paragraph: { marginTop: 0, marginBottom: 8 },
+          list_item: { marginTop: 2, marginBottom: 2 },
+          bullet_list: { marginBottom: 8 },
+          ordered_list: { marginBottom: 8 },
+          code_inline: {
+            color: t.textPrimary,
+            backgroundColor: t.chipBg,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+          },
+        }}
+      >
+        {String(message.text || '')}
+      </Markdown>
+    );
+  };
 
-        {message.text ? (
-          isUser ? (
-            <LinearGradient
-              colors={GRAD}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{ paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, borderBottomRightRadius: 4 }}
-            >
-              <Text style={{ fontSize: 14, lineHeight: 21, color: '#FFFFFF' }}>{message.text}</Text>
-            </LinearGradient>
-          ) : (
-            <View
-              style={{
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                backgroundColor: t.aiBubbleBg,
-                borderWidth: 1,
-                borderColor: t.aiBubbleBorder,
-                borderRadius: 18,
-                borderBottomLeftRadius: 4,
-              }}
-            >
-              <Markdown
-                style={{
-                  body: { color: t.textPrimary, fontSize: 14, lineHeight: 21 },
-                  strong: { color: t.textPrimary, fontWeight: '800' },
-                  em: { color: t.textPrimary },
-                  paragraph: { marginTop: 0, marginBottom: 8 },
-                  list_item: { marginTop: 2, marginBottom: 2 },
-                  bullet_list: { marginBottom: 8 },
-                  ordered_list: { marginBottom: 8 },
-                  code_inline: {
-                    color: t.textPrimary,
-                    backgroundColor: t.chipBg,
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 6,
-                  },
-                }}
-              >
-                {String(message.text)}
-              </Markdown>
-            </View>
-          )
-        ) : null}
+  const wrapStyle = { maxWidth: '75%' };
+  const bubbleBase = { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 };
+  const attachmentOnly = !hasText && (firstImage || firstFile);
+  const mediaStyle = attachmentOnly ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null;
 
-        {!isUser && message.webProvider ? (
-          <Text style={{ fontSize: 10, color: t.textMuted, marginTop: 6 }}>
-            Web: {message.webProvider === 'serper' ? 'Search' : 'Perplexity'}
-          </Text>
-        ) : null}
+  if (sent) {
+    return (
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <View style={wrapStyle}>
+          <LinearGradient
+            colors={GRAD}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[bubbleBase, { borderBottomRightRadius: 4 }, mediaStyle]}
+          >
+            {renderContent()}
+          </LinearGradient>
+          <Text style={{ fontSize: 11, marginTop: 4, color: t.msgTimestamp, textAlign: 'right' }}>{message.time}</Text>
+        </View>
+      </View>
+    );
+  }
 
-        <Text style={{ fontSize: 11, color: t.textMuted, marginTop: 4, textAlign: isUser ? 'right' : 'left' }}>
-          {message.time}
-        </Text>
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 12 }}>
+      <View style={wrapStyle}>
+        <View
+          style={[
+            bubbleBase,
+            {
+              borderWidth: 1,
+              borderColor: t.msgReceivedBorder,
+              backgroundColor: t.msgReceivedBg,
+              borderBottomLeftRadius: 4,
+            },
+            mediaStyle,
+          ]}
+        >
+          {renderContent()}
+        </View>
+        <Text style={{ fontSize: 11, marginTop: 4, color: t.msgTimestamp, textAlign: 'left' }}>{message.time}</Text>
       </View>
     </View>
   );
@@ -485,6 +705,8 @@ export default function AIChatScreen({
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const t = isDark ? DARK : LIGHT;
+  const NAV_HEIGHT = 80 + (insets.bottom || 0); // matches BottomNavBar minHeight
+  const INPUT_BAR_BASE_HEIGHT = 64; // approximate row height (padding + controls)
   const flatListRef = useRef(null);
   const prefillSent = useRef(false);
 
@@ -496,8 +718,76 @@ export default function AIChatScreen({
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [sessionId] = useState(initialSessionId || `aiChat_${Date.now()}`);
   const [loadedSession, setLoadedSession] = useState(!initialSessionId);
+  const [activeFeatureCards, setActiveFeatureCards] = useState([]);
+  const featureTimers = useRef([]);
 
   const canSend = input.trim().length > 0 || attachments.length > 0;
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const inputBorderAnim = useRef(new Animated.Value(0)).current;
+  const inputScale = useRef(new Animated.Value(1)).current;
+  const sendPress = useRef(new Animated.Value(0)).current;
+  const micPulse = useRef(new Animated.Value(0)).current;
+  const [micActive, setMicActive] = useState(false);
+  const kb = useRef(new Animated.Value(0)).current; // keyboard height
+
+  useEffect(() => {
+    let loop;
+    if (isInputFocused) {
+      loop = Animated.loop(Animated.timing(inputBorderAnim, { toValue: 1, duration: 2000, useNativeDriver: false }));
+      loop.start();
+      Animated.spring(inputScale, { toValue: 1.02, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
+    } else {
+      inputBorderAnim.stopAnimation();
+      inputBorderAnim.setValue(0);
+      Animated.spring(inputScale, { toValue: 1, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
+    }
+    return () => loop?.stop?.();
+  }, [isInputFocused, inputBorderAnim, inputScale]);
+
+  useEffect(() => {
+    if (!micActive) {
+      micPulse.stopAnimation();
+      micPulse.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(micPulse, { toValue: 1, duration: 500, useNativeDriver: false }),
+        Animated.timing(micPulse, { toValue: 0, duration: 500, useNativeDriver: false }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [micActive, micPulse]);
+
+  const handleMicPress = () => {
+    setMicActive(true);
+    try {
+      onVoicePress?.();
+    } finally {
+      setTimeout(() => setMicActive(false), 2200);
+    }
+  };
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e) => {
+      const h = e?.endCoordinates?.height ?? 0;
+      Animated.timing(kb, { toValue: h, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
+    };
+    const onHide = () => {
+      Animated.timing(kb, { toValue: 0, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
+    };
+
+    const subShow = Keyboard.addListener(showEvt, onShow);
+    const subHide = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, [kb]);
 
   const scrollToBottom = () => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
@@ -544,10 +834,16 @@ export default function AIChatScreen({
     };
   }, [initialSessionId, userId]);
 
+  const clearFeatureTimers = () => {
+    (featureTimers.current || []).forEach((id) => clearTimeout(id));
+    featureTimers.current = [];
+  };
+
   const sendMessage = async (text, atts = []) => {
     if (!text.trim() && atts.length === 0) return;
 
     const plannedWeb = shouldUseWebAuto(text);
+    const plannedCards = buildFeatureCards({ userText: text, userProfile: userProfile || {} });
     const userMsg = {
       id: `msg_${Date.now()}`,
       role: 'user',
@@ -562,6 +858,13 @@ export default function AIChatScreen({
     setAttachments([]);
     setTyping(true);
     setSearchingWeb(plannedWeb);
+    setActiveFeatureCards([]);
+    clearFeatureTimers();
+    featureTimers.current = [
+      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 1) || []), 120),
+      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 2) || []), 950),
+      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 3) || []), 1850),
+    ];
     scrollToBottom();
 
     try {
@@ -589,14 +892,14 @@ export default function AIChatScreen({
 
       const data = await postAICoach({
         userId,
-        userProfile,
+        userProfile: userProfile || {},
         options: { web: 'auto' },
         messages: updatedMessages.map((m) => ({
           role: m.role === 'ai' ? 'assistant' : 'user',
           content: m.text,
         })),
       });
-      const aiText = data.reply || 'Sorry, I could not get a response. Please try again.';
+      const aiText = (data && data.reply) || 'Sorry, I could not get a response. Please try again.';
 
       const aiMsg = {
         id: `msg_${Date.now() + 1}`,
@@ -605,6 +908,7 @@ export default function AIChatScreen({
         time: now(),
         source: data.source,
         webProvider: data.usedWeb ? (data.webProvider || (data.source === 'perplexity' ? 'perplexity' : null)) : null,
+        featureCards: plannedCards,
       };
 
       const finalMessages = [...updatedMessages, aiMsg];
@@ -636,11 +940,14 @@ export default function AIChatScreen({
           role: 'ai',
           text: 'Could not reach the server. Check your connection and try again.',
           time: now(),
+          featureCards: plannedCards,
         },
       ]);
     } finally {
       setTyping(false);
       setSearchingWeb(false);
+      clearFeatureTimers();
+      setActiveFeatureCards([]);
       scrollToBottom();
     }
   };
@@ -698,11 +1005,51 @@ export default function AIChatScreen({
 
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
+  const buildPills = () => {
+    const historyText = messages.map((m) => (m.role === 'user' ? m.text : '')).join(' | ').toLowerCase();
+    const goal = String(userProfile?.primaryGoal || userProfile?.goal || '').toLowerCase();
+    const hasMessages = messages.length > 0;
+
+    if (!hasMessages) {
+      return [
+        { text: 'Build me a plan', color: FEATURE_COLORS.generation },
+        { text: 'Form check', color: FEATURE_COLORS.optimization },
+        { text: 'Nutrition help', color: FEATURE_COLORS.tracking },
+        { text: 'Track progress', color: FEATURE_COLORS.goals },
+      ];
+    }
+
+    if (historyText.includes('hypertrophy') || historyText.includes('bulk') || goal.includes('muscle')) {
+      return [
+        { text: 'Optimize my split', color: FEATURE_COLORS.generation },
+        { text: 'Chest exercises', color: FEATURE_COLORS.analysis },
+        { text: 'Bulk nutrition', color: FEATURE_COLORS.tracking },
+        { text: 'Am I eating enough?', color: FEATURE_COLORS.goals },
+      ];
+    }
+
+    if (historyText.includes('skinny fat') || historyText.includes('recomp') || goal.includes('fat')) {
+      return [
+        { text: 'Body recomp tips?', color: FEATURE_COLORS.generation },
+        { text: 'Cutting protocol', color: FEATURE_COLORS.tracking },
+        { text: 'Recovery help', color: FEATURE_COLORS.analysis },
+        { text: 'Why plateaued?', color: FEATURE_COLORS.goals },
+      ];
+    }
+
+    return [
+      { text: 'Adjust my routine', color: FEATURE_COLORS.generation },
+      { text: 'Meal timing', color: FEATURE_COLORS.tracking },
+      { text: 'Recovery tips', color: FEATURE_COLORS.analysis },
+      { text: 'Progress check', color: FEATURE_COLORS.goals },
+    ];
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ paddingTop: insets.top }}>
         <CoachConnectHeader
-          title="COACHCONNECT AI"
+          title="AI Coach"
           isDark={isDark}
           onBack={onBack}
           onProfilePress={onProfilePress}
@@ -710,7 +1057,11 @@ export default function AIChatScreen({
         />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
+      >
         {messages.length === 0 && !typing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <LottieView
@@ -727,133 +1078,216 @@ export default function AIChatScreen({
             data={messages}
             keyExtractor={(m) => m.id}
             renderItem={({ item, index }) => (
-              <MessageBubble
-                message={item}
-                t={t}
-                showAiCoachLabel={item.role === 'ai' && (index === 0 || messages[index - 1]?.role !== 'ai')}
-              />
+              <MessageBubble message={item} t={t} />
             )}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 16,
+              paddingBottom: 16 + NAV_HEIGHT + INPUT_BAR_BASE_HEIGHT + (attachments.length > 0 ? 76 : 0),
+            }}
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToBottom}
-            ListFooterComponent={typing ? <TypingIndicator t={t} searchingWeb={searchingWeb} /> : null}
+            // Regular messaging UI: no feature cards / web typing banners.
           />
         )}
 
-        {attachments.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ backgroundColor: t.inputBarBg, paddingHorizontal: 16, paddingTop: 10 }}
-            contentContainerStyle={{ gap: 8 }}
-          >
-            {attachments.map((att) => (
-              <View key={att.id} style={{ position: 'relative' }}>
-                {att.preview ? (
-                  <Image source={{ uri: att.preview }} style={{ width: 56, height: 56, borderRadius: 10 }} resizeMode="cover" />
-                ) : (
-                  <View
+        {/* Fixed input/attachments bar ABOVE BottomNavBar - MUST BE ANIMATED.VIEW FOR TRANSFORM */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: NAV_HEIGHT,
+            backgroundColor: 'transparent',
+            paddingTop: attachments.length > 0 ? 8 : 8,
+            paddingHorizontal: 12,
+            paddingBottom: 6,
+            transform: [{ translateY: Animated.multiply(kb, -1) }],
+            zIndex: 5,
+          }}
+        >
+          {attachments.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
+            >
+              {attachments.map((att) => (
+                <View key={att.id} style={{ position: 'relative' }}>
+                  {att.preview ? (
+                    <Image source={{ uri: att.preview }} style={{ width: 56, height: 56, borderRadius: 10 }} resizeMode="cover" />
+                  ) : (
+                    <View
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 10,
+                        backgroundColor: t.chipBg,
+                        borderWidth: 1,
+                        borderColor: t.chipBorder,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="document-outline" size={20} color={t.textSecondary} />
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => removeAttachment(att.id)}
                     style={{
-                      width: 56,
-                      height: 56,
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
                       borderRadius: 10,
-                      backgroundColor: t.chipBg,
-                      borderWidth: 1,
-                      borderColor: t.chipBorder,
+                      backgroundColor: t.textSecondary,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="document-outline" size={20} color={t.textSecondary} />
-                  </View>
-                )}
-                <TouchableOpacity
-                  onPress={() => removeAttachment(att.id)}
-                  style={{
-                    position: 'absolute',
-                    top: -6,
-                    right: -6,
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    backgroundColor: t.textSecondary,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons name="close" size={12} color={t.bg} />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        )}
+                    <Ionicons name="close" size={12} color={t.bg} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
 
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            gap: 10,
-            paddingHorizontal: 16,
-            paddingTop: 10,
-            paddingBottom: insets.bottom + 12,
-            backgroundColor: t.inputBarBg,
-            borderTopWidth: 1,
-            borderTopColor: t.inputBarBorder,
-          }}
-        >
-          <TouchableOpacity onPress={() => setShowActionSheet(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
-            <Ionicons name="add-circle-outline" size={24} color={t.textSecondary} />
-          </TouchableOpacity>
-
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Message CoachConnect AI..."
-            placeholderTextColor={t.textMuted}
-            multiline
-            style={{
-              flex: 1,
-              minHeight: 40,
-              maxHeight: 120,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 20,
-              backgroundColor: t.inputBg,
-              borderWidth: 1,
-              borderColor: t.inputBorder,
-              fontSize: 14,
-              color: t.textPrimary,
-              lineHeight: 20,
-            }}
-          />
-
-          <TouchableOpacity
-            onPress={() => sendMessage(input, attachments)}
-            disabled={!canSend}
-            activeOpacity={0.85}
-            style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', marginBottom: 2 }}
-          >
-            {canSend ? (
-              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
-              </LinearGradient>
-            ) : (
-              <View
-                style={{
-                  flex: 1,
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56 }}>
+            <Pressable
+              onPress={() => setShowActionSheet(true)}
+              style={({ pressed }) => [
+                {
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: t.chipBg,
+                  backgroundColor: pressed ? 'rgba(255,107,157,0.10)' : 'transparent',
                   borderWidth: 1,
-                  borderColor: t.chipBorder,
-                  borderRadius: 18,
+                  borderColor: '#FF6B9D',
+                },
+              ]}
+            >
+              <Ionicons name="add" size={24} color="#FF6B9D" />
+            </Pressable>
+
+            <Animated.View style={{ flex: 1, transform: [{ scale: inputScale }] }}>
+              <View style={{ width: '100%', borderRadius: 28, overflow: 'hidden' }}>
+                <View style={{ padding: 1.5, borderRadius: 28, overflow: 'hidden' }}>
+                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    <AnimatedLinearGradient
+                      colors={['#FF6B9D', '#C084FC', '#FF6B9D']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{
+                        width: SW * 2,
+                        height: '100%',
+                        transform: [
+                          {
+                            translateX: inputBorderAnim.interpolate({ inputRange: [0, 1], outputRange: [-SW, 0] }),
+                          },
+                        ],
+                        opacity: isInputFocused ? 1 : 0.7,
+                      }}
+                    />
+                  </View>
+
+                  <LinearGradient
+                    style={{
+                      borderRadius: 26.5,
+                      minHeight: 56,
+                      maxHeight: 120,
+                      paddingLeft: 18,
+                      paddingRight: 44,
+                      paddingVertical: 10,
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
+                    }}
+                  >
+                    <LinearGradient
+                      colors={
+                        isDark
+                          ? ['rgba(255,107,157,0.08)', 'rgba(192,132,252,0.08)']
+                          : ['rgba(255,107,157,0.06)', 'rgba(192,132,252,0.06)']
+                      }
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <TextInput
+                      value={input}
+                      onChangeText={setInput}
+                      placeholder="Ask your coach..."
+                      placeholderTextColor={isDark ? '#808080' : '#999999'}
+                      multiline
+                      style={{
+                        fontSize: 15,
+                        color: isDark ? '#FFFFFF' : '#333333',
+                        lineHeight: 20,
+                        fontStyle: input ? 'normal' : 'italic',
+                      }}
+                      cursorColor="#FF6B9D"
+                      onFocus={() => setIsInputFocused(true)}
+                      onBlur={() => setIsInputFocused(false)}
+                      returnKeyType="send"
+                    />
+
+                    <Pressable
+                      onPress={handleMicPress}
+                      style={({ pressed }) => [
+                        {
+                          position: 'absolute',
+                          right: 10,
+                          top: 12,
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transform: [{ scale: pressed ? 0.9 : 1 }],
+                        },
+                      ]}
+                      hitSlop={10}
+                    >
+                      <Animated.View style={{ opacity: micActive ? micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) : 1 }}>
+                        <Ionicons name="mic" size={18} color="#FF6B9D" />
+                      </Animated.View>
+                    </Pressable>
+                  </LinearGradient>
+                </View>
+              </View>
+            </Animated.View>
+
+            <Pressable
+              onPress={() => sendMessage(input, attachments)}
+              disabled={!canSend}
+              onPressIn={() => Animated.spring(sendPress, { toValue: 1, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
+              onPressOut={() => Animated.spring(sendPress, { toValue: 0, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
+              style={{ opacity: canSend ? 1 : 0.4 }}
+            >
+              <Animated.View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  overflow: 'hidden',
+                  transform: [{ scale: sendPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] }) }],
+                  shadowColor: '#FF6B9D',
+                  shadowOpacity: sendPress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.65] }),
+                  shadowRadius: sendPress.interpolate({ inputRange: [0, 1], outputRange: [12, 18] }),
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 10,
                 }}
               >
-                <Ionicons name="arrow-up" size={18} color={t.textMuted} />
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
+                <LinearGradient colors={['#FF6B9D', '#E91E63']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+                </LinearGradient>
+              </Animated.View>
+            </Pressable>
+          </View>
+        </Animated.View>
       </KeyboardAvoidingView>
 
       <AttachActionSheet

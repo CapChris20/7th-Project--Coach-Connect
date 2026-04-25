@@ -18,7 +18,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import * as XLSX from 'xlsx';
+import XLSX from '../../utils/xlsx';
 import { db, storage } from '../../app/config';
 
 const COLLECTION = 'notes_and_files';

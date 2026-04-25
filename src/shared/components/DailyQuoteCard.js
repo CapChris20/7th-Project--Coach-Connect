@@ -440,25 +440,22 @@ async function getCreatedAtMillisFromFirestore(userId) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight }) {
+export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embedded = false }) {
   const { colors, isDark } = useTheme();
-  const outerWidth = cardWidth ?? 260;
-  const outerMinHeight = cardMinHeight ?? 120;
+  const outerWidth = cardWidth ?? '100%';
+  const outerMinHeight = cardMinHeight ?? 96;
 
   const [quoteIndex, setQuoteIndex] = useState(0);
 
-  const cardBg = useMemo(() => {
-    return isDark ? withAlpha(colors.white, 0.05) : withAlpha(colors.white, 0.55);
-  }, [colors.white, isDark]);
-
-  const borderColor = useMemo(() => {
-    return isDark ? withAlpha(colors.white, 0.15) : withAlpha(colors.white, 0.8);
-  }, [colors.white, isDark]);
-
-  const textColor = useMemo(() => {
-    const lightText = (colors.gray && colors.gray[900]) ? colors.gray[900] : colors.text;
-    return isDark ? colors.text : lightText;
-  }, [colors.gray, colors.text, isDark]);
+  // High-contrast typography; when embedded, let the parent handle border/background.
+  const cardBg = embedded
+    ? 'transparent'
+    : (isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)');
+  const borderColor = embedded
+    ? 'transparent'
+    : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.10)');
+  const textColor = isDark ? '#FFFFFF' : '#111827';
+  const authorColor = isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)';
 
   useEffect(() => {
     let cancelled = false;
@@ -536,17 +533,79 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight }) {
   
   return (
     <View style={[styles.outer, { width: outerWidth, minHeight: outerMinHeight }]}>
-      <View style={[styles.border, { borderColor }]}>
+      <View style={[styles.border, { borderColor, borderWidth: embedded ? 0 : 1 }]}>
         <View style={[styles.card, { backgroundColor: cardBg, minHeight: outerMinHeight }]}>
           <View style={styles.content}>
             <Text style={[styles.quoteText, { color: textColor }]}>
               "{quote.q}"
             </Text>
-            <Text style={[styles.authorText, { color: borderColor }]}>
+            <Text style={styles.inspirationLabel}>DAILY INSPIRATION</Text>
+            <Text style={[styles.authorText, { color: authorColor }]}>
               — {quote.a ? quote.a : 'Daily Motivation'}
             </Text>
           </View>
         </View>
+      </View>
+    </View>
+  );
+}
+
+export function DailyQuotePill({ userId, isDarkOverride, maxLines = 4 }) {
+  const { isDark: themeIsDark } = useTheme();
+  const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : themeIsDark;
+
+  const [quoteIndex, setQuoteIndex] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!userId) return;
+      try {
+        const cachedIndexRaw = await AsyncStorage.getItem('currentQuoteIndex');
+        if (!cancelled && cachedIndexRaw != null) {
+          const cachedIndex = Number(cachedIndexRaw);
+          if (Number.isFinite(cachedIndex) && cachedIndex >= 0 && cachedIndex < quotes.length) {
+            setQuoteIndex(cachedIndex);
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const quote = quotes[quoteIndex] || quotes[0];
+
+  return (
+    <View style={pillStyles.wrap}>
+      <View
+        style={[
+          pillStyles.inner,
+          {
+            // More opaque fill so the border gradient doesn't tint the pill.
+            backgroundColor: isDark ? 'rgba(10,10,15,0.80)' : 'rgba(255,255,255,0.92)',
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)',
+          },
+        ]}
+      >
+        <Text
+          style={[pillStyles.text, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}
+          numberOfLines={maxLines}
+          ellipsizeMode="tail"
+        >
+          "{quote.q}"
+        </Text>
+        <Text
+          style={[pillStyles.author, { color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.55)' }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          — {quote.a ? quote.a : 'Unknown'}
+        </Text>
       </View>
     </View>
   );
@@ -564,9 +623,9 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    minHeight: 120,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 96,
   },
   content: {
     flex: 1,
@@ -574,16 +633,51 @@ const styles = StyleSheet.create({
   },
   quoteText: {
     textAlign: 'left',
-    fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 26,
-    letterSpacing: 0.2,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    letterSpacing: 0.1,
+  },
+  inspirationLabel: {
+    marginTop: 10,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: '#FF6B9D',
   },
   authorText: {
-    marginTop: 14,
+    marginTop: 4,
     textAlign: 'left',
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: '600',
     letterSpacing: 0.6,
+  },
+});
+
+const pillStyles = StyleSheet.create({
+  wrap: {
+    // Parent controls width/maxWidth; keep pill full-width inside gradient border.
+    width: '100%',
+    alignSelf: 'center',
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  inner: {
+    borderRadius: 26,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+  },
+  text: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  author: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

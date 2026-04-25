@@ -1,7 +1,7 @@
 # Trainer Discovery and Messaging Feature
 
 ## Overview
-This feature allows clients to discover and message trainers in the Anatrox AI fitness app. Trainers can set up their profiles with specializations, bio, credentials, and location, and clients can search for trainers and start conversations with them.
+This feature allows clients to discover and message trainers in the CoachConnect AI fitness app. Trainers can set up their profiles with specializations, bio, credentials, and location, and clients can search for trainers and start conversations with them.
 
 ## Features Implemented
 

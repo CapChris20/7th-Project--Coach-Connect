@@ -8,7 +8,7 @@ import iconHome from '../../assets/house.png';
 import iconWorkout from '../../assets/dumbbell (1).png';
 import iconMessages from '../../assets/icons/box.png';
 import iconNutrition from '../../assets/icons/food.png';
-import iconVoice from '../../assets/icons/New Icons/Google-Gemini-Logo-Transparent.png';
+import iconVoice from '../../assets/icons/google_gemini.png';
 import iconGpt from '../../assets/icons/gpticon.png';
 
 const icons = {

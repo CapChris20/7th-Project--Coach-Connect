@@ -26,8 +26,6 @@ export async function loadApiKey() {
     const storedKey = await AsyncStorage.getItem('OPENAI_API_KEY');
     if (storedKey && storedKey.trim()) {
       configureOpenAI({ apiKey: storedKey });
-      const keyPreview = storedKey.substring(0, 10) + '...' + storedKey.substring(storedKey.length - 4);
-      console.log('✅ OpenAI API key loaded:', keyPreview);
       return storedKey;
     }
     

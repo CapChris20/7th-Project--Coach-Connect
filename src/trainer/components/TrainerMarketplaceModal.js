@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { doc, collection, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app/config';
 import { syncClientDataFromUsers } from '../services/clientCRMService';
@@ -191,16 +190,11 @@ const TrainerMarketplaceModal = ({
               onPress={handleAddClient}
               disabled={loading}
             >
-              <LinearGradient 
-                colors={['#10B981', '#059669']} 
-                style={[styles.button, styles.acceptButton]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.buttonText}>Add Client</Text>
-                )}
-              </LinearGradient>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Accept</Text>
+              )}
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -208,7 +202,7 @@ const TrainerMarketplaceModal = ({
               onPress={handleRejectClient}
               disabled={loading}
             >
-              <Text style={[styles.buttonText, { color: '#F87171' }]}>Reject</Text>
+              <Text style={styles.rejectButtonText}>Reject</Text>
             </TouchableOpacity>
           </View>
           
@@ -229,10 +223,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContainer: {
-    backgroundColor: 'rgba(18,1,46,0.97)',
+    backgroundColor: '#1A1A2E',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.1)',
     padding: 24,
     margin: 20,
     maxWidth: 400,
@@ -291,27 +285,34 @@ const styles = StyleSheet.create({
   },
   buttonGroup: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
+    marginTop: 16,
     marginBottom: 16,
   },
   button: {
     flex: 1,
-    paddingVertical: 14,
+    height: 52,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   acceptButton: {
-    // Will be overridden by LinearGradient
+    backgroundColor: '#10B981',
   },
   rejectButton: {
-    backgroundColor: 'rgba(239,68,68,0.18)',
-    borderColor: 'rgba(239,68,68,0.40)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
   },
   buttonText: {
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  rejectButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
   },
   closeButton: {
     alignItems: 'center',

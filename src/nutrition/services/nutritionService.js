@@ -332,7 +332,7 @@ export async function deleteFoodLog(logId) {
 }
 
 export function calculateMacroTotals(logs = []) {
-  const totals = logs.reduce(
+  const totals = (logs || []).reduce(
     (acc, item) => {
       // Ensure all values are numbers and handle missing data
       const calories = Number(item.calories) || 0;

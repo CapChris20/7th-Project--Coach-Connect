@@ -442,6 +442,7 @@ const ProfileScreen = ({ onBack, userRole = 'Client', userData, onboardingData, 
         onVoicePress={() => onNavigate && onNavigate('voice')}
         onWorkoutPress={() => onNavigate && onNavigate('workout')}
         onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+        onMessagesPress={() => onNavigate && onNavigate('messages')}
       />
 
       {/* Edit Bottom Sheet */}

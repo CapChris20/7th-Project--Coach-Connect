@@ -5,7 +5,7 @@ If you're seeing "Google Sign-In is blocked" errors, follow these steps:
 ## Step 1: Enable Google Sign-In in Firebase Console
 
 1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Select your project: **anatrox-auth**
+2. Select your project: **coachconnect-auth**
 3. Navigate to: **Authentication** > **Sign-in method**
 4. Click on **Google** provider
 5. Toggle **Enable** to ON
@@ -15,7 +15,7 @@ If you're seeing "Google Sign-In is blocked" errors, follow these steps:
 ## Step 2: Configure OAuth Consent Screen
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Select project: **anatrox-auth**
+2. Select project: **coachconnect-auth**
 3. Navigate to: **APIs & Services** > **OAuth consent screen**
 4. Choose **External** (unless you have Google Workspace)
 5. Fill in required fields:
@@ -42,7 +42,7 @@ If you're seeing "Google Sign-In is blocked" errors, follow these steps:
 2. Add your domains:
    - `localhost` (for development)
    - Your production domain
-   - `anatrox-auth.firebaseapp.com` (default)
+   - `coachconnect-auth.firebaseapp.com` (default)
 
 ## Step 5: Update Client IDs in Code
 
