@@ -24,6 +24,7 @@ import { loadApiKey } from '../ai/services/apiKeyService';
 import { clearOldSharedChats } from '../ai/services/chatStorageService';
 import { clearAllUserData } from '../utils/dataCacheCleanup';
 import { flushPendingOnboardingSync } from '../shared/services/onboardingSync';
+import { clearPushTokensForUid } from '../shared/services/notificationsService';
 
 const getProfileCacheKey = (uid) => `auth_profile_${uid}`;
 
@@ -67,11 +68,21 @@ export default function AuthGate() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       // Clear cache when user signs out or switches
       if (!firebaseUser && user) {
+        try {
+          if (user.uid) await clearPushTokensForUid(user.uid);
+        } catch (_) {
+          /* best-effort */
+        }
         await clearAllUserData();
       }
       
       // Clear cache when user switches accounts
       if (firebaseUser && user && firebaseUser.uid !== user.uid) {
+        try {
+          await clearPushTokensForUid(user.uid);
+        } catch (_) {
+          /* best-effort */
+        }
         await clearAllUserData();
       }
       

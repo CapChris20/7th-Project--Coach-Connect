@@ -16,6 +16,7 @@ import {
   limit as limitFn,
 } from 'firebase/firestore';
 import foodSearchProvider from './foodSearchProvider';
+export { FOOD_SEARCH_OFFLINE_HINT } from './foodSearchProvider';
 import { autoLogErrorSync } from '../../utils/autoLogError';
 
 const LOGS_COLLECTION = 'nutrition_logs';
@@ -436,6 +437,10 @@ function getDefaultGoals() {
 }
 
 // Food search functions using unified provider
+export function getFoodSearchHint() {
+  return foodSearchProvider.getLastSearchHint?.() ?? null;
+}
+
 export async function searchFoods(query, maxResults = 20) {
   try {
     console.log('🍔 Starting unified food search for:', query);

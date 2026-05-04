@@ -1,6 +1,6 @@
 /**
  * Workout Plan Generator Screen
- * Review onboarding data, allow edits, and generate personalized workout plan using Anthropic Claude API
+ * Review onboarding data, allow edits, and generate personalized workout plan using DeepSeek API
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -47,9 +47,17 @@ import {
 } from '../services/workoutPlanPdfService';
 import WorkoutPlanPdfViewerModal from '../components/WorkoutPlanPdfViewerModal';
 import PlanViewerScreen from '../../screens/PlanViewerScreen';
+import PlanLimitBanner from '../components/PlanLimitBanner';
 
 /** Survives screen unmount so ClientApp / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
+
+const PLAN_LIMIT_TOTAL = 2;
+const planLimitMonthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const nextMonthResetDate = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+};
 
 const MARKDOWN_STYLES = {
   body: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 22 },
@@ -1617,6 +1625,38 @@ export default function WorkoutPlanGeneratorScreen({
   const [planViewerExpandedDay, setPlanViewerExpandedDay] = useState(null);
   const [activeTab, setActiveTab] = useState('plans'); // 'plans' | 'library'
 
+  // Plan generation limit (simple monthly counter, UI only)
+  const [plansUsedThisMonth, setPlansUsedThisMonth] = useState(0);
+  const plansRemaining = Math.max(0, PLAN_LIMIT_TOTAL - (Number(plansUsedThisMonth) || 0));
+  const nextResetDate = useMemo(() => nextMonthResetDate(), []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const key = `planGenUsed_${planLimitMonthKey()}`;
+        const raw = await AsyncStorage.getItem(key);
+        const n = raw != null ? parseInt(raw, 10) : 0;
+        if (mounted) setPlansUsedThisMonth(Number.isFinite(n) ? n : 0);
+      } catch (_) {
+        if (mounted) setPlansUsedThisMonth(0);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const markPlanGeneratedForLimit = useCallback(async () => {
+    const monthKey = planLimitMonthKey();
+    const key = `planGenUsed_${monthKey}`;
+    setPlansUsedThisMonth((prev) => {
+      const next = clamp((Number(prev) || 0) + 1, 0, PLAN_LIMIT_TOTAL);
+      AsyncStorage.setItem(key, String(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   // Trainer-request UI state (AI disabled path)
   const [requestText, setRequestText] = useState('');
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -1723,26 +1763,16 @@ export default function WorkoutPlanGeneratorScreen({
 
     const apiKeyCandidate =
       Constants.expoConfig?.extra?.claudeApiKey ||
-      Constants.expoConfig?.extra?.anthropicApiKey ||
       process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
       process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
 
-    const proxyCandidate =
-      Constants.expoConfig?.extra?.apiCladeUrl ||
-      process.env.EXPO_PUBLIC_API_CLADE_URL;
-
     const apiKey = isRealSecret(apiKeyCandidate) ? apiKeyCandidate.trim() : null;
-    const proxyUrl = (typeof proxyCandidate === 'string' && proxyCandidate.trim().startsWith('http'))
-      ? proxyCandidate.trim()
-      : null;
-
-    const apiUrl = proxyUrl || 'https://api.anthropic.com/v1/messages';
+    const apiUrl = 'https://api.anthropic.com/v1/messages';
 
     return {
       apiUrl,
       apiKey,
-      hasAnyConfig: !!(proxyUrl || apiKey),
-      usingProxy: !!proxyUrl,
+      hasAnyConfig: !!apiKey,
     };
   };
 
@@ -2081,20 +2111,20 @@ export default function WorkoutPlanGeneratorScreen({
       return;
     }
 
-    const { apiUrl, apiKey, hasAnyConfig, usingProxy } = resolveClaudeConfig();
+    const { apiUrl, apiKey, hasAnyConfig } = resolveClaudeConfig();
 
     if (!hasAnyConfig) {
       Alert.alert(
         'Configuration Error',
-        "Claude/Anthropic API is not configured.\n\nSet one of these in .env and restart Expo:\n- EXPO_PUBLIC_CLAUDE_API_KEY=sk-ant-...\n- EXPO_PUBLIC_ANTHROPIC_API_KEY=sk-ant-...\n- EXPO_PUBLIC_API_CLADE_URL=https://your-proxy/messages\n\nThen run: npx expo start --clear",
+        "Claude API is not configured.\n\nSet this in .env and restart Expo:\n- EXPO_PUBLIC_CLAUDE_API_KEY=sk-ant-...\n\nThen run: npx expo start --clear",
         [{ text: 'OK' }]
       );
       return;
     }
-    if (!usingProxy && !apiKey) {
+    if (!apiKey) {
       Alert.alert(
         'Configuration Error',
-        'API key is required for direct Anthropic API. Set EXPO_PUBLIC_CLAUDE_API_KEY or EXPO_PUBLIC_ANTHROPIC_API_KEY in .env and restart with: npx expo start --clear',
+        'API key is required for Claude. Set EXPO_PUBLIC_CLAUDE_API_KEY in .env and restart with: npx expo start --clear',
         [{ text: 'OK' }]
       );
       return;
@@ -2111,7 +2141,6 @@ export default function WorkoutPlanGeneratorScreen({
     try {
       console.log('🧠 Workout plan generation config:', {
         hasApiKey: !!apiKey,
-        usingProxy,
         apiUrl: apiUrl ? apiUrl.replace(/\/\/([^/]+).*/, '//***') : null,
       });
 
@@ -2196,81 +2225,54 @@ Rest Day Recovery Notes Should Include:
 
       const userPrompt = buildUserPrompt(onboardingData);
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      };
-      if (apiKey) {
-        headers['x-api-key'] = apiKey;
-        headers['anthropic-api-key'] = apiKey;
+      const model =
+        process.env.EXPO_PUBLIC_CLAUDE_MODEL ||
+        process.env.EXPO_PUBLIC_ANTHROPIC_MODEL ||
+        'claude-sonnet-4-6';
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 8000,
+          temperature: 0.7,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData?.error?.message ||
+          errorData?.message ||
+          `Request failed: ${response.status} ${response.statusText}`;
+        console.warn('Claude API error:', response.status, errorData);
+        throw new Error(errorMessage);
       }
 
-      // Cheapest strong default first (Haiku 4.5), then Sonnet fallbacks — no Opus.
-      const modelNames = [
-        'claude-haiku-4-5-20251001',
-        'claude-haiku-4-5',
-        'claude-sonnet-4-20250514',
-        'claude-sonnet-4-6',
-      ];
-
-      let data = null;
-      let lastErr = null;
-
-      for (const model of modelNames) {
-        try {
-          console.log('🤖 Trying model:', model);
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              model,
-              max_tokens: 16384,
-              temperature: 0.7,
-              system: systemPrompt,
-              messages: [
-                {
-                  role: 'user',
-                  content: [{ type: 'text', text: userPrompt }],
-                },
-              ],
-            }),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errorMessage =
-              errorData?.error?.message ||
-              errorData?.error?.type ||
-              errorData?.message ||
-              `Request failed: ${response.status} ${response.statusText}`;
-            console.warn('Claude API error:', response.status, errorData);
-            throw new Error(errorMessage);
-          }
-
-          data = await response.json();
-          if (data?.content?.[0]?.text) {
-            const full = data.content[0].text;
-            console.log(
-              'RAW CLAUDE RESPONSE length:',
-              full.length,
-              '| preview:',
-              JSON.stringify(full.slice(0, 600)),
-            );
-          }
-          if (data?.content?.[0]?.text) break;
-          throw new Error('Empty response content');
-        } catch (e) {
-          lastErr = e;
-          continue;
-        }
+      const data = await response.json();
+      const rawText =
+        data?.content?.find?.((c) => c?.type === 'text')?.text ||
+        '';
+      if (rawText) {
+        console.log(
+          'RAW CLAUDE RESPONSE length:',
+          rawText.length,
+          '| preview:',
+          JSON.stringify(String(rawText).slice(0, 600)),
+        );
       }
 
-      if (!data?.content?.[0]?.text) {
-        throw lastErr || new Error('Failed to generate a plan. Please try again.');
-      }
+      if (!rawText || typeof rawText !== 'string') throw new Error('Empty response from Claude. Please try again.');
 
-      let planText = data.content[0].text;
-      const stopReason = data.stop_reason;
+      let planText = rawText;
+      const stopReason = data?.stop_reason || null;
       if (!planText || typeof planText !== 'string') {
         throw new Error('Empty response from Claude. Please try again.');
       }
@@ -2323,6 +2325,8 @@ Rest Day Recovery Notes Should Include:
       await AsyncStorage.setItem(`workout_plan_${authedUid || 'unknown'}`, JSON.stringify(planData));
       await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
       ui(() => setGeneratedPlan(planData));
+      // Update monthly plan limit counter (UI gating only)
+      await markPlanGeneratedForLimit();
       if (targetUid) {
         await setCurrentWorkoutPlan(targetUid, { rawPlan: planText });
       }
@@ -2632,19 +2636,25 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   };
 
   if (loading) {
+    // Keep the bottom navbar visible so you can see tab highlight transitions.
     return (
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: isDark ? '#0A0618' : '#F5F3FF',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color="#FF6B9D" />
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color="#FF6B9D" />
+        </View>
+        {!hideBottomNav && (
+          <BottomNavBar
+            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+            onProfilePress={() => onNavigate && onNavigate('profile')}
+            onPlusPress={() => onNavigate && onNavigate('create')}
+            onVoicePress={() => onNavigate && onNavigate('voice')}
+            onWorkoutPress={() => onNavigate && onNavigate('workout')}
+            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+            onMessagesPress={() => onNavigate && onNavigate('messages')}
+            activeTabKey="workout"
+          />
+        )}
+      </SafeAreaView>
     );
   }
 
@@ -3365,24 +3375,42 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={generateWorkoutPlan}
-                disabled={isGenerating}
-                style={{ height: 56, borderRadius: 16, overflow: 'hidden', opacity: isGenerating ? 0.7 : 1 }}
-              >
-                <LinearGradient
-                  colors={['#FF6B9D', '#C084FC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+              <View style={{ gap: 10 }}>
+                <PlanLimitBanner
+                  remaining={plansRemaining}
+                  total={PLAN_LIMIT_TOTAL}
+                  nextReset={nextResetDate}
+                  onTapUpgrade={onNavigate ? () => onNavigate('upgrade') : undefined}
+                />
+
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => {
+                    if (plansRemaining <= 0) {
+                      Alert.alert(
+                        'Plan limit reached',
+                        'You’ve used your 2 AI plan generations for this month. You can still use AI Coach for unlimited modifications.',
+                      );
+                      return;
+                    }
+                    generateWorkoutPlan();
+                  }}
+                  disabled={isGenerating}
+                  style={{ height: 56, borderRadius: 16, overflow: 'hidden', opacity: isGenerating ? 0.7 : 1 }}
                 >
-                  <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>
-                    {isGenerating ? 'Generating…' : 'Generate Plan'}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={['#FF6B9D', '#C084FC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+                  >
+                    <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>
+                      {isGenerating ? 'Generating…' : 'Generate Plan'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
@@ -3484,6 +3512,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           onWorkoutPress={() => onNavigate && onNavigate('workout')}
           onNutritionPress={() => onNavigate && onNavigate('nutrition')}
           onMessagesPress={() => onNavigate && onNavigate('messages')}
+            activeTabKey="workout"
         />
       )}
     </SafeAreaView>

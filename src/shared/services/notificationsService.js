@@ -1,8 +1,48 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { Linking, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
+import { deleteField, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../../app/config';
 
 let isConfigured = false;
+let notificationResponseSubscription = null;
+
+/** @type {((data: Record<string, unknown>) => void) | null} */
+let notificationTapHandler = null;
+
+/**
+ * Register handler for notification taps (set from ClientApp / TrainerApp after mount).
+ * Pass null on unmount to detach.
+ */
+export function setNotificationTapHandler(handler) {
+  notificationTapHandler = typeof handler === 'function' ? handler : null;
+}
+
+function ensureNotificationResponseSubscription() {
+  if (notificationResponseSubscription) return;
+  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response?.notification?.request?.content?.data || {};
+    if (notificationTapHandler) notificationTapHandler(data);
+  });
+}
+
+/**
+ * If app was opened from a notification, deliver payload once to the current tap handler.
+ * Call after ClientApp/TrainerApp registers `setNotificationTapHandler`.
+ */
+export function flushInitialNotificationResponse(delayMs = 500) {
+  try {
+    const last = Notifications.getLastNotificationResponse?.();
+    if (!last?.notification?.request?.content?.data) return () => {};
+    const data = last.notification.request.content.data || {};
+    const t = setTimeout(() => {
+      if (notificationTapHandler) notificationTapHandler(data);
+    }, delayMs);
+    return () => clearTimeout(t);
+  } catch {
+    return () => {};
+  }
+}
 
 export function configureNotifications() {
   if (isConfigured) return;
@@ -17,15 +57,19 @@ export function configureNotifications() {
   });
 
   if (Platform.OS === 'android') {
-    // Required for Android 8+ for notifications to show properly
     Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
+      name: 'CoachConnect AI',
+      description: 'Notifications from your AI Fitness Coach',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#5856D6',
+      sound: 'default',
+      enableLights: true,
+      lightColor: '#FF6B9D',
+      enableVibrate: true,
     }).catch(() => {});
   }
 
+  ensureNotificationResponseSubscription();
   isConfigured = true;
 }
 
@@ -48,12 +92,34 @@ export async function requestNotificationPermissionsAsync() {
 }
 
 export async function openSystemSettingsAsync() {
-  // iOS + Android supported; on web this is a no-op
   try {
     await Linking.openSettings();
     return true;
   } catch {
     return false;
+  }
+}
+
+function logTokenDebug(label, value) {
+  if (__DEV__ && value && typeof value === 'string') {
+    console.log(`[push] ${label} prefix`, value.slice(0, 24) + '…');
+  }
+}
+
+/**
+ * Native device push token (Android: FCM registration token when using FCM; iOS: device token string).
+ * Used only for Firebase Admin `messaging().send` — stored as `fcmToken` on the user doc.
+ */
+export async function getNativeDevicePushTokenAsync() {
+  try {
+    const device = await Notifications.getDevicePushTokenAsync();
+    const token = device?.data != null ? String(device.data) : null;
+    if (token) logTokenDebug('native', token);
+    return token;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (__DEV__) console.warn('[push] native device token unavailable:', msg);
+    return null;
   }
 }
 
@@ -69,12 +135,11 @@ export async function getExpoPushTokenAsync() {
     undefined;
 
   try {
-    const token = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
-    return token.data;
+    const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    const data = token.data;
+    logTokenDebug('expo', data);
+    return data;
   } catch (e) {
-    // On iOS Simulator this commonly fails; also fails if projectId isn't available for some setups.
     const msg = e?.message || String(e);
     if (msg.toLowerCase().includes('simulator') || msg.toLowerCase().includes('device')) {
       throw new Error('Push notifications require a physical device (not the iOS Simulator).');
@@ -83,17 +148,77 @@ export async function getExpoPushTokenAsync() {
   }
 }
 
+/**
+ * Persist Expo + native tokens. Keeps legacy `pushToken` mirroring Expo for older readers.
+ * @param {string} uid
+ * @param {{ skipIfDisabled?: boolean }} [options] skipIfDisabled defaults true — respects `notificationsEnabled: false`
+ */
+export async function persistPushTokensForUid(uid, options = {}) {
+  const skipIfDisabled = options.skipIfDisabled !== false;
+  if (!uid || !db) return;
+
+  if (skipIfDisabled) {
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (snap.exists() && snap.data()?.notificationsEnabled === false) return;
+    } catch {
+      // continue — best effort
+    }
+  }
+
+  try {
+    const expoPushToken = await getExpoPushTokenAsync();
+    const fcmToken = await getNativeDevicePushTokenAsync();
+
+    const payload = {
+      expoPushToken,
+      pushToken: expoPushToken,
+      ...(fcmToken ? { fcmToken } : {}),
+    };
+
+    await updateDoc(doc(db, 'users', uid), payload);
+    if (__DEV__) {
+      console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[push] persistPushTokensForUid failed:', e?.message || e);
+  }
+}
+
+export async function clearPushTokensForUid(uid) {
+  if (!uid || !db) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), {
+      expoPushToken: deleteField(),
+      fcmToken: deleteField(),
+      pushToken: deleteField(),
+    });
+    if (__DEV__) console.log('[push] tokens cleared for user');
+  } catch (e) {
+    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', e?.message || e);
+  }
+}
+
+/**
+ * Subscribe to app foreground: re-persist tokens (handles token rotation / permission changes).
+ */
+export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
+  const sub = AppState.addEventListener('change', (next) => {
+    if (next !== 'active' || !uid || !shouldRun?.()) return;
+    persistPushTokensForUid(uid, { skipIfDisabled: true }).catch(() => {});
+  });
+  return () => sub.remove();
+}
+
 export async function sendTestLocalNotificationAsync() {
   configureNotifications();
 
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'CoachConnect',
-      body: 'Notifications are enabled ✅',
+      body: 'Notifications are enabled.',
       sound: true,
     },
     trigger: { seconds: 1 },
   });
 }
-
-

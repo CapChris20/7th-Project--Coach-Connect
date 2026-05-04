@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { getAuth, updatePassword } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -26,6 +26,17 @@ import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useAI } from '../../contexts/AIContext';
 
 const SectionHeader = ({ title, colors }) => <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>;
+
+/** Wall-clock + IANA zone for server-side workout reminder job (matches user's picker). */
+function workoutReminderClockFromDate(d) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  return {
+    time: d.toISOString(),
+    hourLocal: d.getHours(),
+    minuteLocal: d.getMinutes(),
+    timeZone,
+  };
+}
 
 const SettingsRow = ({ label, value, onPress, children, colors }) => (
   <TouchableOpacity onPress={onPress} style={styles.row} disabled={!onPress}>
@@ -53,13 +64,31 @@ export default function SettingsScreen({ onNavigate }) {
   useEffect(() => {
     if (user) {
       const userRef = doc(db, 'users', user.uid);
-      getDoc(userRef).then((docSnap) => {
+      getDoc(userRef).then(async (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setWeightUnit(data.weightUnit || 'lbs');
           setWorkoutReminders(data.workoutReminder?.enabled || false);
           if (data.workoutReminder?.time) {
             setReminderTime(new Date(data.workoutReminder.time));
+          }
+          const wr = data.workoutReminder;
+          if (
+            wr?.enabled &&
+            wr?.time &&
+            (wr.hourLocal == null || wr.minuteLocal == null || !String(wr.timeZone || '').trim())
+          ) {
+            const t = new Date(wr.time);
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            try {
+              await updateDoc(userRef, {
+                'workoutReminder.hourLocal': t.getHours(),
+                'workoutReminder.minuteLocal': t.getMinutes(),
+                'workoutReminder.timeZone': tz,
+              });
+            } catch (e) {
+              console.warn('workoutReminder backfill', e?.message || e);
+            }
           }
         }
       });
@@ -96,7 +125,11 @@ export default function SettingsScreen({ onNavigate }) {
         setShowTimePicker(true);
       } else {
         await Notifications.cancelAllScheduledNotificationsAsync();
-        await setDoc(doc(db, 'users', user.uid), { workoutReminder: { enabled: false } }, { merge: true });
+        try {
+          await updateDoc(doc(db, 'users', user.uid), { 'workoutReminder.enabled': false });
+        } catch (e) {
+          await setDoc(doc(db, 'users', user.uid), { workoutReminder: { enabled: false } }, { merge: true });
+        }
       }
     }
   };
@@ -109,7 +142,11 @@ export default function SettingsScreen({ onNavigate }) {
     if (user) {
       try {
         await scheduleWorkoutReminder(currentTime);
-        await setDoc(doc(db, 'users', user.uid), { workoutReminder: { enabled: true, time: currentTime.toISOString() } }, { merge: true });
+        await setDoc(
+          doc(db, 'users', user.uid),
+          { workoutReminder: { enabled: true, ...workoutReminderClockFromDate(currentTime) } },
+          { merge: true }
+        );
         Alert.alert('Reminders set', `You'll be notified daily at ${currentTime.toLocaleTimeString()}.`);
       } catch (error) {
         console.error('Error setting reminder: ', error);

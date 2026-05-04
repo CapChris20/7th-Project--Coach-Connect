@@ -1,6 +1,6 @@
-// Simple Express backend to enable web research + OpenAI responses
+// Simple Express backend for fitness app with Claude, DeepSeek, and web search
 // Start: npm run server
-// Env: OPENAI_API_KEY, optional SERPER_API_KEY
+// Env: ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, optional SERPER_API_KEY
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
@@ -9,13 +9,33 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 const axios = require('axios');
-const { Groq } = require('groq-sdk');
 const multer = require('multer');
 const WebSocket = require('ws');
 const { normalizeOpenFoodFactsProduct } = require('../src/nutrition/utils/nutritionNormalization');
 const { buildRestaurantSearchQuery } = require('./utils/restaurantNutrition');
-const OpenAI = require('openai');
 const { getWeeklyContext, NotFoundError } = require('./getWeeklyContext');
+const { estimateCost } = require('./config/apiCosts');
+const { randomUUID } = require('crypto');
+const {
+  COPY: PUSH_COPY,
+  pickRandom: pushPickRandom,
+  sub: pushSub,
+  localDateTimeInIANA,
+  hasDashboardWorkoutLog,
+  minutesDiffClock,
+  stripNotificationEmoji: pushStripNotificationEmoji,
+} = require('./pushHelpers');
+const {
+  EMPTY_SEARCH_HINT,
+  normalizeSearchKey,
+  classifyNutritionSearchMode,
+  extractMacrosFromText,
+  fixTypoForSerperQuery,
+  searchResultsDocId,
+} = require('./nutritionSearchHelpers');
+
+/** Bump when search pipeline or caching rules change (invalidates Firestore searchResults format). */
+const FOOD_SEARCH_PIPELINE_VERSION = 18;
 
 // Initialize Firebase Admin SDK
 try {
@@ -34,7 +54,38 @@ try {
 }
 
 const foodCache = new Map();
-const FOOD_CACHE_TTL = 30 * 1000; // 30 seconds for testing
+const FOOD_CACHE_TTL = 24 * 60 * 60 * 1000; // 24h in-memory; Firestore searchResults is canonical for repeat lookups
+
+// ─────────────────────────────────────────────
+// Shared helpers (timestamps, ids, etc.)
+// ─────────────────────────────────────────────
+function isoDateKey(d = new Date()) {
+  const dt = d instanceof Date ? d : new Date(d);
+  // Use UTC date key for consistent server behavior
+  return dt.toISOString().slice(0, 10);
+}
+
+function serverTs() {
+  return admin.apps.length
+    ? admin.firestore.FieldValue.serverTimestamp()
+    : new Date();
+}
+
+function safeJsonParse(s) {
+  try {
+    return JSON.parse(s);
+  } catch (_) {
+    return null;
+  }
+}
+
+function stripToolJsonFromReply(text) {
+  const raw = String(text || '');
+  if (!raw.trim()) return raw;
+  const match = raw.match(/\{[\s\S]*"toolCalls"[\s\S]*\}\s*$/);
+  if (!match) return raw.trim();
+  return raw.slice(0, match.index).trimEnd();
+}
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -101,13 +152,25 @@ app.use(generalLimiter);
 // ─────────────────────────────────────────────
 app.post('/api/notifications/send', async (req, res) => {
   try {
-    const { recipientId, senderName, messageText } = req.body;
+    const {
+      recipientId,
+      senderName,
+      messageText,
+      senderId: senderIdBody,
+      conversationId,
+      messageId,
+      notificationType: notificationTypeRaw,
+    } = req.body;
+
+    const notificationType =
+      String(notificationTypeRaw || 'message').trim() || 'message';
+    const isChatLike = notificationType === 'message';
 
     if (!recipientId || !senderName) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    console.log(`📲 Push notification request: ${senderName} → ${recipientId}`);
+    console.log(`📲 Push notification request: ${senderName} → ${recipientId} [${notificationType}]`);
     console.log(`   Message: ${messageText?.substring(0, 50)}...`);
 
     // Check if Firebase Admin is initialized
@@ -116,70 +179,115 @@ app.post('/api/notifications/send', async (req, res) => {
       return res.json({ success: false, message: 'Firebase Admin not configured' });
     }
 
-    // Fetch recipient's push token from Firestore
     const db = admin.firestore();
     const recipientDoc = await db.collection('users').doc(recipientId).get();
-    
+
     if (!recipientDoc.exists) {
       console.warn(`⚠️ Recipient ${recipientId} not found in Firestore`);
       return res.json({ success: false, message: 'Recipient not found' });
     }
 
     const recipientData = recipientDoc.data();
-    const pushToken = recipientData?.pushToken;
+    if (recipientData?.notificationsEnabled === false) {
+      return res.json({ success: false, message: 'Notifications disabled for user' });
+    }
 
-    if (!pushToken) {
-      console.warn(`⚠️ No push token found for ${recipientId}`);
+    const expoPushToken = recipientData?.expoPushToken || recipientData?.pushToken;
+
+    if (!expoPushToken) {
+      console.warn(`⚠️ No Expo push token found for ${recipientId}`);
       return res.json({ success: false, message: 'No push token' });
     }
 
-    // Validate push token format
-    if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) {
-      console.warn(`⚠️ Invalid push token format for ${recipientId}: ${pushToken.substring(0, 20)}...`);
+    if (!expoPushToken.startsWith('ExponentPushToken[') && !expoPushToken.startsWith('ExpoPushToken[')) {
+      console.warn(`⚠️ Invalid Expo push token format for ${recipientId}`);
       return res.json({ success: false, message: 'Invalid push token format' });
     }
 
-    // Check for recent notifications from same sender to handle back-to-back messages
-    const now = Date.now();
-    const recentNotifRef = db.collection('users').doc(recipientId).collection('recentNotifications').doc(senderName);
-    const recentNotifDoc = await recentNotifRef.get();
-    
-    let notificationTitle = `💬 ${senderName}`;
-    let notificationBody = messageText || 'You have a new message';
-    let notificationData = { senderId: recipientId, senderName, type: 'message' };
-    
-    if (recentNotifDoc.exists) {
-      const lastNotifTime = recentNotifDoc.data().timestamp?.toMillis?.() || recentNotifDoc.data().timestamp;
-      const timeDiff = now - lastNotifTime;
-      
-      // If last notification was within 10 seconds, treat as back-to-back messages
-      if (timeDiff < 10000) {
-        const messageCount = recentNotifDoc.data().count || 1;
-        notificationTitle = `💬 ${senderName}`;
-        notificationBody = `${messageCount + 1} new messages`;
-        notificationData = { ...notificationData, messageCount: messageCount + 1, isBackToBack: true };
-        console.log(`🔄 Back-to-back messages detected: ${messageCount + 1} messages`);
-      }
-    }
-    
-    // Update recent notification tracker
-    await recentNotifRef.set({
-      timestamp: new Date(now),
-      count: (recentNotifDoc.exists() ? recentNotifDoc.data().count || 1 : 1) + 1,
-      senderName
-    });
+    const nowMs = Date.now();
+    let notificationTitle = senderName;
+    let notificationBody = messageText || (isChatLike ? 'You have a new message' : '');
 
-    // Send notification via Expo Push API
+    let notificationData = {
+      type: notificationType,
+      recipientId,
+      senderId: senderIdBody != null ? String(senderIdBody) : '',
+      senderName,
+      conversationId: conversationId || '',
+      messageId: messageId || '',
+    };
+
+    if (isChatLike) {
+      const senderKeyRaw = senderIdBody || senderName || 'unknown';
+      const senderKey = String(senderKeyRaw).replace(/[/\\]/g, '_').slice(0, 200);
+      const recentNotifRef = db
+        .collection('users')
+        .doc(recipientId)
+        .collection('recentNotifications')
+        .doc(senderKey);
+      const recentSnap = await recentNotifRef.get();
+      const prev = recentSnap.exists ? recentSnap.data() : null;
+
+      const prevTs = prev?.timestamp?.toMillis
+        ? prev.timestamp.toMillis()
+        : typeof prev?.timestamp === 'number'
+          ? prev.timestamp
+          : 0;
+      const timeSincePrev = prevTs ? nowMs - prevTs : Infinity;
+
+      const BURST_MS = 10 * 1000;
+      const RESET_MS = 5 * 60 * 1000;
+
+      let burstCount = 1;
+      notificationBody = messageText || 'You have a new message';
+
+      if (prev && timeSincePrev < BURST_MS) {
+        burstCount = (Number(prev.count) || 1) + 1;
+        notificationBody = `${burstCount} new messages`;
+        console.log(`🔄 Burst messages from ${senderKey}: ${burstCount}`);
+      } else if (prev && timeSincePrev >= RESET_MS) {
+        burstCount = 1;
+      }
+
+      const titleTpl = pushPickRandom(PUSH_COPY.trainerMessageTitles || []);
+      if (titleTpl) {
+        notificationTitle = pushSub(titleTpl, { trainerName: senderName });
+      }
+
+      notificationData = {
+        type: 'message',
+        recipientId,
+        senderId: senderIdBody || null,
+        senderName,
+        conversationId: conversationId || '',
+        messageId: messageId || '',
+      };
+
+      await recentNotifRef.set({
+        timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
+        count: burstCount,
+        senderName,
+        senderId: senderIdBody || null,
+      });
+    }
+
+    const safePushTitle = pushStripNotificationEmoji(notificationTitle) || 'CoachConnect';
+    let safePushBody = pushStripNotificationEmoji(notificationBody || '');
+    if (!safePushBody) {
+      safePushBody = isChatLike ? 'You have a new message' : 'Open CoachConnect';
+    }
+
     const notificationPayload = {
-      to: pushToken,
-      title: notificationTitle,
-      body: notificationBody,
+      to: expoPushToken,
+      title: safePushTitle,
+      body: safePushBody,
       sound: 'default',
       priority: 'high',
       channelId: 'default',
-      data: notificationData,
-      // Add interruption level for critical notifications
-      interruptionLevel: 'timeSensitive'
+      data: Object.fromEntries(
+        Object.entries(notificationData).map(([k, v]) => [k, v == null ? '' : String(v)])
+      ),
+      interruptionLevel: 'active',
     };
 
     const response = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -192,8 +300,11 @@ app.post('/api/notifications/send', async (req, res) => {
     });
 
     const result = await response.json();
-    
-    if (result.data && result.data[0]?.status === 'ok') {
+    // Expo returns either { data: [{ status: 'ok', id }] } (batch) or { data: { status: 'ok', id } } (single).
+    const ticket = Array.isArray(result?.data) ? result.data[0] : result?.data;
+    const expoOk = ticket?.status === 'ok';
+
+    if (expoOk) {
       console.log(`✅ Push notification sent successfully to ${recipientId}`);
       res.json({ success: true, message: 'Notification sent' });
     } else {
@@ -210,9 +321,12 @@ app.post('/api/notifications/send', async (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
-    groq: !!process.env.GROQ_API_KEY,
-    deepgram: !!process.env.DEEPGRAM_API_KEY,
-    elevenlabs: !!process.env.ELEVENLABS_API_KEY,
+    deepseek: !!process.env.DEEPSEEK_API_KEY,
+    anthropic: !!(
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
+      process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+    ),
   });
 });
 
@@ -289,6 +403,66 @@ app.get('/api/me', verifyFirebaseBearerToken, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// Contact support → email inbox (coachconnect@cc.app by default)
+// Requires: RESEND_API_KEY or SMTP_* (see server/supportEmail.js)
+// ─────────────────────────────────────────────
+const { sendSupportInquiryEmail, buildBodies } = require('./supportEmail');
+
+const supportContactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many support messages. Please try again later.' },
+});
+
+app.post('/api/support/contact', supportContactLimiter, verifyFirebaseBearerToken, async (req, res) => {
+  try {
+    const uid = req.firebaseAuth?.uid;
+    const userEmail = req.firebaseAuth?.email || null;
+    const subject = String(req.body?.subject || '').trim();
+    const message = String(req.body?.message || '').trim();
+    if (!subject || subject.length > 200) {
+      return res.status(400).json({ error: 'Subject is required (max 200 characters).' });
+    }
+    if (!message || message.length > 8000) {
+      return res.status(400).json({ error: 'Message is required (max 8000 characters).' });
+    }
+
+    const { text, html } = buildBodies({ message, userUid: uid, userEmail });
+    const emailSubject = `[CoachConnect] ${subject}`;
+
+    await sendSupportInquiryEmail({
+      subject: emailSubject,
+      text,
+      html,
+      replyTo: userEmail,
+    });
+
+    if (admin.apps.length) {
+      try {
+        await admin.firestore().collection('supportTickets').add({
+          type: 'support',
+          subject,
+          message,
+          userId: uid,
+          email: userEmail,
+          createdAt: serverTs(),
+          delivery: 'email',
+        });
+      } catch (logErr) {
+        console.warn('supportTickets Firestore log failed (email was sent):', logErr?.message || logErr);
+      }
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/support/contact failed:', e?.message || e);
+    return res.status(500).json({ error: e?.message || 'Failed to send support message.' });
+  }
+});
+
+// ─────────────────────────────────────────────
 // Weekly Context (7-day aggregation for AI Coach)
 // ─────────────────────────────────────────────
 app.get('/api/weekly-context/:userId', async (req, res) => {
@@ -324,179 +498,745 @@ const verifyAppSecret = (req, res, next) => {
   return next();
 };
 
-app.use('/api/ask', aiLimiter);
-app.use('/api/transcribe', aiLimiter);
 app.use('/api/ai-coach', aiLimiter);
-// app.use('/api', verifyAppSecret); // Temporarily disabled - debugging APP_SECRET issue
+app.use('/api/ask', aiLimiter);
 app.use('/api/food/search', foodSearchLimiter);
 app.use('/api/food/barcode', foodSearchLimiter);
 
 // app.use('/api', verifyAppSecret); // Temporarily disabled for testing
 
-function resolveApiKey(req) {
-  // Prefer header to avoid requiring .env for development
-  return req.headers['x-openai-key'] || process.env.OPENAI_API_KEY;
+function resolveDeepSeekKey(req) {
+  return req?.headers?.['x-deepseek-key'] || process.env.DEEPSEEK_API_KEY;
 }
 
-function resolveDeepSeekKey(req) {
-  return req.headers['x-deepseek-key'] || process.env.DEEPSEEK_API_KEY;
+function resolveAnthropicKey(req) {
+  return (
+    req?.headers?.['x-anthropic-key'] ||
+    process.env.ANTHROPIC_API_KEY ||
+    // Fallbacks (not recommended for production): allow using the same .env key name
+    // you may already have for the Expo client.
+    process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
+    process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+  );
 }
 
 function resolvePerplexityKey(req) {
   return (
-    req.headers['x-perplexity-key'] ||
+    req?.headers?.['x-perplexity-key'] ||
     process.env.PERPLEXITY_API_KEY ||
     process.env.PPLX_API_KEY
   );
 }
 
-function buildToolsAppendix() {
-  return (
-    `\n\nTOOLS YOU CAN CALL:\n`
-    + `When you want to propose an action, append JSON at the END of your response.\n\n`
-    + `Format:\n`
-    + `{\n`
-    + `  "toolCalls": [\n`
-    + `    {\n`
-    + `      "name": "toolName",\n`
-    + `      "params": { "param1": "value1" },\n`
-    + `      "reasoning": "Why you're proposing this"\n`
-    + `    }\n`
-    + `  ]\n`
-    + `}\n\n`
-    + `Available tools:\n`
-    + `1. adjustMacroTargets(protein, carbs, fat, calories)\n`
-    + `2. generateDeloadWeek()\n`
-    + `3. logNutrition(foodName, quantity)\n`
-    + `4. bookSession(trainerId, dateTime)\n`
-    + `5. updateGoal(newGoal)\n\n`
-    + `User MUST confirm before execution.`
-  );
+// ─────────────────────────────────────────────
+// PROMPTS (must match user spec exactly)
+// ─────────────────────────────────────────────
+function buildCoachSystemPrompt(userProfile) {
+  let systemPrompt =
+`You are CoachConnect AI, a premium fitness and nutrition coach. You're not just smart—you're creative, empathetic, and genuinely invested in your clients' progress.
+
+CORE VALUES:
+- Be data-driven but conversational (not robotic)
+- Match the client's energy and communication style
+- Be encouraging without being fake
+- Explain the "why" behind your recommendations
+- Adapt your tone based on their mood and goals
+
+HARD RULES (DO NOT BREAK):
+- Discuss: fitness, exercise, workouts, training, form, mobility, recovery, sleep (only as it relates to training), nutrition, diet, calories/macros, supplements (fitness-related), habit coaching tied to fitness
+- ALSO ALLOWED: Greetings ("hi", "hello", "hey"), farewells ("bye", "see you", "catch you later"), and casual social chat that's brief and fitness-adjacent ("How's your week going?" → respond, then pivot to fitness)
+- If they ask to "search the web" / "google" for fitness/nutrition topics → treat as web search request (use Perplexity routing if hormone/medical)
+- If they ask about non-fitness topics (coding, math, politics, finance, medical diagnosis, legal, relationships, etc.) → respond with:
+  "I'm your fitness coach — I can only help with fitness and nutrition. What would you like to work on today?"
+- Keep answers concise, practical, and friendly (but not bland)
+
+CREATIVITY & PERSONALITY:
+- Use analogies and real-world examples (not generic fitness clichés)
+- Celebrate small wins, not just big achievements
+- Give context, not just orders ("Here's why this matters...")
+- Ask follow-up questions to understand their situation better
+- Suggest creative solutions when they hit plateaus (not just "eat more protein")
+
+YOUR SUPERPOWERS (USE THEM):
+1. Full Context Visibility: You have access to their nutrition, workouts, sleep, goals, and photos. Reference specific data.
+2. Data-Backed Answers: Never guess. If something doesn't add up, explain using their actual numbers.
+3. Tool Calling: You can propose actions (adjust macros, log meals, generate deload weeks, book sessions). Always explain WHY first.
+4. Web Research: For hormone, TRT, medical questions → I'll search the web for clinical evidence.
+5. Proactive Coaching: Don't wait for them to ask. Flag fatigue, celebrate streaks, notice patterns.
+6. Weekly Summaries: Every Sunday, I generate a personalized recap + next week's focus.
+7. Fatigue Detection: If I see high volume + low sleep, I proactively suggest recovery.
+
+WHEN SUGGESTING CHANGES (Tool Calling):
+- Explain the reasoning first
+- Propose the change in JSON format at the end of your response
+- Always say "This would require your confirmation"
+- Format: {"toolCalls": [{"name": "adjustMacroTargets", "params": {...}, "reasoning": "..."}]}
+- Example: "You're 22g under protein this week. I'm suggesting we swap 1 bowl of rice for 4oz salmon at dinner. That adds 25g protein and cuts 50g carbs. Confirm?"
+
+TONE GUIDELINES:
+- Monday morning: Energetic, motivating ("Let's crush this week")
+- Mid-week slump: Supportive, practical ("Here's how to stay on track")
+- Weekend: Relaxed, flexible ("Enjoy it, we'll adjust Monday")
+- After wins: Genuine celebration ("This is real progress")
+- After struggles: Constructive, not judgmental ("Here's what we learned")`;
+
+  if (userProfile && typeof userProfile === 'object') {
+    systemPrompt += `\n\nUSER PROFILE:\n${JSON.stringify(userProfile, null, 2)}`;
+  }
+  return systemPrompt;
 }
 
-function parseToolCalls(text) {
-  const raw = String(text || '');
-  if (!raw.trim()) return null;
+function buildWeeklyContextSystemPrompt(weeklyContext) {
+  const {
+    age, weight, height, goal, trainingLevel,
+    targetCal, targetP, targetC, targetF,
+    avgCal, avgP, avgC, avgF, consistency,
+    sessions, totalVol, avgRPE,
+    avgHours, sleepQuality, isDepleted,
+    streak, weightTrend, volumeTrend,
+  } = weeklyContext || {};
 
-  const lastBrace = raw.lastIndexOf('{');
-  if (lastBrace < 0) return null;
+  return `You are a PREMIUM fitness coach with full data visibility. Your job is to be smarter, more creative, and more insightful than a generic chatbot.
 
-  const tail = raw.slice(lastBrace).trim();
+CLIENT SNAPSHOT:
+${age}yo, ${weight}lbs, ${height}" tall | Goal: ${goal} | Level: ${trainingLevel}
+Macro Targets: ${targetCal} cal | ${targetP}g protein | ${targetC}g carbs | ${targetF}g fat
+
+═══════════════════════════════════════════
+THIS WEEK'S ACTUAL DATA (not assumptions):
+═══════════════════════════════════════════
+
+NUTRITION:
+- Avg daily: ${avgCal} cal (target: ${targetCal}, gap: ${avgCal - targetCal > 0 ? '+' : ''}${avgCal - targetCal} cal)
+- Protein: ${avgP}g/day (target: ${targetP}g, gap: ${avgP - targetP > 0 ? '+' : ''}${avgP - targetP}g)
+- Carbs: ${avgC}g/day (target: ${targetC}g)
+- Fat: ${avgF}g/day (target: ${targetF}g)
+- Consistency: ${consistency}% (days hitting macros)
+- Trend: ${avgCal > targetCal ? 'OVER' : avgCal < targetCal ? 'UNDER' : 'ON TARGET'}
+
+TRAINING:
+- Sessions logged: ${sessions}/4 this week
+- Total volume: ${totalVol} (${volumeTrend})
+- Avg RPE: ${avgRPE}/10 (${avgRPE >= 8 ? 'HIGH intensity' : avgRPE >= 6 ? 'MODERATE intensity' : 'LOW intensity'})
+- Strength trend: ${volumeTrend}
+
+RECOVERY:
+- Sleep: ${avgHours}h/night (target: 7.5h, deficit: ${7.5 - avgHours > 0 ? (7.5 - avgHours).toFixed(1) : 'none'}h)
+- Sleep quality: ${sleepQuality} ${isDepleted ? '⚠️ DEPLETED' : '✓ GOOD'}
+- Fatigue risk: ${isDepleted && avgRPE >= 8 ? 'HIGH (suggest deload)' : isDepleted ? 'MODERATE' : 'LOW'}
+
+MOTIVATION & STREAKS:
+- Current streak: ${streak} days consistent
+- Next milestone: ${30 - streak} days until 30-day (unlocks free month)
+- Weight trend: ${weightTrend}
+
+═══════════════════════════════════════════
+HOW TO USE THIS DATA:
+═══════════════════════════════════════════
+
+NEVER give generic advice. ALWAYS reference their numbers:
+❌ WRONG: "You need more protein"
+✅ RIGHT: "You're averaging ${avgP}g vs ${targetP}g target—that's ${targetP - avgP}g short. Here's why it matters for your goal: [explain using their specific situation]"
+
+SPOT PATTERNS:
+- If protein gap + low sleep → Explain recovery impact
+- If volume up 20% + sleep down → Suggest deload (proactive coaching)
+- If consistency = 86% → Celebrate! Note which meals/days miss target
+- If weight trending up on cut → Reference actual nutrition data, don't assume
+
+PROPOSE CHANGES WITH CONFIDENCE:
+- Always explain the reasoning with their specific numbers
+- Then propose the action (macro adjustment, deload week, meal swap)
+- End with: "Confirm? [Yes/No]"
+- Use tool calling JSON format
+
+CREATIVITY WITHIN DATA:
+- Use metaphors ("Your sleep is like bad wifi for recovery")
+- Suggest specific food swaps based on what they've logged before
+- Connect their goals to their current reality ("You're on track for your goal IF we nail sleep this week")
+- Be honest when things aren't working ("Your volume is up but sleep is down—your body can't adapt both at once")
+
+WEEKLY SUMMARY TONE:
+- Celebrate wins (even small ones)
+- Be specific about areas to improve
+- Propose 1-2 focus areas for next week (not 10 changes)
+- End with motivation: "You've got the data, now let's execute"
+
+REMEMBER: You're not a calculator. You're a coach. Use the numbers to tell a story about their week.`;
+}
+
+// ─────────────────────────────────────────────
+// Tool calling: parse + execute
+// ─────────────────────────────────────────────
+function parseToolCalls(aiResponse) {
+  const raw = String(aiResponse || '');
+  if (!raw.trim()) return [];
+  const match = raw.match(/\{[\s\S]*"toolCalls"[\s\S]*\}\s*$/);
+  if (!match) return [];
+  const obj = safeJsonParse(match[0]);
+  const calls = obj?.toolCalls;
+  if (!Array.isArray(calls)) return [];
+  return calls
+    .map((c) => ({
+      name: typeof c?.name === 'string' ? c.name : null,
+      params: c?.params && typeof c.params === 'object' ? c.params : {},
+      reasoning: typeof c?.reasoning === 'string' ? c.reasoning : '',
+    }))
+    .filter((c) => !!c.name);
+}
+
+async function executeTool(userId, toolCall) {
+  const db = admin.apps.length ? admin.firestore() : null;
+  if (!db) return { success: false, message: 'Firestore unavailable (Firebase Admin not initialized)' };
+  if (!userId || typeof userId !== 'string') return { success: false, message: 'Invalid userId' };
+  const name = toolCall?.name;
+  const params = toolCall?.params || {};
+
   try {
-    const obj = JSON.parse(tail);
-    const calls = obj?.toolCalls;
-    if (!Array.isArray(calls) || calls.length === 0) return null;
-    return calls
-      .map((c) => ({
-        name: typeof c?.name === 'string' ? c.name : null,
-        params: c?.params && typeof c.params === 'object' ? c.params : {},
-        reasoning: typeof c?.reasoning === 'string' ? c.reasoning : null,
-      }))
-      .filter((c) => !!c.name);
-  } catch (_) {
-    return null;
+    if (name === 'adjustMacroTargets') {
+      const { protein, carbs, fat, calories } = params || {};
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('macroTargets')
+        .doc('current')
+        .set(
+          {
+            protein: protein ?? null,
+            carbs: carbs ?? null,
+            fat: fat ?? null,
+            calories: calories ?? null,
+            updatedAt: serverTs(),
+            updatedBy: 'aiCoach',
+          },
+          { merge: true }
+        );
+      return { success: true, message: 'Macros updated' };
+    }
+
+    if (name === 'generateDeloadWeek') {
+      const currentPlanId = params?.currentPlanId || 'current';
+      const planSnap = await db
+        .collection('users')
+        .doc(userId)
+        .collection('workoutPlans')
+        .doc(String(currentPlanId))
+        .get();
+      if (!planSnap.exists) {
+        return { success: false, message: 'Current workout plan not found' };
+      }
+      const plan = planSnap.data() || {};
+
+      const scale = (n, factor) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n * factor * 100) / 100 : n);
+      const cloneWithDeload = (obj) => {
+        if (Array.isArray(obj)) return obj.map(cloneWithDeload);
+        if (!obj || typeof obj !== 'object') return obj;
+        const out = {};
+        for (const [k, v] of Object.entries(obj)) {
+          // Heuristic: scale common volume fields
+          if (['sets', 'reps', 'totalVolume', 'volume', 'workVolume'].includes(k)) out[k] = scale(v, 0.6);
+          else if (k === 'weight' || k === 'load') out[k] = scale(v, 0.6);
+          else out[k] = cloneWithDeload(v);
+        }
+        return out;
+      };
+
+      const newId = params?.newPlanId || randomUUID();
+      const deloadPlan = {
+        ...cloneWithDeload(plan),
+        isDeload: true,
+        createdAt: serverTs(),
+        createdBy: 'aiCoach',
+        sourcePlanId: String(currentPlanId),
+      };
+
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('workoutPlans')
+        .doc(String(newId))
+        .set(deloadPlan, { merge: true });
+
+      return { success: true, message: 'Deload week generated', data: { newPlanId: newId } };
+    }
+
+    if (name === 'logNutrition') {
+      const foodName = String(params?.foodName || '').trim();
+      const quantity = params?.quantity ?? 1;
+      if (!foodName) return { success: false, message: 'Missing foodName' };
+
+      // Minimal implementation: use USDA search (first result), treat as 1 serving.
+      const apiKey = process.env.USDA_API_KEY;
+      if (!apiKey) return { success: false, message: 'USDA_API_KEY not configured' };
+      const r = await fetchWithTimeout(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(foodName)}&pageSize=1&api_key=${apiKey}`,
+        {},
+        8000
+      );
+      if (!r.ok) return { success: false, message: `USDA lookup failed (HTTP ${r.status})` };
+      const data = await r.json();
+      const item = (data.foods || [])[0];
+      if (!item) return { success: false, message: 'No USDA results found' };
+      const nutrients = item.foodNutrients || [];
+      const get = (id) => nutrients.find((n) => n.nutrientId === id)?.value || 0;
+      const cals = Number(get(1008)) || 0;
+      const p = Number(get(1003)) || 0;
+      const c = Number(get(1005)) || 0;
+      const f = Number(get(1004)) || 0;
+      const mult = typeof quantity === 'number' && Number.isFinite(quantity) ? quantity : 1;
+
+      const todayKey = isoDateKey();
+      const logRef = db.collection('users').doc(userId).collection('nutritionLogs').doc(todayKey);
+      const mealId = randomUUID();
+
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(logRef);
+        const existing = snap.exists ? snap.data() || {} : {};
+        const meals = Array.isArray(existing.meals) ? existing.meals.slice() : [];
+        meals.push({
+          id: mealId,
+          foodName: item.description || foodName,
+          quantity: mult,
+          calories: cals * mult,
+          protein: p * mult,
+          carbs: c * mult,
+          fat: f * mult,
+          source: 'usda',
+          createdAt: new Date().toISOString(),
+        });
+
+        const prevTotals = existing.dayTotals || {};
+        const toNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
+        const nextTotals = {
+          calories: toNum(prevTotals.calories) + cals * mult,
+          protein: toNum(prevTotals.protein) + p * mult,
+          carbs: toNum(prevTotals.carbs) + c * mult,
+          fat: toNum(prevTotals.fat) + f * mult,
+        };
+
+        tx.set(
+          logRef,
+          {
+            meals,
+            dayTotals: nextTotals,
+            updatedAt: serverTs(),
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+
+      return { success: true, message: 'Logged!' };
+    }
+
+    if (name === 'bookSession') {
+      const trainerId = String(params?.trainerId || '').trim();
+      const dateTime = params?.dateTime;
+      if (!trainerId) return { success: false, message: 'Missing trainerId' };
+      if (!dateTime) return { success: false, message: 'Missing dateTime' };
+      const newId = randomUUID();
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('sessions')
+        .doc(newId)
+        .set(
+          {
+            trainerId,
+            dateTime,
+            status: 'pending',
+            createdAt: serverTs(),
+            createdBy: 'aiCoach',
+          },
+          { merge: true }
+        );
+      return { success: true, message: 'Session booked', data: { sessionId: newId } };
+    }
+
+    if (name === 'updateGoal') {
+      const newGoal = String(params?.newGoal || '').trim();
+      if (!newGoal) return { success: false, message: 'Missing newGoal' };
+      await db.collection('users').doc(userId).set({ goal: newGoal, updatedAt: serverTs() }, { merge: true });
+      return { success: true, message: `Goal changed to ${newGoal}` };
+    }
+
+    return { success: false, message: `Unknown tool: ${name}` };
+  } catch (e) {
+    console.error(`[executeTool] ${name} failed:`, e?.message || e);
+    return { success: false, message: 'Tool execution failed', data: { error: e?.message || String(e) } };
   }
 }
 
-function shouldUsePerplexity(text) {
-  const t = String(text || '').toLowerCase();
+// ─────────────────────────────────────────────
+// Perplexity routing (hormone / medical web questions)
+// ─────────────────────────────────────────────
+function shouldUsePerplexity(userMessage) {
+  const t = String(userMessage || '').toLowerCase();
   if (!t.trim()) return false;
-
   const keywords = [
-    'trt',
-    'testosterone',
-    'steroid',
-    'steroids',
-    'cycle',
-    'compound',
-    'gear',
-    'hormone',
-    'hormones',
-    'anavar',
-    'tren',
-    'trenbolone',
-    'clen',
-    'clenbuterol',
-    'dnp',
-    'hgh',
-    'growth hormone',
-    'estrogen',
-    'e2',
-    'prolactin',
-    'pct',
-    'clomid',
-    'nolvadex',
-    'enclomiphene',
+    'hormone', 'trt', 'testosterone', 'inject', 'steroid', 'cycle', 'compound', 'gear', 'pct', 'hcg',
+    'anavar', 'test', 'tren', 'nandrolone', 'pharmacology', 'doping', 'sarm', 'sarms',
+    'gh', 'growth hormone', 'insulin',
   ];
-
   return keywords.some((k) => t.includes(k));
 }
 
-const buildCoachSystemPrompt = (userProfile) => {
-  let systemPrompt =
-    "You are CoachConnect AI, an expert fitness and nutrition coach.\n\n"
-    + "Hard rules:\n"
-    + "- Only discuss fitness, exercise, workouts, training, form, mobility, recovery, sleep (only as it relates to training), nutrition, diet, calories/macros, supplements (fitness-related), and habit coaching tied to fitness.\n"
-    + "- If the user asks you to \"search the web\" / \"google\" / \"look it up\", treat that as a request to use web context ONLY if the underlying topic is fitness/nutrition. Do not refuse just because the user mentioned the web.\n"
-    + "- If the user asks about anything outside those topics (e.g. coding, math homework, general news, relationships, politics, finance, medical diagnosis, legal advice, etc.), do NOT answer it. Respond with exactly:\n"
-    + "\"I'm your fitness coach — I can only help with fitness and nutrition. What would you like to work on today?\"\n"
-    + "- Keep answers concise, practical, and friendly.";
+async function callPerplexity({ apiKey, systemPrompt, messages }) {
+  const url = 'https://api.perplexity.ai/chat/completions';
+  const payload = {
+    model: 'pplx-70b-online',
+    messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
+    temperature: 0.7,
+    max_tokens: 700,
+  };
 
-  if (userProfile && typeof userProfile === 'object') {
-    systemPrompt += `\n\nUser profile/context:\n${JSON.stringify(userProfile, null, 2)}`;
+  const resp = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 20000,
+    validateStatus: () => true,
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const msg =
+      resp?.data?.error?.message ||
+      resp?.data?.message ||
+      (typeof resp?.data === 'string' ? resp.data.slice(0, 300) : null);
+    throw new Error(`Perplexity HTTP ${resp.status}${msg ? `: ${msg}` : ''}`);
+  }
+  const text = resp?.data?.choices?.[0]?.message?.content;
+  if (!text || String(text).trim().length === 0) throw new Error('Perplexity returned empty response');
+  return { text: String(text) };
+}
+
+// ─────────────────────────────────────────────
+// Providers: DeepSeek + Claude
+// ─────────────────────────────────────────────
+async function callDeepSeek({ apiKey, systemPrompt, messages }) {
+  const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
+  const payload = {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
+    temperature: 0.7,
+    max_tokens: 700,
+  };
+  const resp = await axios.post(url, payload, {
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    timeout: 20000,
+    validateStatus: () => true,
+  });
+  if (resp.status < 200 || resp.status >= 300) {
+    const msg =
+      resp?.data?.error?.message ||
+      resp?.data?.message ||
+      (typeof resp?.data === 'string' ? resp.data.slice(0, 300) : null);
+    throw new Error(`DeepSeek HTTP ${resp.status}${msg ? `: ${msg}` : ''}`);
+  }
+  const text = resp?.data?.choices?.[0]?.message?.content;
+  if (!text || String(text).trim().length === 0) throw new Error('DeepSeek returned empty response');
+  return { text: String(text), raw: resp.data || null };
+}
+
+async function callClaude({ systemPrompt, messages }) {
+  const apiKey =
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
+    process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ||
+    '';
+  if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY');
+
+  const url = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
+  const anthropicMessages = (Array.isArray(messages) ? messages : [])
+    .filter((m) => m?.role === 'user' || m?.role === 'assistant')
+    .map((m) => ({ role: m.role, content: [{ type: 'text', text: String(m?.content || '') }] }))
+    .filter((m) => m.content?.[0]?.text?.trim?.().length > 0);
+
+  const payload = {
+    model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620',
+    max_tokens: 700,
+    temperature: 0.7,
+    system: String(systemPrompt || ''),
+    messages: anthropicMessages,
+  };
+
+  const resp = await axios.post(url, payload, {
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': process.env.ANTHROPIC_VERSION || '2023-06-01',
+      'content-type': 'application/json',
+    },
+    timeout: 25000,
+    validateStatus: () => true,
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const detail =
+      resp?.data?.error?.message ||
+      (typeof resp?.data === 'string' ? resp.data.slice(0, 300) : null);
+    throw new Error(`Claude HTTP ${resp.status}${detail ? `: ${detail}` : ''}`);
   }
 
-  return systemPrompt;
-};
+  const text = resp?.data?.content?.find?.((c) => c?.type === 'text')?.text || '';
+  if (!text || String(text).trim().length === 0) throw new Error('Claude returned empty response');
+  return { text: String(text), raw: resp.data || null };
+}
+
+// ─────────────────────────────────────────────
+// Analytics + abuse protection
+// ─────────────────────────────────────────────
+async function logAPIUsage(apiName, userId, inputTokens, outputTokens, status) {
+  try {
+    if (!admin.apps.length) return;
+    const db = admin.firestore();
+    const date = isoDateKey();
+    const cost = estimateCost(apiName === 'claude' ? 'anthropic' : apiName, inputTokens, outputTokens);
+    const ref = db.collection('analytics').doc('api-usage').collection(date).doc(String(apiName));
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const cur = snap.exists ? snap.data() || {} : {};
+      tx.set(
+        ref,
+        {
+          apiName,
+          date,
+          calls: (cur.calls || 0) + 1,
+          inputTokens: (cur.inputTokens || 0) + (Number(inputTokens) || 0),
+          outputTokens: (cur.outputTokens || 0) + (Number(outputTokens) || 0),
+          cost: (cur.cost || 0) + (Number(cost) || 0),
+          lastUserId: userId || null,
+          lastStatus: status || 'unknown',
+          updatedAt: serverTs(),
+        },
+        { merge: true }
+      );
+    });
+  } catch (e) {
+    console.warn('logAPIUsage failed:', e?.message || e);
+  }
+}
+
+async function enforceDailyMessageLimit(userId, limit = 10) {
+  if (!admin.apps.length) return { allowed: true, remaining: null };
+  const db = admin.firestore();
+  const date = isoDateKey();
+  const ref = db.collection('users').doc(userId).collection('usage').doc(`aiCoach_${date}`);
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() || {} : {};
+    const count = Number(cur.count || 0);
+    if (count >= limit) return { allowed: false, remaining: 0 };
+    tx.set(ref, { count: count + 1, date, updatedAt: serverTs() }, { merge: true });
+    return { allowed: true, remaining: Math.max(0, limit - (count + 1)) };
+  });
+  return result;
+}
+
+// ─────────────────────────────────────────────
+// Fatigue detection + alerts (used by Cloud Functions and chat)
+// ─────────────────────────────────────────────
+async function getLastWorkoutDate(userId) {
+  if (!admin.apps.length) return null;
+  const db = admin.firestore();
+  const snap = await db
+    .collection('users')
+    .doc(userId)
+    .collection('workoutLogs')
+    .orderBy('timestamp', 'desc')
+    .limit(1)
+    .get()
+    .catch(() => null);
+  const doc = snap && !snap.empty ? snap.docs[0] : null;
+  if (!doc) return null;
+  const data = doc.data() || {};
+  const ts = data.timestamp;
+  if (ts && typeof ts.toDate === 'function') return ts.toDate();
+  const idMs = Date.parse(doc.id);
+  if (!Number.isNaN(idMs)) return new Date(idMs);
+  return null;
+}
+
+async function calculateNormalVolume(userId) {
+  if (!admin.apps.length) return 10000;
+  const db = admin.firestore();
+  const now = admin.firestore.Timestamp.now();
+  const startTs = admin.firestore.Timestamp.fromMillis(now.toMillis() - 30 * 24 * 60 * 60 * 1000);
+
+  let docs = [];
+  try {
+    const snap = await db
+      .collection('users')
+      .doc(userId)
+      .collection('workoutLogs')
+      .where('timestamp', '>=', startTs)
+      .orderBy('timestamp', 'desc')
+      .get();
+    docs = snap.docs || [];
+  } catch (_) {
+    const snap = await db.collection('users').doc(userId).collection('workoutLogs').get().catch(() => null);
+    docs = snap?.docs || [];
+  }
+
+  const vols = docs
+    .map((d) => Number(d.data()?.totalVolume))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!vols.length) return 10000;
+  const sum = vols.reduce((a, b) => a + b, 0);
+  return sum / vols.length;
+}
+
+async function countConsecutiveDaysUnder(userId, macro, threshold, days) {
+  if (!admin.apps.length) return 0;
+  const db = admin.firestore();
+  const now = new Date();
+  let count = 0;
+  for (let i = 0; i < days; i += 1) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = isoDateKey(d);
+    const snap = await db.collection('users').doc(userId).collection('nutritionLogs').doc(key).get().catch(() => null);
+    if (!snap || !snap.exists) break;
+    const totals = snap.data()?.dayTotals || {};
+    const value = Number(totals?.[macro]);
+    if (!Number.isFinite(value)) break;
+    if (value < threshold) count += 1;
+    else break;
+  }
+  return count;
+}
+
+async function detectFatigue(userId) {
+  try {
+    const weekly = await getWeeklyContext(userId);
+    const weekTotal = Number(weekly?.workoutAnalysis?.totalVolume) || 0;
+    const avgHours = Number(weekly?.sleepAnalysis?.avgHours);
+    const avgRPE = Number(weekly?.workoutAnalysis?.avgRPE);
+    const normal = await calculateNormalVolume(userId);
+
+    const over = weekTotal > normal * 1.2;
+    const lowSleep = Number.isFinite(avgHours) ? avgHours < 6.5 : false;
+    const highRpe = Number.isFinite(avgRPE) ? avgRPE >= 8 : false;
+
+    const detected = over && lowSleep && highRpe;
+    const reason = detected
+      ? `High volume (${Math.round(weekTotal)}) is >20% above your normal (~${Math.round(normal)}), sleep is low (${avgHours}h), and intensity is high (RPE ${avgRPE}/10).`
+      : 'No high-fatigue pattern detected from the last 7 days.';
+    const recommendation = detected ? 'generateDeloadWeek' : (lowSleep ? 'rest' : 'none');
+
+    return { detected, reason, recommendation };
+  } catch (e) {
+    return { detected: false, reason: 'Fatigue check failed', recommendation: 'none' };
+  }
+}
 
 /**
- * Build an enhanced AI Coach prompt using real 7-day aggregated data.
- *
- * @param {Object|null} weekly
- * @returns {string}
+ * One-off Expo push (same ticket shape handling as POST /api/notifications/send).
+ * @returns {Promise<boolean>} true if Expo accepted the ticket
  */
-function buildWeeklyContextSystemPrompt(weekly) {
-  const user = weekly?.user || {};
-  const targets = weekly?.macroTargets || {};
-  const nut = weekly?.nutritionAnalysis || {};
-  const wo = weekly?.workoutAnalysis || {};
-  const sl = weekly?.sleepAnalysis || {};
+async function sendExpoPushSingle(token, { title, body, data = {} }) {
+  if (!token || typeof token !== 'string') return false;
+  if (!token.startsWith('ExponentPushToken[') && !token.startsWith('ExpoPushToken[')) return false;
+  const strData = {};
+  for (const [k, v] of Object.entries(data)) {
+    strData[k] = v == null ? '' : String(v);
+  }
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: token,
+        title: pushStripNotificationEmoji(title || 'CoachConnect') || 'CoachConnect',
+        body: (() => {
+          let b = pushStripNotificationEmoji(String(body || ''));
+          if (!b.trim()) b = 'Open CoachConnect';
+          return b.slice(0, 400);
+        })(),
+        sound: 'default',
+        priority: 'high',
+        channelId: 'default',
+        data: strData,
+        interruptionLevel: 'active',
+      }),
+    });
+    const result = await response.json();
+    const ticket = Array.isArray(result?.data) ? result.data[0] : result?.data;
+    return ticket?.status === 'ok';
+  } catch (e) {
+    console.warn('sendExpoPushSingle failed:', e?.message || e);
+    return false;
+  }
+}
 
-  const age = user?.age ?? '?';
-  const weight = user?.weight ?? '?';
-  const goal = user?.goal ?? 'unknown';
-  const targetCal = targets?.calories ?? '?';
-  const targetP = targets?.protein ?? '?';
-  const targetC = targets?.carbs ?? '?';
-  const targetF = targets?.fat ?? '?';
+async function createAlert(userId, alert) {
+  if (!admin.apps.length) return { success: false, message: 'Firebase Admin not initialized' };
+  const db = admin.firestore();
+  const alertId = randomUUID();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  const avgCal = nut?.avgDailyCalories != null ? Math.round(nut.avgDailyCalories) : '?';
-  const avgP = nut?.avgProtein != null ? Math.round(nut.avgProtein) : '?';
-  const avgC = nut?.avgCarbs != null ? Math.round(nut.avgCarbs) : '?';
-  const avgF = nut?.avgFat != null ? Math.round(nut.avgFat) : '?';
-  const consistency = nut?.consistencyScore != null ? nut.consistencyScore : '?';
+  const payload = {
+    type: alert?.type || 'generic',
+    title: alert?.title || 'CoachConnect Alert',
+    body: alert?.body || '',
+    priority: alert?.priority || 'low',
+    createdAt: serverTs(),
+    read: false,
+    expiresAt,
+  };
 
-  const sessions = wo?.sessionsLogged != null ? wo.sessionsLogged : 0;
-  const totalVol = wo?.totalVolume != null ? Math.round(wo.totalVolume) : '?';
+  await db.collection('users').doc(userId).collection('alerts').doc(alertId).set(payload, { merge: true });
 
-  const avgHours = sl?.avgHours != null ? Math.round(sl.avgHours * 10) / 10 : '?';
-  const depleted = sl?.isDepleted === true;
+  // Remote push: Expo first (matches ClientApp tokens); FCM fallback for legacy installs.
+  try {
+    const userSnap = await db.collection('users').doc(userId).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    if (userData?.notificationsEnabled !== false) {
+      const expoToken = userData?.expoPushToken || userData?.pushToken;
+      const alertData = {
+        type: String(payload.type || 'generic'),
+        priority: String(payload.priority || 'low'),
+        alertId: String(alertId),
+      };
+      const expoOk = await sendExpoPushSingle(expoToken, {
+        title: payload.title,
+        body: payload.body,
+        data: alertData,
+      });
+      if (!expoOk) {
+        const fcmToken = userData?.fcmToken || null;
+        if (fcmToken && admin.messaging) {
+          await admin.messaging().send({
+            token: fcmToken,
+            notification: { title: payload.title, body: payload.body },
+            data: { type: payload.type, priority: payload.priority, alertId },
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('createAlert push failed:', e?.message || e);
+  }
 
-  return `You are a premium fitness coach with full data visibility.
+  // Add a chat message in conversationHistory for visibility
+  try {
+    await db
+      .collection('users')
+      .doc(userId)
+      .collection('conversationHistory')
+      .add({
+        role: 'assistant',
+        content: `${payload.title}\n${payload.body}`.trim(),
+        type: 'alert',
+        alertType: payload.type,
+        priority: payload.priority,
+        createdAt: serverTs(),
+      });
+  } catch (e) {
+    console.warn('createAlert conversationHistory write failed:', e?.message || e);
+  }
 
-User: ${age}yo, ${weight}lbs, goal: ${goal}
-Targets: ${targetCal} cal, ${targetP}g protein, ${targetC}g carbs, ${targetF}g fat
-
-THIS WEEK'S DATA:
-- Nutrition: ${avgCal} cal/day avg (target: ${targetCal}), ${consistency}% consistency
-- Protein: ${avgP}g/day (target: ${targetP}g)
-- Carbs/Fat: ${avgC}g carbs, ${avgF}g fat (targets: ${targetC}g / ${targetF}g)
-- Workouts: ${sessions}/4 logged, ${totalVol} total volume
-- Sleep: ${avgHours}h avg (${depleted ? 'DEPLETED' : 'GOOD'})
-
-IMPORTANT: When answering questions, REFERENCE THEIR ACTUAL DATA.
-Don't give generic advice. If they ask "why am I stuck", explain using their real numbers.
-Example: "You're 80 cal over target AND sleep dropped to 6h—that's killing fat loss."`;
+  return { success: true, message: 'Alert created', data: { alertId } };
 }
 
 function isFitnessNutritionQuery(text) {
@@ -584,19 +1324,6 @@ async function getSerperWebContext(userText) {
   return items.join('\n');
 }
 
-async function callOpenAICoach({ apiKey, systemPrompt, messages }) {
-  const openai = new OpenAI({ apiKey });
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'system', content: systemPrompt }, ...messages],
-    temperature: 0.7,
-    max_tokens: 700,
-  });
-  const text = completion?.choices?.[0]?.message?.content?.trim() || '';
-  if (!text) throw new Error('OpenAI returned empty response');
-  return text;
-}
-
 async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
   const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
   const payload = {
@@ -632,6 +1359,152 @@ async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
   return String(reply);
 }
 
+async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 600 }) {
+  const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
+  const payload = {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
+    temperature: 0.7,
+    max_tokens: maxTokens,
+  };
+
+  const resp = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 15000,
+    validateStatus: () => true,
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const msg =
+      resp?.data?.error?.message ||
+      resp?.data?.message ||
+      (typeof resp?.data === 'string' ? resp.data.slice(0, 200) : null);
+    throw new Error(`DeepSeek HTTP ${resp.status}${msg ? `: ${msg}` : ''}`);
+  }
+
+  const text = resp?.data?.choices?.[0]?.message?.content;
+  if (!text || String(text).trim().length === 0) {
+    throw new Error('DeepSeek returned empty response');
+  }
+  return String(text);
+}
+
+// Simple DeepSeek Q&A endpoint (used by workout generator + general chat)
+app.post('/api/ask', async (req, res) => {
+  const started = Date.now();
+  try {
+    const { messages, userContext } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'Messages array is required' });
+    }
+
+    const deepSeekKey = resolveDeepSeekKey(req);
+    if (!deepSeekKey) {
+      return res.status(500).json({ error: 'AI provider unavailable (missing DeepSeek API key)' });
+    }
+
+    let systemPrompt =
+      `You are an expert AI fitness and nutrition coach. ` +
+      `You only discuss fitness, exercise, workouts, nutrition, diet, and recovery. ` +
+      `If asked about anything else respond: ` +
+      `'I\\'m your fitness coach — I can only help with fitness and nutrition. What would you like to work on today?' ` +
+      `Keep responses concise and conversational.`;
+
+    if (userContext && typeof userContext === 'object') {
+      systemPrompt += `\n\nHere is the user's data: ${JSON.stringify(userContext, null, 2)}`;
+    }
+
+    const response = await callDeepSeekChat({
+      apiKey: deepSeekKey,
+      systemPrompt,
+      messages,
+      maxTokens: 600,
+    });
+
+    return res.json({
+      response,
+      source: 'deepseek',
+      ms: Date.now() - started,
+    });
+  } catch (e) {
+    const msg = e?.message || String(e);
+    console.error('❌ Error in /api/ask:', msg);
+    return res.status(500).json({ error: 'Failed to process request', details: msg });
+  }
+});
+
+async function callClaudeCoach({ apiKey, systemPrompt, messages }) {
+  const url = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
+
+  // Try models in order — same list that already works in workout.js.
+  // Env override takes priority; otherwise walk the fallback list.
+  const envModel = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL;
+  const modelList = envModel
+    ? [envModel]
+    : [
+        // Claude 4 series (same ones that work in workout.js)
+        'claude-haiku-4-5-20251001',
+        'claude-haiku-4-5',
+        'claude-sonnet-4-20250514',
+        'claude-sonnet-4-6',
+      ];
+
+  const normalizedMessages = Array.isArray(messages) ? messages : [];
+  const anthropicMessages = normalizedMessages
+    .filter((m) => m?.role === 'user' || m?.role === 'assistant')
+    .map((m) => ({
+      role: m.role,
+      content: [{ type: 'text', text: String(m?.content || '') }],
+    }))
+    .filter((m) => m.content?.[0]?.text?.trim?.().length > 0);
+
+  let lastErr = null;
+  for (const model of modelList) {
+    const payload = {
+      model,
+      max_tokens: 800,
+      temperature: 0.7,
+      system: String(systemPrompt || ''),
+      messages: anthropicMessages,
+    };
+
+    const resp = await axios.post(url, payload, {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': process.env.ANTHROPIC_VERSION || '2023-06-01',
+        'content-type': 'application/json',
+      },
+      timeout: 20000,
+      validateStatus: () => true,
+    });
+
+    if (resp.status < 200 || resp.status >= 300) {
+      const detail =
+        resp?.data?.error?.message ||
+        (typeof resp?.data === 'string' ? resp.data.slice(0, 200) : null);
+      const msg = `Claude HTTP ${resp.status} (model: ${model})${detail ? `: ${detail}` : ''}`;
+      console.warn('callClaudeCoach error:', msg);
+      lastErr = new Error(msg);
+      // 401 = bad key — no point retrying other models
+      if (resp.status === 401) throw lastErr;
+      continue;
+    }
+
+    const text = resp?.data?.content?.find?.((c) => c?.type === 'text')?.text || '';
+    if (!text || String(text).trim().length === 0) {
+      lastErr = new Error(`Claude returned empty response (model: ${model})`);
+      continue;
+    }
+    console.log(`✅ Claude responded using model: ${model}`);
+    return String(text);
+  }
+
+  throw lastErr || new Error('Claude: all models failed');
+}
+
 async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
   const url = 'https://api.perplexity.ai/chat/completions';
   const payload = {
@@ -660,9 +1533,10 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
 }
 
 // AI Chat Coach endpoint:
-// - Hormone/TRT/etc → Perplexity (routed)
-// - Otherwise DeepSeek primary → Perplexity fallback
+// - DeepSeek primary
+// - Perplexity fallback (optional)
 app.post('/api/ai-coach', async (req, res) => {
+  const started = Date.now();
   const { messages, userProfile, options, userId } = req.body || {};
 
   const normalized = normalizeCoachMessages(messages);
@@ -673,147 +1547,737 @@ app.post('/api/ai-coach', async (req, res) => {
   const webMode = options?.web || 'auto'; // 'auto' | 'on' | 'off'
   const lastUserMsg = [...normalized].reverse().find((m) => m.role === 'user')?.content || '';
 
-  // NOTE: Hormone/TRT/etc questions are intentionally routed to Perplexity
-  // (even though they're outside fitness/nutrition guardrails).
-  const routedToPerplexity = shouldUsePerplexity(lastUserMsg);
-
-  // Guardrail: refuse off-topic prompts without calling providers or web search.
-  if (!routedToPerplexity && !isFitnessNutritionQuery(lastUserMsg)) {
+  // Guardrail: refuse off-topic prompts without calling providers.
+  if (!isFitnessNutritionQuery(lastUserMsg)) {
     return res.json({
       reply: "I'm your fitness coach — I can only help with fitness and nutrition. What would you like to work on today?",
       source: 'guardrail',
-      usedWeb: false,
-      webProvider: null,
-      webMode: 'off',
+      searchedWeb: false,
+      usedWeeklyContext: false,
+      toolCalls: [],
+      ms: Date.now() - started,
     });
   }
 
-  const wantWeb =
-    webMode === 'on' ||
-    (webMode === 'auto' && shouldUseWebAuto(lastUserMsg));
-
   // Prefer real weekly context over client-supplied profile (but keep profile as fallback).
   let usedWeeklyContext = false;
+  let weekly = null;
+  let weeklyPrompt = null;
+  if (userId && typeof userId === 'string' && userId.trim().length > 0 && admin.apps.length) {
+    const limitRes = await enforceDailyMessageLimit(userId.trim(), 10);
+    if (!limitRes.allowed) {
+      return res.status(429).json({
+        error: 'Daily AI Coach limit reached (10/day). Try again tomorrow.',
+        remaining: 0,
+      });
+    }
+  }
+
+  // 1) Fetch weekly context and build system prompt
   let systemPrompt = buildCoachSystemPrompt(userProfile);
   if (userId && typeof userId === 'string' && userId.trim().length > 0) {
     try {
-      const weekly = await getWeeklyContext(userId.trim());
-      systemPrompt = buildWeeklyContextSystemPrompt(weekly);
+      weekly = await getWeeklyContext(userId.trim());
+      const wc = weekly || {};
+      const fatigue = await detectFatigue(userId.trim());
+
+      const weeklyContext = {
+        age: wc?.user?.age ?? '?',
+        weight: wc?.user?.weight ?? '?',
+        height: wc?.user?.height ?? '?',
+        goal: wc?.user?.goal ?? 'unknown',
+        trainingLevel: wc?.user?.trainingLevel ?? 'unknown',
+
+        targetCal: wc?.macroTargets?.calories ?? 0,
+        targetP: wc?.macroTargets?.protein ?? 0,
+        targetC: wc?.macroTargets?.carbs ?? 0,
+        targetF: wc?.macroTargets?.fat ?? 0,
+
+        avgCal: Math.round(Number(wc?.nutritionAnalysis?.avgDailyCalories) || 0),
+        avgP: Math.round(Number(wc?.nutritionAnalysis?.avgProtein) || 0),
+        avgC: Math.round(Number(wc?.nutritionAnalysis?.avgCarbs) || 0),
+        avgF: Math.round(Number(wc?.nutritionAnalysis?.avgFat) || 0),
+        consistency: Number(wc?.nutritionAnalysis?.consistencyScore) || 0,
+
+        sessions: Number(wc?.workoutAnalysis?.sessionsLogged) || 0,
+        totalVol: Math.round(Number(wc?.workoutAnalysis?.totalVolume) || 0),
+        avgRPE: Number(wc?.workoutAnalysis?.avgRPE) || 0,
+
+        avgHours: Math.round((Number(wc?.sleepAnalysis?.avgHours) || 0) * 10) / 10,
+        sleepQuality: wc?.sleepAnalysis?.quality || 'unknown',
+        isDepleted: wc?.sleepAnalysis?.isDepleted === true,
+
+        // These are optional in your current getWeeklyContext implementation; keep safe defaults.
+        streak: Number(wc?.streakData?.currentStreak) || 0,
+        weightTrend: wc?.weightTrend || wc?.streakData?.weightTrend || 'unknown',
+        volumeTrend: wc?.workoutAnalysis?.volumeTrend || 'stable',
+      };
+
+      weeklyPrompt = buildWeeklyContextSystemPrompt(weeklyContext);
+      systemPrompt = weeklyPrompt;
       usedWeeklyContext = true;
+
+      if (fatigue?.detected) {
+        systemPrompt += `\n\nFATIGUE DETECTION:\nDetected: true\nReason: ${fatigue.reason}\nRecommendation: ${fatigue.recommendation}`;
+      }
     } catch (e) {
-      // Non-blocking: if weekly context fails, keep the older prompt.
       console.warn('Weekly context fetch failed; continuing without it:', e?.message || e);
     }
   }
-  let usedWeb = false;
-  let webProvider = null;
 
-  if (wantWeb && process.env.SERPER_API_KEY) {
-    try {
-      const webContext = await getSerperWebContext(lastUserMsg);
-      if (webContext) {
-        usedWeb = true;
-        webProvider = 'serper';
-        systemPrompt += `\n\nWeb search results (use when relevant; if you use a factual claim from web results, mention the source title/domain briefly):\n${webContext}`;
-      }
-    } catch (e) {
-      console.warn('Serper web context failed:', e?.message || e);
-    }
-  }
-
-  // Always attach tool-call instructions after any weekly context injection.
-  systemPrompt += buildToolsAppendix();
-
+  // 2) Decide routing: Perplexity (hormone/medical) vs DeepSeek primary
   const deepSeekKey = resolveDeepSeekKey(req);
   const perplexityKey = resolvePerplexityKey(req);
+  const wantPerplexity = webMode !== 'off' && shouldUsePerplexity(lastUserMsg) && !!perplexityKey;
 
-  // 1) Perplexity routing (hormone/TRT/medical)
-  if (routedToPerplexity) {
-    if (!perplexityKey) {
-      return res.status(500).json({ error: 'Perplexity key missing for routed request' });
-    }
+  // 3) Call Perplexity if routed
+  if (wantPerplexity) {
     try {
-      const reply = await callPerplexityCoach({
+      const response = await callPerplexity({
         apiKey: perplexityKey,
         systemPrompt,
         messages: normalized,
       });
-      const toolCalls = parseToolCalls(reply);
-      console.log('🧠 /api/ai-coach used: perplexity (routed)');
+      const toolCalls = parseToolCalls(response.text);
+      const reply = stripToolJsonFromReply(response.text);
+
+      const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
+      const outputTokens = Math.ceil(String(response.text).length / 4);
+      await logAPIUsage('perplexity', userId || null, inputTokens, outputTokens, 'active');
+
       return res.json({
         reply,
         toolCalls,
         source: 'perplexity',
         searchedWeb: true,
         usedWeeklyContext,
-        // legacy fields (keep for existing clients)
-        usedWeb: true,
-        webProvider: 'perplexity',
-        webMode,
+        ms: Date.now() - started,
       });
-    } catch (err) {
-      console.error('Perplexity routed /api/ai-coach failed:', err?.message || err);
-      return res.status(500).json({ error: 'AI request failed' });
+    } catch (e) {
+      console.warn('Perplexity routed request failed; falling back to DeepSeek:', e?.message || e);
     }
   }
 
-  // 2) DeepSeek primary (non-routed)
+  // 4) DeepSeek primary
   if (deepSeekKey) {
     try {
-      const reply = await callDeepSeekCoach({
+      const response = await callDeepSeek({
         apiKey: deepSeekKey,
         systemPrompt,
         messages: normalized,
       });
-      const toolCalls = parseToolCalls(reply);
-      console.log('🧠 /api/ai-coach used: deepseek-chat');
+
+      const toolCalls = parseToolCalls(response.text);
+      const reply = stripToolJsonFromReply(response.text);
+
+      const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
+      const outputTokens = Math.ceil(String(response.text).length / 4);
+      await logAPIUsage('deepseek', userId || null, inputTokens, outputTokens, 'active');
+
       return res.json({
         reply,
         toolCalls,
-        source: 'deepseek-chat',
+        source: 'deepseek',
         searchedWeb: false,
         usedWeeklyContext,
-        // legacy fields (keep for existing clients)
-        usedWeb,
-        webProvider,
-        webMode,
+        ms: Date.now() - started,
       });
-    } catch (err) {
-      console.warn('DeepSeek /api/ai-coach failed, falling back to Perplexity:', err?.message || err);
+    } catch (e) {
+      console.warn('DeepSeek failed; falling back to Perplexity if available:', e?.message || e);
     }
-  } else {
-    console.warn('DeepSeek key missing for /api/ai-coach; falling back to Perplexity');
   }
 
-  // 3) Perplexity fallback
-  if (!perplexityKey) {
-    return res.status(500).json({
-      error: 'AI provider unavailable (missing DeepSeek API key and Perplexity API key)',
-    });
+  // 5) Final fallback: Perplexity if DeepSeek fails
+  if (perplexityKey) {
+    try {
+      const response = await callPerplexity({
+        apiKey: perplexityKey,
+        systemPrompt,
+        messages: normalized,
+      });
+      const toolCalls = parseToolCalls(response.text);
+      const reply = stripToolJsonFromReply(response.text);
+
+      const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
+      const outputTokens = Math.ceil(String(response.text).length / 4);
+      await logAPIUsage('perplexity', userId || null, inputTokens, outputTokens, 'fallback');
+
+      return res.json({
+        reply,
+        toolCalls,
+        source: 'perplexity',
+        searchedWeb: true,
+        usedWeeklyContext,
+        ms: Date.now() - started,
+      });
+    } catch (e) {
+      console.error('Perplexity fallback failed:', e?.message || e);
+    }
   }
+
+  return res.status(500).json({ error: 'AI request failed (no providers available)' });
+});
+
+// Execute a tool call after user confirmation
+app.post('/api/ai-coach/execute-tool', async (req, res) => {
+  try {
+    const { userId, toolCall, confirmed } = req.body || {};
+    if (!confirmed) return res.status(400).json({ error: 'Tool execution requires confirmation' });
+    if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' });
+    if (!toolCall || typeof toolCall !== 'object') return res.status(400).json({ error: 'toolCall is required' });
+    const result = await executeTool(userId.trim(), toolCall);
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Failed to execute tool', data: { error: e?.message || String(e) } });
+  }
+});
+
+// Debug endpoints for prompt + tool parsing validation (dev only)
+app.get('/api/ai-coach/debug/prompts', async (req, res) => {
+  try {
+    const userId = String(req.query?.userId || '').trim();
+    const userProfileRaw = req.query?.userProfile;
+    const userProfile =
+      typeof userProfileRaw === 'string' && userProfileRaw.trim()
+        ? safeJsonParse(userProfileRaw)
+        : null;
+
+    const basePrompt = buildCoachSystemPrompt(userProfile && typeof userProfile === 'object' ? userProfile : null);
+
+    let weeklyPrompt = null;
+    if (userId) {
+      try {
+        const wc = await getWeeklyContext(userId);
+        const weeklyContext = {
+          age: wc?.user?.age ?? '?',
+          weight: wc?.user?.weight ?? '?',
+          height: wc?.user?.height ?? '?',
+          goal: wc?.user?.goal ?? 'unknown',
+          trainingLevel: wc?.user?.trainingLevel ?? 'unknown',
+          targetCal: wc?.macroTargets?.calories ?? 0,
+          targetP: wc?.macroTargets?.protein ?? 0,
+          targetC: wc?.macroTargets?.carbs ?? 0,
+          targetF: wc?.macroTargets?.fat ?? 0,
+          avgCal: Math.round(Number(wc?.nutritionAnalysis?.avgDailyCalories) || 0),
+          avgP: Math.round(Number(wc?.nutritionAnalysis?.avgProtein) || 0),
+          avgC: Math.round(Number(wc?.nutritionAnalysis?.avgCarbs) || 0),
+          avgF: Math.round(Number(wc?.nutritionAnalysis?.avgFat) || 0),
+          consistency: Number(wc?.nutritionAnalysis?.consistencyScore) || 0,
+          sessions: Number(wc?.workoutAnalysis?.sessionsLogged) || 0,
+          totalVol: Math.round(Number(wc?.workoutAnalysis?.totalVolume) || 0),
+          avgRPE: Number(wc?.workoutAnalysis?.avgRPE) || 0,
+          avgHours: Math.round((Number(wc?.sleepAnalysis?.avgHours) || 0) * 10) / 10,
+          sleepQuality: wc?.sleepAnalysis?.quality || 'unknown',
+          isDepleted: wc?.sleepAnalysis?.isDepleted === true,
+          streak: Number(wc?.streakData?.currentStreak) || 0,
+          weightTrend: wc?.weightTrend || 'unknown',
+          volumeTrend: wc?.workoutAnalysis?.volumeTrend || 'stable',
+        };
+        weeklyPrompt = buildWeeklyContextSystemPrompt(weeklyContext);
+      } catch (e) {
+        weeklyPrompt = null;
+      }
+    }
+
+    return res.json({ basePrompt, weeklyPrompt });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to build prompts', details: e?.message || String(e) });
+  }
+});
+
+app.post('/api/ai-coach/debug/parse-toolcalls', (req, res) => {
+  try {
+    const text = String(req.body?.text || '');
+    const toolCalls = parseToolCalls(text);
+    const reply = stripToolJsonFromReply(text);
+    return res.json({ toolCalls, reply });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to parse toolcalls', details: e?.message || String(e) });
+  }
+});
+
+// Optional: Expose fatigue detection for debugging
+app.get('/api/fatigue/:userId', async (req, res) => {
+  try {
+    const userId = String(req.params?.userId || '').trim();
+    if (!userId) return res.status(400).json({ error: 'Invalid userId' });
+    const result = await detectFatigue(userId);
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ error: 'Fatigue detection failed', details: e?.message || String(e) });
+  }
+});
+
+// ─────────────────────────────────────────────
+// Firebase scheduled jobs (exportable in Functions runtime)
+// NOTE: Express server won't run these schedules; deploy via Firebase Functions.
+// ─────────────────────────────────────────────
+let firebaseFunctionsV1 = null;
+try {
+  // eslint-disable-next-line global-require
+  firebaseFunctionsV1 = require('firebase-functions');
+} catch (_) {
+  // ignore (server runtime)
+}
+
+async function dailyAlertCheckImpl() {
+  if (!admin.apps.length) throw new Error('Firebase Admin not initialized');
+  const db = admin.firestore();
+
+  const usersSnap = await db.collection('users').where('aiCoachActive', '==', true).get();
+  if (usersSnap.empty) return { processed: 0 };
+
+  let processed = 0;
+  for (const doc of usersSnap.docs) {
+    const userId = doc.id;
+    try {
+      const weekly = await getWeeklyContext(userId);
+      const weekTotalVol = Number(weekly?.workoutAnalysis?.totalVolume) || 0;
+      const avgRPE = Number(weekly?.workoutAnalysis?.avgRPE) || 0;
+      const avgHours = Number(weekly?.sleepAnalysis?.avgHours) || 0;
+      const targetProtein = Number(weekly?.macroTargets?.protein) || 0;
+      const avgProtein = Number(weekly?.nutritionAnalysis?.avgProtein) || 0;
+
+      const normalVolume = await calculateNormalVolume(userId);
+      const fatigue = weekTotalVol > normalVolume * 1.2 && avgHours < 6.5 && avgRPE >= 8;
+
+      // CHECK 1 - FATIGUE
+      if (fatigue) {
+        await createAlert(userId, {
+          type: 'fatigue',
+          title: pushPickRandom(PUSH_COPY.aiCoachTitles || ['Your AI Coach has a tip for you']),
+          body: pushPickRandom(PUSH_COPY.aiCoachBodies || ['Open the app for details.']),
+          priority: 'high',
+        });
+      }
+
+      // CHECK 2 - STREAK MILESTONE (if streak stored)
+      const currentStreak = Number(weekly?.streakData?.currentStreak) || 0;
+      if (currentStreak === 28) {
+        await createAlert(userId, {
+          type: 'streak',
+          title: pushPickRandom(PUSH_COPY.progressTitles || ['Milestone hit']),
+          body: pushPickRandom(PUSH_COPY.progressBodies || ['Open the app for details.']),
+          priority: 'high',
+        });
+      }
+
+      // CHECK 3 - MISSED WORKOUTS
+      const lastWorkout = await getLastWorkoutDate(userId);
+      if (lastWorkout) {
+        const daysSince = Math.floor((Date.now() - lastWorkout.getTime()) / (24 * 60 * 60 * 1000));
+        if (daysSince === 3) {
+          await createAlert(userId, {
+            type: 'missedWorkout',
+            title: pushPickRandom(PUSH_COPY.genericTitles || ['Time for a progress check']),
+            body: pushPickRandom(PUSH_COPY.motivationalBodies || ["Haven't seen you in a few days — how are you doing?"]),
+            priority: 'medium',
+          });
+        }
+      }
+
+      // CHECK 4 - MACRO GAP (protein)
+      if (targetProtein > 0 && avgProtein < targetProtein - 35) {
+        const consecutive = await countConsecutiveDaysUnder(userId, 'protein', targetProtein - 35, 4);
+        if (consecutive >= 4) {
+          await createAlert(userId, {
+            type: 'macroGap',
+            title: 'Nutrition check-in',
+            body: pushSub(pushPickRandom(PUSH_COPY.nutritionBodies || ['Time to log today\'s meals']), {
+              trainerName: 'Your coach',
+            }),
+            priority: 'low',
+          });
+        }
+      }
+
+      processed += 1;
+    } catch (e) {
+      console.error('[dailyAlertCheck] user failed:', userId, e?.message || e);
+      // continue to next user
+    }
+  }
+
+  return { processed };
+}
+
+async function weeklySummaryImpl() {
+  if (!admin.apps.length) throw new Error('Firebase Admin not initialized');
+  const db = admin.firestore();
+
+  const usersSnap = await db.collection('users').where('aiCoachActive', '==', true).get();
+  if (usersSnap.empty) return { processed: 0 };
+
+  let processed = 0;
+  for (const doc of usersSnap.docs) {
+    const userId = doc.id;
+    try {
+      const wc = await getWeeklyContext(userId);
+      const sessions = Number(wc?.workoutAnalysis?.sessionsLogged) || 0;
+      const volumeTrend = wc?.workoutAnalysis?.volumeTrend || 'stable';
+      const consistency = Number(wc?.nutritionAnalysis?.consistencyScore) || 0;
+      const avgHours = Math.round((Number(wc?.sleepAnalysis?.avgHours) || 0) * 10) / 10;
+      const weightTrend = wc?.weightTrend || 'unknown';
+      const streak = Number(wc?.streakData?.currentStreak) || 0;
+
+      const prompt = `Generate a brief, encouraging weekly fitness summary (max 120 words).
+
+User data:
+- Workouts: ${sessions}/4 logged, volume ${volumeTrend}
+- Nutrition: ${consistency}% macro consistency
+- Sleep: ${avgHours}h avg
+- Weight: ${weightTrend}
+- Streak: ${streak} days
+
+Include:
+1. Highlight 1-2 wins (be specific)
+2. Identify 1 area to improve (be specific)
+3. 1-2 focus areas for next week
+4. Streak/milestone status
+
+Be specific, be encouraging.`;
+
+      const response = await callClaude({
+        systemPrompt: 'You are a fitness coach writing weekly summaries',
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const weekId = isoDateKey(); // simple key; can be replaced with ISO week later
+      const text = String(response.text || '').trim();
+
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('weeklySummaries')
+        .doc(weekId)
+        .set(
+          {
+            weekId,
+            summary: text,
+            date: serverTs(),
+            source: 'aiCoach',
+          },
+          { merge: true }
+        );
+
+      await createAlert(userId, {
+        type: 'weeklySummary',
+        title: pushPickRandom(PUSH_COPY.genericTitles || ['New update in your CoachConnect']),
+        body: text.slice(0, 100),
+        priority: 'low',
+      });
+
+      processed += 1;
+    } catch (e) {
+      console.error('[weeklySummary] user failed:', userId, e?.message || e);
+    }
+  }
+  return { processed };
+}
+
+// Export scheduled functions if firebase-functions is available in this runtime
+if (firebaseFunctionsV1) {
+  exports.dailyAlertCheck = firebaseFunctionsV1.pubsub
+    .schedule('0 7 * * *')
+    .timeZone('UTC')
+    .onRun(async () => dailyAlertCheckImpl());
+
+  exports.weeklySummary = firebaseFunctionsV1.pubsub
+    .schedule('0 7 * * 0')
+    .timeZone('UTC')
+    .onRun(async () => weeklySummaryImpl());
+}
+
+// ─────────────────────────────────────────────────────────
+// TEST ENDPOINTS - Compare DeepSeek vs Claude
+// ─────────────────────────────────────────────────────────
+// WARNING: Only use for development/testing. Disable in production.
+
+const TEST_CASES = [
+  {
+    id: 'weight_loss_stall',
+    prompt: "Why am I not losing weight? I'm eating 2000 cal, hitting 160g protein, but sleep is 6h and I missed leg day.",
+    category: 'data-backed-advice'
+  },
+  {
+    id: 'macro_adjustment',
+    prompt: "I want to increase my macros. Adjust my targets.",
+    category: 'tool-calling'
+  },
+  {
+    id: 'supplement_advice',
+    prompt: "What's the best supplement for fat loss?",
+    category: 'supplement-advice'
+  },
+  {
+    id: 'trt_question',
+    prompt: "My trainee just asked if TRT is worth it",
+    category: 'sensitive-topic'
+  }
+];
+
+/**
+ * Test a single API (DeepSeek or Claude) against all test cases
+ */
+async function runSingleAPITest(apiName, testCases) {
+  const { estimateCost } = require('./config/apiCosts');
+  const results = [];
+  
+  const resolveKeyDirect = (name) => {
+    if (name === 'claude' || name === 'anthropic') {
+      return (
+        process.env.ANTHROPIC_API_KEY ||
+        process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
+        process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ||
+        ''
+      ).trim();
+    }
+    if (name === 'deepseek') {
+      return (process.env.DEEPSEEK_API_KEY || '').trim();
+    }
+    return '';
+  };
+
+  const withTimeout = async (promise, ms, label) => {
+    let t;
+    const timeout = new Promise((_, reject) => {
+      t = setTimeout(() => reject(new Error(`Timeout after ${ms}ms${label ? ` (${label})` : ''}`)), ms);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  for (const testCase of testCases) {
+    const startTime = Date.now();
+    const testResult = {
+      prompt: testCase.prompt,
+      category: testCase.category,
+      startTime: new Date().toISOString(),
+      apiName,
+      response: null,
+      speed_ms: 0,
+      tokens: { input: 0, output: 0 },
+      cost: '$0.00',
+      cost_usd: 0,
+      quality_score: null,
+      toolCalls: [],
+      error: null,
+    };
+
+    try {
+      // Build system prompt
+      const systemPrompt = `You are a premium fitness coach with data visibility and can use tools.
+Your response should be:
+- Specific to the user's data
+- Data-backed with reasoning
+- Practical and actionable
+- Friendly but professional`;
+
+      const messages = [{ role: 'user', content: testCase.prompt }];
+      let response = null;
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      if (apiName === 'claude') {
+        const key = resolveKeyDirect('claude');
+        if (!key) throw new Error('Missing Claude key (ANTHROPIC_API_KEY or EXPO_PUBLIC_CLAUDE_API_KEY)');
+        response = await withTimeout(
+          callClaudeCoach({ apiKey: key, systemPrompt, messages }),
+          30_000,
+          'claude'
+        );
+        // Rough token estimation (Claude): ~4 chars per token
+        inputTokens = Math.ceil((systemPrompt.length + testCase.prompt.length) / 4);
+        outputTokens = Math.ceil(response.length / 4);
+      } else if (apiName === 'deepseek') {
+        const key = resolveKeyDirect('deepseek');
+        if (!key) throw new Error('Missing DeepSeek key (DEEPSEEK_API_KEY)');
+        response = await withTimeout(
+          callDeepSeekCoach({ apiKey: key, systemPrompt, messages }),
+          30_000,
+          'deepseek'
+        );
+        // Rough token estimation (DeepSeek): ~4 chars per token
+        inputTokens = Math.ceil((systemPrompt.length + testCase.prompt.length) / 4);
+        outputTokens = Math.ceil(response.length / 4);
+      }
+
+      testResult.response = response;
+      testResult.speed_ms = Date.now() - startTime;
+      testResult.tokens = { input: inputTokens, output: outputTokens };
+      
+      // Calculate cost
+      const pricingApiName = apiName === 'claude' ? 'anthropic' : apiName;
+      const cost = estimateCost(pricingApiName, inputTokens, outputTokens);
+      testResult.cost = `$${cost.toFixed(4)}`;
+      testResult.cost_usd = Number.isFinite(cost) ? cost : 0;
+
+      // Parse tool calls if any
+      testResult.toolCalls = parseToolCalls(response) || [];
+
+      // Quick quality scoring (1-10 scale, subjective)
+      // Check for data-backed answers, specificity, fitness relevance
+      const qualityFactors = {
+        length: response.length > 150 ? 2 : 1,
+        specificity: /\d+/.test(response) ? 2 : 1, // has numbers
+        fitnessFocus: isFitnessNutritionQuery(response) ? 2 : 0,
+        actionable: /you should|try|consider|increase|decrease|adjust/.test(response.toLowerCase()) ? 2 : 1,
+        dataRef: /protein|calorie|sleep|volume|kg|lb|gram/.test(response.toLowerCase()) ? 1 : 0,
+      };
+      testResult.quality_score = Math.min(10, Object.values(qualityFactors).reduce((a, b) => a + b, 0));
+
+      console.log(`[${new Date().toISOString()}] ✅ Test '${testCase.id}' (${apiName}): ${testResult.speed_ms}ms, Quality: ${testResult.quality_score}/10`);
+    } catch (error) {
+      testResult.error = error?.message || String(error);
+      testResult.quality_score = 0;
+      testResult.cost = '$0.00';
+      testResult.cost_usd = 0;
+      console.error(`[${new Date().toISOString()}] ❌ Test '${testCase.id}' (${apiName}) failed:`, testResult.error);
+    }
+
+    results.push(testResult);
+  }
+
+  return results;
+}
+
+/**
+ * GET /api/test-deepseek - Test DeepSeek alone
+ */
+app.get('/api/test-deepseek', async (req, res) => {
+  console.log('🧪 Starting DeepSeek test suite...');
+  const startTime = Date.now();
 
   try {
-    const reply = await callPerplexityCoach({
-      apiKey: perplexityKey,
-      systemPrompt,
-      messages: normalized,
-    });
-    const toolCalls = parseToolCalls(reply);
-    console.log('🧠 /api/ai-coach used: perplexity (fallback)');
+    const deepseekResults = await runSingleAPITest('deepseek', TEST_CASES);
+    const elapsed = Date.now() - startTime;
+
     return res.json({
-      reply,
-      toolCalls,
-      source: 'perplexity',
-      searchedWeb: true,
-      usedWeeklyContext,
-      // legacy fields (keep for existing clients)
-      usedWeb: webMode === 'off' ? false : true,
-      webProvider: webMode === 'off' ? null : 'perplexity',
-      webMode,
+      timestamp: new Date().toISOString(),
+      apiTested: 'deepseek',
+      totalTime_ms: elapsed,
+      testCount: TEST_CASES.length,
+      results: deepseekResults,
+      avgQuality: (deepseekResults.reduce((sum, r) => sum + (r.quality_score || 0), 0) / deepseekResults.length).toFixed(1),
+      totalCost: `$${deepseekResults.reduce((sum, r) => sum + parseFloat(r.cost || 0), 0).toFixed(4)}`,
     });
-  } catch (err) {
-    console.error('Perplexity /api/ai-coach failed:', err?.message || err);
-    return res.status(500).json({ error: 'AI request failed' });
+  } catch (error) {
+    console.error('❌ DeepSeek test suite failed:', error);
+    return res.status(500).json({
+      error: 'Test suite failed',
+      details: error?.message || String(error),
+    });
+  }
+});
+
+/**
+ * GET /api/test-deepseek-vs-claude - Compare both APIs
+ */
+app.get('/api/test-deepseek-vs-claude', async (req, res) => {
+  console.log('🧪 Starting DeepSeek vs Claude comparison...');
+  const startTime = Date.now();
+
+  try {
+    // Run tests in parallel for faster comparison
+    const [deepseekResults, claudeResults] = await Promise.all([
+      runSingleAPITest('deepseek', TEST_CASES),
+      runSingleAPITest('claude', TEST_CASES),
+    ]);
+
+    const elapsed = Date.now() - startTime;
+
+    // Build comparison results
+    const testCases = [];
+    for (let i = 0; i < TEST_CASES.length; i++) {
+      const deepseekResult = deepseekResults[i];
+      const claudeResult = claudeResults[i];
+      const { estimateCost } = require('./config/apiCosts');
+
+      // Determine winners for each metric
+      const speedWinner = deepseekResult.speed_ms < claudeResult.speed_ms ? 'deepseek' : 'claude';
+      const costWinner = parseFloat(deepseekResult.cost) < parseFloat(claudeResult.cost) ? 'deepseek' : 'claude';
+      const qualityWinner = (claudeResult.quality_score || 0) > (deepseekResult.quality_score || 0) ? 'claude' : 'deepseek';
+
+      testCases.push({
+        prompt: TEST_CASES[i].prompt,
+        category: TEST_CASES[i].category,
+        deepseek: {
+          response: deepseekResult.response?.substring(0, 200) + '...',
+          speed_ms: deepseekResult.speed_ms,
+          tokens: deepseekResult.tokens,
+          cost: deepseekResult.cost,
+          quality_score: deepseekResult.quality_score,
+          toolCalls: deepseekResult.toolCalls,
+        },
+        claude: {
+          response: claudeResult.response?.substring(0, 200) + '...',
+          speed_ms: claudeResult.speed_ms,
+          tokens: claudeResult.tokens,
+          cost: claudeResult.cost,
+          quality_score: claudeResult.quality_score,
+          toolCalls: claudeResult.toolCalls,
+        },
+        winner: {
+          speed: speedWinner,
+          cost: costWinner,
+          quality: qualityWinner,
+        },
+      });
+    }
+
+    // Calculate summary statistics
+    const deepseekAvgQuality = (deepseekResults.reduce((sum, r) => sum + (r.quality_score || 0), 0) / deepseekResults.length).toFixed(1);
+    const claudeAvgQuality = (claudeResults.reduce((sum, r) => sum + (r.quality_score || 0), 0) / claudeResults.length).toFixed(1);
+    const deepseekTotalCost = Number((deepseekResults.reduce((sum, r) => sum + (Number(r.cost_usd) || 0), 0)).toFixed(6));
+    const claudeTotalCost = Number((claudeResults.reduce((sum, r) => sum + (Number(r.cost_usd) || 0), 0)).toFixed(6));
+    const costSavings =
+      claudeTotalCost > 0
+        ? (((claudeTotalCost - deepseekTotalCost) / claudeTotalCost) * 100).toFixed(1)
+        : null;
+    const qualityDiff =
+      Number(claudeAvgQuality) > 0
+        ? (((Number(claudeAvgQuality) - Number(deepseekAvgQuality)) / Number(claudeAvgQuality)) * 100).toFixed(1)
+        : null;
+
+    const recommendation =
+      claudeTotalCost > 0 && deepseekTotalCost < claudeTotalCost && Number(deepseekAvgQuality) >= 7.5
+        ? `DeepSeek is ${costSavings}% cheaper and quality is comparable (${deepseekAvgQuality}/10 vs ${claudeAvgQuality}/10).`
+        : claudeTotalCost > 0
+          ? `Claude quality: ${claudeAvgQuality}/10 vs DeepSeek: ${deepseekAvgQuality}/10. Cost DeepSeek: $${(deepseekTotalCost / TEST_CASES.length).toFixed(6)} per test vs Claude: $${(claudeTotalCost / TEST_CASES.length).toFixed(6)} per test.`
+          : `Claude cost could not be estimated; verify pricing config and re-run.`;
+
+    return res.json({
+      timestamp: new Date().toISOString(),
+      totalTime_ms: elapsed,
+      testCasesCount: TEST_CASES.length,
+      testCases,
+      summary: {
+        deepseek: {
+          avgQuality: parseFloat(deepseekAvgQuality),
+          totalCost: `$${deepseekTotalCost.toFixed(6)}`,
+          costPerTest: `$${(deepseekTotalCost / TEST_CASES.length).toFixed(6)}`,
+          avgSpeed_ms: Math.round(deepseekResults.reduce((sum, r) => sum + r.speed_ms, 0) / deepseekResults.length),
+        },
+        claude: {
+          avgQuality: parseFloat(claudeAvgQuality),
+          totalCost: `$${claudeTotalCost.toFixed(6)}`,
+          costPerTest: `$${(claudeTotalCost / TEST_CASES.length).toFixed(6)}`,
+          avgSpeed_ms: Math.round(claudeResults.reduce((sum, r) => sum + r.speed_ms, 0) / claudeResults.length),
+        },
+        costSavings: costSavings == null ? null : `${costSavings}%`,
+        qualityDifference: qualityDiff == null ? null : `${qualityDiff}%`,
+        recommendation,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Comparison test failed:', error);
+    return res.status(500).json({
+      error: 'Comparison test failed',
+      details: error?.message || String(error),
+    });
   }
 });
 
@@ -871,16 +2335,50 @@ async function serperOrganicSearch(query, num = 5) {
 }
 
 // Nutrition fallback #3: Serper (Google search) parsing for nutrition facts
-const searchFoodWithSerper = async (query) => {
+const searchFoodWithSerper = async (rawQuery) => {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return [];
+
+  const query = fixTypoForSerperQuery(rawQuery);
+
+  const toSerperRow = (name, macros, extras = {}) => {
+    const serving_label = extras.serving_label ?? macros.servingLabel ?? null;
+    const unitLabel = serving_label || extras.serving_unit || 'serving';
+    return {
+      id: `serper_${Date.now()}_${Math.random()}`,
+      food_name: name || query,
+      name: name || query,
+      brand_name: 'via Google Search',
+      brand: 'via Google Search',
+      restaurant: null,
+      serving_qty: 1,
+      serving_unit: unitLabel,
+      serving_label,
+      nf_calories: macros.calories,
+      nf_protein: macros.protein,
+      nf_total_carbohydrate: macros.carbs,
+      nf_total_fat: macros.fat,
+      calories: macros.calories,
+      protein: macros.protein,
+      carbs: macros.carbs,
+      fat: macros.fat,
+      fiber: extras.fiber ?? null,
+      sodium: extras.sodium ?? null,
+      sugar: extras.sugar ?? null,
+      servingSize: 1,
+      servingUnit: unitLabel,
+      servingGrams: 100,
+      photo: null,
+      source: 'serper',
+    };
+  };
 
   try {
     const res = await axios.post(
       'https://google.serper.dev/search',
       {
-        q: `${query} nutrition facts calories protein carbs fat per serving`,
-        num: 5,
+        q: `${query} nutrition facts calories protein carbs fat`,
+        num: 8,
       },
       {
         headers: {
@@ -894,40 +2392,34 @@ const searchFoodWithSerper = async (query) => {
     const data = res.data || {};
     const results = [];
 
-    const pushResult = (name, snippet, extras = {}) => {
-      const text = String(snippet || '');
-      const cals = parseFloat(text.match(/(\d+(?:\.\d+)?)\s*cal/i)?.[1] || 0);
-      const protein = parseFloat(text.match(/(\d+(?:\.\d+)?)\s*g\s*protein/i)?.[1] || 0);
-      const carbs = parseFloat(text.match(/(\d+(?:\.\d+)?)\s*g\s*carb/i)?.[1] || 0);
-      const fat = parseFloat(text.match(/(\d+(?:\.\d+)?)\s*g\s*fat/i)?.[1] || 0);
+    const organicBlob = (n = 8) =>
+      Array.isArray(data.organic)
+        ? data.organic
+            .slice(0, n)
+            .map((r) => `${r.title || ''} ${r.snippet || ''}`)
+            .join('\n')
+        : '';
 
-      if (cals > 0 || protein > 0) {
-        results.push({
-          id: `serper_${Date.now()}_${Math.random()}`,
-          name: name || query,
-          brand: 'via Google Search',
-          restaurant: null,
-          calories: cals,
-          protein,
-          carbs,
-          fat,
-          fiber: extras.fiber ?? null,
-          sodium: extras.sodium ?? null,
-          sugar: extras.sugar ?? null,
-          servingSize: 1,
-          servingUnit: 'serving',
-          servingGrams: 100,
-          source: 'serper',
-        });
+    /** Featured answers often list calories only; macros sit in organic titles/snippets. */
+    const mergeOrganicForMacros = (snippet) =>
+      `${String(snippet || '')}\n${organicBlob()}`.trim();
+
+    const queryHint = String(query || '').toLowerCase();
+
+    const pushFromText = (name, text) => {
+      const macros = extractMacrosFromText(text, queryHint);
+      if (macros.calories > 0 || macros.protein > 0 || macros.carbs > 0 || macros.fat > 0) {
+        results.push(toSerperRow(name, macros));
       }
     };
 
     // 1. answerBox (featured snippet)
     if (data.answerBox) {
       const box = data.answerBox;
-      const title = box.title || query;
-      const snippet = box.answer || box.snippet || '';
-      pushResult(title, snippet);
+      let title = box.title || query;
+      title = String(title).replace(/^Calories in /i, '').replace(/^Carbs in /i, '').trim();
+      const snippet = mergeOrganicForMacros(box.answer || box.snippet || '');
+      pushFromText(title, snippet);
     }
 
     // 2. knowledgeGraph attributes
@@ -935,39 +2427,71 @@ const searchFoodWithSerper = async (query) => {
       const attrs = data.knowledgeGraph.attributes;
       const cleanNum = (v) => parseFloat(String(v || '0').replace(/[^\d.]/g, '') || 0);
       const cals = cleanNum(attrs['Calories'] || attrs['Energy'] || '0');
-      const protein = cleanNum(attrs['Protein'] || '0');
-      const carbs = cleanNum(attrs['Total Carbohydrate'] || attrs['Carbohydrates'] || '0');
-      const fat = cleanNum(attrs['Total Fat'] || attrs['Fat'] || '0');
+      let protein = cleanNum(attrs['Protein'] || '0');
+      let carbs = cleanNum(attrs['Total Carbohydrate'] || attrs['Carbohydrates'] || '0');
+      let fat = cleanNum(attrs['Total Fat'] || attrs['Fat'] || '0');
       const fiber = cleanNum(attrs['Dietary Fiber'] || '0');
       const sodium = cleanNum(attrs['Sodium'] || '0');
 
+      const kgBlob = [
+        data.knowledgeGraph.title,
+        data.knowledgeGraph.description || '',
+        ...Object.entries(attrs).map(([k, v]) => `${k}: ${v}`),
+        organicBlob(),
+      ].join('\n');
+      const parsedKg = extractMacrosFromText(kgBlob, queryHint);
+
+      if (cals > 0 && protein === 0 && carbs === 0 && fat === 0) {
+        if (parsedKg.protein > 0) protein = parsedKg.protein;
+        if (parsedKg.carbs > 0) carbs = parsedKg.carbs;
+        if (parsedKg.fat > 0) fat = parsedKg.fat;
+      }
+      if (/\b(burger|cheeseburger|hamburger)\b/.test(queryHint) && parsedKg.carbs > carbs) {
+        carbs = parsedKg.carbs;
+      }
+
       if (cals > 0) {
-        results.push({
-          id: `serper_${Date.now()}_${Math.random()}`,
-          name: data.knowledgeGraph.title || query,
-          brand: 'via Google Search',
-          restaurant: null,
-          calories: cals,
-          protein,
-          carbs,
-          fat,
-          fiber: fiber || null,
-          sodium: sodium || null,
-          sugar: null,
-          servingSize: 1,
-          servingUnit: 'serving',
-          servingGrams: 100,
-          source: 'serper',
-        });
+        results.push(
+          toSerperRow(
+            data.knowledgeGraph.title || query,
+            {
+              calories: cals,
+              protein,
+              carbs,
+              fat,
+              servingLabel: parsedKg.servingLabel,
+            },
+            { fiber: fiber || null, sodium: sodium || null },
+          ),
+        );
       }
     }
 
-    // 3. organic result snippet parsing
+    // 3. organic — merge snippets first (macros often split across results)
     if (results.length === 0 && Array.isArray(data.organic) && data.organic.length > 0) {
-      for (const r of data.organic.slice(0, 3)) {
-        const text = `${r.title || ''} ${r.snippet || ''}`;
-        pushResult(String(r.title || query).split('-')[0].split('|')[0].trim() || query, text);
-        if (results.length > 0) break;
+      const mega = data.organic
+        .slice(0, 6)
+        .map((r) => `${r.title || ''} ${r.snippet || ''}`)
+        .join('\n');
+      const megaMacros = extractMacrosFromText(mega, queryHint);
+      if (megaMacros.calories > 0 || megaMacros.protein > 0) {
+        const title =
+          String(data.organic[0].title || query)
+            .split('-')[0]
+            .split('|')[0]
+            .trim() || query;
+        results.push(toSerperRow(title, megaMacros));
+      } else {
+        for (const r of data.organic.slice(0, 5)) {
+          const text = `${r.title || ''} ${r.snippet || ''}`;
+          const title =
+            String(r.title || query)
+              .split('-')[0]
+              .split('|')[0]
+              .trim() || query;
+          pushFromText(title, text);
+          if (results.length > 0) break;
+        }
       }
     }
 
@@ -1119,189 +2643,7 @@ const lookupBarcodeWithSerper = async (barcode) => {
   }
 };
 
-// Barcode fallback: OpenAI infers product + typical nutrition from UPC (last resort; may be approximate)
-const lookupBarcodeWithOpenAI = async (barcode) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const openai = new OpenAI({ apiKey });
-    const res = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a nutrition data assistant. Given a product barcode (UPC/EAN), return a JSON object with the product name and typical nutrition for ONE DEFAULT SERVING (e.g. 1 bottle, 1 can, 1 cup cereal). Return only valid JSON, no markdown.
-Shape: { "name": "Product Name", "brand": "Brand or null", "calories": number, "protein": number, "carbs": number, "fat": number, "servingGrams": number, "servingUnit": "grams" or "ml" }
-Use servingGrams for the typical serving size (e.g. 591 for 20oz bottle in ml, 39 for cereal in g). If you don't know the product, return null.`,
-        },
-        {
-          role: 'user',
-          content: `Barcode: ${barcode}. Return JSON only.`,
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: 300,
-    });
-    const text = res?.choices?.[0]?.message?.content?.trim() || '';
-    if (!text || text.toLowerCase() === 'null') return null;
-    const cleaned = text.replace(/^```json?\s*|\s*```$/g, '').trim();
-    const data = JSON.parse(cleaned);
-    if (!data || !data.name) return null;
-    const num = (v) => (v != null && !Number.isNaN(Number(v))) ? Number(v) : 0;
-    const servingGrams = Math.max(1, num(data.servingGrams));
-    return {
-      id: `openai_barcode_${barcode}`,
-      name: data.name,
-      brand: data.brand || null,
-      restaurant: null,
-      calories: num(data.calories),
-      protein: num(data.protein),
-      carbs: num(data.carbs),
-      fat: num(data.fat),
-      fiber: null,
-      sodium: null,
-      sugar: null,
-      servingSize: 1,
-      servingUnit: data.servingUnit === 'ml' ? 'ml' : 'grams',
-      servingGrams,
-      source: 'openai',
-    };
-  } catch (e) {
-    console.warn('OpenAI barcode lookup failed:', e.message);
-    return null;
-  }
-};
-
-app.post('/api/ask', async (req, res) => {
-  try {
-    const { messages, userContext } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Messages array is required' });
-    }
-
-    // Build system prompt with user context
-    let systemPrompt = `You are an expert AI fitness and nutrition coach. You only discuss fitness, exercise, workouts, nutrition, diet, and recovery. If asked about anything else respond: 'I'm your fitness coach — I can only help with fitness and nutrition. What would you like to work on today?' Keep responses concise and conversational — they will be spoken out loud.`;
-
-    if (userContext) {
-      systemPrompt += `\n\nHere is the user's data: ${JSON.stringify(userContext, null, 2)}`;
-    }
-
-    console.log('🤖 Processing /api/ask request');
-    console.log('📝 Messages count:', messages.length);
-    console.log('👤 User context provided:', !!userContext);
-
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-    
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
-
-    const response = completion.choices[0]?.message?.content || 'I apologize, but I could not generate a response.';
-
-    console.log('✅ Groq response generated');
-
-    res.json({ response });
-
-  } catch (error) {
-    console.error('❌ Error in /api/ask:', error);
-    res.status(500).json({ error: 'Failed to process request' });
-  }
-});
-
-// Transcription endpoint - Deepgram Nova-2
-app.post('/api/transcribe', async (req, res) => {
-  try {
-    const { audio } = req.body;
-
-    if (!audio) {
-      return res.status(400).json({ error: 'Audio data is required' });
-    }
-
-    console.log('🎤 Processing /api/transcribe request');
-
-    const FormData = require('form-data');
-    const formData = new FormData();
-    formData.append('audio', Buffer.from(audio, 'base64'), 'audio.webm');
-    formData.append('model', 'nova-2');
-    formData.append('language', 'en');
-    formData.append('smart_format', 'true');
-
-    const response = await axios.post(
-      'https://api.deepgram.com/v1/listen',
-      formData,
-      {
-        headers: {
-          'Authorization': `Token ${process.env.DEEPGRAM_API_KEY}`,
-          ...formData.getHeaders(),
-        },
-        timeout: 30000,
-      }
-    );
-
-    const transcript = response.data.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
-
-    console.log('✅ Transcription completed:', transcript.length > 0 ? 'Success' : 'Empty');
-
-    res.json({ transcript });
-
-  } catch (error) {
-    console.error('❌ Error in /api/transcribe:', error);
-    res.status(500).json({ transcript: '' });
-  }
-});
-
-// Text-to-Speech endpoint - ElevenLabs Turbo v2
-app.post('/api/speak', async (req, res) => {
-  try {
-    const { text } = req.body;
-
-    if (!text) {
-      return res.status(400).json({ error: 'Text is required' });
-    }
-
-    console.log('🔊 Processing /api/speak request');
-
-    const response = await axios.post(
-      'https://api.elevenlabs.io/v1/text-to-speech/turbo-v2',
-      {
-        text: text,
-        model_id: 'eleven_turbo_v2',
-        voice_settings: {
-          stability: 0.75,
-          similarity_boost: 0.75,
-        },
-      },
-      {
-        headers: {
-          'xi-api-key': process.env.ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        responseType: 'arraybuffer',
-        timeout: 30000,
-      }
-    );
-
-    const audioBase64 = Buffer.from(response.data).toString('base64');
-
-    console.log('✅ TTS audio generated');
-
-    res.set('Content-Type', 'audio/mpeg');
-    res.send(audioBase64);
-
-  } catch (error) {
-    console.error('❌ Error in /api/speak:', error);
-    res.status(500).json({ error: 'Failed to generate speech' });
-  }
-});
-
-// Nutrition API endpoints — USDA → Open Food Facts → Serper only (no Nutritionix)
+// Nutrition API endpoints — barcode: USDA → Open Food Facts → Serper | search: USDA → OFF → Serper (restaurant chains: Serper first)
 // All return same shape: { id, name, brand, calories, protein, carbs, fat, servingSize, servingUnit, servingGrams, source }
 
 // Simple in-memory cache for food search + barcode (good enough for dev / small scale)
@@ -1327,16 +2669,182 @@ const setCache = (key, data) => {
   searchCache.set(key, { data, timestamp: Date.now() });
 };
 
+// ─── USDA Branded barcode → same shape as Open Food Facts normalizer (client + addFoodLog) ───
+function normalizeGtinDigits(barcode) {
+  const d = String(barcode || '').replace(/\D/g, '');
+  if (!d) return '';
+  const stripped = d.replace(/^0+/, '');
+  return stripped || '0';
+}
+
+function getFdcNutrientFromSearchFood(item, ...nutrientIds) {
+  const nutrients = item.foodNutrients || [];
+  for (const id of nutrientIds) {
+    const n = nutrients.find((x) => x.nutrientId === id);
+    if (n != null && n.value != null && !Number.isNaN(Number(n.value))) return Number(n.value);
+  }
+  return 0;
+}
+
+function mapUsdaBrandedSearchHitToBarcodeFood(hit) {
+  const kcal = getFdcNutrientFromSearchFood(hit, 1008);
+  const protein = getFdcNutrientFromSearchFood(hit, 1003);
+  const carbs = getFdcNutrientFromSearchFood(hit, 1005);
+  const fat = getFdcNutrientFromSearchFood(hit, 1004);
+  const fiber = getFdcNutrientFromSearchFood(hit, 1079);
+  const sodium = getFdcNutrientFromSearchFood(hit, 1090, 1093);
+  const sugar = getFdcNutrientFromSearchFood(hit, 2000);
+
+  let servingG = Number(hit.servingSize);
+  if (!Number.isFinite(servingG) || servingG <= 0) servingG = 100;
+  const unitRaw = String(hit.servingSizeUnit || 'g').toLowerCase();
+  const useMl = unitRaw === 'ml' || unitRaw === 'milliliters';
+  const scale = servingG / 100;
+
+  return {
+    id: String(hit.fdcId),
+    name: hit.description || 'Unknown',
+    brand: hit.brandOwner || null,
+    restaurant: null,
+    calories: kcal,
+    protein,
+    carbs,
+    fat,
+    fiber: fiber || null,
+    sodium: sodium || null,
+    sugar: sugar || null,
+    servingSize: scale,
+    servingUnit: useMl ? 'ml' : 'grams',
+    servingGrams: Math.round(servingG),
+    source: 'usda',
+    kcalPer100Unit: kcal,
+    servingAmount: Math.round(servingG),
+  };
+}
+
+async function lookupBarcodeUsda(barcode) {
+  const apiKey = process.env.USDA_API_KEY;
+  if (!apiKey || !String(barcode || '').trim()) return null;
+
+  const clean = String(barcode).trim();
+  const target = normalizeGtinDigits(clean);
+
+  try {
+    const res = await axios.post(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`,
+      {
+        query: clean,
+        pageSize: 25,
+        dataType: ['Branded'],
+      },
+      { timeout: 12000, headers: { 'Content-Type': 'application/json' } }
+    );
+
+    const foods = res.data?.foods || [];
+    const hit =
+      foods.find((f) => normalizeGtinDigits(f.gtinUpc) === target) ||
+      foods.find((f) => String(f.gtinUpc || '').replace(/\D/g, '') === clean.replace(/\D/g, '')) ||
+      null;
+
+    if (!hit) return null;
+
+    console.log('[Barcode] USDA branded match:', hit.description, 'fdcId:', hit.fdcId, 'gtin:', hit.gtinUpc);
+    return mapUsdaBrandedSearchHitToBarcodeFood(hit);
+  } catch (e) {
+    console.warn('[Barcode] USDA lookup failed:', e.message);
+    return null;
+  }
+}
+
+/** Fast-food / pizza / dine-out chains → try Serper (web) before USDA/OFF. Excludes soda-only brand tokens. */
+const RESTAURANT_FIRST_BRANDS = [
+  'mcdonalds',
+  "mcdonald's",
+  'burger king',
+  "wendy's",
+  'wendys',
+  'taco bell',
+  'pizza hut',
+  "domino's",
+  'dominos',
+  'little caesars',
+  "jet's",
+  'jets',
+  "hungry howie's",
+  'hungry howies',
+  'starbucks',
+  'dunkin',
+  'subway',
+  'chipotle',
+  'kfc',
+  "papa john's",
+  'papa johns',
+  'arbys',
+  "arby's",
+  'panera bread',
+  'panera',
+  'sonic',
+  'five guys',
+  'qdoba',
+  'jack in the box',
+  'del taco',
+  'popeyes',
+  "popeye's",
+  'wingstop',
+  'buffalo wild wings',
+  'olive garden',
+  'applebees',
+  "applebee's",
+  'texas roadhouse',
+  'outback',
+  'red lobster',
+  'ihop',
+  'cracker barrel',
+  "chick-fil-a",
+  'chick fil a',
+  'red robin',
+  'cottage inn',
+];
+
 app.get('/api/food/search', async (req, res) => {
   const query = req.query.query?.trim();
   if (!query) return res.status(400).json({ error: 'Query required' });
 
-  // Cache key includes version so ranking tweaks take effect immediately.
-  const cacheKey = `v2|${String(query).toLowerCase()}`;
-  const cached = foodCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < FOOD_CACHE_TTL) {
-    console.log('[Food Search] Cache hit:', query);
-    return res.json({ results: cached.data, source: 'cache' });
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit || '20'), 10) || 20, 1), 40);
+  const normalizedKey = normalizeSearchKey(query);
+  const cacheKey = `v${FOOD_SEARCH_PIPELINE_VERSION}|${normalizedKey}`;
+
+  const cachedMem = foodCache.get(cacheKey);
+  if (cachedMem && Date.now() - cachedMem.timestamp < FOOD_CACHE_TTL) {
+    console.log('[Food Search] In-memory cache hit:', query);
+    return res.json({
+      results: (cachedMem.data || []).slice(0, limit),
+      source: 'cache',
+      cached: true,
+    });
+  }
+
+  try {
+    if (admin.apps.length) {
+      const docId = searchResultsDocId(normalizedKey);
+      const snap = await admin.firestore().collection('searchResults').doc(docId).get();
+      if (snap.exists) {
+        const d = snap.data();
+        if (Number(d.pipelineVersion) !== FOOD_SEARCH_PIPELINE_VERSION) {
+          console.log('[Food Search] Firestore cache stale version — refetch');
+        } else if (Array.isArray(d.results) && d.results.length > 0) {
+          console.log('[Food Search] Firestore searchResults hit:', query);
+          foodCache.set(cacheKey, { data: d.results, timestamp: Date.now() });
+          return res.json({
+            results: d.results.slice(0, limit),
+            source: d.source || 'firestore-cache',
+            cached: true,
+          });
+        }
+      }
+    }
+  } catch (fcReadErr) {
+    console.warn('[Food Search] Firestore cache read failed:', fcReadErr.message);
   }
 
   let results = null;
@@ -1368,6 +2876,13 @@ app.get('/api/food/search', async (req, res) => {
     'subway',
     'chipotle',
     'kfc',
+    'little caesars',
+    'red robin',
+    'dominos',
+    "domino's",
+    'papa johns',
+    "papa john's",
+    'cottage inn',
   ];
 
   const normalizeText = (s) =>
@@ -1378,8 +2893,55 @@ app.get('/api/food/search', async (req, res) => {
       .replace(/\s+/g, ' ')
       .trim();
 
+  /** Strip punctuation/spacing so "Domino's" / "domino s" match query token "dominos". */
+  const brandKey = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/['’`]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const isLetterChar = (c) => c != null && c !== '' && /[a-z]/i.test(c);
+
+  /**
+   * Match chain/brand as a real token, not a substring inside another word.
+   * Prevents "dominos" matching "DOMINOSTEINE" / "dominosteine" (old logic used naive includes on brandKey).
+   */
+  const brandMatchesItem = (text, brand) => {
+    const hay = normalizeText(text);
+    const needle = normalizeText(brand);
+    if (!needle) return false;
+
+    let i = 0;
+    while ((i = hay.indexOf(needle, i)) !== -1) {
+      const before = i === 0 ? ' ' : hay[i - 1];
+      const after = i + needle.length >= hay.length ? ' ' : hay[i + needle.length];
+      if (!isLetterChar(before) && !isLetterChar(after)) return true;
+      i += 1;
+    }
+
+    const kb = brandKey(brand);
+    const tk = brandKey(hay);
+    if (kb.length < 3) return false;
+
+    let j = 0;
+    while ((j = tk.indexOf(kb, j)) !== -1) {
+      const beforeC = j === 0 ? null : tk[j - 1];
+      const afterC = j + kb.length >= tk.length ? null : tk[j + kb.length];
+      const okBefore = beforeC == null || !isLetterChar(beforeC);
+      const okAfter = afterC == null || !isLetterChar(afterC);
+      if (okBefore && okAfter) return true;
+      j += 1;
+    }
+    return false;
+  };
+
   const queryLower = normalizeText(query);
   const requestedBrand = KNOWN_BRANDS.find((b) => queryLower.includes(normalizeText(b))) || null;
+  const restaurantChainHit =
+    RESTAURANT_FIRST_BRANDS.find((b) => queryLower.includes(normalizeText(b))) || null;
+
+  const searchMode = classifyNutritionSearchMode(queryLower, !!restaurantChainHit);
+  console.log('[Food Search] Mode:', searchMode, 'query:', query);
 
   const queryMeta = {
     hasOz: /\b\d+(\.\d+)?\s*oz\b/.test(queryLower) || /\b\d+(\.\d+)?\s*fl\s*oz\b/.test(queryLower),
@@ -1406,13 +2968,21 @@ app.get('/api/food/search', async (req, res) => {
 
   const queryTokens = tokenize(queryLower);
 
+  /** "apple jacks cereal" → "apple jacks" so phrase match beats random apple+cereal baby foods */
+  const queryCorePhrase = queryLower
+    .replace(/\b(cereal|ready[\s-]?to[\s-]?eat|rte|milk|bar|drink|soda|juice|snack|chips|crackers|oatmeal)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const escapeRe = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   const itemText = (item) => {
     const n = normalizeText(item?.food_name || item?.name || '');
     const b = normalizeText(item?.brand_name || item?.brand || '');
     return `${n} ${b}`.trim();
   };
 
-  const findBrandInText = (text) => KNOWN_BRANDS.find((b) => text.includes(normalizeText(b))) || null;
+  const findBrandInText = (text) => KNOWN_BRANDS.find((b) => brandMatchesItem(text, b)) || null;
 
   const sizeScore = (text) => {
     let s = 0;
@@ -1440,16 +3010,51 @@ app.get('/api/food/search', async (req, res) => {
 
     let score = 0;
 
-    // Token overlap
-    const hits = queryTokens.filter((t) => text.includes(t)).length;
-    score += hits * 4;
+    // Strong match: full product phrase (e.g. "apple jacks") — beats apple+cereal in babyfood
+    if (queryCorePhrase.length >= 4 && text.includes(queryCorePhrase)) {
+      score += 120;
+    }
+    // Multi-word query: reward consecutive words from core phrase appearing together
+    const coreWords = queryCorePhrase.split(' ').filter((w) => w.length > 2);
+    if (coreWords.length >= 2) {
+      const joined = coreWords.join(' ');
+      if (text.includes(joined)) score += 60;
+    }
 
-    // Brand precision
-    if (requestedBrand) {
-      const brandNorm = normalizeText(requestedBrand);
-      if (text.includes(brandNorm)) score += 40;
+    // Token overlap — whole word only (avoids "jack" inside unrelated cheese when token is "jacks")
+    let tokenHits = 0;
+    for (const t of queryTokens) {
+      try {
+        if (new RegExp(`\\b${escapeRe(t)}\\b`, 'i').test(text)) tokenHits += 1;
+      } catch {
+        if (text.includes(t)) tokenHits += 1;
+      }
+    }
+    score += tokenHits * 6;
+
+    // Restaurant chain in query → only rows that actually name that chain should win (any chain, not pizza-only)
+    if (restaurantChainHit) {
+      if (brandMatchesItem(text, restaurantChainHit)) score += 42;
+      else score -= 58;
+      const wrongChain = RESTAURANT_FIRST_BRANDS.find(
+        (b) => brandMatchesItem(text, b) && brandKey(b) !== brandKey(restaurantChainHit),
+      );
+      if (wrongChain) score -= 65;
+      const t = text.toLowerCase();
+      // Retail-aisle noise that often ranks on shared words ("pizza", "burger", "chicken") without being the restaurant
+      if (
+        /\bpizza\s+sauce\b|\bpizza\s*,\s*sauce\b|,\s*pizza\s+sauce\b/i.test(t) ||
+        /\bpizza\s+crackers\b|\bpizza\s+dough\b|\bpizza\s+paste\b|\bpizza\s+bourekas\b|\bpizza\s+bruschetta\b|\bpizza\s+empanadas\b|\bpizza\s+pastelillos\b/i.test(t) ||
+        /\b(bourekas|empanadas|pastelillos|bruschette)\b/i.test(t)
+      ) {
+        score -= 100;
+      }
+      if (item?.source === 'serper' && brandMatchesItem(text, restaurantChainHit)) score += 28;
+    } else if (requestedBrand) {
+      if (brandMatchesItem(text, requestedBrand)) score += 40;
+      else score -= 52;
       const foundBrand = findBrandInText(text);
-      if (foundBrand && normalizeText(foundBrand) !== brandNorm) score -= 60; // wrong chain should not outrank
+      if (foundBrand && brandKey(foundBrand) !== brandKey(requestedBrand)) score -= 60;
     }
 
     // Size / variant matching (20oz, large, deep dish, etc.)
@@ -1461,6 +3066,15 @@ app.get('/api/food/search', async (req, res) => {
     // For soda queries, penalize water/seltzer
     if ((requestedBrand === 'coke' || requestedBrand === 'coca cola' || requestedBrand === 'coca-cola') && /\bwater\b|\bseltzer\b/.test(text)) {
       score -= 50;
+    }
+
+    // User typed grocery cereal — not baby food jars
+    if (/\bbabyfood\b|\bbaby food\b/i.test(text) && !/\b(baby|infant|toddler|jar)\b/.test(queryLower)) {
+      score -= 55;
+    }
+    // Asked for cereal but row is clearly cheese / unrelated
+    if (/\bcereal\b/.test(queryLower) && /\bcheese\b|\bcheeses\b/i.test(text) && !/\bcereal\b/i.test(text)) {
+      score -= 70;
     }
 
     return score;
@@ -1477,221 +3091,375 @@ app.get('/api/food/search', async (req, res) => {
   const hasGoodMatch = (arr) => {
     const ranked = rankResults(arr);
     if (!ranked.length) return false;
-    if (!requestedBrand) return true;
     const topText = itemText(ranked[0]);
-    return topText.includes(normalizeText(requestedBrand));
+    if (restaurantChainHit) return brandMatchesItem(topText, restaurantChainHit);
+    if (requestedBrand) return brandMatchesItem(topText, requestedBrand);
+    return true;
   };
 
-  // TIER 1 — USDA
-  let usdaResults = null;
-  try {
-    console.log('[Food Search] Trying USDA...');
-    const r = await fetchWithTimeout(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=10&api_key=${process.env.USDA_API_KEY}`,
-      {},
-      8000
-    );
-    if (r.ok) {
-      const data = await r.json();
-      usdaResults = (data.foods || []).slice(0, 10).map(item => {
-        const nutrients = item.foodNutrients || [];
-        const get = (id) => nutrients.find(n => n.nutrientId === id)?.value || 0;
-        return {
-          food_name: item.description,
-          brand_name: item.brandOwner || '',
-          serving_qty: 1,
-          serving_unit: item.servingSize
-            ? `${item.servingSize}${item.servingSizeUnit}` 
-            : 'serving',
-          nf_calories: get(1008),
-          nf_protein: get(1003),
-          nf_total_carbohydrate: get(1005),
-          nf_total_fat: get(1004),
-          photo: null,
-          source: 'usda'
-        };
-      });
-      
-      usdaResults = rankResults(usdaResults);
+  const needsFill = () => !results?.length || !hasGoodMatch(results);
 
-      if (hasGoodMatch(usdaResults)) {
-        results = usdaResults;
-        source = 'usda';
-        console.log('[Food Search] USDA success with good match:', results.length, 'results');
-      } else {
-        console.log('[Food Search] USDA found', usdaResults.length, 'results but no good match - will try other sources');
-      }
-    }
-  } catch (e) {
-    console.error('[Food Search] USDA failed:', e.message);
-  }
+  const mapUsdaFoods = (foods) =>
+    (foods || []).map((item) => {
+      const nutrients = item.foodNutrients || [];
+      const get = (id) => nutrients.find((n) => n.nutrientId === id)?.value || 0;
+      const household = item.householdServingFullText ? String(item.householdServingFullText).trim() : '';
+      const sizeBit = item.servingSize ? `${item.servingSize}${item.servingSizeUnit || ''}` : '';
+      const servingHuman = String(household || sizeBit || '').trim();
+      return {
+        food_name: item.description,
+        brand_name: item.brandOwner || '',
+        serving_qty: 1,
+        serving_unit: servingHuman || 'serving',
+        serving_label: household || sizeBit || null,
+        householdServingFullText: household || null,
+        nf_calories: get(1008),
+        nf_protein: get(1003),
+        nf_total_carbohydrate: get(1005),
+        nf_total_fat: get(1004),
+        photo: null,
+        source: 'usda',
+      };
+    });
 
-  // TIER 2 — Open Food Facts
-  console.log('[Food Search] Checking if Open Food Facts needed - current results:', results?.length || 0);
-  let offResults = null;
-  if (!results || results.length === 0) {
+  /** Serper web results merged into `results` / `source`. */
+  async function mergeSerperFoodSearch(logLabel) {
+    if (!process.env.SERPER_API_KEY) return;
     try {
-      console.log('[Food Search] 🥫 Trying Open Food Facts for query:', query);
-      const r = await fetchWithTimeout(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10`,
-        {},
-        8000
-      );
-      console.log('[Food Search] 🥫 Open Food Facts response status:', r.status);
-      if (r.ok) {
-        const data = await r.json();
-        console.log('[Food Search] 🥫 Open Food Facts raw data products count:', data.products?.length || 0);
-        offResults = (data.products || []).slice(0, 10).map(item => {
-          const n = item.nutriments || {};
-          return {
-            food_name: item.product_name || query,
-            brand_name: item.brands || '',
-            serving_qty: 1,
-            serving_unit: item.serving_size || 'serving',
-            nf_calories: n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0,
-            nf_protein: n['proteins_serving'] || n['proteins_100g'] || 0,
-            nf_total_carbohydrate: n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0,
-            nf_total_fat: n['fat_serving'] || n['fat_100g'] || 0,
-            photo: item.image_small_url || null,
-            source: 'openfoodfacts'
-          };
-        });
-        
-        offResults = rankResults(offResults);
-
-        if (hasGoodMatch(offResults)) {
-          results = offResults;
-          source = 'openfoodfacts';
-          console.log('[Food Search] 🥫 Open Food Facts SUCCESS with good match - found', results.length, 'results');
-        } else {
-          console.log('[Food Search] 🥫 Open Food Facts found', offResults.length, 'results but no good match - will try Serper');
-        }
-      } else {
-        console.log('[Food Search] 🥫 Open Food Facts HTTP error:', r.status);
+      console.log(logLabel);
+      let parsed = [];
+      try {
+        parsed = await searchFoodWithSerper(query);
+      } catch (helperErr) {
+        console.warn('[Food Search] Serper helper failed:', helperErr?.message || helperErr);
       }
-    } catch (e) {
-      console.error('[Food Search] 🥫 Open Food Facts FAILED with error:', e.message);
-    }
-  } else {
-    console.log('[Food Search] 🥫 Open Food Facts NOT needed - already have good match from USDA');
-  }
 
-  // TIER 4 — Serper
-  // If we have a brand query but top results don't match the brand, go to Serper too.
-  const needSerper =
-    !results ||
-    results.length === 0 ||
-    (requestedBrand && results.length > 0 && !itemText(results[0]).includes(normalizeText(requestedBrand)));
-
-  if (needSerper) {
-    try {
-      console.log('[Food Search] Trying Serper...');
-      const r = await fetchWithTimeout(
-        'https://google.serper.dev/search',
-        {
-          method: 'POST',
-          headers: {
-            'X-API-KEY': process.env.SERPER_API_KEY,
-            'Content-Type': 'application/json'
+      if (!parsed.length) {
+        const qSerper = fixTypoForSerperQuery(query);
+        const r = await fetchWithTimeout(
+          'https://google.serper.dev/search',
+          {
+            method: 'POST',
+            headers: {
+              'X-API-KEY': process.env.SERPER_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              q: `${qSerper} calories protein carbs fat nutrition facts menu`,
+              num: 8,
+            }),
           },
-          body: JSON.stringify({
-            q: `${query} calories protein carbs fat nutrition facts`,
-            num: 5
-          })
-        },
-        8000
-      );
-      if (r.ok) {
-        const data = await r.json();
-        console.log('[Food Search] 🔍 Serper raw data keys:', Object.keys(data));
-        console.log('[Food Search] 🔍 Serper answerBox:', data.answerBox ? 'found' : 'not found');
-        console.log('[Food Search] 🔍 Serper knowledgeGraph:', data.knowledgeGraph ? 'found' : 'not found');
-        console.log('[Food Search] 🔍 Serper organic results count:', data.organic?.length || 0);
-        
-        const answer = data.answerBox || data.knowledgeGraph;
-        if (answer) {
-          console.log('[Food Search] 🔍 Serper answer object:', JSON.stringify(answer, null, 2));
-          
-          // Clean up the title - remove "Calories in" and "Carbs in" prefixes
-          let cleanTitle = answer.title || query;
-          if (cleanTitle.startsWith('Calories in ')) {
-            cleanTitle = cleanTitle.replace('Calories in ', '');
-          }
-          if (cleanTitle.startsWith('Carbs in ')) {
-            cleanTitle = cleanTitle.replace('Carbs in ', '');
-          }
-          if (cleanTitle.includes(' - CalorieKing')) {
-            cleanTitle = cleanTitle.replace(' - CalorieKing', '');
-          }
-          
-          // Extract nutrition from snippet text if available
-          const snippet = answer.snippet || '';
-          const extractNumber = (text, pattern) => {
-            const match = text.match(pattern);
-            return match ? parseFloat(match[1]) : 0;
-          };
-          
-          const serperOne = {
-            food_name: cleanTitle.trim(),
-            brand_name: '',
-            serving_qty: 1,
-            serving_unit: 'serving',
-            nf_calories: parseFloat(answer.calories) || extractNumber(snippet, /(\d+)\s*calories/i) || 0,
-            nf_protein: parseFloat(answer.protein) || extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*protein/i) || 0,
-            nf_total_carbohydrate: parseFloat(answer.carbohydrates) || parseFloat(answer.carbs) || extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*carb/i) || 0,
-            nf_total_fat: parseFloat(answer.fat) || extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*fat/i) || 0,
-            photo: null,
-            source: 'serper'
-          };
-
-          // Merge Serper with existing results (if any) then re-rank.
-          const merged = rankResults([serperOne, ...(results || [])]);
-          results = merged;
-          source = (results?.[0]?.source === 'serper') ? 'serper' : (source || 'mixed');
-          console.log('[Food Search] 🔍 Serper extracted nutrition:', serperOne);
-        } else {
-          console.log('[Food Search] 🔍 Serper - no answerBox or knowledgeGraph found for:', query);
-          console.log('[Food Search] 🔍 Serper - first organic result:', data.organic?.[0]?.title);
-
-          // Fallback: use the more robust Serper parsing helper (organic + snippet parsing).
-          try {
-            const parsed = await searchFoodWithSerper(query);
-            if (Array.isArray(parsed) && parsed.length) {
-              const merged = rankResults([...(parsed || []), ...(results || [])]);
-              results = merged;
-              source = (results?.[0]?.source === 'serper') ? 'serper' : (source || 'mixed');
-              console.log('[Food Search] 🔍 Serper helper returned', parsed.length, 'items');
-            }
-          } catch (helperErr) {
-            console.warn('[Food Search] Serper helper failed:', helperErr?.message || helperErr);
+          12000,
+        );
+        if (r.ok) {
+          const data = await r.json();
+          const answer = data.answerBox || data.knowledgeGraph;
+          if (answer) {
+            let cleanTitle = answer.title || query;
+            if (cleanTitle.startsWith('Calories in ')) cleanTitle = cleanTitle.replace('Calories in ', '');
+            if (cleanTitle.startsWith('Carbs in ')) cleanTitle = cleanTitle.replace('Carbs in ', '');
+            if (cleanTitle.includes(' - CalorieKing')) cleanTitle = cleanTitle.replace(' - CalorieKing', '');
+            const organicExtra = Array.isArray(data.organic)
+              ? data.organic
+                  .slice(0, 8)
+                  .map((o) => `${o.title || ''} ${o.snippet || ''}`)
+                  .join('\n')
+              : '';
+            const snippet = `${answer.snippet || ''} ${answer.answer || ''}\n${organicExtra}`.trim();
+            const macros = extractMacrosFromText(snippet, String(query || '').toLowerCase());
+            const extractNumber = (text, pattern) => {
+              const match = text.match(pattern);
+              return match ? parseFloat(match[1]) : 0;
+            };
+            const srv = macros.servingLabel || null;
+            parsed = [
+              {
+                food_name: cleanTitle.trim(),
+                brand_name: '',
+                serving_qty: 1,
+                serving_unit: srv || 'serving',
+                serving_label: srv,
+                nf_calories:
+                  parseFloat(answer.calories) ||
+                  macros.calories ||
+                  extractNumber(snippet, /(\d+)\s*calories/i) ||
+                  0,
+                nf_protein:
+                  parseFloat(answer.protein) || macros.protein || extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*protein/i) || 0,
+                nf_total_carbohydrate:
+                  parseFloat(answer.carbohydrates) ||
+                  parseFloat(answer.carbs) ||
+                  macros.carbs ||
+                  extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*carb/i) ||
+                  0,
+                nf_total_fat:
+                  parseFloat(answer.fat) || macros.fat || extractNumber(snippet, /(\d+\.?\d*)\s*g?\s*fat/i) || 0,
+                photo: null,
+                source: 'serper',
+              },
+            ];
           }
         }
+      }
+
+      if (Array.isArray(parsed) && parsed.length) {
+        const merged = rankResults([...parsed, ...(results || [])]);
+        results = merged;
+        source = results?.[0]?.source === 'serper' ? 'serper' : source || 'mixed';
+        console.log('[Food Search] 🔍 Serper merged', parsed.length, 'items');
       }
     } catch (e) {
       console.error('[Food Search] Serper failed:', e.message);
     }
   }
 
-  // Final fallback: if no good matches found, use USDA or OFF results as last resort
-  if (!results || results.length === 0) {
-    if (usdaResults && usdaResults.length > 0) {
-      console.log('[Food Search] No good matches found - falling back to USDA generic results');
-      results = usdaResults;
-      source = 'usda-fallback';
-    } else if (offResults && offResults.length > 0) {
-      console.log('[Food Search] No good matches found - falling back to Open Food Facts generic results');
-      results = offResults;
-      source = 'openfoodfacts-fallback';
-    } else {
-      console.error('[Food Search] All tiers failed for query:', query);
-      return res.status(404).json({ error: 'No results found', query });
+  let usdaResults = null;
+  let offResults = null;
+
+  async function loadUsdaFoundationFirst() {
+    if (!process.env.USDA_API_KEY) return;
+    try {
+      // FDC mixed-type searches return SR Legacy baby foods / Survey noise BEFORE Kellogg's branded rows.
+      // Terminal proof: Branded-only + "apple jacks" returns Kellogg's Apple Jacks; mixed "Apple Jacks cereal" does not (first page).
+      const combinedFoods = [];
+      const seenIds = new Set();
+      const pushFoods = (foods) => {
+        for (const f of foods || []) {
+          if (f?.fdcId && !seenIds.has(f.fdcId)) {
+            seenIds.add(f.fdcId);
+            combinedFoods.push(f);
+          }
+        }
+      };
+
+      const brandedQuery =
+        queryCorePhrase.length >= 3 ? queryCorePhrase : queryLower;
+
+      const apiUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(process.env.USDA_API_KEY)}`;
+
+      console.log('[Food Search] USDA Branded-first:', brandedQuery);
+      const rBrand = await fetchWithTimeout(
+        apiUrl,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: brandedQuery,
+            pageSize: 45,
+            dataType: ['Branded'],
+          }),
+        },
+        12000,
+      );
+      if (rBrand.ok) {
+        const dBrand = await rBrand.json();
+        pushFoods(dBrand.foods);
+      }
+
+      console.log('[Food Search] USDA mixed datatypes (full query)...');
+      const rMix = await fetchWithTimeout(
+        apiUrl,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            pageSize: 50,
+            dataType: ['Branded', 'Foundation', 'SR Legacy', 'Survey (FNDDS)'],
+          }),
+        },
+        12000,
+      );
+      if (rMix.ok) {
+        const dMix = await rMix.json();
+        pushFoods(dMix.foods);
+      }
+
+      usdaResults = rankResults(mapUsdaFoods(combinedFoods.slice(0, 120)));
+      if (hasGoodMatch(usdaResults)) {
+        results = usdaResults;
+        source = 'usda';
+        console.log('[Food Search] USDA grocery match:', results.length, 'pool:', combinedFoods.length);
+      } else {
+        console.log('[Food Search] USDA weak match — may try other tiers');
+      }
+    } catch (e) {
+      console.error('[Food Search] USDA primary search failed:', e.message);
     }
   }
 
-  foodCache.set(cacheKey, { data: results, timestamp: Date.now() });
-  return res.json({ results, source });
+  async function loadUsdaBroad() {
+    if (!process.env.USDA_API_KEY) return;
+    try {
+      console.log('[Food Search] USDA (broad search)...');
+      const r = await fetchWithTimeout(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=12&api_key=${process.env.USDA_API_KEY}`,
+        {},
+        10000,
+      );
+      if (!r.ok) return;
+      const data = await r.json();
+      const mapped = rankResults(mapUsdaFoods((data.foods || []).slice(0, 12)));
+      usdaResults = mapped;
+      if (hasGoodMatch(mapped)) {
+        results = mapped;
+        source = 'usda';
+        console.log('[Food Search] USDA broad match:', results.length);
+      }
+    } catch (e) {
+      console.error('[Food Search] USDA broad failed:', e.message);
+    }
+  }
+
+  async function loadOpenFoodFacts() {
+    if (restaurantChainHit) {
+      console.log(
+        '[Food Search] 🥫 OFF skipped for restaurant chain query (retail DB ≠ menu — Serper/USDA first)',
+      );
+      return;
+    }
+    try {
+      console.log('[Food Search] 🥫 Open Food Facts:', query);
+      const r = await fetchWithTimeout(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=24`,
+        {},
+        10000,
+      );
+      console.log('[Food Search] 🥫 Open Food Facts status:', r.status);
+      if (!r.ok) return;
+      const data = await r.json();
+      console.log('[Food Search] 🥫 OFF products:', data.products?.length || 0);
+      offResults = (data.products || []).slice(0, 24).map((item) => {
+        const n = item.nutriments || {};
+        return {
+          food_name: item.product_name || query,
+          brand_name: item.brands || '',
+          serving_qty: 1,
+          serving_unit: item.serving_size || 'serving',
+          nf_calories: n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0,
+          nf_protein: n['proteins_serving'] || n['proteins_100g'] || 0,
+          nf_total_carbohydrate: n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0,
+          nf_total_fat: n['fat_serving'] || n['fat_100g'] || 0,
+          photo: item.image_small_url || null,
+          source: 'openfoodfacts',
+        };
+      });
+      offResults = rankResults(offResults);
+      if (hasGoodMatch(offResults)) {
+        const top = offResults[0];
+        const topText = itemText(top);
+        const retailFrozen =
+          /\bpizza\b/.test(queryLower) &&
+          /\b(take\s*&\s*bake|take\s+and\s+bake|bake\s+at\s+home)\b/.test(topText) &&
+          !/\b(take|bake|frozen|grocery)\b/.test(queryLower);
+        if (retailFrozen) {
+          console.log(
+            '[Food Search] 🥫 OFF top looks retail/frozen pizza — continuing to web search for better match',
+          );
+        } else {
+          results = offResults;
+          source = 'openfoodfacts';
+          console.log('[Food Search] 🥫 OFF good match:', results.length);
+        }
+      }
+    } catch (e) {
+      console.error('[Food Search] 🥫 Open Food Facts FAILED:', e.message);
+    }
+  }
+
+  // ─── Tier order: generic → USDA → OFF → Serper → USDA broad
+  //                 branded + restaurant chain in query → Serper first (OFF skipped), then USDA
+  if (searchMode === 'generic') {
+    if (needsFill()) await loadUsdaFoundationFirst();
+    if (needsFill()) await loadOpenFoodFacts();
+    if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (after USDA + OFF)');
+    if (needsFill()) await loadUsdaBroad();
+  } else if (restaurantChainHit) {
+    if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (restaurant chain first)');
+    if (needsFill()) await loadOpenFoodFacts();
+    if (needsFill()) await loadUsdaBroad();
+    if (needsFill()) await loadUsdaFoundationFirst();
+  } else {
+    if (needsFill()) await loadOpenFoodFacts();
+    if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (after OFF)');
+    if (needsFill()) await loadUsdaBroad();
+    if (needsFill()) await loadUsdaFoundationFirst();
+  }
+
+  const brandForSerperFinal = restaurantChainHit || requestedBrand;
+  const needSerperFinal =
+    process.env.SERPER_API_KEY &&
+    (!results?.length ||
+      (brandForSerperFinal &&
+        results.length > 0 &&
+        !brandMatchesItem(itemText(results[0]), brandForSerperFinal)));
+
+  if (needSerperFinal) {
+    await mergeSerperFoodSearch('[Food Search] Serper final pass (brand / empty fix)');
+  }
+
+  if (!results || results.length === 0) {
+    if (usdaResults && usdaResults.length > 0) {
+      console.log('[Food Search] Fallback: USDA results');
+      results = usdaResults;
+      source = 'usda-fallback';
+    } else if (offResults && offResults.length > 0) {
+      console.log('[Food Search] Fallback: OFF results');
+      results = offResults;
+      source = 'openfoodfacts-fallback';
+    }
+  }
+
+  if (!results || results.length === 0) {
+    console.error('[Food Search] All tiers failed for query:', query);
+    return res.json({
+      results: [],
+      source: 'none',
+      hint: EMPTY_SEARCH_HINT,
+      query,
+    });
+  }
+
+  if (restaurantChainHit && Array.isArray(results) && results.length) {
+    const strict = results.filter((it) => brandMatchesItem(itemText(it), restaurantChainHit));
+    if (strict.length > 0) {
+      results = rankResults(strict);
+      console.log('[Food Search] Restaurant-only filter:', strict.length, 'results mention', restaurantChainHit);
+    }
+  }
+
+  const out = (results || []).slice(0, limit);
+
+  foodCache.set(cacheKey, { data: out, timestamp: Date.now() });
+
+  try {
+    if (admin.apps.length && out.length > 0) {
+      const docId = searchResultsDocId(normalizedKey);
+      await admin.firestore().collection('searchResults').doc(docId).set(
+        {
+          queryKey: normalizedKey,
+          originalQuery: query,
+          pipelineVersion: FOOD_SEARCH_PIPELINE_VERSION,
+          food_name: out[0]?.food_name || out[0]?.name || query,
+          calories: Number(out[0]?.nf_calories ?? out[0]?.calories ?? 0),
+          protein: Number(out[0]?.nf_protein ?? out[0]?.protein ?? 0),
+          carbs: Number(out[0]?.nf_total_carbohydrate ?? out[0]?.carbs ?? 0),
+          fat: Number(out[0]?.nf_total_fat ?? out[0]?.fat ?? 0),
+          source: source || out[0]?.source || 'unknown',
+          results: out,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+  } catch (fwErr) {
+    console.warn('[Food Search] Firestore cache write failed:', fwErr.message);
+  }
+
+  return res.json({ results: out, source });
 });
 
+// Barcode pipeline (fixed order): ① USDA Branded-only GTIN match ② Open Food Facts product API ③ Serper web
 app.post('/api/food/barcode', async (req, res) => {
   try {
     const { barcode } = req.body;
@@ -1700,44 +3468,42 @@ app.post('/api/food/barcode', async (req, res) => {
       return res.status(400).json({ error: 'Barcode is required' });
     }
 
-    // 1. Open Food Facts with portion normalization (quantity -> default serving, totalCalories computed)
     const cacheKey = `barcode:${barcode}`;
     const cached = getCached(cacheKey);
     if (cached) {
       return res.json(cached);
     }
 
-    // Primary lookup
     let result = null;
-    try {
-      const openFoodFactsUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-      const offResponse = await axios.get(openFoodFactsUrl);
 
-      if (offResponse.data && offResponse.data.product) {
-        result = normalizeOpenFoodFactsProduct(offResponse.data.product);
-        if (result) console.log('Barcode from OFF:', result.name, 'servingAmount:', result.servingAmount, 'calories:', result.calories);
-      }
-    } catch (offError) {
-      console.warn('OpenFoodFacts barcode lookup failed:', offError.message);
+    // 1. USDA FDC — branded products only (see lookupBarcodeUsda: dataType Branded + GTIN match)
+    if (process.env.USDA_API_KEY) {
+      result = await lookupBarcodeUsda(barcode.trim());
+      if (result) console.log('Barcode from USDA:', result.name, 'fdcId:', result.id);
     }
 
-    // Fallback 2: Serper web search for barcode + nutrition
+    // 2. Open Food Facts with portion normalization
+    if (!result) {
+      try {
+        const openFoodFactsUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
+        const offResponse = await axios.get(openFoodFactsUrl);
+
+        if (offResponse.data && offResponse.data.product) {
+          result = normalizeOpenFoodFactsProduct(offResponse.data.product);
+          if (result) console.log('Barcode from OFF:', result.name, 'servingAmount:', result.servingAmount, 'calories:', result.calories);
+        }
+      } catch (offError) {
+        console.warn('OpenFoodFacts barcode lookup failed:', offError.message);
+      }
+    }
+
+    // 3. Serper web search for barcode + nutrition
     if (!result && process.env.SERPER_API_KEY) {
       try {
         result = await lookupBarcodeWithSerper(barcode);
         if (result) console.log('Barcode found via Serper:', result.name);
       } catch (serperErr) {
         console.warn('Serper barcode fallback failed:', serperErr.message);
-      }
-    }
-
-    // Fallback 3: OpenAI infers product + typical nutrition (last resort)
-    if (!result && process.env.OPENAI_API_KEY) {
-      try {
-        result = await lookupBarcodeWithOpenAI(barcode);
-        if (result) console.log('Barcode found via OpenAI:', result.name);
-      } catch (openaiErr) {
-        console.warn('OpenAI barcode fallback failed:', openaiErr.message);
       }
     }
 
@@ -1767,7 +3533,7 @@ const RESTAURANT_JSON_SCHEMA = {
 };
 
 app.post('/api/nutrition/restaurant', async (req, res) => {
-  // Overall timeout for this expensive pipeline (Serper + HTML fetch + OpenAI)
+  // Overall timeout for this pipeline (Serper + HTML fetch)
   const routeTimeout = setTimeout(() => {
     if (!res.headersSent) {
       res.status(504).json({ error: 'Restaurant lookup timed out. Try a more specific search.' });
@@ -1779,73 +3545,10 @@ app.post('/api/nutrition/restaurant', async (req, res) => {
     if (!query || typeof query !== 'string' || !query.trim()) {
       return res.status(400).json({ error: 'query is required' });
     }
-    const searchQuery = buildRestaurantSearchQuery(query.trim());
-    const organics = await serperOrganicSearch(searchQuery, 5);
-    const first = organics[0];
-    if (!first?.link) {
-      return res.json(null);
-    }
-    let html = '';
-    try {
-      const pageRes = await axios.get(first.link, {
-        responseType: 'text',
-        timeout: 10000,
-        maxContentLength: 200000,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AnatroxNutrition/1.0)' },
-        validateStatus: () => true,
-      });
-      html = typeof pageRes.data === 'string' ? pageRes.data : '';
-    } catch (fetchErr) {
-      console.warn('Restaurant URL fetch failed:', fetchErr.message);
-      return res.json(null);
-    }
-    if (!html || html.length < 100) {
-      return res.json(null);
-    }
-    const truncated = html.length > 120000 ? html.slice(0, 120000) + '\n...[truncated]' : html;
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      console.warn('OPENAI_API_KEY not set, restaurant extraction skipped');
-      return res.json(null);
-    }
-    const openai = new OpenAI({ apiKey });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: EXTRACTION_PROMPT },
-        {
-          role: 'user',
-          content: `Menu item to extract: "${query.trim()}"\n\nExpected JSON schema: ${JSON.stringify(RESTAURANT_JSON_SCHEMA)}\n\nPage content:\n${truncated}`,
-        },
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
-    });
-    const raw = completion?.choices?.[0]?.message?.content?.trim() || '';
-    if (!raw || raw.toLowerCase() === 'null') {
-      return res.json(null);
-    }
-    let data = null;
-    try {
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-      data = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.warn('Restaurant nutrition JSON parse failed:', parseErr.message);
-      return res.json(null);
-    }
-    if (!data || typeof data !== 'object') {
-      return res.json(null);
-    }
-    const result = {
-      name: typeof data.name === 'string' ? data.name : query.trim(),
-      calories: typeof data.calories === 'number' ? data.calories : Number(data.calories) || 0,
-      protein: typeof data.protein === 'number' ? data.protein : Number(data.protein) || 0,
-      carbs: typeof data.carbs === 'number' ? data.carbs : Number(data.carbs) || 0,
-      fat: typeof data.fat === 'number' ? data.fat : Number(data.fat) || 0,
-      serving_description: typeof data.serving_description === 'string' ? data.serving_description : '',
-      source_url: typeof data.source_url === 'string' ? data.source_url : first.link,
-    };
-    return res.json(result);
+    // For now, return null since we removed OpenAI extraction
+    // In the future, consider using Claude via /api/ai-coach for extraction
+    console.warn('Restaurant nutrition extraction requires API integration - returning null');
+    return res.json(null);
   } catch (error) {
     console.error('Restaurant nutrition error:', error?.message || error);
     return res.status(500).json({ error: 'Restaurant nutrition failed' });
@@ -2327,15 +4030,187 @@ app.get('/health', (req, res) => {
   });
 });
 
+/** YYYY-MM-DD in UTC (used for nutrition nudge dedupe). */
+function utcDayKey(d = new Date()) {
+  return d.toISOString().slice(0, 10);
+}
+
+let _nutritionReminderUtcDaySent = null;
+
+/**
+ * ~1 hour before session start: one Expo push per session (sessionReminderSent).
+ * Requires `startAtMs` on session docs (trainer app saves this).
+ */
+async function runSessionSoonReminderJob() {
+  if (!admin.apps.length) return;
+  const db = admin.firestore();
+  const HOUR_MS = 60 * 60 * 1000;
+  const WINDOW_MS = 12 * 60 * 1000;
+  const lower = Date.now() + HOUR_MS - WINDOW_MS;
+  const upper = Date.now() + HOUR_MS + WINDOW_MS;
+  let snap;
+  try {
+    snap = await db
+      .collectionGroup('sessions')
+      .where('startAtMs', '>=', lower)
+      .where('startAtMs', '<=', upper)
+      .limit(120)
+      .get();
+  } catch (e) {
+    console.warn('[sessionSoonReminder] query failed — deploy Firestore index (collectionGroup sessions, startAtMs):', e?.message || e);
+    return;
+  }
+
+  for (const d of snap.docs) {
+    const data = d.data() || {};
+    if (data.sessionReminderSent) continue;
+    const st = String(data.status || 'pending').toLowerCase();
+    if (st === 'cancelled' || st === 'canceled' || st === 'declined') continue;
+    const clientId = data.clientId;
+    if (!clientId) continue;
+
+    try {
+      const u = await db.collection('users').doc(clientId).get();
+      if (!u.exists || u.data()?.notificationsEnabled === false) continue;
+      const token = u.data()?.expoPushToken || u.data()?.pushToken;
+
+      let coachLabel = 'Your coach';
+      if (data.trainerId) {
+        const ts = await db.collection('users').doc(String(data.trainerId)).get();
+        if (ts.exists) {
+          const td = ts.data();
+          coachLabel = td?.displayName || td?.name || td?.firstName || coachLabel;
+        }
+      }
+
+      const bodyTpl = pushPickRandom(PUSH_COPY.sessionSoonBodies || ['Session coming up soon.']);
+      const body = pushSub(bodyTpl, { trainerName: coachLabel });
+      const ok = await sendExpoPushSingle(token, {
+        title: pushSub(pushPickRandom(PUSH_COPY.sessionBookingTitles || ['Session']), {
+          trainerName: coachLabel,
+        }),
+        body,
+        data: {
+          type: 'session_reminder',
+          recipientId: clientId,
+          sessionId: d.id,
+          trainerId: String(data.trainerId || ''),
+          priority: 'low',
+        },
+      });
+      if (ok) {
+        await d.ref.set({ sessionReminderSent: true }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[sessionSoonReminder] doc failed:', d.id, e?.message || e);
+    }
+  }
+}
+
+/** Opt-in daily nutrition nudge (Profile → clients). At most once per UTC day per user. */
+async function runNutritionReminderPushJob() {
+  if (!admin.apps.length) return;
+  if (new Date().getUTCHours() !== 20) return;
+  const utcDay = utcDayKey();
+  if (_nutritionReminderUtcDaySent === utcDay) return;
+
+  const db = admin.firestore();
+  let snap;
+  try {
+    snap = await db.collection('users').where('nutritionReminderPush', '==', true).limit(400).get();
+  } catch (e) {
+    console.warn('[nutritionReminderPush]', e?.message || e);
+    return;
+  }
+
+  for (const doc of snap.docs) {
+    const u = doc.data() || {};
+    if (u.notificationsEnabled === false) continue;
+    if (u.lastNutritionReminderDay === utcDay) continue;
+    const token = u.expoPushToken || u.pushToken;
+    const coach = 'Your coach';
+    const bodyTpl = pushPickRandom(PUSH_COPY.nutritionBodies || ["Time to log today's meals"]);
+    const body = pushSub(bodyTpl, { trainerName: coach });
+    const ok = await sendExpoPushSingle(token, {
+      title: 'Nutrition check-in',
+      body,
+      data: {
+        type: 'nutrition_reminder',
+        recipientId: doc.id,
+        priority: 'low',
+      },
+    });
+    if (ok) {
+      await doc.ref.set({ lastNutritionReminderDay: utcDay }, { merge: true });
+    }
+  }
+  _nutritionReminderUtcDaySent = utcDay;
+}
+
+/**
+ * Daily workout reminder (remote). Only before 6:00 PM local and only if today's
+ * dashboard has no workout log in dailyLogs/{localDateKey}.
+ */
+async function runWorkoutReminderJob() {
+  if (!admin.apps.length) return;
+  const db = admin.firestore();
+  let snap;
+  try {
+    snap = await db.collection('users').where('workoutReminder.enabled', '==', true).limit(500).get();
+  } catch (e) {
+    console.warn('[workoutReminder]', e?.message || e);
+    return;
+  }
+
+  for (const doc of snap.docs) {
+    const u = doc.data() || {};
+    const wr = u.workoutReminder || {};
+    if (wr.hourLocal == null || wr.minuteLocal == null) continue;
+    const tz = wr.timeZone && String(wr.timeZone).trim() ? wr.timeZone : 'UTC';
+    const { dateKey, hour, minute } = localDateTimeInIANA(tz);
+    if (hour >= 18) continue;
+
+    const rh = Number(wr.hourLocal);
+    const rm = Number(wr.minuteLocal);
+    if (!Number.isFinite(rh) || !Number.isFinite(rm)) continue;
+    if (minutesDiffClock(hour, minute, rh, rm) > 12) continue;
+
+    if (wr.lastWorkoutPushDay === dateKey) continue;
+    if (u.notificationsEnabled === false) continue;
+
+    try {
+      const logsSnap = await db.collection('users').doc(doc.id).collection('dailyLogs').doc(dateKey).get();
+      if (hasDashboardWorkoutLog(logsSnap.data())) continue;
+
+      const token = u.expoPushToken || u.pushToken;
+      const body = pushPickRandom(PUSH_COPY.workoutReminders || ['Time to workout!']);
+      const ok = await sendExpoPushSingle(token, {
+        title: 'CoachConnect',
+        body,
+        data: { type: 'workout_reminder', recipientId: doc.id, priority: 'low' },
+      });
+      if (ok) {
+        await doc.ref.update({ 'workoutReminder.lastWorkoutPushDay': dateKey });
+      }
+    } catch (e) {
+      console.warn('[workoutReminder] user failed:', doc.id, e?.message || e);
+    }
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, '0.0.0.0', () => {
-  // eslint-disable-next-line no-console
   console.log(`🚀 Server listening on port ${PORT}`);
   console.log(`🌐 HTTP endpoints: http://localhost:${PORT}`);
   console.log(`🔐 Serper API: ${process.env.SERPER_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
-  console.log(`🔐 OpenAI API: ${process.env.OPENAI_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
   console.log(`🥬 USDA API: ${process.env.USDA_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
-  
+  const supportEmailReady =
+    !!process.env.RESEND_API_KEY ||
+    !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  console.log(
+    `📧 Support inbox email: ${supportEmailReady ? '✅ RESEND_API_KEY or SMTP_* set' : '❌ Not configured — Contact Support in the app will fail until you set RESEND_API_KEY or SMTP_*'}`
+  );
+
   const { networkInterfaces } = require('os');
   let localIP = 'localhost';
   try {
@@ -2672,6 +4547,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  GET  http://localhost:${PORT}/admin/list-users - List all users`);
   console.log(`  DEL  http://localhost:${PORT}/admin/delete-user/:uid - Delete user by UID`);
   console.log('=================================');
+  console.log('💬 App support (Contact Support screen):');
+  console.log(`  POST http://localhost:${PORT}/api/support/contact — JSON { subject, message } + Authorization: Bearer <Firebase ID token>`);
+  console.log('=================================');
   console.log('🚀 Lovable API endpoints:');
   console.log(`  GET  http://localhost:${PORT}/api/trainers - Get all trainers`);
   console.log(`  GET  http://localhost:${PORT}/api/trainers/:id - Get single trainer`);
@@ -2680,6 +4558,17 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  DEL  http://localhost:${PORT}/api/trainers/:id - Delete trainer`);
   console.log(`  GET  http://localhost:${PORT}/api/specialties - Get specialties`);
   console.log('=================================');
+
+  setInterval(() => {
+    runSessionSoonReminderJob().catch((e) => console.warn('[sessionSoonReminder]', e?.message || e));
+    runNutritionReminderPushJob().catch((e) => console.warn('[nutritionReminderPush]', e?.message || e));
+    runWorkoutReminderJob().catch((e) => console.warn('[workoutReminder]', e?.message || e));
+  }, 10 * 60 * 1000);
+  setTimeout(() => {
+    runSessionSoonReminderJob().catch(() => {});
+    runNutritionReminderPushJob().catch(() => {});
+    runWorkoutReminderJob().catch(() => {});
+  }, 20 * 1000);
 });
 
 

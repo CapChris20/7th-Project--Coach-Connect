@@ -21,6 +21,8 @@ const ACCENT = {
   purple: '#C084FC', // Keep your light purple
   cyan: '#06B6D4', // Keep your cyan
   green: '#22C55E', // Keep your green
+  deepPink: '#E91E63', // Dark pink (scanner frame)
+  deepPurple: '#7C3AED', // Deep purple (scanner frame)
 };
 
 function getTokens(isDark) {
@@ -29,7 +31,7 @@ function getTokens(isDark) {
         ...ACCENT,
         screenBg: '#0A0A0F',
         cardBg: 'rgba(255,255,255,0.06)',
-        cardBorder: 'rgba(255,255,255,0.10)',
+        cardBorder: 'rgba(255,255,255,0.08)',
         text: '#ffffff',
         textMuted: 'rgba(255,255,255,0.6)',
         textVeryMuted: 'rgba(255,255,255,0.45)',
@@ -98,7 +100,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
           console.warn('Failed to cache product:', cacheError);
         }
         // Show amount-adjust step instead of logging immediately
-        const defaultAmount = result.data.servingGrams || 100;
+        const defaultAmount = Number(result.data.servingGrams) || 100;
         setPendingBarcodeFood(result.data);
         setAmountValue(String(Math.round(defaultAmount)));
       } else {
@@ -442,34 +444,34 @@ const createStyles = (spacing, t) =>
       position: 'absolute',
       width: 30,
       height: 30,
-      borderColor: t.hotPink,
+      borderColor: t.deepPink,
       borderWidth: 3,
     },
     topLeft: {
       top: 0,
       left: 0,
-      borderColor: t.hotPink,
+      borderColor: t.deepPink,
       borderRightWidth: 0,
       borderBottomWidth: 0,
     },
     topRight: {
       top: 0,
       right: 0,
-      borderColor: t.orange,
+      borderColor: t.deepPurple,
       borderLeftWidth: 0,
       borderBottomWidth: 0,
     },
     bottomLeft: {
       bottom: 0,
       left: 0,
-      borderColor: t.cyan,
+      borderColor: t.deepPink,
       borderRightWidth: 0,
       borderTopWidth: 0,
     },
     bottomRight: {
       bottom: 0,
       right: 0,
-      borderColor: t.purple,
+      borderColor: t.deepPurple,
       borderLeftWidth: 0,
       borderTopWidth: 0,
     },

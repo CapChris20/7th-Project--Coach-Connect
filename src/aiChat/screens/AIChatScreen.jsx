@@ -424,11 +424,21 @@ async function postAICoach(payload) {
   const url = `${base}/api/ai-coach`;
   console.log('[AIChat] requesting URL:', url);
 
+  // Send DeepSeek key via header so server can use DeepSeek without server .env
+  const deepseekKey =
+    process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY ||
+    null;
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (deepseekKey && typeof deepseekKey === 'string' && deepseekKey.trim().length > 0) {
+    headers['x-deepseek-key'] = deepseekKey.trim();
+  }
+
   let response;
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     });
   } catch (error) {
@@ -452,12 +462,13 @@ function TypingIndicator({ t, searchingWeb }) {
   ];
 
   useEffect(() => {
+    // Keep these JS-driven to avoid native-driver node reuse issues during Fast Refresh.
     const animations = anims.map((anim, i) =>
       Animated.loop(
         Animated.sequence([
           Animated.delay(i * 200),
-          Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: false }),
+          Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: false }),
         ])
       )
     );
@@ -972,13 +983,14 @@ export default function AIChatScreen({
       quality: 0.8,
     });
     if (!result.canceled) {
-      const newAtts = result.assets.map((a) => ({
+      const assets = Array.isArray(result.assets) ? result.assets : [];
+      const newAtts = assets.map((a) => ({
         id: `att_${Date.now()}_${Math.random()}`,
         preview: a.uri,
         name: a.fileName || 'image.jpg',
         type: 'image',
       }));
-      setAttachments((prev) => [...prev, ...newAtts]);
+      if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
     }
   };
 
@@ -992,14 +1004,15 @@ export default function AIChatScreen({
 
   const handleFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({ multiple: true });
-    if (result.type !== 'cancel' && result.assets) {
-      const newAtts = result.assets.map((a) => ({
+    if (result.type !== 'cancel') {
+      const assets = Array.isArray(result.assets) ? result.assets : [];
+      const newAtts = assets.map((a) => ({
         id: `att_${Date.now()}_${Math.random()}`,
         name: a.name,
         uri: a.uri,
         type: 'file',
       }));
-      setAttachments((prev) => [...prev, ...newAtts]);
+      if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
     }
   };
 
@@ -1193,7 +1206,7 @@ export default function AIChatScreen({
                     />
                   </View>
 
-                  <LinearGradient
+                  <View
                     style={{
                       borderRadius: 26.5,
                       minHeight: 56,
@@ -1255,7 +1268,7 @@ export default function AIChatScreen({
                         <Ionicons name="mic" size={18} color="#FF6B9D" />
                       </Animated.View>
                     </Pressable>
-                  </LinearGradient>
+                  </View>
                 </View>
               </View>
             </Animated.View>
@@ -1307,6 +1320,7 @@ export default function AIChatScreen({
         onWorkoutPress={onWorkoutPress || (() => {})}
         onMessagesPress={onMessagesPress || (() => {})}
         onProfilePress={onProfilePress || (() => {})}
+        activeTabKey="ai"
       />
     </View>
   );

@@ -1,0 +1,137 @@
+{
+  "workoutReminders": [
+    "Time to crush it — your workout is ready",
+    "Let's go. Workout time",
+    "Your trainer just dropped a new routine",
+    "Time to move. Your plan is live",
+    "Workout waiting. You know what to do",
+    "Don't miss today. Workout is ready",
+    "Get it done. Workout time",
+    "Your plan is live. Time to start",
+    "Your body will thank you later. Start your workout",
+    "Consistency wins. Let's go",
+    "You've got this. Workout time",
+    "One more day closer to your goal",
+    "Rest day earned. Recovery protocol inside",
+    "Progress doesn't pause. Your workout is ready",
+    "Show up for yourself. Workout time",
+    "Time to build. Your workout is live"
+  ],
+  "aiCoachTitles": [
+    "Your AI Coach has a tip for you",
+    "Coach here — quick insight on your form",
+    "AI Coach spotted something. Check it out",
+    "New personalized challenge waiting",
+    "Coach analysis ready. Your form breakdown inside"
+  ],
+  "aiCoachBodies": [
+    "Open the app for a quick personalized tip.",
+    "A small change could level up your next session.",
+    "See what your coach noticed in your recent training."
+  ],
+  "trainerMessageTitles": [
+    "{{trainerName}} sent you a message",
+    "New message from your coach",
+    "{{trainerName}}: Quick form check on your last workout",
+    "{{trainerName}} replied to you",
+    "Message from {{trainerName}}: Check your technique"
+  ],
+  "sessionBookingTitles": [
+    "Session with {{trainerName}}",
+    "Session confirmed",
+    "Your session is coming up",
+    "Calendar update",
+    "Training session"
+  ],
+  "sessionBookingBodies": [
+    "Available: Session with {{trainerName}} soon",
+    "{{trainerName}} accepted your session request",
+    "Your session is in 1 hour",
+    "Session confirmed with {{trainerName}}",
+    "Book now: {{trainerName}} has an opening",
+    "Session scheduled — check the app for details."
+  ],
+  "sessionSoonBodies": [
+    "Your session is in 1 hour",
+    "Training with {{trainerName}} starts in about an hour.",
+    "Session coming up — time to get ready.",
+    "Don't miss it: session with {{trainerName}} soon."
+  ],
+  "clientRequestTrainerTitles": [
+    "New client request from {{clientName}}",
+    "{{clientName}} wants to book a session",
+    "New form submission from {{clientName}}",
+    "{{clientName}} requested coaching feedback",
+    "Client request pending: {{clientName}}",
+    "Action needed: {{clientName}} waiting for response"
+  ],
+  "nutritionBodies": [
+    "Nutrition check-in: How's your diet tracking?",
+    "{{trainerName}} reviewed your nutrition log",
+    "You hit your macro targets",
+    "Time to log today's meals",
+    "Meal logged. Keep the momentum",
+    "Nutrition update ready. Check your breakdown"
+  ],
+  "progressTitles": [
+    "You hit a new PR",
+    "New badge unlocked: 7-Day Warrior",
+    "Progress alert",
+    "Goal crushed",
+    "New personal record. You're getting stronger",
+    "Milestone hit: 50 total workouts",
+    "Weight trending up. Keep it up"
+  ],
+  "progressBodies": [
+    "You're up on your lifts — open the app for details.",
+    "Another win logged. Keep the streak alive.",
+    "Check your dashboard for the full breakdown."
+  ],
+  "challengeBodies": [
+    "New weekly challenge available",
+    "Your trainer created a custom challenge for you",
+    "Challenge: Hit 50k steps this week",
+    "Weekend challenge drops now",
+    "New challenge ready. Accept it"
+  ],
+  "motivationalBodies": [
+    "Your body will thank you later. Start your workout",
+    "Consistency wins. Let's go",
+    "You've got this. Workout time"
+  ],
+  "paymentTitles": [
+    "Payment received from {{clientName}}",
+    "Subscription renewed. Payment processed",
+    "Payment failed. Update your billing info",
+    "Payment due: Your subscription renews tomorrow",
+    "Invoice ready. Payment pending from {{clientName}}",
+    "Refund processed. Check your account",
+    "New payment received for AI Coach upgrade"
+  ],
+  "genericTitles": [
+    "New update in your CoachConnect",
+    "Action needed: Review your form",
+    "Your trainer wants feedback",
+    "Time for a progress check"
+  ],
+  "sessionUpdateClientBodies": [
+    "Your session was updated — open the app for the latest details.",
+    "Calendar change from your coach — check CoachConnect.",
+    "Session details changed. Tap to review."
+  ],
+  "sessionCancelledClientBodies": [
+    "A scheduled session was cancelled.",
+    "Your coach cancelled a session — see the app for details.",
+    "Session removed from your calendar."
+  ],
+  "sessionResponseTrainerBodies": [
+    "{{clientName}} accepted a session.",
+    "{{clientName}} declined a session.",
+    "{{clientName}} updated a session response."
+  ],
+  "notesSharedBodies": [
+    "Shared something new in Notes & Files.",
+    "New note or file for you in CoachConnect.",
+    "Check Notes & Files for an update."
+  ]
+}

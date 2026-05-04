@@ -1,3 +1,4 @@
+const { stripNotificationEmoji } = require('./stripNotificationEmoji');
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
@@ -59,25 +60,29 @@ exports.sendNewMessageNotification = functions.firestore
       }
 
       const senderName = senderDoc.data().name || 'Someone';
-      const { pushToken } = recipientDoc.data();
+      const { fcmToken } = recipientDoc.data();
 
-      if (!pushToken) {
-        console.log(`Recipient ${recipientId} does not have a push token.`);
+      if (!fcmToken) {
+        console.log(`Recipient ${recipientId} does not have an FCM token.`);
         return;
       }
 
-      // Construct the notification payload
+      const cleanSender = stripNotificationEmoji(senderName) || 'Someone';
+      let cleanText = stripNotificationEmoji(String(text || ''));
+      if (!cleanText.trim()) cleanText = 'You have a new message.';
+
+      // Construct the notification payload (FCM device token only)
       const payload = {
         notification: {
-          title: `New message from ${senderName}`,
-          body: text || 'You have a new message.',
+          title: stripNotificationEmoji(`New message from ${cleanSender}`) || 'New message',
+          body: cleanText,
           sound: 'default',
         },
-        token: pushToken,
+        token: fcmToken,
       };
 
       // Send the notification
-      console.log(`Sending notification to ${recipientId} with token ${pushToken}`);
+      console.log(`Sending FCM notification to ${recipientId}`);
       await admin.messaging().send(payload);
       console.log('Successfully sent notification.');
 

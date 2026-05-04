@@ -27,7 +27,6 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Platform,
-  Linking,
   Alert,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,20 +49,38 @@ import ProfileScreen from '../profile/screens/ProfileScreen';
 import SettingsScreen from "../client/screens/SettingsScreen";
 import WorkoutPlanGeneratorScreen from "../workouts/screens/workout";
 import ClientRequestsScreen from "../trainer/screens/ClientRequestsScreen";
-import SessionSchedulerScreen from "../trainer/screens/SessionSchedulerScreen";
+import SessionSchedulingScreen from "../trainer/screens/SessionSchedulingScreen";
+import SessionFormScreen from "../trainer/screens/SessionFormScreen";
 import { useTrainerClients } from "../trainer/hooks/useTrainerClients";
 import { useTrainerPendingRequests } from "../trainer/hooks/useTrainerPendingRequests";
 import { checkWeeklyDataAvailability } from "../trainer/services/clientCRMService";
-import { getExpoPushTokenAsync, requestNotificationPermissionsAsync, configureNotifications } from "../shared/services/notificationsService";
+import {
+  configureNotifications,
+  persistPushTokensForUid,
+  setNotificationTapHandler,
+  flushInitialNotificationResponse,
+  subscribePushTokenRefreshOnResume,
+} from "../shared/services/notificationsService";
 import { useTheme as useGlobalTheme } from "../shared/ui/ThemeContext";
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from "../app/config";
 import { getDateKey } from "../app/dateKey";
+import { getLocalDateKey } from "../shared/utils/localDay";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { subscribeToUnreadCount } from "../ai/services/conversationService";
 import { markAllMessagesReadForUser } from "../ai/services/markAllMessagesRead";
-import { getNotesAndFiles, getTrainerDocuments } from "../shared/services/notesAndFilesService";
+import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem } from "../shared/services/notesAndFilesService";
 import { clearAllUserData } from "../utils/dataCacheCleanup";
 import AddNotesFilesModal from "../shared/components/AddNotesFilesModal";
+import MediaViewerModal from "../shared/components/MediaViewerModal";
+import EmbedWebViewModal from "../shared/components/EmbedWebViewModal";
+import {
+  isImageFile as isNotesImageFile,
+  isVideoFile as isNotesVideoFile,
+  isPdfFile as isNotesPdfFile,
+  getEmbedViewerUri,
+  notesFileDedupeKey,
+} from "../shared/utils/notesFileView";
 import PdfViewerModal from "../shared/components/PdfViewerModal";
 import SpreadsheetViewerModal from "../shared/components/SpreadsheetViewerModal";
 import DocumentEditorModal from "../shared/components/DocumentEditorModal";
@@ -77,6 +94,7 @@ import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutr
 import PhotoGalleryScreen from "../trainer/screens/PhotoGalleryScreen";
 import AIWorkoutPlansScreen from "../trainer/screens/AIWorkoutPlansScreen";
 import GradientChatBubblesIcon from "../shared/components/GradientChatBubblesIcon";
+import FileGalleryGrid from "../shared/components/FileGalleryGrid";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -261,8 +279,10 @@ const GradientText = ({ children, style, colors = ACCENT }) => (
 const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
-  const titleSize = isWide ? 42 : 38;
-  const lottieSize = isWide ? 160 : 150;
+  // Slightly smaller so the quote + next content is visible on first load
+  const titleSize = isWide ? 38 : 34;
+  // Inline layout: keep Lottie "normal", but ensure it fits the right column.
+  const lottieSize = Math.min(isWide ? 150 : 130, Math.max(96, Math.round((width - 32) * 0.36)));
   const bg = isDark ? 'rgba(11,11,18,0.92)' : 'rgba(255,255,255,0.70)';
   const borderGradient = isDark
     ? ['rgba(255,107,157,0.65)', 'rgba(192,132,252,0.55)', 'rgba(6,182,212,0.35)']
@@ -289,7 +309,7 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
       >
         <View style={[heroStyles.inner, { backgroundColor: bg }]}>
           {/* Greeting inside hero card */}
-          <View style={{ marginBottom: 10, alignItems: 'center' }}>
+          <View style={{ marginBottom: 6, alignItems: 'center' }}>
             <Text style={{ fontSize: 22, fontWeight: '800', color: textColor, textAlign: 'center' }}>
               Good {timeOfDay},{' '}
               <Text style={{ color: '#FF6B9D', fontWeight: '900' }}>{firstName}</Text>
@@ -318,26 +338,30 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
           </View>
 
           <View style={[heroStyles.right, { flex: isWide ? 0.4 : 1 }]}>
-            <LottieView
-              source={require('../assets/icons/weightlifting-competition.json')}
-              autoPlay
-              loop
-              style={{ width: lottieSize, height: lottieSize }}
-            />
+            {/* Inline: Lottie (left) + Daily Quote pill (right) */}
+            <View style={heroStyles.heroRightInlineRow}>
+              <LottieView
+                source={require('../assets/icons/weightlifting-competition.json')}
+                autoPlay
+                loop
+                style={{ width: lottieSize, height: lottieSize }}
+              />
+
+              <View style={heroStyles.heroInlineQuoteWrap}>
+                <LinearGradient
+                  colors={['#FF6B9D', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={heroStyles.heroInlineQuoteBorder}
+                >
+                  <DailyQuotePill userId={auth?.currentUser?.uid} isDarkOverride={isDark} maxLines={3} />
+                </LinearGradient>
+              </View>
+            </View>
           </View>
           </View>
 
-          {/* Quote pill (bottom of hero banner) */}
-          <View style={heroStyles.quotePillWrap}>
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={heroStyles.quotePillBorder}
-            >
-              <DailyQuotePill userId={auth?.currentUser?.uid} isDarkOverride={isDark} />
-            </LinearGradient>
-          </View>
+          {/* DailyQuote pill moved inline next to the Lottie */}
         </View>
       </LinearGradient>
     </View>
@@ -346,7 +370,7 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
 
 const heroStyles = StyleSheet.create({
   outer: {
-    marginTop: 8,
+    marginTop: 4,
     marginBottom: 0,
     borderRadius: 24,
     borderWidth: 1,
@@ -364,8 +388,8 @@ const heroStyles = StyleSheet.create({
   inner: {
     borderRadius: 23,
     overflow: 'hidden',
-    paddingVertical: 22,
-    paddingHorizontal: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
   },
   row: {
     alignItems: 'center',
@@ -376,7 +400,7 @@ const heroStyles = StyleSheet.create({
   },
   welcomeWrap: {
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   welcomeKicker: {
     fontSize: 12,
@@ -396,7 +420,7 @@ const heroStyles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   tagline: {
-    marginTop: 10,
+    marginTop: 8,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -406,8 +430,26 @@ const heroStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroRightInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: '100%',
+  },
+  heroInlineQuoteWrap: {
+    flex: 1,
+    marginLeft: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  heroInlineQuoteBorder: {
+    borderRadius: 28,
+    padding: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
   quotePillWrap: {
-    marginTop: 14,
+    marginTop: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1072,121 +1114,45 @@ const NutritionTab = ({ isDark, clientData }) => {
 // ─────────────────────────────────────────────
 // CALENDAR TAB
 // ─────────────────────────────────────────────
-const CalendarTab = ({ isDark, clientData, trainerId, clientId, clientName }) => {
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+const CalendarTab = ({ isDark, clientData, trainerId, clientId, clientName, trainerName }) => {
+  const theme = isDark ? 'dark' : 'light';
+  const [route, setRoute] = useState('/');
 
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const monthName = today.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-  const blanks = Array.from({ length: firstDay });
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  const completed = clientData?.calendar?.completed || [];
-  const upcoming = clientData?.calendar?.upcoming || [];
-  const missed = clientData?.calendar?.missed || [];
-  const sessions = clientData?.calendar?.upcomingSessions || [];
-
-  const getDotColor = (day) => {
-    if (completed.includes(day)) return '#22c55e';
-    if (upcoming.includes(day)) return '#3b82f6';
-    if (missed.includes(day)) return '#ef4444';
-    return null;
+  const parseQuery = (path) => {
+    const s = String(path || '');
+    const [base, qs] = s.split('?');
+    const params = {};
+    if (qs) {
+      for (const part of qs.split('&')) {
+        const [k, v] = part.split('=');
+        if (!k) continue;
+        params[decodeURIComponent(k)] = v != null ? decodeURIComponent(v) : '';
+      }
+    }
+    return { base, params };
   };
 
-  return (
-    <View style={{ gap: 12 }}>
+  const onNavigate = (path) => setRoute(path || '/');
 
-      {/* Calendar Grid */}
-      <GlassCard isDark={isDark} style={{ padding: 16 }}>
-        <Text style={{ color: textColor, fontWeight: '600', fontSize: 15, textAlign: 'center', marginBottom: 12 }}>
-          {monthName}
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-          {weekdays.map((d, i) => (
-            <View key={i} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 4 }}>
-              <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600' }}>{d}</Text>
-            </View>
-          ))}
-          {blanks.map((_, i) => <View key={`b${i}`} style={{ width: `${100 / 7}%` }} />)}
-          {days.map((day) => {
-            const dot = getDotColor(day);
-            const isToday = day === today.getDate();
-            return (
-              <View key={day} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 4 }}>
-                {isToday ? (
-                  <LinearGradient colors={GRADIENT_CALENDAR} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{day}</Text>
-                  </LinearGradient>
-                ) : (
-                  <Text style={{ color: textColor, fontSize: 12 }}>{day}</Text>
-                )}
-                {dot && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot, marginTop: 2 }} />}
-              </View>
-            );
-          })}
-        </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 }}>
-          {[['#22c55e', 'Completed'], ['#3b82f6', 'Upcoming'], ['#ef4444', 'Missed']].map(([color, label]) => (
-            <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
-              <Text style={{ color: mutedColor, fontSize: 10 }}>{label}</Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
+  if (typeof route === 'string' && route.startsWith('/sessions/new')) {
+    const { params } = parseQuery(route);
+    return (
+      <SessionFormScreen
+        theme={theme}
+        onNavigate={onNavigate}
+        initialDate={params.date}
+        initialClientId={clientId}
+        trainerName={trainerName}
+      />
+    );
+  }
 
-      {/* Upcoming Sessions */}
-      <GlassCard isDark={isDark} style={{ padding: 16 }}>
-        <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>
-          UPCOMING SESSIONS
-        </Text>
-        {sessions.length > 0 ? (
-          sessions.map((session, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: i < sessions.length - 1 ? 12 : 0 }}>
-<LinearGradient colors={GRADIENT_CALENDAR} style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="CalendarPlus" size={16} color="#fff" />
-              </LinearGradient>
-              <View>
-                <Text style={{ color: textColor, fontSize: 14, fontWeight: '600' }}>{session.title}</Text>
-                <Text style={{ color: mutedColor, fontSize: 12 }}>{session.date}</Text>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={{ alignItems: 'center', paddingVertical: 16, gap: 12 }}>
-            <LottieView
-              source={require('../assets/Lotties for Anatrox/Calendar.json')}
-              autoPlay
-              loop
-              style={{ width: 120, height: 120 }}
-            />
-            <Text style={{ color: mutedColor, fontSize: 13, textAlign: 'center' }}>No upcoming sessions scheduled</Text>
-            <TouchableOpacity activeOpacity={0.8}>
-<LinearGradient colors={GRADIENT_CALENDAR} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}>
-              <Icon name="CalendarPlus" size={15} color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Schedule a Session</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
-      </GlassCard>
+  if (typeof route === 'string' && route.startsWith('/sessions/')) {
+    const sessionId = route.split('/')[2];
+    return <SessionFormScreen sessionId={sessionId} theme={theme} onNavigate={onNavigate} />;
+  }
 
-      {/* Session scheduling — inside Calendar tab */}
-      {trainerId && clientId && (
-        <SessionSchedulerScreen
-          isDark={isDark}
-          trainerId={trainerId}
-          clientId={clientId}
-          clientName={clientName || 'Client'}
-        />
-      )}
-    </View>
-  );
+  return <SessionSchedulingScreen theme={theme} onNavigate={onNavigate} />;
 };
 
 // ─────────────────────────────────────────────
@@ -1210,6 +1176,9 @@ const NotesFilesTab = ({
   onImportSpreadsheet,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [mediaViewer, setMediaViewer] = useState({ visible: false, url: null, kind: 'image', name: null });
+  const [embedViewer, setEmbedViewer] = useState({ visible: false, uri: null, title: null });
+  const [deletingTrainerFiles, setDeletingTrainerFiles] = useState(false);
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
   const items = clientData?.notesAndFiles || [];
@@ -1217,29 +1186,132 @@ const NotesFilesTab = ({
   const fromYou = items.filter((x) => x.addedBy === 'trainer');
   const hasAny = items.length > 0;
 
+  const deleteSingleTrainerFile = async (file) => {
+    if (!clientId || !file?.id) return;
+    if (file.addedBy !== 'trainer') return;
+    setDeletingTrainerFiles(true);
+    try {
+      await deleteNotesAndFilesItem(clientId, file);
+      onRefetchNotesAndFiles?.();
+    } catch (e) {
+      console.error('Trainer delete notes/file failed:', e);
+      Alert.alert('Could not delete', e?.message || 'Please try again.');
+    } finally {
+      setDeletingTrainerFiles(false);
+    }
+  };
+
+  const deleteAllTrainerFiles = async () => {
+    if (!clientId) return;
+    const list = (fromYou || []).filter((f) => f && f.type !== 'note' && f?.id && f.addedBy === 'trainer');
+    if (list.length === 0) return;
+    setDeletingTrainerFiles(true);
+    try {
+      for (const f of list) {
+        // eslint-disable-next-line no-await-in-loop
+        await deleteNotesAndFilesItem(clientId, f);
+      }
+      onRefetchNotesAndFiles?.();
+    } catch (e) {
+      console.error('Trainer delete all notes/files failed:', e);
+      Alert.alert('Could not delete all', e?.message || 'Some files may not have been deleted. Try again.');
+      onRefetchNotesAndFiles?.();
+    } finally {
+      setDeletingTrainerFiles(false);
+    }
+  };
+
   const formatDate = (d) => {
     if (!d) return '';
     const t = d instanceof Date ? d : new Date(d);
     return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const fileIcon = (file) => {
-    if (file.type === 'spreadsheet') return 'grid-outline';
-    if (file.type === 'document') return 'document-outline';
-    if (file.type === 'pdf') return 'document-text-outline';
-    if (file.type === 'photo') return 'image-outline';
-    return 'attach-outline';
-  };
-
   const renderBlock = (list, sectionTitle) => {
     if (list.length === 0) return null;
     const notes = list.filter((x) => x.type === 'note');
-    const photos = list.filter((x) => x.type === 'photo');
-    const videos = list.filter((x) => x.type === 'video');
-    const docs = list.filter((x) => x.type === 'pdf' || x.type === 'doc');
-    const spreadsheets = list.filter((x) => x.type === 'spreadsheet');
-    const trainerDocs = list.filter((x) => x.type === 'document');
-    const allFiles = [...docs, ...spreadsheets, ...trainerDocs];
+    // Include every non-note item that represents media/files (unknown legacy types still get a tile if they have a URL).
+    const mediaCandidates = list.filter((x) => {
+      if (x.type === 'note') return false;
+      if (x.type === 'photo' || x.type === 'video') return true;
+      if (x.type === 'pdf' || x.type === 'doc') return true;
+      if (x.type === 'spreadsheet') return true;
+      if (x.type === 'document' || (x.documentId && x.trainerId)) return true;
+      if (x.url) return true;
+      return false;
+    });
+    const seenKeys = new Set();
+    const mediaFiles = mediaCandidates
+      .filter((x) => {
+        const key = notesFileDedupeKey(x);
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      })
+      .sort((a, b) => {
+        const ms = (x) => {
+          const c = x?.createdAt;
+          if (c && typeof c.toDate === 'function') return c.toDate().getTime();
+          if (c instanceof Date) return c.getTime();
+          return new Date(c || 0).getTime();
+        };
+        return ms(b) - ms(a);
+      });
+
+    const openGalleryItem = (f) => {
+      const isSpreadsheet = f.type === 'spreadsheet';
+      const isDoc = f.type === 'document';
+      const isTrainerSpreadsheet = isSpreadsheet && f.documentId;
+      if (isTrainerSpreadsheet && onOpenDocumentEditor) {
+        onOpenDocumentEditor(f);
+      } else if (isSpreadsheet && f.url) {
+        setSpreadsheetViewer?.({ visible: true, url: f.url, name: f.name || 'Spreadsheet' });
+      } else if (isDoc && onOpenDocumentEditor) {
+        onOpenDocumentEditor(f);
+      } else if (f.url && isNotesImageFile(f)) {
+        setMediaViewer({ visible: true, url: f.url, kind: 'image', name: f.name || f.title || 'Photo' });
+      } else if (f.url && isNotesVideoFile(f)) {
+        setMediaViewer({ visible: true, url: f.url, kind: 'video', name: f.name || f.title || 'Video' });
+      } else if (f.url && isNotesPdfFile(f, f.url)) {
+        setPdfViewer({ visible: true, url: f.url, name: f.name || 'Document' });
+      } else if (f.url) {
+        setEmbedViewer({
+          visible: true,
+          uri: getEmbedViewerUri(f, f.url),
+          title: f.name || f.title || 'Document',
+        });
+      }
+    };
+
+    const canDeleteInThisSection = sectionTitle === 'From you';
+    const onLongPressFile = canDeleteInThisSection
+      ? (f) => {
+          if (deletingTrainerFiles) return;
+          if (!f?.id) return;
+          Alert.alert('Manage files', 'Remove files you uploaded for this client.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete this file',
+              style: 'destructive',
+              onPress: () =>
+                Alert.alert('Delete file?', 'This will permanently remove it from Notes & Files.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteSingleTrainerFile(f) },
+                ]),
+            },
+            {
+              text: `Delete all (${(fromYou || []).filter((x) => x.type !== 'note').length})`,
+              style: 'destructive',
+              onPress: () =>
+                Alert.alert('Delete all your files?', 'This removes every file you uploaded for this client.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete all', style: 'destructive', onPress: deleteAllTrainerFiles },
+                ]),
+            },
+          ]);
+        }
+      : undefined;
+
     return (
       <View key={sectionTitle} style={{ marginBottom: 16 }}>
         <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>{sectionTitle}</Text>
@@ -1249,58 +1321,24 @@ const NotesFilesTab = ({
             <Text style={{ color: textColor, fontSize: 14, lineHeight: 20 }}>{n.content}</Text>
           </GlassCard>
         ))}
-        {(photos.length > 0 || videos.length > 0) && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-            {photos.map((p, i) => (
-              <TouchableOpacity key={p.id || i} onPress={() => p.url && Linking.openURL(p.url).catch(() => {})} style={{ width: 80, alignItems: 'center' }}>
-                <Image source={{ uri: p.url }} style={{ width: 80, height: 80, borderRadius: 12 }} resizeMode="cover" />
-                <Text style={{ color: mutedColor, fontSize: 10, marginTop: 4 }} numberOfLines={1}>{p.name || 'Photo'}</Text>
-              </TouchableOpacity>
-            ))}
-            {videos.map((v, i) => (
-              <TouchableOpacity key={v.id || i} onPress={() => v.url && Linking.openURL(v.url).catch(() => {})} style={{ width: 80, height: 80, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="Image" size={24} color={mutedColor} />
-                <Text style={{ color: mutedColor, fontSize: 10, marginTop: 4 }} numberOfLines={1}>{v.name || 'Video'}</Text>
-              </TouchableOpacity>
-            ))}
+        {mediaFiles.length > 0 ? (
+          <View style={{ marginBottom: 8 }}>
+            <FileGalleryGrid
+              isDark={isDark}
+              files={mediaFiles}
+              onPressItem={openGalleryItem}
+              holdToDelete={canDeleteInThisSection}
+              holdDurationMs={900}
+              onLongPressItem={canDeleteInThisSection ? (f) => deleteSingleTrainerFile(f) : onLongPressFile}
+            />
           </View>
-        )}
-        {allFiles.map((f, i) => {
-          const isPdf = f.type === 'pdf' || (f.name && f.name.toLowerCase().endsWith('.pdf'));
-          const isSpreadsheet = f.type === 'spreadsheet';
-          const isDoc = f.type === 'document';
-          const isTrainerSpreadsheet = isSpreadsheet && f.documentId;
-          return (
-            <TouchableOpacity
-              key={f.id || i}
-              onPress={() => {
-                if (isTrainerSpreadsheet && onOpenDocumentEditor) {
-                  onOpenDocumentEditor(f);
-                } else if (isSpreadsheet && f.url) {
-                  setSpreadsheetViewer?.({ visible: true, url: f.url, name: f.name || 'Spreadsheet' });
-                } else if (isDoc && onOpenDocumentEditor) {
-                  onOpenDocumentEditor(f);
-                } else if (isPdf) {
-                  setPdfViewer({ visible: true, url: f.url, name: f.name || 'Document' });
-                } else if (f.url) {
-                  Linking.openURL(f.url).catch(() => {});
-                }
-              }}
-            >
-              <GlassCard isDark={isDark} style={{ padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <Ionicons name={fileIcon(f)} size={20} color={isSpreadsheet ? '#10B981' : ICON_ACCENT} />
-                <Text style={{ color: textColor, flex: 1, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{f.name || f.title || 'File'}</Text>
-                {isSpreadsheet && <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600' }}>Spreadsheet</Text>}
-                {!isSpreadsheet && <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '600' }}>View</Text>}
-              </GlassCard>
-            </TouchableOpacity>
-          );
-        })}
+        ) : null}
       </View>
     );
   };
 
   return (
+    <>
     <View style={{ gap: 12 }}>
       {!hasAny && trainerDocuments.length === 0 ? (
         <EmptyState isDark={isDark} icon="FolderOpen" message="No notes or files yet" ctaLabel="Add note or file" onCta={() => setShowAddModal(true)} lottieType="sleep" />
@@ -1311,77 +1349,55 @@ const NotesFilesTab = ({
           {trainerDocuments.length > 0 && (
             <View style={{ marginBottom: 16 }}>
               <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>Your documents</Text>
-              {trainerDocuments.map((doc) => {
-                const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
-                return (
-                  <TouchableOpacity
-                    key={doc.id}
-                    activeOpacity={0.85}
-                    onPress={() => onOpenDocumentEditor?.({ id: doc.id, title: doc.title, body: doc.body, trainerId, initialSharedWith: doc.sharedWith })}
-                    style={{
-                      backgroundColor: 'rgba(255,255,255,0.06)',
-                      borderRadius: 14,
-                      padding: 16,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginBottom: 8,
-                      borderWidth: 1,
-                      borderColor: 'rgba(255,255,255,0.08)',
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 18,
-                        backgroundColor: 'rgba(100,210,255,0.1)',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 12,
-                      }}
-                    >
-                      <Ionicons name="document-outline" size={20} color="#64D2FF" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }} numberOfLines={1}>
-                        {doc.title || 'Untitled'}
-                      </Text>
-                      <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 }}>
-                        {formatDate(doc.updatedAt || doc.createdAt)}
-                      </Text>
-                    </View>
-                    {isShared && (
-                      <View
-                        style={{
-                          backgroundColor: 'rgba(100,210,255,0.12)',
-                          borderRadius: 8,
-                          paddingVertical: 4,
-                          paddingHorizontal: 8,
-                          marginRight: 8,
-                        }}
-                      >
-                        <Text style={{ color: '#64D2FF', fontSize: 10, fontWeight: 'bold' }}>Shared</Text>
-                      </View>
-                    )}
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation(); // Prevent opening document editor
-                        // TODO: Implement Kebab menu: Edit, Share, Delete
-                        Alert.alert('Document Options', 'Choose an action', [
-                          { text: 'Edit', onPress: () => onOpenDocumentEditor?.({ id: doc.id, title: doc.title, body: doc.body, trainerId, initialSharedWith: doc.sharedWith }) },
-                          { text: 'Share', onPress: () => onOpenShareModal?.({ documentId: doc.id, initialSharedWith: doc.sharedWith }) },
-                          { text: 'Delete', style: 'destructive', onPress: () => { /* TODO: Implement delete logic */ } },
-                          { text: 'Cancel', style: 'cancel' },
-                        ]);
-                      }}
-                      style={{ padding: 4 }}
-                      hitSlop={12}
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={18} color="rgba(255,255,255,0.5)" />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              })}
+              <FileGalleryGrid
+                isDark={isDark}
+                files={trainerDocuments.map((doc) => {
+                  const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
+                  const base = doc.title || 'Untitled';
+                  return {
+                    id: doc.id,
+                    type: 'document',
+                    name: isShared ? `${base} · Shared` : base,
+                    title: doc.title,
+                    createdAt: doc.updatedAt || doc.createdAt,
+                    _trainerDoc: doc,
+                  };
+                })}
+                onPressItem={(f) => {
+                  const doc = f._trainerDoc;
+                  if (!doc) return;
+                  onOpenDocumentEditor?.({
+                    id: doc.id,
+                    title: doc.title,
+                    body: doc.body,
+                    trainerId,
+                    initialSharedWith: doc.sharedWith,
+                  });
+                }}
+                onLongPressItem={(f) => {
+                  const doc = f._trainerDoc;
+                  if (!doc) return;
+                  Alert.alert('Document Options', 'Choose an action', [
+                    {
+                      text: 'Edit',
+                      onPress: () =>
+                        onOpenDocumentEditor?.({
+                          id: doc.id,
+                          title: doc.title,
+                          body: doc.body,
+                          trainerId,
+                          initialSharedWith: doc.sharedWith,
+                        }),
+                    },
+                    {
+                      text: 'Share',
+                      onPress: () => onOpenShareModal?.({ documentId: doc.id, initialSharedWith: doc.sharedWith }),
+                    },
+                    { text: 'Delete', style: 'destructive', onPress: () => { /* TODO: Implement delete logic */ } },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
+              />
             </View>
           )}
         </>
@@ -1406,6 +1422,22 @@ const NotesFilesTab = ({
         onImportSpreadsheet={() => onOpenDocumentEditor?.({ type: 'spreadsheet' })}
       />
     </View>
+    <MediaViewerModal
+      visible={mediaViewer.visible}
+      url={mediaViewer.url}
+      kind={mediaViewer.kind}
+      name={mediaViewer.name}
+      isDark={isDark}
+      onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
+    />
+    <EmbedWebViewModal
+      visible={embedViewer.visible}
+      uri={embedViewer.uri}
+      title={embedViewer.title}
+      isDark={isDark}
+      onClose={() => setEmbedViewer({ visible: false, uri: null, title: null })}
+    />
+    </>
   );
 };
 
@@ -1546,17 +1578,49 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
       doc(db, 'users', client.id),
       async (userDoc) => {
         if (!userDoc.exists()) {
-          setClientData(null);
+          try {
+            const tcSnap = await getDoc(doc(db, 'trainer_clients', trainerId, 'clients', client.id));
+            const tc = tcSnap.exists() ? tcSnap.data() : {};
+            let notesAndFiles = [];
+            try {
+              notesAndFiles = await getNotesAndFiles(client.id);
+            } catch (_) {}
+            setClientData({
+              beforeWeight: tc.startingWeight ?? tc.weight ?? client?.startingWeight ?? client?.weight ?? null,
+              currentWeight: tc.weight ?? client?.weight ?? null,
+              trainingDays: [],
+              programName: tc.programName || 'Custom Program',
+              nutrition: {
+                calories: 0,
+                protein: 0,
+                carbs: 0,
+                fat: 0,
+                foods: [],
+                micros: [],
+              },
+              calendar: tc.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
+              notesAndFiles,
+            });
+            await fetchWeeklySummary(client.id);
+          } catch (e) {
+            console.error('Error building client detail without user doc:', e);
+            setClientData(null);
+          }
           return;
         }
-        
+
         const userData = userDoc.data();
-        
+
         // Fetch other related data
         try {
-          const clientDoc = await getDoc(doc(db, 'users', trainerId, 'clients', client.id));
+          const clientDoc = await getDoc(doc(db, 'trainer_clients', trainerId, 'clients', client.id));
           const clientDocData = clientDoc.exists() ? clientDoc.data() : {};
-          
+
+          let notesAndFiles = [];
+          try {
+            notesAndFiles = await getNotesAndFiles(client.id);
+          } catch (_) {}
+
           // Fetch nutrition data
           const nutritionQuery = query(collection(db, 'users', client.id, 'nutrition'));
           const nutritionSnapshot = await getDocs(nutritionQuery);
@@ -1602,7 +1666,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
               ...goals,
             },
             calendar: clientDocData.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
-            notesAndFiles: clientDocData.notesAndFiles || [],
+            notesAndFiles,
           });
           
           await fetchWeeklySummary(client.id);
@@ -1659,10 +1723,36 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
     );
     
     unsubscribers.push(nutritionUnsub);
-    
-    // Listen to client document changes (calendar, notes, etc.)
+
+    const notesColRef = collection(db, 'users', client.id, 'notes_and_files');
+    const notesUnsub = onSnapshot(
+      notesColRef,
+      async () => {
+        try {
+          const notesAndFiles = await getNotesAndFiles(client.id);
+          setClientData((prev) => {
+            if (prev) return { ...prev, notesAndFiles };
+            return {
+              beforeWeight: client?.startingWeight ?? client?.weight ?? null,
+              currentWeight: client?.weight ?? null,
+              trainingDays: [],
+              programName: 'Custom Program',
+              nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0, foods: [], micros: [] },
+              calendar: { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
+              notesAndFiles,
+            };
+          });
+        } catch (e) {
+          console.error('Error syncing notes and files (detail):', e);
+        }
+      },
+      (err) => console.error('notes_and_files listener error (detail):', err),
+    );
+    unsubscribers.push(notesUnsub);
+
+    // Listen to trainer CRM client doc (calendar, program name — not notes; those live in notes_and_files)
     const clientDocUnsub = onSnapshot(
-      doc(db, 'users', trainerId, 'clients', client.id),
+      doc(db, 'trainer_clients', trainerId, 'clients', client.id),
       (clientDoc) => {
         if (!clientDoc.exists()) return;
         
@@ -1674,7 +1764,6 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
           return {
             ...prev,
             calendar: clientDocData.calendar || prev.calendar,
-            notesAndFiles: clientDocData.notesAndFiles || prev.notesAndFiles,
             programName: clientDocData.programName || prev.programName,
           };
         });
@@ -1975,6 +2064,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
                 trainerId={trainerId}
                 clientId={client?.id}
                 clientName={client?.name || 'Client'}
+                trainerName={trainerName}
               />
             )}
             {activeTab === 'Notes & Files' && (
@@ -2231,7 +2321,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
       setTodayDailyLog(null);
       return;
     }
-    const dateKey = getDateKey();
+    const dateKey = getLocalDateKey();
     const dailyLogRef = doc(db, 'users', currentClient.id, 'dailyLogs', dateKey);
     const unsubscribe = onSnapshot(
       dailyLogRef,
@@ -2251,6 +2341,73 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
       }
     );
     return () => unsubscribe();
+  }, [currentClient?.id]);
+
+  // Local-midnight archive/reset for the selected client (trainer dashboard hides "today" after 12am local)
+  useEffect(() => {
+    if (!currentClient?.id || !db) return;
+    const clientId = currentClient.id;
+    const LAST_KEY = `trainer_dashboard_last_dateKey_${clientId}`;
+    const PENDING_KEY = `trainer_dashboard_pending_reset_${clientId}`;
+
+    const runArchive = async (prevKey) => {
+      if (!prevKey) return;
+      try {
+        const [logsSnap, trackSnap] = await Promise.all([
+          getDoc(doc(db, 'users', clientId, 'dailyLogs', prevKey)).catch(() => null),
+          getDoc(doc(db, 'users', clientId, 'daily_tracking', prevKey)).catch(() => null),
+        ]);
+        const dailyLogsData = logsSnap?.exists?.() ? (logsSnap.data() || {}) : null;
+        const trackingData = trackSnap?.exists?.() ? (trackSnap.data() || {}) : null;
+
+        const archiveDocId = `${clientId}_${prevKey}`;
+        await setDoc(
+          doc(db, 'daily_logs', archiveDocId),
+          {
+            userId: clientId,
+            date: prevKey,
+            workouts: {
+              workoutLog: dailyLogsData?.workoutLog || null,
+              workoutSummary: trackingData?.workoutSummary || dailyLogsData?.dashboard_workouts || null,
+              workoutName: trackingData?.workoutName || dailyLogsData?.dashboard_workout_name || null,
+              workoutExercises: trackingData?.workoutExercises || null,
+            },
+            nutrition: {
+              caloriesConsumed: typeof trackingData?.caloriesConsumed === 'number' ? trackingData.caloriesConsumed : null,
+              macros: trackingData?.macroTotals || null,
+            },
+            streak_count: typeof dailyLogsData?.streak_count === 'number' ? dailyLogsData.streak_count : null,
+            timestamp: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        await AsyncStorage.removeItem(PENDING_KEY);
+      } catch (e) {
+        await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ prevKey, at: Date.now() }));
+      }
+    };
+
+    const tick = async () => {
+      const nowKey = getLocalDateKey();
+      const lastKey = await AsyncStorage.getItem(LAST_KEY);
+      if (!lastKey) {
+        await AsyncStorage.setItem(LAST_KEY, nowKey);
+      } else if (lastKey !== nowKey) {
+        await AsyncStorage.setItem(LAST_KEY, nowKey);
+        await runArchive(lastKey);
+      }
+
+      const pending = await AsyncStorage.getItem(PENDING_KEY);
+      if (pending) {
+        let parsed = null;
+        try { parsed = JSON.parse(pending); } catch (_) {}
+        if (parsed?.prevKey) await runArchive(parsed.prevKey);
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
   }, [currentClient?.id]);
 
   // Check weekly data availability for current client
@@ -2358,11 +2515,48 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     const userUnsub = onSnapshot(
       doc(db, 'users', currentClient.id),
       async (userDoc) => {
+        // Client may be in CRM (trainer_clients) but have no users/{id} row yet — still show notes & CRM fields.
         if (!userDoc.exists()) {
-          setClientData(null);
+          try {
+            let notesAndFiles = [];
+            try {
+              notesAndFiles = await getNotesAndFiles(currentClient.id);
+            } catch (_) {}
+            setClientData({
+              beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
+              currentWeight: currentClient?.weight ?? null,
+              trainingDays: [],
+              programName: currentClient?.programName || 'Custom Program',
+              nutrition: {
+                calories: 0,
+                protein: 0,
+                carbs: 0,
+                fat: 0,
+                fiber: 0,
+                sugar: 0,
+                sodium: 0,
+                potassium: 0,
+                proteinGoal: 200,
+                carbsGoal: 300,
+                fatGoal: 80,
+                micros: currentClient?.micros || [],
+                foods: [],
+              },
+              calendar: {
+                completed: currentClient?.completedDays || [],
+                upcoming: currentClient?.upcomingDays || [],
+                missed: currentClient?.missedDays || [],
+                upcomingSessions: currentClient?.upcomingSessions || [],
+              },
+              notesAndFiles,
+            });
+          } catch (e) {
+            console.error('Error building client data without user doc:', e);
+            setClientData(null);
+          }
           return;
         }
-        
+
         const userData = userDoc.data();
         
         // Fetch other related data
@@ -2415,8 +2609,6 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             },
             notesAndFiles,
           });
-          
-          await fetchWeeklySummary(currentClient.id);
         } catch (e) {
           console.error('Error updating client data:', e);
         }
@@ -2472,7 +2664,53 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     );
     
     unsubscribers.push(nutritionUnsub);
-    
+
+    // Notes & files live in users/{clientId}/notes_and_files — user doc never updates on upload, so listen here.
+    const notesColRef = collection(db, 'users', currentClient.id, 'notes_and_files');
+    const notesUnsub = onSnapshot(
+      notesColRef,
+      async () => {
+        try {
+          const notesAndFiles = await getNotesAndFiles(currentClient.id);
+          setClientData((prev) => {
+            if (prev) return { ...prev, notesAndFiles };
+            return {
+              beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
+              currentWeight: currentClient?.weight ?? null,
+              trainingDays: [],
+              programName: currentClient?.programName || 'Custom Program',
+              nutrition: {
+                calories: 0,
+                protein: 0,
+                carbs: 0,
+                fat: 0,
+                fiber: 0,
+                sugar: 0,
+                sodium: 0,
+                potassium: 0,
+                proteinGoal: 200,
+                carbsGoal: 300,
+                fatGoal: 80,
+                micros: currentClient?.micros || [],
+                foods: [],
+              },
+              calendar: {
+                completed: currentClient?.completedDays || [],
+                upcoming: currentClient?.upcomingDays || [],
+                missed: currentClient?.missedDays || [],
+                upcomingSessions: currentClient?.upcomingSessions || [],
+              },
+              notesAndFiles,
+            };
+          });
+        } catch (e) {
+          console.error('Error syncing notes and files:', e);
+        }
+      },
+      (err) => console.error('notes_and_files listener error:', err),
+    );
+    unsubscribers.push(notesUnsub);
+
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
@@ -2484,7 +2722,37 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     const refreshNotes = async () => {
       try {
         const notesAndFiles = await getNotesAndFiles(currentClient.id);
-        setClientData(prev => prev ? { ...prev, notesAndFiles } : prev);
+        setClientData((prev) => {
+          if (prev) return { ...prev, notesAndFiles };
+          return {
+            beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
+            currentWeight: currentClient?.weight ?? null,
+            trainingDays: [],
+            programName: currentClient?.programName || 'Custom Program',
+            nutrition: {
+              calories: 0,
+              protein: 0,
+              carbs: 0,
+              fat: 0,
+              fiber: 0,
+              sugar: 0,
+              sodium: 0,
+              potassium: 0,
+              proteinGoal: 200,
+              carbsGoal: 300,
+              fatGoal: 80,
+              micros: currentClient?.micros || [],
+              foods: [],
+            },
+            calendar: {
+              completed: currentClient?.completedDays || [],
+              upcoming: currentClient?.upcomingDays || [],
+              missed: currentClient?.missedDays || [],
+              upcomingSessions: currentClient?.upcomingSessions || [],
+            },
+            notesAndFiles,
+          };
+        });
       } catch (e) {
         console.error('Error refreshing notes and files:', e);
       }
@@ -2523,7 +2791,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
 
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: '💪 CoachConnect',
+          title: 'CoachConnect',
           body: 'New client message received! Check your messages.',
           data: { type: 'trainer_notification', logo: 'coachconnect' },
           sound: 'default',
@@ -2550,7 +2818,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
 
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: '📱 CoachConnect',
+          title: 'CoachConnect',
           body: 'A client needs your help! Check their workout progress.',
           data: { type: 'client_message', logo: 'coachconnect' },
           sound: 'default',
@@ -2577,7 +2845,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 8 }}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 6 }}>
       <AuroraHeroBanner isDark={isDark} timeOfDay={timeOfDay} userName={userName} textColor={textColor} />
 
       {/* Quote pill is now inside the hero banner */}
@@ -2907,63 +3175,128 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
       {/* Quick Actions */}
       <View style={{ marginTop: 24, marginBottom: 20 }}>
         <Text style={sectionLabelStyle}>Quick Actions</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 2 }}>
-        {actions.map(({ label, icon, imageSource, action }) => (
-          <TouchableOpacity
-            key={label}
-            style={{ width: 120, height: 120, marginRight: 10 }}
-            activeOpacity={0.8}
-            onPress={() => {
-              if (action === 'messages') {
-                onMessagesPress(currentClient?.id);
-                return;
-              }
-              if (!currentClient?.id) return;
-              const payload = {
-                id: currentClient.id,
-                name: currentClient.name || currentClient.displayName || currentClient.fullName || 'Client',
-              };
-              if (action === 'aiPlans') {
-                onOpenAIWorkouts?.(payload);
-                return;
-              }
-              if (action === 'photos') {
-                onOpenPhotoGallery?.(payload);
-              }
-            }}
-          >
-            <View style={{ 
-              flex: 1, 
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)', 
-              borderRadius: 20, 
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-              borderTopWidth: 2,
-              borderTopColor: label === 'Messages' ? '#7C3AED' : label === 'Photo Gallery' ? '#06B6D4' : '#EC4899',
-              padding: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <View style={{ alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                  {label === 'Messages' ? (
-                    <GradientChatBubblesIcon size={32} />
-                  ) : imageSource ? (
-                    <Image source={imageSource} style={{ width: 32, height: 32 }} resizeMode="contain" />
-                  ) : (
-                    <Icon name={icon} size={32} color={textColor} />
-                  )}
-                  {label === 'Messages' && clientUnreadCount > 0 && (
-                    <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: BADGE_COLOR, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{clientUnreadCount > 99 ? '99+' : clientUnreadCount}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}>
+        {actions.map(({ label, action }) => {
+          const accent =
+            label === 'Messages' ? '#FF6B9D' : label === 'Photo Gallery' ? '#64D2FF' : '#C084FC';
+          const iconName =
+            label === 'Messages'
+              ? 'chatbubbles-outline'
+              : label === 'Photo Gallery'
+                ? 'images-outline'
+                : 'barbell-outline';
+
+          const count =
+            label === 'Messages'
+              ? (typeof clientUnreadCount === 'number' ? clientUnreadCount : 0)
+              : null;
+
+          const subtitle =
+            label === 'Messages'
+              ? (count > 0 ? `${count > 99 ? '99+' : count} unread` : 'No unread')
+              : label === 'Photo Gallery'
+                ? 'Client photos'
+                : 'Plans & sessions';
+
+          return (
+            <TouchableOpacity
+              key={label}
+              activeOpacity={0.9}
+              onPress={() => {
+                if (action === 'messages') {
+                  onMessagesPress(currentClient?.id);
+                  return;
+                }
+                if (!currentClient?.id) return;
+                const payload = {
+                  id: currentClient.id,
+                  name: currentClient.name || currentClient.displayName || currentClient.fullName || 'Client',
+                };
+                if (action === 'aiPlans') {
+                  onOpenAIWorkouts?.(payload);
+                  return;
+                }
+                if (action === 'photos') {
+                  onOpenPhotoGallery?.(payload);
+                }
+              }}
+              style={{ width: 220, marginRight: 12 }}
+            >
+              <View
+                style={{
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)',
+                  borderRadius: 20,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.08)',
+                  overflow: 'hidden',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={iconName} size={22} color={accent} />
+                  </View>
+
+                  {label === 'Messages' && count > 0 ? (
+                    <View
+                      style={{
+                        minWidth: 28,
+                        height: 22,
+                        paddingHorizontal: 8,
+                        borderRadius: 11,
+                        backgroundColor: 'rgba(255,107,157,0.18)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,107,157,0.35)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#FF6B9D', fontSize: 12, fontWeight: '800' }}>
+                        {count > 99 ? '99+' : count}
+                      </Text>
                     </View>
+                  ) : (
+                    <View />
                   )}
                 </View>
-                <Text style={{ color: textColor, fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 8 }}>{label}</Text>
+
+                <View style={{ marginTop: 12 }}>
+                  <Text style={{ color: textColor, fontSize: 15, fontWeight: '800' }}>{label}</Text>
+                  <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
+                </View>
+
+                <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View
+                    style={{
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: 14,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.08)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <Text style={{ color: accent, fontSize: 12, fontWeight: '800' }}>View all</Text>
+                    <Ionicons name="chevron-forward" size={14} color={accent} />
+                  </View>
+
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: accent,
+                      opacity: 0.9,
+                    }}
+                  />
+                </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
       </View>
 
@@ -2995,6 +3328,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
               trainerId={trainerId}
               clientId={currentClient?.id}
               clientName={currentClient?.name || 'Client'}
+              trainerName={userName}
             />
           )}
           {activeTab === 'Notes & Files' && (
@@ -3111,48 +3445,65 @@ const AppWithTheme = ({ user }) => {
     });
   }, [user?.uid]);
 
-  // Register for push notifications and save token to Firestore
   useEffect(() => {
-    const registerPushToken = async () => {
-      try {
-        const { status } = await requestNotificationPermissionsAsync();
-        if (status !== 'granted') {
-          console.log('❌ Push notification permissions not granted');
-          return;
-        }
-        const token = await getExpoPushTokenAsync();
-        if (token && user?.uid) {
-          const userRef = doc(db, 'users', user.uid);
-          await updateDoc(userRef, { pushToken: token });
-          console.log('✅ Push token saved:', token);
-        }
-      } catch (error) {
-        console.error('❌ Error registering push token:', error);
-      }
-    };
-
-    if (user?.uid) {
-      registerPushToken();
-    }
+    if (!user?.uid) return undefined;
+    persistPushTokensForUid(user.uid, { skipIfDisabled: true });
+    return subscribePushTokenRefreshOnResume(user.uid, () => true);
   }, [user?.uid]);
 
-  // Global unread count subscription removed from dashboard – we now show per-client badges only
+  const trainerNotifTapRef = useRef(() => {});
 
-  // Setup notification channel for Android with CoachConnect branding
   useEffect(() => {
-    if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'CoachConnect AI',
-        description: 'Notifications from your AI Fitness Coach',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        sound: 'default',
-        enableLights: true,
-        lightColor: '#FF6B9D',
-        enableVibrate: true,
-      });
-    }
+    trainerNotifTapRef.current = async (data) => {
+      try {
+        if (!user?.uid || !data || typeof data !== 'object') return;
+        const type = data.type;
+        if (type === 'client_request') {
+          setShowConversationsList(false);
+          setShowTrainerMessaging(false);
+          setShowClientRequests(true);
+          return;
+        }
+        if ((type === 'session_response' || type === 'notes_shared') && data.senderId) {
+          setShowTrainerMessaging(false);
+          setShowConversationsList(false);
+          setShowClientRequests(false);
+          setSelectedClientIdFromDashboard(String(data.senderId));
+          return;
+        }
+        if (type === 'session_reminder' || type === 'session_update') {
+          setShowConversationsList(false);
+          setShowTrainerMessaging(false);
+          return;
+        }
+        if (type === 'session_scheduled') {
+          setShowConversationsList(false);
+          setShowTrainerMessaging(false);
+          return;
+        }
+        if (type === 'message' && data.senderId) {
+          setShowTrainerMessaging(false);
+          setShowClientRequests(false);
+          setSelectedClientIdForMessages(String(data.senderId));
+          setShowConversationsList(true);
+          return;
+        }
+        setShowConversationsList(true);
+      } catch {
+        setShowConversationsList(true);
+      }
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    setNotificationTapHandler((d) => trainerNotifTapRef.current?.(d));
+    return () => setNotificationTapHandler(null);
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    return flushInitialNotificationResponse(650);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user?.uid || !db) return;

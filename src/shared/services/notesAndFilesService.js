@@ -17,12 +17,45 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { ref, uploadBytes, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import XLSX from '../../utils/xlsx';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { db, storage } from '../../app/config';
+import { postRemotePushNotify } from './pushNotifyApi';
+import { randomNotesSharedBody } from '../notifications/pushCopy';
 
 const COLLECTION = 'notes_and_files';
 const DOCUMENTS_COLLECTION = 'documents';
+
+async function notifyNotesSharedPush(clientId, addedBy) {
+  try {
+    if (addedBy === 'trainer') {
+      await postRemotePushNotify({
+        recipientId: clientId,
+        senderName: 'Your coach',
+        messageText: randomNotesSharedBody(),
+        senderId: 'system_notes',
+        notificationType: 'notes_shared',
+      });
+      return;
+    }
+    const u = await getDoc(doc(db, 'users', clientId));
+    if (!u.exists()) return;
+    const tid = u.data()?.trainerId;
+    if (!tid) return;
+    const name = u.data()?.firstName || u.data()?.name || 'Client';
+    await postRemotePushNotify({
+      recipientId: tid,
+      senderName: name,
+      messageText: randomNotesSharedBody(),
+      senderId: clientId,
+      notificationType: 'notes_shared',
+    });
+  } catch (_) {
+    /* best-effort */
+  }
+}
 
 function uriToBlob(uri) {
   return new Promise((resolve, reject) => {
@@ -94,6 +127,7 @@ export async function addNote(clientId, content, addedBy = 'client') {
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, 'users', clientId, COLLECTION), data);
+  void notifyNotesSharedPush(clientId, data.addedBy);
   return { id: docRef.id, ...data, createdAt: new Date() };
 }
 
@@ -106,7 +140,34 @@ export async function addFile(clientId, { localUri, filename, mimeType, type }, 
   if (!db || !storage || !clientId) throw new Error('Firestore/Storage or clientId not ready');
   const contentType = mimeType || 'application/octet-stream';
   const downloadUrl = await uploadNotesFile(clientId, localUri, filename, contentType);
-  const fileType = type || (mimeType && mimeType.startsWith('video/') ? 'video' : mimeType && mimeType.startsWith('image/') ? 'photo' : 'doc');
+  const fileType =
+    type ||
+    (mimeType && mimeType.startsWith('video/')
+      ? 'video'
+      : mimeType && mimeType.startsWith('image/')
+        ? 'photo'
+        : 'doc');
+
+  let thumbnailUrl = null;
+  try {
+    if (contentType.startsWith('image/')) {
+      const manipulated = await ImageManipulator.manipulateAsync(
+        localUri,
+        [{ resize: { width: 480 } }],
+        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      const thumbName = `thumb_${Date.now()}_${(filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60)}.jpg`;
+      thumbnailUrl = await uploadNotesFile(clientId, manipulated.uri, thumbName, 'image/jpeg');
+    } else if (fileType === 'video' || contentType.startsWith('video/')) {
+      const { uri: frameUri } = await VideoThumbnails.getThumbnailAsync(localUri, {
+        time: 800,
+      });
+      const thumbName = `thumb_${Date.now()}_video.jpg`;
+      thumbnailUrl = await uploadNotesFile(clientId, frameUri, thumbName, 'image/jpeg');
+    }
+  } catch (e) {
+    console.warn('notesAndFilesService addFile: thumbnail skipped', e?.message || e);
+  }
 
   const data = {
     type: fileType,
@@ -115,8 +176,10 @@ export async function addFile(clientId, { localUri, filename, mimeType, type }, 
     mimeType: contentType,
     addedBy: addedBy === 'trainer' ? 'trainer' : 'client',
     createdAt: serverTimestamp(),
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
   };
   const docRef = await addDoc(collection(db, 'users', clientId, COLLECTION), data);
+  void notifyNotesSharedPush(clientId, data.addedBy);
   return { id: docRef.id, ...data, createdAt: new Date() };
 }
 
@@ -138,7 +201,40 @@ export async function addSpreadsheetFile(clientId, { localUri, filename, mimeTyp
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, 'users', clientId, COLLECTION), data);
+  void notifyNotesSharedPush(clientId, data.addedBy);
   return { id: docRef.id, ...data, createdAt: new Date() };
+}
+
+/**
+ * Delete a notes_and_files item. Removes Firestore doc and best-effort deletes Storage objects
+ * referenced by `url` and `thumbnailUrl` (if present).
+ *
+ * This is used by BOTH client + trainer UIs.
+ */
+export async function deleteNotesAndFilesItem(clientId, item) {
+  if (!db || !storage || !clientId) throw new Error('Firestore/Storage or clientId not ready');
+  const id = typeof item === 'string' ? item : item?.id;
+  if (!id) throw new Error('Missing notes_and_files id');
+
+  const url = typeof item === 'object' ? item?.url : null;
+  const thumbnailUrl = typeof item === 'object' ? item?.thumbnailUrl : null;
+
+  // Delete Storage refs if present. Use best-effort; missing permissions shouldn’t block doc deletion.
+  const maybeDeleteUrl = async (u) => {
+    if (!u || typeof u !== 'string') return;
+    try {
+      await deleteObject(ref(storage, u));
+    } catch (e) {
+      // Ignore not-found / permission errors; Firestore doc deletion is still useful.
+      console.warn('deleteNotesAndFilesItem: storage delete skipped', e?.code || e?.message || e);
+    }
+  };
+
+  await Promise.all([maybeDeleteUrl(url), maybeDeleteUrl(thumbnailUrl)]);
+
+  const docRef = doc(db, 'users', String(clientId), COLLECTION, String(id));
+  await deleteDoc(docRef);
+  return { id };
 }
 
 /**
@@ -162,7 +258,15 @@ export async function getNotesAndFiles(uid, max = 100) {
     const code = e?.code;
     const msg = String(e?.message || e || '').toLowerCase();
     const permissionDenied = code === 'permission-denied' || msg.includes('missing or insufficient permissions');
-    if (!permissionDenied) console.warn('getNotesAndFiles error:', e?.message || e);
+    if (permissionDenied) {
+      console.warn(
+        'getNotesAndFiles: permission denied for',
+        uid,
+        '— deploy latest Firestore rules (trainer_clients link) or set client user trainerId.',
+      );
+    } else {
+      console.warn('getNotesAndFiles error:', e?.message || e);
+    }
     return [];
   }
 }
@@ -208,6 +312,37 @@ export async function getTrainerDocument(trainerId, docId) {
   }
 }
 
+/** Push latest title + body excerpt to client notes_and_files stubs for shared trainer documents. */
+async function syncSharedDocumentPreviewStubs(trainerId, documentId, title, rawBody) {
+  const previewSnippet = (typeof rawBody === 'string' ? rawBody : '').replace(/\s+/g, ' ').trim().slice(0, 360);
+  const docRef = doc(db, 'users', String(trainerId), DOCUMENTS_COLLECTION, String(documentId));
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) return;
+  const clientIds = snap.data().sharedWith || [];
+  const docTitle = (title != null && title !== '' ? title : snap.data().title) || 'Document';
+  await Promise.all(
+    clientIds.map(async (clientId) => {
+      const clientUserRef = doc(db, 'users', String(clientId));
+      const clientNotesRef = collection(clientUserRef, COLLECTION);
+      const q = query(
+        clientNotesRef,
+        where('type', '==', 'document'),
+        where('documentId', '==', String(documentId)),
+        where('trainerId', '==', String(trainerId)),
+      );
+      const stubSnap = await getDocs(q);
+      await Promise.all(
+        stubSnap.docs.map((d) =>
+          updateDoc(d.ref, {
+            title: docTitle,
+            previewSnippet: previewSnippet || '',
+          }),
+        ),
+      );
+    }),
+  );
+}
+
 export async function saveTrainerDocument(trainerId, { id, title, body }) {
   if (!db || !trainerId) throw new Error('Firestore or trainerId not ready');
   const payload = {
@@ -218,6 +353,7 @@ export async function saveTrainerDocument(trainerId, { id, title, body }) {
   if (id) {
     const docRef = doc(db, 'users', String(trainerId), DOCUMENTS_COLLECTION, String(id));
     await updateDoc(docRef, payload);
+    await syncSharedDocumentPreviewStubs(trainerId, id, payload.title, payload.body);
     return { id, ...payload };
   }
   payload.createdAt = serverTimestamp();
@@ -284,6 +420,8 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) throw new Error('Document not found');
   const docData = docSnap.data();
+  const rawBody = typeof docData.body === 'string' ? docData.body : '';
+  const previewSnippet = rawBody.replace(/\s+/g, ' ').trim().slice(0, 360);
   const previousShared = docData.sharedWith || [];
   const added = clientIds.filter((c) => !previousShared.includes(c));
   const removed = previousShared.filter((c) => !clientIds.includes(c));
@@ -302,7 +440,7 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
     stubSnap.docs.forEach((d) => deleteDoc(d.ref));
   }
 
-  // Add stubs for newly shared clients (need title from doc)
+  // Add stubs for newly shared clients — include text snapshot for gallery thumbnails (no file URL on stubs).
   const title = docData.title || 'Document';
   for (const clientId of added) {
     const clientUserRef = doc(db, 'users', String(clientId));
@@ -312,11 +450,37 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
       documentId: String(docId),
       trainerId: String(trainerId),
       title,
+      ...(previewSnippet ? { previewSnippet } : {}),
       addedBy: 'trainer',
       createdAt: serverTimestamp(),
     });
+    void notifyNotesSharedPush(clientId, 'trainer');
   }
 
   await updateDoc(docRef, { sharedWith: clientIds });
+
+  // Sync title + text snapshot onto every client stub still shared (updates previews when coach edits the doc).
+  await Promise.all(
+    clientIds.map(async (clientId) => {
+      const clientUserRef = doc(db, 'users', String(clientId));
+      const clientNotesRef = collection(clientUserRef, COLLECTION);
+      const q = query(
+        clientNotesRef,
+        where('type', '==', 'document'),
+        where('documentId', '==', String(docId)),
+        where('trainerId', '==', String(trainerId)),
+      );
+      const stubSnap = await getDocs(q);
+      await Promise.all(
+        stubSnap.docs.map((d) =>
+          updateDoc(d.ref, {
+            title,
+            previewSnippet: previewSnippet || '',
+          }),
+        ),
+      );
+    }),
+  );
+
   return { sharedWith: clientIds };
 }

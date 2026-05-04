@@ -410,7 +410,7 @@ export default function AIChatHomeScreen({
   onSettingsPress,
 }) {
   const insets = useSafeAreaInsets();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputText, setInputText] = useState('');
   const [sessions, setSessions] = useState([]);
@@ -432,7 +432,6 @@ export default function AIChatHomeScreen({
   const inputTranslateY = useRef(new Animated.Value(10)).current;
   const idleGroupOpacity = useRef(new Animated.Value(1)).current;       // fades out when starting chat
   const idleGroupTranslateY = useRef(new Animated.Value(0)).current;
-  const themeRotate = useRef(new Animated.Value(0)).current;
 
   const pillBorderAnim = useRef(new Animated.Value(0)).current;
 
@@ -647,20 +646,6 @@ export default function AIChatHomeScreen({
     }
   };
 
-  const handleThemeToggle = () => {
-    // UI rotation (180deg over 300ms) + call existing ThemeContext toggle
-    Animated.timing(themeRotate, { toValue: 1, duration: 300, useNativeDriver: true }).start(() => {
-      themeRotate.setValue(0);
-    });
-    const next = isDark ? 'light' : 'dark';
-    toggleTheme?.(next);
-  };
-
-  const headerIconRotate = themeRotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
-  });
-
   const glowOpacity = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
   const glowBorderWidth = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [1, 2] });
   const glowBorderColor = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [t.border, t.accent] });
@@ -679,7 +664,7 @@ export default function AIChatHomeScreen({
           onProfilePress={onProfilePress}
           onSettingsPress={onSettingsPress}
         />
-        {/* Overlay hamburger + theme toggle to match AI home spec */}
+        {/* Overlay hamburger (theme is changed via Settings) */}
         <View
           pointerEvents="box-none"
           style={{
@@ -700,16 +685,7 @@ export default function AIChatHomeScreen({
           >
             <Ionicons name="menu-outline" size={22} color={t.textPrimary} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleThemeToggle}
-            activeOpacity={0.7}
-            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Animated.View style={{ transform: [{ rotate: headerIconRotate }] }}>
-              <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={22} color={t.textPrimary} />
-            </Animated.View>
-          </TouchableOpacity>
+          <View style={{ width: 40, height: 40 }} />
         </View>
       </Animated.View>
 
@@ -975,6 +951,7 @@ export default function AIChatHomeScreen({
         onWorkoutPress={onWorkoutPress || (() => {})}
         onMessagesPress={onMessagesPress || (() => {})}
         onProfilePress={onProfilePress || (() => {})}
+        activeTabKey="ai"
       />
     </Animated.View>
   );

@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  Image,
   TextInput,
   TouchableOpacity,
   ScrollView,
@@ -17,12 +16,13 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, collection, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc, getDoc, onSnapshot, query, where, serverTimestamp, updateDoc, limit } from 'firebase/firestore';
 import { auth, db } from '../../app/config';
-import { getDateKey } from '../../app/dateKey';
+import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
+import { getLocalDateKey, msUntilLocalMidnight } from '../../shared/utils/localDay';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';
+import { SessionMeetingCard } from '../../shared/components/SessionMeetingCard';
 import PremiumWelcomeCard from '../components/PremiumWelcomeCard';
 import PremiumTrainerCard from '../components/PremiumTrainerCard';
 import PremiumStatsSection from '../components/PremiumStatsSection';
@@ -31,12 +31,7 @@ import {
   WORKOUT_DAY_EXAMPLES_SHORT,
 } from '../../shared/utils/workoutDayLabels';
 
-const msUntilMidnight = () => {
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(24, 0, 0, 0);
-  return Math.max(0, next.getTime() - now.getTime());
-};
+const msUntilMidnight = () => msUntilLocalMidnight();
 
 const formatHMS = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -182,9 +177,11 @@ const useCardState = (storageKey, onAfterSave) => {
   const [showNotified, setShowNotified] = useState(false);
 
   useEffect(() => {
+    let unsubLogs = null;
+    let unsubTracking = null;
     const load = async () => {
       const uid = auth?.currentUser?.uid;
-      const todayKey = getDateKey();
+      const todayKey = getLocalDateKey();
 
       const applyLoadedValue = async (valueStr, atIso) => {
         if (valueStr === undefined || valueStr === null || valueStr === '') return false;
@@ -201,57 +198,64 @@ const useCardState = (storageKey, onAfterSave) => {
       };
 
       try {
-        // 1) Load from AsyncStorage — same calendar day as getDateKey() (America/New_York)
+        // 1) Load from AsyncStorage — same calendar day as local midnight
         const stored = await AsyncStorage.getItem(storageKey);
         const storedTime = await AsyncStorage.getItem(`${storageKey}_time`);
         if (stored != null && stored !== '' && storedTime) {
           const parsed = new Date(storedTime);
           if (!Number.isNaN(parsed.getTime())) {
-            const storedDateKey = parsed.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const storedDateKey = getLocalDateKey(parsed);
             if (storedDateKey === todayKey) {
               setSavedValue(stored);
               setSavedAt(storedTime);
-              return;
             }
           }
-          await AsyncStorage.removeItem(storageKey);
-          await AsyncStorage.removeItem(`${storageKey}_time`);
+          // If cached value is from a previous day, clear it so we never show stale "today" values.
+          if (getLocalDateKey(new Date(storedTime)) !== todayKey) {
+            await AsyncStorage.removeItem(storageKey);
+            await AsyncStorage.removeItem(`${storageKey}_time`);
+          }
         }
 
         if (!uid || !db) return;
 
-        // 2) dailyLogs (canonical for dashboard fields)
+        // 2) dailyLogs (canonical for dashboard fields) — real-time listener
         const logsRef = doc(db, 'users', uid, 'dailyLogs', todayKey);
-        const snap = await getDoc(logsRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          const fromFirebase = data[storageKey];
-          if (await applyLoadedValue(fromFirebase, data.updatedAt?.toDate?.()?.toISOString?.())) {
-            return;
-          }
-        }
+        unsubLogs = onSnapshot(
+          logsRef,
+          (snap) => {
+            if (!snap.exists()) return;
+            const data = snap.data() || {};
+            applyLoadedValue(data[storageKey], data.updatedAt?.toDate?.()?.toISOString?.());
+          },
+          (e) => console.warn('dailyLogs listener error:', e?.code || e?.message || e),
+        );
 
-        // 3) daily_tracking — home screen / ClientApp often saves water & sleep here only
+        // 3) daily_tracking — home screen often saves water & sleep here only (also real-time)
         const trackRef = doc(db, 'users', uid, 'daily_tracking', todayKey);
-        const trackSnap = await getDoc(trackRef);
-        if (trackSnap.exists()) {
-          const td = trackSnap.data();
-          if (storageKey === 'dashboard_water' && td.waterIntake != null && td.waterIntake !== '') {
-            if (await applyLoadedValue(td.waterIntake, td.updatedAt?.toDate?.()?.toISOString?.())) {
-              return;
+        unsubTracking = onSnapshot(
+          trackRef,
+          (snap) => {
+            if (!snap.exists()) return;
+            const td = snap.data() || {};
+            if (storageKey === 'dashboard_water' && td.waterIntake != null && td.waterIntake !== '') {
+              applyLoadedValue(td.waterIntake, td.updatedAt?.toDate?.()?.toISOString?.());
             }
-          }
-          if (storageKey === 'dashboard_sleep' && td.sleepHours != null && td.sleepHours !== '') {
-            if (await applyLoadedValue(td.sleepHours, td.updatedAt?.toDate?.()?.toISOString?.())) {
-              return;
+            if (storageKey === 'dashboard_sleep' && td.sleepHours != null && td.sleepHours !== '') {
+              applyLoadedValue(td.sleepHours, td.updatedAt?.toDate?.()?.toISOString?.());
             }
-          }
-        }
+          },
+          (e) => console.warn('daily_tracking listener error:', e?.code || e?.message || e),
+        );
       } catch (e) {
         console.warn('useCardState load error:', e);
       }
     };
     load();
+    return () => {
+      try { unsubLogs?.(); } catch (_) {}
+      try { unsubTracking?.(); } catch (_) {}
+    };
   }, [storageKey, auth?.currentUser?.uid]);
 
   const save = async (value) => {
@@ -265,7 +269,7 @@ const useCardState = (storageKey, onAfterSave) => {
     setSavedValue(value);
     setSavedAt(now);
     setShowNotified(true);
-    const dateKey = getDateKey();
+    const dateKey = getLocalDateKey();
     const currentUser = auth?.currentUser;
     if (db && currentUser) {
       try {
@@ -365,90 +369,115 @@ const useWorkoutLog = (onAfterSave) => {
   useEffect(() => {
     if (!db || !auth?.currentUser) return;
     const uid = auth.currentUser.uid;
-    const dateKey = getDateKey();
-    const ref = doc(db, 'users', uid, 'dailyLogs', dateKey);
-    getDoc(ref)
-      .then(async (snap) => {
-        let d = snap.exists() ? snap.data() : {};
-        let fromLogs =
-          (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) ||
-          (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) ||
-          (d.dashboard_workout_name && String(d.dashboard_workout_name).trim());
+    const dateKey = getLocalDateKey();
+    const logsRef = doc(db, 'users', uid, 'dailyLogs', dateKey);
+    const trackingRef = doc(db, 'users', uid, 'daily_tracking', dateKey);
 
-        // Client home saves workout name/exercises to daily_tracking only — hydrate from there
-        if (!fromLogs) {
-          try {
-            const tSnap = await getDoc(doc(db, 'users', uid, 'daily_tracking', dateKey));
-            if (tSnap.exists()) {
-              const td = tSnap.data();
-              if (td.workoutName || (Array.isArray(td.workoutExercises) && td.workoutExercises.length)) {
-                d = {
-                  ...d,
-                  dashboard_workout_name: td.workoutName || d.dashboard_workout_name || '',
-                  workoutLog: Array.isArray(td.workoutExercises) && td.workoutExercises.length
-                    ? td.workoutExercises.map((ex) => ({
-                        exerciseName: ex.name || ex.exerciseName || ex.label || '',
-                        sets: Array.isArray(ex.sets)
-                          ? ex.sets.map((s) => ({
-                              reps: s.reps != null ? s.reps : 0,
-                              weight: s.weight != null ? s.weight : 0,
-                            }))
-                          : [],
+    let alive = true;
+    let lastLogsSnap = null;
+    let lastTrackingSnap = null;
+
+    const hydrate = async () => {
+      if (!alive || !lastLogsSnap || !lastTrackingSnap) return;
+
+      let d = lastLogsSnap.exists() ? (lastLogsSnap.data() || {}) : {};
+      const td = lastTrackingSnap.exists() ? (lastTrackingSnap.data() || {}) : {};
+
+      let fromLogs =
+        (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) ||
+        (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) ||
+        (d.dashboard_workout_name && String(d.dashboard_workout_name).trim());
+
+      if (!fromLogs) {
+        if (td.workoutName || (Array.isArray(td.workoutExercises) && td.workoutExercises.length)) {
+          d = {
+            ...d,
+            dashboard_workout_name: td.workoutName || d.dashboard_workout_name || '',
+            workoutLog: Array.isArray(td.workoutExercises) && td.workoutExercises.length
+              ? td.workoutExercises.map((ex) => ({
+                  exerciseName: ex.name || ex.exerciseName || ex.label || '',
+                  sets: Array.isArray(ex.sets)
+                    ? ex.sets.map((s) => ({
+                        reps: s.reps != null ? s.reps : 0,
+                        weight: s.weight != null ? s.weight : 0,
                       }))
-                    : d.workoutLog,
-                };
-                fromLogs = true;
-              } else if (td.workoutSummary && String(td.workoutSummary).trim()) {
-                d = {
-                  ...d,
-                  dashboard_workout_name: String(td.workoutSummary).split('\n')[0].trim() || d.dashboard_workout_name,
-                  dashboard_workouts: td.workoutSummary,
-                };
-                fromLogs = true;
-              }
-            }
-          } catch (_) {
-            /* ignore */
-          }
-        }
-
-        if (!fromLogs) {
-          setWorkoutExercises([makeExercise()]);
-          setLoaded(true);
-          return;
-        }
-
-        setWorkoutName(d.dashboard_workout_name || '');
-        if (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) {
-          const mapped = d.workoutLog.map((item) => ({
-            id: `${Date.now()}_${Math.random()}`,
-            name: item.exerciseName || '',
-            sets: Array.isArray(item.sets) && item.sets.length
-              ? item.sets.map((s) => ({
-                  id: `${Date.now()}_${Math.random()}`,
-                  reps: s.reps != null ? String(s.reps) : '',
-                  weight: s.weight != null ? String(s.weight) : '',
+                    : [],
                 }))
-              : [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
-          }));
-          setWorkoutExercises(mapped);
-        } else if (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) {
-          setWorkoutExercises(
-            d.dashboard_workout_exercises.map((name) => ({
-              id: `${Date.now()}_${Math.random()}`,
-              name: String(name),
-              sets: [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
-            })),
-          );
-        } else {
-          setWorkoutExercises([makeExercise()]);
+              : d.workoutLog,
+          };
+          fromLogs = true;
+        } else if (td.workoutSummary && String(td.workoutSummary).trim()) {
+          d = {
+            ...d,
+            dashboard_workout_name: String(td.workoutSummary).split('\n')[0].trim() || d.dashboard_workout_name,
+            dashboard_workouts: td.workoutSummary,
+          };
+          fromLogs = true;
         }
-        setLoaded(true);
-      })
-      .catch(() => {
+      }
+
+      if (!fromLogs) {
         setWorkoutExercises([makeExercise()]);
         setLoaded(true);
-      });
+        return;
+      }
+
+      setWorkoutName(d.dashboard_workout_name || '');
+      if (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) {
+        const mapped = d.workoutLog.map((item) => ({
+          id: `${Date.now()}_${Math.random()}`,
+          name: item.exerciseName || '',
+          sets: Array.isArray(item.sets) && item.sets.length
+            ? item.sets.map((s) => ({
+                id: `${Date.now()}_${Math.random()}`,
+                reps: s.reps != null ? String(s.reps) : '',
+                weight: s.weight != null ? String(s.weight) : '',
+              }))
+            : [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
+        }));
+        setWorkoutExercises(mapped);
+      } else if (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) {
+        setWorkoutExercises(
+          d.dashboard_workout_exercises.map((name) => ({
+            id: `${Date.now()}_${Math.random()}`,
+            name: String(name),
+            sets: [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
+          })),
+        );
+      } else {
+        setWorkoutExercises([makeExercise()]);
+      }
+      setLoaded(true);
+    };
+
+    const unsubLogs = onSnapshot(
+      logsRef,
+      (snap) => {
+        lastLogsSnap = snap;
+        hydrate();
+      },
+      () => {
+        setWorkoutExercises([makeExercise()]);
+        setLoaded(true);
+      },
+    );
+    const unsubTracking = onSnapshot(
+      trackingRef,
+      (snap) => {
+        lastTrackingSnap = snap;
+        hydrate();
+      },
+      () => {
+        setWorkoutExercises([makeExercise()]);
+        setLoaded(true);
+      },
+    );
+
+    return () => {
+      alive = false;
+      try { unsubLogs?.(); } catch (_) {}
+      try { unsubTracking?.(); } catch (_) {}
+    };
   }, [auth?.currentUser?.uid]);
 
   const addExercise = () => setWorkoutExercises((prev) => [...prev, makeExercise()]);
@@ -508,7 +537,7 @@ const useWorkoutLog = (onAfterSave) => {
       }))
       .filter((ex) => ex.sets.length > 0);
 
-    const dateKey = getDateKey();
+    const dateKey = getLocalDateKey();
     const uid = auth?.currentUser?.uid;
     if (!db || !uid) return;
 
@@ -789,54 +818,6 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
   );
 };
 
-const TodaysWorkoutCard = ({ isDark, workoutName, hasWorkout, onPressCTA }) => {
-  const t = isDark ? DARK : LIGHT;
-  const isRest =
-    !hasWorkout ||
-    /rest\s*day/i.test(String(workoutName || '')) ||
-    String(workoutName || '').trim().toLowerCase() === 'rest';
-
-  const borderColors = isRest ? ['#6B7280', '#111827'] : ['#FF6B9D', '#C084FC'];
-  const pillBg = isRest ? 'rgba(107,114,128,0.18)' : 'rgba(255,107,157,0.18)';
-  const pillText = isRest ? 'rgba(229,231,235,0.9)' : '#FF6B9D';
-
-  return (
-    <View style={{ marginTop: 14 }}>
-      <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={todayWorkoutStyles.border}>
-        <View style={[todayWorkoutStyles.card, { backgroundColor: t.solidBg }]}>
-          <View style={todayWorkoutStyles.headerRow}>
-            <Text style={[todayWorkoutStyles.kicker, { color: t.textMuted }]}>TODAY'S WORKOUT</Text>
-            <View style={[todayWorkoutStyles.pill, { backgroundColor: pillBg }]}>
-              <Text style={[todayWorkoutStyles.pillText, { color: pillText }]}>
-                {isRest ? 'REST DAY' : 'TRAINING'}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[todayWorkoutStyles.title, { color: t.text }]} numberOfLines={2}>
-            {isRest ? 'Rest Day' : (workoutName?.trim() || 'Workout Day')}
-          </Text>
-
-          <Text style={[todayWorkoutStyles.subtitle, { color: t.textDimmed }]} numberOfLines={2}>
-            {isRest ? 'Focus on recovery & mobility.' : 'Tap below to view or log today’s session.'}
-          </Text>
-
-          <TouchableOpacity activeOpacity={0.85} onPress={onPressCTA} style={{ marginTop: 12 }}>
-            <LinearGradient
-              colors={isRest ? ['rgba(107,114,128,0.65)', 'rgba(17,24,39,0.65)'] : ['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={todayWorkoutStyles.ctaBtn}
-            >
-              <Text style={todayWorkoutStyles.ctaText}>{isRest ? 'Recovery Tips' : 'View / Log Workout'}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    </View>
-  );
-};
-
 const QuickStatsRow = ({ isDark, todayCalories, sleepHoursValue, waterOz }) => {
   const t = isDark ? DARK : LIGHT;
   return (
@@ -860,19 +841,6 @@ const QuickStatsRow = ({ isDark, todayCalories, sleepHoursValue, waterOz }) => {
     </View>
   );
 };
-
-const todayWorkoutStyles = StyleSheet.create({
-  border: { borderRadius: 18, padding: 2 },
-  card: { borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  kicker: { fontSize: 10, fontWeight: '800', letterSpacing: 2 },
-  pill: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-  pillText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  title: { marginTop: 10, fontSize: 18, fontWeight: '900' },
-  subtitle: { marginTop: 6, fontSize: 13, lineHeight: 18 },
-  ctaBtn: { height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  ctaText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-});
 
 const quickStatsStyles = StyleSheet.create({
   row: { borderRadius: 16, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
@@ -1778,13 +1746,173 @@ export const MyDashboardScreen = ({
   const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;
   const currentUser = auth?.currentUser;
   const scrollRef = useRef(null);
-  const [workoutLogY, setWorkoutLogY] = useState(0);
   const [untilResetMs, setUntilResetMs] = useState(msUntilMidnight());
+  const [banner, setBanner] = useState(null); // { type: 'info'|'warn'|'error', text }
+  const [pendingReset, setPendingReset] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setUntilResetMs(msUntilMidnight()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Real-time workouts history (dashboard updates without refresh)
+  const [recentWorkouts, setRecentWorkouts] = useState([]);
+  const [dashboardPendingSessions, setDashboardPendingSessions] = useState([]);
+  const [dashboardReminderSessions, setDashboardReminderSessions] = useState([]);
+
+  useEffect(() => {
+    if (!db || !currentUser?.uid) {
+      setDashboardPendingSessions([]);
+      setDashboardReminderSessions([]);
+      return;
+    }
+    const trainerUid = trainer?.id || trainer?.uid || null;
+    if (!trainerUid) {
+      setDashboardPendingSessions([]);
+      setDashboardReminderSessions([]);
+      return;
+    }
+    const todayKey = getLocalDateKey();
+    const sessionsRef = collection(db, `trainer_clients/${trainerUid}/sessions`);
+    const q = query(sessionsRef, where('clientId', '==', currentUser.uid), limit(25));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const all = [];
+        snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
+        const pending = all
+          .filter((s) => (s.status || 'pending') === 'pending' && String(s.date || '') >= String(todayKey))
+          .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
+          .slice(0, 5);
+        const reminders = all
+          .filter((s) => String(s.status || '') === 'accepted' && String(s.date || '') >= String(todayKey))
+          .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
+          .slice(0, 3);
+        setDashboardPendingSessions(pending);
+        setDashboardReminderSessions(reminders);
+      },
+      (e) => {
+        console.warn('Dashboard sessions listener:', e?.code || e?.message || e);
+        setDashboardPendingSessions([]);
+        setDashboardReminderSessions([]);
+      },
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch (_) {}
+    };
+  }, [currentUser?.uid, trainer?.id, trainer?.uid]);
+
+  useEffect(() => {
+    if (!db || !currentUser?.uid) return;
+    const uid = currentUser.uid;
+    const workoutsRef = collection(db, 'completedWorkouts');
+    const q = query(workoutsRef, where('userId', '==', uid));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        list.sort((a, b) => {
+          const aTime = a.completedAt?.toDate?.() || new Date(a.completedAt || 0);
+          const bTime = b.completedAt?.toDate?.() || new Date(b.completedAt || 0);
+          return bTime.getTime() - aTime.getTime();
+        });
+        setRecentWorkouts(list.slice(0, 20));
+      },
+      (e) => {
+        console.warn('completedWorkouts listener error:', e?.code || e?.message || e);
+        setBanner({ type: 'warn', text: "You're offline or connection is unstable. Cached data shown where available." });
+      },
+    );
+    return () => {
+      try { unsub?.(); } catch (_) {}
+    };
+  }, [currentUser?.uid]);
+
+  // Archive + reset at local midnight (best-effort; retries every 30s if it fails)
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    if (!uid || !db) return;
+
+    const LAST_KEY = `dashboard_last_dateKey_${uid}`;
+    const PENDING_KEY = `dashboard_pending_reset_${uid}`;
+
+    const runArchive = async (prevKey) => {
+      if (!prevKey) return;
+      setPendingReset(true);
+      setBanner({ type: 'info', text: 'New day started. Archiving yesterday…' });
+
+      let dailyLogsData = null;
+      let trackingData = null;
+      try {
+        const logsSnap = await getDoc(doc(db, 'users', uid, 'dailyLogs', prevKey));
+        dailyLogsData = logsSnap.exists() ? (logsSnap.data() || {}) : null;
+      } catch (_) {
+        dailyLogsData = null;
+      }
+      try {
+        const tSnap = await getDoc(doc(db, 'users', uid, 'daily_tracking', prevKey));
+        trackingData = tSnap.exists() ? (tSnap.data() || {}) : null;
+      } catch (_) {
+        trackingData = null;
+      }
+
+      const archiveDocId = `${uid}_${prevKey}`;
+      const archivePayload = {
+        userId: uid,
+        date: prevKey,
+        workouts: {
+          workoutLog: dailyLogsData?.workoutLog || null,
+          workoutSummary: trackingData?.workoutSummary || dailyLogsData?.dashboard_workouts || null,
+          workoutName: trackingData?.workoutName || dailyLogsData?.dashboard_workout_name || null,
+          workoutExercises: trackingData?.workoutExercises || null,
+        },
+        nutrition: {
+          caloriesConsumed: typeof trackingData?.caloriesConsumed === 'number' ? trackingData.caloriesConsumed : null,
+          macros: trackingData?.macroTotals || null,
+        },
+        streak_count: typeof dailyLogsData?.streak_count === 'number' ? dailyLogsData.streak_count : null,
+        timestamp: serverTimestamp(),
+      };
+
+      try {
+        await setDoc(doc(db, 'daily_logs', archiveDocId), archivePayload, { merge: true });
+        await AsyncStorage.removeItem(PENDING_KEY);
+        setPendingReset(false);
+        setBanner({ type: 'info', text: 'Yesterday archived. Dashboard reset for the new day.' });
+      } catch (e) {
+        await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ prevKey, at: Date.now() }));
+        setPendingReset(true);
+        setBanner({ type: 'error', text: 'Pending reset… will retry automatically.' });
+      }
+    };
+
+    const tick = async () => {
+      const nowKey = getLocalDateKey();
+      const lastKey = await AsyncStorage.getItem(LAST_KEY);
+      if (!lastKey) {
+        await AsyncStorage.setItem(LAST_KEY, nowKey);
+      } else if (lastKey !== nowKey) {
+        await AsyncStorage.setItem(LAST_KEY, nowKey);
+        await runArchive(lastKey);
+      }
+
+      const pending = await AsyncStorage.getItem(PENDING_KEY);
+      if (pending) {
+        let parsed = null;
+        try { parsed = JSON.parse(pending); } catch (_) {}
+        if (parsed?.prevKey) {
+          await runArchive(parsed.prevKey);
+        }
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [currentUser?.uid]);
 
   const handleWorkoutAfterSave = useCallback(
     (combined, workoutName, workoutExercises) => {
@@ -1800,6 +1928,45 @@ export const MyDashboardScreen = ({
   );
 
   const workoutLogState = useWorkoutLog(handleWorkoutAfterSave);
+
+  const respondToDashboardSession = useCallback(
+    async ({ sessionId, status }) => {
+      const trainerUid = trainer?.id || trainer?.uid || null;
+      if (!trainerUid || !sessionId || !db) return;
+      try {
+        await updateDoc(doc(db, `trainer_clients/${trainerUid}/sessions/${sessionId}`), {
+          status,
+          respondedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        const clientUid = auth?.currentUser?.uid;
+        if (clientUid) {
+          let clientName = auth.currentUser?.displayName || 'Client';
+          try {
+            const us = await getDoc(doc(db, 'users', clientUid));
+            if (us.exists()) {
+              const d = us.data();
+              clientName = d?.firstName || d?.name || d?.displayName || clientName;
+            }
+          } catch (_) {}
+          const verb =
+            status === 'accepted' ? 'accepted' : status === 'declined' ? 'declined' : 'updated';
+          void postRemotePushNotify({
+            recipientId: trainerUid,
+            senderName: clientName,
+            messageText: `${clientName} ${verb} a session.`,
+            senderId: clientUid,
+            messageId: sessionId,
+            notificationType: 'session_response',
+          });
+        }
+      } catch (e) {
+        console.error('Dashboard respond to session failed:', e);
+        Alert.alert('Could not update', e?.message || 'Please try again.');
+      }
+    },
+    [trainer?.id, trainer?.uid],
+  );
 
   const trainerName = (() => {
     const first = trainer?.firstName || trainer?.givenName;
@@ -1891,6 +2058,40 @@ export const MyDashboardScreen = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {banner?.text ? (
+          <View
+            style={{
+              marginTop: 4,
+              marginBottom: 10,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor:
+                banner.type === 'error'
+                  ? 'rgba(239,68,68,0.35)'
+                  : banner.type === 'warn'
+                    ? 'rgba(245,158,11,0.35)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.10)'
+                      : 'rgba(0,0,0,0.08)',
+              backgroundColor:
+                banner.type === 'error'
+                  ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.10)')
+                  : banner.type === 'warn'
+                    ? (isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.10)')
+                    : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)'),
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+            }}
+          >
+            <Text style={{ color: t.text, fontSize: 13, fontWeight: '700' }}>{banner.text}</Text>
+            {pendingReset ? (
+              <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>
+                Retrying every 30 seconds…
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View
           style={{
             marginTop: 4,
@@ -1928,24 +2129,86 @@ export const MyDashboardScreen = ({
           accent="pink"
           userName={String(currentUser?.displayName || '').trim() || 'Athlete'}
           message="Today’s goal: log one metric + complete one focused session. Let’s build momentum."
-          primaryActionLabel="View / Log Workout"
-          onPressPrimaryAction={() => {
-            if (!scrollRef?.current) return;
-            scrollRef.current.scrollTo({ y: Math.max(0, workoutLogY - 16), animated: true });
-          }}
           illustrationSource={require('../../assets/Lotties for Anatrox/Fitness.json')}
         />
 
-        {/* Today's workout hero (new hierarchy section) */}
-        <TodaysWorkoutCard
-          isDark={isDark}
-          workoutName={workoutLogState?.workoutName}
-          hasWorkout={!!workoutLogState?.hasValue}
-          onPressCTA={() => {
-            if (!scrollRef?.current) return;
-            scrollRef.current.scrollTo({ y: Math.max(0, workoutLogY - 16), animated: true });
-          }}
-        />
+        {(dashboardPendingSessions.length > 0 || dashboardReminderSessions.length > 0) && (
+          <View style={{ marginTop: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="calendar" size={22} color="#C084FC" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    letterSpacing: 1.4,
+                    color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  From your coach
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 2,
+                    fontSize: 16,
+                    fontWeight: '800',
+                    color: isDark ? '#fff' : '#0F172A',
+                    letterSpacing: -0.3,
+                  }}
+                >
+                  {dashboardPendingSessions.length > 0 ? 'Session invites' : 'Your session'}
+                </Text>
+                <Text
+                  style={{
+                    marginTop: 2,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
+                  }}
+                >
+                  {dashboardPendingSessions.length > 0
+                    ? 'Lock in a time or pass — your call.'
+                    : 'Here’s when you’re meeting next.'}
+                </Text>
+              </View>
+            </View>
+
+            {dashboardPendingSessions.length > 0
+              ? dashboardPendingSessions.map((s) => (
+                  <SessionMeetingCard
+                    key={s.id}
+                    mode="invite"
+                    isDark={isDark}
+                    coachName={trainerName}
+                    session={s}
+                    onRespond={respondToDashboardSession}
+                  />
+                ))
+              : dashboardReminderSessions.map((s) => (
+                  <SessionMeetingCard
+                    key={s.id}
+                    mode="reminder"
+                    isDark={isDark}
+                    coachName={trainerName}
+                    session={s}
+                  />
+                ))}
+          </View>
+        )}
 
         <PremiumStatsSection
           isDark={isDark}
@@ -1967,8 +2230,13 @@ export const MyDashboardScreen = ({
                 specialty: trainerTitle || trainerSpecialties.join(' · ') || 'Certified Trainer',
                 location: trainerLocation || 'Remote',
                 avatarUrl: trainer?.photoURL || trainer?.avatarUrl,
-                rating: typeof trainer?.rating === 'number' ? trainer.rating : 4.9,
-                clients: typeof trainer?.clients === 'number' ? trainer.clients : 120,
+                rating: typeof trainer?.rating === 'number' ? trainer.rating : undefined,
+                clients:
+                  typeof trainer?.clientCount === 'number'
+                    ? trainer.clientCount
+                    : typeof trainer?.clients === 'number'
+                      ? trainer.clients
+                      : undefined,
                 experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
               }}
               onPressCard={onPressMessage}
@@ -2004,48 +2272,140 @@ export const MyDashboardScreen = ({
           </TouchableOpacity>
         )}
 
-        <View style={screen.actionsRow}>
-        {[
-            { type: 'gradientChat', label: 'Messages', onPress: onPressMessage, borderColors: ['#FF6B9D', '#C084FC'], badgeCount: unreadMessageCount },
-            { type: 'image', source: require('../../assets/icons/picture.png'), label: 'Photo Gallery', onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }), borderColors: ['#06B6D4', '#C084FC'], badgeCount: photoGalleryBadgeCount },
-            { type: 'image', source: require('../../assets/icons/google_gemini.png'), label: 'AI Workouts', onPress: () => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName }), borderColors: ['#FF6B9D', '#F97316'], badgeCount: aiWorkoutsBadgeCount },
-          ].map((item) => {
-            const getBorderColor = () => {
-              switch (item.label) {
-                case 'Messages': return 'rgba(255,107,157,0.35)';
-                case 'Photo Gallery': return 'rgba(6,182,212,0.35)';
-                case 'AI Workouts': return 'rgba(249,115,22,0.35)';
-                default: return 'rgba(255,107,157,0.35)';
-              }
-            };
-            const showBadge = (item.badgeCount || 0) > 0;
-            return (
+        <View style={{ marginTop: 18, marginBottom: 20 }}>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 2,
+              color: t.textMuted,
+              textTransform: 'uppercase',
+              marginBottom: 10,
+              paddingHorizontal: 2,
+            }}
+          >
+            Quick Actions
+          </Text>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}
+          >
+            {[
+              {
+                label: 'Messages',
+                onPress: onPressMessage,
+                icon: 'chatbubbles-outline',
+                accent: '#FF6B9D',
+                subtitle:
+                  (Number(unreadMessageCount) || 0) > 0
+                    ? `${Number(unreadMessageCount) > 99 ? '99+' : unreadMessageCount} unread`
+                    : 'No unread',
+                showUnreadPill: (Number(unreadMessageCount) || 0) > 0,
+                unreadCount: Number(unreadMessageCount) || 0,
+              },
+              {
+                label: 'Photo Gallery',
+                onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
+                icon: 'images-outline',
+                accent: '#64D2FF',
+                subtitle:
+                  (Number(photoGalleryBadgeCount) || 0) > 0
+                    ? `${Number(photoGalleryBadgeCount) > 99 ? '99+' : photoGalleryBadgeCount} new`
+                    : 'Your photos',
+              },
+              {
+                label: 'Workout Plans',
+                onPress: () => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName }),
+                icon: 'barbell-outline',
+                accent: '#C084FC',
+                subtitle:
+                  (Number(aiWorkoutsBadgeCount) || 0) > 0
+                    ? `${Number(aiWorkoutsBadgeCount) > 99 ? '99+' : aiWorkoutsBadgeCount} new`
+                    : 'Plans & sessions',
+              },
+            ].map((item) => (
               <TouchableOpacity
                 key={item.label}
-                activeOpacity={0.85}
-                style={screen.actionWrapper}
+                activeOpacity={0.9}
                 onPress={item.onPress || (() => {})}
+                style={{ width: 220, marginRight: 12 }}
               >
-                <View style={[screen.actionCard, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: getBorderColor(), borderRadius: 16 }]}>
-                  <View style={screen.actionIconBlock}>
-                    {item.type === 'image' ? (
-                      <Image source={item.source} style={{ width: 64, height: 64, resizeMode: 'contain' }} />
-                    ) : item.type === 'gradientChat' ? (
-                      <GradientChatBubblesIcon size={40} />
-                    ) : (
-                      <Ionicons name={item.iconName} size={28} color={t.iconColor} />
-                    )}
-                    {showBadge && (
-                      <View style={screen.tabBadge}>
-                        <Text style={screen.tabBadgeText}>{item.badgeCount > 99 ? '99+' : item.badgeCount}</Text>
+                <View
+                  style={{
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)',
+                    borderRadius: 20,
+                    padding: 16,
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name={item.icon} size={22} color={item.accent} />
+                    </View>
+                    {item.showUnreadPill ? (
+                      <View
+                        style={{
+                          minWidth: 28,
+                          height: 22,
+                          paddingHorizontal: 8,
+                          borderRadius: 11,
+                          backgroundColor: 'rgba(255,107,157,0.18)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(255,107,157,0.35)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FF6B9D', fontSize: 12, fontWeight: '800' }}>
+                          {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                        </Text>
                       </View>
+                    ) : (
+                      <View />
                     )}
                   </View>
-                  <Text style={[screen.actionLabel, { color: t.text }]}>{item.label}</Text>
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ color: t.text, fontSize: 15, fontWeight: '800' }}>{item.label}</Text>
+                    <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>{item.subtitle}</Text>
+                  </View>
+                  <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 14,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={{ color: item.accent, fontSize: 12, fontWeight: '800' }}>View all</Text>
+                      <Ionicons name="chevron-forward" size={14} color={item.accent} />
+                    </View>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.accent, opacity: 0.9 }} />
+                  </View>
                 </View>
               </TouchableOpacity>
-            );
-          })}
+            ))}
+          </ScrollView>
         </View>
 
         {/* Bento metrics grid */}
@@ -2166,20 +2526,14 @@ export const MyDashboardScreen = ({
 
           {/* Row 3 */}
           <View style={screen.bentoRow3}>
-            <View
-              onLayout={(e) => {
-                setWorkoutLogY(e.nativeEvent.layout.y);
-              }}
-            >
-              <WorkoutLogCard
-                icon={icon('barbell-outline')}
-                gradientFrom="#F97316"
-                gradientTo="#FF6B9D"
-                isDark={isDark}
-                onAfterSave={handleWorkoutAfterSave}
-                state={workoutLogState}
-              />
-            </View>
+            <WorkoutLogCard
+              icon={icon('barbell-outline')}
+              gradientFrom="#F97316"
+              gradientTo="#FF6B9D"
+              isDark={isDark}
+              onAfterSave={handleWorkoutAfterSave}
+              state={workoutLogState}
+            />
           </View>
         </View>
 
@@ -2238,50 +2592,6 @@ const screen = StyleSheet.create({
   backLabel: { fontSize: 16, fontWeight: '600' },
   scroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 44 },
   trainerCardWrapper: { marginTop: 12, marginBottom: 20, borderRadius: 20 },
-  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 20, alignItems: 'center' },
-  actionWrapper: { flex: 1 },
-  actionBorder: { borderRadius: 18, padding: 1 },
-  actionCard: {
-    borderRadius: 17,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  actionIconBlock: {
-    width: 72,
-    height: 72,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  tabBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#FF3B30',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  tabBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  actionIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.95)',
-  },
-  actionLabel: { fontSize: 13, fontWeight: '600' },
 
   bentoGrid: { gap: 12 },
   bentoRow1: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },

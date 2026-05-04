@@ -26,6 +26,7 @@ import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMSe
 import { getOrCreateConversation, markMessagesAsRead } from '../../ai/services/trainerMessaging';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -374,7 +375,22 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
         </View>
       ) : filteredConversations.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>💬</Text>
+          <View
+            style={{
+              width: 76,
+              height: 76,
+              borderRadius: 22,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 16,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+              overflow: 'hidden',
+            }}
+          >
+            <GradientChatBubblesIcon size={34} />
+          </View>
           <Text style={{ fontSize: 16, color: t.textMuted, textAlign: 'center' }}>No conversations yet</Text>
           <Text style={{ fontSize: 14, color: t.textTimestamp, textAlign: 'center', marginTop: 8 }}>Start a conversation with a trainer or client</Text>
         </View>

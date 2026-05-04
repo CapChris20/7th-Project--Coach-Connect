@@ -9,86 +9,116 @@
  * - Premium home screen UI (iOS 18 Bento Box Design)
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  StatusBar,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  Image,
-  Dimensions,
-  useWindowDimensions,
   ActivityIndicator,
-  FlatList,
-  Animated,
-  Easing,
-  Platform,
-  Linking,
-  AppState,
   Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  FlatList,
+  Image,
+  Linking,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import * as Notifications from 'expo-notifications';
 
-// Configure notifications with CoachConnect branding
-
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaskedView from '@react-native-masked-view/masked-view';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, query, where, limit, serverTimestamp, deleteField } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { getExpoPushTokenAsync, requestNotificationPermissionsAsync } from '../shared/services/notificationsService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  collection,
+  deleteField,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+
 import { auth, db, functions } from './config';
-import { getDateKey } from './dateKey';
-import { getNotesAndFiles } from '../shared/services/notesAndFilesService';
-import AddNotesFilesModal from '../shared/components/AddNotesFilesModal';
-import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../nutrition/services/nutritionService';
-import { fetchWorkoutHistory, getActiveWorkout } from '../workouts/services/workoutService';
 import { calculateBMR, calculateTDEE } from './calculations';
-import { useTheme } from '../shared/ui/ThemeContext';
+import { getDateKey } from './dateKey';
+
+import { subscribeToUnreadCount } from '../ai/services/conversationService';
+import { getOrCreateConversation, sendClientRequest } from '../ai/services/trainerMessaging';
+import AIChatHomeScreen from '../aiChat/screens/AIChatHomeScreen';
+import AIChatScreen from '../aiChat/screens/AIChatScreen';
+import TrainerProfileScreen from '../ai/screens/TrainerProfileScreen';
+import TrainerSearchScreen from '../ai/screens/TrainerSearchScreen';
+import MyDashboardScreen from '../client/screens/MyDashboardScreen';
+import SettingsScreen from '../client/screens/SettingsScreen';
+import { AppNavigationProvider } from '../navigation/AppNavigationContext';
+import BottomNavBar from '../navigation/BottomNavBar';
+import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/services/nutritionService';
+import MealPlanHomeScreen from '../nutrition/screens/MealPlanHomeScreen';
+import NutritionContainer from '../nutrition/screens/NutritionContainer';
+import ProfileScreen from '../profile/screens/ProfileScreen';
+import AddNotesFilesModal from '../shared/components/AddNotesFilesModal';
 import AppLoadingScreen from '../shared/components/AppLoadingScreen';
 import CoachConnectHeader from '../shared/components/AnatroxHeader';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
-import BottomNavBar from '../navigation/BottomNavBar';
-import { AppNavigationProvider } from '../navigation/AppNavigationContext';
-import PdfViewerModal from '../shared/components/PdfViewerModal';
-import SpreadsheetViewerModal from '../shared/components/SpreadsheetViewerModal';
 import DocumentViewerModal from '../shared/components/DocumentViewerModal';
-import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
-import ConversationsListScreen from '../trainer/screens/ConversationsListScreen';
-import ProfileScreen from '../profile/screens/ProfileScreen';
-import SettingsScreen from '../client/screens/SettingsScreen';
-import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
-import PhotoGalleryScreen from '../trainer/screens/PhotoGalleryScreen';
-import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
-import MealPlanHomeScreen from '../nutrition/screens/MealPlanHomeScreen';
-import NutritionContainer from '../nutrition/screens/NutritionContainer';
-import TrainerSearchScreen from '../ai/screens/TrainerSearchScreen';
-import TrainerProfileScreen from '../ai/screens/TrainerProfileScreen';
-import MyDashboardScreen from '../client/screens/MyDashboardScreen';
-import { subscribeToUnreadCount } from '../ai/services/conversationService';
-import { getOrCreateConversation, sendClientRequest } from '../ai/services/trainerMessaging';
-import { clearAllUserData } from '../utils/dataCacheCleanup';
+import EmbedWebViewModal from '../shared/components/EmbedWebViewModal';
+import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components/FileGalleryGrid';
+import MediaViewerModal from '../shared/components/MediaViewerModal';
+import PdfViewerModal from '../shared/components/PdfViewerModal';
 import RemoveTrainerSheet from '../shared/components/RemoveTrainerSheet';
 import ReviewSubmitSheet from '../shared/components/ReviewSubmitSheet';
-import AIChatHomeScreen from '../aiChat/screens/AIChatHomeScreen';
-import AIChatScreen from '../aiChat/screens/AIChatScreen';
-import { configureNotifications } from '../shared/services/notificationsService';
+import { SessionMeetingCard } from '../shared/components/SessionMeetingCard';
+import SpreadsheetViewerModal from '../shared/components/SpreadsheetViewerModal';
+import TrainerSharedFilesModal from '../shared/components/TrainerSharedFilesModal';
+import {
+  persistPushTokensForUid,
+  setNotificationTapHandler,
+  flushInitialNotificationResponse,
+  subscribePushTokenRefreshOnResume,
+} from '../shared/services/notificationsService';
+import { postRemotePushNotify } from '../shared/services/pushNotifyApi';
+import { deleteNotesAndFilesItem, getNotesAndFiles } from '../shared/services/notesAndFilesService';
+import { useTheme } from '../shared/ui/ThemeContext';
+import {
+  getEmbedViewerUri,
+  isImageFile as isNotesImageFile,
+  isPdfFile as isNotesPdfFile,
+  isVideoFile as isNotesVideoFile,
+} from '../shared/utils/notesFileView';
+import ConversationsListScreen from '../trainer/screens/ConversationsListScreen';
+import PhotoGalleryScreen from '../trainer/screens/PhotoGalleryScreen';
+import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
+import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
+import { fetchWorkoutHistory, getActiveWorkout } from '../workouts/services/workoutService';
+import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { clearAllUserData } from '../utils/dataCacheCleanup';
+
 const CARD_GAP = 16;
-const PADDING = 16;
-const CARD_WIDTH = (SCREEN_WIDTH - (PADDING * 2) - CARD_GAP) / 2;
+/** Kept for any layout/style references; prefer useWindowDimensions() inside components for live width. */
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+/** Horizontal padding inside home stat ScrollViews — keep in sync with `styles.statsRowContent.paddingHorizontal` (20×2). */
+const STATS_ROW_PAD_H = 40;
+/** Gap between cards in stat rows — keep in sync with `styles.statsRowContent.gap`. */
+const STATS_ROW_CARD_GAP = 12;
 
 // Import macro icons
 const ProteinIcon = require('../assets/icons/Protein.png');
@@ -233,11 +263,12 @@ const HOME_STAT_SORENESS = '#F472B6';
 const HOME_STAT_ENERGY = '#FBBF24';
 const HOME_STAT_STRESS = '#FB7185';
 
-const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpacity = 0.9 }) => {
+const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpacity = 0.9, disableAnimations = false }) => {
   const press = useRef(new Animated.Value(0)).current;
   const shimmer = useRef(new Animated.Value(-1)).current;
 
   useEffect(() => {
+    if (disableAnimations) return;
     shimmer.setValue(-1);
     const loop = Animated.loop(
       Animated.sequence([
@@ -248,12 +279,14 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
     );
     loop.start();
     return () => loop.stop();
-  }, [index, shimmer]);
+  }, [disableAnimations, index, shimmer]);
 
   const onPressIn = () => {
+    if (disableAnimations) return;
     Animated.timing(press, { toValue: 1, duration: 70, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   };
   const onPressOut = () => {
+    if (disableAnimations) return;
     Animated.spring(press, { toValue: 0, speed: 28, bounciness: 16, useNativeDriver: true }).start();
   };
 
@@ -268,6 +301,11 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
   });
 
   return (
+    disableAnimations ? (
+      <TouchableOpacity activeOpacity={activeOpacity} onPress={onPress}>
+        <View style={{ width: '100%' }}>{children}</View>
+      </TouchableOpacity>
+    ) : (
     <Animated.View
       style={{
         transform: [
@@ -303,6 +341,7 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
         </View>
       </TouchableOpacity>
     </Animated.View>
+    )
   );
 };
 
@@ -319,48 +358,13 @@ const TopStatsRow = ({
   goalProgress,
   onPlanWorkout,
 }) => {
-  const cardWidth = Math.round(SCREEN_WIDTH * 0.42);
+  const { width: windowWidth } = useWindowDimensions();
+  // Live window width (not module-level Dimensions) — fixes Expo Go on device where initial width is wrong and cards look full-width.
+  const cardWidth = Math.max(
+    132,
+    Math.floor((windowWidth - STATS_ROW_PAD_H - STATS_ROW_CARD_GAP) / 2),
+  );
   const accent = ACCENT_COLOR;
-  const enter0 = useRef(new Animated.Value(0)).current;
-  const enter1 = useRef(new Animated.Value(0)).current;
-  const enter2 = useRef(new Animated.Value(0)).current;
-  const drift0 = useRef(new Animated.Value(0)).current;
-  const drift1 = useRef(new Animated.Value(0)).current;
-  const drift2 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    enter0.setValue(0);
-    enter1.setValue(0);
-    enter2.setValue(0);
-    Animated.stagger(25, [
-      Animated.spring(enter0, { toValue: 1, speed: 40, bounciness: 14, useNativeDriver: true }),
-      Animated.spring(enter1, { toValue: 1, speed: 40, bounciness: 14, useNativeDriver: true }),
-      Animated.spring(enter2, { toValue: 1, speed: 40, bounciness: 14, useNativeDriver: true }),
-    ]).start();
-  }, [enter0, enter1, enter2]);
-
-  useEffect(() => {
-    // Continuous "jostle" so the cards feel alive (quick + bouncy).
-    const makeLoop = (v, delay = 0) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(v, { toValue: 1, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-          Animated.timing(v, { toValue: 0, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        ])
-      );
-    const l0 = makeLoop(drift0, 0);
-    const l1 = makeLoop(drift1, 120);
-    const l2 = makeLoop(drift2, 240);
-    l0.start();
-    l1.start();
-    l2.start();
-    return () => {
-      l0.stop();
-      l1.stop();
-      l2.stop();
-    };
-  }, [drift0, drift1, drift2]);
   const primary = colors?.primary ?? accent;
   let workoutType = null;
   if (todayWorkout) {
@@ -404,18 +408,8 @@ const TopStatsRow = ({
         decelerationRate="fast"
       >
         {/* Card 1 — Workout */}
-        <Animated.View
-          style={{
-            transform: [
-              { translateX: enter0.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift0.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] }) },
-              { rotateZ: drift0.interpolate({ inputRange: [0, 1], outputRange: ['-1.2deg', '1.2deg'] }) },
-              { scale: enter0.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter0,
-          }}
-        >
-          <FightyBouncyCardWrap index={0} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={0} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>TODAY'S WORKOUT</Text>
               {displayWorkoutType ? (
@@ -441,21 +435,11 @@ const TopStatsRow = ({
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
 
         {/* Card 2 — Water */}
-        <Animated.View
-          style={{
-            transform: [
-              { translateX: enter1.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift1.interpolate({ inputRange: [0, 1], outputRange: [8, -8] }) },
-              { rotateZ: drift1.interpolate({ inputRange: [0, 1], outputRange: ['1.2deg', '-1.2deg'] }) },
-              { scale: enter1.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter1,
-          }}
-        >
-          <FightyBouncyCardWrap index={1} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={1} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>WATER INTAKE</Text>
               {waterVal !== null ? (
@@ -476,21 +460,11 @@ const TopStatsRow = ({
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
 
         {/* Card 3 — Sleep */}
-        <Animated.View
-          style={{
-            transform: [
-              { translateX: enter2.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift2.interpolate({ inputRange: [0, 1], outputRange: [-6, 6] }) },
-              { rotateZ: drift2.interpolate({ inputRange: [0, 1], outputRange: ['-0.9deg', '0.9deg'] }) },
-              { scale: enter2.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter2,
-          }}
-        >
-          <FightyBouncyCardWrap index={2} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={2} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>SLEEP</Text>
               {sleepVal !== null ? (
@@ -511,7 +485,7 @@ const TopStatsRow = ({
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
 
         
       </ScrollView>
@@ -537,46 +511,11 @@ const wellnessLabel = { fontSize: 12, fontWeight: '600', marginTop: 2, textAlign
 const wellnessEmptyText = { fontSize: 11, fontWeight: '600', textAlign: 'center' };
 
 const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }) => {
-  const cardWidth = Math.round(SCREEN_WIDTH * 0.42);
-  const enter0 = useRef(new Animated.Value(0)).current;
-  const enter1 = useRef(new Animated.Value(0)).current;
-  const enter2 = useRef(new Animated.Value(0)).current;
-  const drift0 = useRef(new Animated.Value(0)).current;
-  const drift1 = useRef(new Animated.Value(0)).current;
-  const drift2 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    enter0.setValue(0);
-    enter1.setValue(0);
-    enter2.setValue(0);
-    Animated.stagger(55, [
-      Animated.spring(enter0, { toValue: 1, speed: 22, bounciness: 14, useNativeDriver: true }),
-      Animated.spring(enter1, { toValue: 1, speed: 22, bounciness: 14, useNativeDriver: true }),
-      Animated.spring(enter2, { toValue: 1, speed: 22, bounciness: 14, useNativeDriver: true }),
-    ]).start();
-  }, [enter0, enter1, enter2]);
-
-  useEffect(() => {
-    const makeLoop = (v, delay = 0) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(v, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-          Animated.timing(v, { toValue: 0, duration: 520, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        ])
-      );
-    const l0 = makeLoop(drift0, 0);
-    const l1 = makeLoop(drift1, 120);
-    const l2 = makeLoop(drift2, 240);
-    l0.start();
-    l1.start();
-    l2.start();
-    return () => {
-      l0.stop();
-      l1.stop();
-      l2.stop();
-    };
-  }, [drift0, drift1, drift2]);
+  const { width: windowWidth } = useWindowDimensions();
+  const cardWidth = Math.max(
+    132,
+    Math.floor((windowWidth - STATS_ROW_PAD_H - STATS_ROW_CARD_GAP) / 2),
+  );
   const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
   const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
   const formatRating = (v) => {
@@ -590,19 +529,8 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
   return (
     <View style={styles.statsRowWrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRowContent} decelerationRate="fast">
-        <Animated.View
-          style={{
-            width: cardWidth,
-            transform: [
-              { translateX: enter0.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift0.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] }) },
-              { rotateZ: drift0.interpolate({ inputRange: [0, 1], outputRange: ['-1.2deg', '1.2deg'] }) },
-              { scale: enter0.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter0,
-          }}
-        >
-          <FightyBouncyCardWrap index={0} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={0} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>SORENESS</Text>
               {soreness != null && soreness !== '' ? (
@@ -618,21 +546,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
 
-        <Animated.View
-          style={{
-            width: cardWidth,
-            transform: [
-              { translateX: enter1.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift1.interpolate({ inputRange: [0, 1], outputRange: [8, -8] }) },
-              { rotateZ: drift1.interpolate({ inputRange: [0, 1], outputRange: ['1.2deg', '-1.2deg'] }) },
-              { scale: enter1.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter1,
-          }}
-        >
-          <FightyBouncyCardWrap index={1} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={1} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>ENERGY LEVEL</Text>
               {energyLevel != null && energyLevel !== '' ? (
@@ -648,21 +565,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
 
-        <Animated.View
-          style={{
-            width: cardWidth,
-            transform: [
-              { translateX: enter2.interpolate({ inputRange: [0, 1], outputRange: [56, 0] }) },
-              { translateX: drift2.interpolate({ inputRange: [0, 1], outputRange: [-6, 6] }) },
-              { rotateZ: drift2.interpolate({ inputRange: [0, 1], outputRange: ['-0.9deg', '0.9deg'] }) },
-              { scale: enter2.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-            ],
-            opacity: enter2,
-          }}
-        >
-          <FightyBouncyCardWrap index={2} width={cardWidth}>
+        <View style={{ width: cardWidth }}>
+          <FightyBouncyCardWrap index={2} width={cardWidth} disableAnimations>
             <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>STRESS LEVEL</Text>
               {stressLevel != null && stressLevel !== '' ? (
@@ -678,7 +584,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               )}
             </LiquidGlassStatCard>
           </FightyBouncyCardWrap>
-        </Animated.View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -696,8 +602,10 @@ const getGreeting = () => {
 const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
-  const titleSize = isWide ? 42 : 38;
-  const lottieSize = isWide ? 160 : 150;
+  // Slightly smaller so the quote + next content is visible on first load
+  const titleSize = isWide ? 38 : 34;
+  // Inline layout: keep Lottie looking normal, but still fit the right column.
+  const lottieSize = Math.min(isWide ? 150 : 130, Math.max(96, Math.round((width - 32) * 0.36)));
   const bg = isDark ? 'rgba(11,11,18,0.92)' : 'rgba(255,255,255,0.70)';
   const borderGradient = isDark
     ? ['rgba(255,107,157,0.65)', 'rgba(192,132,252,0.55)', 'rgba(6,182,212,0.35)']
@@ -724,7 +632,7 @@ const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
       >
         <View style={[styles.heroInner, { backgroundColor: bg }]}>
           {/* Greeting moved inside hero card */}
-          <View style={{ marginBottom: 10, alignItems: 'center' }}>
+          <View style={{ marginBottom: 4, alignItems: 'center' }}>
             <Text style={[styles.greetingTitle, { color: isDark ? '#FFFFFF' : '#111827', textAlign: 'center' }]}>
               Good {getGreeting()},{' '}
               <Text style={{ color: '#FF6B9D', fontWeight: '800' }}>{firstName}!</Text>
@@ -767,26 +675,30 @@ const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
 
           {/* Right (Lottie) */}
           <View style={[styles.heroRight, { flex: isWide ? 0.4 : 1 }]}>
-            <LottieView
-              source={require('../assets/icons/weightlifting-competition.json')}
-              autoPlay
-              loop
-              style={{ width: lottieSize, height: lottieSize }}
-            />
+            {/* Inline: Lottie (left) + Daily Quote pill (right) */}
+            <View style={styles.heroRightInlineRow}>
+              <LottieView
+                source={require('../assets/icons/weightlifting-competition.json')}
+                autoPlay
+                loop
+                style={{ width: lottieSize, height: lottieSize }}
+              />
+
+              <View style={styles.heroInlineQuoteWrap}>
+                <LinearGradient
+                  colors={['#FF6B9D', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroInlineQuoteBorder}
+                >
+                  <DailyQuotePill userId={userId} isDarkOverride={isDark} maxLines={3} />
+                </LinearGradient>
+              </View>
+            </View>
           </View>
           </View>
 
-          {/* Quote pill (bottom of hero banner) */}
-          <View style={styles.heroQuotePillWrap}>
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroQuotePillBorder}
-            >
-              <DailyQuotePill userId={userId} isDarkOverride={isDark} />
-            </LinearGradient>
-          </View>
+          {/* Quote pill moved inline next to Lottie */}
         </View>
       </LinearGradient>
     </View>
@@ -1266,7 +1178,9 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   }
   
   const pct = goal > 0 ? Math.min(100, (consumed / goal) * 100) : 0;
-  const isEmpty = Math.round(Number(consumed) || 0) === 0;
+  const hasLoggedNutrition =
+    Math.round(Number(consumed) || 0) > 0 ||
+    (allNutrients || []).some((n) => Number(n.value) > 0);
 
   const textPrimary = isDark ? '#FFFFFF' : '#1a1040';
   const textMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(26,16,64,0.6)';
@@ -1276,29 +1190,39 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   const ClientArcProgress = ({ value, goal, label, color, unit }) => {
     const progress = goal > 0 ? Math.min((value / goal) * 100, 100) : 0;
     // Compact for home feed (reduces overall card height).
-    const size = compact ? 60 : 56;
-    const strokeWidth = compact ? 6 : 5;
+    const size = compact ? 78 : 72;
+    const strokeWidth = compact ? 7 : 6;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const dashOffset = circumference * (1 - progress / 100);
     return (
       <View style={styles.nutritionCircleWrap}>
-        <View style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            <Circle cx={size / 2} cy={size / 2} r={radius} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
-            <Circle cx={size / 2} cy={size / 2} r={radius} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={dashOffset} strokeLinecap="round" />
-          </Svg>
+        <View style={{ width: size, height: size }}>
+          <View style={{ transform: [{ rotate: '-90deg' }] }}>
+            <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              <Circle cx={size / 2} cy={size / 2} r={radius} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+              <Circle cx={size / 2} cy={size / 2} r={radius} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={dashOffset} strokeLinecap="round" />
+            </Svg>
+          </View>
+          <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={[styles.nutritionCircleValue, { color: textPrimary }]}>{Math.round(value)}{unit}</Text>
+          </View>
         </View>
-        <View style={[styles.nutritionCircleCenter, { top: size / 2 - 12 }]}>
-          <Text style={[styles.nutritionCircleValue, { color: textPrimary }]}>{Math.round(value)}{unit}</Text>
-        </View>
-        <Text style={[styles.nutritionCircleLabel, { color: textMuted, marginTop: size / 2 + 12 }]}>{label}</Text>
+        <Text style={[styles.nutritionCircleLabel, { color: textMuted, marginTop: 6 }]}>{label}</Text>
       </View>
     );
   };
 
   // 2x2 grid: row0 = Protein, Carbs; row1 = Fats, Calories
   const caloriesProgress = goal > 0 ? Math.min((consumed / goal) * 100, 100) : 0;
+
+  const nutrientsWithData = (allNutrients || []).filter((n) => Number(n.value) > 0);
+  const compactRings =
+    nutrientsWithData.length > 0
+      ? nutrientsWithData.slice(0, 3)
+      : Math.round(Number(consumed) || 0) > 0
+        ? [{ value: Math.round(consumed), goal, label: 'Calories', color: '#8B5CF6', unit: '' }]
+        : [];
 
   return (
     <View style={styles.nutritionContainer}>
@@ -1311,49 +1235,95 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
           style={StyleSheet.absoluteFill}
         />
         <View style={[styles.nutritionCard, !isDark && styles.nutritionCardLight]}>
-        {compact ? (
-          <View style={styles.nutritionCompactCirclesRow}>
-            {(allNutrients || []).slice(0, 3).map((n) => (
-              <View key={n.label} style={styles.nutritionCompactCircleCell}>
-                <ClientArcProgress value={n.value} goal={n.goal} label={n.label} color={n.color} unit={n.unit} />
-              </View>
-            ))}
+        {!hasLoggedNutrition ? (
+          <View style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8 }}>
+            <LottieView
+              source={require('../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json')}
+              autoPlay
+              loop
+              style={{ width: compact ? 150 : 160, height: compact ? 150 : 160 }}
+            />
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '800',
+                color: textPrimary,
+                textAlign: 'center',
+                marginTop: 4,
+                letterSpacing: -0.2,
+              }}
+            >
+              No meals logged yet
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: textMuted,
+                textAlign: 'center',
+                marginTop: 6,
+                lineHeight: 18,
+                paddingHorizontal: 12,
+              }}
+            >
+              Log food in Nutrition and your macros will show up here with the rings.
+            </Text>
+            {onAddMeal ? (
+              <TouchableOpacity activeOpacity={0.88} onPress={onAddMeal} style={{ marginTop: 14 }}>
+                <LinearGradient
+                  colors={['#FF6B9D', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 22,
+                    paddingVertical: 12,
+                    borderRadius: 20,
+                  }}
+                >
+                  <Ionicons name="nutrition-outline" size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>Log nutrition</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
-          <View style={styles.nutritionGrid2x2}>
-            {(allNutrients || []).slice(0, 3).map((n) => (
-              <View key={n.label} style={styles.nutritionGridCell}>
-                <ClientArcProgress value={n.value} goal={n.goal} label={n.label} color={n.color} unit={n.unit} />
+          <>
+            {compact ? (
+              <View style={styles.nutritionCompactCirclesRow}>
+                {compactRings.map((n) => (
+                  <View key={n.label} style={styles.nutritionCompactCircleCell}>
+                    <ClientArcProgress value={n.value} goal={n.goal} label={n.label} color={n.color} unit={n.unit} />
+                  </View>
+                ))}
               </View>
-            ))}
-            <View style={styles.nutritionGridCell}>
-              <ClientArcProgress value={Math.round(consumed)} goal={goal} label="Calories" color="#8B5CF6" unit="" />
+            ) : (
+              <View style={styles.nutritionGrid2x2}>
+                {(nutrientsWithData.length > 0 ? nutrientsWithData.slice(0, 3) : []).map((n) => (
+                  <View key={n.label} style={styles.nutritionGridCell}>
+                    <ClientArcProgress value={n.value} goal={n.goal} label={n.label} color={n.color} unit={n.unit} />
+                  </View>
+                ))}
+                {Math.round(Number(consumed) || 0) > 0 ? (
+                  <View style={styles.nutritionGridCell}>
+                    <ClientArcProgress value={Math.round(consumed)} goal={goal} label="Calories" color="#8B5CF6" unit="" />
+                  </View>
+                ) : null}
+              </View>
+            )}
+            <View style={styles.caloriesSection}>
+              <View style={styles.caloriesInfo}>
+                <Text style={[styles.caloriesLabel, { color: textMuted }]}>Calories</Text>
+                <Text style={[styles.caloriesValue, { color: textPrimary }]}>{Math.round(consumed)} / {goal} kcal</Text>
+              </View>
+              <View style={[styles.progressBarBackground, !isDark && { backgroundColor: '#E5E7EB' }]}>
+                <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%`, backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' }]} />
+              </View>
             </View>
-          </View>
+          </>
         )}
-        <View style={styles.caloriesSection}>
-          <View style={styles.caloriesInfo}>
-            <Text style={[styles.caloriesLabel, { color: textMuted }]}>Calories</Text>
-            <Text style={[styles.caloriesValue, { color: textPrimary }]}>{Math.round(consumed)} / {goal} kcal</Text>
-          </View>
-          <View style={[styles.progressBarBackground, !isDark && { backgroundColor: '#E5E7EB' }]}>
-            <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%`, backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' }]} />
-          </View>
-        </View>
-        {isEmpty ? (
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '600',
-              color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(26,16,64,0.55)',
-              marginTop: 10,
-              textAlign: 'center',
-            }}
-          >
-            Start tracking to see your progress
-          </Text>
-        ) : null}
-        {/* Removed "Log First Meal" CTA per request */}
         </View>
       </View>
     </View>
@@ -1574,10 +1544,14 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [showTrainerSearch, setShowTrainerSearch] = useState(false);
   const [showMyDashboard, setShowMyDashboard] = useState(false);
   const [showAddNotesFilesModal, setShowAddNotesFilesModal] = useState(false);
+  const [showTrainerSharedFilesModal, setShowTrainerSharedFilesModal] = useState(false);
   const [notesAndFiles, setNotesAndFiles] = useState([]);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
   const [documentViewer, setDocumentViewer] = useState({ visible: false, trainerId: null, documentId: null, title: null });
+  const [mediaViewer, setMediaViewer] = useState({ visible: false, url: null, kind: 'image', name: null });
+  const [embedWebViewer, setEmbedWebViewer] = useState({ visible: false, uri: null, title: null });
+  const [pendingSessions, setPendingSessions] = useState([]);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [showAIWorkouts, setShowAIWorkouts] = useState(false);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
@@ -1589,12 +1563,6 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   /** null = closed, 'home' = AI hub, object = active thread { prefill?, sessionId? } */
   const [aiChatState, setAiChatState] = useState(null);
   const openAIChatHome = useCallback(() => setAiChatState('home'), []);
-
-  // Ensure notification handler + (Android) channel are configured on app startup.
-  // This keeps local notification presentation consistent across dev/prod builds.
-  useEffect(() => {
-    configureNotifications();
-  }, []);
 
   // Home screen data state
   const [refreshing, setRefreshing] = useState(false);
@@ -2047,71 +2015,368 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     return () => clearInterval(interval);
   }, [loading, loadingStartTime]);
 
-  // Setup notification channel for Android with CoachConnect branding
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'CoachConnect AI',
-        description: 'Notifications from your AI Fitness Coach',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        sound: 'default',
-        enableLights: true,
-        lightColor: '#FF6B9D',
-        enableVibrate: true,
-      });
-    }
-  }, []);
-
   // When returning from dashboard, refetch soreness/energy/stress so the wellness row updates
   // When returning from dashboard we previously refetched soreness/energy/stress.
   // The dashboard is now always visible, so the wellness row is kept in sync via direct metric updates.
 
-  // Register for push notifications and save token to Firestore
   useEffect(() => {
-    const registerPushToken = async () => {
+    if (!user?.uid) return undefined;
+    persistPushTokensForUid(user.uid, { skipIfDisabled: true });
+    const unsubResume = subscribePushTokenRefreshOnResume(user.uid, () => true);
+    return unsubResume;
+  }, [user?.uid]);
+
+  const clientNotifTapRef = useRef(async () => {});
+
+  useEffect(() => {
+    clientNotifTapRef.current = async (data) => {
       try {
-        const { status } = await requestNotificationPermissionsAsync();
-        if (status !== 'granted') {
-          console.log('❌ Push notification permissions not granted');
+        if (!user?.uid || !data || typeof data !== 'object') return;
+        const type = data.type;
+        if (type === 'session_scheduled') {
+          setShowNutrition(false);
+          setShowMyDashboard(false);
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
           return;
         }
-        const token = await getExpoPushTokenAsync();
-        if (token && user?.uid) {
-          const userRef = doc(db, 'users', user.uid);
-          await updateDoc(userRef, { pushToken: token });
-          console.log('✅ Push token saved:', token);
+        if (type === 'session_reminder' || type === 'session_update') {
+          setShowNutrition(false);
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(false);
+          setShowMyDashboard(true);
+          return;
         }
-      } catch (error) {
-        console.error('❌ Error registering push token:', error);
+        if (type === 'nutrition_reminder') {
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(false);
+          setShowMyDashboard(false);
+          setShowNutrition(true);
+          return;
+        }
+        if (type === 'notes_shared') {
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(false);
+          setShowNutrition(false);
+          setShowMyDashboard(true);
+          setShowTrainerSharedFilesModal(true);
+          return;
+        }
+        if (type !== 'message') {
+          setShowNutrition(false);
+          setShowMyDashboard(false);
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(true);
+          return;
+        }
+        const conversationId = data.conversationId;
+        if (!conversationId || typeof conversationId !== 'string') {
+          setShowNutrition(false);
+          setShowMyDashboard(false);
+          setShowProfile(false);
+          setShowSettings(false);
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(true);
+          return;
+        }
+        const convSnap = await getDoc(doc(db, 'conversations', conversationId));
+        if (!convSnap.exists()) {
+          setShowConversationsList(true);
+          return;
+        }
+        const convData = convSnap.data();
+        const participants = convData?.participants || [];
+        const otherId = participants.find((p) => p !== user.uid);
+        let otherParticipant = otherId ? { id: otherId } : null;
+        if (otherId) {
+          try {
+            const uSnap = await getDoc(doc(db, 'users', otherId));
+            if (uSnap.exists()) otherParticipant = { id: uSnap.id, ...uSnap.data() };
+          } catch (_) {
+            /* keep minimal otherParticipant */
+          }
+        }
+        setShowNutrition(false);
+        setShowMyDashboard(false);
+        setShowProfile(false);
+        setShowSettings(false);
+        setAiChatState(null);
+        setShowConversationsList(false);
+        setSelectedConversation({ id: conversationId, ...convData });
+        setSelectedTrainer(otherParticipant);
+        setShowTrainerMessaging(true);
+      } catch (e) {
+        setShowConversationsList(true);
       }
     };
-
-    if (user?.uid) {
-      registerPushToken();
-    }
   }, [user?.uid]);
 
-  // Notes & Files (plus button) — fetch when user is set
   useEffect(() => {
-    if (!user?.uid) return;
-    getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => setNotesAndFiles([]));
-  }, [user?.uid]);
-
-  // Refetch notes when app comes to foreground so client sees newly shared trainer docs
-  useEffect(() => {
-    if (!user?.uid) return;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => {});
-      }
+    setNotificationTapHandler((d) => {
+      clientNotifTapRef.current?.(d);
     });
-    return () => subscription?.remove?.();
+    return () => setNotificationTapHandler(null);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    return flushInitialNotificationResponse(650);
   }, [user?.uid]);
+
+  // Notes & Files — same subcollection as trainer; realtime listener so uploads & trainer shares show immediately
+  useEffect(() => {
+    if (!user?.uid || !db) {
+      setNotesAndFiles([]);
+      return;
+    }
+    const notesRef = collection(db, 'users', user.uid, 'notes_and_files');
+    const unsubscribe = onSnapshot(
+      notesRef,
+      async () => {
+        try {
+          const list = await getNotesAndFiles(user.uid);
+          setNotesAndFiles(list);
+        } catch {
+          setNotesAndFiles([]);
+        }
+      },
+      (err) => console.error('Client notes_and_files listener:', err),
+    );
+    return () => {
+      try {
+        unsubscribe();
+      } catch (_) {}
+    };
+  }, [user?.uid]);
+
+  // Session invites (client): show upcoming pending sessions with accept/decline.
+  useEffect(() => {
+    if (!user?.uid || !db) {
+      setPendingSessions([]);
+      return;
+    }
+    const trainerUid = trainerData?.id || trainerData?.uid || null;
+    if (!trainerUid) {
+      setPendingSessions([]);
+      return;
+    }
+    const todayKey = getDateKey();
+    const sessionsRef = collection(db, `trainer_clients/${trainerUid}/sessions`);
+    const primaryQuery = query(
+      sessionsRef,
+      where('clientId', '==', user.uid),
+      where('status', '==', 'pending'),
+      where('date', '>=', todayKey),
+      limit(5),
+    );
+    const applySnap = (snap) => {
+      const next = [];
+      snap.forEach((d) => next.push({ id: d.id, ...d.data() }));
+      next.sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)));
+      setPendingSessions(next);
+    };
+
+    let fallbackUnsub = null;
+    const unsub = onSnapshot(
+      primaryQuery,
+      (snap) => {
+        applySnap(snap);
+      },
+      (err) => {
+        console.error('Client pending sessions listener:', err);
+        const msg = String(err?.message || '');
+        const needsIndex =
+          err?.code === 'failed-precondition' ||
+          msg.toLowerCase().includes('requires an index') ||
+          msg.toLowerCase().includes('create_composite');
+
+        // Fallback: use a simpler query (no composite index) and filter client-side.
+        // This keeps the UI working immediately, even if the composite index isn’t created yet.
+        if (needsIndex) {
+          try {
+            const fallbackQuery = query(
+              sessionsRef,
+              where('clientId', '==', user.uid),
+              limit(15),
+            );
+            fallbackUnsub = onSnapshot(
+              fallbackQuery,
+              (snap) => {
+                const all = [];
+                snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
+                const filtered = all
+                  .filter((s) => (s.status || 'pending') === 'pending' && String(s.date || '') >= String(todayKey))
+                  .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
+                  .slice(0, 5);
+                setPendingSessions(filtered);
+              },
+              (e2) => {
+                console.error('Client pending sessions fallback listener:', e2);
+                setPendingSessions([]);
+              },
+            );
+            return;
+          } catch (e) {
+            // continue to empty
+          }
+        }
+
+        setPendingSessions([]);
+      },
+    );
+    return () => {
+      try { unsub(); } catch (_) {}
+      try { fallbackUnsub?.(); } catch (_) {}
+    };
+  }, [user?.uid, trainerData?.id]);
+
+  const respondToSession = useCallback(async ({ sessionId, status }) => {
+    const trainerUid = trainerData?.id || trainerData?.uid || null;
+    if (!trainerUid || !sessionId) return;
+    try {
+      await updateDoc(doc(db, `trainer_clients/${trainerUid}/sessions/${sessionId}`), {
+        status,
+        respondedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const clientUid = user?.uid;
+      if (clientUid) {
+        let clientName = user?.displayName || 'Client';
+        try {
+          const us = await getDoc(doc(db, 'users', clientUid));
+          if (us.exists()) {
+            const d = us.data();
+            clientName = d?.firstName || d?.name || d?.displayName || clientName;
+          }
+        } catch (_) {}
+        const verb =
+          status === 'accepted' ? 'accepted' : status === 'declined' ? 'declined' : 'updated';
+        void postRemotePushNotify({
+          recipientId: trainerUid,
+          senderName: clientName,
+          messageText: `${clientName} ${verb} a session.`,
+          senderId: clientUid,
+          messageId: sessionId,
+          notificationType: 'session_response',
+        });
+      }
+    } catch (e) {
+      console.error('Respond to session failed:', e);
+      Alert.alert('Could not update', e?.message || 'Please try again.');
+    }
+  }, [trainerData?.id, trainerData?.uid, user?.uid, user?.displayName]);
 
   const refreshNotesAndFiles = () => {
     if (user?.uid) getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => {});
   };
+
+  const trainerSharedFiles = useMemo(
+    () =>
+      (notesAndFiles || []).filter(
+        (x) => x.addedBy === 'trainer' || (x.type === 'document' && x.trainerId),
+      ),
+    [notesAndFiles],
+  );
+
+  /** Client uploads (plus button) — same Firestore list; previously hidden because home only showed trainer rows */
+  const myOwnFiles = useMemo(
+    () =>
+      (notesAndFiles || []).filter((x) => {
+        if (x.type === 'note') return false;
+        return (
+          (x.addedBy || 'client') === 'client' &&
+          !(x.type === 'document' && x.trainerId && x.documentId)
+        );
+      }),
+    [notesAndFiles],
+  );
+
+  const [deletingMyFiles, setDeletingMyFiles] = useState(false);
+
+  const deleteSingleMyFile = useCallback(async (file) => {
+    if (!user?.uid || !file?.id) return;
+    if ((file.addedBy || 'client') !== 'client') return;
+    setDeletingMyFiles(true);
+    try {
+      await deleteNotesAndFilesItem(user.uid, file);
+      refreshNotesAndFiles();
+    } catch (e) {
+      console.error('Delete notes/file failed:', e);
+      Alert.alert('Could not delete', e?.message || 'Please try again.');
+    } finally {
+      setDeletingMyFiles(false);
+    }
+  }, [user?.uid, refreshNotesAndFiles]);
+
+  const deleteAllMyFiles = useCallback(async () => {
+    if (!user?.uid) return;
+    const list = (myOwnFiles || []).filter((f) => (f.addedBy || 'client') === 'client' && f?.id);
+    if (list.length === 0) return;
+    setDeletingMyFiles(true);
+    try {
+      // Sequential to avoid hammering Storage/Firestore on large sets.
+      for (const f of list) {
+        // eslint-disable-next-line no-await-in-loop
+        await deleteNotesAndFilesItem(user.uid, f);
+      }
+      refreshNotesAndFiles();
+    } catch (e) {
+      console.error('Delete all notes/files failed:', e);
+      Alert.alert('Could not delete all', e?.message || 'Some files may not have been deleted. Try again.');
+      refreshNotesAndFiles();
+    } finally {
+      setDeletingMyFiles(false);
+    }
+  }, [user?.uid, myOwnFiles, refreshNotesAndFiles]);
+
+  const openNotesFile = useCallback((file) => {
+    if (file?.type === 'spreadsheet' && file.url) {
+      setSpreadsheetViewer({ visible: true, url: file.url, name: file?.name || 'Spreadsheet' });
+      return;
+    }
+    if (file?.type === 'document' || (file?.documentId && file?.trainerId)) {
+      setDocumentViewer({
+        visible: true,
+        trainerId: file.trainerId,
+        documentId: file.documentId,
+        title: file.title || 'Document',
+      });
+      return;
+    }
+    if (file?.url && isNotesImageFile(file)) {
+      setMediaViewer({ visible: true, url: file.url, kind: 'image', name: file?.name || file?.title || 'Photo' });
+      return;
+    }
+    if (file?.url && isNotesVideoFile(file)) {
+      setMediaViewer({ visible: true, url: file.url, kind: 'video', name: file?.name || file?.title || 'Video' });
+      return;
+    }
+    if (file?.url && isNotesPdfFile(file, file.url)) {
+      setPdfViewer({ visible: true, url: file.url, name: file?.name || 'Document' });
+      return;
+    }
+    if (file?.url) {
+      setEmbedWebViewer({
+        visible: true,
+        uri: getEmbedViewerUri(file, file.url),
+        title: file.name || file.title || 'Document',
+      });
+    }
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -2235,32 +2500,47 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     />
   );
 
+  const navProviderProps = {
+    onProfilePress: () => setShowProfile(true),
+    onSettingsPress: () => setShowSettings(true),
+    onHomePress: handleHomePress,
+    onPlusPress: () => setShowAddNotesFilesModal(true),
+    onVoicePress: openAIChatHome,
+    onNutritionPress: () => setShowNutrition(true),
+    onWorkoutPress: openWorkout,
+    onMessagesPress: handleOpenConversations,
+  };
+
   // Screen navigation checks (messages screens render inside main layout so header/navbar stay visible)
   if (showProfile) {
     return (
-      <>
-        <ProfileScreen
-          onBack={() => setShowProfile(false)}
-          userRole="Client"
-          userData={userData}
-          onboardingData={onboardingData}
-          onNavigate={onNavigate}
-        />
-        {addNotesFilesModalEl}
-      </>
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <ProfileScreen
+            onBack={() => setShowProfile(false)}
+            userRole="Client"
+            userData={userData}
+            onboardingData={onboardingData}
+            onNavigate={onNavigate}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
     );
   }
 
   if (showSettings) {
     return (
-      <>
-        <SettingsScreen
-          user={user}
-          onClose={() => setShowSettings(false)}
-          onNavigate={onNavigate}
-        />
-        {addNotesFilesModalEl}
-      </>
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <SettingsScreen
+            user={user}
+            onClose={() => setShowSettings(false)}
+            onNavigate={onNavigate}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
     );
   }
 
@@ -2332,6 +2612,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               handleOpenConversations();
             }}
             onProfilePress={() => setShowProfile(true)}
+            activeTabKey="home"
           />
         </SafeAreaView>
         {addNotesFilesModalEl}
@@ -2377,6 +2658,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               handleOpenConversations();
             }}
             onProfilePress={() => setShowProfile(true)}
+            activeTabKey="workout"
           />
         </SafeAreaView>
         {addNotesFilesModalEl}
@@ -2488,29 +2770,31 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
   if (showNutrition) {
     return (
-      <>
-        <NutritionContainer
-          onBack={() => {
-            setShowNutrition(false);
-            refetchNutritionData();
-          }}
-          onNutritionDataChanged={refetchNutritionData}
-          onProfilePress={() => setShowProfile(true)}
-          onSettingsPress={() => setShowSettings(true)}
-          onHomePress={handleHomePress}
-          onPlusPress={() => setShowAddNotesFilesModal(true)}
-          onVoicePress={openAIChatHome}
-          onNutritionPress={() => setShowNutrition(true)}
-          onWorkoutPress={openWorkout}
-          onMessagesPress={handleOpenConversations}
-        />
-        <AddNotesFilesModal
-          visible={showAddNotesFilesModal}
-          onClose={() => setShowAddNotesFilesModal(false)}
-          onAdded={refreshNotesAndFiles}
-          isDark={isDark}
-        />
-      </>
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <NutritionContainer
+            onBack={() => {
+              setShowNutrition(false);
+              refetchNutritionData();
+            }}
+            onNutritionDataChanged={refetchNutritionData}
+            onProfilePress={() => setShowProfile(true)}
+            onSettingsPress={() => setShowSettings(true)}
+            onHomePress={handleHomePress}
+            onPlusPress={() => setShowAddNotesFilesModal(true)}
+            onVoicePress={openAIChatHome}
+            onNutritionPress={() => setShowNutrition(true)}
+            onWorkoutPress={openWorkout}
+            onMessagesPress={handleOpenConversations}
+          />
+          <AddNotesFilesModal
+            visible={showAddNotesFilesModal}
+            onClose={() => setShowAddNotesFilesModal(false)}
+            onAdded={refreshNotesAndFiles}
+            isDark={isDark}
+          />
+        </>
+      </AppNavigationProvider>
     );
   }
 
@@ -2550,47 +2834,51 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
   if (aiChatState === 'home') {
     return (
-      <>
-        <AIChatHomeScreen
-          userId={user?.uid}
-          onStartChat={({ prefill } = {}) => setAiChatState({ prefill })}
-          onSessionPress={(s) => setAiChatState({ sessionId: s.sessionId || s.id })}
-          onAttachPress={() => {}}
-          {...aiChatNavHandlers}
-        />
-        <AddNotesFilesModal
-          visible={showAddNotesFilesModal}
-          onClose={() => setShowAddNotesFilesModal(false)}
-          onAdded={refreshNotesAndFiles}
-          isDark={isDark}
-        />
-      </>
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <AIChatHomeScreen
+            userId={user?.uid}
+            onStartChat={({ prefill } = {}) => setAiChatState({ prefill })}
+            onSessionPress={(s) => setAiChatState({ sessionId: s.sessionId || s.id })}
+            onAttachPress={() => {}}
+            {...aiChatNavHandlers}
+          />
+          <AddNotesFilesModal
+            visible={showAddNotesFilesModal}
+            onClose={() => setShowAddNotesFilesModal(false)}
+            onAdded={refreshNotesAndFiles}
+            isDark={isDark}
+          />
+        </>
+      </AppNavigationProvider>
     );
   }
 
   if (aiChatState != null && typeof aiChatState === 'object') {
     return (
-      <>
-        <AIChatScreen
-          key={JSON.stringify({
-            sid: aiChatState.sessionId ?? null,
-            pf: aiChatState.prefill ?? null,
-          })}
-          userId={user?.uid}
-          userProfile={userData}
-          prefill={aiChatState.prefill}
-          sessionId={aiChatState.sessionId}
-          onBack={() => setAiChatState('home')}
-          openAttachmentsOnMount={false}
-          {...aiChatNavHandlers}
-        />
-        <AddNotesFilesModal
-          visible={showAddNotesFilesModal}
-          onClose={() => setShowAddNotesFilesModal(false)}
-          onAdded={refreshNotesAndFiles}
-          isDark={isDark}
-        />
-      </>
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <AIChatScreen
+            key={JSON.stringify({
+              sid: aiChatState.sessionId ?? null,
+              pf: aiChatState.prefill ?? null,
+            })}
+            userId={user?.uid}
+            userProfile={userData}
+            prefill={aiChatState.prefill}
+            sessionId={aiChatState.sessionId}
+            onBack={() => setAiChatState('home')}
+            openAttachmentsOnMount={false}
+            {...aiChatNavHandlers}
+          />
+          <AddNotesFilesModal
+            visible={showAddNotesFilesModal}
+            onClose={() => setShowAddNotesFilesModal(false)}
+            onAdded={refreshNotesAndFiles}
+            isDark={isDark}
+          />
+        </>
+      </AppNavigationProvider>
     );
   }
 
@@ -2755,6 +3043,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         <MyDashboardScreen
           embedInLayout
           trainer={trainerData}
+          unreadMessageCount={unreadMessageCount}
           onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerSheet(true) : undefined}
           streak={streak}
           todayCalories={caloriesConsumed}
@@ -2857,14 +3146,14 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       ) : (
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 130, paddingTop: 8 }}
+        contentContainerStyle={{ paddingBottom: 130, paddingTop: 6 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={!isDark ? '#000' : '#fff'} />}
         showsVerticalScrollIndicator={false}
       >
         <AuroraHeroBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
         {userRole !== 'trainer' && (
           <>
-            <View style={{ marginVertical: 24, paddingHorizontal: 16 }}>
+            <View style={{ marginVertical: 10, paddingHorizontal: 16 }}>
               {/* Outer gradient border container */}
               <LinearGradient
                 colors={['#FF6B9D', '#C084FC']}
@@ -2887,8 +3176,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
                   style={{
                     backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)',
                     borderRadius: 22,
-                    paddingVertical: 20,
-                    paddingHorizontal: 20,
+                      paddingVertical: 12,
+                      paddingHorizontal: 12,
                   }}
                 >
                   {/* Section label */}
@@ -2899,7 +3188,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
                       color: '#FF6B9D',
                       letterSpacing: 2,
                       textTransform: 'uppercase',
-                      marginBottom: 8,
+                        marginBottom: 2,
                     }}
                   >
                   Your Complete Dashboard
@@ -2911,56 +3200,87 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
                       fontSize: 14,
                       fontWeight: '600',
                       color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(17, 24, 39, 0.72)',
-                      marginBottom: 14,
-                      lineHeight: 21,
+                      marginBottom: 6,
+                      lineHeight: 18,
+                      fontSize: 13,
+                      textAlign: 'center',
                     }}
                   >
-                    View all your workouts, stats, progress charts, and AI coaching insights
-                    {'\n'}
-                    <Text style={{ color: '#FF6B9D', fontWeight: '700' }}>everything in one place</Text>
+                    Log. View Workouts. Stats. Progress. All in One
                   </Text>
 
                   {/* Main Dashboard button (inside the card) */}
-                  <LinearGradient
-                    colors={['#FF6B9D', '#C084FC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+                  <View
                     style={{
-                      borderRadius: 20,
-                      overflow: 'hidden',
+                      alignSelf: 'center',
+                      width: '76%',
+                      position: 'relative',
                     }}
                   >
-                    <TouchableOpacity
-                      onPress={() => setShowMyDashboard(true)}
-                      activeOpacity={0.85}
-                      style={{
-                        paddingVertical: 16,
-                        paddingHorizontal: 32,
-                        alignItems: 'center',
-                      }}
-                    >
+                    {unreadMessageCount > 0 && (
                       <View
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
+                          position: 'absolute',
+                          top: -6,
+                          right: 4,
+                          zIndex: 10,
+                          backgroundColor: '#FF3B30',
+                          borderRadius: 11,
+                          minWidth: 22,
+                          height: 22,
+                          paddingHorizontal: 6,
                           justifyContent: 'center',
-                          gap: 10,
+                          alignItems: 'center',
+                          borderWidth: 2,
+                          borderColor: isDark ? '#0A0A0F' : '#FFFFFF',
                         }}
                       >
-                        <Ionicons name="grid" size={20} color="#FFFFFF" />
-                        <Text
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
+                          {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                        </Text>
+                      </View>
+                    )}
+                    <LinearGradient
+                      colors={['#FF6B9D', '#C084FC']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{
+                        borderRadius: 20,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => setShowMyDashboard(true)}
+                        activeOpacity={0.85}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <View
                           style={{
-                            fontSize: 16,
-                            fontWeight: '700',
-                            color: '#FFFFFF',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 10,
                           }}
                         >
-                          View Full Dashboard
-                        </Text>
-                        <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                      </View>
-                    </TouchableOpacity>
-                  </LinearGradient>
+                          <Ionicons name="grid" size={20} color="#FFFFFF" />
+                          <Text
+                            style={{
+                              fontSize: 16,
+                              fontWeight: '700',
+                              color: '#FFFFFF',
+                            }}
+                          >
+                            View Full Dashboard
+                          </Text>
+                          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                        </View>
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  </View>
                 </View>
               </LinearGradient>
             </View>
@@ -3016,6 +3336,116 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           nutritionGoals={nutritionGoals}
           compact
         />
+        {myOwnFiles.length > 0 && (
+        <View style={{ paddingHorizontal: 16, marginTop: 8, marginBottom: 16 }}>
+          <Text style={{
+            fontSize: 10,
+            fontWeight: '700',
+            color: isDark ? '#FFFFFF' : 'rgba(17, 24, 39, 0.78)',
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            marginBottom: 12,
+          }}>
+            Your files
+          </Text>
+          <LinearGradient
+            colors={['#06B6D4', '#8B5CF6']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ borderRadius: 20, padding: 2, overflow: 'hidden' }}
+          >
+            <View
+              style={{
+                backgroundColor: isDark
+                  ? FILE_GALLERY_THEME_COLORS.dark.surface
+                  : FILE_GALLERY_THEME_COLORS.light.surface,
+                borderRadius: 18,
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+              }}
+            >
+              <FileGalleryGrid
+                isDark={isDark}
+                files={myOwnFiles}
+                onPressItem={openNotesFile}
+                holdToDelete
+                holdDurationMs={900}
+                onLongPressItem={(file) => {
+                  if (deletingMyFiles) return;
+                  deleteSingleMyFile(file);
+                }}
+              />
+            </View>
+          </LinearGradient>
+        </View>
+        )}
+
+        {pendingSessions.length > 0 && (
+        <View style={{ paddingHorizontal: 16, marginTop: 10, marginBottom: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="calendar" size={22} color="#C084FC" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  letterSpacing: 1.4,
+                  color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                From your coach
+              </Text>
+              <Text
+                style={{
+                  marginTop: 2,
+                  fontSize: 16,
+                  fontWeight: '800',
+                  color: isDark ? '#fff' : '#0F172A',
+                  letterSpacing: -0.3,
+                }}
+              >
+                Session invites
+              </Text>
+              <Text
+                style={{
+                  marginTop: 2,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
+                }}
+              >
+                Lock in a time or pass — your call.
+              </Text>
+            </View>
+          </View>
+
+          {pendingSessions.map((s) => (
+            <SessionMeetingCard
+              key={s.id}
+              mode="invite"
+              isDark={isDark}
+              coachName={trainerData?.displayName || trainerData?.name || 'Your coach'}
+              session={s}
+              onRespond={respondToSession}
+            />
+          ))}
+        </View>
+        )}
+
         <View style={{ paddingHorizontal: 16, marginVertical: 24 }}>
           <Text style={{
             fontSize: 10,
@@ -3031,100 +3461,52 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           <LinearGradient
             colors={['#FF6B9D', '#C084FC']}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            end={{ x: 1, y: 0 }}
             style={{
-              borderRadius: 16,
+              borderRadius: 20,
               padding: 2,
               overflow: 'hidden',
             }}
           >
-            <View style={{
-              backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-              borderRadius: 14,
-              paddingVertical: 16,
-              paddingHorizontal: 16,
-            }}>
-              {(notesAndFiles || [])
-                .filter((x) => x.addedBy === 'trainer' || (x.type === 'document' && x.trainerId))
-                .slice(0, 2)
-                .map((file, idx) => (
-                  <TouchableOpacity
-                    key={file.id || `${file.name || file.title || 'file'}_${idx}`}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (file?.type === 'spreadsheet') {
-                        setSpreadsheetViewer({ visible: true, url: file.url, name: file?.name || 'Spreadsheet' });
-                      } else if (file?.type === 'document' || (file?.documentId && file?.trainerId)) {
-                        setDocumentViewer({ visible: true, trainerId: file.trainerId, documentId: file.documentId, title: file.title || 'Document' });
-                      } else {
-                        const isPdf = file?.type === 'pdf' || (file?.name && file.name.toLowerCase().endsWith('.pdf'));
-                        if (isPdf) {
-                          setPdfViewer({ visible: true, url: file?.url, name: file?.name || 'Document' });
-                        } else if (file?.url) {
-                          Linking.openURL(file.url).catch(() => {});
-                        }
+            <View
+              style={{
+                backgroundColor: isDark
+                  ? FILE_GALLERY_THEME_COLORS.dark.surface
+                  : FILE_GALLERY_THEME_COLORS.light.surface,
+                borderRadius: 18,
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+              }}
+            >
+              <FileGalleryGrid
+                isDark={isDark}
+                files={trainerSharedFiles}
+                onPressItem={openNotesFile}
+                footerLink={
+                  trainerSharedFiles.length > 0
+                    ? {
+                        label: 'View all shared files',
+                        onPress: () => setShowTrainerSharedFilesModal(true),
                       }
-                    }}
-                    style={{ marginBottom: idx === 0 ? 12 : 0 }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 8,
-                        backgroundColor: idx === 0 ? 'rgba(100, 210, 255, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}>
-                        <Ionicons name="document" size={16} color={idx === 0 ? '#06B6D4' : '#10B981'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: '600',
-                            color: isDark ? '#FFFFFF' : 'rgba(17, 24, 39, 0.92)',
-                          }}
-                          numberOfLines={1}
-                        >
-                          {file.name || file.title || 'Shared file'}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.62)',
-                            marginTop: 4,
-                          }}
-                          numberOfLines={1}
-                        >
-                          Shared by Coach
-                        </Text>
-                      </View>
-                      <Ionicons name="open" size={16} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(10,10,15,0.35)'} />
-                    </View>
-                  </TouchableOpacity>
-                ))}
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => setShowAddNotesFilesModal(true)}
-                style={{ marginTop: 12, paddingVertical: 8, alignItems: 'center' }}
-              >
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: '#FF6B9D',
-                  textDecorationLine: 'underline',
-                }}>
-                  View All Shared Files
-                </Text>
-              </TouchableOpacity>
+                    : undefined
+                }
+              />
             </View>
           </LinearGradient>
         </View>
       </ScrollView>
       )}
 
+      <TrainerSharedFilesModal
+        visible={showTrainerSharedFilesModal}
+        onClose={() => setShowTrainerSharedFilesModal(false)}
+        isDark={isDark}
+        files={trainerSharedFiles}
+        onPressItem={(file) => {
+          setShowTrainerSharedFilesModal(false);
+          openNotesFile(file);
+        }}
+      />
       <AddNotesFilesModal
         visible={showAddNotesFilesModal}
         onClose={() => setShowAddNotesFilesModal(false)}
@@ -3152,6 +3534,21 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         title={documentViewer.title}
         isDark={isDark}
         onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })}
+      />
+      <MediaViewerModal
+        visible={mediaViewer.visible}
+        url={mediaViewer.url}
+        kind={mediaViewer.kind}
+        name={mediaViewer.name}
+        isDark={isDark}
+        onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
+      />
+      <EmbedWebViewModal
+        visible={embedWebViewer.visible}
+        uri={embedWebViewer.uri}
+        title={embedWebViewer.title}
+        isDark={isDark}
+        onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
       />
       <RemoveTrainerSheet
         visible={showRemoveTrainerSheet}
@@ -3192,6 +3589,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         onWorkoutPress={openWorkout}
         onMessagesPress={handleOpenConversations}
         onProfilePress={() => setShowProfile(true)}
+        activeTabKey="home"
       />
     </SafeAreaView>
     </AppNavigationProvider>
@@ -3215,9 +3613,9 @@ const styles = StyleSheet.create({
   // HERO (Client + Trainer top-of-app)
   // ─────────────────────────────────────────────
   heroOuter: {
-    marginHorizontal: 16,
+    marginHorizontal: 22,
     marginTop: 0,
-    marginBottom: 10,
+    marginBottom: 6,
     borderRadius: 24,
     borderWidth: 1,
     backgroundColor: 'transparent',
@@ -3233,8 +3631,8 @@ const styles = StyleSheet.create({
   heroInner: {
     borderRadius: 23,
     overflow: 'hidden',
-    paddingVertical: 22,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
   heroContentRow: {
     alignItems: 'center',
@@ -3245,7 +3643,7 @@ const styles = StyleSheet.create({
   },
   welcomeWrap: {
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   welcomeKicker: {
     fontSize: 18,
@@ -3265,7 +3663,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   heroTagline: {
-    marginTop: 10,
+    marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -3275,8 +3673,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  heroRightInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: '100%',
+  },
+  heroInlineQuoteWrap: {
+    flex: 1,
+    marginLeft: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  heroInlineQuoteBorder: {
+    borderRadius: 28,
+    padding: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
   heroQuotePillWrap: {
-    marginTop: 14,
+    marginTop: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3449,11 +3865,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   statsRowWrap: {
-    paddingTop: 12,
+    paddingTop: 2,
   },
   statsRowContent: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingBottom: 6,
     gap: 12,
   },
   statCardShadow: {
@@ -3473,9 +3889,9 @@ const styles = StyleSheet.create({
   },
   statCardInner: {
     borderRadius: 24,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
-    minHeight: 164,
+    minHeight: 150,
     width: '100%',
     alignSelf: 'stretch',
     alignItems: 'stretch',
@@ -4179,7 +4595,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nutritionCircleValue: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   nutritionCircleLabel: {

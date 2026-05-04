@@ -71,7 +71,8 @@ export async function sendChatMessage(userMessage, conversationHistory = [], opt
   }
 
   // Clean conversation history (remove imageUri from UI messages)
-  const cleanHistory = conversationHistory.map(msg => {
+  const historyArr = Array.isArray(conversationHistory) ? conversationHistory : [];
+  const cleanHistory = historyArr.map(msg => {
     if (msg.imageUri) {
       // Remove imageUri property, keep content for API
       const { imageUri, ...rest } = msg;

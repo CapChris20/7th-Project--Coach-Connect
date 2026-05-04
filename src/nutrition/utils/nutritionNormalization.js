@@ -107,11 +107,11 @@ function getKcalPer100(nut, p, per100ml) {
 
 /**
  * Normalize an Open Food Facts product into a single normalized food object with:
- * - Parsed quantity -> defaultServingAmount (grams or ml)
+ * - Parsed quantity -> defaultServingAmount (ml for drinks, grams for solids)
  * - totalCalories = (kcal_per_100_unit * defaultServingAmount) / 100
- * - All macros scaled to serving, and kcal_per_100_unit / servingAmount stored for downstream.
+ * - servingUnit: ml only for beverages; grams for packaged foods (avoid mis-tagging snacks as drinks).
  * @param {object} product - Open Food Facts product (e.g. from API response product)
- * @returns {object|null} Normalized food: { id, name, brand, calories, protein, carbs, fat, fiber, sodium, sugar, servingSize, servingUnit, servingGrams, source, kcalPer100Unit?, servingAmount? } or null
+ * @returns {object|null} Normalized food object or null
  */
 function normalizeOpenFoodFactsProduct(product) {
   if (!product || !product.code) return null;
@@ -120,12 +120,28 @@ function normalizeOpenFoodFactsProduct(product) {
 
   const quantityStr = (p.quantity || '').toString().trim();
   const parsed = parseQuantityToGramsOrMl(quantityStr);
-  const isLiquidFromQuantity = parsed?.isLiquid ?? /ml|fl oz|l\b|oz/i.test(quantityStr);
+
+  // Parser output only — old fallback regex matched "oz" / vague "drink" and misclassified solid foods as liquids.
+  const explicitSolidFromQuantity = parsed?.isLiquid === false;
+  const explicitLiquidFromQuantity = parsed?.isLiquid === true;
+
+  const unitLower = String(p.product_quantity_unit || '').toLowerCase();
+  const packSizedAsLiquid = unitLower === 'ml' || unitLower === 'cl' || unitLower === 'l';
+
+  const catHaystack = (p.categories_hierarchy || []).join(' ').toLowerCase();
+  const beverageTaxonomy = /:en:beverages|:en:sodas|:en:colas|:en:carbonated|:en:soft-drinks|:en:waters|:en:juices|:en:iced-teas|:en:energy-drinks|:en:sports-drinks|:en:alcoholic-beverages|:en:beers|:en:wines|:en:spirits|:en:plant-milk|:en:fruit-juices|carbonated drinks|beverages and beverages preparations/i.test(
+    catHaystack
+  );
+
+  const nutDataPer = String(p.nutrition_data_per || '').toLowerCase();
+  const labeledPer100ml = nutDataPer === '100ml';
+
   const isBeverage =
-    isLiquidFromQuantity ||
-    (p.nutrition_data_per && String(p.nutrition_data_per).toLowerCase() === '100ml') ||
-    (p.categories_hierarchy && p.categories_hierarchy.some((c) => /beverage|soda|cola|drink|eau|water/i.test(c)));
-  const hasPer100ml = nut['energy-kcal_100ml'] != null || nut['energy_100ml'] != null;
+    explicitLiquidFromQuantity ||
+    (packSizedAsLiquid && !explicitSolidFromQuantity) ||
+    (beverageTaxonomy && !explicitSolidFromQuantity) ||
+    (labeledPer100ml && !explicitSolidFromQuantity);
+
   const usePer100ml = isBeverage;
 
   let defaultServingAmount = 100;
@@ -135,9 +151,13 @@ function normalizeOpenFoodFactsProduct(product) {
       const q = Number(p.product_quantity);
       if (!Number.isNaN(q) && q > 0) defaultServingAmount = Math.round(q);
     }
-    if (defaultServingAmount === 100 && isBeverage) defaultServingAmount = 500;
+    // If OFF doesn't provide a package quantity, default to a realistic single serving.
+    // 355ml ~= 12 fl oz can. Users can always adjust in the scanner "Adjust amount" step.
+    if (defaultServingAmount === 100 && isBeverage) defaultServingAmount = 355;
   } else {
-    defaultServingAmount = parsed?.value ?? 100;
+    // For solids, do NOT default to full package quantity unless OFF provides a serving size.
+    // Using 100g keeps calories/macros consistent with per-100g data and avoids over-logging.
+    defaultServingAmount = 100;
     const servingQ = p.serving_quantity != null && !Number.isNaN(Number(p.serving_quantity)) ? Number(p.serving_quantity) : null;
     const servingSizeStr = (p.serving_size || '').toString();
     const gMatch = servingSizeStr.match(/(\d+(?:[.,]\d+)?)\s*g/i) || servingSizeStr.match(/(\d+)/);
@@ -148,22 +168,53 @@ function normalizeOpenFoodFactsProduct(product) {
   const servingAmount = Math.min(10000, Math.max(1, defaultServingAmount));
   const servingUnit = usePer100ml ? 'ml' : 'grams';
 
-  const kcalPer100Unit = usePer100ml
+  /**
+   * When OFF has per-serving values (from the Nutrition Facts table), derive per-100g/ml from them.
+   * Crowdsourced *_100g is often wrong; *_serving usually matches the printed label for one serving.
+   */
+  const sm = servingAmount;
+  const per100FromServing = (servingVal) => {
+    if (servingVal == null || servingVal === '') return null;
+    const v = Number(servingVal);
+    if (Number.isNaN(v) || sm <= 0) return null;
+    return (v / sm) * 100;
+  };
+
+  let kcalPer100Unit = usePer100ml
     ? (getKcalPer100(nut, p, true) || getKcalPer100(nut, p, false))
     : getKcalPer100(nut, p, false);
+  const kcalFromServing = per100FromServing(nut['energy-kcal_serving']);
+  if (kcalFromServing != null && kcalFromServing > 0) kcalPer100Unit = kcalFromServing;
 
   const scale = servingAmount / 100;
   // Store per-100 values so addFoodLog can compute: totalCalories = calories * servingQuantity
   // For beverages, OFF often only has _100g; use _100ml ?? _100g when usePer100ml
-  const proteinPer100 = num(usePer100ml ? (nut.proteins_100ml ?? nut.proteins_100g) : nut.proteins_100g);
-  const carbsPer100 = num(usePer100ml ? (nut.carbohydrates_100ml ?? nut.carbohydrates_100g) : nut.carbohydrates_100g);
-  const fatPer100 = num(usePer100ml ? (nut.fat_100ml ?? nut.fat_100g) : nut.fat_100g);
-  const sugarPer100 = numOrNull(usePer100ml ? (nut.sugars_100ml ?? nut.sugars_100g) : nut.sugars_100g);
+  let proteinPer100 = num(usePer100ml ? (nut.proteins_100ml ?? nut.proteins_100g) : nut.proteins_100g);
+  const proteinFromServing = per100FromServing(nut.proteins_serving);
+  if (proteinFromServing != null) proteinPer100 = proteinFromServing;
+
+  let carbsPer100 = num(usePer100ml ? (nut.carbohydrates_100ml ?? nut.carbohydrates_100g) : nut.carbohydrates_100g);
+  const carbsFromServing = per100FromServing(nut.carbohydrates_serving);
+  if (carbsFromServing != null) carbsPer100 = carbsFromServing;
+
+  let fatPer100 = num(usePer100ml ? (nut.fat_100ml ?? nut.fat_100g) : nut.fat_100g);
+  const fatFromServing = per100FromServing(nut.fat_serving);
+  if (fatFromServing != null) fatPer100 = fatFromServing;
+
+  let sugarPer100 = numOrNull(usePer100ml ? (nut.sugars_100ml ?? nut.sugars_100g) : nut.sugars_100g);
+  const sugarFromServing = per100FromServing(nut.sugars_serving);
+  if (sugarFromServing != null) sugarPer100 = sugarFromServing;
+
   const sodiumRaw = usePer100ml ? (nut.sodium_100ml ?? nut.sodium_100g) : nut.sodium_100g;
   const saltRaw = usePer100ml ? (nut.salt_100ml ?? nut.salt_100g) : nut.salt_100g;
   let sodiumPer100 = numOrNull(sodiumRaw);
   if (sodiumPer100 == null && saltRaw != null) sodiumPer100 = num(saltRaw) * 400;
-  const fiberPer100 = numOrNull(usePer100ml ? (nut.fiber_100ml ?? nut.fiber_100g) : nut.fiber_100g);
+  const sodiumFromServing = per100FromServing(nut.sodium_serving);
+  if (sodiumFromServing != null) sodiumPer100 = sodiumFromServing;
+
+  let fiberPer100 = numOrNull(usePer100ml ? (nut.fiber_100ml ?? nut.fiber_100g) : nut.fiber_100g);
+  const fiberFromServing = per100FromServing(nut.fiber_serving);
+  if (fiberFromServing != null) fiberPer100 = fiberFromServing;
 
   return {
     id: p.code,

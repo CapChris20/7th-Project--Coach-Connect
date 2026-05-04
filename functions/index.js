@@ -7,6 +7,7 @@
 
 const functions = require('firebase-functions/v2');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const express = require('express');
@@ -22,6 +23,69 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+
+/** Format HH:mm (24h) for notification body */
+function formatTime12(hhmm) {
+  if (!hhmm || typeof hhmm !== 'string') return '';
+  const parts = hhmm.split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1] || '0', 10);
+  if (Number.isNaN(h)) return hhmm;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = ((h + 11) % 12) + 1;
+  return `${h12}:${String(Number.isNaN(m) ? 0 : m).padStart(2, '0')} ${ampm}`;
+}
+
+/** Format YYYY-MM-DD for notification body */
+function formatDateShort(isoDate) {
+  if (!isoDate || typeof isoDate !== 'string') return '';
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/**
+ * Send push via Expo Push API (same token format as ClientApp — ExponentPushToken[...]).
+ */
+const { stripNotificationEmoji } = require('./stripNotificationEmoji');
+
+async function sendExpoPushNotification(to, title, body, data = {}) {
+  if (!to || typeof to !== 'string') return { skipped: true, reason: 'no_token' };
+  if (!to.startsWith('ExponentPushToken[') && !to.startsWith('ExpoPushToken[')) {
+    logger.warn('sendExpoPushNotification: non-Expo token', { prefix: to.slice(0, 24) });
+    return { skipped: true, reason: 'invalid_token_format' };
+  }
+
+  const cleanTitle = stripNotificationEmoji(title) || 'CoachConnect';
+  let cleanBody = stripNotificationEmoji(String(body || ''));
+  if (!cleanBody.trim()) cleanBody = 'Open CoachConnect';
+
+  const res = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      to,
+      title: cleanTitle,
+      body: cleanBody,
+      sound: 'default',
+      priority: 'high',
+      channelId: 'default',
+      interruptionLevel: 'active',
+      data: typeof data === 'object' && data !== null ? data : {},
+    }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  const ticket = json?.data?.[0];
+  if (ticket?.status === 'error') {
+    logger.error('Expo push ticket error', { message: ticket.message, details: ticket.details });
+    return { ok: false, error: ticket.message };
+  }
+  return { ok: true, ticket };
+}
 
 const app = express();
 app.use(cors());
@@ -901,3 +965,70 @@ exports.removeTrainerClientLink = onCall(async (request) => {
     throw new HttpsError('internal', error?.message || 'Failed to remove trainer.');
   }
 });
+
+/**
+ * When a trainer schedules a session (trainer_clients/{trainerId}/sessions/{sessionId}),
+ * notify the client via Expo push if they have pushToken on users/{clientId}.
+ */
+exports.onTrainerSessionCreated = onDocumentCreated(
+  'trainer_clients/{trainerId}/sessions/{sessionId}',
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const trainerId = event.params.trainerId;
+    const sessionId = event.params.sessionId;
+    const data = snapshot.data() || {};
+
+    const clientId = data.clientId;
+    if (!clientId || typeof clientId !== 'string') {
+      logger.warn('onTrainerSessionCreated: missing clientId', { sessionId, trainerId });
+      return;
+    }
+
+    try {
+      const [clientSnap, trainerSnap] = await Promise.all([
+        db.collection('users').doc(clientId).get(),
+        db.collection('users').doc(trainerId).get(),
+      ]);
+
+      const pushToken = clientSnap.data()?.expoPushToken || clientSnap.data()?.pushToken;
+      if (!pushToken || typeof pushToken !== 'string') {
+        logger.info('onTrainerSessionCreated: no Expo push token for client', { clientId, sessionId });
+        return;
+      }
+
+      const coachLabel =
+        trainerSnap.data()?.displayName ||
+        trainerSnap.data()?.name ||
+        'Your coach';
+
+      const dateLabel = formatDateShort(String(data.date || ''));
+      const timeLabel = formatTime12(String(data.time || ''));
+
+      let body = `${coachLabel} scheduled a session with you.`;
+      const bits = [];
+      if (dateLabel) bits.push(dateLabel);
+      if (timeLabel) bits.push(timeLabel);
+      if (bits.length) body = `${coachLabel} scheduled a session for ${bits.join(' at ')}.`;
+
+      const title = 'Session scheduled';
+
+      await sendExpoPushNotification(pushToken, title, body, {
+        type: 'session_scheduled',
+        sessionId,
+        trainerId,
+        clientId,
+      });
+
+      logger.info('onTrainerSessionCreated: push sent', { clientId, sessionId, trainerId });
+    } catch (err) {
+      logger.error('onTrainerSessionCreated failed', {
+        error: err?.message || String(err),
+        sessionId,
+        trainerId,
+        clientId,
+      });
+    }
+  }
+);

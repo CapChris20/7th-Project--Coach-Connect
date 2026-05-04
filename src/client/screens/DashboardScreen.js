@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,8 +15,7 @@ import { auth, db } from '../../app/config';
 import { getFoodLogsForDate, calculateMacroTotals } from '../../nutrition/services/nutritionService';
 import { fetchWorkoutHistory, getActiveWorkout } from '../../workouts/services/workoutService';
 import { calculateBMR, calculateTDEE } from '../../app/calculations';
-import { Icon } from 'react-native-feather';
-import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -82,12 +80,6 @@ export default function DashboardScreen({ navigation }) {
   const [todayWorkout, setTodayWorkout] = useState(null);
   const [recentMeals, setRecentMeals] = useState([]);
   const [calorieGoal, setCalorieGoal] = useState(2000);
-
-  const [quickActions] = useState([
-    { label: 'Messages', useGradientChat: true },
-    { label: 'Photo Gallery', imageSource: require('../../assets/icons/picture.png') },
-    { label: 'AI Workouts', imageSource: require('../../assets/ai_workouts.png') },
-  ]);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -225,68 +217,6 @@ export default function DashboardScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const QuickActionCard = ({ action, index }) => {
-  const textColor = colors.text;
-  const BADGE_COLOR = '#C084FC'; // Same as TrainerApp
-  
-  // Define border colors for each action
-  const getBorderColor = () => {
-    switch (action.label) {
-      case 'Messages': return 'rgba(255,107,157,0.35)';
-      case 'Photo Gallery': return 'rgba(6,182,212,0.35)';
-      case 'AI Workouts': return 'rgba(249,115,22,0.35)';
-      default: return 'rgba(255,107,157,0.35)';
-    }
-  };
-  
-  return (
-    <TouchableOpacity
-      key={action.label}
-      style={{ flex: 1 }}
-      activeOpacity={0.8}
-      onPress={() => {
-        // Handle navigation based on label
-        if (action.label === 'Messages') {
-          // Navigate to messages screen
-          navigation.navigate('Messages');
-        } else if (action.label === 'Photo Gallery') {
-          // Navigate to photo gallery
-          navigation.navigate('Gallery');
-        } else if (action.label === 'AI Workouts') {
-          // Navigate to AI workouts
-          navigation.navigate('Workout');
-        }
-      }}
-    >
-      <View style={{ 
-        flex: 1, 
-        backgroundColor: 'rgba(255,255,255,0.05)', 
-        borderRadius: 16, 
-        borderWidth: 1, 
-        borderColor: getBorderColor() 
-      }}>
-        <View style={{ padding: 16, alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-            {action.imageSource ? (
-              <Image source={action.imageSource} style={{ width: action.label === 'AI Workouts' ? 100 : 70, height: action.label === 'AI Workouts' ? 130 : 70 }} resizeMode="contain" />
-            ) : action.useGradientChat || action.label === 'Messages' ? (
-              <GradientChatBubblesIcon size={50} />
-            ) : (
-              <Icon name={action.icon} size={50} color={textColor} />
-            )}
-            {action.label === 'Messages' && false && ( // Add unread count logic here if needed
-              <View style={{ position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: BADGE_COLOR, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>1</Text>
-              </View>
-            )}
-          </View>
-          <Text style={{ color: textColor, fontSize: 13, fontWeight: '600' }}>{action.label}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
-
   const MealItem = ({ meal }) => (
     <View style={styles.mealItem}>
       <View style={styles.mealInfo}>
@@ -408,14 +338,113 @@ export default function DashboardScreen({ navigation }) {
           )}
         </View>
 
-        {/* Quick Actions */}
+        {/* Quick Actions — same card layout as trainer dashboard */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle} selectable={true}>Quick Actions</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {quickActions.map((action, index) => (
-              <QuickActionCard key={index} action={action} index={index} />
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 2,
+              color: colors.textSecondary,
+              textTransform: 'uppercase',
+              marginBottom: 10,
+              paddingHorizontal: 2,
+            }}
+            selectable={true}
+          >
+            Quick Actions
+          </Text>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}
+          >
+            {[
+              {
+                label: 'Messages',
+                icon: 'chatbubbles-outline',
+                accent: '#FF6B9D',
+                subtitle: 'No unread',
+                onPress: () => navigation.navigate('Messages'),
+              },
+              {
+                label: 'Photo Gallery',
+                icon: 'images-outline',
+                accent: '#64D2FF',
+                subtitle: 'Your photos',
+                onPress: () => navigation.navigate('Gallery'),
+              },
+              {
+                label: 'Workout Plans',
+                icon: 'barbell-outline',
+                accent: '#C084FC',
+                subtitle: 'Plans & sessions',
+                onPress: () => navigation.navigate('Workout'),
+              },
+            ].map((item) => (
+              <TouchableOpacity key={item.label} activeOpacity={0.9} onPress={item.onPress} style={{ width: 220, marginRight: 12 }}>
+                <View
+                  style={{
+                    backgroundColor: colors.white,
+                    borderRadius: 20,
+                    padding: 16,
+                    borderWidth: 1,
+                    borderColor: 'rgba(0,0,0,0.08)',
+                    overflow: 'hidden',
+                    ...shadows.sm,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        backgroundColor: 'rgba(0,0,0,0.04)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(0,0,0,0.08)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name={item.icon} size={22} color={item.accent} />
+                    </View>
+                    <View />
+                  </View>
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }} selectable={true}>
+                      {item.label}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }} selectable={true}>
+                      {item.subtitle}
+                    </Text>
+                  </View>
+                  <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 14,
+                        backgroundColor: 'rgba(0,0,0,0.04)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(0,0,0,0.08)',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={{ color: item.accent, fontSize: 12, fontWeight: '800' }} selectable={true}>
+                        View all
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={item.accent} />
+                    </View>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.accent, opacity: 0.9 }} />
+                  </View>
+                </View>
+              </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </View>
 
         {/* Recent Meals */}
@@ -585,29 +614,6 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.white,
     fontWeight: 'bold',
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  quickActionCard: {
-    width: (width - spacing.md * 3) / 2,
-    padding: spacing.md,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-    ...shadows.sm,
-  },
-  quickActionIcon: {
-    fontSize: 32,
-    marginBottom: spacing.sm,
-  },
-  quickActionTitle: {
-    ...typography.bodySmall,
-    color: colors.text,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   mealsList: {
     backgroundColor: colors.white,

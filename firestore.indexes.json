@@ -24,6 +24,13 @@
         {"fieldPath": "userId", "order": "ASCENDING"},
         {"fieldPath": "completedAt", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "sessions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "startAtMs", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

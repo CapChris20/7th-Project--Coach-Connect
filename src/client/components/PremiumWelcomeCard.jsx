@@ -34,7 +34,7 @@ export default function PremiumWelcomeCard({
   accent = 'pink',
   userName = 'Athlete',
   message,
-  primaryActionLabel = 'Start Workout',
+  primaryActionLabel,
   onPressPrimaryAction,
   illustrationSource,
 }) {
@@ -84,27 +84,27 @@ export default function PremiumWelcomeCard({
           </View>
         </View>
 
-        {/* Primary action */}
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={onPressPrimaryAction}
-          onPressIn={pressIn}
-          onPressOut={pressOut}
-          disabled={!onPressPrimaryAction}
-          style={{ marginTop: 14, opacity: onPressPrimaryAction ? 1 : 0.65 }}
-        >
-          <LinearGradient
-            colors={[a, '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.primaryBtn}
+        {onPressPrimaryAction && String(primaryActionLabel || '').trim() ? (
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={onPressPrimaryAction}
+            onPressIn={pressIn}
+            onPressOut={pressOut}
+            style={{ marginTop: 14 }}
           >
-            <Ionicons name="flash-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.primaryText}>{primaryActionLabel}</Text>
-            <View style={{ flex: 1 }} />
-            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.92)" />
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={[a, '#C084FC']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.primaryBtn}
+            >
+              <Ionicons name="flash-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.primaryText}>{primaryActionLabel}</Text>
+              <View style={{ flex: 1 }} />
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.92)" />
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </Animated.View>
   );

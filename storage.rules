@@ -9,12 +9,13 @@ service firebase.storage {
           || conversationId.matches('^conv_.*_' + request.auth.uid + '$')
         );
     }
-    // User notes & files — client or their trainer can read/write
+    // User notes & files — client or their trainer can read/write (CRM link OR trainerId on user doc)
     match /users/{userId}/notes_and_files/{allPaths=**} {
       allow read, write: if request.auth != null && (
         request.auth.uid == userId ||
         firestore.get(/databases/(default)/documents/users/$(userId)).data.trainerId == request.auth.uid ||
-        firestore.get(/databases/(default)/documents/users/$(userId)).data.trainer_id == request.auth.uid
+        firestore.get(/databases/(default)/documents/users/$(userId)).data.trainer_id == request.auth.uid ||
+        firestore.exists(/databases/(default)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId))
       );
     }
 

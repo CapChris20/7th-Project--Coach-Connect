@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, Modal, Text, TextInput, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { auth, db } from '../../app/config';
 import { getDateKey } from '../../app/dateKey';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -23,6 +23,7 @@ import QuickAddNutrition from './QuickAddNutrition';
 import FoodSearchScreen from './FoodSearchScreen';
 import BarcodeScannerScreen from './BarcodeScannerScreen';
 import NutritionSettingsScreen from './NutritionSettingsScreen';
+import EditServingModal from '../components/EditServingModal';
 
 import { useRef } from 'react';
 
@@ -299,16 +300,27 @@ export const NutritionContainer = ({
   const screenBg = isDark ? '#0A0A0F' : '#F2F2F7';
   if (loading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: screenBg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <ActivityIndicator color="#FF6B9D" size="large" />
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator color="#FF6B9D" size="small" />
+        </View>
+
+        <BottomNavBar
+          onHomePress={onHomePress}
+          onPlusPress={onPlusPress}
+          onVoicePress={onVoicePress}
+          onNutritionPress={onNutritionPress}
+          onWorkoutPress={onWorkoutPress}
+          onMessagesPress={onMessagesPress}
+          activeTabKey="nutrition"
+        />
+      </SafeAreaView>
     );
   }
 
@@ -331,19 +343,44 @@ export const NutritionContainer = ({
           onNutritionPress={onNutritionPress}
           onWorkoutPress={onWorkoutPress}
           onMessagesPress={onMessagesPress}
+          activeTabKey="nutrition"
         />
       </SafeAreaView>
     );
   }
 
   if (showFoodSearch) {
+    const addFoodBg = isDark ? '#0A0A0F' : '#FFFFFF';
     return (
-      <FoodSearchScreen
-        mealType={activeMealType}
-        onFoodSelected={handleFoodAdded}
-        onClose={() => setShowFoodSearch(false)}
-        userId={uid}
-      />
+      <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }}>
+        <View style={{ paddingTop: 8 }}>
+          <CoachConnectHeader
+            title="Add Food"
+            isDark={isDark}
+            onBack={() => setShowFoodSearch(false)}
+            onProfilePress={onProfilePress}
+            onSettingsPress={onSettingsPress}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <FoodSearchScreen
+            embedded
+            mealType={activeMealType}
+            onFoodSelected={handleFoodAdded}
+            onClose={() => setShowFoodSearch(false)}
+            userId={uid}
+          />
+        </View>
+        <BottomNavBar
+          onHomePress={onHomePress}
+          onPlusPress={onPlusPress}
+          onVoicePress={onVoicePress}
+          onNutritionPress={onNutritionPress}
+          onWorkoutPress={onWorkoutPress}
+          onMessagesPress={onMessagesPress}
+          activeTabKey="nutrition"
+        />
+      </SafeAreaView>
     );
   }
 
@@ -396,6 +433,7 @@ export const NutritionContainer = ({
           onNutritionPress={onNutritionPress}
           onWorkoutPress={onWorkoutPress}
           onMessagesPress={onMessagesPress}
+          activeTabKey="nutrition"
         />
       </SafeAreaView>
     );
@@ -442,69 +480,35 @@ export const NutritionContainer = ({
           />
         </View>
       )}
-      <Modal visible={!!editingLog} transparent animationType="fade">
-        <View style={modalS.backdropWrap}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditingLog(null)} />
-          <View style={[modalS.card, { backgroundColor: isDark ? '#1a1a24' : '#fff' }]}>
-            {editingLog && (
-              <>
-                <Text style={[modalS.title, { color: isDark ? '#fff' : '#1a0a2e' }]}>Edit serving</Text>
-                <Text style={[modalS.sub, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(26,10,46,0.6)' }]} numberOfLines={1}>
-                  {editingLog.food_name}
-                </Text>
-                <Text style={[modalS.label, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)' }]}>
-                  Quantity (servings)
-                </Text>
-                <TextInput
-                  style={[
-                    modalS.input,
-                    {
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                      color: isDark ? '#fff' : '#1a0a2e',
-                    },
-                  ]}
-                  value={editQuantityValue}
-                  onChangeText={handleQuantityChange}
-                  keyboardType="decimal-pad"
-                  placeholder={String(Math.round((Number(editingLog.serving_size) || 1) * 100) / 100)}
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(26,10,46,0.4)'}
-                />
-                <Text style={[modalS.label, { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)' }]}>
-                  Amount (oz)
-                </Text>
-                <TextInput
-                  style={[
-                    modalS.input,
-                    {
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                      color: isDark ? '#fff' : '#1a0a2e',
-                    },
-                  ]}
-                  value={editAmountValue}
-                  onChangeText={setEditAmountValue}
-                  keyboardType="decimal-pad"
-                  placeholder={((Number(editingLog.serving_grams) || 0) * ((editingLog.metadata?.servingUnit || '').toLowerCase() === 'ml' ? ML_TO_FL_OZ : G_TO_OZ)).toFixed(1)}
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(26,10,46,0.4)'}
-                />
-                <View style={modalS.row}>
-                  <TouchableOpacity
-                    onPress={() => setEditingLog(null)}
-                    style={[
-                      modalS.btn,
-                      { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' },
-                    ]}
-                  >
-                    <Text style={{ color: isDark ? '#fff' : '#1a0a2e', fontWeight: '600' }}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleSaveEditAmount} style={[modalS.btn, { backgroundColor: '#22C55E' }]}>
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <EditServingModal
+        visible={!!editingLog}
+        foodName={editingLog?.food_name ?? ''}
+        amountLabel={
+          (editingLog?.metadata?.servingUnit || '').toLowerCase() === 'ml'
+            ? 'Amount (fl oz)'
+            : 'Amount (oz)'
+        }
+        quantityValue={editQuantityValue}
+        amountValue={editAmountValue}
+        onQuantityChange={handleQuantityChange}
+        onAmountChange={setEditAmountValue}
+        quantityPlaceholder={
+          editingLog
+            ? String(Math.round((Number(editingLog.serving_size) || 1) * 100) / 100)
+            : ''
+        }
+        amountPlaceholder={
+          editingLog
+            ? (
+                (Number(editingLog.serving_grams) || 0)
+                * ((editingLog.metadata?.servingUnit || '').toLowerCase() === 'ml' ? ML_TO_FL_OZ : G_TO_OZ)
+              ).toFixed(1)
+            : ''
+        }
+        onCancel={() => setEditingLog(null)}
+        onSave={handleSaveEditAmount}
+        isDark={isDark}
+      />
       <BottomNavBar
         onHomePress={onHomePress}
         onPlusPress={onPlusPress}
@@ -512,29 +516,11 @@ export const NutritionContainer = ({
         onNutritionPress={onNutritionPress}
         onWorkoutPress={onWorkoutPress}
         onMessagesPress={onMessagesPress}
+        activeTabKey="nutrition"
       />
     </SafeAreaView>
   );
 };
 
 export default NutritionContainer;
-
-const modalS = StyleSheet.create({
-  backdropWrap: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    borderRadius: 16,
-    padding: 20,
-  },
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  sub: { fontSize: 14, marginBottom: 16 },
-  label: { fontSize: 12, marginBottom: 6 },
-  input: { borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 12 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  btn: { flex: 1, padding: 14, alignItems: 'center', borderRadius: 12 },
-});
 

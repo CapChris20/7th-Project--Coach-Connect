@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../app/config';
 import { useTheme } from '../ui/ThemeContext';
 
 // 364 Fitness & Discipline Quotes — one per day of the year
@@ -425,20 +423,20 @@ function withAlpha(hex, alpha) {
 
 const ACCENT = '#7C3AED';
 
-async function getCreatedAtMillisFromFirestore(userId) {
-  const userDoc = await getDoc(doc(db, 'users', userId));
-  if (!userDoc.exists()) return null;
-  const data = userDoc.data();
-  const createdAt = data?.createdAt;
+const todayKeyLocal = () => new Date().toISOString().slice(0, 10);
 
-  if (!createdAt) return null;
-  if (typeof createdAt?.toMillis === 'function') return createdAt.toMillis();
-  if (typeof createdAt === 'number') return createdAt;
+const quoteIndexForToday = () => {
+  const q = getTodayQuote();
+  const idx = quotes.findIndex((x) => x?.q === q?.q && x?.a === q?.a);
+  return idx >= 0 ? idx : 0;
+};
 
-  const asDate = new Date(createdAt);
-  const ms = asDate.getTime();
-  return Number.isFinite(ms) ? ms : null;
-}
+const displayAuthor = (a) => {
+  const s = (a || '').trim();
+  if (!s) return 'Daily Motivation';
+  if (s.toLowerCase() === 'unknown') return 'Daily Motivation';
+  return s;
+};
 
 export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embedded = false }) {
   const { colors, isDark } = useTheme();
@@ -464,57 +462,35 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
       if (!userId) return;
 
       try {
-        const cachedIndexRaw = await AsyncStorage.getItem('currentQuoteIndex');
-        if (!cancelled && cachedIndexRaw != null) {
-          const cachedIndex = Number(cachedIndexRaw);
-          if (Number.isFinite(cachedIndex) && cachedIndex >= 0 && cachedIndex < quotes.length) {
-            setQuoteIndex(cachedIndex);
-          }
-        }
+        // Per-user, per-day cache so the quote rotates once per day (local date).
+        const baseKey = `coachconnect_daily_quote_v2:${userId}`;
+        const today = todayKeyLocal();
 
-        const hasSeenFirstQuote = await AsyncStorage.getItem('hasSeenFirstQuote');
-        if (!hasSeenFirstQuote) {
-          // Show "One day or day one" as the very first quote for new accounts
-          const firstQuoteIndex = quotes.findIndex(q => q.q === "One day or day one. You decide.");
-          if (!cancelled && firstQuoteIndex !== -1) {
-            setQuoteIndex(firstQuoteIndex);
-          }
-          await AsyncStorage.setItem('hasSeenFirstQuote', 'true');
-          await AsyncStorage.setItem('currentQuoteIndex', String(firstQuoteIndex));
+        const raw = await AsyncStorage.getItem(baseKey);
+        const parsed = raw ? JSON.parse(raw) : null;
+
+        // First-ever quote experience (per-user) should be your chosen “starter” quote,
+        // but it must still rotate the next day.
+        const seenKey = `coachconnect_daily_quote_seen_v1:${userId}`;
+        const hasSeen = await AsyncStorage.getItem(seenKey);
+        if (!hasSeen) {
+          const firstQuoteIndex = quotes.findIndex((q) => q.q === 'One day or day one. You decide.');
+          const idx = firstQuoteIndex >= 0 ? firstQuoteIndex : 0;
+          if (!cancelled) setQuoteIndex(idx);
+          await AsyncStorage.setItem(seenKey, 'true');
+          await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
           return;
         }
 
-        let createdAtMillis = null;
-
-        const cachedCreatedAt = await AsyncStorage.getItem('userCreatedAt');
-        if (cachedCreatedAt) {
-          const ms = Number(cachedCreatedAt);
-          if (Number.isFinite(ms) && ms > 0) createdAtMillis = ms;
-        }
-
-        if (createdAtMillis == null) {
-          try {
-            createdAtMillis = await getCreatedAtMillisFromFirestore(userId);
-            if (createdAtMillis != null) {
-              await AsyncStorage.setItem('userCreatedAt', String(createdAtMillis));
-            }
-          } catch (e) {
-            // Firestore slow/unavailable; keep createdAtMillis null
-          }
-        }
-
-        if (createdAtMillis == null) {
-          // If we cannot resolve createdAt, keep whatever we have cached / default
+        if (parsed?.date === today && Number.isFinite(parsed?.index)) {
+          const idx = Math.max(0, Math.min(quotes.length - 1, Number(parsed.index)));
+          if (!cancelled) setQuoteIndex(idx);
           return;
         }
 
-        const hoursSinceSignup = (Date.now() - createdAtMillis) / 3600000;
-        const daysSinceSignup = Math.floor(hoursSinceSignup / 24);
-        // For new accounts (less than 24 hours), always show the first quote (index 0)
-        const index = daysSinceSignup === 0 ? 0 : daysSinceSignup % quotes.length;
-
-        if (!cancelled) setQuoteIndex(index);
-        await AsyncStorage.setItem('currentQuoteIndex', String(index));
+        const idx = quoteIndexForToday();
+        if (!cancelled) setQuoteIndex(idx);
+        await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
       } catch (e) {
         // If AsyncStorage fails, do nothing and keep default
       }
@@ -541,7 +517,7 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
             </Text>
             <Text style={styles.inspirationLabel}>DAILY INSPIRATION</Text>
             <Text style={[styles.authorText, { color: authorColor }]}>
-              — {quote.a ? quote.a : 'Daily Motivation'}
+              — {displayAuthor(quote.a)}
             </Text>
           </View>
         </View>
@@ -561,13 +537,20 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines = 4 }) {
     const run = async () => {
       if (!userId) return;
       try {
-        const cachedIndexRaw = await AsyncStorage.getItem('currentQuoteIndex');
-        if (!cancelled && cachedIndexRaw != null) {
-          const cachedIndex = Number(cachedIndexRaw);
-          if (Number.isFinite(cachedIndex) && cachedIndex >= 0 && cachedIndex < quotes.length) {
-            setQuoteIndex(cachedIndex);
-          }
+        const baseKey = `coachconnect_daily_quote_v2:${userId}`;
+        const today = todayKeyLocal();
+        const raw = await AsyncStorage.getItem(baseKey);
+        const parsed = raw ? JSON.parse(raw) : null;
+
+        if (parsed?.date === today && Number.isFinite(parsed?.index)) {
+          const idx = Math.max(0, Math.min(quotes.length - 1, Number(parsed.index)));
+          if (!cancelled) setQuoteIndex(idx);
+          return;
         }
+
+        const idx = quoteIndexForToday();
+        if (!cancelled) setQuoteIndex(idx);
+        await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
       } catch (_) {
         // ignore
       }
@@ -604,7 +587,7 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines = 4 }) {
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          — {quote.a ? quote.a : 'Unknown'}
+          — {displayAuthor(quote.a)}
         </Text>
       </View>
     </View>

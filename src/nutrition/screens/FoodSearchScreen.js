@@ -1,11 +1,11 @@
 /**
  * COACHCONNECT — Food Search Screen (Full Rewrite)
- * 
+ *
  * Search priority:
  *   1. Nutritionix  → best database, branded + restaurant foods
  *   2. USDA         → comprehensive free fallback
  *   3. Serper       → Google Search fallback for anything obscure
- * 
+ *
  * All API keys live in server/.env — client never touches them.
  * Get your own free keys:
  *   Nutritionix: https://www.nutritionix.com/business/api
@@ -27,60 +27,84 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { searchFoods, getRecentFoods } from '../services/nutritionService';
+import { searchFoods, getRecentFoods, getFoodSearchHint } from '../services/nutritionService';
 import { auth } from '../../app/config';
 import { useTheme } from '../../shared/ui/ThemeContext';
-
-const ACCENT = {
-  hotPink: '#FF6B9D', // Keep your hot pink
-  orange: '#F97316', // Keep your orange
-  purple: '#C084FC', // Keep your light purple
-  cyan: '#06B6D4', // Keep your cyan
-  green: '#22C55E', // Keep your green
-};
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function getColors(isDark) {
+  const shared = {
+    pink: '#FF6B9D',
+    orange: '#F97316',
+    cyan: '#64D2FF',
+    purple: '#8B5CF6',
+    hotPink: '#FF6B9D',
+    /**
+     * Border-only gradient: same family as the brand (cool violet → mauve → steel blue).
+     * Less saturated than accent purple/orange/cyan so frames don’t read as a hard rainbow.
+     */
+    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
+  };
   return isDark
     ? {
-        ...ACCENT,
+        ...shared,
         bg: '#0A0A0F',
-        cardBg: 'rgba(255,255,255,0.08)',
-        cardBorder: 'rgba(255,255,255,0.14)',
-        text: '#ffffff',
-        textMuted: 'rgba(255,255,255,0.5)',
+        surface: '#1A1A24',
+        border: '#2A2A35',
+        text: '#FFFFFF',
+        textMuted: '#A6A6A6',
         textDim: 'rgba(255,255,255,0.35)',
-        inputBg: 'rgba(255,255,255,0.07)',
+        inputBg: '#1A1A24',
+        cardBg: '#1A1A24',
+        cardBorder: '#2A2A35',
       }
     : {
-        ...ACCENT,
+        ...shared,
+        // Slightly lift border stops on light backgrounds so the edge stays visible but soft
+        borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
         bg: '#FFFFFF',
-        cardBg: 'rgba(0,0,0,0.03)',
-        cardBorder: 'rgba(0,0,0,0.08)',
-        text: '#1a0a2e',
-        textMuted: 'rgba(26,10,46,0.6)',
-        textDim: 'rgba(26,10,46,0.45)',
-        inputBg: 'rgba(0,0,0,0.05)',
+        surface: '#F5F5F5',
+        border: '#E5E5E5',
+        text: '#0A0A0F',
+        textMuted: '#666666',
+        textDim: 'rgba(10,10,15,0.45)',
+        inputBg: '#F5F5F5',
+        cardBg: '#F5F5F5',
+        cardBorder: '#E5E5E5',
       };
 }
 
-// Static fallback for StyleSheets (no C at module level to avoid ReferenceError in some runtimes)
+// Static fallback for StyleSheets
 const DARK = {
   text: '#ffffff',
-  textMuted: 'rgba(255,255,255,0.5)',
-  orange: '#F97316', // Keep your orange
-  hotPink: '#FF6B9D', // Keep your hot pink
-  purple: '#C084FC', // Keep your light purple
-  cyan: '#06B6D4', // Keep your cyan
-  inputBg: 'rgba(255,255,255,0.07)',
+  textMuted: '#A6A6A6',
+  orange: '#F97316',
+  hotPink: '#FF6B9D',
+  purple: '#8B5CF6',
+  cyan: '#64D2FF',
+  inputBg: '#1A1A24',
+  borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
 };
 
 // Normalize into a "food" shape compatible with nutritionService.addFoodLog
 const normalizeFood = (item) => {
-  // Round to whole numbers for cleaner display
   const round = (val) => Math.round(val ?? 0);
-  
+  const meta = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+
+  const portion_text =
+    item.serving_label ||
+    item.servingLabel ||
+    item.householdServingFullText ||
+    meta.serving_label ||
+    meta.servingLabel ||
+    meta.householdServingFullText ||
+    (() => {
+      const u = String(item.serving_unit || item.servingUnit || '').trim();
+      if (u && !/^(serving|portion|each|g|gram|grams|ml)$/i.test(u)) return u;
+      return null;
+    })();
+
   return {
-    // Preferred addFoodLog fields
     name: item.name || item.food_name || item.description || 'Unknown Food',
     brand: item.brand || item.brand_name || item.brand_owner || item.brandOwner || '',
     servingSize: item.servingSize || item.serving_qty || item.serving_size || 1,
@@ -95,30 +119,35 @@ const normalizeFood = (item) => {
     sodium: round(item.sodium ?? item.nf_sodium),
     source: item.source || 'server',
 
-    // UI-friendly aliases
     food_name: item.food_name || item.description || item.name || 'Unknown Food',
     brand_name: item.brand_name || item.brand_owner || item.brand || '',
     serving_size: item.serving_qty || item.servingSize || 1,
     serving_unit: item.serving_unit || item.servingUnit || 'serving',
     serving_grams: item.serving_weight_grams || item.servingGrams || 100,
+    serving_label: item.serving_label || item.servingLabel || item.householdServingFullText || null,
+    portion_text,
 
     metadata: item,
   };
 };
 
-const getMealColor = (mealType) => {
-  switch (mealType?.toLowerCase()) {
-    case 'breakfast': return ACCENT.orange;
-    case 'lunch': return ACCENT.cyan;
-    case 'dinner': return ACCENT.purple;
-    case 'snacks': return ACCENT.hotPink;
-    default: return ACCENT.hotPink;
+function formatServingLine(item) {
+  if (item.portion_text) return item.portion_text;
+  const qty = item.serving_size;
+  const unit = (item.serving_unit || 'serving').trim();
+  const g = item.serving_grams;
+  if (qty != null && unit && g) return `${qty} ${unit} (${Math.round(g)}g)`;
+  if (qty != null && unit) return `${qty} ${unit}`;
+  if (item.source === 'serper' || item.source === 'mixed') {
+    return 'Portion: not specified in web snippet — edit after adding';
   }
-};
+  return '1 serving';
+}
 
-const FoodResultRow = ({ item, onAdd, mealType, colors }) => {
+const FoodResultRow = ({ item, onAdd, colors }) => {
   const [adding, setAdding] = useState(false);
-  const accentColor = getMealColor(mealType);
+  const c = colors || DARK;
+  const brand = (item.brand_name || item.brand || '').trim();
 
   const handleAdd = async () => {
     setAdding(true);
@@ -126,90 +155,139 @@ const FoodResultRow = ({ item, onAdd, mealType, colors }) => {
     setAdding(false);
   };
 
-  const c = colors || DARK;
   return (
-    <View style={[row.container, { borderBottomColor: c.inputBg || 'rgba(255,255,255,0.06)' }]}>
-      <LinearGradient
-        colors={[accentColor + '28', (c.purple || ACCENT.purple) + '20']}
-        style={row.iconCircle}
+    <LinearGradient
+      colors={c.borderGradient || DARK.borderGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      locations={[0, 0.5, 1]}
+      style={{ borderRadius: 16, padding: 1.5, marginBottom: 12 }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 16,
+          backgroundColor: c.surface,
+          borderRadius: 15,
+          padding: 16,
+        }}
       >
-        <Text style={{ fontSize: 18 }}>🍽️</Text>
-      </LinearGradient>
+        <View
+          style={{
+            height: 48,
+            width: 48,
+            borderRadius: 12,
+            backgroundColor: c.border,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons name="restaurant" size={20} color={c.text} style={{ opacity: 0.85 }} />
+        </View>
 
-      <View style={{ flex: 1 }}>
-        <Text style={[row.name, { color: c.text }]} numberOfLines={1}>{item.food_name}</Text>
-        <Text style={[row.meta, { color: c.textMuted }]}>
-          {item.brand ? `${item.brand} · ` : ''}{item.serving_size} {item.serving_unit} · {item.calories} cal
-        </Text>
-        <View style={row.macroPills}>
-          <View style={[row.pill, { borderColor: (c.hotPink || ACCENT.hotPink) + '80' }]}>
-            <Text style={[row.pillText, { color: c.hotPink || ACCENT.hotPink }]}>P {item.protein}g</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }} numberOfLines={1}>
+                {item.food_name}
+              </Text>
+              {!!brand && (
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }} numberOfLines={1}>
+                  {brand}
+                </Text>
+              )}
+              <Text
+                style={{ fontSize: 12, color: c.textMuted, marginTop: 4, opacity: 0.9 }}
+                numberOfLines={2}
+              >
+                {formatServingLine(item)}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: c.pink }}>{item.calories}</Text>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '600',
+                  color: c.textMuted,
+                  marginTop: 4,
+                  letterSpacing: 0.5,
+                }}
+              >
+                CAL
+              </Text>
+            </View>
           </View>
-          <View style={[row.pill, { borderColor: (c.orange || ACCENT.orange) + '80' }]}>
-            <Text style={[row.pillText, { color: c.orange || ACCENT.orange }]}>C {item.carbs}g</Text>
-          </View>
-          <View style={[row.pill, { borderColor: (c.cyan || ACCENT.cyan) + '80' }]}>
-            <Text style={[row.pillText, { color: c.cyan || ACCENT.cyan }]}>F {item.fat}g</Text>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.pink }}>Protein</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.text }}>{item.protein}g</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: c.textMuted, opacity: 0.4 }}>|</Text>
+            <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.orange }}>Carbs</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.text }}>{item.carbs}g</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: c.textMuted, opacity: 0.4 }}>|</Text>
+            <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.cyan }}>Fat</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: c.text }}>{item.fat}g</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <TouchableOpacity onPress={handleAdd} disabled={adding} activeOpacity={0.85}>
-        <LinearGradient
-          colors={adding ? [(c.inputBg || 'rgba(255,255,255,0.08)'), (c.inputBg || 'rgba(255,255,255,0.08)')] : [(c.hotPink || ACCENT.hotPink), (c.purple || ACCENT.purple)]}
-          style={row.addBtn}
+        <TouchableOpacity
+          onPress={handleAdd}
+          disabled={adding}
+          activeOpacity={0.85}
+          style={{
+            height: 40,
+            width: 40,
+            borderRadius: 20,
+            backgroundColor: c.pink,
+            justifyContent: 'center',
+            alignItems: 'center',
+            shadowColor: c.pink,
+            shadowOpacity: 0.4,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 2 },
+            elevation: 4,
+          }}
         >
-          {adding
-            ? <ActivityIndicator size={14} color="white" />
-            : <Ionicons name="add" size={20} color="white" />
-          }
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
+          {adding ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Ionicons name="add" size={22} color="#FFFFFF" />
+          )}
+        </TouchableOpacity>
+      </View>
+    </LinearGradient>
   );
 };
 
-const row = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  iconCircle: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  name: { color: DARK.text, fontSize: 14, fontWeight: '600' },
-  meta: { color: DARK.textMuted, fontSize: 11, marginTop: 2 },
-  macroPills: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  pill: { borderWidth: 1, borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
-  pillText: { fontSize: 10, fontWeight: '600' },
-  addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-});
-
-const EmptyState = ({ query, onSuggestionPress, colors }) => (
+const EmptyState = ({ query, onSuggestionPress, colors, hint }) => (
   <View style={empty.container}>
-    <LinearGradient
-      colors={['rgba(255,107,157,0.20)', 'rgba(192,132,252,0.20)']}
-      style={empty.iconCircle}
+    <View
+      style={[
+        empty.iconCircle,
+        { backgroundColor: (colors || DARK).surface || 'rgba(255,255,255,0.08)' },
+      ]}
     >
-      <Text style={{ fontSize: 32 }}>🔍</Text>
-    </LinearGradient>
+      <Ionicons name="search" size={36} color={(colors || DARK).pink} />
+    </View>
     <Text style={[empty.title, { color: (colors || DARK).text }]}>
       {query ? `No results for "${query}"` : 'Search for food'}
     </Text>
     <Text style={[empty.subtitle, { color: (colors || DARK).textMuted }]}>
-      {query
-        ? 'Try a different name or check spelling'
-        : 'Powered by USDA, Open Food Facts, and Google Search'
-      }
+      {query ? hint || 'Try a different name or check spelling' : 'Powered by USDA, Open Food Facts, and Google Search'}
     </Text>
     {!query && (
       <View style={empty.suggestionsRow}>
-        {['Chicken Breast', 'Brown Rice', 'Greek Yogurt', 'Avocado', 'Salmon', 'Oatmeal'].map(s => (
+        {['Chicken Breast', 'Brown Rice', 'Greek Yogurt', 'Avocado', 'Salmon', 'Oatmeal'].map((s) => (
           <TouchableOpacity key={s} style={empty.chip} onPress={() => onSuggestionPress(s)} activeOpacity={0.8}>
-            <Text style={[empty.chipText, { color: (colors || DARK).hotPink }]}>{s}</Text>
+            <Text style={[empty.chipText, { color: (colors || DARK).pink }]}>{s}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -219,7 +297,14 @@ const EmptyState = ({ query, onSuggestionPress, colors }) => (
 
 const empty = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 40 },
-  iconCircle: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
   title: { color: DARK.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   subtitle: { color: DARK.textMuted, fontSize: 13, textAlign: 'center', marginTop: 8, lineHeight: 20 },
   suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 20, justifyContent: 'center' },
@@ -234,18 +319,35 @@ const empty = StyleSheet.create({
   chipText: { color: DARK.hotPink, fontSize: 12, fontWeight: '600' },
 });
 
-const FoodSearchScreen = ({ mealType = 'breakfast', onFoodSelected, onClose, userId }) => {
-  const { isDark } = useTheme();
+const FoodSearchScreen = ({
+  mealType: mealTypeProp,
+  defaultMeal,
+  onFoodSelected,
+  /** @deprecated use onFoodSelected — kept for MealPlanHomeScreen */
+  onSelectFood,
+  onClose,
+  userId,
+  embedded = false,
+}) => {
+  const { isDark, toggleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const colors = useMemo(() => getColors(isDark), [isDark]);
+
+  const mealType = useMemo(
+    () => String(mealTypeProp || defaultMeal || 'breakfast').toLowerCase(),
+    [mealTypeProp, defaultMeal]
+  );
+
+  const logFood = onFoodSelected || onSelectFood;
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [recentFoods, setRecentFoods] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [emptyHint, setEmptyHint] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const uid = userId || auth.currentUser?.uid;
-  const accentColor = getMealColor(mealType);
-  const mealLabel = mealType ? mealType.charAt(0).toUpperCase() + mealType.slice(1).toLowerCase() : 'Meal';
 
   useEffect(() => {
     if (!uid) return;
@@ -269,10 +371,12 @@ const FoodSearchScreen = ({ mealType = 'breakfast', onFoodSelected, onClose, use
     }
     setLoading(true);
     setSearchError(null);
+    setEmptyHint(null);
     setHasSearched(true);
     try {
       const raw = await searchFoods(searchQuery, 20);
       setResults((raw || []).map(normalizeFood));
+      setEmptyHint(getFoodSearchHint());
     } catch (err) {
       console.error('Food search error:', err);
       setSearchError('Search failed. Make sure the server is running.');
@@ -282,153 +386,227 @@ const FoodSearchScreen = ({ mealType = 'breakfast', onFoodSelected, onClose, use
     }
   }, []);
 
+  const SEARCH_DEBOUNCE_MS = 700;
+  const MIN_CHARS_AUTO_SEARCH = 6;
+
   useEffect(() => {
+    const q = String(query || '').trim();
+    if (q.length === 0) {
+      setResults([]);
+      setHasSearched(false);
+      return;
+    }
+    if (q.length < MIN_CHARS_AUTO_SEARCH) {
+      setResults([]);
+      setHasSearched(false);
+      return;
+    }
     const timer = setTimeout(() => {
-      if (query.length >= 2) handleSearch(query);
-      else if (query.length === 0) { setResults([]); setHasSearched(false); }
-    }, 400);
+      handleSearch(q);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query, handleSearch]);
 
   const handleAddFood = async (food) => {
-    if (onFoodSelected) await onFoodSelected(food, mealType);
+    if (logFood) await logFood(food, mealType);
+  };
+
+  const onThemePress = () => {
+    toggleTheme(isDark ? 'light' : 'dark');
   };
 
   const showRecent = !hasSearched && recentFoods.length > 0;
   const showResults = hasSearched && results.length > 0 && !loading;
-  const showEmpty = (!loading && ((!hasSearched && recentFoods.length === 0) || (hasSearched && results.length === 0)));
+  const showEmpty = !loading && ((!hasSearched && recentFoods.length === 0) || (hasSearched && results.length === 0));
+
+  const listBottomPad = embedded ? 12 : 24;
+  const listData = showRecent ? recentFoods : showResults ? results : [];
+  const listKey = showRecent ? 'recent' : 'results';
+
+  const renderHeaderBlock = () => (
+    <>
+      {!embedded && (
+        <View
+          style={[
+            fs.topBar,
+            { paddingTop: Math.max(insets.top, 12) },
+          ]}
+        >
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[fs.topTitle, { color: colors.text }]}>Add Food</Text>
+          <TouchableOpacity onPress={onThemePress} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name={isDark ? 'sunny' : 'moon'} size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={[fs.searchOuter, embedded && fs.searchOuterEmbedded]}>
+        <LinearGradient
+          colors={colors.borderGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          locations={[0, 0.5, 1]}
+          style={{ borderRadius: 16, padding: 1.5 }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.inputBg,
+              borderRadius: 15,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              gap: 12,
+            }}
+          >
+            <Ionicons name="search" size={20} color={colors.textMuted} />
+            <TextInput
+              style={{ flex: 1, fontSize: 16, color: colors.text }}
+              placeholder="Search foods, brands, restaurants..."
+              placeholderTextColor={colors.textMuted}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus
+              returnKeyType="search"
+              onSubmitEditing={() => handleSearch(query)}
+            />
+            {query.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setQuery('');
+                  setResults([]);
+                  setHasSearched(false);
+                }}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textDim} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </LinearGradient>
+      </View>
+
+      {searchError && (
+        <View style={[fs.errorBanner, { marginHorizontal: 20 }]}>
+          <Ionicons name="warning-outline" size={14} color={colors.orange} />
+          <Text style={[fs.errorText, { color: colors.orange }]}>{searchError}</Text>
+        </View>
+      )}
+
+      {loading && (
+        <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+          <ActivityIndicator color={colors.pink} size="large" />
+          <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 12 }}>Searching foods...</Text>
+        </View>
+      )}
+    </>
+  );
+
+  const renderSectionTitle = () => {
+    if (loading) return null;
+    if (showRecent) {
+      return (
+        <View style={fs.sectionTitleRow}>
+          <Text style={[fs.sectionTitleLeft, { color: colors.text }]}>Recently Logged</Text>
+          <Text style={[fs.sectionTitleRight, { color: colors.textMuted }]}>
+            {recentFoods.length} {recentFoods.length === 1 ? 'item' : 'items'}
+          </Text>
+        </View>
+      );
+    }
+    if (showResults) {
+      return (
+        <View style={fs.sectionTitleRow}>
+          <Text style={[fs.sectionTitleLeft, { color: colors.text }]}>Search results</Text>
+          <Text style={[fs.sectionTitleRight, { color: colors.textMuted }]}>
+            {results.length} {results.length === 1 ? 'item' : 'items'}
+          </Text>
+        </View>
+      );
+    }
+    return null;
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-
-        {/* Header */}
-        <View style={fs.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={[fs.headerTitle, { color: colors.text }]}>Add Food</Text>
-            <View style={fs.mealBadge}>
-              <View style={[fs.mealDot, { backgroundColor: accentColor }]} />
-              <Text style={[fs.mealBadgeText, { color: accentColor }]}>{mealLabel}</Text>
+        <FlatList
+          data={loading ? [] : listData}
+          keyExtractor={(_, i) => `${listKey}-${i}`}
+          ListHeaderComponent={
+            <View>
+              {renderHeaderBlock()}
+              {renderSectionTitle()}
             </View>
-          </View>
-          <TouchableOpacity onPress={onClose} activeOpacity={0.8} style={[fs.closeBtn, { backgroundColor: colors.inputBg }]}>
-            <Ionicons name="close" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Search Input */}
-        <View style={fs.searchWrap}>
-          <LinearGradient
-            colors={[accentColor + '55', colors.purple + '44']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={fs.searchGradBorder}
-          >
-            <View style={[fs.searchInner, { backgroundColor: colors.inputBg }]}>
-              <Ionicons name="search-outline" size={18} color={accentColor} />
-              <TextInput
-                style={[fs.searchInput, { color: colors.text }]}
-                placeholder="Search foods, brands, restaurants..."
-                placeholderTextColor={colors.textDim}
-                value={query}
-                onChangeText={setQuery}
-                autoFocus
-                returnKeyType="search"
-                onSubmitEditing={() => handleSearch(query)}
+          }
+          renderItem={({ item }) => (
+            <FoodResultRow item={item} onAdd={handleAddFood} colors={colors} />
+          )}
+          ListEmptyComponent={
+            showEmpty && !loading ? (
+              <EmptyState
+                query={hasSearched ? query : ''}
+                hint={hasSearched ? emptyHint : null}
+                onSuggestionPress={(s) => {
+                  setQuery(s);
+                  handleSearch(s);
+                }}
+                colors={colors}
               />
-              {query.length > 0 && (
-                <TouchableOpacity onPress={() => { setQuery(''); setResults([]); setHasSearched(false); }}>
-                  <Ionicons name="close-circle" size={18} color={colors.textDim} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* Error banner */}
-        {searchError && (
-          <View style={fs.errorBanner}>
-            <Ionicons name="warning-outline" size={14} color={colors.orange} />
-            <Text style={[fs.errorText, { color: colors.orange }]}>{searchError}</Text>
-          </View>
-        )}
-
-        {/* Loading */}
-        {loading && (
-          <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-            <ActivityIndicator color={accentColor} size="large" />
-            <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 12 }}>Searching foods...</Text>
-          </View>
-        )}
-
-        {/* Recent foods */}
-        {!loading && showRecent && (
-          <>
-            <View style={fs.sectionHeader}>
-              <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-              <Text style={[fs.sectionTitle, { color: colors.textMuted }]}>Recently Logged</Text>
-            </View>
-            <FlatList
-              data={recentFoods}
-              keyExtractor={(_, i) => `recent-${i}`}
-              renderItem={({ item }) => <FoodResultRow item={item} onAdd={handleAddFood} mealType={mealType} colors={colors} />}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            />
-          </>
-        )}
-
-        {/* Search results */}
-        {showResults && (
-          <>
-            <View style={fs.sectionHeader}>
-              <Ionicons name="search-outline" size={14} color={colors.textMuted} />
-              <Text style={[fs.sectionTitle, { color: colors.textMuted }]}>{results.length} results for "{query}"</Text>
-            </View>
-            <FlatList
-              data={results}
-              keyExtractor={(_, i) => `result-${i}`}
-              renderItem={({ item }) => <FoodResultRow item={item} onAdd={handleAddFood} mealType={mealType} colors={colors} />}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            />
-          </>
-        )}
-
-        {/* Empty state */}
-        {showEmpty && (
-          <EmptyState
-            query={hasSearched ? query : ''}
-            onSuggestionPress={(s) => { setQuery(s); handleSearch(s); }}
-            colors={colors}
-          />
-        )}
-
+            ) : null
+          }
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingBottom: listBottomPad,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
       </KeyboardAvoidingView>
     </View>
   );
 };
 
 const fs = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  topBar: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 56 : 20,
-    paddingBottom: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  headerTitle: { color: DARK.text, fontSize: 24, fontWeight: '800' },
-  mealBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  mealDot: { width: 6, height: 6, borderRadius: 3 },
-  mealBadgeText: { fontSize: 12, fontWeight: '600' },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  searchWrap: { paddingHorizontal: 16, marginBottom: 8 },
-  searchGradBorder: { borderRadius: 18, padding: 1 },
-  searchInner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 17, paddingHorizontal: 14, paddingVertical: 13 },
-  searchInput: { flex: 1, color: DARK.text, fontSize: 14 },
-  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, backgroundColor: 'rgba(249,115,22,0.1)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.3)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  errorText: { color: DARK.orange, fontSize: 12, flex: 1 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
-  sectionTitle: { color: DARK.textMuted, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  topTitle: { fontSize: 18, fontWeight: '700' },
+  searchOuter: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  searchOuterEmbedded: {
+    marginTop: 4,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  errorText: { fontSize: 12, flex: 1 },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionTitleLeft: { fontSize: 18, fontWeight: '700' },
+  sectionTitleRight: { fontSize: 12, fontWeight: '500' },
 });
 
 export default FoodSearchScreen;

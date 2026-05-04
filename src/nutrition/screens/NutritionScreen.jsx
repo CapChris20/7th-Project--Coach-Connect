@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,12 +19,17 @@ const ACCENT = {
   green: '#22C55E',
 };
 
+/** Meal card action row — matches vibrant macro / brand styling */
+const NUT_SCAN_CYAN = '#64D2FF';
+const NUT_SEARCH_GRADIENT = ['#FF6B9D', '#F97316'];
+const NUT_QUICK_PURPLE = '#C084FC';
+
 function getColors(isDark) {
   return isDark
     ? {
         ...ACCENT,
         cardBg: 'rgba(255,255,255,0.06)',
-        cardBorder: 'rgba(255,255,255,0.1)',
+        cardBorder: 'rgba(255,255,255,0.08)',
         cardBorderSubtle: 'rgba(255,255,255,0.08)',
         text: '#ffffff',
         textMuted: 'rgba(255,255,255,0.55)',
@@ -37,6 +42,12 @@ function getColors(isDark) {
         mealInnerBg: 'transparent',
         weeklyGlass: 'rgba(255,255,255,0.06)',
         chipBg: 'rgba(255,255,255,0.08)',
+        foodItemCardBg: 'rgba(255,255,255,0.05)',
+        foodItemCardBorder: 'rgba(255,255,255,0.14)',
+        foodItemTitle: '#FFFFFF',
+        foodItemSub: '#A6A6A6',
+        foodItemIcon: 'rgba(255,255,255,0.5)',
+        foodItemActionIcon: 'rgba(255,255,255,0.55)',
       }
     : {
         ...ACCENT,
@@ -53,6 +64,12 @@ function getColors(isDark) {
         mealInnerBg: '#FFFFFF',
         weeklyGlass: '#FFFFFF',
         chipBg: '#E5E5EA',
+        foodItemCardBg: 'rgba(0,0,0,0.03)',
+        foodItemCardBorder: 'rgba(0,0,0,0.08)',
+        foodItemTitle: '#0A0A0F',
+        foodItemSub: '#666666',
+        foodItemIcon: 'rgba(10,10,15,0.5)',
+        foodItemActionIcon: 'rgba(10,10,15,0.55)',
       };
 }
 
@@ -152,15 +169,22 @@ const ArcProgress = ({
   const innerDiscR = Math.max(r - stroke / 2 - 10, size * 0.22);
   const innerDiscFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)';
   const innerDiscStroke = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
+  const gradId = `macroGrad-${String(color).replace(/[^a-z0-9]/gi, '')}-${size}`;
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+      <Defs>
+        <SvgGradient id={gradId} x1="0" y1="0" x2={String(size)} y2={String(size)}>
+          <Stop offset="0" stopColor={color} stopOpacity={1} />
+          <Stop offset="1" stopColor={isDark ? '#FFFFFF' : '#000000'} stopOpacity={0.08} />
+        </SvgGradient>
+      </Defs>
       <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
       <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
       <Circle
         cx={cx}
         cy={cy}
         r={r}
-        stroke={color}
+        stroke={`url(#${gradId})`}
         strokeWidth={stroke}
         fill="none"
         strokeDasharray={circumference}
@@ -172,12 +196,53 @@ const ArcProgress = ({
 };
 
 const MACRO_RING_COLORS = {
-  Protein: '#EC4899',
-  Carbs: '#F97316',
-  Fat: '#06B6D4',
+  Protein: '#FF6B9D',
+  Carbs: '#64D2FF',
+  Fat: '#C084FC',
 };
 
 const getMacroRingColor = (label) => MACRO_RING_COLORS[label] || '#EC4899';
+
+/** Whole numbers when exact (3 → "3"); one decimal when needed (4.5 → "4.5"). */
+function formatNutrientAmount(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '0';
+  const oneDec = Math.round(x * 10) / 10;
+  if (Math.abs(oneDec - Math.round(oneDec)) < 1e-6) {
+    return String(Math.round(oneDec));
+  }
+  return oneDec.toFixed(1);
+}
+
+/** P/C/F palette for macro bars (food row). */
+const MACRO_BAR_COLORS = {
+  protein: '#FF6B9D',
+  carbs: '#F97316',
+  fat: '#64D2FF',
+};
+
+/** Thin horizontal tracks — keeps macro block short vertically. */
+const MACRO_BAR_THICKNESS = 8;
+
+/** Heights / flex weights for P+C+F proportion visuals (avoids zero-height glitches). */
+function macroProportions(pg, cg, fg) {
+  const p = Math.max(0, Number(pg) || 0);
+  const c = Math.max(0, Number(cg) || 0);
+  const f = Math.max(0, Number(fg) || 0);
+  const total = p + c + f;
+  if (total <= 0) {
+    return { total: 0, pp: 0, pc: 0, pf: 0, flexP: 1, flexC: 1, flexF: 1 };
+  }
+  return {
+    total,
+    pp: p / total,
+    pc: c / total,
+    pf: f / total,
+    flexP: p,
+    flexC: c,
+    flexF: f,
+  };
+}
 
 const getMealAccentColor = (mealName) => {
   const n = (mealName || '').toLowerCase();
@@ -217,58 +282,129 @@ const WaterCupCircle = ({ filled, index, isDark }) => {
   );
 };
 
-const FoodItemRow = ({ name, cals, amount, p, c, f, fiber, sugar, sodium, potassium, logId, log, onRemove, onEdit, colors = C }) => {
-  const hasSodium = Number(sodium) > 0;
-  const hasFiber = Number(fiber) > 0;
-  const hasSugar = Number(sugar) > 0;
-  const hasPotassium = Number(potassium) > 0;
-  const hasSecondary = hasFiber || hasSugar || hasSodium || hasPotassium;
+const FoodItemRow = ({
+  name,
+  cals,
+  amount,
+  p,
+  c,
+  f,
+  logId,
+  log,
+  onRemove,
+  onEdit,
+  colors = C,
+  isDark = true,
+}) => {
   const toG = (g) => Number(g) || 0;
-  const secondaryParts = [];
-  if (hasFiber) secondaryParts.push(`Fiber ${toG(fiber).toFixed(1)} g`);
-  if (hasSugar) secondaryParts.push(`Sugar ${toG(sugar).toFixed(1)} g`);
-  if (hasSodium) secondaryParts.push(`Sodium ${Math.round(Number(sodium) || 0)}mg`);
-  if (hasPotassium) secondaryParts.push(`Potassium ${Math.round(Number(potassium) || 0)}mg`);
-  const pg = toG(p).toFixed(1);
-  const cg = toG(c).toFixed(1);
-  const fg = toG(f).toFixed(1);
-  const iconMuted = colors.textVeryMuted;
-  const editIcon = colors.textMuted;
+  const pg = toG(p);
+  const cg = toG(c);
+  const fg = toG(f);
+  const macroPct = macroProportions(pg, cg, fg);
+
+  const cardBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const cardBorder = colors.foodItemCardBorder ?? colors.cardBorder;
+  const titleColor = colors.foodItemTitle ?? colors.text;
+  const subColor = isDark ? '#A6A6A6' : '#666666';
+  const calorieAccentColor = isDark ? ACCENT.hotPink : '#E11D48';
+  const iconTint = colors.foodItemIcon ?? colors.textVeryMuted;
+  const actionTint = colors.foodItemActionIcon ?? colors.textMuted;
+  const barTrackBg = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
+
+  /** % of track width (P+C+F mix); tiny floor so non-zero macros stay visible. */
+  const fillWidthPct = (pct, grams) => {
+    if (macroPct.total <= 0 || grams <= 0) return 0;
+    const raw = pct * 100;
+    const boosted = Math.max(raw, grams > 0 ? 8 : 0);
+    return Math.min(100, boosted);
+  };
+
+  const macroRows = [
+    {
+      key: 'protein',
+      grams: pg,
+      fillPct: macroPct.pp,
+      color: MACRO_BAR_COLORS.protein,
+      name: 'Protein',
+    },
+    {
+      key: 'carbs',
+      grams: cg,
+      fillPct: macroPct.pc,
+      color: MACRO_BAR_COLORS.carbs,
+      name: 'Carbs',
+    },
+    {
+      key: 'fat',
+      grams: fg,
+      fillPct: macroPct.pf,
+      color: MACRO_BAR_COLORS.fat,
+      name: 'Fat',
+    },
+  ];
+
   return (
-    <View style={[foodRow.container, { borderBottomColor: colors.divider }]}>
-      <View style={[foodRow.iconBox, { backgroundColor: colors.inputBg }]}>
-        <Ionicons name="restaurant-outline" size={18} color={iconMuted} />
-      </View>
-      <View style={foodRow.mid}>
-        <View style={foodRow.nameCalRow}>
-          <Text style={[foodRow.name, { color: colors.text }]} numberOfLines={2}>
+    <View style={[foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      <View style={foodRow.body}>
+        <View style={foodRow.topHeader}>
+          <View style={[foodRow.iconBox, { backgroundColor: colors.inputBg, borderColor: colors.cardBorderSubtle }]}>
+            <Ionicons name="restaurant-outline" size={20} color={iconTint} />
+          </View>
+          <Text style={[foodRow.foodTitle, { color: titleColor }]} numberOfLines={2}>
             {name}
           </Text>
-          <Text style={[foodRow.calsInline, { color: colors.textMuted }]}>{Math.round(Number(cals) || 0)} cal</Text>
-        </View>
-        <Text style={[foodRow.amount, { color: colors.textVeryMuted }]}>{amount}</Text>
-        <View style={foodRow.pillRow}>
-          <View style={foodRow.pillProtein}>
-            <Text style={foodRow.pillProteinText}>P {pg}g</Text>
-          </View>
-          <View style={foodRow.pillCarbs}>
-            <Text style={foodRow.pillCarbsText}>C {cg}g</Text>
-          </View>
-          <View style={foodRow.pillFat}>
-            <Text style={foodRow.pillFatText}>F {fg}g</Text>
+          <View style={foodRow.calSlot}>
+            <Text style={[foodRow.caloriesValue, { color: calorieAccentColor }]}>
+              {Math.round(Number(cals) || 0)}
+            </Text>
+            <Text style={[foodRow.caloriesUnit, { color: calorieAccentColor }]}>cal</Text>
           </View>
         </View>
-        {hasSecondary ? <Text style={[foodRow.secondary, { color: colors.textVeryMuted }]}>{secondaryParts.join('  ')}</Text> : null}
+
+        <Text style={[foodRow.portionText, { color: subColor }]}>{amount}</Text>
+
+        <View style={foodRow.macroVisualSection}>
+          {macroRows.map((row) => (
+            <View key={row.key} style={foodRow.macroRow}>
+              <Text style={[foodRow.macroRowLabel, { color: subColor }]} numberOfLines={1}>
+                {row.name}
+              </Text>
+              <View style={[foodRow.macroBarTrackH, { backgroundColor: barTrackBg }]}>
+                <View
+                  style={[
+                    foodRow.macroBarFillH,
+                    {
+                      width: `${fillWidthPct(row.fillPct, row.grams)}%`,
+                      backgroundColor: row.color,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[foodRow.macroGramInline, { color: titleColor }]}>
+                {formatNutrientAmount(row.grams)}g
+              </Text>
+            </View>
+          ))}
+        </View>
       </View>
+
       <View style={foodRow.actionsCol}>
         {onEdit && log ? (
-          <TouchableOpacity onPress={() => onEdit(log)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
-            <Ionicons name="pencil-outline" size={16} color={editIcon} />
+          <TouchableOpacity
+            onPress={() => onEdit(log)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="pencil-outline" size={18} color={actionTint} />
           </TouchableOpacity>
         ) : null}
         {onRemove && logId ? (
-          <TouchableOpacity onPress={() => onRemove(logId)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} activeOpacity={0.7}>
-            <Ionicons name="trash-outline" size={16} color="rgba(255,107,157,0.85)" />
+          <TouchableOpacity
+            onPress={() => onRemove(logId)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={18} color="rgba(255,107,157,0.85)" />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -277,55 +413,109 @@ const FoodItemRow = ({ name, cals, amount, p, c, f, fiber, sugar, sodium, potass
 };
 
 const foodRow = StyleSheet.create({
-  container: {
+  card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingVertical: 12,
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'transparent',
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  body: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+  },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 40,
   },
   iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
-  mid: { flex: 1, gap: 3 },
-  nameCalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: {
-    fontSize: 14,
-    fontWeight: '700',
+  foodTitle: {
     flex: 1,
-    marginRight: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    textAlign: 'center',
   },
-  calsInline: { fontSize: 13, fontWeight: '700' },
-  amount: { fontSize: 12 },
-  pillRow: { flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' },
-  pillProtein: {
-    backgroundColor: 'rgba(236,72,153,0.15)',
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  calSlot: {
+    width: 92,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  pillProteinText: { fontSize: 11, fontWeight: '700', color: '#EC4899' },
-  pillCarbs: {
-    backgroundColor: 'rgba(249,115,22,0.15)',
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  caloriesValue: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+    textAlign: 'right',
   },
-  pillCarbsText: { fontSize: 11, fontWeight: '700', color: '#F97316' },
-  pillFat: {
-    backgroundColor: 'rgba(6,182,212,0.15)',
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  caloriesUnit: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textAlign: 'right',
+    textTransform: 'uppercase',
+    marginTop: -2,
+    opacity: 0.95,
   },
-  pillFatText: { fontSize: 11, fontWeight: '700', color: '#06B6D4' },
-  secondary: { fontSize: 10, marginTop: 4 },
-  actionsCol: { gap: 8, paddingTop: 2 },
+  portionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 8,
+    letterSpacing: 0.2,
+  },
+  macroVisualSection: {
+    marginTop: 8,
+    width: '100%',
+    gap: 6,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 22,
+    gap: 8,
+  },
+  macroRowLabel: {
+    width: 64,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
+  },
+  macroBarTrackH: {
+    flex: 1,
+    height: MACRO_BAR_THICKNESS,
+    borderRadius: 999,
+    overflow: 'hidden',
+    minWidth: 0,
+  },
+  macroBarFillH: {
+    height: '100%',
+    borderRadius: 999,
+    minWidth: 0,
+  },
+  macroGramInline: {
+    width: 44,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+    letterSpacing: -0.2,
+  },
+  actionsCol: {
+    justifyContent: 'flex-start',
+    gap: 12,
+    paddingLeft: 4,
+    paddingTop: 2,
+  },
 });
 
 const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
@@ -347,39 +537,48 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
   const mealCals = Number(meal?.cals) || 0;
   const innerShadow = cardShadowStyle(isDark);
 
-  const actionRow = (compact) => (
-    <View style={[mealS.btnRow, compact && { marginTop: 6 }]}>
-      <TouchableOpacity
+  const actionSurface = isDark ? '#14141C' : '#FAFAFC';
+
+  const actionRow = () => (
+    <View style={mealS.btnRow}>
+      <Pressable
         onPress={() => onScan(meal.name)}
-        activeOpacity={0.8}
-        style={[
+        style={({ pressed }) => [
           mealS.scanBtn,
-          { borderColor: colors.cardBorder, backgroundColor: colors.inputBg },
-        ]}
-      >
-        <Ionicons name="barcode-outline" size={compact ? 14 : 16} color={accent} />
-        {!compact ? <Text style={[mealS.scanBtnText, { color: accent }]}>Scan</Text> : null}
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => onLog(meal.name)} activeOpacity={0.85} style={mealS.logBtnWrap}>
-        <LinearGradient colors={['#FF5D9E', '#FF834D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={mealS.logBtn}>
-          <Ionicons name="search-outline" size={compact ? 14 : 16} color="#FFFFFF" />
-          <Text style={mealS.logBtnText}>Search</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => onQuickAdd && onQuickAdd(mealType)}
-        activeOpacity={0.85}
-        style={[
-          mealS.quickAddBtn,
           {
-            borderColor: isDark ? `${accent}55` : `${accent}40`,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.85)',
+            borderColor: NUT_SCAN_CYAN,
+            backgroundColor: actionSurface,
+            opacity: pressed ? 0.88 : 1,
+            transform: [{ scale: pressed ? 0.97 : 1 }],
           },
         ]}
       >
-        <Ionicons name="add-circle-outline" size={compact ? 14 : 16} color={accent} />
-        <Text style={[mealS.quickAddBtnText, { color: accent }]}>Quick Add</Text>
-      </TouchableOpacity>
+        <Ionicons name="barcode-outline" size={18} color={NUT_SCAN_CYAN} />
+        <Text style={[mealS.scanBtnText, { color: NUT_SCAN_CYAN }]}>Scan</Text>
+      </Pressable>
+      <Pressable onPress={() => onLog(meal.name)} style={({ pressed }) => [mealS.logBtnWrap, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
+        <LinearGradient colors={NUT_SEARCH_GRADIENT} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={mealS.logBtn}>
+          <Ionicons name="search-outline" size={20} color="#FFFFFF" />
+          <Text style={mealS.logBtnText}>Search</Text>
+        </LinearGradient>
+      </Pressable>
+      <Pressable
+        onPress={() => onQuickAdd && onQuickAdd(mealType)}
+        style={({ pressed }) => [
+          mealS.quickAddBtn,
+          {
+            borderColor: NUT_QUICK_PURPLE,
+            backgroundColor: actionSurface,
+            opacity: pressed ? 0.88 : 1,
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+          },
+        ]}
+      >
+        <View style={mealS.quickAddContent}>
+          <Ionicons name="add-circle-outline" size={18} color={NUT_QUICK_PURPLE} />
+          <Text style={[mealS.quickAddBtnText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
+        </View>
+      </Pressable>
     </View>
   );
 
@@ -415,20 +614,17 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 p={food.protein}
                 c={food.carbs}
                 f={food.fat}
-                fiber={food.fiber}
-                sugar={food.sugar}
-                sodium={food.sodium}
-                potassium={food.potassium ?? food.metadata?.potassium}
                 amount={toDisplayAmount(food.serving_grams ?? 0, (food.metadata?.servingUnit || '').toLowerCase() === 'ml') || '—'}
                 logId={food.id}
                 log={food}
                 onRemove={onRemoveLog}
                 onEdit={onEditLog}
                 colors={colors}
+                isDark={isDark}
               />
             ))}
           </View>
-          {actionRow(false)}
+          {actionRow()}
         </View>
       ) : (
         <View style={[mealS.inner, { backgroundColor: colors.mealInnerBg, borderColor: colors.cardBorder }, innerShadow]}>
@@ -441,26 +637,46 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
               Your {mealLabel.toLowerCase()} is a blank canvas. Start tracking to see your macros in action.
             </Text>
             <View style={emptyStyles.buttonRow}>
-              <TouchableOpacity style={emptyStyles.scanBtn} onPress={() => onScan(meal?.name)} activeOpacity={0.8}>
-                <Ionicons name="barcode-outline" size={16} color={accent} />
-                <Text style={[emptyStyles.scanText, { color: accent }]}>Scan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={emptyStyles.searchBtn} onPress={() => onLog(meal?.name)} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={['#FF5D9E', '#FF834D']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={emptyStyles.searchGradient}
-                >
-                  <Ionicons name="search-outline" size={14} color="#FFFFFF" />
+              <Pressable
+                onPress={() => onScan(meal?.name)}
+                style={({ pressed }) => [
+                  emptyStyles.scanBtn,
+                  {
+                    borderColor: NUT_SCAN_CYAN,
+                    backgroundColor: isDark ? '#14141C' : '#FAFAFC',
+                    opacity: pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  },
+                ]}
+              >
+                <Ionicons name="barcode-outline" size={18} color={NUT_SCAN_CYAN} />
+                <Text style={[emptyStyles.scanText, { color: NUT_SCAN_CYAN }]}>Scan</Text>
+              </Pressable>
+              <Pressable onPress={() => onLog(meal?.name)} style={({ pressed }) => [emptyStyles.searchBtn, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
+                <LinearGradient colors={NUT_SEARCH_GRADIENT} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={emptyStyles.searchGradient}>
+                  <Ionicons name="search-outline" size={20} color="#FFFFFF" />
                   <Text style={emptyStyles.searchText} numberOfLines={1} ellipsizeMode="tail">
                     Search
                   </Text>
                 </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity style={emptyStyles.quickBtn} onPress={() => onQuickAdd && onQuickAdd(mealType)} activeOpacity={0.8}>
-                <Text style={[emptyStyles.quickText, { color: colors.textVeryMuted }]}>Quick Add</Text>
-              </TouchableOpacity>
+              </Pressable>
+              <Pressable
+                onPress={() => onQuickAdd && onQuickAdd(mealType)}
+                style={({ pressed }) => [
+                  emptyStyles.quickBtn,
+                  {
+                    borderColor: NUT_QUICK_PURPLE,
+                    backgroundColor: isDark ? '#14141C' : '#FAFAFC',
+                    opacity: pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  },
+                ]}
+              >
+                <View style={emptyStyles.quickAddContent}>
+                  <Ionicons name="add-circle-outline" size={18} color={NUT_QUICK_PURPLE} />
+                  <Text style={[emptyStyles.quickText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
+                </View>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -495,43 +711,85 @@ const createMealS = (colors) =>
       overflow: 'hidden',
     },
     progressFill: { height: '100%', borderRadius: 99 },
-    btnRow: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'nowrap', alignItems: 'center' },
+    btnRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 8,
+      flexWrap: 'nowrap',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 2,
+    },
     scanBtn: {
       flex: 1,
       flexShrink: 1,
       minWidth: 0,
-      height: 44,
-      borderRadius: 99,
-      borderWidth: 1,
+      minHeight: 48,
+      borderRadius: 24,
+      borderWidth: 1.5,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    scanBtnText: { fontSize: 13, fontWeight: '700' },
-    logBtnWrap: { flex: 1.4, flexShrink: 1, minWidth: 0, minHeight: 44, height: 44 },
+    scanBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+    logBtnWrap: {
+      flex: 1.55,
+      flexShrink: 1,
+      minWidth: 0,
+      borderRadius: 28,
+      overflow: 'visible',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#FF6B9D',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.42,
+          shadowRadius: 12,
+        },
+        android: { elevation: 10 },
+      }),
+    },
     logBtn: {
-      borderRadius: 99,
-      height: 44,
+      borderRadius: 28,
       width: '100%',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
       flexDirection: 'row',
-      gap: 6,
+      gap: 8,
+      minHeight: 52,
     },
-    logBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+    logBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', letterSpacing: 0.3 },
     quickAddBtn: {
       flex: 1,
       flexShrink: 1,
       minWidth: 0,
-      height: 44,
-      borderRadius: 99,
-      borderWidth: 1,
+      minHeight: 48,
+      borderRadius: 24,
+      borderWidth: 1.5,
       alignItems: 'center',
       justifyContent: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    quickAddBtnText: { fontSize: 12, fontWeight: '600' },
+    quickAddContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      width: '100%',
+      maxWidth: '100%',
+    },
+    quickAddBtnText: {
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 0.15,
+      textAlign: 'center',
+      flexShrink: 1,
+    },
   });
 
 const createEmptyStyles = (colors) =>
@@ -559,7 +817,16 @@ const createEmptyStyles = (colors) =>
       lineHeight: 18,
       paddingHorizontal: 4,
     },
-    buttonRow: { flexDirection: 'row', gap: 6, marginTop: 12, width: '100%', alignItems: 'center', flexWrap: 'nowrap' },
+    buttonRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 12,
+      width: '100%',
+      alignItems: 'center',
+      flexWrap: 'nowrap',
+      justifyContent: 'space-between',
+      paddingVertical: 2,
+    },
     scanBtn: {
       flex: 1,
       flexShrink: 1,
@@ -567,33 +834,62 @@ const createEmptyStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4,
-      height: 44,
-      borderRadius: 99,
-      backgroundColor: 'transparent',
+      gap: 8,
+      minHeight: 48,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    scanText: { fontSize: 12, fontWeight: '700' },
-    searchBtn: { flex: 1.35, flexShrink: 1, minWidth: 0, height: 44, borderRadius: 99, overflow: 'hidden' },
+    scanText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+    searchBtn: {
+      flex: 1.55,
+      flexShrink: 1,
+      minWidth: 0,
+      borderRadius: 28,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#FF6B9D',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: 0.42,
+          shadowRadius: 12,
+        },
+        android: { elevation: 10 },
+      }),
+    },
     searchGradient: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
-      height: 44,
+      gap: 8,
+      minHeight: 52,
       width: '100%',
-      paddingHorizontal: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
     },
-    searchText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', minWidth: 0 },
+    searchText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', minWidth: 0, letterSpacing: 0.3 },
     quickBtn: {
       flex: 1,
       flexShrink: 1,
       minWidth: 0,
       alignItems: 'center',
       justifyContent: 'center',
-      height: 44,
-      borderRadius: 99,
+      minHeight: 48,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    quickText: { fontSize: 12, fontWeight: '600' },
+    quickAddContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      width: '100%',
+      maxWidth: '100%',
+    },
+    quickText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.15, textAlign: 'center', flexShrink: 1 },
   });
 
 const WeeklyChart = ({ weekData, colors = C, isDark }) => {
@@ -852,6 +1148,9 @@ export const NutritionScreen = ({
                     />
                     <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
                       <Text style={[screen.macroPct, { color: ringColor }]}>{pct}%</Text>
+                      <Text style={[screen.macroRemaining, { color: colors.textMuted }]}>
+                        {Math.max(gGoal - val, 0)}g left
+                      </Text>
                     </View>
                   </View>
                   <Text style={[screen.macroLabel, { color: labelColor }]}>{m.label}</Text>
@@ -938,7 +1237,7 @@ const screen = StyleSheet.create({
     paddingVertical: 12,
   },
   searchPlaceholder: { flex: 1, fontSize: 13 },
-  suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
   suggChip: { borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
   suggText: { fontSize: 11, fontWeight: '600' },
   ringGradientBorder: {
@@ -977,6 +1276,7 @@ const screen = StyleSheet.create({
     gap: 6,
   },
   macroPct: { fontSize: 17, fontWeight: '800' },
+  macroRemaining: { fontSize: 11, fontWeight: '700', marginTop: 2 },
   macroLabel: { fontSize: 11, fontWeight: '700' },
   macroGoal: { fontSize: 11, fontWeight: '600' },
   macroBarTrack: {

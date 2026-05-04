@@ -148,7 +148,8 @@ export async function generateResponse(userPrompt, options = {}) {
         if (hasMessages) {
           // For chat, append web context to the last user message
           enhancedMessages = [...options.messages];
-          const lastUserIdx = enhancedMessages.map(m => m.role).lastIndexOf('user');
+          const safeEnhanced = Array.isArray(enhancedMessages) ? enhancedMessages : [];
+          const lastUserIdx = safeEnhanced.map(m => m.role).lastIndexOf('user');
           if (lastUserIdx >= 0) {
             enhancedMessages[lastUserIdx] = {
               ...enhancedMessages[lastUserIdx],

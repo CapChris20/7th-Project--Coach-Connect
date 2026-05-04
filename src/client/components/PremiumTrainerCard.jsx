@@ -112,8 +112,8 @@ export default function PremiumTrainerCard({
             </View>
 
             <View style={styles.badgesRow}>
-              {rating ? badge('star', `${rating.toFixed(1)} rating`) : badge('star-outline', 'Top rated')}
-              {clients ? badge('people-outline', `${clients} clients`) : badge('people-outline', 'Clients')}
+              {rating ? badge('star', `${rating.toFixed(1)} rating`) : null}
+              {clients ? badge('people-outline', `${clients} clients`) : null}
               {years ? badge('ribbon-outline', `${years}+ yrs`) : null}
             </View>
           </View>

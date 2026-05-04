@@ -14,7 +14,30 @@ import {
   updateDoc,
   runTransaction,
 } from 'firebase/firestore';
-import { getApiBase } from '../../shared/services/baseUrl';
+import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
+import { randomClientRequestTitle } from '../../shared/notifications/pushCopy';
+
+async function notifyRecipientMessagePush({
+  recipientId,
+  senderId,
+  senderName,
+  conversationId,
+  messageId,
+  messageText,
+}) {
+  const r = await postRemotePushNotify({
+    recipientId,
+    senderName,
+    senderId,
+    conversationId,
+    messageId,
+    messageText: (messageText || '').substring(0, 100),
+    notificationType: 'message',
+  });
+  if (!r.ok && r.reason) {
+    console.warn('⚠️ Push notification:', r.reason);
+  }
+}
 
 /**
  * Get or create a conversation between a client and trainer
@@ -113,28 +136,22 @@ export async function sendMessage(conversationId, senderId, messageText) {
 
     // Trigger push notification to recipient
     try {
-      const recipientId = conversationData?.participants?.find(id => id !== senderId);
-      
+      const recipientId = conversationData?.participants?.find((id) => id !== senderId);
+
       if (recipientId) {
-        // Get sender's name
         const senderData = await getUserData(senderId);
         const senderName = senderData?.name || senderData?.firstName || 'Someone';
-        
-        // Call server endpoint to send push notification
-        const API_BASE_URL = getApiBase();
-        await fetch(`${API_BASE_URL}/api/notifications/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipientId,
-            senderName,
-            messageText: messageText.substring(0, 100),
-          }),
+
+        await notifyRecipientMessagePush({
+          recipientId,
+          senderName,
+          senderId,
+          conversationId,
+          messageId,
+          messageText,
         });
-        console.log('📲 Push notification triggered for:', recipientId);
       }
     } catch (notifError) {
-      // Don't fail the message send if notification fails
       console.warn('⚠️ Failed to send push notification:', notifError);
     }
 
@@ -158,6 +175,11 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
     if (!conversationId || !senderId || !payload?.fileUrl) {
       throw new Error('Missing required parameters for attachment message');
     }
+
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const convSnap = await getDoc(conversationRef);
+    const conversationData = convSnap.exists() ? convSnap.data() : null;
+
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const lastMessagePreview = payload.type === 'image' ? '[Photo]' : (payload.fileName || '[File]');
     const messageData = {
@@ -176,7 +198,6 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
     const result = await runTransaction(db, async (transaction) => {
       const messageRef = doc(db, 'messages', messageId);
       transaction.set(messageRef, messageData);
-      const conversationRef = doc(db, 'conversations', conversationId);
       transaction.update(conversationRef, {
         lastMessage: lastMessagePreview,
         lastMessageTime: serverTimestamp(),
@@ -184,6 +205,25 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
       });
       return messageId;
     });
+
+    try {
+      const recipientId = conversationData?.participants?.find((id) => id !== senderId);
+      if (recipientId) {
+        const senderData = await getUserData(senderId);
+        const senderName = senderData?.name || senderData?.firstName || 'Someone';
+        await notifyRecipientMessagePush({
+          recipientId,
+          senderName,
+          senderId,
+          conversationId,
+          messageId,
+          messageText: lastMessagePreview,
+        });
+      }
+    } catch (notifError) {
+      console.warn('⚠️ Failed to send push notification (attachment):', notifError);
+    }
+
     return result;
   } catch (error) {
     console.error('❌ Error sending attachment message:', error);
@@ -234,6 +274,25 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
 
       return messageId;
     });
+
+    try {
+      const convSnap = await getDoc(doc(db, 'conversations', conversationId));
+      const trainerId = convSnap.exists() ? convSnap.data()?.trainerId : null;
+      if (trainerId && trainerId !== senderId) {
+        const cname = metadata.clientName || metadata.name || 'Client';
+        void postRemotePushNotify({
+          recipientId: trainerId,
+          senderName: randomClientRequestTitle(cname),
+          messageText: `${cname}: ${messageText.substring(0, 120)}`,
+          senderId,
+          conversationId,
+          messageId: result,
+          notificationType: 'client_request',
+        });
+      }
+    } catch (e) {
+      console.warn('Client request push skipped:', e?.message || e);
+    }
 
     return result;
   } catch (error) {
