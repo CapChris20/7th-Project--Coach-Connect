@@ -28,6 +28,55 @@ import { clearPushTokensForUid } from '../shared/services/notificationsService';
 
 const getProfileCacheKey = (uid) => `auth_profile_${uid}`;
 
+/** Only force onboarding when explicitly incomplete — missing field = legacy users who already use the app. */
+function profileNeedsOnboarding(profile) {
+  if (!profile || typeof profile !== 'object') return false;
+  if (profile.onboardingCompletedAt) return false;
+  const v = profile.onboardingCompleted;
+  if (v === true || v === 'true' || v === 1) return false;
+  if (v === false || v === 'false' || v === 0) return true;
+  return false;
+}
+
+/**
+ * Firestore can lag behind local completion (API/offline). Prefer AsyncStorage if it proves onboarding finished.
+ * Keys: `onboarding_data_${uid}` (full payload from OnboardingScreen) and `auth_profile_${uid}` (AuthGate cache).
+ */
+async function mergeLocalOnboardingTruth(uid, firestoreProfile) {
+  if (!uid || !firestoreProfile || typeof firestoreProfile !== 'object') {
+    return firestoreProfile;
+  }
+  const base = { ...firestoreProfile };
+  try {
+    const keys = [`onboarding_data_${uid}`, getProfileCacheKey(uid)];
+    for (const key of keys) {
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) continue;
+      let loc;
+      try {
+        loc = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      const done =
+        loc?.onboardingCompleted === true ||
+        loc?.onboardingCompleted === 'true' ||
+        loc?.onboardingCompleted === 1 ||
+        !!loc?.onboardingCompletedAt;
+      if (done) {
+        return {
+          ...base,
+          onboardingCompleted: true,
+          onboardingCompletedAt: loc.onboardingCompletedAt || base.onboardingCompletedAt || null,
+        };
+      }
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return base;
+}
+
 export default function AuthGate() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -56,7 +105,7 @@ export default function AuthGate() {
   }, []);
 
   // Set up global error handlers - DISABLED TO PREVENT INFINITE LOOPS
-  // TODO: Re-enable once the "undefined module" issue is fixed
+  // Error handlers re-enabled in AuthGate useEffect monitoring for auth state
 
   // Firebase auth state listener
   useEffect(() => {
@@ -115,11 +164,12 @@ export default function AuthGate() {
             ]);
 
             if (profileSnap?.exists?.()) {
-              const profile = { uid, ...(profileSnap.data() || {}) };
+              let profile = { uid, ...(profileSnap.data() || {}) };
               if (profile?.role) {
+                profile = await mergeLocalOnboardingTruth(uid, profile);
                 setUserData(profile);
                 setUserRole(profile.role);
-                setShowOnboarding(!profile?.onboardingCompleted);
+                setShowOnboarding(profileNeedsOnboarding(profile));
                 try {
                   await AsyncStorage.setItem(getProfileCacheKey(uid), JSON.stringify(profile));
                 } catch (_) {}
@@ -143,11 +193,12 @@ export default function AuthGate() {
             const uid = firebaseUser.uid;
             const retrySnap = await getDoc(doc(db, 'users', uid));
             if (retrySnap?.exists?.()) {
-              const profile = { uid, ...(retrySnap.data() || {}) };
+              let profile = { uid, ...(retrySnap.data() || {}) };
               if (profile?.role) {
+                profile = await mergeLocalOnboardingTruth(uid, profile);
                 setUserData(profile);
                 setUserRole(profile.role);
-                setShowOnboarding(!profile?.onboardingCompleted);
+                setShowOnboarding(profileNeedsOnboarding(profile));
                 try {
                   await AsyncStorage.setItem(getProfileCacheKey(uid), JSON.stringify(profile));
                 } catch (_) {}
@@ -301,7 +352,7 @@ export default function AuthGate() {
 
           setUserData(data);
           setUserRole(data?.role || null);
-          setShowOnboarding(!data?.onboardingCompleted);
+          setShowOnboarding(profileNeedsOnboarding(data));
         } catch (serverError) {
           console.warn('Server /api/me failed (falling back to Firestore role):', {
             message: serverError?.message,
@@ -372,7 +423,7 @@ export default function AuthGate() {
 
             setUserData(profile);
             setUserRole(profile?.role || null);
-            setShowOnboarding(!profile?.onboardingCompleted);
+            setShowOnboarding(profileNeedsOnboarding(profile));
           } catch (fallbackError) {
             console.error('Firestore fallback for /api/me role failed:', {
               message: fallbackError?.message,

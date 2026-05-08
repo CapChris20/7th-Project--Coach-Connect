@@ -18,7 +18,7 @@ export function subscribeToConversations(userId, callback) {
     return () => {};
   }
 
-  console.log('🔍 Setting up real-time conversations listener for:', uid);
+  if (__DEV__) console.log('🔍 Setting up real-time conversations listener for:', uid);
   
   const conversationsRef = collection(db, 'conversations');
   const q = query(
@@ -46,7 +46,7 @@ export function subscribeToConversations(userId, callback) {
         return timeB - timeA; // Descending order (newest first)
       });
 
-      console.log('📨 Real-time conversations update:', conversations.length);
+      if (__DEV__) console.log('📨 Real-time conversations update:', conversations.length);
 
       // Load participant data for new conversations only
       const loadPromises = [];

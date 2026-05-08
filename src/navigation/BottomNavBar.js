@@ -260,10 +260,11 @@ export default function BottomNavBar({
         <TouchableOpacity
           style={[styles.navItem, { maxWidth: '25%' }]}
           activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           onPress={() => activate('home', onHomePress || (() => {}))}
         >
-          <Animated.View style={[styles.activeBgWrap, { opacity: homeAnim }]}>
-            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+          <Animated.View style={[styles.activeBgWrap, { opacity: homeAnim }]} pointerEvents="none">
+            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
               colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
               start={{ x: 0, y: 0 }}
@@ -283,7 +284,6 @@ export default function BottomNavBar({
                 styles.navLabel,
                 { color: activeKey === 'home' ? NAV_LABEL_ACTIVE : NAV_LABEL },
               ]}
-              selectable={true}
             >
               Home
             </Text>
@@ -293,10 +293,11 @@ export default function BottomNavBar({
         <TouchableOpacity
           style={[styles.navItem, { maxWidth: '25%' }]}
           activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           onPress={() => activate('workout', onWorkoutPress || (() => {}))}
         >
-          <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]}>
-            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+          <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]} pointerEvents="none">
+            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
               colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
               start={{ x: 0, y: 0 }}
@@ -316,7 +317,6 @@ export default function BottomNavBar({
                 styles.navLabel,
                 { color: activeKey === 'workout' ? NAV_LABEL_ACTIVE : NAV_LABEL },
               ]}
-              selectable={true}
             >
               Workout
             </Text>
@@ -326,10 +326,11 @@ export default function BottomNavBar({
         <TouchableOpacity
           style={[styles.navItem, { maxWidth: '25%' }]}
           activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           onPress={() => activate('files', onPlusPress || (() => {}))}
         >
-          <Animated.View style={[styles.activeBgWrap, { opacity: filesAnim }]}>
-            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+          <Animated.View style={[styles.activeBgWrap, { opacity: filesAnim }]} pointerEvents="none">
+            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
               colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
               start={{ x: 0, y: 0 }}
@@ -349,7 +350,6 @@ export default function BottomNavBar({
                 styles.navLabel,
                 { color: activeKey === 'files' ? NAV_LABEL_ACTIVE : NAV_LABEL },
               ]}
-              selectable={true}
             >
               Files
             </Text>
@@ -359,10 +359,11 @@ export default function BottomNavBar({
         <TouchableOpacity
           style={[styles.navItem, { maxWidth: '25%' }]}
           activeOpacity={0.85}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           onPress={() => activate('nutrition', onNutritionPress || (() => {}))}
         >
-          <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]}>
-            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+          <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]} pointerEvents="none">
+            <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
               colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
               start={{ x: 0, y: 0 }}
@@ -382,7 +383,6 @@ export default function BottomNavBar({
                 styles.navLabel,
                 { color: activeKey === 'nutrition' ? NAV_LABEL_ACTIVE : NAV_LABEL },
               ]}
-              selectable={true}
             >
               Nutrition
             </Text>
@@ -404,10 +404,11 @@ export default function BottomNavBar({
       <TouchableOpacity
         style={styles.navItem}
         activeOpacity={0.85}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         onPress={() => activate('home', onHomePress || (() => {}))}
       >
-        <Animated.View style={[styles.activeBgWrap, { opacity: homeAnim }]}>
-          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+        <Animated.View style={[styles.activeBgWrap, { opacity: homeAnim }]} pointerEvents="none">
+          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
             colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
             start={{ x: 0, y: 0 }}
@@ -427,7 +428,6 @@ export default function BottomNavBar({
               styles.navLabel,
               { color: activeKey === 'home' ? NAV_LABEL_ACTIVE : NAV_LABEL },
             ]}
-            selectable={true}
           >
             Home
           </Text>
@@ -438,10 +438,11 @@ export default function BottomNavBar({
       <TouchableOpacity
         style={styles.navItem}
         activeOpacity={0.85}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         onPress={() => activate('workout', onWorkoutPress || (() => {}))}
       >
-        <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]}>
-          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+        <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]} pointerEvents="none">
+          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
             colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
             start={{ x: 0, y: 0 }}
@@ -461,7 +462,6 @@ export default function BottomNavBar({
               styles.navLabel,
               { color: activeKey === 'workout' ? NAV_LABEL_ACTIVE : NAV_LABEL },
             ]}
-            selectable={true}
           >
             Workout
           </Text>
@@ -476,10 +476,11 @@ export default function BottomNavBar({
       <TouchableOpacity
         style={styles.navItem}
         activeOpacity={0.85}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         onPress={() => activate('ai', onVoicePress || (() => {}))}
       >
-        <Animated.View style={[styles.activeBgWrap, { opacity: aiAnim }]}>
-          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+        <Animated.View style={[styles.activeBgWrap, { opacity: aiAnim }]} pointerEvents="none">
+          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
             colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
             start={{ x: 0, y: 0 }}
@@ -499,7 +500,6 @@ export default function BottomNavBar({
               styles.navLabel,
               { color: activeKey === 'ai' ? NAV_LABEL_ACTIVE : NAV_LABEL },
             ]}
-            selectable={true}
           >
             AI Coach
           </Text>
@@ -510,10 +510,11 @@ export default function BottomNavBar({
       <TouchableOpacity
         style={styles.navItem}
         activeOpacity={0.85}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         onPress={() => activate('nutrition', onNutritionPress || (() => {}))}
       >
-        <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]}>
-          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} />
+        <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]} pointerEvents="none">
+          <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
             colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
             start={{ x: 0, y: 0 }}
@@ -533,7 +534,6 @@ export default function BottomNavBar({
               styles.navLabel,
               { color: activeKey === 'nutrition' ? NAV_LABEL_ACTIVE : NAV_LABEL },
             ]}
-            selectable={true}
           >
             Nutrition
           </Text>

@@ -24,27 +24,32 @@ function formatResetLabel(nextReset) {
   }
 }
 
-function getBackgroundGradient(remaining, total) {
+function getBackgroundGradient(remaining, total, isDark) {
   const isOut = Number(remaining) <= 0;
   if (isOut) {
-    return ['rgba(239,68,68,0.15)', 'rgba(255,107,157,0.15)'];
+    return isDark
+      ? ['rgba(239,68,68,0.30)', 'rgba(255,107,157,0.22)']
+      : ['rgba(239,68,68,0.48)', 'rgba(255,107,157,0.42)'];
   }
-  return ['rgba(192,132,252,0.15)', 'rgba(255,107,157,0.15)'];
+  return isDark
+    ? ['rgba(192,132,252,0.34)', 'rgba(255,107,157,0.24)']
+    : ['rgba(192,132,252,0.62)', 'rgba(255,107,157,0.52)'];
 }
 
-function getBorderGradient(remaining) {
+function getBorderGradient(remaining, isDark) {
   const isOut = Number(remaining) <= 0;
-  if (isOut) return [RED, PINK];
-  return [PURPLE, PINK];
+  if (isOut) return isDark ? [RED, PINK] : ['rgba(239,68,68,0.55)', 'rgba(255,107,157,0.55)'];
+  return isDark ? [PURPLE, PINK] : ['rgba(192,132,252,0.65)', 'rgba(255,107,157,0.55)'];
 }
 
-function getBadgeTone(remaining, total) {
+function getBadgeTone(remaining, total, isDark) {
   const r = Number(remaining);
   const t = Number(total) || 0;
-  if (r <= 0) return { bg: 'rgba(239,68,68,0.18)', border: RED, text: RED };
-  if (t > 0 && r === t) return { bg: 'rgba(34,197,94,0.16)', border: '#22C55E', text: '#22C55E' }; // green good
-  if (t > 0 && r === 1) return { bg: 'rgba(249,115,22,0.16)', border: '#F97316', text: '#F97316' }; // orange low
-  return { bg: 'rgba(255,107,157,0.20)', border: PINK, text: PINK };
+  const alpha = isDark ? 0.16 : 0.26;
+  if (r <= 0) return { bg: `rgba(239,68,68,${alpha})`, border: RED, text: RED };
+  if (t > 0 && r === t) return { bg: `rgba(34,197,94,${alpha})`, border: '#22C55E', text: '#22C55E' }; // green good
+  if (t > 0 && r === 1) return { bg: `rgba(249,115,22,${alpha})`, border: '#F97316', text: '#F97316' }; // orange low
+  return { bg: `rgba(255,107,157,${alpha + 0.03})`, border: PINK, text: PINK };
 }
 
 function buildTipText(remaining, total, nextResetLabel) {
@@ -68,7 +73,7 @@ function buildTipText(remaining, total, nextResetLabel) {
  * - nextReset: Date|string (optional)
  * - onTapUpgrade: () => void (optional) – banner becomes tappable if provided
  */
-export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, onTapUpgrade }) {
+export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, onTapUpgrade, isDark = true }) {
   const [toastText, setToastText] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
 
@@ -85,9 +90,9 @@ export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, o
   const prevRemainingRef = useRef(remaining);
 
   const nextResetLabel = useMemo(() => formatResetLabel(nextReset), [nextReset]);
-  const bgGrad = useMemo(() => getBackgroundGradient(remaining, total), [remaining, total]);
-  const borderGrad = useMemo(() => getBorderGradient(remaining), [remaining]);
-  const badgeTone = useMemo(() => getBadgeTone(remaining, total), [remaining, total]);
+  const bgGrad = useMemo(() => getBackgroundGradient(remaining, total, isDark), [remaining, total, isDark]);
+  const borderGrad = useMemo(() => getBorderGradient(remaining, isDark), [remaining, isDark]);
+  const badgeTone = useMemo(() => getBadgeTone(remaining, total, isDark), [remaining, total, isDark]);
 
   const isOut = Number(remaining) <= 0;
   const badgeText = useMemo(() => {
@@ -101,6 +106,10 @@ export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, o
   const tipIcon = isOut ? 'calendar-outline' : 'bulb-outline';
   const tipPrefix = isOut ? '📅' : '💡';
   const tipText = useMemo(() => buildTipText(remaining, total, nextResetLabel), [remaining, total, nextResetLabel]);
+
+  const titleColor = isDark ? '#FFFFFF' : '#0B1220';
+  const subtitleColor = isDark ? '#B0B0B0' : 'rgba(15,23,42,0.72)';
+  const tipColor = isDark ? '#909090' : 'rgba(15,23,42,0.64)';
 
   useEffect(() => {
     Animated.parallel([
@@ -183,21 +192,34 @@ export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, o
           },
         ]}
       >
-        <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.border, { padding: 1.5, borderRadius: 12 }]}>
-          <LinearGradient colors={bgGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.inner, { padding, borderRadius: 10.5 }]}>
+          <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.border, { padding: 1.5, borderRadius: 12 }]}>
+          <LinearGradient
+            colors={bgGrad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              styles.inner,
+              {
+                padding,
+                borderRadius: 10.5,
+                // Prevent banner from looking like a translucent sticker on light backgrounds.
+                backgroundColor: isDark ? 'rgba(13,17,23,0.68)' : 'rgba(255,255,255,0.86)',
+              },
+            ]}
+          >
             <Container {...containerProps} style={styles.row} accessibilityRole={onTapUpgrade ? 'button' : 'none'}>
               <View style={styles.left}>
-                <Ionicons name="sparkles" size={16} color={PURPLE} />
+                <Ionicons name="sparkles" size={16} color={isDark ? PURPLE : '#8B5CF6'} />
               </View>
 
               <View style={styles.content}>
                 <View style={styles.titleRow}>
-                  <Text style={styles.title}>Premium Plan Generation</Text>
+                  <Text style={[styles.title, { color: titleColor }]}>Premium Plan Generation</Text>
                 </View>
-                <Text style={styles.subtitle}>You have {total} AI-generated plans per month</Text>
+                <Text style={[styles.subtitle, { color: subtitleColor }]}>You have {total} AI-generated plans per month</Text>
                 <View style={styles.tipRow}>
                   <Ionicons name={tipIcon} size={12} color={isOut ? '#FCA5A5' : CYAN} />
-                  <Text style={styles.tipText}>
+                  <Text style={[styles.tipText, { color: tipColor }]}>
                     {tipPrefix} {tipText}
                   </Text>
                 </View>

@@ -124,6 +124,7 @@ export async function addNote(clientId, content, addedBy = 'client') {
     type: 'note',
     content: content || '',
     addedBy: addedBy === 'trainer' ? 'trainer' : 'client',
+    isRead: addedBy === 'trainer' ? false : true,
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, 'users', clientId, COLLECTION), data);
@@ -136,7 +137,7 @@ export async function addNote(clientId, content, addedBy = 'client') {
  * addedBy: 'client' or 'trainer'.
  * For spreadsheets use type: 'spreadsheet' and optionally pass onProgress to addFileWithProgress instead.
  */
-export async function addFile(clientId, { localUri, filename, mimeType, type }, addedBy = 'client') {
+export async function addFile(clientId, { localUri, filename, mimeType, type, size }, addedBy = 'client') {
   if (!db || !storage || !clientId) throw new Error('Firestore/Storage or clientId not ready');
   const contentType = mimeType || 'application/octet-stream';
   const downloadUrl = await uploadNotesFile(clientId, localUri, filename, contentType);
@@ -175,6 +176,8 @@ export async function addFile(clientId, { localUri, filename, mimeType, type }, 
     name: filename || 'File',
     mimeType: contentType,
     addedBy: addedBy === 'trainer' ? 'trainer' : 'client',
+    ...(typeof size === 'number' && Number.isFinite(size) ? { size } : {}),
+    isRead: addedBy === 'trainer' ? false : true,
     createdAt: serverTimestamp(),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
   };
@@ -186,7 +189,7 @@ export async function addFile(clientId, { localUri, filename, mimeType, type }, 
 /**
  * Add a spreadsheet file with upload progress. onProgress(0-100).
  */
-export async function addSpreadsheetFile(clientId, { localUri, filename, mimeType }, addedBy = 'client', onProgress) {
+export async function addSpreadsheetFile(clientId, { localUri, filename, mimeType, size }, addedBy = 'client', onProgress) {
   if (!db || !storage || !clientId) throw new Error('Firestore/Storage or clientId not ready');
   const contentType = mimeType || 'application/octet-stream';
   const downloadUrl = onProgress
@@ -198,11 +201,20 @@ export async function addSpreadsheetFile(clientId, { localUri, filename, mimeTyp
     name: filename || 'File',
     mimeType: contentType,
     addedBy: addedBy === 'trainer' ? 'trainer' : 'client',
+    ...(typeof size === 'number' && Number.isFinite(size) ? { size } : {}),
+    isRead: addedBy === 'trainer' ? false : true,
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, 'users', clientId, COLLECTION), data);
   void notifyNotesSharedPush(clientId, data.addedBy);
   return { id: docRef.id, ...data, createdAt: new Date() };
+}
+
+export async function markNotesAndFilesItemRead(clientId, itemId) {
+  if (!db || !clientId || !itemId) throw new Error('Missing clientId or itemId');
+  const refDoc = doc(db, 'users', String(clientId), COLLECTION, String(itemId));
+  await updateDoc(refDoc, { isRead: true });
+  return { id: String(itemId), isRead: true };
 }
 
 /**
@@ -343,11 +355,12 @@ async function syncSharedDocumentPreviewStubs(trainerId, documentId, title, rawB
   );
 }
 
-export async function saveTrainerDocument(trainerId, { id, title, body }) {
+export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml }) {
   if (!db || !trainerId) throw new Error('Firestore or trainerId not ready');
   const payload = {
     title: title || '',
     body: body || '',
+    ...(typeof bodyHtml === 'string' ? { bodyHtml } : {}),
     updatedAt: serverTimestamp(),
   };
   if (id) {
@@ -365,7 +378,7 @@ export async function saveTrainerDocument(trainerId, { id, title, body }) {
 }
 
 // Save spreadsheet-style trainer document with rows/columns and xlsx export.
-export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, columnCount, rowCount }) {
+export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, columnCount, rowCount, formats, colWidths, isFavorite, lastSavedAt }) {
   if (!db || !storage || !trainerId) throw new Error('Firestore/Storage or trainerId not ready');
 
   const safeTitle = (title || 'Spreadsheet').trim() || 'Spreadsheet';
@@ -395,6 +408,10 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
     rows: dataRows,
     columnCount: cols,
     rowCount: rCount,
+    ...(formats && typeof formats === 'object' ? { formats } : {}),
+    ...(colWidths && typeof colWidths === 'object' ? { colWidths } : {}),
+    ...(typeof isFavorite === 'boolean' ? { isFavorite } : {}),
+    ...(lastSavedAt ? { lastSavedAt } : {}),
     storageUrl: downloadUrl,
     updatedAt: serverTimestamp(),
   };
@@ -452,6 +469,7 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
       title,
       ...(previewSnippet ? { previewSnippet } : {}),
       addedBy: 'trainer',
+      isRead: false,
       createdAt: serverTimestamp(),
     });
     void notifyNotesSharedPush(clientId, 'trainer');

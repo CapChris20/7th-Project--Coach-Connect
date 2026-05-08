@@ -257,10 +257,16 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
     if (!trainer || !currentUser) return;
     cancelledRef.current = false;
     unsubscribeRef.current = null;
-    initializeConversation().then((cleanup) => {
-      if (cancelledRef.current && typeof cleanup === 'function') cleanup();
-      else if (typeof cleanup === 'function') unsubscribeRef.current = cleanup;
-    });
+    initializeConversation()
+      .then((cleanup) => {
+        if (cancelledRef.current && typeof cleanup === 'function') cleanup();
+        else if (typeof cleanup === 'function') unsubscribeRef.current = cleanup;
+      })
+      .catch((error) => {
+        if (!cancelledRef.current) {
+          if (__DEV__) console.error('Failed to initialize conversation:', error);
+        }
+      });
     loadTrainerData();
     checkTrainerRole();
     return () => {

@@ -1,6 +1,13 @@
 node_modules/
 .env
 *.log
+.DS_Store
+*.bak
+*.backup
+
+# Firebase Admin service accounts (never commit)
+serviceAccountKey.json
+serviceAccount*.json
 
 
 

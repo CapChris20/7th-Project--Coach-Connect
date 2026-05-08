@@ -1,18 +1,25 @@
-// Expo loads .env before this runs, so process.env has your keys
+const path = require('path');
+// Ensure root .env is loaded when evaluating config (so REACT_NATIVE_* / YOUTUBE_* reach `extra`).
+try {
+  require('dotenv').config({ path: path.join(__dirname, '.env') });
+} catch (_) {
+  /* optional dep path */
+}
+
 module.exports = {
   expo: {
-    name: 'Anatrox',
+    name: 'Coach Connect',
     slug: 'anatrox-app',
     version: '1.0.0',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
     scheme: 'anatrox',
     plugins: [
-      ['expo-camera', { cameraPermission: 'Allow Anatrox to access your camera for progress photos.' }],
-      ['expo-barcode-scanner', { cameraPermission: 'Allow Anatrox to scan food barcodes.' }],
+      ['expo-camera', { cameraPermission: 'Allow Coach Connect to access your camera for progress photos.' }],
+      ['expo-barcode-scanner', { cameraPermission: 'Allow Coach Connect to scan food barcodes.' }],
       ['expo-image-picker', {
-        photosPermission: 'Allow Anatrox to access your photos to add images to chats.',
-        cameraPermission: 'Allow Anatrox to take photos for progress tracking.',
+        photosPermission: 'Allow Coach Connect to access your photos to add images to chats.',
+        cameraPermission: 'Allow Coach Connect to take photos for progress tracking.',
       }],
       'expo-asset',
       'expo-font',
@@ -28,7 +35,7 @@ module.exports = {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.yourcompany.anatrox',
+      bundleIdentifier: 'com.chrisshina.coachconnect',
       buildNumber: '1',
       usesAppleSignIn: true,
       infoPlist: {
@@ -71,7 +78,13 @@ module.exports = {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.178:4000',
+      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.coachconnect.ai',
+      youtubeApiKey: String(
+        process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ||
+          process.env.YOUTUBE_API_KEY ||
+          process.env.REACT_NATIVE_YOUTUBE_API_KEY ||
+          '',
+      ).trim(),
     },
   },
 };

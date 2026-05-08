@@ -63,7 +63,7 @@ export async function getDailyGoals(userId) {
       macroSplit: data.macro_split || data.macroSplit || { protein: 0.3, carbs: 0.4, fat: 0.3 },
     };
   } catch (error) {
-    console.warn('Failed to load goals, using default:', error.message);
+    if (__DEV__) console.warn('Failed to load goals, using default:', error.message);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - getDailyGoals');
     return getDefaultGoals();
@@ -87,7 +87,7 @@ export async function upsertDailyGoals(userId, goals) {
 
     await setDoc(goalDocRef, payload, { merge: true });
   } catch (error) {
-    console.error('Failed to upsert goals:', error);
+    if (__DEV__) console.error('Failed to upsert goals:', error);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - upsertDailyGoals');
     throw error;
@@ -172,7 +172,7 @@ export async function getFoodLogsForDate(userId, date = new Date()) {
       }
     });
   } catch (error) {
-    console.error('Failed to load food logs:', error);
+    if (__DEV__) console.error('Failed to load food logs:', error);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - getFoodLogsForDate');
     return [];
@@ -248,7 +248,7 @@ export async function addFoodLog(userId, log) {
     totalPotassium = num(food.potassium);
   }
 
-  console.log('🍎 Adding food log:', {
+  if (__DEV__) console.log('🍎 Adding food log:', {
     name: food.name,
     source: food.source,
     servingQuantity,
@@ -284,10 +284,10 @@ export async function addFoodLog(userId, log) {
       serving_grams: payload.serving_grams,
     });
     const docRef = await addDoc(collection(db, LOGS_COLLECTION), payload);
-    console.log('✅ Saved successfully with ID:', docRef.id);
+    if (__DEV__) console.log('✅ Saved successfully with ID:', docRef.id);
     return { id: docRef.id, ...payload };
   } catch (error) {
-    console.error('Failed to add food log:', error);
+    if (__DEV__) console.error('Failed to add food log:', error);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - addFoodLog');
     throw error;
@@ -311,7 +311,7 @@ export async function updateFoodLog(logId, updates) {
     }
     return null;
   } catch (error) {
-    console.error('Failed to update food log:', error);
+    if (__DEV__) console.error('Failed to update food log:', error);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - updateFoodLog');
     throw error;
@@ -325,7 +325,7 @@ export async function deleteFoodLog(logId) {
     const logDocRef = doc(db, LOGS_COLLECTION, logId);
     await deleteDoc(logDocRef);
   } catch (error) {
-    console.error('Failed to delete food log:', error);
+    if (__DEV__) console.error('Failed to delete food log:', error);
     // Auto-log the error
     autoLogErrorSync(error, 'nutritionService - deleteFoodLog');
     throw error;
@@ -371,7 +371,7 @@ export function calculateMacroTotals(logs = []) {
     potassium: Math.round(totals.potassium), // mg, rounded to nearest integer
   };
   
-  console.log('🧮 calculateMacroTotals: Processed', logs.length, 'logs, totals:', formattedTotals);
+  if (__DEV__) console.log('🧮 calculateMacroTotals: Processed', logs.length, 'logs, totals:', formattedTotals);
   return formattedTotals;
 }
 
@@ -401,7 +401,7 @@ export async function cacheFoodProduct(product) {
     
     await foodSearchProvider.saveCachedFoods(filtered);
   } catch (error) {
-    console.warn('Failed to cache food product', error.message);
+    if (__DEV__) console.warn('Failed to cache food product', error.message);
   }
 }
 
@@ -409,7 +409,7 @@ export async function getCachedFoods() {
   try {
     return await foodSearchProvider.getCachedFoods();
   } catch (error) {
-    console.error('Error getting cached foods:', error);
+    if (__DEV__) console.error('Error getting cached foods:', error);
     // Return sample foods even if cache fails
     return [
       {
@@ -443,14 +443,14 @@ export function getFoodSearchHint() {
 
 export async function searchFoods(query, maxResults = 20) {
   try {
-    console.log('🍔 Starting unified food search for:', query);
+    if (__DEV__) console.log('🍔 Starting unified food search for:', query);
     const results = await foodSearchProvider.searchFoods(query, maxResults);
-    console.log(`🍔 Unified search returned ${results.length} results`);
+    if (__DEV__) console.log(`🍔 Unified search returned ${results.length} results`);
     return results;
   } catch (error) {
-    console.error('🍔 Error in unified food search:', error.message);
+    if (__DEV__) console.error('🍔 Error in unified food search:', error.message);
     // Fallback to cached foods only
-    console.log('🍔 Falling back to local cache only');
+    if (__DEV__) console.log('🍔 Falling back to local cache only');
     try {
       const cachedFoods = await foodSearchProvider.getCachedFoods();
       // Ensure cachedFoods is an array before filtering
@@ -459,7 +459,7 @@ export async function searchFoods(query, maxResults = 20) {
         food && food.name && food.name.toLowerCase().includes(query.toLowerCase())
       ).slice(0, maxResults);
     } catch (cacheError) {
-      console.error('🍔 Cache fallback failed:', cacheError);
+      if (__DEV__) console.error('🍔 Cache fallback failed:', cacheError);
       // Return empty array if everything fails
       return [];
     }
@@ -468,12 +468,12 @@ export async function searchFoods(query, maxResults = 20) {
 
 export async function lookupBarcode(barcode) {
   try {
-    console.log('🍔 Looking up barcode:', barcode);
+    if (__DEV__) console.log('🍔 Looking up barcode:', barcode);
     const result = await foodSearchProvider.lookupBarcode(barcode);
-    console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
+    if (__DEV__) console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
     return result;
   } catch (error) {
-    console.error('🍔 Error looking up barcode:', error);
+    if (__DEV__) console.error('🍔 Error looking up barcode:', error);
     return null;
   }
 }
@@ -485,7 +485,7 @@ export async function getFoodDetails(foodId, source = 'cache') {
     const cachedFoods = await foodSearchProvider.getCachedFoods();
     return cachedFoods.find(food => food.id === foodId) || null;
   } catch (error) {
-    console.error('Error getting food details:', error);
+    if (__DEV__) console.error('Error getting food details:', error);
     return null;
   }
 }
@@ -496,7 +496,7 @@ export async function getPopularFoods(limit = 10) {
     const cachedFoods = await foodSearchProvider.getCachedFoods();
     return cachedFoods.slice(0, limit);
   } catch (error) {
-    console.error('Error getting popular foods:', error);
+    if (__DEV__) console.error('Error getting popular foods:', error);
     return [];
   }
 }
@@ -548,7 +548,7 @@ export async function getRecentFoods(userId, limit = 10) {
     }
     return recent;
   } catch (error) {
-    console.error('Error getting recent foods:', error);
+    if (__DEV__) console.error('Error getting recent foods:', error);
     return [];
   }
 }
@@ -557,9 +557,9 @@ export async function getRecentFoods(userId, limit = 10) {
 export async function clearFatSecretTokens() {
   try {
     // No tokens to clear with new provider
-    console.log('No tokens to clear (using unified food search provider)');
+    if (__DEV__) console.log('No tokens to clear (using unified food search provider)');
   } catch (error) {
-    console.error('Error clearing tokens:', error);
+    if (__DEV__) console.error('Error clearing tokens:', error);
   }
 }
 

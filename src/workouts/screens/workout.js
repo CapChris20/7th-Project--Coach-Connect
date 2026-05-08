@@ -20,6 +20,7 @@ import {
   KeyboardAvoidingView,
   AppState,
   FlatList,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,6 +49,8 @@ import {
 import WorkoutPlanPdfViewerModal from '../components/WorkoutPlanPdfViewerModal';
 import PlanViewerScreen from '../../screens/PlanViewerScreen';
 import PlanLimitBanner from '../components/PlanLimitBanner';
+import WorkoutExerciseLibraryTab from '../components/WorkoutExerciseLibraryTab';
+import { EditModalForm } from '../components/EditModalForm_RN';
 
 /** Survives screen unmount so ClientApp / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
@@ -58,6 +61,8 @@ const nextMonthResetDate = () => {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth() + 1, 1);
 };
+
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 const MARKDOWN_STYLES = {
   body: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 22 },
@@ -148,7 +153,7 @@ const PLAN_BUILDER_COLORS = {
   pink: '#FF6B9D',
   /** Secondary accent for row icons (replaces old purple). */
   purple: '#64D2FF',
-  cyan: '#64D2FF',
+  cyan: '#06B6D4',
   orange: '#F97316',
   green: '#10B981',
 };
@@ -171,6 +176,36 @@ const WORKOUT_PLAN_BUILDER_SECTIONS = [
       'situationDescription',
     ],
   },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW UI (Lovable hero + pills) — UI ONLY, same editing/generation logic
+// Uses the existing builder field keys so functionality stays identical.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LOVABLE_ACCENTS = [
+  { key: 'pink', gradient: ['#FF6B9D', '#C084FC'], text: '#FF6B9D' },
+  { key: 'cyan', gradient: ['#64D2FF', '#C084FC'], text: '#64D2FF' },
+  { key: 'orange', gradient: ['#F97316', '#FF6B9D'], text: '#F97316' },
+  { key: 'purple', gradient: ['#C084FC', '#64D2FF'], text: '#C084FC' },
+];
+
+const LOVABLE_PILLS = [
+  { key: 'personalInfo', label: 'Personal', helper: 'age/height/weight', icon: 'person-outline' },
+  { key: 'fitnessLevel', label: 'Level', helper: 'training status', icon: 'flame-outline' },
+  { key: 'goal', label: 'Goal', helper: 'primary goal', icon: 'trophy-outline' },
+  { key: 'equipment', label: 'Equipment', helper: 'available tools', icon: 'barbell-outline' },
+  { key: 'frequency', label: 'Frequency', helper: 'weekly sessions', icon: 'calendar-outline' },
+  { key: 'trainingEnvironment', label: 'Environment', helper: 'training place', icon: 'navigate-outline' },
+  { key: 'preferredWorkoutTime', label: 'Workout time', helper: 'preferred time', icon: 'time-outline' },
+  { key: 'exercisesDislike', label: 'Avoid', helper: 'exercise dislikes', icon: 'close-circle-outline' },
+  { key: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline' },
+  { key: 'supplementsCurrentlyTaking', label: 'Supplements', helper: 'currently taking', icon: 'star-outline' },
+  { key: 'currentStressLevel', label: 'Stress', helper: 'current level', icon: 'water-outline' },
+  { key: 'sleepQuality', label: 'Sleep', helper: 'sleep quality', icon: 'moon-outline' },
+  { key: 'energyLevels', label: 'Energy', helper: 'daily energy', icon: 'battery-charging-outline' },
+  { key: 'hydrationHabits', label: 'Hydration', helper: 'water habits', icon: 'water-outline' },
+  { key: 'situationDescription', label: 'My journey', helper: 'tap to expand', icon: 'document-text-outline', wide: true },
 ];
 
 const WORKOUT_BUILDER_ROW_META = {
@@ -660,7 +695,7 @@ const WP = {
   cardBorder: 'rgba(255,255,255,0.08)',
 };
 
-const TYPE_COLORS = { Push: WP.sectionLabel, Pull: '#64D2FF', Legs: WP.startWeight, 'Full Body': '#10B981', Rest: '#555' };
+const TYPE_COLORS = { Push: WP.sectionLabel, Pull: '#06B6D4', Legs: WP.startWeight, 'Full Body': '#10B981', Rest: '#555' };
 
 function inferType(label) {
   const lower = (label || '').toLowerCase();
@@ -1599,6 +1634,7 @@ export default function WorkoutPlanGeneratorScreen({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState(null);
   const [expandedCard, setExpandedCard] = useState(null);
+  const [editingPillKey, setEditingPillKey] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [generatedPlan, setGeneratedPlan] = useState(propPlan || null);
   const [addedToCollection, setAddedToCollection] = useState(false);
@@ -2684,6 +2720,17 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       (generatedPlan?.planOverview && String(generatedPlan.planOverview).trim()) ||
       "";
 
+    const planViewerWeeks = (() => {
+      const n = Number(structuredRaw?.weeksRemaining ?? structuredRaw?.durationWeeks ?? structured?.weeksRemaining);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 4;
+    })();
+    const planViewerFocus =
+      String(structuredRaw?.programFocus ?? structuredRaw?.focus ?? structured?.focus ?? '').trim() ||
+      'Complete muscle building program';
+    const planHeroTitle =
+      String(structuredRaw?.planTitle ?? structured?.planTitle ?? generatedPlan?.planTitle ?? '').trim() ||
+      'Your Workout Plan';
+
     const routeWorkoutPlan = route?.params?.workoutPlan;
     const hasRouteWorkoutPlanParam = !!(route?.params && Object.prototype.hasOwnProperty.call(route.params, 'workoutPlan'));
     const workoutPlanRows = (() => {
@@ -2802,7 +2849,18 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             >
               <Ionicons name="chevron-back" size={24} color={text} />
             </TouchableOpacity>
-            <Text style={{ fontSize: 17, fontWeight: '800', flex: 1, textAlign: 'center', color: text }}>Your Weekly Plan</Text>
+            <Text
+              style={{
+                fontSize: 17,
+                fontWeight: '600',
+                flex: 1,
+                textAlign: 'center',
+                color: text,
+                fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+              }}
+            >
+              Weekly Plan
+            </Text>
             <TouchableOpacity
               onPress={handleAddToCollection}
               disabled={addedToCollection || savingToCollection}
@@ -2820,7 +2878,16 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             </TouchableOpacity>
           </View>
           <PlanViewerScreen
-            route={{ params: { workoutPlan: workoutPlanRows, overview: overviewText, isDarkOverride: isDark } }}
+            route={{
+              params: {
+                workoutPlan: workoutPlanRows,
+                overview: overviewText,
+                isDarkOverride: isDark,
+                weeksRemaining: planViewerWeeks,
+                focusSummary: planViewerFocus,
+                planHeroTitle: planHeroTitle,
+              },
+            }}
           />
           <WorkoutPlanPdfViewerModal
             visible={showPdfViewer}
@@ -2852,6 +2919,39 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const planBuilderMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.58)';
   const planBuilderDivider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)';
   const planBuilderSectionLabelColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(10,10,15,0.38)';
+
+  const lovableText = planBuilderText;
+  const lovableMuted = planBuilderMuted;
+
+  // IMPORTANT: no hooks here (this code runs after an early return when onboardingData is null).
+  // Using useCallback/useMemo here would change hook order between renders.
+  const displayForFieldKey = (fieldKey) => {
+    const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
+    const formatted = formatDisplayValue(raw);
+    const s = formatted != null ? String(formatted).trim() : '';
+    return s && s !== 'null' && s !== 'undefined' ? s : '—';
+  };
+
+  const userNameForHero = String(
+    onboardingData?.firstName ||
+      onboardingData?.name ||
+      onboardingData?.displayName ||
+      auth.currentUser?.displayName ||
+      '',
+  )
+    .split(' ')[0]
+    .trim();
+
+  const heroGoal = displayForFieldKey('goal');
+  const heroLevel = displayForFieldKey('fitnessLevel');
+  const heroPersonal = displayForFieldKey('personalInfo');
+  const heroGreeting = (() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 12) return 'Good morning';
+    if (h >= 12 && h < 17) return 'Good afternoon';
+    if (h >= 17 && h < 22) return 'Good evening';
+    return 'Welcome back';
+  })();
 
   const renderPlanBuilderRow = (fieldKey, sectionKeys, idxInSection) => {
     const meta = WORKOUT_BUILDER_ROW_META[fieldKey];
@@ -3001,7 +3101,12 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           >
             Workout Plans
           </Text>
-          {activeTab === 'plans' ? <View style={styles.tabIndicator} /> : null}
+          <View
+            style={[
+              styles.tabIndicator,
+              { backgroundColor: activeTab === 'plans' ? '#FF6B9D' : 'transparent' },
+            ]}
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -3025,7 +3130,12 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           >
             Exercise Library
           </Text>
-          {activeTab === 'library' ? <View style={styles.tabIndicator} /> : null}
+          <View
+            style={[
+              styles.tabIndicator,
+              { backgroundColor: activeTab === 'library' ? '#FF6B9D' : 'transparent' },
+            ]}
+          />
         </TouchableOpacity>
       </View>
 
@@ -3165,76 +3275,172 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
         {aiPrefReady && aiOn ? (
         <>
-        <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 }}>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: planBuilderText, marginBottom: 6 }}>
-            Workout Plan Generator
-          </Text>
-          <Text style={{ fontSize: 13, color: planBuilderMuted, lineHeight: 18 }}>
-            {generatedPlan ? 'Your latest plan is saved. Use the buttons below.' : 'Generate a new plan from your profile.'}
-          </Text>
+        {/* Hero + primary actions */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
+          <LinearGradient
+            colors={['#FF6B9D', '#64D2FF', '#C084FC', '#FF6B9D']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ borderRadius: 24, padding: 2 }}
+          >
+            <View
+              style={{
+                borderRadius: 22,
+                padding: 18,
+                minHeight: 210,
+                flexDirection: 'row',
+                backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
+              }}
+            >
+              <View style={{ flex: 1.35, paddingRight: 12, justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 22, fontWeight: '800', color: lovableText }}>
+                  {`${heroGreeting}${userNameForHero ? `, ${userNameForHero}` : ''}!`}
+                </Text>
+
+                <View style={{ marginTop: 10 }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '900',
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                      color: lovableMuted,
+                    }}
+                  >
+                    Welcome to
+                  </Text>
+                  <View style={{ width: 44, height: 2, borderRadius: 1, backgroundColor: '#FF6B9D', marginTop: 6 }} />
+                </View>
+
+                <Text style={{ fontSize: 34, fontWeight: '900', color: lovableText, marginTop: 10 }} numberOfLines={1}>
+                  {heroGoal === '—' ? 'Build Muscle' : heroGoal}
+                </Text>
+
+                <Text style={{ fontSize: 13, fontWeight: '700', color: lovableMuted, marginTop: 8 }}>
+                  {heroLevel === '—' ? 'Intermediate' : heroLevel}
+                  {heroPersonal !== '—' ? ` • ${heroPersonal}` : ''}
+                </Text>
+
+                {/* Removed fake quote block */}
+              </View>
+
+              <View style={{ flex: 0.65, justifyContent: 'center', alignItems: 'center' }}>
+                <View
+                  style={{
+                    width: 118,
+                    height: 118,
+                    borderRadius: 59,
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="trophy" size={60} color="#FF6B9D" />
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
         </View>
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
           <View
             style={{
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: planBuilderDivider,
-              backgroundColor: planBuilderCardBg,
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
               padding: 14,
-              gap: 10,
             }}
           >
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <TouchableOpacity
-                activeOpacity={0.9}
+                activeOpacity={0.92}
                 onPress={handleRegeneratePlan}
                 disabled={isGenerating}
                 style={{
-                  flex: 1,
-                  height: 46,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: planBuilderDivider,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  flexDirection: 'row',
-                  gap: 8,
+                  width: '48.8%',
+                  height: 50,
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  opacity: isGenerating ? 0.7 : 1,
                 }}
               >
-                <Ionicons name="refresh-outline" size={16} color={planBuilderText} />
-                <Text style={{ color: planBuilderText, fontWeight: '800' }}>Regenerate</Text>
+                <LinearGradient
+                  colors={['#C084FC', '#FF4D8D']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      borderRadius: 14.5,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+                    }}
+                  >
+                    {isGenerating ? (
+                      <ActivityIndicator size="small" color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+                    ) : (
+                      <Ionicons name="refresh-outline" size={16} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+                    )}
+                    <View style={{ width: 8 }} />
+                    <Text style={{ color: isDark ? '#FFFFFF' : '#0A0A0F', fontWeight: '900' }}>Regenerate</Text>
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity
-                activeOpacity={0.9}
+                activeOpacity={0.92}
                 onPress={handleAddToCollection}
                 disabled={addedToCollection || savingToCollection}
                 style={{
-                  flex: 1,
-                  height: 46,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: planBuilderDivider,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  flexDirection: 'row',
-                  gap: 8,
+                  width: '48.8%',
+                  height: 50,
+                  borderRadius: 16,
+                  overflow: 'hidden',
                   opacity: addedToCollection ? 0.7 : 1,
                 }}
               >
-                {savingToCollection ? (
-                  <ActivityIndicator size="small" color={planBuilderText} />
-                ) : (
-                  <>
-                    <Ionicons name={addedToCollection ? 'checkmark-circle-outline' : 'bookmark-outline'} size={16} color={planBuilderText} />
-                    <Text style={{ color: planBuilderText, fontWeight: '800' }}>
+                <LinearGradient
+                  colors={addedToCollection ? ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.10)'] : ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      borderRadius: 14.5,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+                    }}
+                  >
+                    {savingToCollection ? (
+                      <ActivityIndicator size="small" color={planBuilderText} />
+                    ) : (
+                      <Ionicons
+                        name={addedToCollection ? 'checkmark-circle-outline' : 'bookmark-outline'}
+                        size={16}
+                        color={planBuilderText}
+                      />
+                    )}
+                    <View style={{ width: 8 }} />
+                    <Text style={{ color: planBuilderText, fontWeight: '900' }}>
                       {addedToCollection ? 'Saved' : 'Save'}
                     </Text>
-                  </>
-                )}
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
 
@@ -3242,38 +3448,297 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               activeOpacity={0.9}
               onPress={handleViewPdf}
               style={{
-                height: 46,
-                borderRadius: 14,
+                marginTop: 12,
+                height: 50,
+                borderRadius: 16,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: planBuilderDivider,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                flexDirection: 'row',
-                gap: 8,
+                overflow: 'hidden',
               }}
             >
-              <Ionicons name="download-outline" size={16} color={planBuilderMuted} />
-              <Text style={{ color: planBuilderMuted, fontWeight: '800' }}>Export / View PDF</Text>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ flex: 1, width: '100%', padding: 1.5, borderRadius: 16 }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    width: '100%',
+                    borderRadius: 14.5,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+                  }}
+                >
+                  <Ionicons name="download-outline" size={16} color={planBuilderMuted} />
+                  <View style={{ width: 8 }} />
+                  <Text style={{ color: planBuilderMuted, fontWeight: '900' }}>Export / View PDF</Text>
+                </View>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Restored onboarding/profile editor sections */}
-        <View style={planBuilderRefStyles.dividerContainer}>
-          <View style={[planBuilderRefStyles.dividerLine, { backgroundColor: planBuilderDivider }]} />
-          <Text style={[planBuilderRefStyles.dividerText, { color: planBuilderMuted }]}>Your Profile</Text>
-          <View style={[planBuilderRefStyles.dividerLine, { backgroundColor: planBuilderDivider }]} />
-        </View>
+        {/* Profile pills (premium, sectioned, spacious) */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 10 }}>
+          <View>
+            <Text style={{ fontSize: 22, fontWeight: '900', color: lovableText, marginBottom: 6 }}>Profile Cards</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: lovableMuted, lineHeight: 18 }}>
+              Tap any pill to edit your plan inputs.
+            </Text>
 
-        {WORKOUT_PLAN_BUILDER_SECTIONS.map((section) => (
-          <View key={section.sectionLabel} style={planBuilderRefStyles.sectionContainer}>
-            <PlanBuilderSectionLabel color={planBuilderSectionLabelColor}>{section.sectionLabel}</PlanBuilderSectionLabel>
-            <PlanBuilderAnimatedBorderCard radius={16} cardBg={planBuilderCardBg}>
-              {section.keys.map((fieldKey, idx) => renderPlanBuilderRow(fieldKey, section.keys, idx))}
-            </PlanBuilderAnimatedBorderCard>
+            <View style={{ alignItems: 'flex-end', marginTop: 12 }}>
+              <View
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '900', color: lovableMuted, letterSpacing: 0.2 }}>
+                  {`Personal • Training • Recovery`}
+                </Text>
+              </View>
+            </View>
           </View>
-        ))}
+
+          {(() => {
+            // Deterministic 2-col grid: avoids `gap` / % width layout quirks that can stack-left.
+            const SIDE_PAD = 20; // matches outer container paddingHorizontal
+            const GRID_GAP = 14;
+            const screenW = Dimensions.get('window')?.width || 390;
+            const usableW = Math.max(280, screenW - SIDE_PAD * 2);
+            const gridCardW = Math.floor((usableW - GRID_GAP) / 2);
+
+            const heightFt = onboardingData?.height?.feet;
+            const heightIn = onboardingData?.height?.inches;
+            const heightText =
+              heightFt != null && heightFt !== '' ? `${heightFt}'${heightIn != null ? ` ${heightIn}"` : ''}` : '—';
+
+            const weightText =
+              onboardingData?.weight != null && onboardingData?.weight !== '' ? `${onboardingData.weight} lbs` : '—';
+
+            const ageText =
+              onboardingData?.age != null && onboardingData?.age !== '' ? String(onboardingData.age) : '—';
+
+            const genderText = onboardingData?.gender ? String(onboardingData.gender) : '—';
+
+            const journeyPreviewRaw = String(onboardingData?.situationDescription || '')
+              .replace(/\s+/g, ' ')
+              .trim();
+            const journeyPreview = journeyPreviewRaw.length ? journeyPreviewRaw : 'Tap to add your journey text…';
+
+            const sections = [
+              {
+                title: 'Personal Info',
+                items: [
+                  { id: 'age', label: 'Age', helper: 'personal info', icon: 'person-outline', value: ageText, editKey: 'personalInfo' },
+                  { id: 'gender', label: 'Gender', helper: 'profile', icon: 'person-outline', value: genderText, editKey: 'personalInfo' },
+                  { id: 'height', label: 'Height', helper: 'personal info', icon: 'stats-chart-outline', value: heightText, editKey: 'personalInfo' },
+                  { id: 'weight', label: 'Weight', helper: 'current weight', icon: 'stats-chart-outline', value: weightText, editKey: 'personalInfo' },
+                ],
+              },
+              {
+                title: 'Training Setup',
+                items: [
+                  { id: 'fitnessLevel', label: 'Level', helper: 'training status', icon: 'flame-outline', value: displayForFieldKey('fitnessLevel'), editKey: 'fitnessLevel' },
+                  { id: 'goal', label: 'Goal', helper: 'primary goal', icon: 'trophy-outline', value: displayForFieldKey('goal'), editKey: 'goal' },
+                  { id: 'equipment', label: 'Equipment', helper: 'available tools', icon: 'barbell-outline', value: displayForFieldKey('equipment'), editKey: 'equipment' },
+                  { id: 'frequency', label: 'Frequency', helper: 'weekly sessions', icon: 'calendar-outline', value: displayForFieldKey('frequency'), editKey: 'frequency' },
+                  { id: 'trainingEnvironment', label: 'Environment', helper: 'training place', icon: 'navigate-outline', value: displayForFieldKey('trainingEnvironment'), editKey: 'trainingEnvironment' },
+                  { id: 'preferredWorkoutTime', label: 'Workout time', helper: 'preferred time', icon: 'time-outline', value: displayForFieldKey('preferredWorkoutTime'), editKey: 'preferredWorkoutTime' },
+                ],
+              },
+              {
+                title: 'Recovery & Extras',
+                items: [
+                  { id: 'exercisesDislike', label: 'Avoid', helper: 'exercise dislikes', icon: 'close-circle-outline', value: displayForFieldKey('exercisesDislike'), editKey: 'exercisesDislike' },
+                  { id: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline', value: displayForFieldKey('injuries'), editKey: 'injuries' },
+                  { id: 'supplements', label: 'Supplements', helper: 'currently taking', icon: 'star-outline', value: displayForFieldKey('supplementsCurrentlyTaking'), editKey: 'supplementsCurrentlyTaking' },
+                  { id: 'stress', label: 'Stress', helper: 'current level', icon: 'water-outline', value: displayForFieldKey('currentStressLevel'), editKey: 'currentStressLevel' },
+                  { id: 'sleep', label: 'Sleep', helper: 'sleep quality', icon: 'moon-outline', value: displayForFieldKey('sleepQuality'), editKey: 'sleepQuality' },
+                  { id: 'energy', label: 'Energy', helper: 'daily energy', icon: 'battery-charging-outline', value: displayForFieldKey('energyLevels'), editKey: 'energyLevels' },
+                  { id: 'hydration', label: 'Hydration', helper: 'water habits', icon: 'water-outline', value: displayForFieldKey('hydrationHabits'), editKey: 'hydrationHabits', fullWidth: true },
+                  { id: 'journey', label: 'My Journey', helper: 'tap to expand', icon: 'document-text-outline', value: journeyPreview, editKey: 'situationDescription', wide: true },
+                ],
+              },
+            ];
+
+            const SectionHeader = ({ text }) => (
+              <View style={{ marginTop: 26, marginBottom: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '900',
+                    letterSpacing: 1.1,
+                    textTransform: 'uppercase',
+                    color: lovableMuted,
+                  }}
+                >
+                  {text}
+                </Text>
+                <View style={{ marginTop: 10, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+              </View>
+            );
+
+            const PillCard = ({ item, accent }) => {
+              const isJourney = item.wide === true;
+              const isFullWidth = item.fullWidth === true || isJourney;
+              const cellStyle = isFullWidth ? { width: usableW, alignSelf: 'center' } : { width: gridCardW };
+              const cardBg = isDark ? '#13131A' : '#FFFFFF';
+              const iconBg = cardBg;
+
+              // Special "My Journey" layout (full width, taller, horizontal, preview)
+              if (isJourney) {
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    activeOpacity={0.9}
+                    onPress={() => setEditingPillKey(item.editKey)}
+                    style={[cellStyle, { marginTop: 10, marginBottom: 6 }]}
+                  >
+                    <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 1.5 }}>
+                      <View
+                        style={{
+                          borderRadius: 21,
+                          backgroundColor: cardBg,
+                          padding: 16,
+                          minHeight: 172,
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 22, padding: 1.5 }}>
+                          <View style={{ width: '100%', height: '100%', borderRadius: 21, backgroundColor: iconBg, justifyContent: 'center', alignItems: 'center' }}>
+                            <Ionicons name={item.icon} size={18} color={accent.text} />
+                          </View>
+                        </LinearGradient>
+
+                        <View style={{ flex: 1, marginLeft: 14 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '900', letterSpacing: 0.8, color: lovableMuted, textTransform: 'uppercase' }}>
+                            {item.label}
+                          </Text>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: lovableText, marginTop: 8 }} numberOfLines={2}>
+                            {item.value}
+                          </Text>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: lovableMuted, marginTop: 10 }}>
+                            Tap to expand
+                          </Text>
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              }
+
+              // Default pill layout (bigger, vertical, centered)
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  activeOpacity={0.9}
+                  onPress={() => setEditingPillKey(item.editKey)}
+                  style={[cellStyle, { marginBottom: 14 }]}
+                >
+                  <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 1.5 }}>
+                    <View
+                      style={{
+                        borderRadius: 21,
+                        backgroundColor: cardBg,
+                        paddingHorizontal: 16,
+                        paddingVertical: 16,
+                        minHeight: 138,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 22, padding: 1.5 }}>
+                        <View style={{ width: '100%', height: '100%', borderRadius: 21, backgroundColor: iconBg, justifyContent: 'center', alignItems: 'center' }}>
+                          <Ionicons name={item.icon} size={18} color={accent.text} />
+                        </View>
+                      </LinearGradient>
+
+                      <Text style={{ marginTop: 12, fontSize: 9, fontWeight: '800', letterSpacing: 0.9, color: lovableMuted, textTransform: 'uppercase', textAlign: 'center' }}>
+                        {item.label}
+                      </Text>
+                      <Text style={{ marginTop: 8, fontSize: 17, fontWeight: '900', color: lovableText, textAlign: 'center' }} numberOfLines={2}>
+                        {item.value}
+                      </Text>
+                      <Text style={{ marginTop: 8, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.62)', textAlign: 'center' }} numberOfLines={1}>
+                        {item.helper}
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              );
+            };
+
+            let globalIdx = 0;
+            return (
+              <View style={{ paddingBottom: 10 }}>
+                {sections.map((sec) => (
+                  <View key={sec.title}>
+                    <SectionHeader text={sec.title} />
+                    {(() => {
+                      const normal = [];
+                      const fullWidth = [];
+                      const wide = [];
+                      for (const it of sec.items) {
+                        if (it.wide) wide.push(it);
+                        else if (it.fullWidth) fullWidth.push(it);
+                        else normal.push(it);
+                      }
+                      const rows = [];
+                      for (let i = 0; i < normal.length; i += 2) rows.push(normal.slice(i, i + 2));
+
+                      return (
+                        <View style={{ width: usableW, alignSelf: 'center' }}>
+                          {rows.map((pair, rowIdx) => (
+                            <View
+                              key={`${sec.title}-row-${rowIdx}`}
+                              style={{
+                                flexDirection: 'row',
+                                width: usableW,
+                                alignSelf: 'center',
+                                justifyContent: pair.length === 2 ? 'space-between' : 'center',
+                                marginBottom: GRID_GAP,
+                              }}
+                            >
+                              {pair.map((it) => {
+                                const accent = LOVABLE_ACCENTS[globalIdx % LOVABLE_ACCENTS.length];
+                                globalIdx += 1;
+                                return <PillCard key={it.id} item={it} accent={accent} />;
+                              })}
+                            </View>
+                          ))}
+
+                          {fullWidth.map((it) => {
+                            const accent = LOVABLE_ACCENTS[globalIdx % LOVABLE_ACCENTS.length];
+                            globalIdx += 1;
+                            return <PillCard key={it.id} item={it} accent={accent} />;
+                          })}
+
+                          {wide.map((it) => {
+                            const accent = LOVABLE_ACCENTS[globalIdx % LOVABLE_ACCENTS.length];
+                            globalIdx += 1;
+                            return <PillCard key={it.id} item={it} accent={accent} />;
+                          })}
+                        </View>
+                      );
+                    })()}
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
+        </View>
 
         {generationError ? (
           <View style={[styles.generationErrorBanner, { marginHorizontal: 16, marginBottom: 16 }]}>
@@ -3294,29 +3759,11 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         ) : null}
       </ScrollView>
       ) : (
-        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 18 }}>
-          <View
-            style={[
-              styles.exerciseLibraryPlaceholder,
-              {
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.exerciseLibrarySoon,
-                { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.6)' },
-              ]}
-            >
-              Coming Soon
-            </Text>
-            <Text style={[styles.exerciseLibraryTitle, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
-              Exercise Library
-            </Text>
-          </View>
-        </View>
+        <WorkoutExerciseLibraryTab
+          isDark={isDark}
+          onThemeToggle={() => toggleTheme(isDark ? 'light' : 'dark')}
+          onboardingData={onboardingData}
+        />
       )}
       </View>
 
@@ -3380,6 +3827,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                   remaining={plansRemaining}
                   total={PLAN_LIMIT_TOTAL}
                   nextReset={nextResetDate}
+                  isDark={isDark}
                   onTapUpgrade={onNavigate ? () => onNavigate('upgrade') : undefined}
                 />
 
@@ -3428,6 +3876,34 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           setCollectionViewingPlan(null);
         }}
       />
+
+      <EditModalForm
+        visible={!!editingPillKey}
+        fieldKey={editingPillKey}
+        title={WORKOUT_BUILDER_ROW_META?.[editingPillKey]?.label}
+        // Use Lovable dark palette (don’t override with builder colors)
+        cardBg="#0D1117"
+        textColor="#FFFFFF"
+        mutedColor="rgba(255,255,255,0.55)"
+        borderColor="rgba(255,255,255,0.12)"
+        onClose={() => setEditingPillKey(null)}
+        onDone={() => {
+          setEditingPillKey(null);
+          saveData(onboardingData);
+        }}
+      >
+        {editingPillKey ? (
+          <WorkoutPlanBuilderFieldEditBody
+            fieldKey={editingPillKey}
+            onboardingData={onboardingData}
+            setOnboardingData={setOnboardingData}
+            validationErrors={validationErrors}
+            setValidationErrors={setValidationErrors}
+            isDark={isDark}
+            styles={styles}
+          />
+        ) : null}
+      </EditModalForm>
 
       {/* Edit Plan Modal */}
       <Modal visible={showEditPlanModal} animationType="slide" transparent>
@@ -3542,48 +4018,33 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 28,
-    paddingHorizontal: 16,
-    height: 52,
+    alignItems: 'stretch',
+    paddingHorizontal: 8,
+    minHeight: 58,
     borderBottomWidth: 1,
   },
   tabButton: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 2,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   tabTextActive: {
-    fontWeight: '700',
+    fontWeight: '800',
   },
   tabIndicator: {
     marginTop: 10,
+    width: '72%',
+    maxWidth: 200,
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#FF6B9D',
-  },
-  exerciseLibraryPlaceholder: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 26,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 160,
-    gap: 10,
-  },
-  exerciseLibrarySoon: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  exerciseLibraryTitle: {
-    fontSize: 18,
-    fontWeight: '800',
   },
   headerWrap: {
     paddingHorizontal: Liquid.spacing.gutter,
@@ -3826,6 +4287,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 8,
     marginBottom: 8,
+    borderWidth: 1,
   },
   optionButtonText: {
     fontSize: 14,
@@ -3833,13 +4295,15 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   optionCard: {
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    borderRadius: 22,
     marginBottom: 12,
+    borderWidth: 1,
   },
   optionCardText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '800',
     fontFamily: 'System',
   },
   frequencySelector: {

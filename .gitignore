@@ -10,7 +10,25 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 web-build/
+.DS_Store
+.claude/
+**/.DS_Store
+*.swp
+*.swo
+*.swx
+*.bak
+*.backup
+src_backup_*/
+backups/
+pglite-debug.log
+functions/pglite-debug.log
+
+# Env files
 .env
 .env.local
 .env.production
+
+# Firebase Admin service accounts (never commit)
+**/serviceAccountKey.json
+serviceAccount*.json
 

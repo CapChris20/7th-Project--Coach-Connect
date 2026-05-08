@@ -12,7 +12,6 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionMeetingCard } from '../../shared/components/SessionMeetingCard';
 import PremiumWelcomeCard from '../components/PremiumWelcomeCard';
 import PremiumTrainerCard from '../components/PremiumTrainerCard';
-import PremiumStatsSection from '../components/PremiumStatsSection';
+import PremiumStatsSection, { GradientBorderShell } from '../components/PremiumStatsSection';
 import {
   isAllowedClientWorkoutDayLabel,
   WORKOUT_DAY_EXAMPLES_SHORT,
@@ -140,17 +139,6 @@ const shouldDisplayTrainerBio = (bio) => {
   const letters = (t.match(/[a-zA-Z]/g) || []).length;
   if (t.length > 24 && letters / t.length < 0.42) return false;
   return true;
-};
-
-const GradientText = ({ text, colors, style }) => {
-  // Uses MaskedView so the LinearGradient shows through text glyphs.
-  return (
-    <MaskedView style={{ alignSelf: 'center' }} maskElement={<Text style={[style, { color: '#000000' }]}>{text}</Text>}>
-      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-        <Text style={[style, { color: 'transparent' }]}>{text}</Text>
-      </LinearGradient>
-    </MaskedView>
-  );
 };
 
 const STORAGE_KEY_LABELS = {
@@ -653,8 +641,10 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
     <CardShell
       icon={icon}
       title="Workouts Today"
+      subtitle={showForm ? 'Log exercises, sets, and weight for today.' : undefined}
       gradientFrom={gradientFrom}
       gradientTo={gradientTo}
+      topBorderColors={['#FF6B9D', '#C084FC', '#FF6B9D']}
       statusBadge={statusBadge}
       showNotified={showNotified}
       hasSavedValue={hasValue}
@@ -791,28 +781,48 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
             <Text style={{ fontSize: 14, color: t.pillText }}>Add Exercise</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={save} activeOpacity={0.85}>
-            <LinearGradient colors={[gradientFrom, gradientTo]} style={data.saveBtn}>
-              <Text style={data.saveBtnText}>Save</Text>
+            <LinearGradient
+              colors={[gradientFrom, gradientTo]}
+              style={[data.saveBtn, { minHeight: 56, paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }]}
+            >
+              <Text style={[data.saveBtnText, { fontSize: 16 }]}>Save workout</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.8} style={{ marginTop: 4 }}>
-          {workoutName ? <Text style={[workoutLog.savedName, { color: t.text }]}>{workoutName}</Text> : null}
-          <View style={workoutLog.savedList}>
+        <View style={{ gap: 12 }}>
+          <Text style={[logCompleted.loggedTag, { color: '#10B981' }]}>WORKOUT LOGGED ✓</Text>
+          <Text style={[logCompleted.todayLine, { color: t.textMuted }]}>
+            Today — <Text style={{ color: t.text, fontWeight: '800' }}>{workoutName || 'Workout'}</Text>
+          </Text>
+          <Text style={[logCompleted.sectionLabel, { color: t.textMuted }]}>EXERCISES COMPLETED</Text>
+          <View style={[logCompleted.summaryBox, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
             {workoutExercises
               .filter((ex) => ex.name.trim())
               .map((ex) => (
-                <Text
-                  key={ex.id}
-                  style={[workoutLog.savedExercise, { color: t.textMuted }]}
-                >
-                  {ex.name}
-                </Text>
+                <View key={ex.id} style={{ marginBottom: 12 }}>
+                  <Text style={[logCompleted.exerciseName, { color: t.text }]}>{ex.name.trim()}</Text>
+                  {ex.sets.map((set, si) => {
+                    const r = String(set.reps || '').trim() || '—';
+                    const w = String(set.weight || '').trim() || '—';
+                    return (
+                      <Text key={set.id} style={[logCompleted.setLine, { color: t.textMuted }]}>
+                        Set {si + 1}: {r} reps × {w} lbs
+                      </Text>
+                    );
+                  })}
+                </View>
               ))}
           </View>
-          <Text style={[workoutLog.tapEdit, { color: t.textDimmed }]}>Tap to edit</Text>
-        </TouchableOpacity>
+          <View style={logCompleted.actionRow}>
+            <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.85} style={logCompleted.textBtn}>
+              <Text style={[logCompleted.textBtnLabel, { color: '#FF6B9D' }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.85} style={logCompleted.textBtn}>
+              <Text style={[logCompleted.textBtnLabel, { color: '#64D2FF' }]}>Add more</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
     </CardShell>
   );
@@ -864,6 +874,23 @@ const workoutLog = StyleSheet.create({
   tapEdit: { fontSize: 11, marginTop: 6 },
 });
 
+const logCompleted = StyleSheet.create({
+  loggedTag: { fontSize: 12, fontWeight: '900', letterSpacing: 0.6 },
+  todayLine: { fontSize: 13, fontWeight: '600' },
+  sectionLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2, marginTop: 4 },
+  summaryBox: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 6,
+  },
+  exerciseName: { fontSize: 15, fontWeight: '900', marginBottom: 6 },
+  setLine: { fontSize: 13, fontWeight: '600', marginLeft: 2, marginBottom: 3 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 8 },
+  textBtn: { paddingVertical: 4 },
+  textBtnLabel: { fontSize: 14, fontWeight: '800' },
+});
+
 const CARD_ACCENT = {
   dashboard_sleep: '#64D2FF',
   dashboard_workouts: '#AF52DE',
@@ -882,15 +909,33 @@ const CARD_ACCENT = {
   dashboard_notes: '#8A8A8A',
 };
 
+const shellIconRender = (icon) =>
+  React.isValidElement(icon)
+    ? React.cloneElement(icon, {
+        color: 'rgba(255,255,255,0.95)',
+        size: Math.max(Number(icon.props?.size) || 0, 24),
+      })
+    : icon;
+
 const CardShell = ({
-  icon, title, gradientFrom, gradientTo,
-  statusBadge, showNotified, hasSavedValue, isDark, children,
+  icon,
+  title,
+  subtitle: headerSubtitle,
+  gradientFrom,
+  gradientTo,
+  topBorderColors,
+  statusBadge,
+  showNotified,
+  hasSavedValue,
+  isDark,
+  children,
   accentColor,
   rightAction,
 }) => {
   const t = isDark ? DARK : LIGHT;
   const notifiedOpacity = useRef(new Animated.Value(0)).current;
-  const leftBarColor = accentColor != null ? accentColor : gradientFrom;
+  const accent = accentColor != null ? accentColor : gradientFrom;
+  const topColors = topBorderColors || [gradientFrom, gradientTo, gradientFrom];
 
   useEffect(() => {
     if (showNotified) {
@@ -902,64 +947,133 @@ const CardShell = ({
     }
   }, [showNotified]);
 
+  const cardBg = isDark ? '#13131A' : '#FFFFFF';
+  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
+
   return (
-    <View style={[shell.card, { backgroundColor: t.cardBg, borderColor: isDark ? 'rgba(255,255,255,0.10)' : t.cardBorder }]}>
-      <View style={[shell.leftBorder, { backgroundColor: leftBarColor }]} />
-      {rightAction ? <View style={shell.rightAction}>{rightAction}</View> : null}
-      {statusBadge && (
-        <View style={[shell.badge, { backgroundColor: t.pillBg, borderColor: t.pillBorder }]}>
-          <Ionicons name="checkmark-outline" size={13} color={t.pillText} style={shell.badgeIcon} />
-          <Text style={[shell.badgeText, { color: t.pillText }]}>{statusBadge}</Text>
-        </View>
-      )}
-      <View style={shell.row}>
-        <View style={[shell.iconCircle, { backgroundColor: t.pillBg, borderColor: t.inputBorder }]}>
-          {icon}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[shell.title, { color: t.text }]}>{title}</Text>
-          {children}
+    <View
+      style={[
+        shell.outer,
+        Platform.OS === 'ios' && {
+          shadowColor: '#000000',
+          shadowRadius: 14,
+          shadowOpacity: isDark ? 0.35 : 0.12,
+          shadowOffset: { width: 0, height: 6 },
+        },
+      ]}
+    >
+      <View style={shell.clip}>
+        <LinearGradient
+          colors={topColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={shell.topBar}
+        />
+        <View style={[shell.body, { backgroundColor: cardBg, borderColor: borderCol }]}>
+          <View
+            style={[shell.innerWash, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.6)' }]}
+            pointerEvents="none"
+          />
+          {rightAction ? <View style={shell.rightAction}>{rightAction}</View> : null}
+          {statusBadge ? (
+            <View style={[shell.badge, { backgroundColor: t.pillBg, borderColor: t.pillBorder }]}>
+              <Ionicons name="checkmark-circle" size={14} color="#10B981" style={shell.badgeIcon} />
+              <Text style={[shell.badgeText, { color: t.pillText }]}>{statusBadge}</Text>
+            </View>
+          ) : null}
+
+          <View style={shell.headerRow}>
+            <View
+              style={[
+                shell.iconCircle,
+                {
+                  backgroundColor: isDark ? `${accent}2E` : `${accent}22`,
+                  borderColor: isDark ? `${accent}55` : `${accent}40`,
+                },
+              ]}
+            >
+              {shellIconRender(icon)}
+            </View>
+            <View style={shell.headerTextCol}>
+              <Text style={[shell.title, { color: t.text }]}>{title}</Text>
+              {headerSubtitle ? (
+                <Text style={[shell.headerSubtitle, { color: t.textMuted }]}>{headerSubtitle}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={shell.childrenWrap}>{children}</View>
+
+          {showNotified ? (
+            <Animated.View style={[shell.notified, { opacity: notifiedOpacity }]}>
+              <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
+              <Text style={shell.notifiedText}>Trainer notified</Text>
+            </Animated.View>
+          ) : !hasSavedValue ? (
+            <Text style={[shell.subtleNote, { color: t.textSubtle }]}>✓ Trainer notified when entered</Text>
+          ) : null}
         </View>
       </View>
-      {showNotified ? (
-        <Animated.View style={[shell.notified, { opacity: notifiedOpacity }]}>
-          <Ionicons name="checkmark" size={12} color="#22c55e" />
-          <Text style={shell.notifiedText}>Trainer notified</Text>
-        </Animated.View>
-      ) : !hasSavedValue ? (
-        <Text style={[shell.subtleNote, { color: t.textSubtle }]}>
-          ✓ Trainer notified when entered
-        </Text>
-      ) : null}
     </View>
   );
 };
 
 const shell = StyleSheet.create({
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-    position: 'relative',
-    ...(Platform.OS === 'ios' && {
-      shadowColor: '#C084FC',
-      shadowRadius: 8,
-      shadowOpacity: 0.15,
-      shadowOffset: { width: 0, height: 2 },
-    }),
+  outer: {
+    marginBottom: 16,
+    elevation: 5,
   },
-  leftBorder: { position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 99 },
-  badge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderRadius: 99, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 8, marginLeft: 12, gap: 6 },
+  clip: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  topBar: {
+    height: 3,
+    width: '100%',
+  },
+  body: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 18,
+    position: 'relative',
+  },
+  innerWash: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.85,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 12,
+    gap: 6,
+  },
   badgeIcon: { marginRight: 0 },
-  badgeText: { fontSize: 11 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginLeft: 12 },
-  iconCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  title: { fontSize: 14, fontWeight: '600' },
-  rightAction: { position: 'absolute', top: 12, right: 12, zIndex: 3 },
-  notified: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, marginLeft: 12 },
-  notifiedText: { fontSize: 11, color: '#22c55e' },
-  subtleNote: { fontSize: 11, marginTop: 8, marginLeft: 12 },
+  badgeText: { fontSize: 11, fontWeight: '800' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14, zIndex: 1 },
+  iconCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  headerTextCol: { flex: 1, minWidth: 0 },
+  title: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
+  headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 4, lineHeight: 18 },
+  childrenWrap: { marginTop: 16, zIndex: 1 },
+  rightAction: { position: 'absolute', top: 14, right: 14, zIndex: 3 },
+  notified: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, zIndex: 1 },
+  notifiedText: { fontSize: 12, fontWeight: '700', color: '#22c55e' },
+  subtleNote: { fontSize: 11, marginTop: 10, fontWeight: '600', zIndex: 1 },
 });
 
 const DataCard = ({
@@ -1242,60 +1356,138 @@ const bentoMetric = StyleSheet.create({
   },
 });
 
-const RatingCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, isDark, onAfterSave }) => {
+const sorenessInterpret = (n) => {
+  if (n <= 2) return 'Low soreness — recovery looks on track.';
+  if (n <= 4) return 'Light soreness — typical after hard training.';
+  if (n <= 6) return 'Moderate soreness — give your body time to recover.';
+  return 'High soreness — prioritize rest, sleep, and mobility.';
+};
+const energyInterpret = (n) => {
+  if (n <= 2) return 'Low energy — focus on sleep, fuel, and lighter stimulus.';
+  if (n <= 4) return 'Below average — consider active recovery or easier volume.';
+  if (n <= 6) return 'Steady energy — you can train; stay aware of effort.';
+  if (n <= 7) return 'Strong energy — a good day to progress.';
+  return 'High energy — great day to push quality reps.';
+};
+const stressInterpret = (n) => {
+  if (n <= 2) return 'Low stress — manageable day.';
+  if (n <= 4) return 'Mild stress — keep routines that help you downshift.';
+  if (n <= 6) return 'Moderate stress — protect recovery and sleep.';
+  return 'High stress — simplify training and create breathing room.';
+};
+const workoutRatingInterpret = (n, max) => {
+  const p = n / max;
+  if (p <= 0.35) return 'Light session — it still counts toward consistency.';
+  if (p <= 0.55) return 'Solid effort — room to keep building.';
+  if (p <= 0.75) return 'Strong session — nice work staying engaged.';
+  if (p <= 0.9) return 'Great session — you pushed with intent.';
+  return 'Outstanding effort — be proud of this one.';
+};
+
+const RatingCard = ({
+  icon,
+  title,
+  subtitle,
+  storageKey,
+  gradientFrom,
+  gradientTo,
+  isDark,
+  onAfterSave,
+  maxRating = 8,
+  topBorderColors,
+  interpretFn,
+}) => {
   const t = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save } = useCardState(storageKey, onAfterSave);
-  const currentValue = savedValue ? String(savedValue) : '0';
-  return (
-    <CardShell icon={icon} title={title} gradientFrom={gradientFrom} gradientTo={gradientTo}
-      showNotified={showNotified} hasSavedValue={!!savedValue} isDark={isDark} accentColor={CARD_ACCENT[storageKey]}>
-      <Text style={[rating.subtitle, { color: t.textMuted }]}>{subtitle}</Text>
-      <View style={rating.pillArea}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={rating.pillScroll}
-        >
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
-            const isActive = savedValue === String(n);
-            return (
-              <TouchableOpacity
-                key={n}
-                onPress={() => save(String(n))}
-                activeOpacity={0.9}
-              >
-                {isActive ? (
-                  <LinearGradient colors={['#7C3AED', '#EC4899']} style={rating.pill}>
-                    <Text style={[rating.pillText, { color: '#FFFFFF' }]}>{n}</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={[rating.pill, { backgroundColor: t.pillBg, borderWidth: 1, borderColor: t.pillBorder }]}>
-                    <Text style={[rating.pillText, { color: t.pillText }]}>{n}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+  const [editing, setEditing] = useState(false);
+  const nums = Array.from({ length: maxRating }, (_, i) => i + 1);
+  const nSaved = savedValue ? parseInt(String(savedValue), 10) : NaN;
+  const showPicker = !savedValue || editing;
+  const line =
+    interpretFn && Number.isFinite(nSaved) && nSaved >= 1 ? interpretFn(nSaved, maxRating) : '';
 
-        <View style={rating.currentValueWrap}>
-          <GradientText
-            text={currentValue}
-            colors={['#7C3AED', '#EC4899']}
-            style={rating.currentValue}
-          />
+  const handlePick = (n) => {
+    save(String(n));
+    setEditing(false);
+  };
+
+  return (
+    <CardShell
+      icon={icon}
+      title={title}
+      subtitle={showPicker ? subtitle : undefined}
+      gradientFrom={gradientFrom}
+      gradientTo={gradientTo}
+      topBorderColors={topBorderColors}
+      showNotified={showNotified}
+      hasSavedValue={!!savedValue}
+      isDark={isDark}
+      accentColor={CARD_ACCENT[storageKey]}
+    >
+      {!showPicker ? (
+        <View style={{ gap: 10 }}>
+          <Text style={[rating.loggedTag, { color: '#10B981' }]}>RATING LOGGED ✓</Text>
+          <Text style={[rating.summaryBig, { color: t.text }]}>
+            You rated:{' '}
+            <Text style={{ color: '#FF6B9D' }}>{savedValue}</Text> out of {maxRating}
+          </Text>
+          <Text style={[rating.interpret, { color: t.textMuted }]}>{line}</Text>
+          <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+            <Text style={{ color: '#64D2FF', fontWeight: '800', fontSize: 14 }}>Edit rating</Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      ) : (
+        <View style={{ marginTop: 2 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={rating.pillScroll}>
+            {nums.map((n) => {
+              const isActive = String(n) === String(savedValue || '');
+              return (
+                <TouchableOpacity key={n} onPress={() => handlePick(n)} activeOpacity={0.88}>
+                  {isActive ? (
+                    <LinearGradient colors={['#FF6B9D', '#C084FC']} style={rating.pillActive}>
+                      <Text style={[rating.pillTextActive]}>{n}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={[rating.pillIdle, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}>
+                      <Text style={[rating.pillTextIdle, { color: t.textMuted }]}>{n}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
     </CardShell>
   );
 };
 
 const rating = StyleSheet.create({
+  loggedTag: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  summaryBig: { fontSize: 18, fontWeight: '800' },
+  interpret: { fontSize: 13, lineHeight: 20, fontWeight: '600' },
   subtitle: { fontSize: 12, marginTop: 2 },
-  btn: { width: 40, height: 32, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  btnText: { fontSize: 12, fontWeight: '600' },
+  pillScroll: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 4 },
+  pillActive: {
+    minWidth: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  pillIdle: {
+    minWidth: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+  },
+  pillTextActive: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+  pillTextIdle: { fontSize: 14, fontWeight: '800' },
   pillArea: { flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'center' },
-  pillScroll: { flexDirection: 'row', gap: 4, alignItems: 'center' },
   pill: {
     width: 28,
     height: 28,
@@ -1311,72 +1503,98 @@ const rating = StyleSheet.create({
   clearLabel: { fontSize: 9, fontWeight: '600', marginTop: 2 },
 });
 
-const EMOJIS = ['😞', '😕', '😐', '🙂', '😄'];
+const MOOD_EMOJIS = ['😞', '😕', '😐', '🙂', '😄'];
+const MOOD_LABELS = ['Very low', 'Low', 'Okay', 'Good', 'Great'];
 
 const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, isDark }) => {
   const t = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save } = useCardState(storageKey);
+  const [editing, setEditing] = useState(false);
+  const idx = savedValue != null && savedValue !== '' ? parseInt(String(savedValue), 10) : NaN;
+  const showPicker = !Number.isFinite(idx) || editing;
+  const emoji = Number.isFinite(idx) && MOOD_EMOJIS[idx] ? MOOD_EMOJIS[idx] : null;
+  const label = Number.isFinite(idx) && MOOD_LABELS[idx] ? MOOD_LABELS[idx] : '';
+
   return (
-    <CardShell icon={icon} title={title} gradientFrom={gradientFrom} gradientTo={gradientTo}
-      showNotified={showNotified} hasSavedValue={!!savedValue} isDark={isDark} accentColor={CARD_ACCENT[storageKey]}>
-      <Text style={[mood.label, { color: t.textMuted }]}>How are you feeling today?</Text>
-      <LinearGradient
-        colors={['rgba(124,58,237,0.18)', 'rgba(236,72,153,0.12)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={mood.emojiCard}
-      >
-        <View style={mood.emojiRow}>
-          {EMOJIS.map((emoji, i) => {
-            const isActive = savedValue === String(i);
-            return (
-              <TouchableOpacity
-                key={i}
-                onPress={() => save(String(i))}
-                activeOpacity={0.9}
-                style={[
-                  mood.emojiBtn,
-                  {
-                    opacity: isActive ? 1 : 0.4,
-                    transform: [{ scale: isActive ? 1.3 : 1 }],
-                    backgroundColor: isActive ? 'rgba(255,255,255,0.95)' : 'transparent',
-                    shadowColor: isActive ? '#EC4899' : 'transparent',
-                  },
-                ]}
-              >
-                <Text style={mood.emojiText}>{emoji}</Text>
-              </TouchableOpacity>
-            );
-          })}
+    <CardShell
+      icon={icon}
+      title={title}
+      subtitle={showPicker ? subtitle || 'How are you feeling today?' : undefined}
+      gradientFrom={gradientFrom}
+      gradientTo={gradientTo}
+      topBorderColors={['#06B6D4', '#3B82F6', '#06B6D4']}
+      showNotified={showNotified}
+      hasSavedValue={!!savedValue}
+      isDark={isDark}
+      accentColor={CARD_ACCENT[storageKey]}
+    >
+      {!showPicker ? (
+        <View style={{ gap: 10 }}>
+          <Text style={[rating.loggedTag, { color: '#10B981' }]}>MOOD LOGGED ✓</Text>
+          <Text style={{ fontSize: 40, textAlign: 'left' }}>{emoji}</Text>
+          <Text style={[rating.summaryBig, { color: t.text }]}>
+            You're feeling:{' '}
+            <Text style={{ color: '#64D2FF' }}>{label}</Text>
+          </Text>
+          <Text style={[rating.interpret, { color: t.textMuted }]}>Nice! Keep checking in — it helps your coach support you.</Text>
+          <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8}>
+            <Text style={{ color: '#FF6B9D', fontWeight: '800', fontSize: 14 }}>Edit mood</Text>
+          </TouchableOpacity>
         </View>
-      </LinearGradient>
+      ) : (
+        <View style={[mood.emojiCard, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+          <View style={mood.emojiRow}>
+            {MOOD_EMOJIS.map((em, i) => {
+              const isActive = String(savedValue) === String(i);
+              return (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => {
+                    save(String(i));
+                    setEditing(false);
+                  }}
+                  activeOpacity={0.9}
+                  style={[
+                    mood.emojiBtn,
+                    isActive && mood.emojiBtnActive,
+                    {
+                      borderColor: isActive ? '#FF6B9D' : 'transparent',
+                      backgroundColor: isActive ? (isDark ? 'rgba(255,107,157,0.2)' : 'rgba(255,107,157,0.12)') : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={[mood.emojiText, { opacity: isActive ? 1 : 0.45 }]}>{em}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
     </CardShell>
   );
 };
 
 const mood = StyleSheet.create({
-  label: { fontSize: 12, marginTop: 2, fontWeight: '600' },
   emojiCard: {
-    marginTop: 10,
+    marginTop: 4,
     borderRadius: 18,
     paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
-  emojiRow: { flexDirection: 'row', gap: 10, justifyContent: 'space-between', paddingHorizontal: 2 },
+  emojiRow: { flexDirection: 'row', gap: 8, justifyContent: 'space-between', paddingHorizontal: 2 },
   emojiBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    borderWidth: 2,
   },
-  emojiText: { fontSize: 20 },
+  emojiBtnActive: {
+    transform: [{ scale: 1.06 }],
+  },
+  emojiText: { fontSize: 24 },
 });
 
 const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, questions, isDark }) => {
@@ -1386,10 +1604,18 @@ const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientT
   const hasAnyValue = Object.keys(values).length > 0;
   const handleToggle = (key, val) => { const updated = { ...values, [key]: val }; save(JSON.stringify(updated)); };
   return (
-    <CardShell icon={icon} title={title} gradientFrom={gradientFrom} gradientTo={gradientTo}
-      showNotified={showNotified} hasSavedValue={hasAnyValue} isDark={isDark} accentColor={CARD_ACCENT[storageKey]}>
-      {subtitle && <Text style={[rating.subtitle, { color: t.textMuted }]}>{subtitle}</Text>}
-      <View style={{ gap: 8, marginTop: 8 }}>
+    <CardShell
+      icon={icon}
+      title={title}
+      subtitle={subtitle}
+      gradientFrom={gradientFrom}
+      gradientTo={gradientTo}
+      showNotified={showNotified}
+      hasSavedValue={hasAnyValue}
+      isDark={isDark}
+      accentColor={CARD_ACCENT[storageKey]}
+    >
+      <View style={{ gap: 8, marginTop: 2 }}>
         {questions.map((q) => (
           <View key={q.key} style={toggle.row}>
             <Text style={[toggle.label, { color: t.textMuted }]}>{q.label}</Text>
@@ -1518,32 +1744,94 @@ const ComplianceCard = ({ isDark }) => {
     );
   };
 
+  const answered = (obj, key) =>
+    obj && Object.prototype.hasOwnProperty.call(obj, key) && (obj[key] === 'Yes' || obj[key] === 'No');
+
+  const allAnswered =
+    answered(nutritionValues, 'calories') &&
+    answered(nutritionValues, 'protein') &&
+    answered(mealplanValues, 'followed') &&
+    answered(supplementsValues, 'taken');
+
+  const yesCount = [
+    nutritionValues.calories === 'Yes',
+    nutritionValues.protein === 'Yes',
+    mealplanValues.followed === 'Yes',
+    supplementsValues.taken === 'Yes',
+  ].filter(Boolean).length;
+
+  const complianceLines = [
+    { label: 'Hit calorie goal today?', val: nutritionValues.calories },
+    { label: 'Hit protein target?', val: nutritionValues.protein },
+    { label: 'Followed meal plan?', val: mealplanValues.followed },
+    { label: 'Took all supplements?', val: supplementsValues.taken },
+  ];
+
+  const cardBg = isDark ? '#13131A' : '#FFFFFF';
+  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
+
   return (
-    <LinearGradient
-      colors={['rgba(124,58,237,0.18)', 'rgba(236,72,153,0.12)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={compliance.cardGradientOuter}
+    <View
+      style={[
+        compliance.outerWrap,
+        Platform.OS === 'ios' && {
+          shadowColor: '#000',
+          shadowOpacity: isDark ? 0.35 : 0.12,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+        },
+      ]}
     >
-      <View
-        style={[
-          compliance.cardInner,
-          {
-            backgroundColor: t.cardBg,
-            borderColor: t.cardBorder,
-          },
-        ]}
-      >
-        <View style={compliance.headerRow}>
-          <Text style={[compliance.header, { color: t.textMuted }]}>Today's Compliance</Text>
-          {anyNotified ? (
-            <View style={compliance.headerNotified}>
-              <Ionicons name="checkmark" size={14} color="#22c55e" />
+      <View style={shell.clip}>
+        <LinearGradient
+          colors={['#10B981', '#06B6D4', '#10B981']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={shell.topBar}
+        />
+        <View style={[compliance.cardBody, { backgroundColor: cardBg, borderColor: borderCol }]}>
+          <View
+            style={[compliance.innerWash, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)' }]}
+            pointerEvents="none"
+          />
+          <View style={compliance.headerRow}>
+            <View style={compliance.titleRow}>
+              <View style={compliance.headerIcon}>
+                <Ionicons name="shield-checkmark" size={24} color="rgba(255,255,255,0.95)" />
+              </View>
+              <View>
+                <Text style={[compliance.headerTitle, { color: t.text }]}>Today&apos;s Compliance</Text>
+                <Text style={[compliance.headerSub, { color: t.textMuted }]}>Quick yes/no — your coach sees this on the daily log.</Text>
+              </View>
+            </View>
+            {anyNotified ? (
+              <View style={compliance.headerNotified}>
+                <Ionicons name="checkmark" size={14} color="#22c55e" />
+              </View>
+            ) : null}
+          </View>
+
+          {allAnswered ? (
+            <View style={[compliance.summaryBox, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+              <Text style={[compliance.loggedTag, { color: '#10B981' }]}>COMPLIANCE LOGGED ✓</Text>
+              {complianceLines.map((row) => (
+                <Text key={row.label} style={[compliance.summaryLine, { color: t.text }]}>
+                  {row.val === 'Yes' ? '✓ ' : '○ '}
+                  {row.label}{' '}
+                  <Text style={{ fontWeight: '900', color: row.val === 'Yes' ? '#10B981' : '#F97316' }}>{row.val}</Text>
+                </Text>
+              ))}
+              <Text style={[compliance.scoreLine, { color: t.textMuted }]}>
+                Score:{' '}
+                <Text style={{ color: t.text, fontWeight: '900' }}>
+                  {yesCount}/4
+                </Text>
+                {yesCount === 4 ? ' — Full marks today!' : yesCount >= 3 ? ' — Great day!' : ' — Keep stacking wins.'}
+              </Text>
             </View>
           ) : null}
-        </View>
 
-        <View style={compliance.rowsWrap}>
+          <View style={compliance.rowsWrap}>
           {/* Nutrition */}
           <View style={compliance.row}>
             <Text style={[compliance.rowLabel, { color: t.textMuted }]}>Hit calorie goal today?</Text>
@@ -1590,16 +1878,60 @@ const ComplianceCard = ({ isDark }) => {
             })}
           </View>
         </View>
+        </View>
       </View>
-    </LinearGradient>
+    </View>
   );
 };
 
 const compliance = StyleSheet.create({
-  cardGradientOuter: { borderRadius: 20, padding: 1, marginBottom: 16 },
-  cardInner: { borderRadius: 19, borderWidth: 1, padding: 14 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  header: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  outerWrap: {
+    marginBottom: 16,
+    elevation: 5,
+  },
+  cardBody: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 16,
+    position: 'relative',
+  },
+  innerWash: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.85,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    zIndex: 1,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  headerIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(16,185,129,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
+  headerSub: { fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 17 },
+  summaryBox: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 14,
+    zIndex: 1,
+    gap: 6,
+  },
+  loggedTag: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6, marginBottom: 6 },
+  summaryLine: { fontSize: 13, fontWeight: '600', lineHeight: 20 },
+  scoreLine: { fontSize: 13, fontWeight: '600', marginTop: 8 },
   headerNotified: {
     width: 22,
     height: 22,
@@ -1612,38 +1944,10 @@ const compliance = StyleSheet.create({
   },
   rowsWrap: {},
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
-  rowLabel: { fontSize: 12, flex: 1, paddingRight: 10 },
+  rowLabel: { fontSize: 12, flex: 1, paddingRight: 10, fontWeight: '600' },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
   toggleBtnRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   toggleText: { fontSize: 12, fontWeight: '800' },
-});
-
-const STAR_FILLED_COLOR = '#F59E0B';
-
-const StarRatingCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
-  const { savedValue, showNotified, save } = useCardState(storageKey);
-  const starRating = savedValue ? parseInt(savedValue) : 0;
-  return (
-    <CardShell icon={icon} title={title} gradientFrom={gradientFrom} gradientTo={gradientTo}
-      showNotified={showNotified} hasSavedValue={!!savedValue} isDark={isDark} accentColor="#F59E0B">
-      <Text style={star.sessionLabel}>Session Rating</Text>
-      <Text style={[rating.subtitle, { color: t.textMuted }]}>{subtitle}</Text>
-      <View style={star.starRow}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <TouchableOpacity key={n} onPress={() => save(String(n))} activeOpacity={0.7}>
-            <Ionicons name={n <= starRating ? 'star' : 'star-outline'} size={32}
-              color={n <= starRating ? STAR_FILLED_COLOR : t.textDimmed} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </CardShell>
-  );
-};
-
-const star = StyleSheet.create({
-  sessionLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(245,158,11,0.95)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
-  starRow: { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' },
 });
 
 const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradientTo, isDark }) => {
@@ -1663,8 +1967,17 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
     setValue(savedValue || '');
   };
   return (
-    <CardShell icon={icon} title={title} gradientFrom={gradientFrom} gradientTo={gradientTo}
-      showNotified={showNotified} hasSavedValue={!!savedValue} isDark={isDark} accentColor={CARD_ACCENT[storageKey]}
+    <CardShell
+      icon={icon}
+      title={title}
+      subtitle={showInput ? 'Only your coach reads this note.' : undefined}
+      gradientFrom={gradientFrom}
+      gradientTo={gradientTo}
+      topBorderColors={['#FF6B9D', '#F97316', '#FF6B9D']}
+      showNotified={showNotified}
+      hasSavedValue={!!savedValue}
+      isDark={isDark}
+      accentColor={CARD_ACCENT[storageKey]}
       rightAction={
         <TouchableOpacity
           onPress={startEdit}
@@ -1694,8 +2007,12 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
         <TouchableOpacity onPress={startEdit} activeOpacity={0.85} style={{ marginTop: 4 }}>
           {savedValue ? (
             <>
-              <Text style={notes.savedNoteText}>{savedValue}</Text>
+              <Text style={{ color: '#10B981', fontWeight: '900', fontSize: 12, letterSpacing: 0.4, marginBottom: 8 }}>
+                NOTE SAVED ✓
+              </Text>
+              <Text style={[notes.savedNoteText, { color: t.text }]}>{savedValue}</Text>
               <Text style={[data.timeSince, { color: t.textDimmed }]}>Updated {getTimeSince()}</Text>
+              <Text style={{ color: '#64D2FF', fontWeight: '800', fontSize: 13, marginTop: 10 }}>Tap to edit</Text>
             </>
           ) : (
             <Text style={notes.noNoteText}>Tap to add a note for your trainer</Text>
@@ -1718,7 +2035,7 @@ const notes = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  savedNoteText: { fontSize: 13, fontStyle: 'italic', marginTop: 2, color: 'rgba(255,255,255,0.55)', lineHeight: 18 },
+  savedNoteText: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
   noNoteText: { fontSize: 13, fontStyle: 'italic', marginTop: 2, color: 'rgba(255,255,255,0.45)', lineHeight: 18 },
 });
 
@@ -1727,6 +2044,7 @@ export const MyDashboardScreen = ({
   embedInLayout = false,
   onMetricsChange,
   onPressMessage,
+  onPressViewProfile,
   onOpenRemoveTrainer,
   onOpenPhotoGallery,
   onOpenAIWorkouts,
@@ -1744,6 +2062,7 @@ export const MyDashboardScreen = ({
   const insets = useSafeAreaInsets();
   const t = isDark ? DARK : LIGHT;
   const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;
+  const handleViewProfile = typeof onPressViewProfile === 'function' ? onPressViewProfile : onPressMessage;
   const currentUser = auth?.currentUser;
   const scrollRef = useRef(null);
   const [untilResetMs, setUntilResetMs] = useState(msUntilMidnight());
@@ -2240,7 +2559,7 @@ export const MyDashboardScreen = ({
                 experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
               }}
               onPressCard={onPressMessage}
-              onPressSecondaryCTA={onPressMessage}
+              onPressSecondaryCTA={handleViewProfile}
               onPressCTA={onPressMessage}
               ctaLabel="Message"
               secondaryCtaLabel="View Profile"
@@ -2248,27 +2567,42 @@ export const MyDashboardScreen = ({
           </View>
         ) : (
           <TouchableOpacity
-            style={emptyTrainerStyles.card}
+            style={emptyTrainerStyles.touchWrap}
             onPress={onPressMessage}
-            activeOpacity={0.88}
+            activeOpacity={0.92}
           >
-            <LinearGradient
-              colors={isDark ? ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.02)'] : ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
-              style={emptyTrainerStyles.cardInner}
-            >
-              <View style={emptyTrainerStyles.iconCircle}>
-                <Ionicons name="person-add-outline" size={26} color={t.textDimmed} />
+            <GradientBorderShell isDark={isDark}>
+              <View style={emptyTrainerStyles.row}>
+                <View
+                  style={[
+                    emptyTrainerStyles.iconCircle,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)',
+                      borderColor: isDark ? 'rgba(255,107,157,0.38)' : 'rgba(255,107,157,0.28)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="person-add-outline" size={24} color="#FF6B9D" />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[emptyTrainerStyles.title, { color: t.text }]}>No trainer yet</Text>
+                  <Text style={[emptyTrainerStyles.subtitle, { color: t.textMuted }]}>
+                    Find a certified coach to guide your journey
+                  </Text>
+                </View>
+                <LinearGradient
+                  colors={['#FF6B9D', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={emptyTrainerStyles.ctaGradient}
+                >
+                  <View style={emptyTrainerStyles.ctaInner}>
+                    <Text style={emptyTrainerStyles.ctaText}>Browse</Text>
+                    <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+                  </View>
+                </LinearGradient>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[emptyTrainerStyles.title, { color: t.text }]}>No trainer yet</Text>
-                <Text style={[emptyTrainerStyles.subtitle, { color: t.textMuted }]}>
-                  Find a certified coach to guide your journey
-                </Text>
-              </View>
-              <View style={emptyTrainerStyles.ctaChip}>
-                <Text style={emptyTrainerStyles.ctaText}>Browse →</Text>
-              </View>
-            </LinearGradient>
+            </GradientBorderShell>
           </TouchableOpacity>
         )}
 
@@ -2540,33 +2874,42 @@ export const MyDashboardScreen = ({
         <RatingCard
           icon={icon('flame-outline')}
           title="Muscle Soreness"
-          subtitle="Rate how sore you are"
+          subtitle="Rate how sore you are (1–8)."
           storageKey="dashboard_soreness"
           gradientFrom="#F97316"
           gradientTo="#C084FC"
           isDark={isDark}
+          maxRating={8}
+          topBorderColors={['#EF4444', '#F97316', '#FB7185']}
+          interpretFn={(n) => sorenessInterpret(n)}
           onAfterSave={onMetricsChange ? (v) => onMetricsChange({ soreness: v }) : undefined}
         />
 
         <RatingCard
           icon={icon('flash-outline')}
           title="Energy Level"
-          subtitle="Rate your energy today"
+          subtitle="Rate your energy today (1–8)."
           storageKey="dashboard_energy"
           gradientFrom="#C084FC"
           gradientTo="#F97316"
           isDark={isDark}
+          maxRating={8}
+          topBorderColors={['#FF9F0A', '#FBBF24', '#F97316']}
+          interpretFn={(n) => energyInterpret(n)}
           onAfterSave={onMetricsChange ? (v) => onMetricsChange({ energyLevel: v }) : undefined}
         />
 
         <RatingCard
           icon={icon('pulse-outline')}
           title="Stress Level"
-          subtitle="How stressed are you?"
+          subtitle="How stressed are you? (1–8)"
           storageKey="dashboard_stress"
           gradientFrom="#FF6B9D"
           gradientTo="#06B6D4"
           isDark={isDark}
+          maxRating={8}
+          topBorderColors={['#C084FC', '#FF6B9D', '#A855F7']}
+          interpretFn={(n) => stressInterpret(n)}
           onAfterSave={onMetricsChange ? (v) => onMetricsChange({ stressLevel: v }) : undefined}
         />
 
@@ -2575,8 +2918,18 @@ export const MyDashboardScreen = ({
 
         <ComplianceCard isDark={isDark} />
 
-        <StarRatingCard icon={icon('star-outline')} title="Post-Workout Rating" subtitle="How was today's session?"
-          storageKey="dashboard_workout_rating" gradientFrom="#FF6B9D" gradientTo="#C084FC" isDark={isDark} />
+        <RatingCard
+          icon={icon('star-outline')}
+          title="Post-Workout Rating"
+          subtitle="How was today's session? (1–10)"
+          storageKey="dashboard_workout_rating"
+          gradientFrom="#FF6B9D"
+          gradientTo="#C084FC"
+          isDark={isDark}
+          maxRating={10}
+          topBorderColors={['#FF6B9D', '#F97316', '#FF6B9D']}
+          interpretFn={(n, max) => workoutRatingInterpret(n, max)}
+        />
 
         <NotesCard icon={icon('pencil-outline')} title="Notes to Trainer"
           placeholder="How did you feel today? Any pain or wins?"
@@ -2687,42 +3040,52 @@ const trainerCardStyles = StyleSheet.create({
 });
 
 const emptyTrainerStyles = StyleSheet.create({
-  card: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderStyle: 'dashed',
+  touchWrap: {
+    marginTop: 12,
+    marginBottom: 20,
   },
-  cardInner: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
     gap: 12,
   },
   iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.7)', marginBottom: 3 },
-  subtitle: { fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 16 },
-  ctaChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(192,132,252,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(192,132,252,0.3)',
+  title: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
-  ctaText: { fontSize: 12, fontWeight: '700', color: '#C084FC' },
+  subtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  ctaGradient: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  ctaText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
 });
 
 export default MyDashboardScreen;

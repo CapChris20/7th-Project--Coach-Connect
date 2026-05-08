@@ -13,14 +13,29 @@ export default function WorkoutPlanBuilderFieldEditBody({
   isDark,
   styles,
 }) {
+  // Lovable modal palette (dark). Keep logic identical; only affects UI colors.
+  const BG_INPUT = '#1a1520';
+  const BG_OPTION_UNSELECTED = 'rgba(255,255,255,0.05)';
+  const BG_OPTION_SELECTED = '#FF4D8D'; // darker / premium pink than #FF6B9D
+  const BORDER_DEFAULT = 'rgba(255,255,255,0.12)';
+  const TEXT = '#FFFFFF';
+  const MUTED = 'rgba(255,255,255,0.55)';
+
   switch (fieldKey) {
     case 'personalInfo':
       return (
         <View style={styles.editFields}>
           <View style={styles.editField}>
-            <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>Weight (lbs)</Text>
+            <Text style={[styles.editLabel, { color: TEXT }]}>Weight (lbs)</Text>
             <TextInput
-              style={[styles.editInput, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: validationErrors.weight ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)') }]}
+              style={[
+                styles.editInput,
+                {
+                  color: TEXT,
+                  backgroundColor: BG_INPUT,
+                  borderColor: validationErrors.weight ? '#EF4444' : BORDER_DEFAULT,
+                },
+              ]}
               value={onboardingData.weight?.toString() || ''}
               onChangeText={(text) => {
                 const num = parseFloat(text);
@@ -31,13 +46,21 @@ export default function WorkoutPlanBuilderFieldEditBody({
               }}
               keyboardType="numeric"
               placeholder="180"
+              placeholderTextColor={MUTED}
             />
           </View>
           <View style={styles.editFieldRow}>
             <View style={[styles.editField, { flex: 1, marginRight: 8 }]}>
-              <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>Feet</Text>
+              <Text style={[styles.editLabel, { color: TEXT }]}>Feet</Text>
               <TextInput
-                style={[styles.editInput, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: validationErrors.height ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)') }]}
+                style={[
+                  styles.editInput,
+                  {
+                    color: TEXT,
+                    backgroundColor: BG_INPUT,
+                    borderColor: validationErrors.height ? '#EF4444' : BORDER_DEFAULT,
+                  },
+                ]}
                 value={onboardingData.height?.feet?.toString() || ''}
                 onChangeText={(text) => {
                   const num = parseInt(text, 10);
@@ -51,12 +74,20 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 }}
                 keyboardType="numeric"
                 placeholder="6"
+                placeholderTextColor={MUTED}
               />
             </View>
             <View style={[styles.editField, { flex: 1, marginLeft: 8 }]}>
-              <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>Inches</Text>
+              <Text style={[styles.editLabel, { color: TEXT }]}>Inches</Text>
               <TextInput
-                style={[styles.editInput, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: validationErrors.height ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)') }]}
+                style={[
+                  styles.editInput,
+                  {
+                    color: TEXT,
+                    backgroundColor: BG_INPUT,
+                    borderColor: validationErrors.height ? '#EF4444' : BORDER_DEFAULT,
+                  },
+                ]}
                 value={onboardingData.height?.inches?.toString() || ''}
                 onChangeText={(text) => {
                   const num = parseInt(text, 10);
@@ -70,13 +101,21 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 }}
                 keyboardType="numeric"
                 placeholder="0"
+                placeholderTextColor={MUTED}
               />
             </View>
           </View>
           <View style={styles.editField}>
-            <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>Age</Text>
+            <Text style={[styles.editLabel, { color: TEXT }]}>Age</Text>
             <TextInput
-              style={[styles.editInput, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: validationErrors.age ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)') }]}
+              style={[
+                styles.editInput,
+                {
+                  color: TEXT,
+                  backgroundColor: BG_INPUT,
+                  borderColor: validationErrors.age ? '#EF4444' : BORDER_DEFAULT,
+                },
+              ]}
               value={onboardingData.age?.toString() || ''}
               onChangeText={(text) => {
                 const num = parseInt(text, 10);
@@ -87,10 +126,11 @@ export default function WorkoutPlanBuilderFieldEditBody({
               }}
               keyboardType="numeric"
               placeholder="28"
+              placeholderTextColor={MUTED}
             />
           </View>
           <View style={styles.editField}>
-            <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>Gender</Text>
+            <Text style={[styles.editLabel, { color: TEXT }]}>Gender</Text>
             <View style={styles.optionRow}>
               {['Male', 'Female', 'Other', 'Prefer not to say'].map((option) => (
                 <TouchableOpacity
@@ -104,11 +144,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
                   style={[
                     styles.optionButton,
                     {
-                      backgroundColor: onboardingData.gender === option ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                      backgroundColor: onboardingData.gender === option ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                      borderColor: onboardingData.gender === option ? '#FF6B9D' : BORDER_DEFAULT,
                     },
                   ]}
                 >
-                  <Text style={[styles.optionButtonText, { color: onboardingData.gender === option ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+                  <Text style={[styles.optionButtonText, { color: TEXT }]}>
                     {option}
                   </Text>
                 </TouchableOpacity>
@@ -132,11 +173,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
               style={[
                 styles.optionCard,
                 {
-                  backgroundColor: onboardingData.fitnessLevel === level ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                  backgroundColor: onboardingData.fitnessLevel === level ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.fitnessLevel === level ? '#FF6B9D' : BORDER_DEFAULT,
                 },
               ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.fitnessLevel === level ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {level.charAt(0).toUpperCase() + level.slice(1)}
               </Text>
             </TouchableOpacity>
@@ -163,11 +205,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
               style={[
                 styles.optionCard,
                 {
-                  backgroundColor: onboardingData.primaryGoal === goal.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                  backgroundColor: onboardingData.primaryGoal === goal.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.primaryGoal === goal.value ? '#FF6B9D' : BORDER_DEFAULT,
                 },
               ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.primaryGoal === goal.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {goal.label}
               </Text>
             </TouchableOpacity>
@@ -193,11 +236,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 style={[
                   styles.optionCard,
                   {
-                    backgroundColor: isSelected ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                    backgroundColor: isSelected ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                    borderColor: isSelected ? '#FF6B9D' : BORDER_DEFAULT,
                   },
                 ]}
               >
-                <Text style={[styles.optionCardText, { color: isSelected ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+                <Text style={[styles.optionCardText, { color: TEXT }]}>
                   {equip.charAt(0).toUpperCase() + equip.slice(1).replace('_', ' ')}
                   {isSelected && ' ✓'}
                 </Text>
@@ -209,43 +253,39 @@ export default function WorkoutPlanBuilderFieldEditBody({
     case 'frequency':
       return (
         <View style={styles.editFields}>
-          <Text style={[styles.editLabel, { color: isDark ? '#FFFFFF' : '#1F2937' }]}>
-            Days per week: {onboardingData.daysPerWeek || 0}
-          </Text>
-          <View style={styles.frequencySelector}>
-            {[1, 2, 3, 4, 5, 6, 7].map((days) => (
-              <TouchableOpacity
-                key={days}
-                onPress={() => {
-                  setOnboardingData((prev) => ({ ...prev, daysPerWeek: days }));
-                  if (validationErrors.frequency) {
-                    setValidationErrors((prev) => ({ ...prev, frequency: null }));
-                  }
-                }}
-                style={[
-                  styles.frequencyButton,
-                  {
-                    backgroundColor: onboardingData.daysPerWeek === days ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
-                  },
-                ]}
-              >
-                <Text style={[styles.frequencyButtonText, { color: onboardingData.daysPerWeek === days ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
-                  {days}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {[1, 2, 3, 4, 5, 6, 7].map((days) => (
+            <TouchableOpacity
+              key={days}
+              onPress={() => {
+                setOnboardingData((prev) => ({ ...prev, daysPerWeek: days }));
+                if (validationErrors.frequency) {
+                  setValidationErrors((prev) => ({ ...prev, frequency: null }));
+                }
+              }}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.daysPerWeek === days ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.daysPerWeek === days ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
+            >
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
+                {days === 1 ? '1 day/week' : `${days} days/week`}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       );
     case 'injuries':
       return (
         <View style={styles.editFields}>
           <TextInput
-            style={[styles.editTextArea, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }]}
+            style={[styles.editTextArea, { color: TEXT, backgroundColor: BG_INPUT, borderColor: BORDER_DEFAULT }]}
             value={onboardingData.injuries || ''}
             onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, injuries: text }))}
             placeholder="Describe any injuries or limitations..."
-            placeholderTextColor={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'}
+            placeholderTextColor={MUTED}
             multiline
             textAlignVertical="top"
           />
@@ -262,9 +302,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, trainingEnvironment: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.trainingEnvironment === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.trainingEnvironment === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.trainingEnvironment === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.trainingEnvironment === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -282,9 +328,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, preferredWorkoutTime: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.preferredWorkoutTime === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.preferredWorkoutTime === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.preferredWorkoutTime === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.preferredWorkoutTime === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -295,11 +347,11 @@ export default function WorkoutPlanBuilderFieldEditBody({
       return (
         <View style={styles.editFields}>
           <TextInput
-            style={[styles.editTextArea, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }]}
+            style={[styles.editTextArea, { color: TEXT, backgroundColor: BG_INPUT, borderColor: BORDER_DEFAULT }]}
             value={onboardingData.exercisesDislike || ''}
             onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: text }))}
             placeholder="e.g. burpees, running..."
-            placeholderTextColor={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'}
+            placeholderTextColor={MUTED}
             multiline
             textAlignVertical="top"
           />
@@ -309,11 +361,11 @@ export default function WorkoutPlanBuilderFieldEditBody({
       return (
         <View style={styles.editFields}>
           <TextInput
-            style={[styles.editTextArea, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }]}
+            style={[styles.editTextArea, { color: TEXT, backgroundColor: BG_INPUT, borderColor: BORDER_DEFAULT }]}
             value={onboardingData.supplementsCurrentlyTaking || ''}
             onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, supplementsCurrentlyTaking: text }))}
             placeholder="List any supplements you take..."
-            placeholderTextColor={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'}
+            placeholderTextColor={MUTED}
             multiline
             textAlignVertical="top"
           />
@@ -330,9 +382,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, currentStressLevel: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.currentStressLevel === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.currentStressLevel === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.currentStressLevel === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.currentStressLevel === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -350,9 +408,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, sleepQuality: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.sleepQuality === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.sleepQuality === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.sleepQuality === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.sleepQuality === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -370,9 +434,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, energyLevels: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.energyLevels === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.energyLevels === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.energyLevels === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.energyLevels === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -390,9 +460,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
             <TouchableOpacity
               key={opt.value}
               onPress={() => setOnboardingData((prev) => ({ ...prev, hydrationHabits: opt.value }))}
-              style={[styles.optionCard, { backgroundColor: onboardingData.hydrationHabits === opt.value ? '#6C5CE7' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') }]}
+              style={[
+                styles.optionCard,
+                {
+                  backgroundColor: onboardingData.hydrationHabits === opt.value ? BG_OPTION_SELECTED : BG_OPTION_UNSELECTED,
+                  borderColor: onboardingData.hydrationHabits === opt.value ? '#FF6B9D' : BORDER_DEFAULT,
+                },
+              ]}
             >
-              <Text style={[styles.optionCardText, { color: onboardingData.hydrationHabits === opt.value ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#1F2937') }]}>
+              <Text style={[styles.optionCardText, { color: TEXT }]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -403,7 +479,14 @@ export default function WorkoutPlanBuilderFieldEditBody({
       return (
         <View style={styles.editFields}>
           <TextInput
-            style={[styles.editTextArea, { color: isDark ? '#FFFFFF' : '#1F2937', borderColor: validationErrors.situationDescription ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)') }]}
+            style={[
+              styles.editTextArea,
+              {
+                color: TEXT,
+                backgroundColor: BG_INPUT,
+                borderColor: validationErrors.situationDescription ? '#EF4444' : BORDER_DEFAULT,
+              },
+            ]}
             value={onboardingData.situationDescription || ''}
             onChangeText={(text) => {
               if (text.length <= 1000) {
@@ -414,12 +497,19 @@ export default function WorkoutPlanBuilderFieldEditBody({
               }
             }}
             placeholder="Tell us about your fitness journey and goals..."
-            placeholderTextColor={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'}
+            placeholderTextColor={MUTED}
             multiline
             textAlignVertical="top"
             minHeight={200}
           />
-          <Text style={[styles.charCount, { color: (onboardingData.situationDescription?.length || 0) < 50 ? '#F59E0B' : (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)') }]}>
+          <Text
+            style={[
+              styles.charCount,
+              {
+                color: (onboardingData.situationDescription?.length || 0) < 50 ? '#F59E0B' : 'rgba(255,255,255,0.60)',
+              },
+            ]}
+          >
             {onboardingData.situationDescription?.length || 0}/1000 (min 50)
           </Text>
         </View>

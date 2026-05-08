@@ -64,7 +64,6 @@ import { subscribeToUnreadCount } from '../ai/services/conversationService';
 import { getOrCreateConversation, sendClientRequest } from '../ai/services/trainerMessaging';
 import AIChatHomeScreen from '../aiChat/screens/AIChatHomeScreen';
 import AIChatScreen from '../aiChat/screens/AIChatScreen';
-import TrainerProfileScreen from '../ai/screens/TrainerProfileScreen';
 import TrainerSearchScreen from '../ai/screens/TrainerSearchScreen';
 import MyDashboardScreen from '../client/screens/MyDashboardScreen';
 import SettingsScreen from '../client/screens/SettingsScreen';
@@ -88,6 +87,12 @@ import ReviewSubmitSheet from '../shared/components/ReviewSubmitSheet';
 import { SessionMeetingCard } from '../shared/components/SessionMeetingCard';
 import SpreadsheetViewerModal from '../shared/components/SpreadsheetViewerModal';
 import TrainerSharedFilesModal from '../shared/components/TrainerSharedFilesModal';
+import ClientFilesScreen from '../client/screens/ClientFilesScreen';
+import MarketplaceHeroCard from '../client/components/MarketplaceHeroCard';
+import DashboardHeroCard from '../client/components/DashboardHeroCard';
+import { MyFilesSection } from '../client/components/files/MyFilesSection';
+import { TrainerSharedSection } from '../client/components/files/TrainerSharedSection';
+import { NotesFromTrainerSection } from '../client/components/files/NotesFromTrainerSection';
 import {
   persistPushTokensForUid,
   setNotificationTapHandler,
@@ -95,7 +100,7 @@ import {
   subscribePushTokenRefreshOnResume,
 } from '../shared/services/notificationsService';
 import { postRemotePushNotify } from '../shared/services/pushNotifyApi';
-import { deleteNotesAndFilesItem, getNotesAndFiles } from '../shared/services/notesAndFilesService';
+import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead } from '../shared/services/notesAndFilesService';
 import { useTheme } from '../shared/ui/ThemeContext';
 import {
   getEmbedViewerUri,
@@ -109,6 +114,7 @@ import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
 import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
 import { fetchWorkoutHistory, getActiveWorkout } from '../workouts/services/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
+import TrainerProfileCardModal from '../client/components/TrainerProfileCardModal';
 
 import { clearAllUserData } from '../utils/dataCacheCleanup';
 
@@ -518,12 +524,13 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
   );
   const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
   const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
-  const formatRating = (v) => {
+  const formatScore = (v, max) => {
     if (v == null || v === '') return null;
-    const n = parseInt(v, 10);
-    if (Number.isNaN(n)) return v;
-    const labels = ['None', 'Low', 'Medium', 'High', 'Very high'];
-    return labels[n] != null ? labels[n] : `${n}/5`;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    const clamped = Math.max(0, Math.min(max, n));
+    // Show simple fraction format e.g. "4/10" or "5/5"
+    return `${clamped}/${max}`;
   };
 
   return (
@@ -535,7 +542,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               <Text style={[wellnessKicker, { color: kickerColor }]}>SORENESS</Text>
               {soreness != null && soreness !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
-                  <Text style={[wellnessNumber, { color: HOME_STAT_SORENESS }]}>{formatRating(soreness) || soreness}</Text>
+                  <Text style={[wellnessNumber, { color: HOME_STAT_SORENESS }]}>{formatScore(soreness, 10) || soreness}</Text>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>muscle soreness</Text>
                 </View>
               ) : (
@@ -554,7 +561,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               <Text style={[wellnessKicker, { color: kickerColor }]}>ENERGY LEVEL</Text>
               {energyLevel != null && energyLevel !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
-                  <Text style={[wellnessNumber, { color: HOME_STAT_ENERGY }]}>{formatRating(energyLevel) || energyLevel}</Text>
+                  <Text style={[wellnessNumber, { color: HOME_STAT_ENERGY }]}>{formatScore(energyLevel, 5) || energyLevel}</Text>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
                 </View>
               ) : (
@@ -573,7 +580,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel }
               <Text style={[wellnessKicker, { color: kickerColor }]}>STRESS LEVEL</Text>
               {stressLevel != null && stressLevel !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
-                  <Text style={[wellnessNumber, { color: HOME_STAT_STRESS }]}>{formatRating(stressLevel) || stressLevel}</Text>
+                  <Text style={[wellnessNumber, { color: HOME_STAT_STRESS }]}>{formatScore(stressLevel, 5) || stressLevel}</Text>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
                 </View>
               ) : (
@@ -788,105 +795,6 @@ const NewCalendar = ({ theme }) => {
               );
             })}
           </View>
-        </View>
-      </LinearGradient>
-    </View>
-  );
-};
-
-// Trainer button: Find a coach / trainer marketplace 
-const TrainerButton = ({ label, onPress, notificationCount = 0, theme = 'dark' }) => {
-  const isDark = theme === 'dark';
-  return (
-    <View style={styles.trainerButtonContainer}>
-      <LinearGradient
-        colors={['#FF6B9D', '#C084FC']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{
-          borderRadius: 24,
-          padding: 2,
-          overflow: 'hidden',
-          shadowColor: '#FF6B9D',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.28,
-          shadowRadius: 12,
-          elevation: 5,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-            borderRadius: 22,
-            paddingVertical: 18,
-            paddingHorizontal: 18,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: '800',
-              color: '#FF6B9D',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              marginBottom: 8,
-            }}
-          >
-            Trainer Marketplace
-          </Text>
-
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '600',
-              lineHeight: 21,
-              marginBottom: 14,
-              color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(15, 23, 42, 0.78)',
-            }}
-          >
-            Find the right coach and get custom plans, support, and accountability.
-          </Text>
-
-          <LinearGradient
-            colors={['#FF6B9D', '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ borderRadius: 20, overflow: 'hidden' }}
-          >
-            <TouchableOpacity
-              onPress={onPress}
-              activeOpacity={0.85}
-              style={{
-                paddingVertical: 16,
-                paddingHorizontal: 18,
-                alignItems: 'center',
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <Ionicons name="search" size={20} color="#FFFFFF" />
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFFFFF' }}>{label}</Text>
-                {notificationCount > 0 ? (
-                  <View
-                    style={{
-                      marginLeft: 2,
-                      minWidth: 22,
-                      height: 22,
-                      paddingHorizontal: 6,
-                      borderRadius: 11,
-                      backgroundColor: 'rgba(255,255,255,0.22)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
-                      {notificationCount > 99 ? '99+' : notificationCount}
-                    </Text>
-                  </View>
-                ) : null}
-                <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-              </View>
-            </TouchableOpacity>
-          </LinearGradient>
         </View>
       </LinearGradient>
     </View>
@@ -1118,8 +1026,8 @@ const TrainingAgenda = ({ theme, workouts = [], onPlanWorkout, onToggleWorkout }
   );
 };
 
-// Nutrition card: Daily macros + calories progress bar + action button for meal logging.
-const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additionalNutrients = null, onAddMeal, nutritionGoals = null, compact = true }) => {
+// Nutrition card: Daily macros + calories progress (empty state is Lottie + copy only).
+const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additionalNutrients = null, nutritionGoals = null, compact = true }) => {
   const isDark = theme === 'dark';
   
   // Combine all nutrients for arc progress display
@@ -1268,26 +1176,6 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
             >
               Log food in Nutrition and your macros will show up here with the rings.
             </Text>
-            {onAddMeal ? (
-              <TouchableOpacity activeOpacity={0.88} onPress={onAddMeal} style={{ marginTop: 14 }}>
-                <LinearGradient
-                  colors={['#FF6B9D', '#C084FC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                    paddingHorizontal: 22,
-                    paddingVertical: 12,
-                    borderRadius: 20,
-                  }}
-                >
-                  <Ionicons name="nutrition-outline" size={18} color="#fff" />
-                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>Log nutrition</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            ) : null}
           </View>
         ) : (
           <>
@@ -1545,6 +1433,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [showMyDashboard, setShowMyDashboard] = useState(false);
   const [showAddNotesFilesModal, setShowAddNotesFilesModal] = useState(false);
   const [showTrainerSharedFilesModal, setShowTrainerSharedFilesModal] = useState(false);
+  const [showClientFilesScreen, setShowClientFilesScreen] = useState(false);
   const [notesAndFiles, setNotesAndFiles] = useState([]);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
@@ -2504,6 +2393,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     onProfilePress: () => setShowProfile(true),
     onSettingsPress: () => setShowSettings(true),
     onHomePress: handleHomePress,
+    // Bottom nav "Files" tab uses onPlusPress in this app.
     onPlusPress: () => setShowAddNotesFilesModal(true),
     onVoicePress: openAIChatHome,
     onNutritionPress: () => setShowNutrition(true),
@@ -2554,6 +2444,20 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           onProfilePress={() => setShowProfile(true)}
           onSettingsPress={() => setShowSettings(true)}
           onNavigate={onNavigate}
+        />
+        {addNotesFilesModalEl}
+      </>
+    );
+  }
+
+  if (showClientFilesScreen) {
+    return (
+      <>
+        <ClientFilesScreen
+          clientId={user?.uid}
+          items={notesAndFiles}
+          isDark={isDark}
+          onBack={() => setShowClientFilesScreen(false)}
         />
         {addNotesFilesModalEl}
       </>
@@ -2683,10 +2587,19 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             onSettingsPress={() => setShowSettings(true)}
           />
           <TrainerSearchScreen
-            onViewProfile={(trainer) => {
-              setProfileTrainer(trainer);
+            onRequestTrainer={async (trainer) => {
+              if (!trainer?.id || !auth?.currentUser?.uid) return;
+              const conversationId = await getOrCreateConversation(auth.currentUser.uid, trainer.id);
+              await sendClientRequest(
+                conversationId,
+                auth.currentUser.uid,
+                `Hi! I'd like to work with you as my trainer.`,
+                { clientName: auth.currentUser.displayName || '', trainerId: trainer.id }
+              );
+              setSelectedTrainer(trainer);
+              setSelectedConversation({ id: conversationId });
               setShowTrainerSearch(false);
-              setShowTrainerProfile(true);
+              setShowTrainerMessaging(true);
             }}
             onSelectTrainer={(trainer, conversationId) => {
               setSelectedTrainer(trainer);
@@ -2694,7 +2607,6 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               setShowTrainerSearch(false);
               setShowTrainerMessaging(true);
             }}
-            onClose={() => setShowTrainerSearch(false)}
             onProfilePress={() => setShowProfile(true)}
             onSettingsPress={() => setShowSettings(true)}
             isDark={isDark}
@@ -2729,39 +2641,38 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         onProfilePress={() => setShowProfile(true)}
         onSettingsPress={() => setShowSettings(true)}
       />
-      <TrainerProfileScreen
+      <TrainerProfileCardModal
+        visible
         trainer={profileTrainer}
-        onBack={() => {
+        onClose={() => {
           setShowTrainerProfile(false);
           setShowTrainerSearch(true);
         }}
-        onConnect={async (trainer) => {
+        onMessage={() => {
+          if (!profileTrainer) return;
+          setSelectedTrainer(profileTrainer);
+          setShowTrainerProfile(false);
+          setShowTrainerMessaging(true);
+        }}
+        onRequestTrainer={async () => {
+          if (!profileTrainer?.id || !auth?.currentUser?.uid) return;
           try {
-            const conversationId = await getOrCreateConversation(auth.currentUser.uid, trainer.id);
+            const conversationId = await getOrCreateConversation(auth.currentUser.uid, profileTrainer.id);
             await sendClientRequest(
               conversationId,
               auth.currentUser.uid,
               `Hi! I'd like to work with you as my trainer.`,
-              { clientName: auth.currentUser.displayName || '', trainerId: trainer.id }
+              { clientName: auth.currentUser.displayName || '', trainerId: profileTrainer.id }
             );
-            setSelectedTrainer(trainer);
+            setSelectedTrainer(profileTrainer);
             setSelectedConversation({ id: conversationId });
             setShowTrainerProfile(false);
             setShowTrainerMessaging(true);
           } catch (e) {
-            console.error('Connect error:', e);
+            console.error('Request trainer error:', e);
           }
         }}
-        isDark={isDark}
-        onProfilePress={() => setShowProfile(true)}
-        onSettingsPress={() => setShowSettings(true)}
-        onHomePress={handleHomePress}
-        onPlusPress={() => setShowAddNotesFilesModal(true)}
-        onVoicePress={openAIChatHome}
-        onNutritionPress={() => setShowNutrition(true)}
-        onWorkoutPress={openWorkout}
-        onMessagesPress={handleOpenConversations}
-        onReviewSubmitComplete={() => {}}
+        accent="purple"
       />
     </SafeAreaView>
     {addNotesFilesModalEl}
@@ -3045,6 +2956,12 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           trainer={trainerData}
           unreadMessageCount={unreadMessageCount}
           onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerSheet(true) : undefined}
+          onPressViewProfile={() => {
+            if (!trainerData) return;
+            setProfileTrainer(trainerData);
+            setShowMyDashboard(false);
+            setShowTrainerProfile(true);
+          }}
           streak={streak}
           todayCalories={caloriesConsumed}
           waterOz={waterIntake}
@@ -3152,139 +3069,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       >
         <AuroraHeroBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
         {userRole !== 'trainer' && (
-          <>
-            <View style={{ marginVertical: 10, paddingHorizontal: 16 }}>
-              {/* Outer gradient border container */}
-              <LinearGradient
-                colors={['#FF6B9D', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  borderRadius: 24,
-                  padding: 2,
-                  overflow: 'hidden',
-                  // Add subtle shadow
-                  shadowColor: '#FF6B9D',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 12,
-                  elevation: 5,
-                }}
-              >
-                {/* Inner semi-transparent card */}
-                <View
-                  style={{
-                    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)',
-                    borderRadius: 22,
-                      paddingVertical: 12,
-                      paddingHorizontal: 12,
-                  }}
-                >
-                  {/* Section label */}
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '700',
-                      color: '#FF6B9D',
-                      letterSpacing: 2,
-                      textTransform: 'uppercase',
-                        marginBottom: 2,
-                    }}
-                  >
-                  Your Complete Dashboard
-                  </Text>
-
-                  {/* Description text */}
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: '600',
-                      color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(17, 24, 39, 0.72)',
-                      marginBottom: 6,
-                      lineHeight: 18,
-                      fontSize: 13,
-                      textAlign: 'center',
-                    }}
-                  >
-                    Log. View Workouts. Stats. Progress. All in One
-                  </Text>
-
-                  {/* Main Dashboard button (inside the card) */}
-                  <View
-                    style={{
-                      alignSelf: 'center',
-                      width: '76%',
-                      position: 'relative',
-                    }}
-                  >
-                    {unreadMessageCount > 0 && (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          top: -6,
-                          right: 4,
-                          zIndex: 10,
-                          backgroundColor: '#FF3B30',
-                          borderRadius: 11,
-                          minWidth: 22,
-                          height: 22,
-                          paddingHorizontal: 6,
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          borderWidth: 2,
-                          borderColor: isDark ? '#0A0A0F' : '#FFFFFF',
-                        }}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
-                          {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                        </Text>
-                      </View>
-                    )}
-                    <LinearGradient
-                      colors={['#FF6B9D', '#C084FC']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        borderRadius: 20,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <TouchableOpacity
-                        onPress={() => setShowMyDashboard(true)}
-                        activeOpacity={0.85}
-                        style={{
-                          paddingVertical: 8,
-                          paddingHorizontal: 12,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 10,
-                          }}
-                        >
-                          <Ionicons name="grid" size={20} color="#FFFFFF" />
-                          <Text
-                            style={{
-                              fontSize: 16,
-                              fontWeight: '700',
-                              color: '#FFFFFF',
-                            }}
-                          >
-                            View Full Dashboard
-                          </Text>
-                          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                        </View>
-                      </TouchableOpacity>
-                    </LinearGradient>
-                  </View>
-                </View>
-              </LinearGradient>
-            </View>
-          </>
+          <DashboardHeroCard
+            onPress={() => setShowMyDashboard(true)}
+            unreadMessageCount={unreadMessageCount}
+          />
         )}
         <TopStatsRow
           isDark={isDark}
@@ -3301,11 +3089,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         {userRole !== 'trainer' && (
           <>
             {!hasTrainer && (
-              <TrainerButton
-                label="Find a trainer"
+              <MarketplaceHeroCard
                 onPress={() => setShowTrainerSearch(true)}
                 notificationCount={0}
-                theme={isDark ? 'dark' : 'light'}
+                isDark={isDark}
               />
             )}
           </>
@@ -3332,53 +3119,23 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           goal={calorieGoal}
           macros={nutritionMacros}
           additionalNutrients={additionalNutrients}
-          onAddMeal={() => setShowNutrition(true)}
           nutritionGoals={nutritionGoals}
           compact
         />
-        {myOwnFiles.length > 0 && (
+        {/* Files & Notes (redesigned) */}
         <View style={{ paddingHorizontal: 16, marginTop: 8, marginBottom: 16 }}>
-          <Text style={{
-            fontSize: 10,
-            fontWeight: '700',
-            color: isDark ? '#FFFFFF' : 'rgba(17, 24, 39, 0.78)',
-            letterSpacing: 2,
-            textTransform: 'uppercase',
-            marginBottom: 12,
-          }}>
-            Your files
-          </Text>
-          <LinearGradient
-            colors={['#06B6D4', '#8B5CF6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ borderRadius: 20, padding: 2, overflow: 'hidden' }}
-          >
-            <View
-              style={{
-                backgroundColor: isDark
-                  ? FILE_GALLERY_THEME_COLORS.dark.surface
-                  : FILE_GALLERY_THEME_COLORS.light.surface,
-                borderRadius: 18,
-                paddingVertical: 16,
-                paddingHorizontal: 16,
-              }}
-            >
-              <FileGalleryGrid
-                isDark={isDark}
-                files={myOwnFiles}
-                onPressItem={openNotesFile}
-                holdToDelete
-                holdDurationMs={900}
-                onLongPressItem={(file) => {
-                  if (deletingMyFiles) return;
-                  deleteSingleMyFile(file);
-                }}
-              />
-            </View>
-          </LinearGradient>
+          <MyFilesSection
+            clientId={user?.uid}
+            items={notesAndFiles}
+            onOpenItem={openNotesFile}
+            onDownloadItem={(x) => x?.url && openNotesFile(x)}
+            onShareItem={(x) => x?.url && Share.share({ message: `${x?.name || x?.title || 'File'}\n${x.url}` }).catch(() => {})}
+            onDeleteItem={(x) => {
+              if (deletingMyFiles) return;
+              deleteSingleMyFile(x);
+            }}
+          />
         </View>
-        )}
 
         {pendingSessions.length > 0 && (
         <View style={{ paddingHorizontal: 16, marginTop: 10, marginBottom: 18 }}>
@@ -3446,53 +3203,23 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         </View>
         )}
 
-        <View style={{ paddingHorizontal: 16, marginVertical: 24 }}>
-          <Text style={{
-            fontSize: 10,
-            fontWeight: '700',
-            color: isDark ? '#FFFFFF' : 'rgba(17, 24, 39, 0.78)',
-            letterSpacing: 2,
-            textTransform: 'uppercase',
-            marginBottom: 12,
-          }}>
-            Trainer Shared
-          </Text>
-
-          <LinearGradient
-            colors={['#FF6B9D', '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{
-              borderRadius: 20,
-              padding: 2,
-              overflow: 'hidden',
+        <View style={{ paddingHorizontal: 16, marginTop: 4, marginBottom: 24 }}>
+          <TrainerSharedSection
+            items={notesAndFiles}
+            onOpenItem={openNotesFile}
+            onDownloadItem={(x) => x?.url && openNotesFile(x)}
+            onMarkRead={async (x) => {
+              if (!user?.uid || !x?.id) return;
+              try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
             }}
-          >
-            <View
-              style={{
-                backgroundColor: isDark
-                  ? FILE_GALLERY_THEME_COLORS.dark.surface
-                  : FILE_GALLERY_THEME_COLORS.light.surface,
-                borderRadius: 18,
-                paddingVertical: 16,
-                paddingHorizontal: 16,
-              }}
-            >
-              <FileGalleryGrid
-                isDark={isDark}
-                files={trainerSharedFiles}
-                onPressItem={openNotesFile}
-                footerLink={
-                  trainerSharedFiles.length > 0
-                    ? {
-                        label: 'View all shared files',
-                        onPress: () => setShowTrainerSharedFilesModal(true),
-                      }
-                    : undefined
-                }
-              />
-            </View>
-          </LinearGradient>
+          />
+          <NotesFromTrainerSection
+            items={notesAndFiles}
+            onMarkRead={async (x) => {
+              if (!user?.uid || !x?.id) return;
+              try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
+            }}
+          />
         </View>
       </ScrollView>
       )}
@@ -4241,11 +3968,6 @@ const styles = StyleSheet.create({
   },
   lightWeekDay: {
     backgroundColor: '#F3F4F6',
-  },
-  trainerButtonContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
   },
   trainerButton: {
     paddingVertical: 12,

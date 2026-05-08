@@ -9,18 +9,15 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      // Users can read their own data
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow authenticated users to read trainer profiles (for trainer discovery)
-      allow read: if request.auth != null && resource.data.role == 'trainer';
-      
-      // Allow authenticated users to read any user profile
-      // This enables:
-      // 1. Conversations (trainers/clients can see each other's names)
-      // 2. CRM Data Sync (trainers can read client data to sync to trainer_clients)
-      // 3. Trainer discovery and profile viewing
-      allow read: if request.auth != null;
+      // SECURITY: user docs are private by default.
+      // - Owner can read their own doc.
+      // - Trainer can read their client's doc (CRM link).
+      // - Client can read their trainer's doc (same CRM link, inverse direction).
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId)) ||
+        exists(/databases/$(database)/documents/trainer_clients/$(userId)/clients/$(request.auth.uid))
+      );
       
       // Allow list queries for trainer search (needed for where('role', '==', 'trainer') queries)
       allow list: if request.auth != null;

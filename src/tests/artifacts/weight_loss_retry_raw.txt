@@ -1,0 +1,246 @@
+```json
+{
+  "goal": "Weight Loss",
+  "program": "Fat Burning Fitness Program",
+  "overview": "This 5-day program combines high-intensity interval training, strength circuits, and steady-state cardio to maximize calorie burn, boost metabolism, and promote sustainable fat loss while preserving lean muscle mass.",
+  "trainingDays": [
+    {
+      "day": "Day 1",
+      "focus": "Full Body HIIT Circuit",
+      "warmup": "5 minutes of jump rope followed by dynamic stretches including leg swings, arm circles, and hip openers",
+      "exercises": [
+        {
+          "name": "Burpees",
+          "sets": 4,
+          "reps": "12",
+          "rest": "30 seconds",
+          "notes": "Perform explosively with full chest-to-floor contact and a jump at the top"
+        },
+        {
+          "name": "Kettlebell Swings",
+          "sets": 4,
+          "reps": "20",
+          "rest": "30 seconds",
+          "notes": "Drive through the hips and squeeze glutes at the top of each swing"
+        },
+        {
+          "name": "Mountain Climbers",
+          "sets": 4,
+          "reps": "30 seconds",
+          "rest": "20 seconds",
+          "notes": "Keep core tight and maintain a strong plank position throughout"
+        },
+        {
+          "name": "Dumbbell Thrusters",
+          "sets": 4,
+          "reps": "12",
+          "rest": "30 seconds",
+          "notes": "Use moderate weight and combine a front squat with an overhead press in one fluid motion"
+        },
+        {
+          "name": "Box Jumps",
+          "sets": 3,
+          "reps": "15",
+          "rest": "30 seconds",
+          "notes": "Step down rather than jumping down to protect your joints"
+        },
+        {
+          "name": "Battle Ropes",
+          "sets": 3,
+          "reps": "30 seconds",
+          "rest": "30 seconds",
+          "notes": "Alternate between double waves and alternating waves each set"
+        }
+      ],
+      "cooldown": "5 minutes of walking followed by full body static stretching for 5 minutes"
+    },
+    {
+      "day": "Day 2",
+      "focus": "Upper Body Strength and Cardio Intervals",
+      "warmup": "5 minutes on the rowing machine at moderate pace followed by arm circles and band pull-aparts",
+      "exercises": [
+        {
+          "name": "Dumbbell Bench Press",
+          "sets": 4,
+          "reps": "12",
+          "rest": "45 seconds",
+          "notes": "Control the lowering phase for a 2-second count"
+        },
+        {
+          "name": "Bent Over Barbell Rows",
+          "sets": 4,
+          "reps": "12",
+          "rest": "45 seconds",
+          "notes": "Keep your back flat and squeeze shoulder blades together at the top"
+        },
+        {
+          "name": "Push-Ups",
+          "sets": 3,
+          "reps": "20",
+          "rest": "30 seconds",
+          "notes": "Modify on knees if needed but maintain strict form"
+        },
+        {
+          "name": "Dumbbell Lateral Raises",
+          "sets": 3,
+          "reps": "15",
+          "rest": "30 seconds",
+          "notes": "Use light weight and focus on controlled movement"
+        },
+        {
+          "name": "Treadmill Sprints",
+          "sets": 6,
+          "reps": "30 seconds sprint / 30 seconds rest",
+          "rest": "30 seconds",
+          "notes": "Run at 85-90% of max effort during sprint intervals"
+        },
+        {
+          "name": "Plank to Push-Up",
+          "sets": 3,
+          "reps": "10 each arm",
+          "rest": "30 seconds",
+          "notes": "Alternate the leading arm each rep and keep hips stable"
+        }
+      ],
+      "cooldown": "5 minutes of light cycling followed by chest, shoulder, and back stretches"
+    },
+    {
+      "day": "Day 3",
+      "focus": "Lower Body Burn and Core",
+      "warmup": "5 minutes of brisk walking on an incline treadmill followed by bodyweight squats and leg swings",
+      "exercises": [
+        {
+          "name": "Goblet Squats",
+          "sets": 4,
+          "reps": "15",
+          "rest": "40 seconds",
+          "notes": "Hold a dumbbell or kettlebell at chest height and squat below parallel"
+        },
+        {
+          "name": "Walking Lunges",
+          "sets": 4,
+          "reps": "20 steps",
+          "rest": "40 seconds",
+          "notes": "Hold dumbbells at your sides and take long controlled strides"
+        },
+        {
+          "name": "Romanian Deadlifts",
+          "sets": 4,
+          "reps": "12",
+          "rest": "45 seconds",
+          "notes": "Keep a slight bend in the knees and feel the stretch in your hamstrings"
+        },
+        {
+          "name": "Jump Squats",
+          "sets": 3,
+          "reps": "15",
+          "rest": "30 seconds",
+          "notes": "Land softly and immediately descend into the next rep"
+        },
+        {
+          "name": "Bicycle Crunches",
+          "sets": 3,
+          "reps": "20 each side",
+          "rest": "20 seconds",
+          "notes": "Slow and controlled rotation, fully extending each leg"
+        },
+        {
+          "name": "Plank Hold",
+          "sets": 3,
+          "reps": "45 seconds",
+          "rest": "20 seconds",
+          "notes": "Maintain a straight line from head to heels and brace your core"
+        }
+      ],
+      "cooldown": "5 minutes of foam rolling on quads, hamstrings, and glutes followed by static stretching"
+    },
+    {
+      "day": "Day 4",
+      "focus": "Cardio Endurance and Metabolic Conditioning",
+      "warmup": "5 minutes of light jogging followed by dynamic stretches for the full body",
+      "exercises": [
+        {
+          "name": "Rowing Machine Intervals",
+          "sets": 5,
+          "reps": "500 meters",
+          "rest": "60 seconds",
+          "notes": "Aim for a consistent pace and drive powerfully with your legs"
+        },
+        {
+          "name": "Dumbbell Man Makers",
+          "sets": 3,
+          "reps": "8",
+          "rest": "45 seconds",
+          "notes": "Combine a push-up, renegade row on each side, and a squat clean to overhead press"
+        },
+        {
+          "name": "High Knees",
+          "sets": 4,
+          "reps": "40 seconds",
+          "rest": "20 seconds",
+          "notes": "Drive knees above hip height and pump arms vigorously"
+        },
+        {
+          "name": "Skater Jumps",
+          "sets": 4,
+          "reps": "20",
+          "rest": "30 seconds",
+          "notes": "Land softly on one foot and reach the opposite hand toward the ground"
+        },
+        {
+          "name": "Dead Bugs",
+          "sets": 3,
+          "reps": "12 each side",
+          "rest": "20 seconds",
+          "notes": "Press lower back into the floor and move opposite arm and leg slowly"
+        },
+        {
+          "name": "Assault Bike or Stationary Bike Sprints",
+          "sets": 5,
+          "reps": "20 seconds all-out / 40 seconds easy",
+          "rest": "40 seconds",
+          "notes": "Push for maximum effort during the sprint phase"
+        }
+      ],
+      "cooldown": "10 minutes of easy walking followed by deep breathing and full body stretching"
+    },
+    {
+      "day": "Day 5",
+      "focus": "Total Body Strength Circuit with Finisher",
+      "warmup": "5 minutes of jump rope at moderate pace followed by inchworms and bodyweight squats",
+      "exercises": [
+        {
+          "name": "Barbell Deadlifts",
+          "sets": 4,
+          "reps": "10",
+          "rest": "45 seconds",
+          "notes": "Use moderate weight with perfect form, hinge at the hips and keep the bar close to your body"
+        },
+        {
+          "name": "Dumbbell Overhead Press",
+          "sets": 4,
+          "reps": "12",
+          "rest": "40 seconds",
+          "notes": "Press straight overhead and fully extend your arms at the top"
+        },
+        {
+          "name": "TRX or Inverted Rows",
+          "sets": 3,
+          "reps": "15",
+          "rest": "30 seconds",
+          "notes": "Keep your body in a straight line and pull your chest to the handles"
+        },
+        {
+          "name": "Step-Ups with Dumbbells",
+          "sets": 3,
+          "reps": "12 each leg",
+          "rest": "30 seconds",
+          "notes": "Use a bench or box at knee height and drive through the heel"
+        },
+        {
+          "name": "Russian Twists",
+          "sets": 3,
+          "reps": "20 each side",
+          "rest": "20 seconds",
+          "notes": "Hold a dumbbell or medicine ball and keep feet elevated for added difficulty"
+        

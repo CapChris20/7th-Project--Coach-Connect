@@ -17,10 +17,12 @@ import {
   Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 import { getTrainerDocument } from '../services/notesAndFilesService';
 
 export default function DocumentViewerModal({ visible, trainerId, documentId, title: titleProp, trainerName, createdAt, isDark = true, onClose }) {
   const [body, setBody] = useState('');
+  const [bodyHtml, setBodyHtml] = useState('');
   const [title, setTitle] = useState(titleProp || '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,6 +30,7 @@ export default function DocumentViewerModal({ visible, trainerId, documentId, ti
   useEffect(() => {
     if (!visible) {
       setBody('');
+      setBodyHtml('');
       setTitle(titleProp || '');
       setError(null);
       setLoading(true);
@@ -47,6 +50,7 @@ export default function DocumentViewerModal({ visible, trainerId, documentId, ti
         if (!cancelled && doc) {
           setTitle(doc.title || titleProp || 'Document');
           setBody(doc.body || '');
+          setBodyHtml(typeof doc.bodyHtml === 'string' ? doc.bodyHtml : '');
         } else if (!cancelled) {
           setError('Document not found');
         }
@@ -142,9 +146,22 @@ export default function DocumentViewerModal({ visible, trainerId, documentId, ti
                 marginVertical: 12,
               }}
             />
-            <Text style={{ fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.85)' }} selectable>
-              {body || 'No content.'}
-            </Text>
+            {bodyHtml ? (
+              <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                <WebView
+                  originWhitelist={['*']}
+                  style={{ height: 520, backgroundColor: '#0A0A0F' }}
+                  scrollEnabled={false}
+                  source={{
+                    html: `<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<style>\n  html,body{margin:0;padding:0;background:#0A0A0F;color:rgba(255,255,255,0.9);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}\n  .wrap{padding:16px;}\n  h1{font-size:28px;line-height:34px;margin:0 0 12px;font-weight:800;font-family:Georgia,serif;color:#fff;}\n  h2{font-size:20px;line-height:26px;margin:18px 0 10px;font-weight:800;color:#fff;}\n  h3{font-size:16px;line-height:22px;margin:16px 0 8px;font-weight:800;color:#fff;}\n  p,li{font-size:15px;line-height:24px;margin:0 0 10px;color:rgba(255,255,255,0.82);}\n  ul,ol{padding-left:20px;margin:8px 0 14px;}\n  blockquote{margin:14px 0;padding:12px 12px 12px 14px;border-left:3px solid #FF6B9D;background:rgba(255,255,255,0.03);border-radius:12px;color:rgba(255,255,255,0.72);font-style:italic;}\n  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:8px;font-size:13px;}\n  a{color:#06B6D4;text-decoration:none;}\n  img{max-width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.08);}\n  pre{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;overflow:auto;}\n</style></head><body><div class=\"wrap\">${bodyHtml}</div></body></html>`,
+                  }}
+                />
+              </View>
+            ) : (
+              <Text style={{ fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.85)' }} selectable>
+                {body || 'No content.'}
+              </Text>
+            )}
             <View style={{ marginTop: 24, alignItems: 'center' }}>
               <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
                 Shared by {trainerName || 'your trainer'} on {formatDate(createdAt || new Date())}

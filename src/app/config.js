@@ -80,7 +80,7 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
       });
     } catch (error) {
       console.error('❌ Firebase initialization error:', error.message);
-      throw error;
+      app = null;
     }
   }
 } else {

@@ -35,8 +35,21 @@ import { BlurView } from 'expo-blur';
 import LottieView from 'lottie-react-native';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
 import MaskedView from '@react-native-masked-view/masked-view';
-import Svg, { Path } from 'react-native-svg';
-import { doc, getDoc, collection, getDocs, onSnapshot, updateDoc, query, where } from "firebase/firestore";
+import Svg, { Path, Polyline } from 'react-native-svg';
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  onSnapshot,
+  updateDoc,
+  query,
+  where,
+  addDoc,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import CoachConnectHeader from "../shared/components/AnatroxHeader";
 import BottomNavBar from "../navigation/BottomNavBar";
 import TrainerSearchScreen from "../trainer/screens/TrainerSearchScreen";
@@ -53,7 +66,6 @@ import SessionSchedulingScreen from "../trainer/screens/SessionSchedulingScreen"
 import SessionFormScreen from "../trainer/screens/SessionFormScreen";
 import { useTrainerClients } from "../trainer/hooks/useTrainerClients";
 import { useTrainerPendingRequests } from "../trainer/hooks/useTrainerPendingRequests";
-import { checkWeeklyDataAvailability } from "../trainer/services/clientCRMService";
 import {
   configureNotifications,
   persistPushTokensForUid,
@@ -64,6 +76,8 @@ import {
 import { useTheme as useGlobalTheme } from "../shared/ui/ThemeContext";
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from "../app/config";
+import { autoLogErrorSync } from "../utils/autoLogError";
+import { getOrCreateConversation } from "../ai/services/trainerMessaging";
 import { getDateKey } from "../app/dateKey";
 import { getLocalDateKey } from "../shared/utils/localDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -95,6 +109,768 @@ import PhotoGalleryScreen from "../trainer/screens/PhotoGalleryScreen";
 import AIWorkoutPlansScreen from "../trainer/screens/AIWorkoutPlansScreen";
 import GradientChatBubblesIcon from "../shared/components/GradientChatBubblesIcon";
 import FileGalleryGrid from "../shared/components/FileGalleryGrid";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT CRM SERVICE (merged from trainer/services/clientCRMService.js for review)
+// Screens/hooks still import from clientCRMService.js → re-exports these bindings.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function hexToRgbTriple(hex) {
+  const h = String(hex || "").replace("#", "").trim();
+  if (h.length !== 6) return "255, 107, 157";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return "255, 107, 157";
+  return `${r}, ${g}, ${b}`;
+}
+
+const CRM_CLIENTS_COLLECTION = "clients";
+const CRM_PROGRESS_SUBCOLLECTION = "progress";
+const CRM_TASKS_SUBCOLLECTION = "tasks";
+const CRM_NOTES_SUBCOLLECTION = "notes";
+const TRAINER_CLIENT_LINKS = "trainer_client_links";
+
+export async function getClient(clientId, trainerId = null) {
+  if (!clientId || !db) return null;
+
+  try {
+    if (trainerId) {
+      const trainerClientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+      const trainerClientSnap = await getDoc(trainerClientRef);
+      if (trainerClientSnap.exists()) {
+        return { id: trainerClientSnap.id, ...trainerClientSnap.data() };
+      }
+    }
+
+    const clientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+    const clientSnap = await getDoc(clientRef);
+    if (!clientSnap.exists()) return null;
+
+    return { id: clientSnap.id, ...clientSnap.data() };
+  } catch (error) {
+    console.error("Error getting client:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getClient");
+    return null;
+  }
+}
+
+export async function createOrUpdateClient(clientId, trainerId, clientData) {
+  if (!clientId || !trainerId || !db) {
+    throw new Error("Missing required parameters: clientId or trainerId");
+  }
+
+  try {
+    const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+
+    const payload = {
+      id: clientId,
+      name: clientData.name || "",
+      email: clientData.email || "",
+      photoURL: clientData.photoURL || null,
+      height: clientData.height || null,
+      weight: clientData.weight || null,
+      age: clientData.age || null,
+      gender: clientData.gender || null,
+      goals: clientData.goals || "",
+      fitnessLevel: clientData.fitnessLevel || null,
+      equipmentAccess: clientData.equipmentAccess || [],
+      daysPerWeek: clientData.daysPerWeek || null,
+      injuries: clientData.injuries || null,
+      exercisesDislike: clientData.exercisesDislike || "",
+      preferredWorkoutTime: clientData.preferredWorkoutTime || null,
+      trainingEnvironment: clientData.trainingEnvironment || null,
+      currentStressLevel: clientData.currentStressLevel || null,
+      sleepQuality: clientData.sleepQuality || null,
+      energyLevels: clientData.energyLevels || null,
+      supplementsCurrentlyTaking: clientData.supplementsCurrentlyTaking || "",
+      hydrationHabits: clientData.hydrationHabits || null,
+      phone: clientData.phone || null,
+      bio: clientData.bio || null,
+      role: clientData.role || "client",
+      createdAt: clientData.createdAt || serverTimestamp(),
+      joinedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      status: "active",
+    };
+
+    try {
+      await getOrCreateConversation(clientId, trainerId);
+    } catch (convError) {
+      console.error("⚠️ Error creating auto-conversation:", convError);
+    }
+
+    const existingDoc = await getDoc(clientRef);
+    if (existingDoc.exists()) {
+      await setDoc(clientRef, payload, { merge: true });
+    } else {
+      await setDoc(clientRef, payload);
+    }
+
+    try {
+      const linkId = `${trainerId}_${clientId}`;
+      const linkRef = doc(db, TRAINER_CLIENT_LINKS, linkId);
+      await setDoc(
+        linkRef,
+        {
+          trainerId,
+          clientId,
+          name: payload.name,
+          email: payload.email,
+          goals: payload.goals,
+          status: payload.status,
+          joinedAt: payload.joinedAt,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } catch (linkErr) {
+      console.warn("⚠️ trainer_client_links write skipped:", linkErr?.message);
+    }
+
+    const verifyDoc = await getDoc(clientRef);
+    if (!verifyDoc.exists()) {
+      console.error("❌ ERROR: Client was not saved!");
+    }
+
+    try {
+      const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+      await setDoc(
+        legacyClientRef,
+        {
+          id: clientId,
+          trainerId,
+          ...payload,
+        },
+        { merge: true },
+      );
+    } catch (legacyError) {
+      /* ignore */
+    }
+
+    return { success: true, id: clientId };
+  } catch (error) {
+    console.error("Error creating/updating client:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - createOrUpdateClient");
+    throw error;
+  }
+}
+
+export async function syncClientDataFromUsers(clientId, trainerId) {
+  if (!clientId || !trainerId || !db) {
+    throw new Error("Missing required parameters");
+  }
+
+  try {
+    const userDoc = await getDoc(doc(db, "users", clientId));
+    if (!userDoc.exists()) {
+      return null;
+    }
+
+    const userData = userDoc.data();
+
+    const clientName =
+      userData.name ||
+      `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
+      userData.displayName ||
+      "Client";
+
+    const syncPayload = {
+      name: clientName,
+      email: userData.email || "",
+      photoURL: userData.photoURL || null,
+      height: userData.height || null,
+      weight: userData.weight || null,
+      age: userData.age || null,
+      gender: userData.gender || null,
+      goals: userData.primaryGoal || userData.goals || "",
+      fitnessLevel: userData.fitnessLevel || null,
+      equipmentAccess: userData.equipmentAccess || [],
+      daysPerWeek: userData.daysPerWeek || null,
+      injuries: userData.injuries || null,
+      exercisesDislike: userData.exercisesDislike || "",
+      preferredWorkoutTime: userData.preferredWorkoutTime || null,
+      trainingEnvironment: userData.trainingEnvironment || null,
+      currentStressLevel: userData.currentStressLevel || null,
+      sleepQuality: userData.sleepQuality || null,
+      energyLevels: userData.energyLevels || null,
+      supplementsCurrentlyTaking: userData.supplementsCurrentlyTaking || "",
+      hydrationHabits: userData.hydrationHabits || null,
+      phone: userData.phone || null,
+      bio: userData.bio || null,
+      role: userData.role || "client",
+      updatedAt: serverTimestamp(),
+    };
+
+    const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+    await setDoc(clientRef, syncPayload, { merge: true });
+
+    return { id: clientId, ...syncPayload };
+  } catch (error) {
+    console.error("Error syncing client data:", error);
+    throw error;
+  }
+}
+
+export async function removeClient(clientId, trainerId) {
+  if (!clientId || !trainerId || !db) {
+    throw new Error("Missing required parameters: clientId or trainerId");
+  }
+
+  try {
+    const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+    await deleteDoc(clientRef);
+
+    try {
+      const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+      await deleteDoc(legacyClientRef);
+    } catch (legacyError) {
+      /* ignore */
+    }
+
+    return { success: true, id: clientId };
+  } catch (error) {
+    console.error("Error removing client:", error);
+    throw error;
+  }
+}
+
+export async function getTrainerClients(trainerId) {
+  if (!trainerId || !db) return [];
+
+  try {
+    const seen = new Set();
+    const clients = [];
+
+    const clientsRef = collection(db, `trainer_clients/${trainerId}/clients`);
+    const querySnapshot = await getDocs(clientsRef);
+    querySnapshot.forEach((docSnap) => {
+      const clientId = docSnap.id;
+      if (!seen.has(clientId)) {
+        seen.add(clientId);
+        clients.push({ id: clientId, ...docSnap.data() });
+      }
+    });
+
+    const validClients = [];
+    for (const client of clients) {
+      try {
+        const userDoc = await getDoc(doc(db, "users", client.id));
+        if (userDoc.exists()) {
+          const d = userDoc.data();
+          client.name =
+            client.name ||
+            d.name ||
+            d.displayName ||
+            `${d.firstName || ""} ${d.lastName || ""}`.trim() ||
+            "Client";
+          client.photoURL = client.photoURL || d.photoURL || null;
+          validClients.push(client);
+        }
+      } catch (_) {
+        /* skip */
+      }
+    }
+
+    validClients.sort((a, b) => {
+      const nameA = (a.name || "").toLowerCase();
+      const nameB = (b.name || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    return validClients;
+  } catch (error) {
+    console.error("Error getting trainer clients:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getTrainerClients");
+    return [];
+  }
+}
+
+export async function updateClient(clientId, updates) {
+  if (!clientId || !db) {
+    throw new Error("Missing required parameter: clientId");
+  }
+
+  try {
+    const clientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+    await updateDoc(clientRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating client:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - updateClient");
+    throw error;
+  }
+}
+
+export async function addProgress(clientId, progressData) {
+  if (!clientId || !db) {
+    throw new Error("Missing required parameter: clientId");
+  }
+
+  try {
+    const progressRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_PROGRESS_SUBCOLLECTION);
+    const payload = {
+      weight: progressData.weight || null,
+      bodyFat: progressData.bodyFat || null,
+      chest: progressData.chest || null,
+      arms: progressData.arms || null,
+      waist: progressData.waist || null,
+      photos: progressData.photos || [],
+      note: progressData.note || "",
+      createdAt: serverTimestamp(),
+    };
+
+    const docRef = await addDoc(progressRef, payload);
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error("Error adding progress:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - addProgress");
+    throw error;
+  }
+}
+
+export async function getProgressHistory(clientId) {
+  if (!clientId || !db) return [];
+
+  try {
+    const trainerId = auth?.currentUser?.uid;
+    let querySnapshot;
+    if (trainerId) {
+      try {
+        const newProgressRef = collection(
+          db,
+          `trainer_clients/${trainerId}/clients/${clientId}/${CRM_PROGRESS_SUBCOLLECTION}`,
+        );
+        querySnapshot = await getDocs(newProgressRef);
+      } catch (newPathError) {
+        const legacyProgressRef = collection(
+          db,
+          CRM_CLIENTS_COLLECTION,
+          clientId,
+          CRM_PROGRESS_SUBCOLLECTION,
+        );
+        querySnapshot = await getDocs(legacyProgressRef);
+      }
+    } else {
+      const legacyProgressRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_PROGRESS_SUBCOLLECTION);
+      querySnapshot = await getDocs(legacyProgressRef);
+    }
+    const progressEntries = [];
+
+    querySnapshot.forEach((docSnap) => {
+      progressEntries.push({
+        id: docSnap.id,
+        ...docSnap.data(),
+      });
+    });
+
+    progressEntries.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
+      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
+      return timeB - timeA;
+    });
+
+    return progressEntries;
+  } catch (error) {
+    const code = error?.code || error?.name;
+    if (code !== "permission-denied") {
+      console.error("Error getting progress history:", error);
+    }
+    autoLogErrorSync(error, "TrainerApp CRM - getProgressHistory");
+    return [];
+  }
+}
+
+export async function deleteProgress(clientId, progressId) {
+  if (!clientId || !progressId || !db) {
+    throw new Error("Missing required parameters: clientId or progressId");
+  }
+
+  try {
+    const progressRef = doc(db, CRM_CLIENTS_COLLECTION, clientId, CRM_PROGRESS_SUBCOLLECTION, progressId);
+    await deleteDoc(progressRef);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting progress:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - deleteProgress");
+    throw error;
+  }
+}
+
+export async function createTask(clientId, trainerId, taskData) {
+  if (!clientId || !trainerId || !db) {
+    throw new Error("Missing required parameters: clientId or trainerId");
+  }
+
+  try {
+    const tasksRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_TASKS_SUBCOLLECTION);
+    const payload = {
+      title: taskData.title || "",
+      description: taskData.description || "",
+      dueDate: taskData.dueDate || null,
+      completed: false,
+      trainerId,
+      createdAt: serverTimestamp(),
+    };
+
+    const docRef = await addDoc(tasksRef, payload);
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error("Error creating task:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - createTask");
+    throw error;
+  }
+}
+
+export async function getTasks(clientId) {
+  if (!clientId || !db) return [];
+
+  try {
+    const trainerId = auth?.currentUser?.uid;
+    let querySnapshot;
+    if (trainerId) {
+      try {
+        const newTasksRef = collection(
+          db,
+          `trainer_clients/${trainerId}/clients/${clientId}/${CRM_TASKS_SUBCOLLECTION}`,
+        );
+        querySnapshot = await getDocs(newTasksRef);
+      } catch (newPathError) {
+        const legacyTasksRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_TASKS_SUBCOLLECTION);
+        querySnapshot = await getDocs(legacyTasksRef);
+      }
+    } else {
+      const legacyTasksRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_TASKS_SUBCOLLECTION);
+      querySnapshot = await getDocs(legacyTasksRef);
+    }
+    const tasks = [];
+
+    querySnapshot.forEach((docSnap) => {
+      tasks.push({
+        id: docSnap.id,
+        ...docSnap.data(),
+      });
+    });
+
+    tasks.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
+      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
+      return timeB - timeA;
+    });
+
+    return tasks;
+  } catch (error) {
+    const code = error?.code || error?.name;
+    if (code !== "permission-denied") {
+      console.error("Error getting tasks:", error);
+    }
+    autoLogErrorSync(error, "TrainerApp CRM - getTasks");
+    return [];
+  }
+}
+
+export async function updateTask(clientId, taskId, updates) {
+  if (!clientId || !taskId || !db) {
+    throw new Error("Missing required parameters: clientId or taskId");
+  }
+
+  try {
+    const taskRef = doc(db, CRM_CLIENTS_COLLECTION, clientId, CRM_TASKS_SUBCOLLECTION, taskId);
+    await updateDoc(taskRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating task:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - updateTask");
+    throw error;
+  }
+}
+
+export async function toggleTaskComplete(clientId, taskId, completed) {
+  return await updateTask(clientId, taskId, { completed });
+}
+
+export async function deleteTask(clientId, taskId) {
+  if (!clientId || !taskId || !db) {
+    throw new Error("Missing required parameters: clientId or taskId");
+  }
+
+  try {
+    const taskRef = doc(db, CRM_CLIENTS_COLLECTION, clientId, CRM_TASKS_SUBCOLLECTION, taskId);
+    await deleteDoc(taskRef);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting task:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - deleteTask");
+    throw error;
+  }
+}
+
+export async function createNote(clientId, trainerId, noteData) {
+  if (!clientId || !trainerId || !db) {
+    throw new Error("Missing required parameters: clientId or trainerId");
+  }
+
+  try {
+    const notesRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_NOTES_SUBCOLLECTION);
+    const payload = {
+      text: noteData.text || "",
+      trainerId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    const docRef = await addDoc(notesRef, payload);
+    return { success: true, id: docRef.id };
+  } catch (error) {
+    console.error("Error creating note:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - createNote");
+    throw error;
+  }
+}
+
+export async function getNotes(clientId) {
+  if (!clientId || !db) return [];
+
+  try {
+    const notesRef = collection(db, CRM_CLIENTS_COLLECTION, clientId, CRM_NOTES_SUBCOLLECTION);
+    const querySnapshot = await getDocs(notesRef);
+    const notes = [];
+
+    querySnapshot.forEach((docSnap) => {
+      notes.push({
+        id: docSnap.id,
+        ...docSnap.data(),
+      });
+    });
+
+    notes.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
+      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
+      return timeB - timeA;
+    });
+
+    return notes;
+  } catch (error) {
+    console.error("Error getting notes:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getNotes");
+    return [];
+  }
+}
+
+export async function updateNote(clientId, noteId, updates) {
+  if (!clientId || !noteId || !db) {
+    throw new Error("Missing required parameters: clientId or noteId");
+  }
+
+  try {
+    const noteRef = doc(db, CRM_CLIENTS_COLLECTION, clientId, CRM_NOTES_SUBCOLLECTION, noteId);
+    await updateDoc(noteRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating note:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - updateNote");
+    throw error;
+  }
+}
+
+export async function deleteNote(clientId, noteId) {
+  if (!clientId || !noteId || !db) {
+    throw new Error("Missing required parameters: clientId or noteId");
+  }
+
+  try {
+    const noteRef = doc(db, CRM_CLIENTS_COLLECTION, clientId, CRM_NOTES_SUBCOLLECTION, noteId);
+    await deleteDoc(noteRef);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting note:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - deleteNote");
+    throw error;
+  }
+}
+
+export async function getWeightTrend(clientId, limitCount = 30) {
+  if (!clientId || !db) return [];
+
+  try {
+    const progressEntries = await getProgressHistory(clientId);
+    const weightData = progressEntries
+      .filter((entry) => entry.weight != null && entry.weight > 0)
+      .map((entry) => ({
+        date: entry.createdAt?.toDate?.() || entry.createdAt || new Date(),
+        weight: Number(entry.weight),
+      }))
+      .slice(0, limitCount);
+
+    return weightData;
+  } catch (error) {
+    console.error("Error getting weight trend:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getWeightTrend");
+    return [];
+  }
+}
+
+export async function getTaskStats(clientId) {
+  if (!clientId || !db) {
+    return { total: 0, completed: 0, pending: 0 };
+  }
+
+  try {
+    const tasks = await getTasks(clientId);
+    const total = tasks.length;
+    const completed = tasks.filter((task) => task.completed === true).length;
+    const pending = total - completed;
+
+    return { total, completed, pending };
+  } catch (error) {
+    console.error("Error getting task stats:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getTaskStats");
+    return { total: 0, completed: 0, pending: 0 };
+  }
+}
+
+export async function getClientAnalytics(clientId) {
+  if (!clientId || !db) {
+    return {
+      weightTrend: [],
+      taskStats: { total: 0, completed: 0, pending: 0 },
+      lastProgressDate: null,
+      daysSinceLastCheckIn: null,
+      progressEntriesCount: 0,
+    };
+  }
+
+  try {
+    const [weightTrend, taskStats, progressEntries] = await Promise.all([
+      getWeightTrend(clientId),
+      getTaskStats(clientId),
+      getProgressHistory(clientId),
+    ]);
+
+    let lastProgressDate = null;
+    let daysSinceLastCheckIn = null;
+
+    if (progressEntries.length > 0) {
+      const lastEntry = progressEntries[0];
+      lastProgressDate = lastEntry.createdAt?.toDate?.() || lastEntry.createdAt || null;
+
+      if (lastProgressDate) {
+        const now = new Date();
+        const diffTime = now - lastProgressDate;
+        daysSinceLastCheckIn = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    return {
+      weightTrend,
+      taskStats,
+      lastProgressDate,
+      daysSinceLastCheckIn,
+      progressEntriesCount: progressEntries.length,
+    };
+  } catch (error) {
+    console.error("Error getting client analytics:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - getClientAnalytics");
+    return {
+      weightTrend: [],
+      taskStats: { total: 0, completed: 0, pending: 0 },
+      lastProgressDate: null,
+      daysSinceLastCheckIn: null,
+      progressEntriesCount: 0,
+    };
+  }
+}
+
+export async function checkWeeklyDataAvailability(userId) {
+  if (!userId || !db) {
+    throw new Error("Missing userId or db");
+  }
+
+  try {
+    const today = new Date();
+    const daysWithData = [];
+    const dateKeys = [];
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+      dateKeys.push(dateKey);
+    }
+
+    const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
+
+    for (const dateKey of dateKeys) {
+      const docRef = doc(dailyLogsRef, dateKey);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        daysWithData.push({
+          date: dateKey,
+          hasWorkout: !!data.workout,
+          hasNutrition: !!data.nutrition,
+          hasWeight: !!data.weight,
+          hasMood: !!data.mood,
+          data,
+        });
+      }
+    }
+
+    return {
+      totalDays: 7,
+      daysWithData: daysWithData.length,
+      missingDays: 7 - daysWithData.length,
+      details: daysWithData,
+      dateRange: {
+        start: dateKeys[dateKeys.length - 1],
+        end: dateKeys[0],
+      },
+    };
+  } catch (error) {
+    const code = error?.code;
+    const msg = String(error?.message || error || "").toLowerCase();
+    const permissionDenied = code === "permission-denied" || msg.includes("missing or insufficient permissions");
+
+    if (permissionDenied) {
+      const today = new Date();
+      const dateKeys = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        dateKeys.push(dateKey);
+      }
+      return {
+        totalDays: 7,
+        daysWithData: 0,
+        missingDays: 7,
+        details: [],
+        dateRange: {
+          start: dateKeys[dateKeys.length - 1],
+          end: dateKeys[0],
+        },
+      };
+    }
+
+    console.error("Error checking weekly data availability:", error);
+    autoLogErrorSync(error, "TrainerApp CRM - checkWeeklyDataAvailability");
+    throw error;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END CLIENT CRM SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -679,254 +1455,702 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
 // ─────────────────────────────────────────────
 // PROGRESS TAB — by category (data is per-day in dailyLogs, resets each day)
 // ─────────────────────────────────────────────
-const ProgressTab = ({ isDark, clientData, todayDailyLog, onLogWorkout }) => {
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) => {
+  const textColor = isDark ? '#FFFFFF' : '#020617';
+  const mutedColor = isDark ? 'rgba(255,255,255,0.56)' : 'rgba(15,23,42,0.72)';
+  const subtleLabelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)';
+
+  const { width: windowWidth } = useWindowDimensions();
+  const [metricsGridWidth, setMetricsGridWidth] = useState(() => Math.max(0, (windowWidth || SCREEN_WIDTH) - 32));
 
   const beforeWeight = clientData?.beforeWeight ?? null;
-  const currentWeight = (todayDailyLog?.dashboard_weight != null && todayDailyLog.dashboard_weight !== '')
-    ? todayDailyLog.dashboard_weight
-    : (clientData?.currentWeight ?? null);
-
   const log = todayDailyLog || {};
+  const currentWeight =
+    log.dashboard_weight != null && log.dashboard_weight !== '' ? Number(log.dashboard_weight) : (clientData?.currentWeight != null ? Number(clientData.currentWeight) : null);
 
-  const workoutExercises = Array.isArray(log.dashboard_workout_exercises)
-    ? log.dashboard_workout_exercises.filter(Boolean)
-    : [];
+  const parsedBefore = beforeWeight != null && beforeWeight !== '' ? Number(beforeWeight) : null;
+  const hasBefore = Number.isFinite(parsedBefore);
+  const hasCurrent = Number.isFinite(currentWeight);
+  const diff = hasBefore && hasCurrent ? Number((currentWeight - parsedBefore).toFixed(1)) : null;
+  const diffDir = diff == null ? '→' : diff < 0 ? '↓' : diff > 0 ? '↑' : '→';
+  const diffColor = diff == null ? 'rgba(148,163,184,0.9)' : diff < 0 ? '#10B981' : diff > 0 ? '#EF4444' : 'rgba(148,163,184,0.9)';
+
+  const bodyFat = log.dashboard_bodyfat != null && log.dashboard_bodyfat !== '' ? String(log.dashboard_bodyfat) : null;
+
+  // Normalize today's workout so structured logs + legacy strings all populate the rich card.
+  const structuredWorkoutLog = Array.isArray(log.workoutLog)
+    ? log.workoutLog.map((item) => ({
+        name: item?.exerciseName || item?.name || item?.label || '',
+        sets: Array.isArray(item?.sets) ? item.sets : [],
+      }))
+    : null;
   const workoutNameRaw = log.dashboard_workout_name != null ? String(log.dashboard_workout_name).trim() : '';
   const legacyWorkoutStr =
-    log.dashboard_workouts != null && log.dashboard_workouts !== ''
-      ? String(log.dashboard_workouts).trim()
-      : '';
-  const legacyFirstLine = legacyWorkoutStr ? legacyWorkoutStr.split('\n').map((l) => l.trim()).find(Boolean) || '' : '';
+    log.dashboard_workouts != null && log.dashboard_workouts !== '' ? String(log.dashboard_workouts).trim() : '';
+
+  // If we only have the legacy multiline string, split it into individual exercise lines.
+  const legacyLines = legacyWorkoutStr
+    ? legacyWorkoutStr
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+    : [];
+  const legacyFirstLine = legacyLines[0] || '';
+  const legacyExerciseLines = legacyLines.length > 1 ? legacyLines.slice(1) : [];
+
+  const workoutExercises =
+    structuredWorkoutLog && structuredWorkoutLog.length > 0
+      ? structuredWorkoutLog
+      : Array.isArray(log.dashboard_workout_exercises) && log.dashboard_workout_exercises.length > 0
+      ? log.dashboard_workout_exercises.map((name) => ({
+          name: String(name),
+          sets: [],
+        }))
+      : legacyExerciseLines.length > 0
+      ? legacyExerciseLines.map((line) => ({ name: line, sets: [] }))
+      : legacyLines.map((line) => ({ name: line, sets: [] }));
+
   const resolvedWorkoutTitle =
     workoutNameRaw ||
     legacyFirstLine ||
     (workoutExercises.length ? `${workoutExercises.length} exercise${workoutExercises.length === 1 ? '' : 's'}` : '');
   const hasWorkoutToday = !!resolvedWorkoutTitle;
 
+  const sleepVal = log.dashboard_sleep != null && log.dashboard_sleep !== '' ? Number(log.dashboard_sleep) : null;
+  const waterVal = log.dashboard_water != null && log.dashboard_water !== '' ? Number(log.dashboard_water) : null;
+
   const sectionHeaderStyle = {
-    color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(26,10,46,0.45)',
+    color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.55)',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 2,
     textTransform: 'uppercase',
-    marginBottom: 8,
-    marginTop: 16,
-  };
-  const subtleLabelColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(26,10,46,0.45)';
-  const metricCardBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)';
-  const metricCardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.12)';
-  const workoutIconBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)';
-  const workoutIconColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(26,10,46,0.6)';
-  const COLORS = {
-    energy: '#FCD34D',
-    stress: '#FB7185',
-    steps: '#06B6D4',
-    soreness: '#F472B6',
-    bodyFat: '#F97316',
-    mood: '#34D399',
-    muted: 'rgba(255,255,255,0.5)',
-    white: '#FFFFFF',
+    marginBottom: 10,
+    marginTop: 18,
   };
 
-  return (
-    <View>
-      {/* ─── WEIGHT ─── */}
-      <View style={{ marginTop: 16 }}>
-        <Text style={sectionHeaderStyle}>Weight</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <GlassCard isDark={isDark} style={{ flex: 1, height: 80, borderRadius: 16, padding: 12, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: subtleLabelColor, fontSize: 11, marginBottom: 4 }}>Before</Text>
-            {beforeWeight != null && beforeWeight !== '' ? (
-              <GradientText colors={PROGRESS_VALUE_WEIGHT} style={{ fontSize: 28, fontWeight: '800' }}>{beforeWeight}</GradientText>
-            ) : (
-              <Text style={{ color: mutedColor, fontSize: 12, fontStyle: 'italic' }}>No data</Text>
-            )}
-          </GlassCard>
-          <GlassCard isDark={isDark} style={{ flex: 1, height: 80, borderRadius: 16, padding: 12, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: subtleLabelColor, fontSize: 11, marginBottom: 4 }}>Current</Text>
-            {currentWeight != null && currentWeight !== '' ? (
-              <GradientText colors={PROGRESS_VALUE_WEIGHT} style={{ fontSize: 28, fontWeight: '800' }}>{currentWeight}</GradientText>
-            ) : (
-              <Text style={{ color: mutedColor, fontSize: 12, fontStyle: 'italic' }}>No data</Text>
-            )}
-          </GlassCard>
-        </View>
-      </View>
+  const gridGap = 12;
+  const isTablet = (windowWidth || SCREEN_WIDTH) > 768;
+  const cols = isTablet ? 3 : 2;
+  const cardWidth = (metricsGridWidth - gridGap * (cols - 1)) / cols;
 
-      {/* ─── SLEEP + WATER ─── */}
-      <View style={{ marginTop: 16 }}>
-        <Text style={sectionHeaderStyle}>Sleep & Water</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <GlassCard isDark={isDark} style={{ flex: 1, height: 90, borderRadius: 16, padding: 12, alignItems: 'center', justifyContent: 'center' }}>
-            <GradientText colors={PROGRESS_VALUE_SLEEP} style={{ fontSize: 28, fontWeight: '800' }}>{log.dashboard_sleep ?? '—'}</GradientText>
-            <Text style={{ color: subtleLabelColor, fontSize: 11, marginTop: 2 }}>hrs · Sleep</Text>
-          </GlassCard>
-          <GlassCard isDark={isDark} style={{ flex: 1, height: 90, borderRadius: 16, padding: 12, alignItems: 'center', justifyContent: 'center' }}>
-            <GradientText colors={PROGRESS_VALUE_WATER} style={{ fontSize: 28, fontWeight: '800' }}>{log.dashboard_water ?? '—'}</GradientText>
-            <Text style={{ color: subtleLabelColor, fontSize: 11, marginTop: 2 }}>oz · Water</Text>
-          </GlassCard>
-        </View>
-      </View>
+  const clampPct = (n) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
 
-      {/* ─── TODAY'S WORKOUT — purple → cyan border, real daily log data ─── */}
-      <View style={{ marginTop: 16 }}>
-        <LinearGradient
-          colors={['#A78BFA', '#06B6D4']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ borderRadius: 16, padding: 2 }}
+  const Sparkline = ({ data = [] }) => {
+    const pts = Array.isArray(data) ? data.filter((v) => Number.isFinite(v)) : [];
+    if (pts.length < 2) {
+      return (
+        <View
+          style={{
+            height: 56,
+            borderRadius: 12,
+            backgroundColor: isDark ? 'rgba(15,23,42,0.9)' : '#F3F4F6',
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(55,65,81,0.9)' : 'rgba(209,213,219,1)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(75,85,99,1)', fontSize: 11 }}>No trend yet</Text>
+        </View>
+      );
+    }
+
+    const w = 260;
+    const h = 56;
+    const min = Math.min(...pts);
+    const max = Math.max(...pts);
+    const span = Math.max(0.0001, max - min);
+
+    const points = pts
+      .map((v, i) => {
+        const x = (i / (pts.length - 1)) * (w - 2) + 1;
+        const y = (1 - (v - min) / span) * (h - 10) + 5;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+
+    return (
+      <View
+        style={{
+          height: h,
+          borderRadius: 12,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(55,65,81,0.9)' : 'rgba(209,213,219,1)',
+          backgroundColor: isDark ? 'rgba(15,23,42,0.9)' : '#F9FAFB',
+        }}
+      >
+        <Svg width={w} height={h}>
+          <Polyline points={points} fill="none" stroke="#06B6D4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      </View>
+    );
+  };
+
+  const MetricMini = ({ label, value, scale, borderStart, borderEnd, emptyType, style }) => {
+    const hasVal = value != null && value !== '' && Number.isFinite(Number(value));
+    const n = hasVal ? Number(value) : null;
+    const pct = hasVal ? clampPct(n / scale) : 0;
+    const valueColors = [borderStart, borderEnd];
+    const borderStartRgb = hexToRgbTriple(borderStart);
+    const todayTint = isDark ? 'rgba(148,163,184,0.9)' : `rgba(${borderStartRgb},0.78)`;
+
+    return (
+      <View style={[{ width: cardWidth }, style]}>
+        <View
+          style={{
+            borderRadius: 18,
+            padding: 1,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(55,65,81,0.9)' : 'rgba(209,213,219,1)',
+          }}
         >
           <View
             style={{
-              borderRadius: 14,
-              backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
-              paddingHorizontal: 18,
-              paddingVertical: 16,
-              minHeight: 90,
-              justifyContent: 'center',
+              borderRadius: 16,
+              padding: 14,
+              minHeight: 138,
+              backgroundColor: isDark ? '#020617' : '#FFFFFF',
+              overflow: 'hidden',
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.8, color: mutedColor }}>
-              TODAY&apos;S WORKOUT
-            </Text>
-            {hasWorkoutToday ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '800',
+                  letterSpacing: 1.4,
+                  color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(75,85,99,1)',
+                }}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </View>
+
+            {hasVal ? (
               <>
-                <Text style={{ fontSize: 22, fontWeight: '800', color: textColor, marginTop: 8 }} numberOfLines={2}>
-                  {resolvedWorkoutTitle}
-                </Text>
-                {workoutExercises.length > 0 ? (
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: mutedColor, marginTop: 6 }}>
-                    {workoutExercises.length} exercise{workoutExercises.length === 1 ? '' : 's'} logged
-                  </Text>
-                ) : null}
+                <GradientText
+                  colors={valueColors}
+                  style={{
+                    fontSize: 44,
+                    fontWeight: '900',
+                    letterSpacing: -1,
+                    color: isDark ? '#F9FAFB' : '#111827',
+                  }}
+                >
+                  {String(value)}
+                </GradientText>
+                <View
+                  style={{
+                    height: 3,
+                    borderRadius: 999,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.08)',
+                    marginTop: 10,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: `${Math.round(pct * 100)}%`,
+                      height: 3,
+                      borderRadius: 999,
+                      backgroundColor: isDark ? '#FFFFFF' : borderEnd,
+                    }}
+                  />
+                </View>
+                <Text style={{ color: todayTint, fontSize: 11, marginTop: 8 }}>Today</Text>
               </>
-            ) : (
-              <TouchableOpacity onPress={onLogWorkout} activeOpacity={0.85}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: textColor, marginTop: 8 }}>
-                  No workout logged today
+            ) : emptyType ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 2 }}>
+                <LottieView
+                  source={
+                    emptyType === 'sleep'
+                      ? require('../assets/Lotties for Anatrox/sleep.json')
+                      : emptyType === 'water'
+                        ? require('../assets/Lotties for Anatrox/glass water.json')
+                        : require('../assets/Lotties for Anatrox/boxer lottie.json')
+                  }
+                  autoPlay
+                  loop
+                  style={{ width: 84, height: 84 }}
+                />
+                <Text
+                  style={{
+                    color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                    fontSize: 12,
+                    marginTop: 6,
+                  }}
+                >
+                  Not logged
                 </Text>
-                <Text style={{ fontSize: 12, color: mutedColor, marginTop: 6 }}>Tap to open calendar</Text>
-              </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text
+                  style={{
+                    color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                    fontSize: 13,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  No data
+                </Text>
+              </View>
             )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={{ paddingTop: 4 }}>
+      {/* WEIGHT — hero */}
+      <View style={{ marginTop: 10 }}>
+        <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 2 }}>
+          <LinearGradient
+            colors={isDark ? ['#1a1a24', '#0f0f14'] : ['#FFFFFF', '#F9FAFB']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ borderRadius: 20, padding: 18 }}
+          >
+            <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '800', letterSpacing: 2 }}>WEIGHT</Text>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: subtleLabelColor, fontSize: 12, marginBottom: 6 }}>Before</Text>
+                <Text style={{ fontSize: 40, fontWeight: '900', color: 'rgba(192,132,252,0.95)', letterSpacing: -1 }}>
+                  {hasBefore ? parsedBefore : '—'}
+                </Text>
+              </View>
+
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingBottom: 6 }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: diffColor }}>{diffDir}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: diffColor, marginTop: 4 }}>
+                  {diff == null ? '—' : `${Math.abs(diff)} lbs`}
+                </Text>
+              </View>
+
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={{ color: subtleLabelColor, fontSize: 12, marginBottom: 6 }}>Current</Text>
+                <Text style={{ fontSize: 40, fontWeight: '900', color: '#06B6D4', letterSpacing: -1 }}>
+                  {hasCurrent ? currentWeight : '—'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.10)' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(75,85,99,1)', fontSize: 11 }}>Last 7 days</Text>
+                {bodyFat ? (
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,107,157,0.35)', backgroundColor: 'rgba(255,107,157,0.10)' }}>
+                    <Text style={{ color: isDark ? 'rgba(255,255,255,0.7)' : '#0B1220', fontSize: 11, fontWeight: '700' }}>Body Fat: {bodyFat}%</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Sparkline data={weightTrend7} />
+            </View>
+          </LinearGradient>
+        </LinearGradient>
+      </View>
+
+      {/* TODAY'S WORKOUT — hero (read-only) */}
+      <View style={{ marginTop: 16 }}>
+        <LinearGradient
+          colors={['#E91E63', '#FF6B9D', '#C084FC']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            borderRadius: 22,
+            padding: 2,
+            overflow: 'hidden',
+            ...(Platform.OS === 'ios' && {
+              shadowColor: '#a855f7',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.2,
+              shadowRadius: 12,
+            }),
+            elevation: 4,
+          }}
+        >
+          <View style={{ borderRadius: 20, overflow: 'hidden' }}>
+            {/* Left accent rail */}
+            <LinearGradient
+              colors={['#E91E63', '#FF6B9D']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, zIndex: 4 }}
+            />
+
+            {/* Rich background */}
+            <LinearGradient
+              colors={isDark ? ['#1A1F2E', '#0F1419'] : ['#FFFFFF', '#F9FAFB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ borderRadius: 20, overflow: 'hidden', minHeight: 132 }}
+            >
+              {/* Subtle texture */}
+              <LinearGradient
+                colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ ...StyleSheet.absoluteFillObject, opacity: 0.55 }}
+              />
+
+              <View style={{ padding: 20 }}>
+                <Text style={{ color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(75,85,99,1)', fontSize: 11, fontWeight: '800', letterSpacing: 2 }}>
+                  TODAY&apos;S WORKOUT
+                </Text>
+
+                {hasWorkoutToday ? (
+                  <>
+                    <Text style={{ fontSize: 26, fontWeight: '900', color: isDark ? '#FFFFFF' : '#020617', marginTop: 10 }} numberOfLines={2}>
+                      {resolvedWorkoutTitle}
+                    </Text>
+                    {workoutExercises.length > 0 ? (
+                      <>
+                        <View
+                          style={{
+                            alignSelf: 'flex-start',
+                            marginTop: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 999,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+                            borderWidth: 1,
+                            borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(209,213,219,1)',
+                          }}
+                        >
+                          <Text style={{ color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(55,65,81,1)', fontSize: 12, fontWeight: '700' }}>
+                            {workoutExercises.length} exercise{workoutExercises.length === 1 ? '' : 's'}
+                          </Text>
+                        </View>
+
+                        {/* Preview first few exercises with sets × reps */}
+                        <View style={{ marginTop: 10, gap: 6 }}>
+                          {workoutExercises.slice(0, 3).map((ex, idx) => {
+                            const name = ex && (ex.exerciseName || ex.name || ex.label || '');
+                            const setsArr = Array.isArray(ex?.sets) ? ex.sets : [];
+                            const setsCount = setsArr.length;
+                            const firstSet = setsArr[0] || {};
+                            const repsVal =
+                              firstSet.reps != null && String(firstSet.reps).trim() !== ''
+                                ? String(firstSet.reps).trim()
+                                : null;
+                            let meta = '';
+                            if (setsCount && repsVal) {
+                              meta = `${setsCount}×${repsVal}`;
+                            } else if (setsCount) {
+                              meta = `${setsCount} set${setsCount === 1 ? '' : 's'}`;
+                            }
+
+                            return (
+                              <View key={`${name || 'exercise'}_${idx}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                                <LinearGradient
+                                  colors={['rgba(233,30,99,0.9)', 'rgba(255,107,157,0.85)', 'rgba(192,132,252,0.85)']}
+                                  start={{ x: 0, y: 0 }}
+                                  end={{ x: 1, y: 1 }}
+                                  style={{ width: 6, height: 6, borderRadius: 3, marginTop: 6 }}
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    style={{
+                                      color: isDark ? 'rgba(249,250,251,0.96)' : 'rgba(17,24,39,0.95)',
+                                      fontSize: 15,
+                                      fontWeight: '700',
+                                    }}
+                                    numberOfLines={1}
+                                  >
+                                    {name || 'Exercise'}
+                                  </Text>
+                                  {!!meta && (
+                                    <Text
+                                      style={{
+                                        color: isDark ? 'rgba(156,163,175,0.95)' : 'rgba(75,85,99,1)',
+                                        fontSize: 11,
+                                        marginTop: 1,
+                                      }}
+                                      numberOfLines={1}
+                                    >
+                                      {meta}
+                                    </Text>
+                                  )}
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </>
+                    ) : (
+                      <Text
+                        style={{
+                          color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(107,114,128,1)',
+                          fontSize: 13,
+                          marginTop: 10,
+                        }}
+                      >
+                        Logged today
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <View style={{ alignItems: 'center', justifyContent: 'center', height: 120, marginTop: 6 }}>
+                    <LottieView source={require('../assets/Lotties for Anatrox/boxer lottie.json')} autoPlay loop style={{ width: 90, height: 90 }} />
+                    <Text
+                      style={{
+                        color: isDark ? 'rgba(255,255,255,0.68)' : 'rgba(107,114,128,1)',
+                        fontSize: 14,
+                        marginTop: 8,
+                      }}
+                    >
+                      No workout logged
+                    </Text>
+                  </View>
+                )}
+
+                {/* Subtle right-side lottie accent (even when data exists) */}
+                <View pointerEvents="none" style={{ position: 'absolute', right: 10, top: 14, opacity: 0.6 }}>
+                  <LottieView
+                    source={require('../assets/Lotties for Anatrox/boxer lottie.json')}
+                    autoPlay
+                    loop
+                    style={{ width: 52, height: 52 }}
+                  />
+                </View>
+              </View>
+            </LinearGradient>
           </View>
         </LinearGradient>
       </View>
 
-      {/* ─── OTHER TODAY — 2-column grid, gradient borders, label + value only ─── */}
+      {/* SLEEP & WATER — 2-col with bars */}
       <View style={{ marginTop: 16 }}>
-        <Text style={sectionHeaderStyle}>Other today</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {[
-            {
-              key: 'energy',
-              label: 'ENERGY / 5',
-              value: log.dashboard_energy,
-              metricColor: COLORS.energy,
-            },
-            {
-              key: 'stress',
-              label: 'STRESS / 10',
-              value: log.dashboard_stress,
-              metricColor: COLORS.stress,
-            },
-            {
-              key: 'steps',
-              label: 'STEPS',
-              value: log.dashboard_steps,
-              metricColor: COLORS.steps,
-            },
-            {
-              key: 'soreness',
-              label: 'SORENESS / 10',
-              value: log.dashboard_soreness,
-              metricColor: COLORS.soreness,
-            },
-            {
-              key: 'bodyFat',
-              label: 'BODY FAT %',
-              value: log.dashboard_bodyfat,
-              metricColor: COLORS.bodyFat,
-            },
-            {
-              key: 'mood',
-              label: 'MOOD / 10',
-              value: log.dashboard_mood,
-              metricColor: COLORS.mood,
-            },
-          ].map((m) => {
-            const isEmpty = m.value == null || m.value === '';
-            const display = isEmpty ? '—' : m.value;
-
-            return (
-              <View
-                key={m.key}
+        <Text style={sectionHeaderStyle}>Sleep & Water</Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <LinearGradient
+              colors={isDark ? ['#020617', '#020617'] : ['#FFFFFF', '#F9FAFB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                borderRadius: 18,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(148,163,184,0.45)' : 'rgba(209,213,219,1)',
+              }}
+            >
+              <Text
                 style={{
-                  width: '48%',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: isEmpty ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)') : m.metricColor,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
-                  padding: 16,
-                  minHeight: 132,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 12,
+                  color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(75,85,99,1)',
+                  fontSize: 10,
+                  fontWeight: '800',
+                  letterSpacing: 1.4,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 10,
-                    fontWeight: '700',
-                    letterSpacing: 1.4,
-                    textTransform: 'uppercase',
-                    color: subtleLabelColor,
-                    textAlign: 'center',
-                  }}
-                >
-                  {m.label}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 38,
-                    fontWeight: '800',
-                    color: isEmpty ? mutedColor : m.metricColor,
-                    textAlign: 'center',
-                  }}
-                  numberOfLines={1}
-                >
-                  {display}
-                </Text>
-              </View>
+                SLEEP
+              </Text>
+              {Number.isFinite(sleepVal) ? (
+                <>
+                  <Text
+                    style={{
+                      color: isDark ? '#F9FAFB' : '#020617',
+                      fontSize: 34,
+                      fontWeight: '900',
+                      marginTop: 10,
+                    }}
+                  >
+                    {sleepVal}
+                  </Text>
+                  <View style={{ height: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'hidden', marginTop: 10 }}>
+                    <View style={{ height: 4, width: `${Math.round(clampPct(sleepVal / 8) * 100)}%`, borderRadius: 999, backgroundColor: '#06B6D4' }} />
+                  </View>
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                      fontSize: 11,
+                      marginTop: 8,
+                    }}
+                  >
+                    hrs
+                  </Text>
+
+                  {/* Subtle right-side lottie accent (even when data exists) */}
+                  <View pointerEvents="none" style={{ position: 'absolute', right: 10, top: 10, opacity: 0.6 }}>
+                    <LottieView source={require('../assets/Lotties for Anatrox/sleep.json')} autoPlay loop style={{ width: 40, height: 40 }} />
+                  </View>
+                </>
+              ) : (
+                <View style={{ alignItems: 'center', justifyContent: 'center', height: 96 }}>
+                  <LottieView source={require('../assets/Lotties for Anatrox/sleep.json')} autoPlay loop style={{ width: 70, height: 70 }} />
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    Not logged
+                  </Text>
+                </View>
+              )}
+            </LinearGradient>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <LinearGradient
+              colors={isDark ? ['#020617', '#020617'] : ['#FFFFFF', '#F9FAFB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                borderRadius: 18,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(148,163,184,0.45)' : 'rgba(209,213,219,1)',
+              }}
+            >
+              <Text
+                style={{
+                  color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(75,85,99,1)',
+                  fontSize: 10,
+                  fontWeight: '800',
+                  letterSpacing: 1.4,
+                }}
+              >
+                WATER
+              </Text>
+              {Number.isFinite(waterVal) ? (
+                <>
+                  <Text
+                    style={{
+                      color: isDark ? '#F9FAFB' : '#020617',
+                      fontSize: 34,
+                      fontWeight: '900',
+                      marginTop: 10,
+                    }}
+                  >
+                    {waterVal}
+                  </Text>
+                  <View style={{ height: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'hidden', marginTop: 10 }}>
+                    <View style={{ height: 4, width: `${Math.round(clampPct(waterVal / 100) * 100)}%`, borderRadius: 999, backgroundColor: '#06B6D4' }} />
+                  </View>
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                      fontSize: 11,
+                      marginTop: 8,
+                    }}
+                  >
+                    oz
+                  </Text>
+
+                  {/* Subtle right-side lottie accent (even when data exists) */}
+                  <View pointerEvents="none" style={{ position: 'absolute', right: 10, top: 10, opacity: 0.6 }}>
+                    <LottieView source={require('../assets/Lotties for Anatrox/glass water.json')} autoPlay loop style={{ width: 40, height: 40 }} />
+                  </View>
+                </>
+              ) : (
+                <View style={{ alignItems: 'center', justifyContent: 'center', height: 96 }}>
+                  <LottieView source={require('../assets/Lotties for Anatrox/glass water.json')} autoPlay loop style={{ width: 70, height: 70 }} />
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    Not logged
+                  </Text>
+                </View>
+              )}
+            </LinearGradient>
+          </View>
+        </View>
+      </View>
+
+      {/* DAILY METRICS — smart grid (body fat removed from main grid) */}
+      <View style={{ marginTop: 16 }}>
+        <Text style={sectionHeaderStyle}>Daily Metrics</Text>
+        <View
+          style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap' }}
+          onLayout={(e) => {
+            const w = e?.nativeEvent?.layout?.width;
+            if (typeof w === 'number' && w > 0) setMetricsGridWidth(w);
+          }}
+        >
+          {[
+            { key: 'energy', label: 'ENERGY / 5', value: log.dashboard_energy, scale: 5, borderStart: '#4B5563', borderEnd: '#111827' },
+            { key: 'stress', label: 'STRESS / 10', value: log.dashboard_stress, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
+            { key: 'mood', label: 'MOOD / 10', value: log.dashboard_mood, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
+            { key: 'soreness', label: 'SORENESS / 10', value: log.dashboard_soreness, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
+            { key: 'steps', label: 'STEPS', value: log.dashboard_steps, scale: 15000, borderStart: '#4B5563', borderEnd: '#111827' },
+          ].map((m, idx, arr) => {
+            const isEndOfRow = (idx + 1) % cols === 0;
+            const isLast = idx === arr.length - 1;
+            const hasSingleLastRow = cols === 2 && arr.length % cols === 1;
+            const shouldCenter = hasSingleLastRow && isLast && !isEndOfRow;
+            return (
+              <MetricMini
+                key={m.key}
+                label={m.label}
+                value={m.value}
+                scale={m.scale}
+                borderStart={m.borderStart}
+                borderEnd={m.borderEnd}
+                style={{
+                  marginLeft: shouldCenter ? (metricsGridWidth - cardWidth) / 2 : 0,
+                  marginRight: shouldCenter ? 0 : isEndOfRow ? 0 : gridGap,
+                  marginBottom: isLast ? 0 : gridGap,
+                }}
+              />
             );
           })}
         </View>
       </View>
 
-      {/* ─── NOTES TO TRAINER ─── */}
-      {log.dashboard_notes != null && log.dashboard_notes !== '' && (
-        <View style={{ marginTop: 16 }}>
-          <Text style={sectionHeaderStyle}>Notes to Trainer</Text>
-          <GlassCard isDark={isDark} style={{ padding: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <LinearGradient
-                  colors={GRADIENT_NOTES}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ width: 28, height: 28, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Icon name="MessageSquare" size={14} color="#fff" />
-                </LinearGradient>
-                <Text style={{ color: textColor, fontSize: 13, fontWeight: '700' }}>From client</Text>
+      {/* TRAINER NOTES — secondary bottom section */}
+      {(Array.isArray(log.trainerNotes) && log.trainerNotes.length > 0) ? (
+        <View style={{ marginTop: 18 }}>
+          <Text style={sectionHeaderStyle}>Trainer Notes</Text>
+          {log.trainerNotes.map((note, idx) => (
+            <View
+              key={note?.id || idx}
+              style={{
+                backgroundColor: 'rgba(255, 107, 157, 0.10)',
+                borderWidth: 1,
+                borderColor: 'rgba(255, 107, 157, 0.28)',
+                borderRadius: 16,
+                padding: 14,
+                marginBottom: 10,
+                flexDirection: 'row',
+                gap: 12,
+              }}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#FF6B9D', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="MessageSquare" size={16} color="#fff" />
               </View>
-              <Text style={{ color: mutedColor, fontSize: 11 }}>Today</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginBottom: 4 }}>From Coach</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
+                  {note?.content || ''}
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11 }}>
+                  {note?.createdAt?.toDate ? note.createdAt.toDate().toLocaleDateString() : (note?.createdAt ? new Date(note.createdAt).toLocaleDateString() : '—')}
+                </Text>
+              </View>
             </View>
-            <Text style={{ color: textColor, fontSize: 14, lineHeight: 22 }}>
-              {log.dashboard_notes}
-            </Text>
-          </GlassCard>
+          ))}
+        </View>
+      ) : null}
+
+      {/* keep client note (if present) but visually secondary */}
+      {log.dashboard_notes != null && log.dashboard_notes !== '' && (
+        <View style={{ marginTop: 18 }}>
+          <Text style={sectionHeaderStyle}>Client Note</Text>
+          <View style={{ borderRadius: 16, padding: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 22 }}>{log.dashboard_notes}</Text>
+          </View>
         </View>
       )}
     </View>
@@ -1393,7 +2617,6 @@ const NotesFilesTab = ({
                       text: 'Share',
                       onPress: () => onOpenShareModal?.({ documentId: doc.id, initialSharedWith: doc.sharedWith }),
                     },
-                    { text: 'Delete', style: 'destructive', onPress: () => { /* TODO: Implement delete logic */ } },
                     { text: 'Cancel', style: 'cancel' },
                   ]);
                 }}
@@ -1491,6 +2714,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
   const [clientData, setClientData] = useState(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
   const [todayDailyLog, setTodayDailyLog] = useState(null);
+  const [weightTrend7, setWeightTrend7] = useState([]);
   const [refreshNotesAndFilesTrigger, setRefreshNotesAndFilesTrigger] = useState(0);
   const [weeklySummary, setWeeklySummary] = useState(null);
   const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
@@ -1542,6 +2766,39 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
       () => setTodayDailyLog(null)
     );
     return () => unsubscribe();
+  }, [client?.id]);
+
+  // Fetch last 7 days of weights (sparkline)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!client?.id || !db) { setWeightTrend7([]); return; }
+      try {
+        const tz = 'America/New_York';
+        const keys = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          keys.push(d.toLocaleDateString('en-CA', { timeZone: tz }));
+        }
+
+        const snaps = await Promise.all(keys.map((k) => getDoc(doc(db, 'users', client.id, 'dailyLogs', k))));
+        const weights = snaps
+          .map((s) => {
+            if (!s.exists()) return null;
+            const v = s.data()?.dashboard_weight;
+            const n = v != null && v !== '' ? Number(v) : null;
+            return Number.isFinite(n) ? n : null;
+          })
+          .filter((v) => v != null);
+
+        if (!cancelled) setWeightTrend7(weights);
+      } catch (_) {
+        if (!cancelled) setWeightTrend7([]);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
   }, [client?.id]);
 
   // Data availability check
@@ -2079,9 +3336,24 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
                 spreadsheetViewer={spreadsheetViewer}
                 setSpreadsheetViewer={setSpreadsheetViewer}
                 trainerDocuments={trainerDocuments}
-                onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => setTrainerDocuments([]))}
-                onOpenDocumentEditor={(doc) => setDocumentEditor({ visible: true, documentId: doc?.documentId ?? doc?.id ?? null, title: doc?.title })}
-                onOpenShareModal={(opts) => setShareModal({ visible: true, documentId: opts?.documentId ?? null, sharedWith: opts?.sharedWith ?? [] })}
+                onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+                onOpenDocumentEditor={(f) => {
+                  if (!f) return;
+                  const docId = f?.documentId || f?.id || null;
+                  setDocumentEditor({ visible: true, documentId: docId });
+                }}
+                onOpenShareModal={({ documentId, initialSharedWith }) =>
+                  setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
+                }
+                onOpenSpreadsheetEditor={(f) => {
+                  if (!f) return;
+                  const docId = f?.documentId || f?.id || null;
+                  setSpreadsheetEditor({ visible: true, documentId: docId, title: f?.title || f?.name || '', rows: null });
+                }}
+                onImportSpreadsheet={(item) => {
+                  if (!item?.url) return;
+                  setSpreadsheetViewer({ visible: true, url: item.url, name: item?.name || 'Spreadsheet' });
+                }}
               />
             )}
           </View>
@@ -2220,6 +3492,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   const [clientData, setClientData] = useState(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
   const [todayDailyLog, setTodayDailyLog] = useState(null);
+  const [weightTrend7, setWeightTrend7] = useState([]);
   const [refreshNotesAndFilesTrigger, setRefreshNotesAndFilesTrigger] = useState(0);
   const [weeklySummary, setWeeklySummary] = useState(null);
   const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
@@ -2240,6 +3513,37 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   const cardBorder = isDark ? 'rgba(192,132,252,0.25)' : 'rgba(192,132,252,0.4)';
 
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+
+  // Fetch last 7 days of weights (sparkline)
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!currentClient?.id || !db) { setWeightTrend7([]); return; }
+      try {
+        const tz = 'America/New_York';
+        const keys = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          keys.push(d.toLocaleDateString('en-CA', { timeZone: tz }));
+        }
+        const snaps = await Promise.all(keys.map((k) => getDoc(doc(db, 'users', currentClient.id, 'dailyLogs', k))));
+        const weights = snaps
+          .map((s) => {
+            if (!s.exists()) return null;
+            const v = s.data()?.dashboard_weight;
+            const n = v != null && v !== '' ? Number(v) : null;
+            return Number.isFinite(n) ? n : null;
+          })
+          .filter((v) => v != null);
+        if (!cancelled) setWeightTrend7(weights);
+      } catch (_) {
+        if (!cancelled) setWeightTrend7([]);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [currentClient?.id]);
 
   // Report selected client to parent so plus button / modals know which client is active
   useEffect(() => {
@@ -3317,7 +4621,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
               isDark={isDark}
               clientData={clientData}
               todayDailyLog={todayDailyLog}
-              onLogWorkout={() => setActiveTab('Calendar')}
+              weightTrend7={weightTrend7}
             />
           )}
           {activeTab === 'Nutrition' && <NutritionTab isDark={isDark} clientData={clientData} />}
@@ -3343,9 +4647,24 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
               spreadsheetViewer={spreadsheetViewer}
               setSpreadsheetViewer={setSpreadsheetViewer}
               trainerDocuments={trainerDocuments}
-              onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => setTrainerDocuments([]))}
-              onOpenDocumentEditor={(doc) => setDocumentEditor({ visible: true, documentId: doc?.documentId ?? doc?.id ?? null, title: doc?.title })}
-              onOpenShareModal={(opts) => setShareModal({ visible: true, documentId: opts?.documentId ?? null, sharedWith: opts?.sharedWith ?? [] })}
+              onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+              onOpenDocumentEditor={(f) => {
+                if (!f) return;
+                const docId = f?.documentId || f?.id || null;
+                setDocumentEditor({ visible: true, documentId: docId });
+              }}
+              onOpenShareModal={({ documentId, initialSharedWith }) =>
+                setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
+              }
+              onOpenSpreadsheetEditor={(f) => {
+                if (!f) return;
+                const docId = f?.documentId || f?.id || null;
+                setSpreadsheetEditor({ visible: true, documentId: docId, title: f?.title || f?.name || '', rows: null });
+              }}
+              onImportSpreadsheet={(item) => {
+                if (!item?.url) return;
+                setSpreadsheetViewer({ visible: true, url: item.url, name: item?.name || 'Spreadsheet' });
+              }}
             />
           )}
         </View>
@@ -3547,7 +4866,47 @@ const AppWithTheme = ({ user }) => {
     setShowPlanViewer(false);
   };
 
-  if (showProfile) return <ProfileScreen onBack={() => setShowProfile(false)} userRole="Trainer" />;
+  if (showProfile) {
+    return (
+      <AppNavigationProvider
+        onProfilePress={() => setShowProfile(true)}
+        onSettingsPress={() => setShowSettings(true)}
+        onHomePress={handleHomePress}
+        onPlusPress={() => {
+          if (addNotesFilesClientId) {
+            setShowAddNotesFilesModal(true);
+          } else {
+            Alert.alert("No Client Selected", "Navigate to a client's dashboard first to add notes or files for them.");
+          }
+        }}
+        onVoicePress={() => {
+          handleHomePress();
+          setShowVoiceAI(true);
+          setAiChatState('home');
+        }}
+        onNutritionPress={() => {
+          handleHomePress();
+          setShowNutrition(true);
+        }}
+        onWorkoutPress={() => {
+          handleHomePress();
+          setShowWorkoutPlan(true);
+        }}
+        onMessagesPress={() => {
+          handleHomePress();
+          setShowConversationsList(true);
+        }}
+      >
+        <ProfileScreen
+          onBack={() => setShowProfile(false)}
+          userRole="Trainer"
+          userData={userData}
+          onboardingData={onboardingData}
+          onNavigate={onNavigate}
+        />
+      </AppNavigationProvider>
+    );
+  }
   if (showClientsList) return (
     <ClientsListScreen
       clients={clients}
@@ -3556,7 +4915,29 @@ const AppWithTheme = ({ user }) => {
       onSelectClient={(id) => { setNavSelectedClientId(id); setShowClientsList(false); }}
     />
   );
-  if (showTrainerSearch) return <TrainerSearchScreen onClose={() => setShowTrainerSearch(false)} onSelectTrainer={(t) => { setSelectedTrainer(t); setShowTrainerSearch(false); setShowTrainerMessaging(true); }} onProfilePress={() => setShowProfile(true)} onSettingsPress={() => setShowSettings(true)} />;
+  if (showTrainerSearch) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F5F5F5' }}>
+        <CoachConnectHeader
+          title="Find a Trainer"
+          isDark={isDark}
+          onBack={() => setShowTrainerSearch(false)}
+          onProfilePress={() => setShowProfile(true)}
+          onSettingsPress={() => setShowSettings(true)}
+        />
+        <TrainerSearchScreen
+          onSelectTrainer={(t) => {
+            setSelectedTrainer(t);
+            setShowTrainerSearch(false);
+            setShowTrainerMessaging(true);
+          }}
+          onProfilePress={() => setShowProfile(true)}
+          onSettingsPress={() => setShowSettings(true)}
+          isDark={isDark}
+        />
+      </SafeAreaView>
+    );
+  }
   if (showVoiceAI) {
     if (aiChatState === 'home') {
       return (

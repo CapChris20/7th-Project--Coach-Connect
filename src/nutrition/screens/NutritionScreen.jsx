@@ -1089,26 +1089,20 @@ export const NutritionScreen = ({
         </View>
 
         {/* Calorie ring — center hero */}
-        <View style={[screen.ringGradientBorder, ringShadow]}>
-          <LinearGradient
-            colors={['#E91E63', '#FF6B9D', '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View
-            style={[
-              screen.ringCard,
-              { backgroundColor: solidCardBg, borderColor: colors.cardBorder },
-            ]}
-          >
-            <View style={screen.ringCenter}>
-              <CalorieRing consumed={consumed} total={goal} isDark={isDark} />
-              <View style={screen.ringTextOverlay}>
-                <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>CONSUMED</Text>
-                <Text style={[screen.ringBigNumber, { color: colors.text }]}>{Math.round(consumed).toLocaleString()}</Text>
-                <Text style={[screen.ringSubLabel, { color: colors.textMuted }]}>of {goal.toLocaleString()} kcal</Text>
-              </View>
+        <View
+          style={[
+            screen.ringCard,
+            { backgroundColor: solidCardBg, borderColor: colors.cardBorder },
+            ringShadow,
+            screen.ringCardOuter,
+          ]}
+        >
+          <View style={screen.ringCenter}>
+            <CalorieRing consumed={consumed} total={goal} isDark={isDark} />
+            <View style={screen.ringTextOverlay}>
+              <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>CONSUMED</Text>
+              <Text style={[screen.ringBigNumber, { color: colors.text }]}>{Math.round(consumed).toLocaleString()}</Text>
+              <Text style={[screen.ringSubLabel, { color: colors.textMuted }]}>of {goal.toLocaleString()} kcal</Text>
             </View>
           </View>
         </View>
@@ -1124,42 +1118,36 @@ export const NutritionScreen = ({
             const gGoal = Math.round(Number(m.goal) || 0);
             const labelColor = colors.textMuted;
             return (
-              <View key={m.label} style={[screen.macroGradientBorder, ringShadow]}>
-                <LinearGradient
-                  colors={['#E91E63', '#FF6B9D', '#C084FC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View
-                  style={[
-                    screen.macroCard,
-                    { backgroundColor: solidCardBg, borderColor: colors.cardBorderSubtle },
-                  ]}
-                >
-                  <View style={{ position: 'relative', width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
-                    <ArcProgress
-                      size={100}
-                      stroke={8}
-                      progress={pctFill}
-                      color={ringColor}
-                      trackColor={trackColor}
-                      isDark={isDark}
-                    />
-                    <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={[screen.macroPct, { color: ringColor }]}>{pct}%</Text>
-                      <Text style={[screen.macroRemaining, { color: colors.textMuted }]}>
-                        {Math.max(gGoal - val, 0)}g left
-                      </Text>
-                    </View>
+              <View
+                key={m.label}
+                style={[
+                  screen.macroCard,
+                  { backgroundColor: solidCardBg, borderColor: colors.cardBorderSubtle },
+                  ringShadow,
+                ]}
+              >
+                <View style={{ position: 'relative', width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+                  <ArcProgress
+                    size={100}
+                    stroke={8}
+                    progress={pctFill}
+                    color={ringColor}
+                    trackColor={trackColor}
+                    isDark={isDark}
+                  />
+                  <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={[screen.macroPct, { color: ringColor }]}>{pct}%</Text>
+                    <Text style={[screen.macroRemaining, { color: colors.textMuted }]}>
+                      {Math.max(gGoal - val, 0)}g left
+                    </Text>
                   </View>
-                  <Text style={[screen.macroLabel, { color: labelColor }]}>{m.label}</Text>
-                  <Text style={[screen.macroGoal, { color: colors.text }]}>
-                    {val} / {gGoal}g
-                  </Text>
-                  <View style={[screen.macroBarTrack, { backgroundColor: trackColor }]}>
-                    <View style={[screen.macroBarFill, { width: `${pctFill}%`, backgroundColor: ringColor }]} />
-                  </View>
+                </View>
+                <Text style={[screen.macroLabel, { color: labelColor }]}>{m.label}</Text>
+                <Text style={[screen.macroGoal, { color: colors.text }]}>
+                  {val} / {gGoal}g
+                </Text>
+                <View style={[screen.macroBarTrack, { backgroundColor: trackColor }]}>
+                  <View style={[screen.macroBarFill, { width: `${pctFill}%`, backgroundColor: ringColor }]} />
                 </View>
               </View>
             );
@@ -1240,10 +1228,7 @@ const screen = StyleSheet.create({
   suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
   suggChip: { borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
   suggText: { fontSize: 11, fontWeight: '600' },
-  ringGradientBorder: {
-    borderRadius: 24,
-    padding: 2,
-    overflow: 'hidden',
+  ringCardOuter: {
     marginBottom: 12,
   },
   ringCard: {
@@ -1260,12 +1245,6 @@ const screen = StyleSheet.create({
   ringBigNumber: { fontSize: 38, fontWeight: '900', lineHeight: 44 },
   ringSubLabel: { fontSize: 11, marginTop: 2, fontWeight: '600' },
   macroRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  macroGradientBorder: {
-    flex: 1,
-    borderRadius: 20,
-    padding: 2,
-    overflow: 'hidden',
-  },
   macroCard: {
     flex: 1,
     borderWidth: 1,

@@ -75,50 +75,75 @@ export default function PrivacyPolicyScreen({ onClose }) {
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.note}>Replace with real Privacy Policy later</Text>
+        <Text style={styles.note}>
+          Effective Date: {new Date().toLocaleDateString()}
+        </Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>1. Information We Collect</Text>
           <Text style={styles.sectionText}>
-            We collect information that you provide directly to us, including your name, email address, workout data, 
-            nutrition logs, and any other information you choose to provide. We also automatically collect certain 
-            information about your device and how you interact with our app.
+            CoachConnect collects the following data:
+            {'\n'}{'\n'}- Profile info (name, email, age, fitness level, goals, injuries)
+            {'\n'}- Workout logs (exercises, sets, reps, weight, notes)
+            {'\n'}- Nutrition logs (foods logged, macros, calories)
+            {'\n'}- Progress photos (uploaded to Firebase Storage)
+            {'\n'}- Sleep, water intake, energy levels, soreness data
+            {'\n'}- Messages between trainer and client
+            {'\n'}- City or region you add to your profile for discovery (we do not collect GPS location from your device in the current app version)
+            {'\n'}- Push notification preferences
           </Text>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>2. How We Use Your Information</Text>
           <Text style={styles.sectionText}>
-            We use the information we collect to provide, maintain, and improve our services, to process your requests, 
-            to communicate with you, and to personalize your experience. We may also use your information to send you 
-            updates, newsletters, and other communications.
+            We use this data to:
+            {'\n'}{'\n'}- Personalize AI-generated workouts and coaching
+            {'\n'}- Track your progress with graphs and reports
+            {'\n'}- Enable trainer-client communication
+            {'\n'}- Improve app features via Firebase Analytics
+            {'\n'}- Process purchases you initiate on iOS through Apple’s In-App Purchase system (Apple handles payment details; we do not receive your full card number)
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>3. Information Sharing</Text>
+          <Text style={styles.sectionTitle}>3. Permissions</Text>
           <Text style={styles.sectionText}>
-            We do not sell, trade, or rent your personal information to third parties. We may share your information 
-            only in the circumstances described in this policy, such as with your consent, to comply with legal 
-            obligations, or to protect our rights.
+            CoachConnect may request certain device permissions to provide features. You can deny permissions, and you
+            can change them later in iOS Settings.
+            {'\n'}            {'\n'}- Camera / Photo Library: upload progress photos and add images to chats/files
+            {'\n'}- Microphone (if enabled): voice features such as voice coaching or voice messages
+            {'\n'}- Notifications: workout reminders and messages from your trainer
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>4. Data Security</Text>
+          <Text style={styles.sectionTitle}>4. Third-Party Services</Text>
           <Text style={styles.sectionText}>
-            We implement appropriate technical and organizational measures to protect your personal information against 
-            unauthorized access, alteration, disclosure, or destruction. However, no method of transmission over the 
-            Internet or electronic storage is 100% secure.
+            We use the following third-party services:
+            {'\n'}            {'\n'}- Firebase (data storage, authentication)
+            {'\n'}- Apple (In-App Purchases and payment processing on iOS, when you buy a subscription or other digital item in the app)
+            {'\n'}- Claude API (AI workout generation)
+            {'\n'}- DeepSeek API (AI Coach responses)
+            {'\n'}- Perplexity API (web search for AI Coach)
+            {'\n'}- YouTube API (exercise videos)
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>5. Your Rights</Text>
+          <Text style={styles.sectionTitle}>5. Data Security</Text>
           <Text style={styles.sectionText}>
-            You have the right to access, update, or delete your personal information at any time. You can also opt 
-            out of certain communications from us. To exercise these rights, please contact us through the app settings 
-            or our support channels.
+            Your data is encrypted in transit and at rest. No method of transmission or storage is 100% secure, but we
+            use industry-standard safeguards to protect your information.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>6. Your Choices & Account Deletion</Text>
+          <Text style={styles.sectionText}>
+            You can access and update certain information in the app. You can delete your account anytime in Settings.
+            When you delete your account, your account and associated data in Firestore and files stored under your user
+            folder in Firebase Storage are permanently deleted.
           </Text>
         </View>
       </ScrollView>

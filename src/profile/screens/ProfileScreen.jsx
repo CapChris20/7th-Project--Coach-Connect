@@ -1,939 +1,744 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
+  SafeAreaView,
   Image,
-  TextInput,
-  Modal,
-  TouchableWithoutFeedback,
-  Switch,
+  ActivityIndicator,
   Alert,
-  Share,
-  Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Animated,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../../app/config';
-import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
-import {
-  clearPushTokensForUid,
-  configureNotifications,
-  getNotificationPermissionsAsync,
-  persistPushTokensForUid,
-} from '../../shared/services/notificationsService';
-import { signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/AnatroxHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useTheme } from '../../shared/ui/ThemeContext';
+import {
+  Camera,
+  Dumbbell,
+  Pencil,
+  X,
+  User,
+  Mail,
+  Calendar,
+  Ruler,
+  Scale,
+  Target,
+  Layers,
+  Building2,
+  Apple,
+  Medal,
+  Shield,
+  Bell,
+} from 'lucide-react-native';
 
-// DESIGN TOKENS (accent colors)
-const ACCENTS = {
-  hotPink: '#FF6B9D',
-  purple: '#C084FC',
+const ACCENT = {
+  pink: '#FF6B9D',
+  cyan: '#64D2FF',
   orange: '#F97316',
-  cyan: '#06B6D4',
-  amber: '#F59E0B',
+  purple: '#C084FC',
+  green: '#10B981',
 };
 
-/** Height can be stored as { feet, inches } or a number (cm). Return a string safe for React. */
-const formatHeightForDisplay = (h) => {
-  if (h == null || h === '') return '';
-  if (typeof h === 'object' && (h.feet != null || h.inches != null)) return `${h.feet ?? 0}'${h.inches ?? 0}"`;
-  if (typeof h === 'number') return `${h} cm`;
-  return String(h);
+const DARK = {
+  bg: '#0A0A0F',
+  card: '#13131A',
+  text: '#FFFFFF',
+  muted: 'rgba(255,255,255,0.55)',
+  border: 'rgba(255,255,255,0.1)',
+  hover: 'rgba(255,255,255,0.04)',
+  toggleOff: 'rgba(255,255,255,0.18)',
 };
 
-const ProfileScreen = ({ onBack, userRole = 'Client', userData, onboardingData, onNavigate }) => {
-  const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
-  
-  // State
-  const [profile, setProfile] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    photoURL: null,
-    role: '',
-    dob: '',
-    height: '',
-    weight: '',
-    fitnessGoal: '',
-    trainingSplit: '',
-    experienceLevel: '',
-    equipmentAccess: '',
-    dietaryPreference: '',
-    subscription: 'Free',
-  });
-  const [stats, setStats] = useState({ workouts: 0, streak: 0, goals: 0 });
-  const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  /** Opt-in: server sends at most one remote push per UTC day (nutrition_reminder). Client role only. */
-  const [nutritionReminderPush, setNutritionReminderPush] = useState(false);
-  const [editSheet, setEditSheet] = useState(null);
-  const [editValue, setEditValue] = useState('');
+const LIGHT = {
+  bg: '#F4F4F7',
+  card: '#FFFFFF',
+  text: '#0A0A0F',
+  muted: 'rgba(10,10,15,0.55)',
+  border: 'rgba(10,10,15,0.08)',
+  hover: 'rgba(10,10,15,0.04)',
+  toggleOff: 'rgba(10,10,15,0.18)',
+};
 
-  // Initialize profile data from props or fetch from Firebase
-  useEffect(() => {
-    const loadProfileData = async () => {
-      if (userData || onboardingData) {
-        // Use provided data
-        const data = userData || onboardingData || {};
-        setProfile({
-          firstName: data.firstName || data.name?.split(' ')[0] || '',
-          lastName: data.lastName || data.name?.split(' ')[1] || '',
-          email: data.email || auth.currentUser?.email || '',
-          photoURL: data.photoURL || null,
-          role: data.role || userRole || 'Client',
-          dob: data.dob || '',
-          height: data.height || '',
-          weight: data.weight || '',
-          fitnessGoal: data.primaryGoal || data.fitnessGoal || '',
-          trainingSplit: data.trainingSplit || '',
-          experienceLevel: data.fitnessLevel || data.experienceLevel || '',
-          equipmentAccess: data.equipmentAccess || '',
-          dietaryPreference: data.dietaryPreference || '',
-          subscription: data.subscription || 'Free',
-        });
-        
-        // Set stats from the same data source
-        setStats({
-          workouts: data.workoutCount || 0,
-          streak: data.streak || 0,
-          goals: typeof data.goalProgress === 'number' ? data.goalProgress : 0,
-        });
-        setNotifications(data.notificationsEnabled !== false);
-        setNutritionReminderPush(data.nutritionReminderPush === true);
+// ============================================================================
+// HERO CARD
+// ============================================================================
 
-        setLoading(false);
-      } else {
-        // Fetch from Firebase when no data provided
-        try {
-          const uid = auth.currentUser?.uid;
-          if (!uid) {
-            setLoading(false);
-            return;
-          }
+function initialsFromName(name) {
+  const s = String(name || '').trim();
+  if (!s) return 'CC';
+  return s
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
 
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            setProfile({
-              firstName: data.firstName || data.name?.split(' ')[0] || '',
-              lastName: data.lastName || data.name?.split(' ')[1] || '',
-              email: data.email || auth.currentUser?.email || '',
-              photoURL: data.photoURL || null,
-              role: data.role || userRole || 'Client',
-              dob: data.dob || '',
-              height: data.height || '',
-              weight: data.weight || '',
-              fitnessGoal: data.primaryGoal || data.fitnessGoal || '',
-              trainingSplit: data.trainingSplit || '',
-              experienceLevel: data.fitnessLevel || data.experienceLevel || '',
-              equipmentAccess: data.equipmentAccess || '',
-              dietaryPreference: data.dietaryPreference || '',
-              subscription: data.subscription || 'Free',
-            });
-            
-            setStats({
-              workouts: data.workoutCount || 0,
-              streak: data.streak || 0,
-              goals: typeof data.goalProgress === 'number' ? data.goalProgress : 0,
-            });
-            setNotifications(data.notificationsEnabled !== false);
-            setNutritionReminderPush(data.nutritionReminderPush === true);
-          }
-        } catch (error) {
-          console.error('Profile fetch error:', error);
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadProfileData();
-  }, [userData, onboardingData, userRole]);
-
-  const handleNotificationsToggle = async (value) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    setNotifications(value);
-    try {
-      if (!value) {
-        await clearPushTokensForUid(uid);
-        await updateDoc(doc(db, 'users', uid), { notificationsEnabled: false });
-        Alert.alert(
-          'Notifications off',
-          'Push tokens were removed from your account. You can also turn off alerts in system settings.',
-          [
-            { text: 'OK' },
-            { text: 'Open settings', onPress: () => Linking.openSettings() },
-          ],
-        );
-        return;
-      }
-      await updateDoc(doc(db, 'users', uid), { notificationsEnabled: true });
-      configureNotifications();
-      await persistPushTokensForUid(uid, { skipIfDisabled: false });
-      const perm = await getNotificationPermissionsAsync();
-      if (!perm?.granted && perm?.status !== 'granted') {
-        Alert.alert('Permission needed', 'Enable notifications for CoachConnect in Settings.', [
-          { text: 'OK' },
-          { text: 'Open settings', onPress: () => Linking.openSettings() },
-        ]);
-      }
-    } catch (e) {
-      console.error('Notification toggle error:', e);
-    }
-  };
-
-  const handleNutritionReminderToggle = async (value) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    setNutritionReminderPush(value);
-    try {
-      await updateDoc(doc(db, 'users', uid), { nutritionReminderPush: value });
-    } catch (e) {
-      console.error('Nutrition reminder toggle error:', e);
-      setNutritionReminderPush(!value);
-    }
-  };
-
-  // Handle sign out
-  const handleSignOut = async () => {
-    try {
-      const uid = auth.currentUser?.uid;
-      if (uid) {
-        await clearPushTokensForUid(uid);
-      }
-    } catch (_) {
-      /* best-effort */
-    }
-    try {
-      await signOut(auth);
-      onBack();
-    } catch (err) {
-      console.error('Sign out error:', err);
-    }
-  };
-
-  // Handle photo change
-  const handleChangePhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      const uid = auth.currentUser?.uid;
-
-      try {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const storage = getStorage();
-        const storageRef = ref(storage, `profile_photos/${uid}`);
-        await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(storageRef);
-
-        // Use set({ merge: true }) for writes (never update)
-        await setDoc(doc(db, 'users', uid), { photoURL: downloadURL }, { merge: true });
-        setProfile(prev => ({ ...prev, photoURL: downloadURL }));
-      } catch (err) {
-        console.error('Photo upload error:', err);
-      }
-    }
-  };
-
-  // Open edit sheet
-  const openEdit = (field, currentValue) => {
-    setEditValue(currentValue || '');
-    setEditSheet(field);
-  };
-
-  // Handle save
-  const handleSave = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !editSheet) return;
-
-    try {
-      if (editSheet === 'name') {
-        const parts = editValue.trim().split(' ');
-        const firstName = parts[0] || '';
-        const lastName = parts.slice(1).join(' ') || '';
-        await updateDoc(doc(db, 'users', uid), { firstName, lastName, name: editValue.trim() });
-        setProfile(prev => ({ ...prev, firstName, lastName }));
-      } else {
-        await updateDoc(doc(db, 'users', uid), { [editSheet]: editValue });
-        setProfile(prev => ({ ...prev, [editSheet]: editValue }));
-      }
-      setEditSheet(null);
-    } catch (err) {
-      console.error('Save error:', err);
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={ACCENTS.hotPink} />
-        </View>
-      </View>
-    );
-  }
-
-  const initials = `${profile.firstName[0] || ''}${profile.lastName[0] || ''}`.toUpperCase();
-  const displayName = `${profile.firstName} ${profile.lastName}`.trim() || 'Your Profile';
-  const bio =
-    (profile.fitnessGoal && String(profile.fitnessGoal).trim()) ||
-    (profile.trainingSplit && String(profile.trainingSplit).trim()) ||
-    '';
+function HeroCard({ theme, isDark, name, handle, photoURL, onPressPhoto, uploading, onEditPress }) {
+  const heroColors = isDark ? ['#1a0a2e', '#0f0a1a'] : ['#FFFFFF', '#F3F1FF'];
+  const heroBorder = isDark ? ACCENT.pink : 'rgba(124,58,237,0.20)';
+  const handleColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-      
-      <View style={styles.headerWrapper}>
-        <CoachConnectHeader title="Profile" isDark={isDark} onBack={onBack} />
+    <LinearGradient
+      colors={heroColors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[
+        styles.heroCard,
+        {
+          borderColor: heroBorder,
+        },
+      ]}
+    >
+      <View style={styles.avatarContainer}>
+        <LinearGradient
+          colors={[ACCENT.pink, ACCENT.purple]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.avatar,
+            {
+              borderColor: ACCENT.pink,
+            },
+          ]}
+        >
+          {photoURL ? (
+            <Image source={{ uri: photoURL }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarText}>{initialsFromName(name)}</Text>
+          )}
+        </LinearGradient>
+        <TouchableOpacity
+          onPress={uploading ? undefined : onPressPhoto}
+          activeOpacity={0.9}
+          style={[styles.cameraButton, { backgroundColor: ACCENT.pink, opacity: uploading ? 0.7 : 1 }]}
+        >
+          {uploading ? <ActivityIndicator color="#fff" /> : <Camera size={22} color="#fff" />}
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Avatar Section */}
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarContainer}>
-            <LinearGradient colors={[ACCENTS.hotPink, ACCENTS.purple]} style={styles.avatarRing}>
-              <View style={[styles.avatarInner, { backgroundColor: colors.background }]}>
-                {profile.photoURL ? (
-                  <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
-                    <Text style={[styles.avatarText, { color: colors.text }]}>{initials}</Text>
-                  </View>
-                )}
-              </View>
-            </LinearGradient>
-            <TouchableOpacity onPress={handleChangePhoto} style={styles.cameraButton}>
-              <LinearGradient colors={[ACCENTS.hotPink, ACCENTS.purple]} style={styles.cameraButtonInner}>
-                <Ionicons name="camera" size={16} color="#FFFFFF" />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.profileName, { color: colors.text }]}>{displayName}</Text>
-          {bio ? (
-            <Text style={[styles.profileBio, { color: colors.textSecondary }]}>{bio}</Text>
-          ) : (
-            <Text style={[styles.profileBio, { color: colors.textSecondary }]}>
-              Add a fitness goal or training split to personalize your profile.
-            </Text>
-          )}
+      <Text style={[styles.heroName, { color: theme.text }]}>{name}</Text>
+      <Text style={[styles.heroHandle, { color: handleColor }]}>{handle}</Text>
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              onPress={() => openEdit('name', `${profile.firstName} ${profile.lastName}`)}
-              activeOpacity={0.85}
-              style={{ flex: 1 }}
-            >
-              <LinearGradient colors={[ACCENTS.hotPink, ACCENTS.purple]} style={styles.primaryActionBtn}>
-                <Text style={styles.primaryActionText}>Edit Profile</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => onNavigate && onNavigate('settings')}
-              activeOpacity={0.85}
-              style={[styles.secondaryActionBtn, { borderColor: 'rgba(255,255,255,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
-            >
-              <Ionicons name="settings-outline" size={16} color={colors.text} />
-              <Text style={[styles.secondaryActionText, { color: colors.text }]}>Settings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={async () => {
-                try {
-                  await Share.share({
-                    message: `Check out my CoachConnect profile: ${displayName}`,
-                  });
-                } catch (_) {}
-              }}
-              activeOpacity={0.85}
-              style={[styles.secondaryActionBtn, { borderColor: 'rgba(255,255,255,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
-            >
-              <Ionicons name="share-outline" size={16} color={colors.text} />
-              <Text style={[styles.secondaryActionText, { color: colors.text }]}>Share</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Personal Info Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Personal Info</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.cardAccent, { backgroundColor: ACCENTS.hotPink }]} />
-            
-            <InfoRow
-              icon="person"
-              label="Name"
-              value={`${profile.firstName} ${profile.lastName}`}
-              onPress={() => openEdit('name', `${profile.firstName} ${profile.lastName}`)}
-              editable
-              accentColor={ACCENTS.hotPink}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="mail"
-              label="Email"
-              value={profile.email}
-              editable={false}
-              accentColor={ACCENTS.hotPink}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="calendar"
-              label="Date of Birth"
-              value={profile.dob}
-              onPress={() => openEdit('dob', profile.dob)}
-              editable
-              accentColor={ACCENTS.hotPink}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="resize"
-              label="Height"
-              value={profile.height}
-              onPress={() => openEdit('height', profile.height)}
-              editable
-              accentColor={ACCENTS.hotPink}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="fitness"
-              label="Weight"
-              value={profile.weight}
-              onPress={() => openEdit('weight', profile.weight)}
-              editable
-              accentColor={ACCENTS.hotPink}
-              colors={colors}
-              isDark={isDark}
-            />
-          </View>
-        </View>
-
-        {/* Preferences Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Preferences</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.cardAccent, { backgroundColor: ACCENTS.cyan }]} />
-            
-            <InfoRow
-              icon="flag"
-              label="Fitness Goal"
-              value={profile.fitnessGoal}
-              onPress={() => openEdit('fitnessGoal', profile.fitnessGoal)}
-              editable
-              accentColor={ACCENTS.cyan}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="grid"
-              label="Training Split"
-              value={profile.trainingSplit}
-              onPress={() => openEdit('trainingSplit', profile.trainingSplit)}
-              editable
-              accentColor={ACCENTS.cyan}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="barbell"
-              label="Experience Level"
-              value={profile.experienceLevel}
-              onPress={() => openEdit('experienceLevel', profile.experienceLevel)}
-              editable
-              accentColor={ACCENTS.cyan}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="basket"
-              label="Equipment Access"
-              value={profile.equipmentAccess}
-              onPress={() => openEdit('equipmentAccess', profile.equipmentAccess)}
-              editable
-              accentColor={ACCENTS.cyan}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <InfoRow
-              icon="restaurant"
-              label="Dietary Preference"
-              value={profile.dietaryPreference}
-              onPress={() => openEdit('dietaryPreference', profile.dietaryPreference)}
-              editable
-              accentColor={ACCENTS.cyan}
-              colors={colors}
-              isDark={isDark}
-            />
-          </View>
-        </View>
-
-        {/* Account Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Account</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.cardAccent, { backgroundColor: ACCENTS.purple }]} />
-            
-            <InfoRow
-              icon="shield"
-              label="Subscription"
-              value={profile.subscription}
-              editable={false}
-              accentColor={ACCENTS.purple}
-              isSubscription={profile.subscription === 'Pro'}
-              colors={colors}
-              isDark={isDark}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.switchRow}>
-              <View style={styles.switchLeft}>
-                <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)' }]}>
-                  <Ionicons name="notifications" size={16} color={ACCENTS.purple} />
-                </View>
-                <Text style={[styles.switchLabel, { color: colors.textSecondary }]}>Push Notifications</Text>
-              </View>
-              <Switch
-                value={notifications}
-                onValueChange={handleNotificationsToggle}
-                trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: 'rgba(255,107,157,0.5)' }}
-                thumbColor={notifications ? ACCENTS.hotPink : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)')}
-              />
-            </View>
-            {(profile.role === 'client' || userRole === 'Client') && (
-              <>
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                <View style={styles.switchRow}>
-                  <View style={styles.switchLeft}>
-                    <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)' }]}>
-                      <Ionicons name="nutrition" size={16} color={ACCENTS.cyan} />
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={[styles.switchLabel, { color: colors.textSecondary }]}>Daily nutrition nudge</Text>
-                      <Text style={{ fontSize: 11, color: colors.textSecondary, opacity: 0.85, marginTop: 2 }}>
-                        At most one reminder per day (server), when enabled.
-                      </Text>
-                    </View>
-                  </View>
-                  <Switch
-                    value={nutritionReminderPush}
-                    onValueChange={handleNutritionReminderToggle}
-                    trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: 'rgba(255,107,157,0.5)' }}
-                    thumbColor={nutritionReminderPush ? ACCENTS.hotPink : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)')}
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
-        {/* Edit Profile Button (legacy placement removed; now in top action row) */}
-
-        {/* Sign Out */}
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutButton}>
-          <Text style={[styles.signOutText, { color: colors.textSecondary }]}>Sign Out</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      <BottomNavBar
-        onHomePress={() => onNavigate && onNavigate('home')}
-        onProfilePress={() => onNavigate && onNavigate('profile')}
-        onPlusPress={() => onNavigate && onNavigate('create')}
-        onVoicePress={() => onNavigate && onNavigate('voice')}
-        onWorkoutPress={() => onNavigate && onNavigate('workout')}
-        onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-        onMessagesPress={() => onNavigate && onNavigate('messages')}
-      />
-
-      {/* Edit Bottom Sheet */}
-      <Modal visible={!!editSheet} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={() => setEditSheet(null)}>
-          <View style={styles.sheetOverlay} />
-        </TouchableWithoutFeedback>
-        <View style={[styles.sheet, { backgroundColor: isDark ? 'rgba(15,10,26,0.97)' : 'rgba(255,255,255,0.97)' }]}>
-          <View style={[styles.sheetHandle, { backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)' }]} />
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>
-            {editSheet === 'name' ? 'Edit Name' :
-             editSheet === 'dob' ? 'Edit Date of Birth' :
-             editSheet === 'height' ? 'Edit Height' :
-             editSheet === 'weight' ? 'Edit Weight' :
-             editSheet === 'fitnessGoal' ? 'Edit Fitness Goal' :
-             editSheet === 'trainingSplit' ? 'Edit Training Split' :
-             editSheet === 'experienceLevel' ? 'Edit Experience Level' :
-             editSheet === 'equipmentAccess' ? 'Edit Equipment Access' :
-             editSheet === 'dietaryPreference' ? 'Edit Dietary Preference' : 'Edit'}
-          </Text>
-          <TextInput
-            style={[styles.sheetInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', borderColor: colors.border, color: colors.text }]}
-            value={editValue}
-            onChangeText={setEditValue}
-            placeholder="Enter value..."
-            placeholderTextColor={colors.textSecondary}
-            multiline={editSheet === 'fitnessGoal' || editSheet === 'trainingSplit'}
-          />
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <LinearGradient colors={[ACCENTS.hotPink, ACCENTS.purple]} style={styles.saveButtonGradient}>
-              <Text style={styles.saveButtonText}>Save</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-    </View>
+      <View style={styles.heroButtons}>
+        <LinearGradient
+          colors={[ACCENT.pink, ACCENT.purple]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.heroButton, { flex: 1 }]}
+        >
+          <Pressable style={styles.heroButtonInner} onPress={onEditPress} android_ripple={{ color: 'rgba(255,255,255,0.10)' }} hitSlop={12}>
+            <Text style={styles.heroButtonText}>Edit Profile</Text>
+          </Pressable>
+        </LinearGradient>
+      </View>
+    </LinearGradient>
   );
-};
+}
 
-// Safe display value (React cannot render objects/arrays as children)
-const displayValue = (val) => {
-  if (val == null || val === '') return 'Not set';
-  if (Array.isArray(val)) return val.length ? val.join(', ') : 'Not set';
-  if (typeof val === 'object' && (val.feet != null || val.inches != null)) return formatHeightForDisplay(val);
-  if (typeof val === 'object') return Object.keys(val).length ? JSON.stringify(val) : 'Not set';
-  return String(val);
-};
+// ============================================================================
+// INFO PILL
+// ============================================================================
 
-// Info Row Component
-const InfoRow = ({ icon, label, value, onPress, editable, accentColor, isSubscription, colors, isDark }) => (
-  <TouchableOpacity onPress={onPress} disabled={!editable} style={styles.infoRow}>
-    <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)' }]}>
-      <Ionicons name={icon} size={16} color={accentColor} />
-    </View>
-    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{label}</Text>
-    <View style={styles.valueContainer}>
-      {isSubscription ? (
-        <View style={[styles.proBadge, { backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.1)', borderColor: ACCENTS.amber }]}>
-          <Text style={[styles.proText, { color: ACCENTS.amber }]}>Pro</Text>
+function InfoPill({ theme, color, Icon, value, label, isDark, editable, onEditPress }) {
+  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)';
+  const iconBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)';
+  const iconBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.035)';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={editable ? onEditPress : undefined}
+      style={[styles.infoPill, { backgroundColor: theme.card, borderColor: border }]}
+    >
+      <View style={[styles.infoPillIcon, { backgroundColor: iconBg, borderColor: iconBorder }]}>
+        <Icon size={18} color={color} />
+      </View>
+      <View style={styles.infoPillContent}>
+        <Text style={[styles.infoPillLabel, { color: theme.muted }]}>{label}</Text>
+        <Text style={[styles.infoPillValue, { color: theme.text }]}>{value}</Text>
+      </View>
+      {editable ? (
+        <View style={styles.pillEditWrap}>
+          <Pencil size={16} color={isDark ? 'rgba(255,255,255,0.75)' : 'rgba(10,10,15,0.75)'} />
         </View>
       ) : (
-        <Text style={[styles.infoValue, { color: colors.text }]}>{displayValue(value)}</Text>
+        <View style={[styles.infoPillDot, { backgroundColor: color }]} />
       )}
+    </TouchableOpacity>
+  );
+}
+
+// ============================================================================
+// SECTION HEADER
+// ============================================================================
+
+function SectionHeader({ theme, children }) {
+  return <Text style={[styles.sectionHeader, { color: theme.muted }]}>{children}</Text>;
+}
+
+// ============================================================================
+// TOGGLE SWITCH
+// ============================================================================
+
+function Toggle({ on, onColor, offColor, onChange }) {
+  return (
+    <TouchableOpacity style={[styles.toggle, { backgroundColor: on ? onColor : offColor }]} onPress={() => onChange(!on)}>
+      <View style={[styles.toggleThumb, { left: on ? 32 : 4 }]} />
+    </TouchableOpacity>
+  );
+}
+
+// ============================================================================
+// MAIN SCREEN
+// ============================================================================
+
+export function ProfileScreen({
+  isDark: isDarkProp,
+  onBack,
+  onNavigate,
+  onHomePress,
+  onPlusPress,
+  onVoicePress,
+  onNutritionPress,
+  onWorkoutPress,
+  onMessagesPress,
+  onProfilePress,
+  userData,
+  onboardingData,
+}) {
+  const { isDark: themeIsDark } = useTheme();
+  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
+  const theme = isDark ? DARK : LIGHT;
+  const [notificationsOn, setNotificationsOn] = useState(true);
+  const [photoURL, setPhotoURL] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editKey, setEditKey] = useState(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [savingField, setSavingField] = useState(false);
+
+  // Subtle entrance animations (fade + slight lift)
+  const heroAnim = useMemo(() => new Animated.Value(0), []);
+  const personalAnim = useMemo(() => new Animated.Value(0), []);
+  const trainingAnim = useMemo(() => new Animated.Value(0), []);
+  const accountAnim = useMemo(() => new Animated.Value(0), []);
+  React.useEffect(() => {
+    Animated.stagger(90, [
+      Animated.timing(heroAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(personalAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(trainingAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(accountAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+    ]).start();
+  }, [heroAnim, personalAnim, trainingAnim, accountAnim]);
+
+  const displayName = useMemo(() => {
+    const u = auth?.currentUser;
+    const first = userData?.firstName ? String(userData.firstName).trim() : '';
+    const last = userData?.lastName ? String(userData.lastName).trim() : '';
+    const fromUser = `${first} ${last}`.trim();
+    const fromDoc = String(onboardingData?.name || '').trim();
+    return (fromUser || fromDoc || String(u?.displayName || '').trim() || 'Your Profile').trim();
+  }, [userData?.firstName, userData?.lastName, onboardingData?.name]);
+
+  const handle = useMemo(() => {
+    const raw = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w_]/g, '');
+    return `@${raw || 'coachconnect'}`;
+  }, [displayName]);
+
+  const pickAndUploadPhoto = async () => {
+    const uid = auth?.currentUser?.uid;
+    if (!uid || uploading) return;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission required', 'Please allow photo library access to change your profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.75,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      setUploading(true);
+      const uri = result.assets[0].uri;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const storage = getStorage();
+      const storageRef = ref(storage, `profile_photos/${uid}`);
+      await uploadBytes(storageRef, blob);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      await setDoc(doc(db, 'users', uid), { photoURL: downloadURL }, { merge: true });
+
+      try {
+        const us = await getDoc(doc(db, 'users', uid));
+        const role = us.exists() ? String(us.data()?.role || '').toLowerCase() : '';
+        if (role === 'trainer') {
+          await setDoc(doc(db, 'trainers', uid), { photoURL: downloadURL, avatarUrl: downloadURL }, { merge: true });
+        }
+      } catch (_) {
+        // ignore mirror failures
+      }
+
+      setPhotoURL(downloadURL);
+    } catch (e) {
+      console.error('Profile photo update failed:', e);
+      Alert.alert('Upload failed', e?.message || 'Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const formatGender = (g) => {
+    const s = String(g || '').trim();
+    if (!s) return '—';
+    if (s === 'male') return 'Male';
+    if (s === 'female') return 'Female';
+    if (s === 'prefer_not_to_say') return 'Prefer not to say';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+
+  const formatHeight = (h) => {
+    if (h == null || h === '') return '—';
+    const n = Number(h);
+    if (Number.isFinite(n)) return `${n}`;
+    return String(h);
+  };
+
+  const formatWeight = (w) => {
+    if (w == null || w === '') return '—';
+    const n = Number(w);
+    if (Number.isFinite(n)) return `${n}`;
+    return String(w);
+  };
+
+  const openEdit = (key, label, currentValue) => {
+    if (!isEditing) return;
+    setEditKey(key);
+    setEditLabel(label);
+    setEditValue(currentValue == null ? '' : String(currentValue));
+  };
+
+  const closeEdit = () => {
+    setEditKey(null);
+    setEditLabel('');
+    setEditValue('');
+    setSavingField(false);
+  };
+
+  const saveField = async () => {
+    const uid = auth?.currentUser?.uid;
+    if (!uid || !editKey) return;
+    try {
+      setSavingField(true);
+      const raw = String(editValue ?? '').trim();
+      let next;
+      if (editKey === 'height' || editKey === 'weight' || editKey === 'age') {
+        const n = raw === '' ? null : Number(raw);
+        next = Number.isFinite(n) ? n : raw;
+      } else {
+        next = raw === '' ? null : raw;
+      }
+
+      // Write into users/{uid}. These keys already exist in onboarding/user docs.
+      await setDoc(doc(db, 'users', uid), { [editKey]: next, updatedAt: new Date().toISOString() }, { merge: true });
+
+      closeEdit();
+    } catch (e) {
+      console.error('Failed saving profile field:', e);
+      Alert.alert('Save failed', e?.message || 'Please try again.');
+      setSavingField(false);
+    }
+  };
+
+  // When Profile is rendered as an "overlay screen" (ClientApp/TrainerApp),
+  // those apps often short-circuit render on `showProfile`, so we need to
+  // route via `onNavigate` to ensure `handleHomePress()` clears showProfile.
+  const nav = useMemo(() => {
+    const go = (screen) => (typeof onNavigate === 'function' ? onNavigate(screen) : null);
+    return {
+      home: () => (typeof onHomePress === 'function' ? onHomePress() : go('home')),
+      create: () => (typeof onPlusPress === 'function' ? onPlusPress() : go('create')),
+      ai: () => (typeof onVoicePress === 'function' ? onVoicePress() : go('voice')),
+      nutrition: () => (typeof onNutritionPress === 'function' ? onNutritionPress() : go('nutrition')),
+      workout: () => (typeof onWorkoutPress === 'function' ? onWorkoutPress() : go('workout')),
+      messages: () => (typeof onMessagesPress === 'function' ? onMessagesPress() : go('messages')),
+      profile: () => (typeof onProfilePress === 'function' ? onProfilePress() : go('profile')),
+      settings: () => go('settings'),
+    };
+  }, [onNavigate, onHomePress, onPlusPress, onVoicePress, onNutritionPress, onWorkoutPress, onMessagesPress, onProfilePress]);
+
+  const email = auth?.currentUser?.email || onboardingData?.email || '—';
+  const personalData = [
+    { key: 'name', color: ACCENT.pink, Icon: User, value: displayName || '—', label: 'FULL NAME' },
+    { key: 'email', color: ACCENT.cyan, Icon: Mail, value: String(email || '—'), label: 'EMAIL', readOnly: true },
+    { key: 'age', color: ACCENT.orange, Icon: Calendar, value: onboardingData?.age != null ? String(onboardingData.age) : '—', label: 'AGE' },
+    { key: 'height', color: ACCENT.purple, Icon: Ruler, value: formatHeight(onboardingData?.height), label: 'HEIGHT' },
+    { key: 'weight', color: ACCENT.green, Icon: Scale, value: formatWeight(onboardingData?.weight), label: 'WEIGHT' },
+    { key: 'gender', color: ACCENT.pink, Icon: User, value: formatGender(onboardingData?.gender), label: 'GENDER' },
+  ];
+
+  const trainingData = [
+    { key: 'primaryGoal', color: ACCENT.pink, Icon: Target, value: String(onboardingData?.primaryGoal || '—'), label: 'PRIMARY GOAL' },
+    { key: 'fitnessLevel', color: ACCENT.orange, Icon: Dumbbell, value: String(onboardingData?.fitnessLevel || '—'), label: 'FITNESS LEVEL' },
+    { key: 'split', color: ACCENT.cyan, Icon: Layers, value: String(onboardingData?.split || '—'), label: 'SPLIT' },
+    { key: 'equipment', color: ACCENT.purple, Icon: Building2, value: String(onboardingData?.equipment || (Array.isArray(onboardingData?.equipmentAccess) ? onboardingData.equipmentAccess.join(', ') : '—')), label: 'EQUIPMENT' },
+    { key: 'diet', color: ACCENT.green, Icon: Apple, value: String(onboardingData?.diet || '—'), label: 'DIET' },
+    { key: 'yearsExperience', color: ACCENT.pink, Icon: Medal, value: onboardingData?.yearsExperience != null ? String(onboardingData.yearsExperience) : '—', label: 'EXPERIENCE' },
+  ];
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <CoachConnectHeader
+          title="Profile"
+          isDark={isDark}
+          onBack={onBack}
+          onSettingsPress={nav.settings}
+          onProfilePress={nav.profile}
+        />
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <Animated.View
+            style={{
+              opacity: heroAnim,
+              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            }}
+          >
+            <HeroCard
+              theme={theme}
+              isDark={isDark}
+              name={displayName}
+              handle={handle}
+              photoURL={photoURL}
+              onPressPhoto={pickAndUploadPhoto}
+              uploading={uploading}
+              onEditPress={() => setIsEditing((v) => !v)}
+            />
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              opacity: personalAnim,
+              transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            }}
+          >
+            <SectionHeader theme={theme}>PERSONAL INFORMATION</SectionHeader>
+            <View style={styles.pillsContainer}>
+              {personalData.map((item, idx) => (
+                <InfoPill
+                  key={item.key || idx}
+                  theme={theme}
+                  color={item.color}
+                  Icon={item.Icon}
+                  value={item.value}
+                  label={item.label}
+                  isDark={isDark}
+                  editable={isEditing && !item.readOnly}
+                  onEditPress={() => openEdit(item.key, item.label, item.value)}
+                />
+              ))}
+            </View>
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              opacity: trainingAnim,
+              transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            }}
+          >
+            <SectionHeader theme={theme}>TRAINING PREFERENCES</SectionHeader>
+            <View style={styles.pillsContainer}>
+              {trainingData.map((item, idx) => (
+                <InfoPill
+                  key={item.key || idx}
+                  theme={theme}
+                  color={item.color}
+                  Icon={item.Icon}
+                  value={item.value}
+                  label={item.label}
+                  isDark={isDark}
+                  editable={isEditing}
+                  onEditPress={() => openEdit(item.key, item.label, item.value)}
+                />
+              ))}
+            </View>
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              opacity: accountAnim,
+              transform: [{ translateY: accountAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            }}
+          >
+            <SectionHeader theme={theme}>ACCOUNT</SectionHeader>
+            <View style={[styles.accountCard, { backgroundColor: theme.card }]}>
+            <View style={styles.accountRow}>
+              <View style={[styles.accountIcon, { backgroundColor: `${ACCENT.purple}22` }]}>
+                <Shield size={16} color={ACCENT.purple} />
+              </View>
+              <View style={styles.accountContent}>
+                <Text style={[styles.accountLabel, { color: theme.muted }]}>SUBSCRIPTION</Text>
+                <Text style={[styles.accountValue, { color: theme.text }]}>Free</Text>
+              </View>
+              <View style={[styles.upgradeBadge, { backgroundColor: `${ACCENT.purple}22` }]}>
+                <Text style={[styles.upgradeBadgeText, { color: ACCENT.purple }]}>Upgrade</Text>
+              </View>
+            </View>
+
+            <View style={[styles.accountRow, { borderBottomColor: theme.border, borderBottomWidth: 1 }]}>
+              <View style={[styles.accountIcon, { backgroundColor: `${ACCENT.cyan}22` }]}>
+                <Bell size={16} color={ACCENT.cyan} />
+              </View>
+              <Text style={[styles.accountValue, { flex: 1, color: theme.text }]}>Notifications</Text>
+              <Toggle on={notificationsOn} onColor={ACCENT.pink} offColor={theme.toggleOff} onChange={setNotificationsOn} />
+            </View>
+
+            </View>
+          </Animated.View>
+
+          <TouchableOpacity style={[styles.signOutButton, { borderColor: theme.border }]}>
+            <Text style={[styles.signOutText, { color: theme.text }]}>Sign Out</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+
+      <Modal visible={!!editKey} transparent animationType="fade" onRequestClose={closeEdit}>
+        <Pressable style={styles.editBackdrop} onPress={closeEdit} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editKav}>
+          <View style={[styles.editSheet, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.editSheetTop}>
+              <Text style={[styles.editTitle, { color: theme.text }]}>{editLabel}</Text>
+              <TouchableOpacity onPress={closeEdit} activeOpacity={0.85} style={styles.editCloseBtn}>
+                <X size={18} color={isDark ? 'rgba(255,255,255,0.85)' : 'rgba(10,10,15,0.85)'} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              value={editValue}
+              onChangeText={setEditValue}
+              placeholder="Enter value"
+              placeholderTextColor={theme.muted}
+              style={[
+                styles.editInput,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(10,10,15,0.03)',
+                },
+              ]}
+              autoFocus
+            />
+
+            <View style={styles.editActions}>
+              <TouchableOpacity onPress={closeEdit} activeOpacity={0.9} style={[styles.editBtn, { borderColor: theme.border }]}>
+                <Text style={[styles.editBtnText, { color: theme.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <LinearGradient colors={[ACCENT.pink, ACCENT.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.editBtnPrimary}>
+                <TouchableOpacity onPress={saveField} activeOpacity={0.9} style={styles.editBtnPrimaryInner} disabled={savingField}>
+                  {savingField ? <ActivityIndicator color="#fff" /> : <Text style={styles.editBtnPrimaryText}>Save</Text>}
+                </TouchableOpacity>
+              </LinearGradient>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <BottomNavBar
+        onHomePress={nav.home}
+        onPlusPress={nav.create}
+        onVoicePress={nav.ai}
+        onNutritionPress={nav.nutrition}
+        onWorkoutPress={nav.workout}
+        onMessagesPress={nav.messages}
+        onProfilePress={nav.profile}
+      />
     </View>
-    {editable && <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />}
-  </TouchableOpacity>
-);
+  );
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  container: { flex: 1 },
+  // Extra bottom padding so taps/controls don't sit under the bottom nav bar.
+  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 140 },
+
+  heroCard: {
+    borderRadius: 28,
+    padding: 28,
+    marginBottom: 24,
+    borderWidth: 3,
+    borderColor: 'transparent',
     alignItems: 'center',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  themeToggle: {
-    padding: 8,
-  },
-  headerSpacer: {
-    width: 40, // Same size as themeToggle to maintain layout
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 48,
-  },
-  avatarSection: {
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatarRing: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 2,
-  },
-  avatarInner: {
-    width: 192,
-    height: 192,
-    borderRadius: 96,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 192,
-    height: 192,
-    borderRadius: 96,
-  },
-  avatarPlaceholder: {
-    width: 192,
-    height: 192,
-    borderRadius: 96,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 44,
-    fontWeight: '700',
-  },
+  avatarContainer: { position: 'relative', marginBottom: 20 },
+  avatar: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', borderWidth: 2 },
+  avatarText: { fontSize: 48, fontWeight: '900', color: '#FFFFFF' },
+  avatarImg: { width: '100%', height: '100%', borderRadius: 60 },
   cameraButton: {
     position: 'absolute',
-    bottom: 10,
-    right: 10,
-  },
-  cameraButtonInner: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 18,
-    textAlign: 'center',
-  },
-  profileBio: {
-    fontSize: 14,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginTop: 10,
-    maxWidth: 320,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-    width: '100%',
-    alignItems: 'center',
-  },
-  primaryActionBtn: {
+    bottom: -4,
+    right: -4,
+    width: 48,
     height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
+    borderRadius: 24,
     justifyContent: 'center',
-    paddingHorizontal: 14,
-  },
-  primaryActionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  secondaryActionBtn: {
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
   },
-  secondaryActionText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  roleBadge: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderRadius: 20,
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+  heroName: { fontSize: 24, fontWeight: '900', marginBottom: 4 },
+  heroHandle: { fontSize: 14, fontWeight: '500', marginBottom: 20 },
+  heroButtons: { flexDirection: 'row', gap: 10, width: '100%' },
+  heroButton: { height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  heroButtonInner: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  heroButtonText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 12,
+    marginHorizontal: 0,
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  cardAccent: {
-    width: 3,
-    height: '100%',
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  infoRow: {
+
+  pillsContainer: { gap: 10, marginBottom: 24 },
+  infoPill: {
+    borderRadius: 14.5,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    gap: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  iconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+  infoPillIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-  },
-  infoLabel: {
-    flex: 1,
-    fontSize: 13,
-  },
-  valueContainer: {
-    maxWidth: 140,
-    alignItems: 'flex-end',
-  },
-  infoValue: {
-    fontSize: 13,
-    textAlign: 'right',
-  },
-  proBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
     borderWidth: 1,
-    borderRadius: 12,
   },
-  proText: {
-    fontSize: 11,
-    fontWeight: '500',
+  infoPillContent: { flex: 1 },
+  infoPillLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
+  infoPillValue: { fontSize: 14, fontWeight: '800', marginTop: 3, letterSpacing: -0.2 },
+  infoPillDot: { width: 6, height: 6, borderRadius: 3 },
+  pillEditWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.18)',
   },
-  divider: {
-    height: 1,
-    marginHorizontal: 16,
+
+  accountCard: { borderRadius: 12, paddingHorizontal: 12, marginBottom: 24 },
+  accountRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  accountIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  accountContent: { flex: 1 },
+  accountLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
+  accountValue: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  accountSublabel: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  upgradeBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
+  upgradeBadgeText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  toggle: { width: 60, height: 32, borderRadius: 16, justifyContent: 'center', position: 'relative' },
+  toggleThumb: { position: 'absolute', width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFFFFF', top: 4 },
+
+  signOutButton: { height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 1, marginHorizontal: 16 },
+  signOutText: { fontSize: 14, fontWeight: '700' },
+
+  editBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  switchRow: {
+  editKav: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  editSheet: {
+    margin: 16,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+  },
+  editSheetTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    marginBottom: 12,
   },
-  switchLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+  editTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
-  switchLabel: {
-    fontSize: 13,
-    marginLeft: 12,
-  },
-  editButton: {
-    marginBottom: 16,
-  },
-  editButtonGradient: {
-    borderRadius: 50,
-    paddingVertical: 14,
-    alignItems: 'center',
-    shadowColor: ACCENTS.hotPink,
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  editButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  signOutButton: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  signOutText: {
-    fontSize: 13,
-  },
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-  },
-  sheetHandle: {
+  editCloseBtn: {
     width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  sheetTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 20,
-  },
-  sheetInput: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  saveButton: {
-    marginBottom: 8,
-  },
-  saveButtonGradient: {
-    borderRadius: 50,
-    paddingVertical: 14,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontWeight: '700',
   },
-  headerWrapper: {
-    paddingTop: 36,
+  editActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
   },
+  editBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBtnText: { fontSize: 13, fontWeight: '800' },
+  editBtnPrimary: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  editBtnPrimaryInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
 });
 
 export default ProfileScreen;
+

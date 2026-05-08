@@ -1,18 +1,11 @@
 // OpenAI SDK setup for React Native (JavaScript)
-// - Uses the official 'openai' SDK
+// - Uses the official 'openai' SDK (already installed)
 // - Reads API key from environment variables
 // - Exposes a single function: generateResponse(prompt) -> { text, raw }
 //
-// TODO: {{Install the SDK in your project root}}
-//   npm:  npm install openai
-//   yarn: yarn add openai
+// Installation: SDK is installed in package.json
 //
-// TODO: {{Provide your API key via env}}
-//   Create a .env file at the project root with:
-//     OPENAI_API_KEY={{your_openai_api_key_here}}
-//   For React Native, we recommend using 'react-native-config' or Expo env:
-//     - react-native-config: https://github.com/luggit/react-native-config
-//     - Expo (app.json/app.config.*): add to 'extra' and read from Constants.expoConfig.extra
+// API Key: Provided via OPENAI_API_KEY environment variable
 //
 // Model:
 //   Using: gpt-4o-mini as requested
@@ -222,18 +215,7 @@ export async function generateResponse(userPrompt, options = {}) {
   throw new Error(`${friendly} (${detail})`);
 }
 
-// TODO: {{Wire this into your UI}}
-// - Example (inside a React component):
-//   const [answer, setAnswer] = useState('');
-//   const onAsk = async () => {
-//     try {
-//       const res = await generateResponse('How can I optimize my workout?');
-//       setAnswer(res.text);
-//     } catch (e) {
-//       console.error(e);
-//       // Show a user-friendly error toast
-//     }
-//   };
+// Usage: This is called from AIChatScreen.jsx and other AI features
 
 
 

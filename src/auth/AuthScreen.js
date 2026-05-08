@@ -668,9 +668,16 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         userData.location = location.trim();
         console.log('👨‍🏫 Adding trainer-specific data:', { bioLength: userData.bio.length, credentials: userData.credentials, specializationsCount: userData.specializations.length, location: userData.location });
       }
+
+      if (photoURL) {
+        userData.photoURL = photoURL;
+      }
       
       console.log('💾 Saving user data to Firestore...');
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+      if (role === 'trainer' && photoURL) {
+        await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL, avatarUrl: photoURL }, { merge: true });
+      }
       console.log('✅ User data saved to Firestore');
       
       console.log('🎉 Signup successful:', userCredential.user.email, 'Role:', role);
@@ -732,8 +739,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           onboardingCompleted: false, // Set to false so onboarding shows after signup
           createdAt: new Date().toISOString(),
           authProvider: 'google',
+          photoURL: userCredential.user.photoURL || null,
         };
         await setDoc(userRef, userData);
+        if (role === 'trainer' && userCredential.user.photoURL) {
+          await setDoc(doc(db, 'trainers', userCredential.user.uid), {
+            photoURL: userCredential.user.photoURL,
+            avatarUrl: userCredential.user.photoURL,
+          }, { merge: true });
+        }
         console.log('New user created with Google sign-up:', userCredential.user.email, 'Role:', role);
       } else {
         const ok = await ensureRoleMatchesToggle(userCredential.user.uid, role);
@@ -863,6 +877,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       }
 
       if (!userDoc.exists()) {
+        const gPhoto = userCredential.user.photoURL || null;
         await setDoc(userRef, {
           uid: userCredential.user.uid,
           email: userCredential.user.email || '',
@@ -871,7 +886,11 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           title: 'Coach Connect Invite Code',
           createdAt: new Date().toISOString(),
           authProvider: 'google',
+          photoURL: gPhoto,
         });
+        if (role === 'trainer' && gPhoto) {
+          await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL: gPhoto, avatarUrl: gPhoto }, { merge: true });
+        }
         console.log('User document created for Google sign-in');
       } else {
         await setDoc(

@@ -75,14 +75,14 @@ export default function DataStorageScreen({ onClose }) {
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity 
+        {/* <TouchableOpacity 
           style={styles.settingItem} 
           activeOpacity={0.7}
           onPress={() => handlePress('Export Data')}
         >
           <Text style={styles.settingItemText}>Export Data</Text>
           <Text style={styles.settingItemArrow}>›</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         <TouchableOpacity 
           style={styles.settingItem} 

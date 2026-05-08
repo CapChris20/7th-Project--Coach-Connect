@@ -93,9 +93,9 @@ export default function AddNotesFilesModal({
     if (result.canceled || !result.assets?.[0]?.uri) return;
     setUploading(true);
     try {
-      const { uri } = result.assets[0];
+      const { uri, fileSize } = result.assets[0];
       const name = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
-      await addFile(uid, { localUri: uri, filename: name, mimeType: 'image/jpeg', type: 'photo' }, addedBy);
+      await addFile(uid, { localUri: uri, filename: name, mimeType: 'image/jpeg', type: 'photo', size: typeof fileSize === 'number' ? fileSize : undefined }, addedBy);
       onAdded?.();
       handleClose();
     } catch (e) {
@@ -120,9 +120,9 @@ export default function AddNotesFilesModal({
     if (result.canceled || !result.assets?.[0]?.uri) return;
     setUploading(true);
     try {
-      const { uri } = result.assets[0];
+      const { uri, fileSize } = result.assets[0];
       const name = uri.split('/').pop() || `video_${Date.now()}.mp4`;
-      await addFile(uid, { localUri: uri, filename: name, mimeType: 'video/mp4', type: 'video' }, addedBy);
+      await addFile(uid, { localUri: uri, filename: name, mimeType: 'video/mp4', type: 'video', size: typeof fileSize === 'number' ? fileSize : undefined }, addedBy);
       onAdded?.();
       handleClose();
     } catch (e) {
@@ -149,6 +149,7 @@ export default function AddNotesFilesModal({
           filename: file.name || 'document',
           mimeType: file.mimeType || 'application/octet-stream',
           type: file.mimeType?.includes('pdf') ? 'pdf' : 'doc',
+          size: typeof file.size === 'number' ? file.size : undefined,
         }, addedBy);
         onAdded?.();
         handleClose();
@@ -179,6 +180,7 @@ export default function AddNotesFilesModal({
           localUri: file.uri,
           filename: file.name || 'spreadsheet',
           mimeType: file.mimeType || 'application/octet-stream',
+          size: typeof file.size === 'number' ? file.size : undefined,
         }, addedBy, (pct) => setUploadProgress(pct));
         onAdded?.();
         handleClose();

@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
 
 /** Same palette as session meeting cards: cyan → purple → pink */
 const BORDER_GRADIENT = ['#06B6D4', '#C084FC', '#FF6B9D'];
@@ -27,7 +26,7 @@ const glass = (isDark) => ({
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-const GradientBorderShell = ({ isDark, children, style }) => (
+export const GradientBorderShell = ({ isDark, children, style }) => (
   <LinearGradient
     colors={BORDER_GRADIENT}
     start={{ x: 0, y: 0 }}
@@ -63,75 +62,6 @@ const GradientBorderShell = ({ isDark, children, style }) => (
     </View>
   </LinearGradient>
 );
-
-const Ring = ({ size = 56, strokeWidth = 6, progress = 0, trackColor, accent }) => {
-  const pct = clamp01(progress);
-  const r = (size - strokeWidth) / 2;
-  const c = 2 * Math.PI * r;
-  const dashOffset = c * (1 - pct);
-  return (
-    <View style={{ width: size, height: size }}>
-      <View style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <Circle cx={size / 2} cy={size / 2} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={accent}
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeDasharray={`${c} ${c}`}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-          />
-        </Svg>
-      </View>
-    </View>
-  );
-};
-
-const MiniStatCard = ({ isDark, icon, label, value, unit, progress, accent, onPress, helperText }) => {
-  const t = glass(isDark);
-  const pct = Math.round(clamp01(progress) * 100);
-  const iconBg = isDark ? `${accent}22` : `${accent}18`;
-  const iconBorder = isDark ? `${accent}40` : `${accent}35`;
-
-  return (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ flex: 1 }}>
-      <GradientBorderShell isDark={isDark} style={{ flex: 1 }}>
-        <View style={styles.miniTopRow}>
-          <View style={[styles.miniIcon, { backgroundColor: iconBg, borderColor: iconBorder }]}>
-            <Ionicons name={icon} size={16} color={accent} />
-          </View>
-          <View style={{ flex: 1 }} />
-          <Text style={[styles.miniPct, { color: t.dim }]}>{pct}%</Text>
-        </View>
-
-        <View style={styles.miniMiddle}>
-          <Ring size={56} strokeWidth={6} progress={progress} trackColor={t.track} accent={accent} />
-          <View style={styles.miniValueOverlay} pointerEvents="none">
-            <Text style={[styles.miniValue, { color: t.text }]} numberOfLines={1}>
-              {value}
-            </Text>
-            <Text style={[styles.miniUnit, { color: t.dim }]} numberOfLines={1}>
-              {unit}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.miniLabel, { color: t.muted }]} numberOfLines={1}>
-          {label.toUpperCase()}
-        </Text>
-        {!!helperText && (
-          <Text style={[styles.miniHelper, { color: t.dim }]} numberOfLines={1}>
-            {helperText}
-          </Text>
-        )}
-      </GradientBorderShell>
-    </TouchableOpacity>
-  );
-};
 
 const PROGRESS_GRADIENT = ['#FF6B9D', '#C084FC', '#06B6D4'];
 
@@ -224,6 +154,12 @@ export default function PremiumStatsSection({
     return goal > 0 ? cur / goal : 0;
   }, [water.current, water.goal]);
 
+  const t = glass(isDark);
+  const sleepValue = Number(sleep.current ?? 0) || 0;
+  const waterValue = Math.round(Number(water.current ?? 0) || 0);
+  const sleepPct = Math.round(clamp01(sleepProgress) * 100);
+  const waterPct = Math.round(clamp01(waterProgress) * 100);
+
   return (
     <View style={styles.wrap}>
       <Text style={[styles.sectionTitle, { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.65)' }]}>
@@ -238,29 +174,94 @@ export default function PremiumStatsSection({
         onPress={onPressCalories}
       />
 
-      <View style={styles.miniRow}>
-        <MiniStatCard
-          isDark={isDark}
-          icon="moon-outline"
-          label="Sleep"
-          value={`${Number(sleep.current ?? 0) || 0}`}
-          unit="hrs"
-          progress={sleepProgress}
-          accent={ACCENTS.sleep}
-          onPress={onPressSleep}
-          helperText="last night"
-        />
-        <MiniStatCard
-          isDark={isDark}
-          icon="water-outline"
-          label="Water"
-          value={`${Math.round(Number(water.current ?? 0))}`}
-          unit="oz"
-          progress={waterProgress}
-          accent={ACCENTS.water}
-          onPress={onPressWater}
-          helperText="hydration"
-        />
+      <View style={styles.metricsRow}>
+        {/* Sleep card */}
+        <TouchableOpacity activeOpacity={0.9} onPress={onPressSleep} style={{ flex: 1 }}>
+          <View style={styles.metricOuter}>
+            <LinearGradient
+              colors={['#C084FC', '#FF6B9D']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.metricTopBorder}
+            />
+            <View style={[styles.metricBody, { backgroundColor: '#13131A' }]}>
+              <View style={styles.metricHeaderRow}>
+                <View
+                  style={[
+                    styles.metricIconCircle,
+                    { backgroundColor: '#C084FC', borderColor: 'rgba(192,132,252,0.7)' },
+                  ]}
+                >
+                  <Ionicons name="moon-outline" size={20} color="#FFFFFF" />
+                </View>
+                <Text style={[styles.metricStatus, { color: t.dim }]}>{`${sleepPct}%`}</Text>
+              </View>
+
+              <View style={styles.metricCenter}>
+                <Text style={[styles.metricNumber, { color: t.text }]}>{sleepValue}</Text>
+                <Text style={[styles.metricUnit, { color: t.muted }]}>hrs</Text>
+
+                <View style={[styles.metricBarTrack, { backgroundColor: t.track }]}>
+                  <LinearGradient
+                    colors={['#C084FC', '#FF6B9D']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.metricBarFill, { width: `${sleepPct}%` }]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.metricFooter}>
+                <Text style={[styles.metricLabel, { color: t.muted }]}>SLEEP</Text>
+                <Text style={[styles.metricSub, { color: t.dim }]}>last night</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Water card */}
+        <TouchableOpacity activeOpacity={0.9} onPress={onPressWater} style={{ flex: 1 }}>
+          <View style={styles.metricOuter}>
+            <LinearGradient
+              colors={['#64D2FF', '#4A90E2']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.metricTopBorder}
+            />
+            <View style={[styles.metricBody, { backgroundColor: '#13131A' }]}>
+              <View style={styles.metricHeaderRow}>
+                <View
+                  style={[
+                    styles.metricIconCircle,
+                    { backgroundColor: '#64D2FF', borderColor: 'rgba(100,210,255,0.75)' },
+                  ]}
+                >
+                  <Ionicons name="water-outline" size={20} color="#FFFFFF" />
+                </View>
+                <Text style={[styles.metricStatus, { color: t.dim }]}>{`${waterPct}%`}</Text>
+              </View>
+
+              <View style={styles.metricCenter}>
+                <Text style={[styles.metricNumber, { color: t.text }]}>{waterValue}</Text>
+                <Text style={[styles.metricUnit, { color: t.muted }]}>oz</Text>
+
+                <View style={[styles.metricBarTrack, { backgroundColor: t.track }]}>
+                  <LinearGradient
+                    colors={['#64D2FF', '#4A90E2']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.metricBarFill, { width: `${waterPct}%` }]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.metricFooter}>
+                <Text style={[styles.metricLabel, { color: t.muted }]}>WATER</Text>
+                <Text style={[styles.metricSub, { color: t.dim }]}>hydration</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -282,29 +283,81 @@ const styles = StyleSheet.create({
   heroFooterText: { fontSize: 12, fontWeight: '800' },
   heroChevron: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
 
-  miniRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  miniTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  miniIcon: { width: 34, height: 34, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  miniPct: { fontSize: 11, fontWeight: '900' },
-  miniMiddle: {
-    marginTop: 12,
-    width: 56,
-    height: 56,
-    alignSelf: 'center',
+  metricsRow: { flexDirection: 'row', gap: 16, marginTop: 14 },
+  metricOuter: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#13131A',
+  },
+  metricTopBorder: {
+    height: 3,
+    width: '100%',
+  },
+  metricBody: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+    minHeight: 140,
+    justifyContent: 'space-between',
+  },
+  metricHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  metricIconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniValueOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+  metricStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metricCenter: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 4,
+    marginBottom: 8,
   },
-  miniValue: { fontSize: 16, fontWeight: '900', lineHeight: 18 },
-  miniUnit: { marginTop: 2, fontSize: 10, fontWeight: '800' },
-  miniLabel: { marginTop: 12, fontSize: 10, fontWeight: '900', letterSpacing: 1.2, textAlign: 'center' },
-  miniHelper: { marginTop: 4, fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  metricNumber: {
+    fontSize: 36,
+    fontWeight: '900',
+  },
+  metricUnit: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  metricBarTrack: {
+    marginTop: 10,
+    height: 4,
+    borderRadius: 999,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  metricBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  metricFooter: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  metricSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
 });

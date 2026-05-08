@@ -1,0 +1,236 @@
+import React from 'react';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
+const BG_GRADIENT = ['#1a0a2e', '#0f0a1a'];
+const TOP_BORDER_GRADIENT = ['#C084FC', '#64D2FF'];
+const CTA_GRADIENT = ['#FF6B9D', '#C084FC'];
+
+const CYAN = '#64D2FF';
+
+const FEATURES = [
+  { icon: 'fitness-outline', label: 'Workouts' },
+  { icon: 'stats-chart-outline', label: 'Analytics' },
+  { icon: 'flash-outline', label: 'Progress' },
+  { icon: 'calendar-outline', label: 'History' },
+];
+
+/**
+ * Premium hero for the client home “full dashboard” entry — matches MarketplaceHeroCard hierarchy.
+ */
+export default function DashboardHeroCard({ onPress, unreadMessageCount = 0 }) {
+  return (
+    <View style={styles.wrapper} accessibilityRole="summary" accessibilityLabel="Your complete dashboard">
+      <Pressable
+        onPress={onPress}
+        style={({ pressed, hovered }) => [
+          styles.pressable,
+          pressed && styles.pressablePressed,
+          hovered && styles.pressableHovered,
+        ]}
+        android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
+      >
+        <View style={styles.cardShadow}>
+          <View style={styles.cardClip}>
+            <LinearGradient
+              colors={TOP_BORDER_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.topBorder}
+            />
+            <LinearGradient
+              colors={BG_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.inner}
+            >
+              <View style={styles.headerRow}>
+                <Text style={styles.label}>Your Complete Dashboard</Text>
+                <Ionicons name="grid-outline" size={24} color={CYAN} />
+              </View>
+
+              <Text style={styles.headline}>Everything You Need in One Place</Text>
+
+              <Text style={styles.subhead}>
+                Log workouts, view stats, track progress, and more
+              </Text>
+
+              <View style={styles.pillsRow}>
+                {FEATURES.map(({ icon, label }) => (
+                  <View key={label} style={styles.pill}>
+                    <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
+                    <Text style={styles.pillText} numberOfLines={1}>
+                      {label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.ctaWrap}>
+                {unreadMessageCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </Text>
+                  </View>
+                )}
+                <LinearGradient
+                  colors={CTA_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.ctaGradient}
+                >
+                  <View style={styles.ctaInner}>
+                    <Text style={styles.ctaText}>Explore Dashboard</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                  </View>
+                </LinearGradient>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrapper: {
+    marginVertical: 16,
+    paddingHorizontal: 16,
+  },
+  pressable: {
+    borderRadius: 24,
+  },
+  pressablePressed: {
+    opacity: 0.94,
+    transform: [{ scale: 0.985 }],
+  },
+  pressableHovered: {
+    ...Platform.select({
+      web: { transform: [{ translateY: -2 }] },
+      default: {},
+    }),
+  },
+  cardShadow: {
+    borderRadius: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#C084FC',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.32,
+        shadowRadius: 16,
+      },
+      android: { elevation: 10 },
+    }),
+  },
+  cardClip: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  topBorder: {
+    height: 3,
+    width: '100%',
+  },
+  inner: {
+    padding: 24,
+    minHeight: 220,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  label: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginRight: 8,
+  },
+  headline: {
+    marginTop: 12,
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    lineHeight: 28,
+  },
+  subhead: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 21,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+  },
+  pill: {
+    flex: 1,
+    minWidth: 0,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  pillIcon: {
+    marginTop: 0,
+  },
+  pillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  ctaWrap: {
+    marginTop: 16,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: 8,
+    zIndex: 10,
+    backgroundColor: '#FF3B30',
+    borderRadius: 11,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#1a0a2e',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  ctaGradient: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    height: 48,
+    justifyContent: 'center',
+  },
+  ctaInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    paddingHorizontal: 16,
+  },
+  ctaText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+});

@@ -467,23 +467,47 @@ export async function markMessagesAsRead(conversationId, userId) {
 }
 
 /**
- * Get user data by ID
+ * Get user data by ID. Tries `users` first; on missing doc or permission-denied (e.g. client
+ * reading a trainer's private user doc), falls back to `trainers/{id}` — readable by any
+ * signed-in user for marketplace profiles.
  * @param {string} userId - The user's ID
  * @returns {Promise<Object|null>} User data or null
  */
 export async function getUserData(userId) {
+  const id = typeof userId === 'string' ? userId.trim() : '';
+  if (!id) return null;
+
   try {
-    const id = typeof userId === 'string' ? userId.trim() : '';
-    if (!id) return null;
     const userDoc = await getDoc(doc(db, 'users', id));
     if (userDoc.exists()) {
       return { id: userDoc.id, ...userDoc.data() };
     }
-    return null;
   } catch (error) {
-    console.error('Error getting user data:', error);
-    return null;
+    const code = error?.code || '';
+    const msg = String(error?.message || '').toLowerCase();
+    const isDenied = code === 'permission-denied' || msg.includes('insufficient permissions');
+    if (!isDenied) {
+      console.error('Error getting user data:', error);
+      return null;
+    }
   }
+
+  try {
+    const trainerSnap = await getDoc(doc(db, 'trainers', id));
+    if (trainerSnap.exists()) {
+      const d = trainerSnap.data();
+      return {
+        id: trainerSnap.id,
+        ...d,
+        displayName: d.displayName || d.name,
+        name: d.name || d.displayName,
+      };
+    }
+  } catch (e2) {
+    console.warn('getUserData: trainers fallback failed', id, e2?.message || e2);
+  }
+
+  return null;
 }
 /**
  * Get total unread message count for a user across all conversations

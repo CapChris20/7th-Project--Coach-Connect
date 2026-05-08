@@ -23,6 +23,119 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const bucket = admin.storage().bucket();
+
+/**
+ * DELETE ACCOUNT (App Store requirement)
+ *
+ * HTTPS endpoint: POST /auth/deleteAccount
+ * - Requires Firebase ID token in Authorization header
+ * - Only allows deleting the caller's own account
+ * - Purges:
+ *   - Auth user
+ *   - All Firestore data under users/{uid} (doc + subcollections)
+ *   - All Storage files under users/{uid}/
+ */
+const authApp = express();
+authApp.use(cors());
+authApp.use(express.json({ limit: '1mb' }));
+
+async function verifyFirebaseIdToken(req) {
+  const header = req.headers.authorization || req.headers.Authorization || '';
+  const match = typeof header === 'string' ? header.match(/^Bearer (.+)$/i) : null;
+  const token = match?.[1];
+  if (!token) {
+    const err = new Error('Missing Authorization bearer token');
+    err.statusCode = 401;
+    throw err;
+  }
+  try {
+    return await admin.auth().verifyIdToken(token);
+  } catch (e) {
+    const err = new Error('Invalid or expired auth token');
+    err.statusCode = 401;
+    err.cause = e;
+    throw err;
+  }
+}
+
+async function purgeUserFirestore(uid) {
+  const userRef = db.collection('users').doc(uid);
+  // Admin SDK recursive delete removes doc + all nested subcollections.
+  // Uses BulkWriter under the hood for scale.
+  await db.recursiveDelete(userRef);
+}
+
+async function purgeUserStorage(uid) {
+  const prefix = `users/${uid}/`;
+  // Best-effort: delete all files under prefix. Non-existent prefix is fine.
+  await bucket.deleteFiles({ prefix });
+}
+
+exports.deleteAccount = onCall(
+  {
+    timeoutSeconds: 540,
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+    const uid = request.auth.uid;
+    try {
+      await purgeUserFirestore(uid);
+      await purgeUserStorage(uid);
+      try {
+        await admin.auth().deleteUser(uid);
+      } catch (e) {
+        const code = e?.code || e?.errorInfo?.code || '';
+        if (!String(code).includes('auth/user-not-found')) throw e;
+      }
+      return { ok: true };
+    } catch (e) {
+      logger.error('deleteAccount callable failed', { uid, error: e?.message || String(e) });
+      throw new HttpsError('internal', e?.message || 'Delete failed');
+    }
+  }
+);
+
+authApp.post('/deleteAccount', async (req, res) => {
+  try {
+    const decoded = await verifyFirebaseIdToken(req);
+    const userId = req.body?.userId;
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({ ok: false, error: 'userId is required' });
+    }
+    if (decoded.uid !== userId) {
+      return res.status(403).json({ ok: false, error: 'Can only delete your own account' });
+    }
+
+    // Order: purge user data first, then delete auth record.
+    // (If auth is deleted first, clients may lose ability to retry on flaky networks.)
+    await purgeUserFirestore(userId);
+    await purgeUserStorage(userId);
+
+    // Idempotent-ish: if already deleted, treat as success.
+    try {
+      await admin.auth().deleteUser(userId);
+    } catch (e) {
+      const code = e?.code || e?.errorInfo?.code || '';
+      if (!String(code).includes('auth/user-not-found')) throw e;
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    const status = e?.statusCode || 500;
+    logger.error('auth.deleteAccount failed', { status, error: e?.message || String(e) });
+    return res.status(status).json({ ok: false, error: e?.message || 'Delete failed' });
+  }
+});
+
+exports.auth = functions.https.onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 540,
+    maxInstances: 10,
+  },
+  authApp
+);
 
 /** Format HH:mm (24h) for notification body */
 function formatTime12(hhmm) {

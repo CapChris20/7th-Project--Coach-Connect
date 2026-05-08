@@ -32,6 +32,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app/config';
+import { auth } from '../../app/config';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useTheme } from '../../shared/ui/ThemeContext';
@@ -424,14 +425,10 @@ async function postAICoach(payload) {
   const url = `${base}/api/ai-coach`;
   console.log('[AIChat] requesting URL:', url);
 
-  // Send DeepSeek key via header so server can use DeepSeek without server .env
-  const deepseekKey =
-    process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY ||
-    null;
-
   const headers = { 'Content-Type': 'application/json' };
-  if (deepseekKey && typeof deepseekKey === 'string' && deepseekKey.trim().length > 0) {
-    headers['x-deepseek-key'] = deepseekKey.trim();
+  const idToken = await auth?.currentUser?.getIdToken?.();
+  if (idToken && typeof idToken === 'string') {
+    headers.Authorization = `Bearer ${idToken}`;
   }
 
   let response;

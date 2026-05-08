@@ -15,6 +15,7 @@ import {
   File as FileIcon,
   Image as ImageIcon,
 } from 'lucide-react-native';
+import { getFriendlyFileTitle } from '../utils/fileFormatting';
 
 const PALETTES = ['cyan', 'pink', 'purple', 'orange'];
 
@@ -72,7 +73,7 @@ function officeEmbedUrl(url) {
 
 /** Decode storage-safe titles like Quiz-2%28CIS%29.docx */
 function decodeFileTitle(file) {
-  const raw = file?.name || file?.title || 'File';
+  const raw = getFriendlyFileTitle(file) || file?.name || file?.title || 'File';
   try {
     return decodeURIComponent(String(raw));
   } catch {

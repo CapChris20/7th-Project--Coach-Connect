@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { trainerPhotoUri } from '../../shared/utils/trainerProfileMedia';
 
 const ACCENTS = {
   pink: '#FF6B9D',
@@ -50,6 +51,7 @@ export default function PremiumTrainerCard({
   const rating = typeof trainer?.rating === 'number' ? trainer.rating : trainer?.rating ? Number(trainer.rating) : null;
   const clients = typeof trainer?.clients === 'number' ? trainer.clients : trainer?.clients ? Number(trainer.clients) : null;
   const years = typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : null;
+  const photoSrc = trainerPhotoUri(trainer);
 
   const badge = (icon, label) => (
     <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderColor: t.border }]}>
@@ -82,8 +84,8 @@ export default function PremiumTrainerCard({
           {/* Avatar ring */}
           <LinearGradient colors={ring} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarRing}>
             <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', borderColor: t.border }]}>
-              {trainer?.avatarUrl || trainer?.photoURL ? (
-                <Image source={{ uri: trainer.avatarUrl || trainer.photoURL }} style={styles.avatarImg} />
+              {photoSrc ? (
+                <Image source={{ uri: photoSrc }} style={styles.avatarImg} />
               ) : (
                 <Text style={[styles.avatarFallback, { color: a }]}>{name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</Text>
               )}

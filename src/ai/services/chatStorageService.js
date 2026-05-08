@@ -57,7 +57,7 @@ export async function getAllChats(userId = null) {
   try {
     const currentUserId = userId || getCurrentUserId();
     if (!currentUserId) {
-      console.warn('⚠️ No user ID available for getAllChats');
+      if (__DEV__) console.warn('⚠️ No user ID available for getAllChats');
       return [];
     }
     
@@ -66,11 +66,17 @@ export async function getAllChats(userId = null) {
     if (!chatsJson) {
       return [];
     }
-    const chats = JSON.parse(chatsJson);
+    let chats;
+    try {
+      chats = JSON.parse(chatsJson);
+    } catch (parseError) {
+      if (__DEV__) console.error('Error parsing chats JSON:', parseError);
+      return [];
+    }
     // Sort by updatedAt (most recent first)
     return chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (error) {
-    console.error('Error loading chats:', error);
+    if (__DEV__) console.error('Error loading chats:', error);
     return [];
   }
 }

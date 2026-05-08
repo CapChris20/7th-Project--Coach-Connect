@@ -1,0 +1,286 @@
+```json
+{
+  "goal": "Hypertrophy",
+  "program": "Hypertrophy Training Program",
+  "durationWeeks": 8,
+  "daysPerWeek": 5,
+  "trainingDays": [
+    {
+      "day": "Day 1",
+      "focus": "Chest and Triceps",
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": "8-12",
+          "restSeconds": 90,
+          "notes": "Control the eccentric for 2-3 seconds"
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 4,
+          "reps": "10-12",
+          "restSeconds": 75,
+          "notes": "Set bench to 30-45 degree angle"
+        },
+        {
+          "name": "Cable Flyes",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Squeeze at peak contraction for 1 second"
+        },
+        {
+          "name": "Dumbbell Pullover",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Focus on chest stretch at the bottom"
+        },
+        {
+          "name": "Tricep Rope Pushdowns",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Spread the rope at the bottom of each rep"
+        },
+        {
+          "name": "Overhead Tricep Extension",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Use a dumbbell or EZ bar"
+        },
+        {
+          "name": "Close-Grip Bench Press",
+          "sets": 3,
+          "reps": "8-10",
+          "restSeconds": 75,
+          "notes": "Hands shoulder-width apart"
+        }
+      ]
+    },
+    {
+      "day": "Day 2",
+      "focus": "Back and Biceps",
+      "exercises": [
+        {
+          "name": "Barbell Rows",
+          "sets": 4,
+          "reps": "8-12",
+          "restSeconds": 90,
+          "notes": "Keep torso at roughly 45 degrees"
+        },
+        {
+          "name": "Lat Pulldowns",
+          "sets": 4,
+          "reps": "10-12",
+          "restSeconds": 75,
+          "notes": "Wide grip, pull to upper chest"
+        },
+        {
+          "name": "Seated Cable Rows",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 75,
+          "notes": "Use a V-handle attachment"
+        },
+        {
+          "name": "Dumbbell Single-Arm Rows",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Full stretch at the bottom"
+        },
+        {
+          "name": "Face Pulls",
+          "sets": 3,
+          "reps": "15-20",
+          "restSeconds": 60,
+          "notes": "Pull to forehead level with external rotation"
+        },
+        {
+          "name": "Barbell Bicep Curls",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Avoid swinging, keep elbows pinned"
+        },
+        {
+          "name": "Incline Dumbbell Curls",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Set bench to 45 degrees for long head stretch"
+        },
+        {
+          "name": "Hammer Curls",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Targets brachialis and forearms"
+        }
+      ]
+    },
+    {
+      "day": "Day 3",
+      "focus": "Legs - Quad Emphasis",
+      "exercises": [
+        {
+          "name": "Barbell Back Squats",
+          "sets": 4,
+          "reps": "8-10",
+          "restSeconds": 120,
+          "notes": "Go to parallel or slightly below"
+        },
+        {
+          "name": "Leg Press",
+          "sets": 4,
+          "reps": "10-12",
+          "restSeconds": 90,
+          "notes": "Feet shoulder-width, mid-platform"
+        },
+        {
+          "name": "Walking Lunges",
+          "sets": 3,
+          "reps": "12 per leg",
+          "restSeconds": 75,
+          "notes": "Hold dumbbells at sides"
+        },
+        {
+          "name": "Leg Extensions",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Squeeze quads hard at the top"
+        },
+        {
+          "name": "Hack Squats",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 90,
+          "notes": "Narrow stance for outer quad emphasis"
+        },
+        {
+          "name": "Standing Calf Raises",
+          "sets": 4,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Full range of motion with a pause at the top"
+        },
+        {
+          "name": "Seated Calf Raises",
+          "sets": 3,
+          "reps": "15-20",
+          "restSeconds": 45,
+          "notes": "Targets the soleus muscle"
+        }
+      ]
+    },
+    {
+      "day": "Day 4",
+      "focus": "Shoulders and Abs",
+      "exercises": [
+        {
+          "name": "Overhead Barbell Press",
+          "sets": 4,
+          "reps": "8-10",
+          "restSeconds": 90,
+          "notes": "Standing or seated, press to full lockout"
+        },
+        {
+          "name": "Dumbbell Lateral Raises",
+          "sets": 4,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Slight bend in elbows, control the negative"
+        },
+        {
+          "name": "Reverse Pec Deck Flyes",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Focus on rear delts, squeeze at contraction"
+        },
+        {
+          "name": "Arnold Press",
+          "sets": 3,
+          "reps": "10-12",
+          "restSeconds": 75,
+          "notes": "Rotate palms from facing you to facing forward"
+        },
+        {
+          "name": "Cable Lateral Raises",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Constant tension throughout the movement"
+        },
+        {
+          "name": "Hanging Leg Raises",
+          "sets": 3,
+          "reps": "12-15",
+          "restSeconds": 60,
+          "notes": "Avoid swinging, control the movement"
+        },
+        {
+          "name": "Cable Crunches",
+          "sets": 3,
+          "reps": "15-20",
+          "restSeconds": 45,
+          "notes": "Curl down and squeeze the abs"
+        },
+        {
+          "name": "Plank Hold",
+          "sets": 3,
+          "reps": "45-60 seconds",
+          "restSeconds": 45,
+          "notes": "Keep hips level, brace core tight"
+        }
+      ]
+    },
+    {
+      "day": "Day 5",
+      "focus": "Legs - Hamstring and Glute Emphasis",
+      "exercises": [
+        {
+          "name": "Romanian Deadlifts",
+          "sets": 4,
+          "reps": "8-10",
+          "restSeconds": 90,
+          "notes": "Hinge at hips, feel deep hamstring stretch"
+        },
+        {
+          "name": "Bulgarian Split Squats",
+          "sets": 3,
+          "reps": "10-12 per leg",
+          "restSeconds": 75,
+          "notes": "Rear foot elevated on bench"
+        },
+        {
+          "name": "Lying Leg Curls",
+          "sets": 4,
+          "reps": "10-12",
+          "restSeconds": 60,
+          "notes": "Slow eccentric, squeeze at the top"
+        },
+        {
+          "name": "Hip Thrusts",
+          "sets": 4,
+          "reps": "10-12",
+          "restSeconds": 75,
+          "notes": "Pause at the top and squeeze glutes"
+        },
+        {
+          "name": "Glute-Ham Raises",
+          "sets": 3,
+          "reps": "8-10",
+          "restSeconds": 75,
+          "notes": "Use assistance if needed"
+        },
+        {
+          "name": "Sumo Deadlifts",
+          "sets": 3,
+          "reps": "8-10",
+          "restSeconds": 90,
+          "notes": "Wide stance, targets inner thighs and glutes"

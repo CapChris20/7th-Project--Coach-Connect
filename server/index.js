@@ -4,6 +4,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -39,10 +40,22 @@ const FOOD_SEARCH_PIPELINE_VERSION = 18;
 
 // Initialize Firebase Admin SDK
 try {
-  // Try to use service account from environment or file
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-    : require('./serviceAccountKey.json');
+  // SECURITY:
+  // - DO NOT commit service account JSON files to git.
+  // - Prefer env var FIREBASE_SERVICE_ACCOUNT (full JSON).
+  // - For local dev, FIREBASE_SERVICE_ACCOUNT_PATH can point to a JSON file outside the repo.
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const p = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  let serviceAccount = null;
+
+  if (raw && typeof raw === 'string' && raw.trim().length > 0) {
+    serviceAccount = JSON.parse(raw);
+  } else if (p && typeof p === 'string' && p.trim().length > 0) {
+    const fileRaw = fs.readFileSync(p.trim(), 'utf8');
+    serviceAccount = JSON.parse(fileRaw);
+  } else {
+    throw new Error('Missing FIREBASE_SERVICE_ACCOUNT (or FIREBASE_SERVICE_ACCOUNT_PATH)');
+  }
   
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -50,7 +63,7 @@ try {
   console.log('✅ Firebase Admin initialized');
 } catch (error) {
   console.warn('⚠️ Firebase Admin not initialized - notifications will not work:', error.message);
-  console.warn('   Add serviceAccountKey.json or set FIREBASE_SERVICE_ACCOUNT env variable');
+  console.warn('   Set FIREBASE_SERVICE_ACCOUNT (JSON) or FIREBASE_SERVICE_ACCOUNT_PATH (file path) for Firebase Admin');
 }
 
 const foodCache = new Map();
@@ -327,7 +340,62 @@ app.get('/health', (req, res) => {
       process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
       process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
     ),
+    youtube: !!(
+      process.env.YOUTUBE_API_KEY ||
+      process.env.REACT_NATIVE_YOUTUBE_API_KEY ||
+      process.env.EXPO_PUBLIC_YOUTUBE_API_KEY
+    ),
   });
+});
+
+/**
+ * YouTube Data API v3 proxy — keeps the key off the mobile bundle and uses root .env reliably.
+ * Client: GET /api/youtube/search?q=...&maxResults=50
+ */
+app.get('/api/youtube/search', async (req, res) => {
+  const key = String(
+    process.env.YOUTUBE_API_KEY ||
+      process.env.REACT_NATIVE_YOUTUBE_API_KEY ||
+      process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ||
+      '',
+  ).trim();
+  if (!key) {
+    return res.status(501).json({ ok: false, error: 'YouTube API key not set in server .env' });
+  }
+  let q = String(req.query.q || '').trim();
+  if (!q) q = 'workout exercise form tutorial';
+  if (q.length > 200) q = q.slice(0, 200);
+  const maxResults = Math.min(50, Math.max(1, parseInt(String(req.query.maxResults || '50'), 10) || 50));
+  try {
+    const { data } = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        part: 'snippet',
+        type: 'video',
+        maxResults,
+        order: 'relevance',
+        q,
+        key,
+      },
+      timeout: 18000,
+    });
+    if (data?.error) {
+      const msg = data.error.message || 'YouTube API error';
+      return res.status(502).json({ ok: false, error: msg });
+    }
+    const items = (data.items || [])
+      .map((it) => ({
+        videoId: it.id?.videoId,
+        title: it.snippet?.title || '',
+        channel: it.snippet?.channelTitle || '',
+        description: it.snippet?.description || '',
+        publishedAt: it.snippet?.publishedAt || '',
+      }))
+      .filter((it) => it.videoId);
+    return res.json({ ok: true, items });
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message || 'youtube_proxy_failed';
+    return res.status(502).json({ ok: false, error: msg });
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -378,6 +446,23 @@ async function verifyFirebaseBearerToken(req, res, next) {
       name: e?.name || null,
       message: e?.message || null,
     });
+  }
+}
+
+async function isTrainerOfClient(trainerUid, clientUid) {
+  try {
+    if (!admin.apps.length) return false;
+    if (!trainerUid || !clientUid) return false;
+    const snap = await admin
+      .firestore()
+      .collection('trainer_clients')
+      .doc(String(trainerUid))
+      .collection('clients')
+      .doc(String(clientUid))
+      .get();
+    return snap.exists;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -465,14 +550,25 @@ app.post('/api/support/contact', supportContactLimiter, verifyFirebaseBearerToke
 // ─────────────────────────────────────────────
 // Weekly Context (7-day aggregation for AI Coach)
 // ─────────────────────────────────────────────
-app.get('/api/weekly-context/:userId', async (req, res) => {
-  const userId = req.params?.userId;
-  if (!userId || typeof userId !== 'string' || userId.trim().length < 3) {
+app.get('/api/weekly-context/:userId', verifyFirebaseBearerToken, async (req, res) => {
+  const targetUserId = String(req.params?.userId || '').trim();
+  if (!targetUserId || targetUserId.length < 3) {
     return res.status(400).json({ error: 'Invalid userId' });
   }
 
+  const requesterUid = String(req.firebaseAuth?.uid || '').trim();
+  if (!requesterUid) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Owner can read their own weekly context.
+  // Optional: allow trainer to read assigned client.
+  const allowed =
+    targetUserId === requesterUid ||
+    (await isTrainerOfClient(requesterUid, targetUserId));
+
+  if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+
   try {
-    const context = await getWeeklyContext(userId.trim());
+    const context = await getWeeklyContext(targetUserId);
     return res.json(context);
   } catch (e) {
     if (e && (e.code === 'not_found' || e.name === 'NotFoundError')) {
@@ -1535,9 +1631,15 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
 // AI Chat Coach endpoint:
 // - DeepSeek primary
 // - Perplexity fallback (optional)
-app.post('/api/ai-coach', async (req, res) => {
+app.post('/api/ai-coach', verifyFirebaseBearerToken, async (req, res) => {
   const started = Date.now();
   const { messages, userProfile, options, userId } = req.body || {};
+
+  const requesterUid = String(req.firebaseAuth?.uid || '').trim();
+  const targetUid = String(userId || '').trim();
+  if (!requesterUid) return res.status(401).json({ error: 'Unauthorized' });
+  if (!targetUid) return res.status(400).json({ error: 'userId is required' });
+  if (targetUid !== requesterUid) return res.status(403).json({ error: 'Forbidden' });
 
   const normalized = normalizeCoachMessages(messages);
   if (normalized.length === 0) {
@@ -1546,6 +1648,9 @@ app.post('/api/ai-coach', async (req, res) => {
 
   const webMode = options?.web || 'auto'; // 'auto' | 'on' | 'off'
   const lastUserMsg = [...normalized].reverse().find((m) => m.role === 'user')?.content || '';
+  if (String(lastUserMsg).length > 2000) {
+    return res.status(400).json({ error: 'Message too long (max 2000 chars)' });
+  }
 
   // Guardrail: refuse off-topic prompts without calling providers.
   if (!isFitnessNutritionQuery(lastUserMsg)) {
@@ -1563,8 +1668,8 @@ app.post('/api/ai-coach', async (req, res) => {
   let usedWeeklyContext = false;
   let weekly = null;
   let weeklyPrompt = null;
-  if (userId && typeof userId === 'string' && userId.trim().length > 0 && admin.apps.length) {
-    const limitRes = await enforceDailyMessageLimit(userId.trim(), 10);
+  if (targetUid && admin.apps.length) {
+    const limitRes = await enforceDailyMessageLimit(targetUid, 10);
     if (!limitRes.allowed) {
       return res.status(429).json({
         error: 'Daily AI Coach limit reached (10/day). Try again tomorrow.',
@@ -1575,11 +1680,11 @@ app.post('/api/ai-coach', async (req, res) => {
 
   // 1) Fetch weekly context and build system prompt
   let systemPrompt = buildCoachSystemPrompt(userProfile);
-  if (userId && typeof userId === 'string' && userId.trim().length > 0) {
+  if (targetUid) {
     try {
-      weekly = await getWeeklyContext(userId.trim());
+      weekly = await getWeeklyContext(targetUid);
       const wc = weekly || {};
-      const fatigue = await detectFatigue(userId.trim());
+      const fatigue = await detectFatigue(targetUid);
 
       const weeklyContext = {
         age: wc?.user?.age ?? '?',
@@ -1643,7 +1748,7 @@ app.post('/api/ai-coach', async (req, res) => {
 
       const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
       const outputTokens = Math.ceil(String(response.text).length / 4);
-      await logAPIUsage('perplexity', userId || null, inputTokens, outputTokens, 'active');
+      await logAPIUsage('perplexity', targetUid || null, inputTokens, outputTokens, 'active');
 
       return res.json({
         reply,
@@ -1672,7 +1777,7 @@ app.post('/api/ai-coach', async (req, res) => {
 
       const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
       const outputTokens = Math.ceil(String(response.text).length / 4);
-      await logAPIUsage('deepseek', userId || null, inputTokens, outputTokens, 'active');
+      await logAPIUsage('deepseek', targetUid || null, inputTokens, outputTokens, 'active');
 
       return res.json({
         reply,
@@ -1700,7 +1805,7 @@ app.post('/api/ai-coach', async (req, res) => {
 
       const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);
       const outputTokens = Math.ceil(String(response.text).length / 4);
-      await logAPIUsage('perplexity', userId || null, inputTokens, outputTokens, 'fallback');
+      await logAPIUsage('perplexity', targetUid || null, inputTokens, outputTokens, 'fallback');
 
       return res.json({
         reply,
@@ -1719,13 +1824,25 @@ app.post('/api/ai-coach', async (req, res) => {
 });
 
 // Execute a tool call after user confirmation
-app.post('/api/ai-coach/execute-tool', async (req, res) => {
+app.post('/api/ai-coach/execute-tool', verifyFirebaseBearerToken, async (req, res) => {
   try {
     const { userId, toolCall, confirmed } = req.body || {};
     if (!confirmed) return res.status(400).json({ error: 'Tool execution requires confirmation' });
     if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' });
     if (!toolCall || typeof toolCall !== 'object') return res.status(400).json({ error: 'toolCall is required' });
-    const result = await executeTool(userId.trim(), toolCall);
+
+    const requesterUid = String(req.firebaseAuth?.uid || '').trim();
+    const targetUid = String(userId || '').trim();
+    if (!requesterUid) return res.status(401).json({ error: 'Unauthorized' });
+    if (targetUid !== requesterUid) return res.status(403).json({ error: 'Forbidden' });
+
+    console.log('[audit] ai-coach execute-tool', {
+      at: new Date().toISOString(),
+      uid: requesterUid,
+      tool: String(toolCall?.name || 'unknown'),
+    });
+
+    const result = await executeTool(targetUid, toolCall);
     return res.json(result);
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Failed to execute tool', data: { error: e?.message || String(e) } });
@@ -1733,57 +1850,7 @@ app.post('/api/ai-coach/execute-tool', async (req, res) => {
 });
 
 // Debug endpoints for prompt + tool parsing validation (dev only)
-app.get('/api/ai-coach/debug/prompts', async (req, res) => {
-  try {
-    const userId = String(req.query?.userId || '').trim();
-    const userProfileRaw = req.query?.userProfile;
-    const userProfile =
-      typeof userProfileRaw === 'string' && userProfileRaw.trim()
-        ? safeJsonParse(userProfileRaw)
-        : null;
-
-    const basePrompt = buildCoachSystemPrompt(userProfile && typeof userProfile === 'object' ? userProfile : null);
-
-    let weeklyPrompt = null;
-    if (userId) {
-      try {
-        const wc = await getWeeklyContext(userId);
-        const weeklyContext = {
-          age: wc?.user?.age ?? '?',
-          weight: wc?.user?.weight ?? '?',
-          height: wc?.user?.height ?? '?',
-          goal: wc?.user?.goal ?? 'unknown',
-          trainingLevel: wc?.user?.trainingLevel ?? 'unknown',
-          targetCal: wc?.macroTargets?.calories ?? 0,
-          targetP: wc?.macroTargets?.protein ?? 0,
-          targetC: wc?.macroTargets?.carbs ?? 0,
-          targetF: wc?.macroTargets?.fat ?? 0,
-          avgCal: Math.round(Number(wc?.nutritionAnalysis?.avgDailyCalories) || 0),
-          avgP: Math.round(Number(wc?.nutritionAnalysis?.avgProtein) || 0),
-          avgC: Math.round(Number(wc?.nutritionAnalysis?.avgCarbs) || 0),
-          avgF: Math.round(Number(wc?.nutritionAnalysis?.avgFat) || 0),
-          consistency: Number(wc?.nutritionAnalysis?.consistencyScore) || 0,
-          sessions: Number(wc?.workoutAnalysis?.sessionsLogged) || 0,
-          totalVol: Math.round(Number(wc?.workoutAnalysis?.totalVolume) || 0),
-          avgRPE: Number(wc?.workoutAnalysis?.avgRPE) || 0,
-          avgHours: Math.round((Number(wc?.sleepAnalysis?.avgHours) || 0) * 10) / 10,
-          sleepQuality: wc?.sleepAnalysis?.quality || 'unknown',
-          isDepleted: wc?.sleepAnalysis?.isDepleted === true,
-          streak: Number(wc?.streakData?.currentStreak) || 0,
-          weightTrend: wc?.weightTrend || 'unknown',
-          volumeTrend: wc?.workoutAnalysis?.volumeTrend || 'stable',
-        };
-        weeklyPrompt = buildWeeklyContextSystemPrompt(weeklyContext);
-      } catch (e) {
-        weeklyPrompt = null;
-      }
-    }
-
-    return res.json({ basePrompt, weeklyPrompt });
-  } catch (e) {
-    return res.status(500).json({ error: 'Failed to build prompts', details: e?.message || String(e) });
-  }
-});
+// SECURITY: debug prompt endpoint removed (it leaked system prompts in production).
 
 app.post('/api/ai-coach/debug/parse-toolcalls', (req, res) => {
   try {
@@ -3906,6 +3973,9 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
 
     // Write trainer discovery profile.
     if (resolvedRole === 'trainer') {
+      const userForMarketplace = await usersRef.doc(uid).get();
+      const uPub = userForMarketplace.exists ? userForMarketplace.data() : {};
+
       const yearsExperience = onboardingData?.yearsExperience || null;
       const experienceMap = {
         less_than_1: 0,
@@ -3940,6 +4010,15 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
           onboardingData?.firstName ||
           displayName ||
           'Trainer',
+        // Marketplace is read by clients; they cannot read users/{trainerId} — mirror public photo on trainers/*.
+        photoURL:
+          uPub.photoURL ||
+          uPub.photoUrl ||
+          onboardingData?.photoURL ||
+          onboardingData?.photoUrl ||
+          null,
+        avatarUrl: uPub.avatarUrl || onboardingData?.avatarUrl || null,
+        displayName: uPub.displayName || displayName || null,
         location: onboardingData?.location || '',
         specialties,
         bio:
@@ -4226,71 +4305,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.warn('⚠️ Could not determine local IP (networkInterfaces failed):', e?.message || e);
   }
 
-  // TEMPORARY: List all users to identify test accounts
-  app.get('/admin/list-users', async (req, res) => {
-    try {
-      const auth = admin.auth();
-      const listUsers = await auth.listUsers(1000);
-      
-      const users = listUsers.users.map(user => ({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        createdAt: new Date(user.metadata.creationTime).toLocaleString(),
-        lastSignInTime: user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleString() : 'Never',
-        emailVerified: user.emailVerified
-      }));
-      
-      res.json({ users });
-    } catch (error) {
-      console.error('Error listing users:', error);
-      res.status(500).json({ error: 'Failed to list users' });
-    }
-  });
-
-  // TEMPORARY: Debug Firestore user doc visibility from this server
-  app.get('/admin/firestore-user/:uid', async (req, res) => {
-    try {
-      const uid = String(req.params?.uid || '').trim();
-      if (!uid) return res.status(400).json({ error: 'uid is required' });
-      if (!admin.apps.length) return res.status(500).json({ error: 'Firebase Admin not initialized' });
-
-      const db = admin.firestore();
-      const snap = await db.collection('users').doc(uid).get();
-      return res.json({
-        uid,
-        exists: snap.exists,
-        data: snap.exists ? snap.data() : null,
-        projectId: admin.app().options?.projectId || null,
-        emulatorHost: process.env.FIRESTORE_EMULATOR_HOST || null,
-      });
-    } catch (e) {
-      console.error('GET /admin/firestore-user failed:', e?.message || e);
-      return res.status(500).json({ error: 'Failed to fetch firestore user doc' });
-    }
-  });
-
-  // TEMPORARY: Delete a user by UID
-  app.delete('/admin/delete-user/:uid', async (req, res) => {
-    try {
-      const { uid } = req.params;
-      const auth = admin.auth();
-      
-      // Delete user from Firebase Auth
-      await auth.deleteUser(uid);
-      
-      // Also delete from Firestore
-      const db = admin.firestore();
-      await db.collection('users').doc(uid).delete();
-      await db.collection('trainers').doc(uid).delete();
-      
-      console.log(`✅ Deleted user: ${uid}`);
-      res.json({ message: `User ${uid} deleted successfully` });
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      res.status(500).json({ error: 'Failed to delete user' });
-    }
-  });
+  // SECURITY: removed unauthenticated admin endpoints.
 
   // ─────────────────────────────────────────────
   // LOVABLE API ENDPOINTS - Trainer Management
@@ -4543,9 +4558,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  Network: http://${localIP}:${PORT}`);
   console.log(`  Set EXPO_PUBLIC_API_BASE_URL=http://${localIP}:${PORT} in your .env`);
   console.log('=================================');
-  console.log('🔧 Admin endpoints:');
-  console.log(`  GET  http://localhost:${PORT}/admin/list-users - List all users`);
-  console.log(`  DEL  http://localhost:${PORT}/admin/delete-user/:uid - Delete user by UID`);
+  console.log('🔧 Admin endpoints: (removed for security)');
   console.log('=================================');
   console.log('💬 App support (Contact Support screen):');
   console.log(`  POST http://localhost:${PORT}/api/support/contact — JSON { subject, message } + Authorization: Bearer <Firebase ID token>`);

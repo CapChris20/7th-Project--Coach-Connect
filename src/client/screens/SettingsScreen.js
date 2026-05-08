@@ -12,12 +12,15 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import { getAuth, updatePassword } from 'firebase/auth';
+import { deleteUser, getAuth, signOut, updatePassword } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../app/config';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
@@ -57,6 +60,9 @@ export default function SettingsScreen({ onNavigate }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const auth = getAuth();
   const user = auth.currentUser;
@@ -171,6 +177,64 @@ export default function SettingsScreen({ onNavigate }) {
       });
   };
 
+  async function callDeleteAccountEndpoint({ userId, idToken }) {
+    // Cloud Function endpoint (Firebase Functions): POST /auth/deleteAccount
+    // Note: function name is "auth" and route is "/deleteAccount"
+    const url = `https://us-central1-anatrox-auth.cloudfunctions.net/auth/deleteAccount`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ userId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok !== true) {
+      throw new Error(json?.error || `Delete failed (${res.status})`);
+    }
+    return true;
+  }
+
+  async function handleDeleteAccountConfirm() {
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in again and retry.');
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      // Preferred: callable function (no hardcoded URL/region).
+      try {
+        const fn = httpsCallable(functions, 'deleteAccount');
+        const resp = await fn({});
+        const ok = resp?.data?.ok === true;
+        if (!ok) throw new Error('Delete failed');
+      } catch (callableError) {
+        // Fallback: HTTP endpoint (works if you prefer REST).
+        const idToken = await user.getIdToken(true);
+        await callDeleteAccountEndpoint({ userId: user.uid, idToken });
+      }
+
+      // Best-effort: also delete local Auth user (may fail if server already deleted / needs reauth).
+      try {
+        await deleteUser(user);
+      } catch (_) {
+        // ignore — backend already performed canonical deletion
+      }
+
+      await signOut(auth);
+      setDeleteModalVisible(false);
+      Alert.alert('Account deleted', 'Your account and data have been permanently deleted.');
+      // App should redirect to login based on auth state.
+    } catch (e) {
+      const msg = e?.message || 'Failed to delete account. Please try again.';
+      setDeleteError(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <CoachConnectHeader 
@@ -250,6 +314,15 @@ export default function SettingsScreen({ onNavigate }) {
           <SettingsRow label="Change Password" onPress={() => setPasswordModalVisible(true)} colors={colors}>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <TouchableOpacity
+            onPress={() => setDeleteModalVisible(true)}
+            style={[styles.row, { justifyContent: 'space-between' }]}
+            disabled={!user}
+          >
+            <Text style={[styles.rowLabel, { color: '#FF3B30', fontWeight: '700' }]}>Delete Account</Text>
+            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
         </View>
 
         <SectionHeader title="SUPPORT" colors={colors} />
@@ -301,6 +374,50 @@ export default function SettingsScreen({ onNavigate }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={isDeleteModalVisible} transparent={true} animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+          <View style={[styles.bottomSheet, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>Delete Account</Text>
+            <Text style={[styles.deleteWarningText, { color: colors.textSecondary }]}>
+              Are you sure? This cannot be undone. All your data will be permanently deleted.
+            </Text>
+
+            {!!deleteError && (
+              <View style={[styles.deleteErrorBox, { borderColor: '#FF3B30' }]}>
+                <Text style={[styles.deleteErrorText, { color: '#FF3B30' }]}>{deleteError}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.deleteConfirmButton, isDeleting && { opacity: 0.7 }]}
+              onPress={handleDeleteAccountConfirm}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={[styles.confirmButtonText, { marginLeft: 10 }]}>Deleting…</Text>
+                </View>
+              ) : (
+                <Text style={styles.confirmButtonText}>Yes, delete permanently</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => {
+                if (isDeleting) return;
+                setDeleteError('');
+                setDeleteModalVisible(false);
+              }}
+              disabled={isDeleting}
+            >
+              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       
       {onNavigate && (
         <BottomNavBar
@@ -345,5 +462,9 @@ const styles = StyleSheet.create({
   modeText: { fontSize: 14, fontWeight: '500' },
   activeMode: { color: '#FF6B9D' },
   activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B9D', marginLeft: 8 },
+  deleteConfirmButton: { backgroundColor: '#FF3B30', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  deleteWarningText: { fontSize: 13, lineHeight: 18, textAlign: 'center', marginBottom: 14 },
+  deleteErrorBox: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },
+  deleteErrorText: { fontSize: 12, lineHeight: 16, textAlign: 'center' },
 });
 
