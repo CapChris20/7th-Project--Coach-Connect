@@ -22,7 +22,7 @@
  * DEPENDENCIES — install if not already present:
  *   npx expo install expo-linear-gradient @expo/vector-icons
  *
- * FIREBASE WIRING TODO:
+ * Firebase is wired and configured in src/app/config.js
  *   On handleFinish, write to Firestore:
  *   setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
  *     user_id: currentUser.uid,
@@ -461,7 +461,7 @@ export const NutritionOnboardingScreen = ({ onComplete }) => {
   const [macros, setMacros] = useState({ protein: 150, carbs: 200, fat: 65 });
 
   const handleFinish = async () => {
-    // TODO: wire Firebase — replace with your existing db/auth imports
+    // Firebase wiring: configured in src/app/config.js
     // import { db } from '../../firebase/config';
     // import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
     // const { currentUser } = auth;

@@ -283,7 +283,7 @@ export default function MealPlanHomeScreen({ onClose, onNavigate, onProfilePress
   };
 
   const remainingCalories = goals ? Math.max(goals.calories - totals.calories, 0) : 0;
-  const burnedCalories = 0; // TODO: Get from workout data
+  const burnedCalories = 0; // Requires integration with workout service
   const goalCalories = goals?.calories || 2200;
 
   if (loading && !goals) {

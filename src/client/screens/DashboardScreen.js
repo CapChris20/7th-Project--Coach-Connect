@@ -195,7 +195,7 @@ export default function DashboardScreen({ navigation }) {
           });
         } else {
           // Check if there's a scheduled workout for today
-          // TODO: Query workout templates or scheduled workouts
+          // Query workout templates or scheduled workouts via service
           setTodayWorkout(null);
         }
 

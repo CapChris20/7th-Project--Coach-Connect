@@ -21,7 +21,7 @@ export default function ChatListScreen({ onClose, onSelectChat, onCreateNewChat 
       const currentId = await getCurrentChatId();
       setCurrentChatId(currentId);
     } catch (error) {
-      console.error('Error loading chats:', error);
+      if (__DEV__) console.error('Error loading chats:', error);
     } finally {
       setIsLoading(false);
     }

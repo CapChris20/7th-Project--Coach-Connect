@@ -237,14 +237,14 @@ class FoodSearchProvider {
     const cacheKey = `search_${query}_${limit}`;
     try {
       this.lastSearchHint = null;
-      console.log('🍔 Searching foods for:', query);
+      if (__DEV__) console.log('🍔 Searching foods for:', query);
       const q = String(query || '').trim();
       if (!q) return [];
       
       // Check cache first
       const cached = this.getFromCache(cacheKey);
       if (cached) {
-        console.log('🍔 Returning cached search results');
+        if (__DEV__) console.log('🍔 Returning cached search results');
         return Array.isArray(cached) ? cached : [];
       }
 
@@ -252,11 +252,11 @@ class FoodSearchProvider {
       const serverUrl = this.serverUrl;
       const hasServer = !!serverUrl && serverUrl !== 'null' && serverUrl !== 'undefined';
       const hasSecret = !!appSecret;
-      console.log('🔑 APP_SECRET being sent:', hasSecret ? 'SET' : 'UNDEFINED');
+      if (__DEV__) console.log('🔑 APP_SECRET being sent:', hasSecret ? 'SET' : 'UNDEFINED');
 
       // If server URL or secret is missing, fall back immediately.
       if (!hasServer || !hasSecret) {
-        console.warn('🍔 Server URL/secret missing. Using cached + Open Food Facts fallback.');
+        if (__DEV__) console.warn('🍔 Server URL/secret missing. Using cached + Open Food Facts fallback.');
         const [cachedFoods, off] = await Promise.all([
           this.getCachedFoods().catch(() => []),
           searchOpenFoodFactsDirect(q, limit).catch(() => []),
@@ -284,13 +284,13 @@ class FoodSearchProvider {
             },
           });
           if (__DEV__ && response?.ok) {
-            console.log('🍔 Food search server:', base);
+            if (__DEV__) console.log('🍔 Food search server:', base);
           }
           break;
         } catch (e) {
           fetchErr = e;
           if (__DEV__) {
-            console.warn('🍔 Food search unreachable at', base, e?.message || e);
+            if (__DEV__) console.warn('🍔 Food search unreachable at', base, e?.message || e);
           }
         }
       }
@@ -303,7 +303,7 @@ class FoodSearchProvider {
         const status = response.status;
         const fallbackStatus = status === 401 || status === 403 || status === 404 || status === 429 || status >= 500;
         if (fallbackStatus) {
-          console.warn(`🍔 Server search failed (${status}). Using cached + Open Food Facts fallback.`);
+          if (__DEV__) console.warn(`🍔 Server search failed (${status}). Using cached + Open Food Facts fallback.`);
           const [cachedFoods, off] = await Promise.all([
             this.getCachedFoods().catch(() => []),
             searchOpenFoodFactsDirect(q, limit).catch(() => []),
@@ -322,13 +322,13 @@ class FoodSearchProvider {
       this.lastSearchHint = data.hint || null;
       const list = Array.isArray(data.results) ? data.results : [];
       this.setCache(cacheKey, list);
-      console.log(`🍔 Found ${list.length} foods from server`);
+      if (__DEV__) console.log(`🍔 Found ${list.length} foods from server`);
       return list;
     } catch (error) {
       const isNetwork = (error?.message || '').toLowerCase().includes('network') || (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
-      console.error('🍔 Error searching foods:', error?.message || error);
+      if (__DEV__) console.error('🍔 Error searching foods:', error?.message || error);
       if (isNetwork) {
-        console.warn('🍔 Server unreachable. Using Open Food Facts directly so search still works.');
+        if (__DEV__) console.warn('🍔 Server unreachable. Using Open Food Facts directly so search still works.');
         try {
           const [cachedFoods, off] = await Promise.all([
             this.getCachedFoods().catch(() => []),
@@ -341,12 +341,12 @@ class FoodSearchProvider {
           const merged = [...local, ...off].slice(0, limit);
           if (merged.length > 0) {
             this.setCache(cacheKey, merged);
-            console.log(`🍔 Fallback returned ${merged.length} results`);
+            if (__DEV__) console.log(`🍔 Fallback returned ${merged.length} results`);
             return merged;
           }
           this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
         } catch (fallbackErr) {
-          console.warn('🍔 Fallback search failed:', fallbackErr?.message || fallbackErr);
+          if (__DEV__) console.warn('🍔 Fallback search failed:', fallbackErr?.message || fallbackErr);
           this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
         }
       }
@@ -359,14 +359,14 @@ class FoodSearchProvider {
    * Provider order: OpenFoodFacts (primary) -> Nutritionix (fallback)
    */
   async lookupBarcode(barcode) {
-    console.log('🍔 Looking up barcode:', barcode);
+    if (__DEV__) console.log('🍔 Looking up barcode:', barcode);
     const cacheKey = `barcode_${barcode}`;
 
     try {
       // Check cache first
       const cached = this.getFromCache(cacheKey);
       if (cached) {
-        console.log('🍔 Returning cached barcode result');
+        if (__DEV__) console.log('🍔 Returning cached barcode result');
         return cached;
       }
 
@@ -389,7 +389,7 @@ class FoodSearchProvider {
       // Cache the result (null results are cached too to avoid repeated calls)
       this.setCache(cacheKey, result);
       
-      console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
+      if (__DEV__) console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
       return result;
     } catch (error) {
       const isNetwork = (error?.message || '').toLowerCase().includes('network') || (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
@@ -405,7 +405,7 @@ class FoodSearchProvider {
             }
           }
         } catch (e) {
-          console.warn('🍔 Barcode fallback failed:', e?.message || e);
+          if (__DEV__) console.warn('🍔 Barcode fallback failed:', e?.message || e);
         }
       }
       return null;
@@ -460,7 +460,7 @@ class FoodSearchProvider {
       const cached = await AsyncStorage.getItem('COACHCONNECT_FOOD_CACHE');
       return cached ? JSON.parse(cached) : [];
     } catch (error) {
-      console.error('Error getting cached foods:', error);
+      if (__DEV__) console.error('Error getting cached foods:', error);
       return [];
     }
   }
@@ -472,7 +472,7 @@ class FoodSearchProvider {
     try {
       await AsyncStorage.setItem('COACHCONNECT_FOOD_CACHE', JSON.stringify(foods));
     } catch (error) {
-      console.error('Error saving cached foods:', error);
+      if (__DEV__) console.error('Error saving cached foods:', error);
     }
   }
 

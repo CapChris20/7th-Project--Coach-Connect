@@ -35,7 +35,7 @@ export function useChat(chatId = null) {
   const loadChat = useCallback(async (id) => {
     if (!id) {
       // No ID provided, clear chat
-      console.log('🔄 Clearing chat - no ID provided');
+      if (__DEV__) console.log('🔄 Clearing chat - no ID provided');
       setCurrentChatIdState(null);
       currentChatIdRef.current = null;
       setChatMessages([]);
@@ -43,11 +43,11 @@ export function useChat(chatId = null) {
       return;
     }
 
-    console.log('📂 Loading chat:', id);
+    if (__DEV__) console.log('📂 Loading chat:', id);
     setIsLoadingChat(true);
     try {
       const chat = await getChatById(id);
-      console.log('📄 Chat found:', chat ? `Found chat with ${chat.messages?.length || 0} messages` : 'Chat not found');
+      if (__DEV__) console.log('📄 Chat found:', chat ? `Found chat with ${chat.messages?.length || 0} messages` : 'Chat not found');
       
       if (chat) {
         // Chat found - load its messages (could be empty array)
@@ -58,19 +58,19 @@ export function useChat(chatId = null) {
             }))
           : [];
         
-        console.log('💬 Loading messages:', messages.length, 'messages');
-        console.log('📝 Messages:', messages.map(m => ({ role: m.role, content: m.content?.substring(0, 50) })));
+        if (__DEV__) console.log('💬 Loading messages:', messages.length, 'messages');
+        if (__DEV__) console.log('📝 Messages:', messages.map(m => ({ role: m.role, content: m.content?.substring(0, 50) })));
         
         setChatMessages(messages);
         chatMessagesRef.current = messages;
         setCurrentChatIdState(id);
         currentChatIdRef.current = id;
         await setCurrentChatId(id); // Update current chat ID in storage
-        console.log('✅ Chat loaded successfully');
+        if (__DEV__) console.log('✅ Chat loaded successfully');
       } else {
         // Chat not found - this shouldn't happen if chat was just created
         // But handle it gracefully
-        console.error('❌ Chat not found:', id);
+        if (__DEV__) console.error('❌ Chat not found:', id);
         setCurrentChatIdState(null);
         currentChatIdRef.current = null;
         setChatMessages([]);
@@ -78,7 +78,7 @@ export function useChat(chatId = null) {
         setError('Chat not found. Please create a new chat.');
       }
     } catch (e) {
-      console.error('❌ Error loading chat:', e);
+      if (__DEV__) console.error('❌ Error loading chat:', e);
       setError('Failed to load chat');
       setCurrentChatIdState(null);
       currentChatIdRef.current = null;
@@ -93,7 +93,7 @@ export function useChat(chatId = null) {
   useEffect(() => {
     const prevChatId = prevChatIdRef.current;
     
-    console.log('🔄 ChatId prop changed:', { prevChatId, newChatId: chatId, currentChatId });
+    if (__DEV__) console.log('🔄 ChatId prop changed:', { prevChatId, newChatId: chatId, currentChatId });
     
     // Always load if chatId is provided and different from current state
     // OR if chatId is provided but we don't have messages loaded
@@ -103,16 +103,16 @@ export function useChat(chatId = null) {
                        chatMessagesRef.current.length === 0;
       
       if (needsLoad) {
-        console.log('📥 Loading chat from prop:', chatId, '(needsLoad:', needsLoad, ')');
+        if (__DEV__) console.log('📥 Loading chat from prop:', chatId, '(needsLoad:', needsLoad, ')');
         prevChatIdRef.current = chatId;
         loadChat(chatId);
       } else {
-        console.log('⏭️ Skipping load - chat already loaded');
+        if (__DEV__) console.log('⏭️ Skipping load - chat already loaded');
         prevChatIdRef.current = chatId;
       }
     } else if (chatId === null && prevChatId !== null) {
       // If chatId is explicitly null, clear current chat immediately
-      console.log('🧹 Clearing chat - chatId is null');
+      if (__DEV__) console.log('🧹 Clearing chat - chatId is null');
       prevChatIdRef.current = null;
       setCurrentChatIdState(null);
       currentChatIdRef.current = null;
@@ -174,7 +174,7 @@ export function useChat(chatId = null) {
           ...msg,
           timestamp: msg.timestamp || Date.now(),
         }))).catch(err => {
-          console.error('Error saving chat on unmount:', err);
+          if (__DEV__) console.error('Error saving chat on unmount:', err);
         });
       }
     };
@@ -199,15 +199,15 @@ export function useChat(chatId = null) {
         timestamp: msg.timestamp || Date.now(),
       }));
 
-      console.log('💾 Saving chat:', chatIdToSave, 'with', messagesWithTimestamps.length, 'messages');
+      if (__DEV__) console.log('💾 Saving chat:', chatIdToSave, 'with', messagesWithTimestamps.length, 'messages');
       const success = await updateChatMessages(chatIdToSave, messagesWithTimestamps);
       if (success) {
-        console.log('✅ Chat saved successfully');
+        if (__DEV__) console.log('✅ Chat saved successfully');
       } else {
-        console.error('❌ Failed to save chat');
+        if (__DEV__) console.error('❌ Failed to save chat');
       }
     } catch (e) {
-      console.error('❌ Error saving chat:', e);
+      if (__DEV__) console.error('❌ Error saving chat:', e);
     }
   }, [currentChatId, chatMessages]);
 
@@ -227,7 +227,7 @@ export function useChat(chatId = null) {
             }))
           );
         } catch (saveErr) {
-          console.error('Error saving current chat before creating new one:', saveErr);
+          if (__DEV__) console.error('Error saving current chat before creating new one:', saveErr);
         }
       }
       
@@ -252,7 +252,7 @@ export function useChat(chatId = null) {
       
       return newChatId;
     } catch (e) {
-      console.error('Error creating new chat:', e);
+      if (__DEV__) console.error('Error creating new chat:', e);
       setError('Failed to create new chat');
       return null;
     }

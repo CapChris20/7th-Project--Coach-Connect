@@ -1,7 +1,7 @@
 {
   "name": "coachconnect-server",
   "version": "1.0.0",
-  "description": "CoachConnect AI Server - GPT with Web Search + Realtime API WebSocket Proxy",
+  "description": "CoachConnect Server - GPT with Web Search + Realtime API WebSocket Proxy",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

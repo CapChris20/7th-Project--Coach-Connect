@@ -1,4 +1,4 @@
-# CoachConnect AI Server
+# CoachConnect Server
 
 Express server for GPT with web search capabilities using Serper API.
 

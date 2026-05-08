@@ -21,7 +21,7 @@ export function useTrainerPendingRequests(trainerUid) {
       const data = await getTrainerPendingRequests(trainerUid);
       setRequests(data || []);
     } catch (err) {
-      console.error('useTrainerPendingRequests:', err);
+      if (__DEV__) console.error('useTrainerPendingRequests:', err);
       setError(err.message);
       setRequests([]);
     } finally {

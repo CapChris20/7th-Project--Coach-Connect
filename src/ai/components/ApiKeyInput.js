@@ -71,7 +71,7 @@ export default function ApiKeyInput({ onSave }) {
       setApiKeyInput('');
       if (onSave) onSave();
     } catch (e) {
-      console.error('Error saving API key:', e);
+      if (__DEV__) console.error('Error saving API key:', e);
     } finally {
       setSaving(false);
     }

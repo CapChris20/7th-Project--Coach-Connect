@@ -77,7 +77,7 @@ export default function ChangePasswordScreen({ onClose }) {
       Alert.alert('Error', 'New passwords do not match');
       return;
     }
-    console.log('Password update requested (local only)');
+    if (__DEV__) console.log('Password update requested (local only)');
     Alert.alert('Password Update', 'Password update logged (local only)', [{ text: 'OK' }]);
   };
 

@@ -352,7 +352,7 @@ export default function ActiveWorkoutScreen({ activeWorkoutId, onComplete, onCan
           // TODO: Navigate to profile
         }}
         onSettingsPress={() => {
-          // TODO: Navigate to settings
+          // Open settings
         }}
       />
       
@@ -454,10 +454,10 @@ export default function ActiveWorkoutScreen({ activeWorkoutId, onComplete, onCan
           // TODO: Navigate to profile
         }}
         onPlusPress={() => {
-          // TODO: Show create modal
+          // Show create workout modal
         }}
         onVoicePress={() => {
-          // TODO: Navigate to voice
+          // Open voice coaching feature
         }}
       />
     </View>

@@ -70,7 +70,7 @@ export async function generateResponse(userPrompt, options = {}) {
 
   // Try to use server endpoint first (has Serper built in) if web search is enabled
   if (options.enableWeb !== false) {
-    console.log('🔍 [WEB SEARCH] Web search is ENABLED - attempting to use Serper API via server endpoint');
+    if (__DEV__) console.log('🔍 [WEB SEARCH] Web search is ENABLED - attempting to use Serper API via server endpoint');
     try {
       const baseUrl = getBaseUrl?.() || (() => {
         return getApiBase();

@@ -60,7 +60,7 @@ export default function GoalsTargetsScreen({ onClose }) {
   });
 
   const handlePress = (item) => {
-    console.log(`Pressed: ${item}`);
+    if (__DEV__) console.log(`Pressed: ${item}`);
   };
 
   return (
