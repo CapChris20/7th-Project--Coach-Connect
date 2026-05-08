@@ -35,7 +35,7 @@ module.exports = {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.chrisshina.coachconnect',
+      bundleIdentifier: 'com.coachconnect',
       buildNumber: '1',
       usesAppleSignIn: true,
       infoPlist: {

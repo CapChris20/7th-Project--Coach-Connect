@@ -58,7 +58,7 @@ export function configureNotifications() {
 
   if (Platform.OS === 'android') {
     Notifications.setNotificationChannelAsync('default', {
-      name: 'CoachConnect AI',
+      name: 'CoachConnect',
       description: 'Notifications from your AI Fitness Coach',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],

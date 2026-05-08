@@ -85,7 +85,7 @@ export default function AboutAppScreen({ onClose }) {
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          <Text style={styles.title}>CoachConnect AI</Text>
+          <Text style={styles.title}>CoachConnect</Text>
           <Text style={styles.description}>
             CoachConnect is your personal AI fitness coach, designed to help you achieve your health and fitness goals. 
             With intelligent workout planning, nutrition tracking, and personalized guidance, we're here to support 

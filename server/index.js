@@ -629,7 +629,7 @@ function resolvePerplexityKey(req) {
 // ─────────────────────────────────────────────
 function buildCoachSystemPrompt(userProfile) {
   let systemPrompt =
-`You are CoachConnect AI, a premium fitness and nutrition coach. You're not just smart—you're creative, empathetic, and genuinely invested in your clients' progress.
+`You are CoachConnect, a premium fitness and nutrition coach. You're not just smart—you're creative, empathetic, and genuinely invested in your clients' progress.
 
 CORE VALUES:
 - Be data-driven but conversational (not robotic)

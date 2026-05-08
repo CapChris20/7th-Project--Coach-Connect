@@ -1,4 +1,4 @@
-// Chat service for CoachConnect AI Coach
+// Chat service for CoachConnect Coach
 // Handles chat conversations with input sanitization and OpenAI integration
 // Supports both text and image messages (OpenAI Vision API)
 import { generateResponse } from './openaiClient';
