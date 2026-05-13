@@ -431,23 +431,46 @@ async function postAICoach(payload) {
     headers.Authorization = `Bearer ${idToken}`;
   }
 
-  let response;
+  const controller = new AbortController();
+  const timeoutMs = 15000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    response = await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+
+    if (!response.ok) {
+      console.error('[AIChat] /api/ai-coach non-200:', response.status, url);
+      let errDetail = '';
+      try {
+        const errJson = await response.json();
+        errDetail = errJson?.error || errJson?.message || '';
+      } catch (_) {}
+      console.error('[AIChat] /api/ai-coach error body:', errDetail || '(none)');
+      throw new Error('Could not reach the server. Check your connection and try again.');
+    }
+
+    if (__DEV__) console.log('✅ AI Coach response received (/api/ai-coach)');
+    return response.json();
   } catch (error) {
+    const isTimeout = error?.name === 'AbortError';
+    console.error('❌ AI Coach error:', {
+      message: error?.message,
+      isTimeout,
+      hasAuth: !!idToken,
+      url,
+    });
+    if (isTimeout) {
+      throw new Error('AI Coach took too long to respond. Please try again.');
+    }
     throw new Error('Could not reach the server. Check your connection and try again.');
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  if (!response.ok) {
-    console.error('[AIChat] /api/ai-coach non-200:', response.status, url);
-    throw new Error('Could not reach the server. Check your connection and try again.');
-  }
-
-  return response.json();
 }
 
 // ─── Typing indicator ─────────────────────────────────────────────────────────
@@ -941,12 +964,19 @@ export default function AIChatScreen({
       }
     } catch (err) {
       console.error('AI coach error:', err);
+      const errMsg = String(err?.message || '');
+      const userFacing =
+        errMsg.includes('too long') || errMsg.includes('timed out')
+          ? 'AI Coach took too long to respond. Please try again.'
+          : errMsg.includes('Could not reach')
+            ? errMsg
+            : 'Could not reach the server. Check your connection and try again.';
       setMessages((prev) => [
         ...prev,
         {
           id: `msg_err_${Date.now()}`,
           role: 'ai',
-          text: 'Could not reach the server. Check your connection and try again.',
+          text: userFacing,
           time: now(),
           featureCards: plannedCards,
         },

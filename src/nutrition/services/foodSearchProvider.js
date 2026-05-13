@@ -144,6 +144,20 @@ const OFF_SEARCH_HEADERS = {
   'User-Agent': OPEN_FOOD_FACTS_USER_AGENT,
 };
 
+/** React Native fetch has no `timeout` option — abort stalled requests instead. */
+const FOOD_SERVER_FETCH_TIMEOUT_MS = 10000;
+const OFF_FETCH_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(url, init = {}, timeoutMs = FOOD_SERVER_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // Same shape as server returns — used when server is unreachable
 async function searchOpenFoodFactsDirect(query, limit = 20) {
   const pageSize = Math.min(Math.max(limit, 1), 24);
@@ -165,14 +179,18 @@ async function searchOpenFoodFactsDirect(query, limit = 20) {
           json: '1',
           page_size: String(pageSize),
         }).toString();
-        const res = await fetch(`${origin}/cgi/search.pl`, {
-          method: 'POST',
-          headers: {
-            ...OFF_SEARCH_HEADERS,
-            'Content-Type': 'application/x-www-form-urlencoded',
+        const res = await fetchWithTimeout(
+          `${origin}/cgi/search.pl`,
+          {
+            method: 'POST',
+            headers: {
+              ...OFF_SEARCH_HEADERS,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body,
           },
-          body,
-        });
+          OFF_FETCH_TIMEOUT_MS
+        );
         const text = await res.text();
         const data = parseOffSearchJson(text);
         if (data?.products?.length) {
@@ -191,7 +209,7 @@ async function searchOpenFoodFactsDirect(query, limit = 20) {
     );
     for (const offUrl of urls) {
       try {
-        const res = await fetch(offUrl, { method: 'GET', headers: OFF_SEARCH_HEADERS });
+        const res = await fetchWithTimeout(offUrl, { method: 'GET', headers: OFF_SEARCH_HEADERS }, OFF_FETCH_TIMEOUT_MS);
         const text = await res.text();
         const data = parseOffSearchJson(text);
         if (!data?.products?.length) {
@@ -294,13 +312,18 @@ class FoodSearchProvider {
       for (const base of bases) {
         const url = `${base}/api/food/search?query=${encodeURIComponent(q)}&limit=${limit}`;
         try {
-          response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-app-secret': appSecret || '',
+          if (__DEV__) console.log('🔍 Searching food:', q, 'at', url);
+          response = await fetchWithTimeout(
+            url,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-app-secret': appSecret || '',
+              },
             },
-          });
+            FOOD_SERVER_FETCH_TIMEOUT_MS
+          );
           if (__DEV__ && response?.ok) {
             if (__DEV__) console.log('🍔 Food search server:', base);
           }
@@ -308,7 +331,11 @@ class FoodSearchProvider {
         } catch (e) {
           fetchErr = e;
           if (__DEV__) {
-            if (__DEV__) console.warn('🍔 Food search unreachable at', base, e?.message || e);
+            const isTimeout = e?.name === 'AbortError';
+            console.warn('🍔 Food search unreachable at', base, {
+              message: e?.message || e,
+              isTimeout,
+            });
           }
         }
       }
@@ -346,12 +373,15 @@ class FoodSearchProvider {
       this.setCache(cacheKey, merged);
       if (__DEV__) {
         console.log(
-          `🍔 Server returned ${list.length} foods; after OFF/cache merge: ${merged.length}`,
+          `✅ Food search success: server ${list.length} rows; after OFF/cache merge: ${merged.length}`,
         );
       }
       return merged;
     } catch (error) {
-      const isNetwork = (error?.message || '').toLowerCase().includes('network') || (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
+      const isNetwork =
+        error?.name === 'AbortError' ||
+        (error?.message || '').toLowerCase().includes('network') ||
+        (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
       if (__DEV__) console.error('🍔 Error searching foods:', error?.message || error);
       if (isNetwork) {
         if (__DEV__) console.warn('🍔 Server unreachable. Using Open Food Facts directly so search still works.');
@@ -397,14 +427,18 @@ class FoodSearchProvider {
       }
 
       // Call server endpoint
-      const response = await fetch(`${this.serverUrl}/api/food/barcode`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-app-secret': process.env.EXPO_PUBLIC_APP_SECRET,
+      const response = await fetchWithTimeout(
+        `${this.serverUrl}/api/food/barcode`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-app-secret': process.env.EXPO_PUBLIC_APP_SECRET,
+          },
+          body: JSON.stringify({ barcode }),
         },
-        body: JSON.stringify({ barcode }),
-      });
+        FOOD_SERVER_FETCH_TIMEOUT_MS
+      );
 
       if (!response.ok) {
         throw new Error(`Barcode lookup failed: ${response.status}`);
@@ -418,10 +452,17 @@ class FoodSearchProvider {
       if (__DEV__) console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
       return result;
     } catch (error) {
-      const isNetwork = (error?.message || '').toLowerCase().includes('network') || (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
+      const isNetwork =
+        error?.name === 'AbortError' ||
+        (error?.message || '').toLowerCase().includes('network') ||
+        (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
       if (isNetwork) {
         try {
-          const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`);
+          const res = await fetchWithTimeout(
+            `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`,
+            {},
+            OFF_FETCH_TIMEOUT_MS
+          );
           const data = await res.json();
           if (data?.product) {
             const result = normalizeOpenFoodFactsProduct(data.product);
