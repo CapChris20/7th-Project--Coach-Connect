@@ -28,6 +28,8 @@ import ShortsCard from './ShortsCard';
 const { width: SCREEN_W } = Dimensions.get('window');
 const GUTTER = 20;
 const SAVED_KEY = '@coachconnect_exercise_library_saved';
+/** Same as client `DashboardHeroCard` / Settings — dark pink → dark orange ring */
+const SEARCH_FIELD_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
 const TRANS_MS = 260;
 const CARD_GAP = 12;
 
@@ -426,9 +428,9 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
         >
           <View style={{ paddingHorizontal: GUTTER, paddingBottom: 10 }}>
             <LinearGradient
-              colors={[COLORS.pink, COLORS.cyan]}
+              colors={SEARCH_FIELD_BORDER_GRADIENT}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              end={{ x: 1, y: 0 }}
               style={styles.searchGrad}
             >
               <View style={[styles.searchInner, { backgroundColor: COLORS.card }]}>
@@ -1121,7 +1123,7 @@ const styles = StyleSheet.create({
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   title: { fontSize: 26, fontWeight: '800', marginTop: 6 },
   themeBtn: { height: 44, width: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  searchGrad: { borderRadius: 24, padding: 1.5 },
+  searchGrad: { borderRadius: 24, padding: 2.5 },
   searchInner: {
     flexDirection: 'row',
     alignItems: 'center',

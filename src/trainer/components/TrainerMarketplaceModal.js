@@ -21,12 +21,16 @@ const TrainerMarketplaceModal = ({
   clientRequest, 
   trainerUid, 
   onClose, 
-  onClientAdded 
+  onClientAdded,
+  /** Called after a successful reject (e.g. refresh pending list). Accept still uses onClientAdded. */
+  onRequestRejected,
 }) => {
   const { isDark } = useTheme();
-  const [loading, setLoading] = useState(false);
+  const [acceptBusy, setAcceptBusy] = useState(false);
+  const [rejectBusy, setRejectBusy] = useState(false);
   const hasRequest = !!clientRequest;
   const req = clientRequest || {};
+  const anyBusy = acceptBusy || rejectBusy;
 
   const t = useMemo(() => {
     const glassBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
@@ -38,7 +42,6 @@ const TrainerMarketplaceModal = ({
       muted: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)',
       glassBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
       glassBorder,
-      accentBorder: ['#FF6B9D', '#C084FC', '#64D2FF'],
       acceptGrad: ['#FF6B9D', '#C084FC'],
       clientName: '#C084FC',
       shadow: isDark ? '#000' : 'rgba(0,0,0,0.3)',
@@ -58,11 +61,17 @@ const TrainerMarketplaceModal = ({
     }).start();
   }, [visible, enter]);
 
+  useEffect(() => {
+    if (!visible || !clientRequest?.messageId) return;
+    setAcceptBusy(false);
+    setRejectBusy(false);
+  }, [visible, clientRequest?.messageId]);
+
   // After hooks are declared, it's safe to bail out.
   if (!visible || !hasRequest) return null;
 
   const handleAddClient = async () => {
-    setLoading(true);
+    setAcceptBusy(true);
     try {
       // Pre-execution validation
       const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
@@ -87,7 +96,7 @@ const TrainerMarketplaceModal = ({
         });
         onClientAdded(req);
         onClose();
-        setLoading(false);
+        setAcceptBusy(false);
         return;
       }
 
@@ -168,29 +177,40 @@ const TrainerMarketplaceModal = ({
         ]
       );
     } finally {
-      setLoading(false);
+      setAcceptBusy(false);
     }
   };
 
   const handleRejectClient = async () => {
-    setLoading(true);
+    if (!req.messageId) {
+      Alert.alert('Unavailable', 'This request is missing a message id. Try closing and opening again.');
+      return;
+    }
+    setRejectBusy(true);
     try {
-      // Update message status to rejected (Path A)
       await updateMessageStatus(req.messageId, {
         status: 'rejected',
         responseTimestamp: serverTimestamp(),
       });
 
-      // Send rejection message (Path A)
-      const conversationId = await getOrCreateConversation(req.clientUid, trainerUid);
-      await sendMessage(conversationId, trainerUid, `Thank you for your interest! I'm currently not accepting new clients at this time.`);
+      try {
+        const conversationId = await getOrCreateConversation(req.clientUid, trainerUid);
+        await sendMessage(
+          conversationId,
+          trainerUid,
+          `Thank you for your interest! I'm currently not accepting new clients at this time.`,
+        );
+      } catch (msgErr) {
+        console.warn('Reject notification message skipped:', msgErr?.message || msgErr);
+      }
 
+      await onRequestRejected?.();
       onClose();
     } catch (error) {
       console.error('Error rejecting client:', error);
       Alert.alert('Error', 'Failed to process rejection. Please try again.');
     } finally {
-      setLoading(false);
+      setRejectBusy(false);
     }
   };
 
@@ -243,8 +263,16 @@ const TrainerMarketplaceModal = ({
             ],
           }}
         >
-          <LinearGradient colors={t.accentBorder} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradientBorder}>
-            <View style={[styles.modalContainer, { backgroundColor: t.cardBg, borderColor: t.glassBorder }]}>
+          <View
+            style={[
+              styles.modalContainer,
+              {
+                backgroundColor: t.cardBg,
+                borderWidth: 2,
+                borderColor: isDark ? 'rgba(167,139,250,0.52)' : 'rgba(124,58,237,0.38)',
+              },
+            ]}
+          >
               <Text style={[styles.modalTitle, { color: t.text }]}>New Client Request</Text>
               <Text style={[styles.clientName, { color: t.clientName }]}>{req.clientName}</Text>
 
@@ -263,9 +291,9 @@ const TrainerMarketplaceModal = ({
               </View>
 
               <View style={styles.buttonGroup}>
-                <PressScale onPress={handleAddClient} disabled={loading}>
+                <PressScale onPress={handleAddClient} disabled={anyBusy}>
                   <LinearGradient colors={t.acceptGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.acceptButton}>
-                    {loading ? (
+                    {acceptBusy ? (
                       <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
                       <Text style={styles.acceptText}>Accept</Text>
@@ -273,18 +301,21 @@ const TrainerMarketplaceModal = ({
                   </LinearGradient>
                 </PressScale>
 
-                <PressScale onPress={handleRejectClient} disabled={loading}>
+                <PressScale onPress={handleRejectClient} disabled={anyBusy}>
                   <View style={[styles.rejectButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderColor: t.glassBorder }]}>
-                    <Text style={[styles.rejectText, { color: t.text }]}>Reject</Text>
+                    {rejectBusy ? (
+                      <ActivityIndicator color={isDark ? '#fff' : '#1e293b'} size="small" />
+                    ) : (
+                      <Text style={[styles.rejectText, { color: t.text }]}>Reject</Text>
+                    )}
                   </View>
                 </PressScale>
               </View>
 
-              <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={loading} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
                 <Text style={[styles.closeButtonText, { color: t.muted }]}>Close</Text>
               </TouchableOpacity>
-            </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -297,18 +328,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gradientBorder: {
+  modalContainer: {
     borderRadius: 24,
-    padding: 2,
+    padding: 24,
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
-  },
-  modalContainer: {
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 24,
-    width: '100%',
   },
   modalTitle: {
     fontSize: 20,

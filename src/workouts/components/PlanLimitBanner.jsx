@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 const PURPLE = '#C084FC';
 const PINK = '#FF6B9D';
-const CYAN = '#64D2FF';
 const RED = '#EF4444';
 
 const { width: SW } = Dimensions.get('window');
@@ -52,20 +51,8 @@ function getBadgeTone(remaining, total, isDark) {
   return { bg: `rgba(255,107,157,${alpha + 0.03})`, border: PINK, text: PINK };
 }
 
-function buildTipText(remaining, total, nextResetLabel) {
-  const r = Number(remaining);
-  const t = Number(total) || 0;
-  if (r <= 0) {
-    return `Next reset: ${nextResetLabel || 'soon'}. Use AI Coach for unlimited help!`;
-  }
-  if (t > 0 && r === 1) {
-    return 'You have 1 plan left. Use AI Coach for tweaks after.';
-  }
-  return 'Use your plans wisely this month';
-}
-
 /**
- * Premium-looking plan generation disclaimer / limit banner.
+ * Premium-looking plan generation limit banner.
  *
  * Props:
  * - remaining: number
@@ -103,13 +90,8 @@ export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, o
     return `${Math.max(0, Number(remaining) || 0)}/${Number(total) || 0}`;
   }, [isOut, remaining, total, nextResetLabel]);
 
-  const tipIcon = isOut ? 'calendar-outline' : 'bulb-outline';
-  const tipPrefix = isOut ? '📅' : '💡';
-  const tipText = useMemo(() => buildTipText(remaining, total, nextResetLabel), [remaining, total, nextResetLabel]);
-
   const titleColor = isDark ? '#FFFFFF' : '#0B1220';
   const subtitleColor = isDark ? '#B0B0B0' : 'rgba(15,23,42,0.72)';
-  const tipColor = isDark ? '#909090' : 'rgba(15,23,42,0.64)';
 
   useEffect(() => {
     Animated.parallel([
@@ -217,12 +199,6 @@ export default function PlanLimitBanner({ remaining = 0, total = 2, nextReset, o
                   <Text style={[styles.title, { color: titleColor }]}>Premium Plan Generation</Text>
                 </View>
                 <Text style={[styles.subtitle, { color: subtitleColor }]}>You have {total} AI-generated plans per month</Text>
-                <View style={styles.tipRow}>
-                  <Ionicons name={tipIcon} size={12} color={isOut ? '#FCA5A5' : CYAN} />
-                  <Text style={[styles.tipText, { color: tipColor }]}>
-                    {tipPrefix} {tipText}
-                  </Text>
-                </View>
               </View>
 
               <Animated.View style={{ transform: [{ scale: badgeScale }], alignSelf: 'center' }}>
@@ -307,17 +283,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     color: '#B0B0B0',
-  },
-  tipRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#909090',
   },
   badge: {
     borderWidth: 1,

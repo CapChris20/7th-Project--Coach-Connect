@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { ThemeProvider } from './src/shared/ui/ThemeContext';
 import AuthGate from './src/app/AuthGate';

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, CalendarDays, List as ListIcon, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSessions } from '../../hooks/use-sessions';
 import { MonthCalendar } from '../../components/MonthCalendar';
 import { SessionCard } from '../../components/SessionCard';
@@ -33,35 +34,50 @@ const COLORS = {
   },
 };
 
-export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
+export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, clientName }) => {
   const colors = COLORS[theme] || COLORS.dark;
   const { sessions } = useSessions();
   const [selectedDate, setSelectedDate] = useState(null);
   const [tab, setTab] = useState('calendar');
   const insets = useSafeAreaInsets();
-  // TrainerApp always shows a bottom tab bar; keep FAB fully above it.
-  // (The 116px value was pushing the pill into the middle of the screen on smaller viewports.)
-  const bottomNavClearance = 105;
-  const fabBottom = 16 + insets.bottom + bottomNavClearance;
+  const scrollBottomPad = 28 + insets.bottom;
+
+  const clientLabel = clientName || 'this client';
+
+  const sessionsForClient = useMemo(() => {
+    if (!clientId) return [];
+    const cid = String(clientId);
+    return (sessions || []).filter((s) => s?.clientId != null && String(s.clientId) === cid);
+  }, [sessions, clientId]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
 
   const upcoming = useMemo(
     () =>
-      [...sessions]
+      [...sessionsForClient]
         .filter((s) => (s.date || '') >= todayKey)
         .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
         .slice(0, 5),
-    [sessions, todayKey]
+    [sessionsForClient, todayKey]
   );
 
   const dayList = selectedDate
-    ? sessions
+    ? sessionsForClient
         .filter((s) => s.date === selectedDate)
         .sort((a, b) => String(a.time).localeCompare(String(b.time)))
     : [];
 
-  const listTitle = tab === 'list' ? 'Upcoming' : selectedDate ? formatDateLong(selectedDate) : 'Tap a day';
+  const listTitle =
+    tab === 'list'
+      ? `Upcoming · ${clientLabel}`
+      : selectedDate
+        ? formatDateLong(selectedDate)
+        : 'Tap a day';
+
+  const newSessionPath = (dateKey) => {
+    if (!dateKey) return '/sessions/new';
+    return `/sessions/new?date=${encodeURIComponent(dateKey)}`;
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -83,7 +99,9 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
             </LinearGradient>
             <View>
               <Text style={[styles.appTitle, { color: colors.text }]}>CoachConnect</Text>
-              <Text style={[styles.appSubtitle, { color: colors.textSecondary }]}>Trainer scheduling</Text>
+              <Text style={[styles.appSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                {clientId ? `Calendar · ${clientLabel}` : 'Trainer scheduling'}
+              </Text>
             </View>
           </View>
 
@@ -113,18 +131,21 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
       {/* Content */}
       <ScrollView
         style={styles.content}
-        contentContainerStyle={{ paddingBottom: fabBottom + 90 }}
+        contentContainerStyle={{ paddingBottom: scrollBottomPad }}
         showsVerticalScrollIndicator={false}
       >
+        <SchedulingHeroCard
+          theme={theme}
+          clientName={clientLabel}
+          onNewSession={() => onNavigate?.(newSessionPath(selectedDate))}
+        />
+
         {tab === 'calendar' && (
           <View style={styles.section}>
             <MonthCalendar
-              sessions={sessions}
+              sessions={sessionsForClient}
               selectedDate={selectedDate}
-              onSelectDate={(d) => {
-                setSelectedDate(d);
-                onNavigate?.(`/sessions/new?date=${encodeURIComponent(d)}`);
-              }}
+              onSelectDate={(d) => setSelectedDate(d)}
               theme={theme}
             />
 
@@ -143,8 +164,9 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
                 dayList.length === 0 ? (
                   <EmptyState
                     title="No sessions this day"
+                    subtitle={`Nothing scheduled with ${clientLabel} on this date.`}
                     cta="Schedule one"
-                    onCta={() => onNavigate?.(`/sessions/new?date=${encodeURIComponent(selectedDate)}`)}
+                    onCta={() => onNavigate?.(newSessionPath(selectedDate))}
                     colors={colors}
                   />
                 ) : (
@@ -158,7 +180,11 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
                 )
               ) : (
                 <View style={[styles.emptyPrompt, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-                  <Text style={[styles.emptyPromptText, { color: colors.textSecondary }]}>Tap a day on the calendar to see sessions.</Text>
+                  <Text style={[styles.emptyPromptText, { color: colors.textSecondary }]}>
+                    {clientId
+                      ? `Tap a day to see ${clientLabel}'s sessions for that date.`
+                      : 'Tap a day on the calendar to see sessions.'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -168,7 +194,7 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
         {tab === 'list' && (
           <View style={styles.section}>
             <View style={styles.listHeader}>
-              <Text style={[styles.listTitle, { color: colors.text }]}>Upcoming</Text>
+              <Text style={[styles.listTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
               <Text style={[styles.listCount, { color: colors.textSecondary }]}>
                 Next {upcoming.length} {upcoming.length === 1 ? 'session' : 'sessions'}
               </Text>
@@ -177,9 +203,13 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
             {upcoming.length === 0 ? (
               <EmptyState
                 title="No sessions yet"
-                subtitle="Tap the + button to schedule your first session."
+                subtitle={
+                  clientId
+                    ? `Use New session above to plan the next block with ${clientLabel}.`
+                    : 'Use New session in the hero above to create your first block.'
+                }
                 cta="New session"
-                onCta={() => onNavigate?.('/sessions/new')}
+                onCta={() => onNavigate?.(newSessionPath(null))}
                 colors={colors}
               />
             ) : (
@@ -195,33 +225,110 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate }) => {
         )}
 
       </ScrollView>
-
-      {/* FAB */}
-      <View pointerEvents="box-none" style={[styles.fabWrap, { bottom: fabBottom }]}>
-        <View
-          pointerEvents="none"
-          style={[
-            styles.fabGlow,
-            { backgroundColor: colors.primaryGlow },
-          ]}
-        />
-        <TouchableOpacity onPress={() => onNavigate?.('/sessions/new')} activeOpacity={0.88}>
-          <LinearGradient
-            colors={['#FF6B9D', '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.fab, { borderColor: colors.glassBorder }]}
-          >
-            <Plus color="white" size={18} />
-            <Text style={styles.fabText}>New session</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
 
 export default SessionSchedulingScreen;
+
+const HERO_BORDER = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF6B9D'];
+const CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
+
+const HERO_BULLETS_FOR = (clientName) => [
+  `This calendar only shows sessions with ${clientName} — not your full roster.`,
+  'Tap a day to review that date, then use New session or Schedule one to add.',
+  'List view is the same filter: upcoming blocks for this client only.',
+  'Add notes and video links in each session so expectations stay clear.',
+];
+
+const SchedulingHeroCard = ({ theme, onNewSession, clientName }) => {
+  const isDark = theme === 'dark';
+  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
+  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
+  const subColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)';
+  const benefitTextColor = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)';
+  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  const bullets = HERO_BULLETS_FOR(clientName || 'this client');
+
+  return (
+    <View style={heroStyles.outer}>
+      <LinearGradient
+        colors={HERO_BORDER}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[heroStyles.ring, isDark ? heroStyles.ringShadowD : heroStyles.ringShadowL]}
+      >
+        <View style={[heroStyles.inner, { backgroundColor: innerBg }]}>
+          <View
+            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' }]}
+            pointerEvents="none"
+          />
+          <View style={heroStyles.content}>
+            <Text style={[heroStyles.label, { color: labelColor }]}>Session scheduling</Text>
+            <Text style={[heroStyles.headline, { color: headlineColor }]}>Plan sessions like a pro</Text>
+            <Text style={[heroStyles.sub, { color: subColor }]}>
+              You are viewing one client at a time — dots and lists match {clientName || 'this client'} only.
+            </Text>
+            <View style={heroStyles.bullets}>
+              {bullets.map((line, i) => (
+                <View key={line} style={heroStyles.bulletRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={heroStyles.checkIcon} />
+                  <Text style={[heroStyles.bulletText, { color: benefitTextColor }]}>{line}</Text>
+                </View>
+              ))}
+            </View>
+            <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={heroStyles.ctaRing}>
+              <TouchableOpacity onPress={onNewSession} activeOpacity={0.88} style={heroStyles.ctaTouch} accessibilityRole="button" accessibilityLabel="New session">
+                <Plus color="#FFFFFF" size={20} />
+                <Text style={heroStyles.ctaText}>New session</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+};
+
+const heroStyles = StyleSheet.create({
+  outer: { marginTop: 4, marginBottom: 18, paddingHorizontal: 16 },
+  ring: { borderRadius: 24, padding: 2.5 },
+  ringShadowD: {
+    shadowColor: '#C084FC',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  ringShadowL: {
+    shadowColor: '#A855F7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  inner: { borderRadius: 21, overflow: 'hidden' },
+  content: { padding: 20, gap: 12, zIndex: 1 },
+  label: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  headline: { fontSize: 26, fontWeight: '900', lineHeight: 32, letterSpacing: -0.5 },
+  sub: { fontSize: 14, fontWeight: '600', lineHeight: 21 },
+  bullets: { gap: 8, marginTop: 2 },
+  bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  checkIcon: { marginTop: 1 },
+  bulletText: { flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  ctaRing: { borderRadius: 16, marginTop: 6, overflow: 'hidden' },
+  ctaTouch: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  ctaText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.2 },
+});
 
 const SegBtn = ({ active, onPress, icon, label, colors }) => (
   <TouchableOpacity style={[styles.segBtn, active && { backgroundColor: colors.primary }]} onPress={onPress} activeOpacity={0.7}>
@@ -358,38 +465,5 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   emptyBtnText: { color: 'white', fontSize: 14, fontWeight: '600' },
-  fabWrap: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -86,
-    width: 172,
-    height: 56,
-    zIndex: 50,
-  },
-  fabGlow: {
-    position: 'absolute',
-    left: -14,
-    right: -14,
-    top: -14,
-    bottom: -14,
-    borderRadius: 40,
-    opacity: 0.28,
-  },
-  fab: {
-    width: '100%',
-    height: 56,
-    borderRadius: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    shadowColor: '#FF6B9D',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  fabText: { color: 'white', fontSize: 14, fontWeight: '600' },
 });
 

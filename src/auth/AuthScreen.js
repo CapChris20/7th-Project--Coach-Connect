@@ -5,7 +5,7 @@
  * into a single file with internal state management for navigation.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ScrollView,
   Image,
   Dimensions,
@@ -38,6 +37,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import LiquidBackground from '../shared/ui/liquid/LiquidBackground';
 import LiquidBackgroundLight from '../shared/ui/liquid/LiquidBackgroundLight';
 import LiquidGlassCard from '../shared/ui/liquid/LiquidGlassCard';
+import ErrorModal from '../components/ErrorModal';
 import LiquidGradientButton from '../shared/ui/liquid/LiquidGradientButton';
 import { Liquid } from '../shared/ui/liquid/liquidTokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,12 +45,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
+/**
+ * expo-auth-session Google: tokens may be camelCase on `authentication`, snake_case on `params`,
+ * and may appear only after async code exchange (installed app flow).
+ */
+function extractGoogleOAuthTokens(authentication, params = {}) {
+  const idToken =
+    authentication?.idToken ||
+    authentication?.id_token ||
+    params.id_token ||
+    params.idToken;
+  const accessToken =
+    authentication?.accessToken ||
+    authentication?.access_token ||
+    params.access_token ||
+    params.accessToken ||
+    null;
+  return { idToken, accessToken };
+}
+
+/** Auth + onboarding CTA (dark pink → dark orange) */
+const AUTH_CTA_GRADIENT = ['#C1265A', '#D84315'];
+
 /** Shown when Client/Trainer toggle does not match the account's role in Firestore */
 const ROLE_MISMATCH_TITLE = 'Wrong account type';
 const ROLE_MISMATCH_MESSAGE =
   'The account you entered is on the opposite side. Please change the Client / Trainer toggle at the top to match your account, then try again.';
 const ROLE_MISMATCH_NEXT_VIEW_KEY = 'auth_role_mismatch_next_view';
 let roleMismatchNextViewInMemory = null;
+
+const GOOGLE_OAUTH_NOT_READY_TITLE = 'Google Sign-In Not Ready';
+const GOOGLE_OAUTH_NOT_READY_MESSAGE =
+  'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains';
 
 async function readNormalizedFirestoreRole(uid) {
   if (!db || !uid) return null;
@@ -69,32 +95,6 @@ async function readNormalizedFirestoreRole(uid) {
   }
 }
 
-/**
- * If the user's Firestore profile role does not match the Client/Trainer toggle, sign out and alert.
- * @returns {Promise<boolean>} true = continue login; false = mismatch (user signed out)
- */
-async function ensureRoleMatchesToggle(uid, selectedRole) {
-  const expected = selectedRole === 'trainer' ? 'trainer' : 'client';
-  const actual = await readNormalizedFirestoreRole(uid);
-  if (actual == null) {
-    console.log('[Auth] No role on user profile; skipping Client/Trainer login gate');
-    return true;
-  }
-  if (actual === expected) return true;
-  console.log('[Auth] Login role mismatch — profile:', actual, 'toggle:', expected);
-  try {
-    // Prevent bounce-back to the welcome view after we force sign-out.
-    // AuthGate will remount AuthScreen, which defaults to 'welcome'.
-    roleMismatchNextViewInMemory = 'login';
-    await AsyncStorage.setItem(ROLE_MISMATCH_NEXT_VIEW_KEY, 'login').catch(() => {});
-    await signOut(auth);
-  } catch (e) {
-    console.warn('signOut after role mismatch:', e?.message || e);
-  }
-  Alert.alert(ROLE_MISMATCH_TITLE, ROLE_MISMATCH_MESSAGE);
-  return false;
-}
-
 const googleIcon = require('../assets/icons/Illustration-of-Google-icon-on-transparent-background-PNG.png');
 const appleLogo = require('../assets/icons/apple-logo.png');
 
@@ -110,9 +110,9 @@ const DARK = {
   toggleBg: 'rgba(255,255,255,0.08)',
   toggleBorder: 'rgba(255,255,255,0.12)',
   toggleIcon: 'rgba(255,255,255,0.7)',
-  lottieGlow: 'rgba(192,132,252,0.18)',
+  lottieGlow: 'rgba(193, 38, 90, 0.2)',
   signinMuted: 'rgba(255,255,255,0.5)',
-  signinLink: '#C084FC',
+  signinLink: '#FF8FA8',
 };
 
 const LIGHT = {
@@ -121,12 +121,12 @@ const LIGHT = {
   heading: '#0A0A0F',
   subtitle: 'rgba(0,0,0,0.5)',
   // Higher contrast for light mode so the theme toggle is visible.
-  toggleBg: 'rgba(124,58,237,0.10)',
-  toggleBorder: 'rgba(124,58,237,0.28)',
-  toggleIcon: 'rgba(124,58,237,0.95)',
-  lottieGlow: 'rgba(124,58,237,0.1)',
+  toggleBg: 'rgba(193, 38, 90, 0.10)',
+  toggleBorder: 'rgba(193, 38, 90, 0.28)',
+  toggleIcon: 'rgba(193, 38, 90, 0.95)',
+  lottieGlow: 'rgba(193, 38, 90, 0.12)',
   signinMuted: 'rgba(0,0,0,0.45)',
-  signinLink: '#7C3AED',
+  signinLink: '#C1265A',
 };
 
 function FloatingInput({
@@ -150,8 +150,8 @@ function FloatingInput({
           marginBottom: 6,
           marginLeft: 2,
           color: focused
-            ? (isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.65)')
-            : (isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.45)'),
+            ? (isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.78)')
+            : (isDark ? 'rgba(255,255,255,0.48)' : 'rgba(15,23,42,0.62)'),
         }}
       >
         {label}
@@ -170,103 +170,76 @@ function FloatingInput({
           height: 52,
           paddingHorizontal: 16,
           borderRadius: 12,
-          borderWidth: 1,
+          borderWidth: 1.5,
           fontSize: 15,
           color: isDark ? '#FFFFFF' : '#0F172A',
           backgroundColor: focused
-            ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)')
-            : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.78)'),
+            ? (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.98)')
+            : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.55)'),
           borderColor: focused
-            ? (isDark ? 'rgba(255,255,255,0.30)' : 'rgba(124,58,237,0.35)')
-            : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.16)'),
+            ? (isDark ? 'rgba(255,255,255,0.32)' : 'rgba(193, 38, 90, 0.42)')
+            : (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.18)'),
         }}
       />
     </View>
   );
 }
 
-/** Logo-aligned gradient (pink → purple → indigo), same family as navbar / brand */
-const ROLE_TOGGLE_GRADIENT = ['#E94EAD', '#A348D0', '#6B3AD9'];
+/** Role pill fill — matches onboarding CTA */
+const ROLE_TOGGLE_GRADIENT = AUTH_CTA_GRADIENT;
 
+/** Border-first role control — no sliding solid gradient fill. */
 function RoleToggle({ role, onRoleChange, isDark = true }) {
-  const slideAnim = useRef(new RNAnimated.Value(role === 'client' ? 0 : 1)).current;
-
-  const handlePress = (selected) => {
-    onRoleChange(selected);
-    RNAnimated.spring(slideAnim, {
-      toValue: selected === 'client' ? 0 : 1,
-      useNativeDriver: false,
-      bounciness: 4,
-      speed: 14,
-    }).start();
-  };
-
-  const slideLeft = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '50%'],
-  });
+  const muted = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.5)';
+  const innerFill = isDark ? 'rgba(10,10,15,0.88)' : 'rgba(255,255,255,0.96)';
+  const idleBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.16)';
+  const idleBg = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.45)';
 
   return (
-    <View
-      style={{
-        width: '100%',
-        height: 48,
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,58,237,0.08)',
-        borderRadius: 50,
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(233,78,173,0.22)' : 'rgba(163,72,208,0.35)',
-        flexDirection: 'row',
-        padding: 4,
-        marginBottom: 28,
-        position: 'relative',
-      }}
-    >
-      <RNAnimated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 4,
-          bottom: 4,
-          left: slideLeft,
-          width: '50%',
-          borderRadius: 50,
-          overflow: 'hidden',
-          shadowColor: '#6B3AD9',
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: isDark ? 0.45 : 0.35,
-          shadowRadius: 10,
-          elevation: 8,
-        }}
-      >
-        <LinearGradient
-          colors={ROLE_TOGGLE_GRADIENT}
-          locations={[0, 0.5, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </RNAnimated.View>
-      {['client', 'trainer'].map((r) => (
-        <TouchableOpacity
-          key={r}
-          onPress={() => handlePress(r)}
-          activeOpacity={0.8}
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
-        >
-          <Text
+    <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginBottom: 28 }}>
+      {['client', 'trainer'].map((r) => {
+        const selected = role === r;
+        const label = r === 'client' ? 'Client' : 'Trainer';
+        const labelColor = selected ? (isDark ? '#FFFFFF' : '#0A0A0F') : muted;
+
+        const inner = (
+          <View
             style={{
-              fontSize: 14,
-              fontWeight: '700',
-              textTransform: 'capitalize',
-              color: role === r
-                ? '#FFFFFF'
-                : (isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.5)'),
+              borderRadius: 14,
+              paddingVertical: 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: selected ? innerFill : idleBg,
+              borderWidth: selected ? 0 : 1.5,
+              borderColor: idleBorder,
             }}
           >
-            {r === 'client' ? 'Client' : 'Trainer'}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Text style={{ fontSize: 14, fontWeight: '800', textTransform: 'capitalize', color: labelColor }}>{label}</Text>
+          </View>
+        );
+
+        return (
+          <TouchableOpacity
+            key={r}
+            activeOpacity={0.88}
+            onPress={() => onRoleChange(r)}
+            style={{ flex: 1 }}
+          >
+            {selected ? (
+              <LinearGradient
+                colors={ROLE_TOGGLE_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{ borderRadius: 16, padding: 2 }}
+              >
+                {inner}
+              </LinearGradient>
+            ) : (
+              inner
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -519,14 +492,38 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState({});
 
+  const [errorModal, setErrorModal] = useState(null);
+
+  const ensureRoleMatchesToggle = useCallback(async (uid, selectedRole) => {
+    const expected = selectedRole === 'trainer' ? 'trainer' : 'client';
+    const actual = await readNormalizedFirestoreRole(uid);
+    if (actual == null) {
+      console.log('[Auth] No role on user profile; skipping Client/Trainer login gate');
+      return true;
+    }
+    if (actual === expected) return true;
+    console.log('[Auth] Login role mismatch — profile:', actual, 'toggle:', selectedRole);
+    try {
+      roleMismatchNextViewInMemory = 'login';
+      await AsyncStorage.setItem(ROLE_MISMATCH_NEXT_VIEW_KEY, 'login').catch(() => {});
+      await signOut(auth);
+    } catch (e) {
+      console.warn('signOut after role mismatch:', e?.message || e);
+    }
+    setErrorModal({ title: ROLE_MISMATCH_TITLE, message: ROLE_MISMATCH_MESSAGE });
+    return false;
+  }, []);
+
   // Social auth loading + error
   const [isLoadingApple, setIsLoadingApple] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
-  const [authError, setAuthError] = useState('');
 
   // Google OAuth configuration (shared for signup and login)
   const [request, response, promptAsync] = Google.useAuthRequest({
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    // Android requires a client id in expo-auth-session; use Android OAuth client from GCP when set.
+    androidClientId:
+      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   });
 
@@ -541,19 +538,44 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
   useEffect(() => {
     if (!response) return;
-    if (response.type === 'success') {
+
+    if (response.type === 'cancel' || response.type === 'dismiss') {
       setIsLoadingGoogle(false);
-      const authentication = response.authentication;
-      const view = currentViewRef.current;
-      if (view === 'signup') {
-        void handleGoogleSignUpRef.current?.(authentication);
-      } else {
-        void handleGoogleSignInRef.current?.(authentication);
-      }
-    } else if (response.type === 'error') {
+      setSignupLoading(false);
+      setLoginLoading(false);
+      return;
+    }
+
+    if (response.type === 'error') {
       setIsLoadingGoogle(false);
+      setSignupLoading(false);
+      setLoginLoading(false);
       console.error('Google OAuth error:', response.error);
-      setAuthError('Google sign-in failed. Please try again.');
+      setErrorModal({
+        title: 'Google Sign-In',
+        message: 'Google sign-in failed. Please try again.',
+      });
+      return;
+    }
+
+    if (response.type !== 'success') return;
+
+    const params = response.params || {};
+    const { idToken, accessToken } = extractGoogleOAuthTokens(response.authentication, params);
+
+    // Installed apps use authorization code + PKCE; expo merges tokens into `response` after exchange.
+    // First `success` can arrive before `id_token` exists — wait for the next update.
+    if (!idToken) {
+      return;
+    }
+
+    setIsLoadingGoogle(false);
+    const payload = { id_token: idToken, access_token: accessToken };
+    const view = currentViewRef.current;
+    if (view === 'signup') {
+      void handleGoogleSignUpRef.current?.(payload);
+    } else {
+      void handleGoogleSignInRef.current?.(payload);
     }
   }, [response]);
 
@@ -566,7 +588,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      setErrorModal({
+        title: 'Error',
+        message: 'Failed to pick image. Please try again.',
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handlePickImage();
+        },
+      });
     }
   };
 
@@ -615,7 +645,10 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     
     if (!auth || !db) {
       console.error('❌ Firebase not initialized:', { auth: !!auth, db: !!db });
-      Alert.alert('Error', 'Firebase is not initialized. Please check your configuration.');
+      setErrorModal({
+        title: 'Error',
+        message: 'Firebase is not initialized. Please check your configuration.',
+      });
       return;
     }
 
@@ -704,7 +737,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           errorMessage = error.message || errorMessage;
       }
       
-      Alert.alert('Signup Failed', errorMessage);
+      setErrorModal({
+        title: 'Signup Failed',
+        message: errorMessage,
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handleSignup();
+        },
+      });
     } finally {
       setSignupLoading(false);
     }
@@ -712,18 +753,21 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
   const handleGoogleSignUp = async (authentication) => {
     if (!auth || !db) {
-      Alert.alert('Error', 'Firebase is not initialized.');
+      setErrorModal({ title: 'Error', message: 'Firebase is not initialized.' });
       return;
     }
 
     setSignupLoading(true);
     try {
-      const { id_token, access_token } = authentication;
-      
+      const params = authentication?.params || {};
+      const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
+      const id_token = authentication?.id_token ?? idToken;
+      const access_token = authentication?.access_token ?? accessToken;
+
       if (!id_token) {
         throw new Error('No ID token received from Google');
       }
-      
+
       const credential = GoogleAuthProvider.credential(id_token, access_token);
       const userCredential = await signInWithCredential(auth, credential);
       
@@ -775,7 +819,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         errorMessage += error.message || 'Please try again.';
       }
       
-      Alert.alert('Google Sign-Up Failed', errorMessage);
+      setErrorModal({
+        title: 'Google Sign-Up Failed',
+        message: errorMessage,
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handleGoogleSignUpRef.current?.(authentication);
+        },
+      });
     } finally {
       setSignupLoading(false);
     }
@@ -806,7 +858,10 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     if (!validateLoginForm()) return;
     
     if (!auth) {
-      Alert.alert('Error', 'Firebase authentication is not initialized. Please check your configuration.');
+      setErrorModal({
+        title: 'Error',
+        message: 'Firebase authentication is not initialized. Please check your configuration.',
+      });
       return;
     }
 
@@ -845,7 +900,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           errorMessage = error.message || errorMessage;
       }
       
-      Alert.alert('Login Failed', errorMessage);
+      setErrorModal({
+        title: 'Login Failed',
+        message: errorMessage,
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handleLogin();
+        },
+      });
     } finally {
       setLoginLoading(false);
     }
@@ -853,18 +916,21 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
   const handleGoogleSignIn = async (authentication) => {
     if (!auth || !db) {
-      Alert.alert('Error', 'Firebase is not initialized.');
+      setErrorModal({ title: 'Error', message: 'Firebase is not initialized.' });
       return;
     }
 
     setLoginLoading(true);
     try {
-      const { id_token, access_token } = authentication;
-      
+      const params = authentication?.params || {};
+      const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
+      const id_token = authentication?.id_token ?? idToken;
+      const access_token = authentication?.access_token ?? accessToken;
+
       if (!id_token) {
         throw new Error('No ID token received from Google');
       }
-      
+
       const credential = GoogleAuthProvider.credential(id_token, access_token);
       const userCredential = await signInWithCredential(auth, credential);
       
@@ -925,7 +991,15 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         errorMessage += error.message || 'Please try again.';
       }
       
-      Alert.alert('Google Sign-In Failed', errorMessage);
+      setErrorModal({
+        title: 'Google Sign-In Failed',
+        message: errorMessage,
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handleGoogleSignInRef.current?.(authentication);
+        },
+      });
     } finally {
       setLoginLoading(false);
     }
@@ -936,21 +1010,33 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
   const handleAppleAuth = async ({ mode }) => {
     if (Platform.OS !== 'ios') {
-      Alert.alert('Apple Sign-In', 'Apple Sign-In is only available on iOS devices.');
+      setErrorModal({
+        title: 'Apple Sign-In',
+        message: 'Apple Sign-In is only available on iOS devices.',
+      });
       return;
     }
     try {
       const available = await AppleAuthentication.isAvailableAsync();
       if (!available) {
-        Alert.alert('Apple Sign-In', 'Apple Sign-In is not available on this device.');
+        setErrorModal({
+          title: 'Apple Sign-In',
+          message: 'Apple Sign-In is not available on this device.',
+        });
         return;
       }
       // NOTE: Full Apple auth → Firebase wiring not implemented yet.
       // This prevents a dead button while keeping the UI you asked for.
-      Alert.alert('Apple Sign-In', mode === 'signup' ? 'Coming soon for Sign Up.' : 'Coming soon for Sign In.');
+      setErrorModal({
+        title: 'Apple Sign-In',
+        message: mode === 'signup' ? 'Coming soon for Sign Up.' : 'Coming soon for Sign In.',
+      });
     } catch (e) {
       console.error('Apple auth error:', e);
-      Alert.alert('Apple Sign-In Error', e?.message || 'Something went wrong.');
+      setErrorModal({
+        title: 'Apple Sign-In Error',
+        message: e?.message || 'Something went wrong.',
+      });
     }
   };
 
@@ -999,83 +1085,90 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         </TouchableOpacity>
       </View>
 
-      {/* Welcome wordmark with bordered card */}
+      {/* Welcome wordmark — gradient frame only; glass interior (no solid fills). */}
       <View style={{ width: '100%', alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
         <LinearGradient
-          colors={['#7C3AED', '#EC4899']}
+          colors={['#FF6B9D', '#C084FC', '#F97316']}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
             width: '88%',
             maxWidth: 460,
-            borderRadius: 22,
-            padding: 2,
+            borderRadius: 24,
+            padding: 3,
             ...(Platform.OS === 'ios'
               ? {
-                  shadowColor: '#7C3AED',
-                  shadowOffset: { width: 0, height: 12 },
-                  shadowOpacity: 0.22,
-                  shadowRadius: 18,
+                  shadowColor: '#C084FC',
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 0.28,
+                  shadowRadius: 20,
                 }
-              : { elevation: 4 }),
+              : { elevation: 5 }),
           }}
         >
           <View
             style={{
-              borderRadius: 20,
-              paddingVertical: 18,
-              paddingHorizontal: 18,
+              borderRadius: 21,
+              paddingVertical: 22,
+              paddingHorizontal: 20,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.62)' : 'rgba(255,255,255,0.10)',
+              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.72)' : 'rgba(255,255,255,0.82)',
               borderWidth: 1,
-              borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.14)',
+              borderColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.65)',
             }}
           >
             <Text
               style={{
-                fontSize: 44,
+                fontSize: 38,
                 fontWeight: '900',
-                letterSpacing: 2,
+                letterSpacing: 3,
                 textAlign: 'center',
                 color: t.heading,
               }}
             >
-              {'COACH\nCONNECT'}
+              COACH
+            </Text>
+            <Text
+              style={{
+                fontSize: 38,
+                fontWeight: '900',
+                letterSpacing: 3,
+                textAlign: 'center',
+                marginTop: -2,
+                color: '#FF6B9D',
+              }}
+            >
+              CONNECT
             </Text>
 
             <LinearGradient
-              colors={['rgba(255,107,157,0.28)', 'rgba(124,58,237,0.22)']}
+              colors={['#FF6B9D', '#C084FC']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{
-                marginTop: 14,
-                paddingVertical: 10,
-                paddingHorizontal: 16,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: isDarkLanding ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.18)',
-                ...(Platform.OS === 'ios'
-                  ? {
-                      shadowColor: '#EC4899',
-                      shadowOffset: { width: 0, height: 10 },
-                      shadowOpacity: 0.20,
-                      shadowRadius: 18,
-                    }
-                  : { elevation: 3 }),
-              }}
+              style={{ marginTop: 16, borderRadius: 999, padding: 2, alignSelf: 'stretch', maxWidth: 340 }}
             >
-              <Text
+              <View
                 style={{
-                  fontSize: 18,
-                  fontWeight: '900',
-                  letterSpacing: 0.4,
-                  color: '#FFFFFF',
-                  textAlign: 'center',
+                  borderRadius: 999,
+                  paddingVertical: 11,
+                  paddingHorizontal: 18,
+                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.75)' : 'rgba(255,255,255,0.92)',
+                  borderWidth: 0,
                 }}
               >
-                "One Day or Day One!"
-              </Text>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '800',
+                    letterSpacing: 0.2,
+                    color: t.heading,
+                    textAlign: 'center',
+                  }}
+                >
+                  {"\u201cOne Day or Day One!\u201d"}
+                </Text>
+              </View>
             </LinearGradient>
           </View>
         </LinearGradient>
@@ -1162,47 +1255,51 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           One platform for programming, tracking, and communication.
         </Text>
 
-        <TouchableOpacity
-          onPress={onGetStarted}
-          activeOpacity={0.88}
+        <LinearGradient
+          colors={AUTH_CTA_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
           style={{
-            width: '100%',
-            borderRadius: 14,
-            overflow: 'hidden',
+            alignSelf: 'center',
+            width: '80%',
+            maxWidth: 400,
+            borderRadius: 16,
+            padding: 2,
+            marginTop: 16,
             marginBottom: 20,
             ...(Platform.OS === 'ios'
               ? {
-                  shadowColor: '#7C3AED',
+                  shadowColor: '#C1265A',
                   shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.45,
-                  shadowRadius: 20,
+                  shadowOpacity: 0.35,
+                  shadowRadius: 18,
                 }
               : {}),
           }}
         >
-          <LinearGradient
-            colors={['#7C3AED', '#EC4899']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+          <TouchableOpacity
+            onPress={onGetStarted}
+            activeOpacity={0.88}
             style={{
-              height: 56,
+              borderRadius: 14,
+              height: 52,
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 14,
+              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.92)' : 'rgba(255,255,255,0.96)',
             }}
           >
             <Text
               style={{
-                color: '#FFFFFF',
+                color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
                 fontSize: 17,
-                fontWeight: '700',
+                fontWeight: '800',
                 letterSpacing: 0.3,
               }}
             >
               Get Started
             </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </LinearGradient>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ fontSize: 14, color: t.signinMuted }}>
@@ -1228,10 +1325,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
 
   const renderSignupView = () => {
     const placeholderTextColor = isDarkLanding ? 'rgba(255,255,255,0.35)' : '#6B7280';
-    
-    // Debug logging for role state
-    console.log('🔍 renderSignupView - Current role state:', { role, selectedRole, currentView });
-    console.log('🔍 Should show trainer fields:', role === 'trainer');
+
     const signupStyles = StyleSheet.create({
       container: {
         flex: 1,
@@ -1260,7 +1354,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       },
       subtitle: {
         fontSize: 16,
-        color: isDarkLanding ? '#AF52DE' : (colors.accent ?? '#AF52DE'),
+        color: isDarkLanding ? '#C1265A' : (colors.accent ?? '#C1265A'),
         textAlign: 'center',
       },
       form: {
@@ -1340,7 +1434,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       },
       roleButtonText: {
         fontSize: 14,
-        color: '#AF52DE',
+        color: '#C1265A',
         fontWeight: '600',
       },
       roleButtonTextActive: {
@@ -1378,7 +1472,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       dividerText: {
         marginHorizontal: spacing.md,
         fontSize: 14,
-        color: '#AF52DE',
+        color: '#C1265A',
       },
       googleButton: {
         flexDirection: 'row',
@@ -1433,7 +1527,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       },
       footerText: {
         fontSize: 14,
-        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#AF52DE',
+        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#C1265A',
         marginRight: spacing.sm,
       },
       loginLink: {
@@ -1524,11 +1618,6 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             />
           </TouchableOpacity>
         </View>
-
-            {/* DEBUG: Show current role */}
-            <View style={{ backgroundColor: 'blue', padding: 10, margin: 10, borderRadius: 5 }}>
-              <Text style={{ color: 'white', fontWeight: 'bold' }}>DEBUG: Current Role = "{role}" | Selected Role = "{selectedRole}" | View = "{currentView}"</Text>
-            </View>
 
             <View style={signupStyles.form}>
               <Text style={signupStyles.formTitle}>Get Started</Text>
@@ -1734,10 +1823,10 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={[signupStyles.googleButton, (signupLoading || !request) && { opacity: 0.6 }]}
                 onPress={() => {
                   if (!request) {
-                    Alert.alert(
-                      'Google Sign-In Not Ready',
-                      'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains'
-                    );
+                    setErrorModal({
+                      title: GOOGLE_OAUTH_NOT_READY_TITLE,
+                      message: GOOGLE_OAUTH_NOT_READY_MESSAGE,
+                    });
                     return;
                   }
                   promptAsync();
@@ -1807,7 +1896,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       },
       subtitle: {
         fontSize: 16,
-        color: isDarkLanding ? '#AF52DE' : (colors.accent ?? '#AF52DE'),
+        color: isDarkLanding ? '#C1265A' : (colors.accent ?? '#C1265A'),
         textAlign: 'center',
       },
       form: {
@@ -1886,7 +1975,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       dividerText: {
         marginHorizontal: spacing.md,
         fontSize: 14,
-        color: '#AF52DE',
+        color: '#C1265A',
       },
       googleButton: {
         flexDirection: 'row',
@@ -1928,7 +2017,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       },
       footerText: {
         fontSize: 14,
-        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#AF52DE',
+        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#C1265A',
         marginRight: spacing.sm,
       },
       signupLink: {
@@ -2030,10 +2119,10 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={[loginStyles.googleButton, (loginLoading || !request) && { opacity: 0.6 }]}
                 onPress={() => {
                   if (!request) {
-                    Alert.alert(
-                      'Google Sign-In Not Ready',
-                      'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains'
-                    );
+                    setErrorModal({
+                      title: GOOGLE_OAUTH_NOT_READY_TITLE,
+                      message: GOOGLE_OAUTH_NOT_READY_MESSAGE,
+                    });
                     return;
                   }
                   promptAsync();
@@ -2054,16 +2143,16 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   const renderSignupViewLiquid = () => {
     const onGoogle = () => {
       if (!request) {
-        Alert.alert(
-          'Google Sign-In Not Ready',
-          'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains'
-        );
+        setErrorModal({
+          title: GOOGLE_OAUTH_NOT_READY_TITLE,
+          message: GOOGLE_OAUTH_NOT_READY_MESSAGE,
+        });
         return;
       }
       promptAsync();
     };
 
-    const onApple = () => handleAppleAuth('signup');
+    const onApple = () => handleAppleAuth({ mode: 'signup' });
 
     return (
       <View style={{ flex: 1, backgroundColor: t.bg }}>
@@ -2102,7 +2191,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 36,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.16)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.75)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -2235,51 +2325,54 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               ) : null}
             </View>
 
-            {/* Create Account CTA */}
-            <TouchableOpacity
-              onPress={handleSignup}
-              activeOpacity={0.88}
+            {/* Create Account CTA — gradient ring, not solid slab */}
+            <LinearGradient
+              colors={AUTH_CTA_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
               style={{
-                width: '100%',
-                borderRadius: 14,
-                overflow: 'hidden',
-                marginTop: 8,
+                alignSelf: 'center',
+                width: '80%',
+                maxWidth: 400,
+                borderRadius: 16,
+                padding: 2,
+                marginTop: 16,
                 marginBottom: 24,
+                opacity: signupLoading ? 0.7 : 1,
                 ...(Platform.OS === 'ios'
                   ? {
-                      shadowColor: '#7C3AED',
-                      shadowOffset: { width: 0, height: 12 },
-                      shadowOpacity: 0.45,
-                      shadowRadius: 24,
+                      shadowColor: '#C1265A',
+                      shadowOffset: { width: 0, height: 10 },
+                      shadowOpacity: 0.35,
+                      shadowRadius: 20,
                     }
                   : {}),
               }}
-              disabled={signupLoading}
             >
-              <LinearGradient
-                colors={['#7C3AED', '#A33BBC', '#EC4899']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+              <TouchableOpacity
+                onPress={handleSignup}
+                activeOpacity={0.88}
+                disabled={signupLoading}
                 style={{
-                  height: 56,
+                  borderRadius: 14,
+                  height: 52,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 14,
-                  opacity: signupLoading ? 0.7 : 1,
+                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.97)',
                 }}
               >
                 <Text
                   style={{
-                    color: '#FFFFFF',
+                    color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
                     fontSize: 17,
-                    fontWeight: '700',
+                    fontWeight: '800',
                     letterSpacing: 0.2,
                   }}
                 >
                   Create Account
                 </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </LinearGradient>
 
             {/* OR divider */}
             <View
@@ -2393,7 +2486,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               <Text
                 style={{
                   fontSize: 14,
-                  color: 'rgba(255,255,255,0.4)',
+                  color: isDarkLanding ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)',
                 }}
               >
                 Already have an account?{' '}
@@ -2402,8 +2495,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 <Text
                   style={{
                     fontSize: 14,
-                    fontWeight: '600',
-                    color: '#C084FC',
+                    fontWeight: '800',
+                    color: isDarkLanding ? '#C084FC' : '#C1265A',
                   }}
                 >
                   Sign In
@@ -2417,23 +2510,21 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   };
 
   const renderLoginViewLiquid = () => {
-    const placeholderTextColor = 'rgba(255,255,255,0.35)';
-
     const onGoogle = () => {
       if (!request) {
-        Alert.alert(
-          'Google Sign-In Not Ready',
-          'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains'
-        );
+        setErrorModal({
+          title: GOOGLE_OAUTH_NOT_READY_TITLE,
+          message: GOOGLE_OAUTH_NOT_READY_MESSAGE,
+        });
         return;
       }
       promptAsync();
     };
 
-    const onApple = () => handleAppleAuth('login');
+    const onApple = () => handleAppleAuth({ mode: 'login' });
 
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
+      <View style={{ flex: 1, backgroundColor: t.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -2451,7 +2542,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back + wordmark */}
+            {/* Back + wordmark + theme */}
             <View
               style={{
                 flexDirection: 'row',
@@ -2469,12 +2560,13 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 36,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.16)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.75)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.9)" />
+                <Ionicons name="chevron-back" size={20} color={t.heading} />
               </TouchableOpacity>
 
               <Text
@@ -2483,13 +2575,32 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   fontWeight: '700',
                   letterSpacing: 4,
                   textTransform: 'uppercase',
-                color: isDarkLanding ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.45)',
+                  color: t.wordmark,
                 }}
               >
                 CoachConnect
               </Text>
 
-              <View style={{ width: 36 }} />
+              <TouchableOpacity
+                onPress={toggleTheme}
+                activeOpacity={0.75}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
+                  backgroundColor: t.toggleBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
+                  size={18}
+                  color={t.toggleIcon}
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Heading */}
@@ -2497,7 +2608,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               style={{
                 fontSize: 30,
                 fontWeight: '800',
-                color: '#FFFFFF',
+                color: t.heading,
                 textAlign: 'center',
                 letterSpacing: -0.8,
                 marginBottom: 8,
@@ -2510,7 +2621,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
             <Text
               style={{
                 fontSize: 14,
-                color: 'rgba(255,255,255,0.45)',
+                color: t.subtitle,
                 textAlign: 'center',
                 marginBottom: 28,
               }}
@@ -2579,55 +2690,65 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               disabled={loginLoading}
               style={{ alignSelf: 'flex-end', marginBottom: 16 }}
             >
-              <Text style={{ fontSize: 13, color: '#A5B4FC', fontWeight: '600' }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: isDarkLanding ? '#A5B4FC' : '#7C3AED',
+                  fontWeight: '700',
+                }}
+              >
                 Forgot password?
               </Text>
             </TouchableOpacity>
 
-            {/* Sign In CTA */}
-            <TouchableOpacity
-              onPress={handleLogin}
-              activeOpacity={0.88}
+            {/* Sign In CTA — gradient ring */}
+            <LinearGradient
+              colors={AUTH_CTA_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
               style={{
-                width: '100%',
-                borderRadius: 14,
-                overflow: 'hidden',
+                alignSelf: 'center',
+                width: '80%',
+                maxWidth: 400,
+                borderRadius: 16,
+                padding: 2,
+                marginTop: 16,
                 marginBottom: 24,
+                opacity: loginLoading ? 0.7 : 1,
                 ...(Platform.OS === 'ios'
                   ? {
-                      shadowColor: '#7C3AED',
-                      shadowOffset: { width: 0, height: 12 },
-                      shadowOpacity: 0.45,
-                      shadowRadius: 24,
+                      shadowColor: '#C1265A',
+                      shadowOffset: { width: 0, height: 10 },
+                      shadowOpacity: 0.32,
+                      shadowRadius: 20,
                     }
                   : {}),
               }}
-              disabled={loginLoading}
             >
-              <LinearGradient
-                colors={['#7C3AED', '#A33BBC', '#EC4899']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+              <TouchableOpacity
+                onPress={handleLogin}
+                activeOpacity={0.88}
+                disabled={loginLoading}
                 style={{
-                  height: 56,
+                  borderRadius: 14,
+                  height: 52,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 14,
-                  opacity: loginLoading ? 0.7 : 1,
+                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.97)',
                 }}
               >
                 <Text
                   style={{
-                    color: '#FFFFFF',
+                    color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
                     fontSize: 17,
-                    fontWeight: '700',
+                    fontWeight: '800',
                     letterSpacing: 0.2,
                   }}
                 >
                   Sign In
                 </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </LinearGradient>
 
             {/* OR divider */}
             <View
@@ -2642,14 +2763,14 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={{
                   flex: 1,
                   height: 1,
-                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)',
                 }}
               />
               <Text
                 style={{
                   fontSize: 12,
-                  fontWeight: '500',
-                  color: 'rgba(255,255,255,0.3)',
+                  fontWeight: '600',
+                  color: isDarkLanding ? 'rgba(255,255,255,0.38)' : 'rgba(15,23,42,0.4)',
                   marginHorizontal: 12,
                 }}
               >
@@ -2659,7 +2780,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 style={{
                   flex: 1,
                   height: 1,
-                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)',
                 }}
               />
             </View>
@@ -2681,8 +2802,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 52,
                   borderRadius: 12,
                   borderWidth: 1,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.14)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
@@ -2691,13 +2812,18 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               >
                 <Image
                   source={appleLogo}
-                  style={{ width: 20, height: 20, resizeMode: 'contain', tintColor: '#FFFFFF' }}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    resizeMode: 'contain',
+                    tintColor: isDarkLanding ? '#FFFFFF' : '#0F172A',
+                  }}
                 />
                 <Text
                   style={{
                     fontSize: 14,
                     fontWeight: '600',
-                    color: '#FFFFFF',
+                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
                   }}
                 >
                   Apple
@@ -2712,8 +2838,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   height: 52,
                   borderRadius: 12,
                   borderWidth: 1,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
+                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.14)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
@@ -2728,7 +2854,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                   style={{
                     fontSize: 14,
                     fontWeight: '600',
-                    color: '#FFFFFF',
+                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
                   }}
                 >
                   Google
@@ -2741,7 +2867,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
               <Text
                 style={{
                   fontSize: 14,
-                  color: 'rgba(255,255,255,0.4)',
+                  color: isDarkLanding ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)',
                 }}
               >
                 Don’t have an account?{' '}
@@ -2750,8 +2876,8 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
                 <Text
                   style={{
                     fontSize: 14,
-                    fontWeight: '600',
-                    color: '#C084FC',
+                    fontWeight: '800',
+                    color: isDarkLanding ? '#C084FC' : '#C1265A',
                   }}
                 >
                   Sign Up
@@ -2765,17 +2891,26 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   };
 
   // ==================== MAIN RENDER ====================
-  if (currentView === 'welcome') {
-    return renderWelcomeView();
-  }
-  if (currentView === 'signup') {
-    return renderSignupViewLiquid();
-  }
-  if (currentView === 'login') {
-    return renderLoginViewLiquid();
-  }
-
-  return null;
+  return (
+    <>
+      {currentView === 'welcome'
+        ? renderWelcomeView()
+        : currentView === 'signup'
+          ? renderSignupViewLiquid()
+          : currentView === 'login'
+            ? renderLoginViewLiquid()
+            : null}
+      <ErrorModal
+        visible={!!errorModal}
+        title={errorModal?.title ?? 'Error'}
+        message={errorModal?.message ?? ''}
+        icon={errorModal?.icon}
+        onDismiss={() => setErrorModal(null)}
+        onRetry={errorModal?.onRetry}
+        retryText={errorModal?.retryText}
+      />
+    </>
+  );
 }
 
 // ==================== STYLES ====================

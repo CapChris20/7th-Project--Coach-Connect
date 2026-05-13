@@ -15,7 +15,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, collection, addDoc, getDoc, onSnapshot, query, where, serverTimestamp, updateDoc, limit } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  collection,
+  addDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+  serverTimestamp,
+  updateDoc,
+  limit,
+} from 'firebase/firestore';
 import { auth, db } from '../../app/config';
 import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
 import { getLocalDateKey, msUntilLocalMidnight } from '../../shared/utils/localDay';
@@ -24,11 +37,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionMeetingCard } from '../../shared/components/SessionMeetingCard';
 import PremiumWelcomeCard from '../components/PremiumWelcomeCard';
 import PremiumTrainerCard from '../components/PremiumTrainerCard';
+import WeeklyReportHeroCard from '../components/WeeklyReportHeroCard';
 import PremiumStatsSection, { GradientBorderShell } from '../components/PremiumStatsSection';
 import {
   isAllowedClientWorkoutDayLabel,
   WORKOUT_DAY_EXAMPLES_SHORT,
 } from '../../shared/utils/workoutDayLabels';
+
+const MOOD_EMPTY_LOTTIE = require('../../shared/assets/Happy SUN.json');
 
 const msUntilMidnight = () => msUntilLocalMidnight();
 
@@ -113,6 +129,17 @@ const formatTagString = (raw) => {
   return ordered.map((k) => formatTag(k)).join(' · ');
 };
 
+function formatClientWeeklyRange(weekStart, weekEnd) {
+  const ws = String(weekStart || '').trim();
+  const we = String(weekEnd || ws).trim();
+  if (!ws) return '';
+  const s = new Date(`${ws}T12:00:00`);
+  const e = new Date(`${we}T12:00:00`);
+  const a = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const b = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${a} – ${b}`;
+}
+
 const sleepStatus = (v) => {
   const n = parseFloat(v);
   if (n >= 7) return 'On track';
@@ -152,9 +179,6 @@ const STORAGE_KEY_LABELS = {
   dashboard_energy: 'Energy Level',
   dashboard_stress: 'Stress Level',
   dashboard_mood: 'Mood Check-in',
-  dashboard_nutrition: 'Nutrition Compliance',
-  dashboard_mealplan: 'Meal Plan',
-  dashboard_supplements: 'Supplements Taken',
   dashboard_workout_rating: 'Post-Workout Rating',
   dashboard_notes: 'Notes to Trainer',
 };
@@ -405,35 +429,37 @@ const useWorkoutLog = (onAfterSave) => {
       }
 
       if (!fromLogs) {
-        setWorkoutExercises([makeExercise()]);
+        // Firestore often delivers logs + tracking snapshots back-to-back. Re-running hydrate with
+        // fresh random ids remounts TextInputs and drops keyboard after the first keystroke.
+        setWorkoutExercises((prev) => (prev.length > 0 ? prev : [makeExercise()]));
         setLoaded(true);
         return;
       }
 
       setWorkoutName(d.dashboard_workout_name || '');
       if (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) {
-        const mapped = d.workoutLog.map((item) => ({
-          id: `${Date.now()}_${Math.random()}`,
+        const mapped = d.workoutLog.map((item, exIdx) => ({
+          id: `srv_wl_${exIdx}`,
           name: item.exerciseName || '',
           sets: Array.isArray(item.sets) && item.sets.length
-            ? item.sets.map((s) => ({
-                id: `${Date.now()}_${Math.random()}`,
+            ? item.sets.map((s, sIdx) => ({
+                id: `srv_wl_${exIdx}_s_${sIdx}`,
                 reps: s.reps != null ? String(s.reps) : '',
                 weight: s.weight != null ? String(s.weight) : '',
               }))
-            : [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
+            : [{ id: `srv_wl_${exIdx}_s_0`, reps: '', weight: '' }],
         }));
         setWorkoutExercises(mapped);
       } else if (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) {
         setWorkoutExercises(
-          d.dashboard_workout_exercises.map((name) => ({
-            id: `${Date.now()}_${Math.random()}`,
+          d.dashboard_workout_exercises.map((name, exIdx) => ({
+            id: `srv_dwe_${exIdx}`,
             name: String(name),
-            sets: [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
+            sets: [{ id: `srv_dwe_${exIdx}_s_0`, reps: '', weight: '' }],
           })),
         );
       } else {
-        setWorkoutExercises([makeExercise()]);
+        setWorkoutExercises((prev) => (prev.length > 0 ? prev : [makeExercise()]));
       }
       setLoaded(true);
     };
@@ -902,9 +928,6 @@ const CARD_ACCENT = {
   dashboard_energy: '#FF9F0A',
   dashboard_stress: '#AF52DE',
   dashboard_mood: '#64D2FF',
-  dashboard_nutrition: '#10B981',
-  dashboard_mealplan: '#10B981',
-  dashboard_supplements: '#AF52DE',
   dashboard_workout_rating: '#FF9F0A',
   dashboard_notes: '#8A8A8A',
 };
@@ -1543,6 +1566,9 @@ const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo,
         </View>
       ) : (
         <View style={[mood.emojiCard, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+          <View style={mood.moodLottieWrap}>
+            <LottieView source={MOOD_EMPTY_LOTTIE} autoPlay loop style={mood.moodLottie} />
+          </View>
           <View style={mood.emojiRow}>
             {MOOD_EMOJIS.map((em, i) => {
               const isActive = String(savedValue) === String(i);
@@ -1581,6 +1607,15 @@ const mood = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderWidth: 1,
+  },
+  moodLottieWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  moodLottie: {
+    width: 120,
+    height: 120,
   },
   emojiRow: { flexDirection: 'row', gap: 8, justifyContent: 'space-between', paddingHorizontal: 2 },
   emojiBtn: {
@@ -1650,304 +1685,6 @@ const toggle = StyleSheet.create({
   btnRow: { flexDirection: 'row', gap: 6 },
   btn: { borderRadius: 99, paddingHorizontal: 14, paddingVertical: 6 },
   btnText: { fontSize: 12, fontWeight: '600' },
-});
-
-const ComplianceCard = ({ isDark }) => {
-  const t = isDark ? DARK : LIGHT;
-
-  const nutrition = useCardState('dashboard_nutrition');
-  const mealplan = useCardState('dashboard_mealplan');
-  const supplements = useCardState('dashboard_supplements');
-
-  const parseValues = (saved) => (saved ? (() => { try { return JSON.parse(saved); } catch { return {}; } })() : {});
-
-  const nutritionValues = parseValues(nutrition.savedValue);
-  const mealplanValues = parseValues(mealplan.savedValue);
-  const supplementsValues = parseValues(supplements.savedValue);
-
-  const anyNotified = nutrition.showNotified || mealplan.showNotified || supplements.showNotified;
-
-  const handleToggle = (storageGroup, key, val) => {
-    const apply = (values, saveFn) => {
-      const updated = { ...values, [key]: val };
-      saveFn(JSON.stringify(updated));
-    };
-    if (storageGroup === 'nutrition') return apply(nutritionValues, nutrition.save);
-    if (storageGroup === 'mealplan') return apply(mealplanValues, mealplan.save);
-    return apply(supplementsValues, supplements.save);
-  };
-
-  const yesNoButtons = ({ storageGroup, keyName, gradientFrom, gradientTo }) => {
-    const valuesByGroup =
-      storageGroup === 'nutrition' ? nutritionValues : storageGroup === 'mealplan' ? mealplanValues : supplementsValues;
-    const selected = valuesByGroup[keyName];
-    const yesActive = selected === 'Yes';
-    const noActive = selected === 'No';
-
-    const baseBtnStyle = {
-      borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderWidth: 1,
-      borderColor: t.pillBorder,
-    };
-
-    return (
-      <View style={compliance.toggleBtnRow}>
-        {['Yes', 'No'].map((opt) => {
-          const optActive = opt === 'Yes' ? yesActive : noActive;
-          if (opt === 'Yes') {
-            return (
-              <TouchableOpacity
-                key={opt}
-                activeOpacity={0.9}
-                onPress={() => handleToggle(storageGroup, keyName, opt)}
-              >
-                {optActive ? (
-                  <LinearGradient colors={[gradientFrom, gradientTo]} style={{ ...baseBtnStyle, borderWidth: 0 }}>
-                    <Text style={[compliance.toggleText, { color: 'white' }]}>{opt}</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={{ ...baseBtnStyle, backgroundColor: t.pillBg }}>
-                    <Text style={[compliance.toggleText, { color: t.pillText }]}>{opt}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          }
-
-          return (
-            <TouchableOpacity
-              key={opt}
-              activeOpacity={0.9}
-              onPress={() => handleToggle(storageGroup, keyName, opt)}
-            >
-              {optActive ? (
-                <View
-                  style={{
-                    ...baseBtnStyle,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
-                    borderWidth: 1,
-                  }}
-                >
-                  <Text style={[compliance.toggleText, { color: isDark ? 'rgba(255,255,255,0.92)' : 'rgba(30,16,64,0.9)' }]}>{opt}</Text>
-                </View>
-              ) : (
-                <View style={{ ...baseBtnStyle, backgroundColor: t.pillBg }}>
-                  <Text style={[compliance.toggleText, { color: t.pillText }]}>{opt}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  };
-
-  const answered = (obj, key) =>
-    obj && Object.prototype.hasOwnProperty.call(obj, key) && (obj[key] === 'Yes' || obj[key] === 'No');
-
-  const allAnswered =
-    answered(nutritionValues, 'calories') &&
-    answered(nutritionValues, 'protein') &&
-    answered(mealplanValues, 'followed') &&
-    answered(supplementsValues, 'taken');
-
-  const yesCount = [
-    nutritionValues.calories === 'Yes',
-    nutritionValues.protein === 'Yes',
-    mealplanValues.followed === 'Yes',
-    supplementsValues.taken === 'Yes',
-  ].filter(Boolean).length;
-
-  const complianceLines = [
-    { label: 'Hit calorie goal today?', val: nutritionValues.calories },
-    { label: 'Hit protein target?', val: nutritionValues.protein },
-    { label: 'Followed meal plan?', val: mealplanValues.followed },
-    { label: 'Took all supplements?', val: supplementsValues.taken },
-  ];
-
-  const cardBg = isDark ? '#13131A' : '#FFFFFF';
-  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
-
-  return (
-    <View
-      style={[
-        compliance.outerWrap,
-        Platform.OS === 'ios' && {
-          shadowColor: '#000',
-          shadowOpacity: isDark ? 0.35 : 0.12,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 6 },
-        },
-      ]}
-    >
-      <View style={shell.clip}>
-        <LinearGradient
-          colors={['#10B981', '#06B6D4', '#10B981']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={shell.topBar}
-        />
-        <View style={[compliance.cardBody, { backgroundColor: cardBg, borderColor: borderCol }]}>
-          <View
-            style={[compliance.innerWash, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)' }]}
-            pointerEvents="none"
-          />
-          <View style={compliance.headerRow}>
-            <View style={compliance.titleRow}>
-              <View style={compliance.headerIcon}>
-                <Ionicons name="shield-checkmark" size={24} color="rgba(255,255,255,0.95)" />
-              </View>
-              <View>
-                <Text style={[compliance.headerTitle, { color: t.text }]}>Today&apos;s Compliance</Text>
-                <Text style={[compliance.headerSub, { color: t.textMuted }]}>Quick yes/no — your coach sees this on the daily log.</Text>
-              </View>
-            </View>
-            {anyNotified ? (
-              <View style={compliance.headerNotified}>
-                <Ionicons name="checkmark" size={14} color="#22c55e" />
-              </View>
-            ) : null}
-          </View>
-
-          {allAnswered ? (
-            <View style={[compliance.summaryBox, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
-              <Text style={[compliance.loggedTag, { color: '#10B981' }]}>COMPLIANCE LOGGED ✓</Text>
-              {complianceLines.map((row) => (
-                <Text key={row.label} style={[compliance.summaryLine, { color: t.text }]}>
-                  {row.val === 'Yes' ? '✓ ' : '○ '}
-                  {row.label}{' '}
-                  <Text style={{ fontWeight: '900', color: row.val === 'Yes' ? '#10B981' : '#F97316' }}>{row.val}</Text>
-                </Text>
-              ))}
-              <Text style={[compliance.scoreLine, { color: t.textMuted }]}>
-                Score:{' '}
-                <Text style={{ color: t.text, fontWeight: '900' }}>
-                  {yesCount}/4
-                </Text>
-                {yesCount === 4 ? ' — Full marks today!' : yesCount >= 3 ? ' — Great day!' : ' — Keep stacking wins.'}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={compliance.rowsWrap}>
-          {/* Nutrition */}
-          <View style={compliance.row}>
-            <Text style={[compliance.rowLabel, { color: t.textMuted }]}>Hit calorie goal today?</Text>
-            {yesNoButtons({
-              storageGroup: 'nutrition',
-              keyName: 'calories',
-              gradientFrom: '#C084FC',
-              gradientTo: '#FF6B9D',
-            })}
-          </View>
-          <View style={[compliance.divider, { backgroundColor: t.cardBorder }]} />
-
-          <View style={compliance.row}>
-            <Text style={[compliance.rowLabel, { color: t.textMuted }]}>Hit protein target?</Text>
-            {yesNoButtons({
-              storageGroup: 'nutrition',
-              keyName: 'protein',
-              gradientFrom: '#C084FC',
-              gradientTo: '#FF6B9D',
-            })}
-          </View>
-          <View style={[compliance.divider, { backgroundColor: t.cardBorder }]} />
-
-          {/* Meal plan */}
-          <View style={compliance.row}>
-            <Text style={[compliance.rowLabel, { color: t.textMuted }]}>Followed meal plan?</Text>
-            {yesNoButtons({
-              storageGroup: 'mealplan',
-              keyName: 'followed',
-              gradientFrom: '#F97316',
-              gradientTo: '#06B6D4',
-            })}
-          </View>
-          <View style={[compliance.divider, { backgroundColor: t.cardBorder }]} />
-
-          {/* Supplements */}
-          <View style={compliance.row}>
-            <Text style={[compliance.rowLabel, { color: t.textMuted }]}>Took all supplements?</Text>
-            {yesNoButtons({
-              storageGroup: 'supplements',
-              keyName: 'taken',
-              gradientFrom: '#06B6D4',
-              gradientTo: '#C084FC',
-            })}
-          </View>
-        </View>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-const compliance = StyleSheet.create({
-  outerWrap: {
-    marginBottom: 16,
-    elevation: 5,
-  },
-  cardBody: {
-    borderWidth: 1,
-    borderTopWidth: 0,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 16,
-    position: 'relative',
-  },
-  innerWash: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.85,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-    zIndex: 1,
-  },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  headerIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(16,185,129,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
-  headerSub: { fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 17 },
-  summaryBox: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 14,
-    zIndex: 1,
-    gap: 6,
-  },
-  loggedTag: { fontSize: 11, fontWeight: '900', letterSpacing: 0.6, marginBottom: 6 },
-  summaryLine: { fontSize: 13, fontWeight: '600', lineHeight: 20 },
-  scoreLine: { fontSize: 13, fontWeight: '600', marginTop: 8 },
-  headerNotified: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(34,197,94,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.25)',
-  },
-  rowsWrap: {},
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
-  rowLabel: { fontSize: 12, flex: 1, paddingRight: 10, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
-  toggleBtnRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  toggleText: { fontSize: 12, fontWeight: '800' },
 });
 
 const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradientTo, isDark }) => {
@@ -2044,16 +1781,19 @@ export const MyDashboardScreen = ({
   embedInLayout = false,
   onMetricsChange,
   onPressMessage,
+  /** When user has no trainer: empty-state card should open marketplace, not messaging. */
+  onPressFindTrainer,
   onPressViewProfile,
   onOpenRemoveTrainer,
   onOpenPhotoGallery,
   onOpenAIWorkouts,
+  /** Opens full-screen weekly report for the signed-in client (`users/{uid}/weeklySummaries`). */
+  onOpenWeeklyReport,
   trainerClientId,
   trainerClientName,
   photoGalleryBadgeCount = 0,
   aiWorkoutsBadgeCount = 0,
   unreadMessageCount = 0,
-  streak = 0,
   todayCalories = 0,
   waterOz = 0,
   sleepHoursValue = null,
@@ -2078,6 +1818,48 @@ export const MyDashboardScreen = ({
   const [recentWorkouts, setRecentWorkouts] = useState([]);
   const [dashboardPendingSessions, setDashboardPendingSessions] = useState([]);
   const [dashboardReminderSessions, setDashboardReminderSessions] = useState([]);
+  const [weeklyReportCardLoading, setWeeklyReportCardLoading] = useState(false);
+  const [weeklyReportCard, setWeeklyReportCard] = useState({ hasReport: false, weekRangeLabel: '' });
+
+  useEffect(() => {
+    if (typeof onOpenWeeklyReport !== 'function') return undefined;
+    let cancelled = false;
+    const uid = currentUser?.uid;
+    if (!uid || !db) {
+      setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
+      return undefined;
+    }
+    (async () => {
+      setWeeklyReportCardLoading(true);
+      try {
+        const snap = await getDocs(collection(db, 'users', uid, 'weeklySummaries'));
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((r) => r.weekStart || r.weekId)
+          .sort((a, b) =>
+            String(b.weekStart || b.weekId || '').localeCompare(String(a.weekStart || a.weekId || '')),
+          );
+        if (cancelled) return;
+        const latest = rows[0];
+        const ws = latest?.weekStart || latest?.weekId;
+        const we = latest?.weekEnd || ws;
+        setWeeklyReportCard({
+          hasReport: rows.length > 0,
+          weekRangeLabel: rows.length > 0 ? formatClientWeeklyRange(ws, we) : '',
+        });
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('[MyDashboardScreen] weeklySummaries load failed', e?.message || e);
+          setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
+        }
+      } finally {
+        if (!cancelled) setWeeklyReportCardLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.uid, onOpenWeeklyReport]);
 
   useEffect(() => {
     if (!db || !currentUser?.uid) {
@@ -2414,7 +2196,7 @@ export const MyDashboardScreen = ({
         <View
           style={{
             marginTop: 4,
-            marginBottom: 10,
+            marginBottom: 24,
             borderRadius: 16,
             borderWidth: 1,
             borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
@@ -2443,13 +2225,29 @@ export const MyDashboardScreen = ({
           </Text>
         </View>
 
-        <PremiumWelcomeCard
-          isDark={isDark}
-          accent="pink"
-          userName={String(currentUser?.displayName || '').trim() || 'Athlete'}
-          message="Today’s goal: log one metric + complete one focused session. Let’s build momentum."
-          illustrationSource={require('../../assets/Lotties for Anatrox/Fitness.json')}
-        />
+        <View style={{ marginBottom: 24 }}>
+          <PremiumWelcomeCard
+            isDark={isDark}
+            accent="pink"
+            userName={String(currentUser?.displayName || '').trim() || 'Athlete'}
+            message="Today’s goal: log one metric + complete one focused session. Let’s build momentum."
+            illustrationSource={require('../../assets/Lotties for Anatrox/Fitness.json')}
+          />
+        </View>
+
+        {typeof onOpenWeeklyReport === 'function' ? (
+          <View style={{ marginTop: 12 }}>
+            <WeeklyReportHeroCard
+              variant="compact"
+              audience="client"
+              isDark={isDark}
+              loading={weeklyReportCardLoading}
+              hasReport={weeklyReportCard.hasReport}
+              weekRangeLabel={weeklyReportCard.weekRangeLabel}
+              onOpenReport={() => onOpenWeeklyReport()}
+            />
+          </View>
+        ) : null}
 
         {(dashboardPendingSessions.length > 0 || dashboardReminderSessions.length > 0) && (
           <View style={{ marginTop: 14 }}>
@@ -2568,7 +2366,7 @@ export const MyDashboardScreen = ({
         ) : (
           <TouchableOpacity
             style={emptyTrainerStyles.touchWrap}
-            onPress={onPressMessage}
+            onPress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
             activeOpacity={0.92}
           >
             <GradientBorderShell isDark={isDark}>
@@ -2915,8 +2713,6 @@ export const MyDashboardScreen = ({
 
         <MoodCard icon={icon('happy-outline')} title="Mood Check-in" subtitle="How are you feeling?"
           storageKey="dashboard_mood" gradientFrom="#06B6D4" gradientTo="#F97316" isDark={isDark} />
-
-        <ComplianceCard isDark={isDark} />
 
         <RatingCard
           icon={icon('star-outline')}

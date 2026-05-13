@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getTrainerDocument, saveTrainerSpreadsheet } from '../services/notesAndFilesService';
+import CoachConnectHeader from './CoachConnectHeader';
+import BottomNavBar from '../../navigation/BottomNavBar';
 
 const MAGENTA = '#FF6B9D';
 const FORMULA_C = '#06B6D4';
@@ -39,6 +41,12 @@ const colLetter = (index) => {
 };
 
 const cellRef = (r, c) => `${colLetter(c)}${r + 1}`;
+
+function headerTitleFromName(name, fallback) {
+  const s = String(name || '').trim();
+  if (!s) return fallback;
+  return s.length > 28 ? `${s.slice(0, 28)}…` : s;
+}
 
 const makeEmptyRows = (rows = 24, cols = 8) =>
   Array.from({ length: rows }, () => Array.from({ length: cols }, () => ''));
@@ -165,6 +173,7 @@ export default function SpreadsheetEditorModal({
   onSaved,
   initialRows,
   initialTitle,
+  trainerNavChrome = null,
 }) {
   const mounted = useRef(false);
   const saveTimer = useRef(null);
@@ -479,21 +488,34 @@ export default function SpreadsheetEditorModal({
   }, [editing, draft, setCell]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={handleBackPress}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, backgroundColor: bg }}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-            {/* Header (matches screenshot) */}
-            <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: gridLine }]}>
-              <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
-                <Ionicons name="chevron-back" size={20} color={text} />
-              </TouchableOpacity>
-              <View style={styles.sheetIcon}>
-                <Ionicons name="document-text-outline" size={16} color={MAGENTA} />
-              </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+          {trainerNavChrome ? (
+            <CoachConnectHeader
+              title={headerTitleFromName(title, 'Spreadsheet')}
+              onBack={handleBackPress}
+              onProfilePress={trainerNavChrome.onProfilePress}
+              onSettingsPress={trainerNavChrome.onSettingsPress}
+            />
+          ) : null}
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={{ flex: 1 }}>
+              {/* Header (matches screenshot) */}
+              <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: gridLine }]}>
+                {!trainerNavChrome ? (
+                  <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
+                    <Ionicons name="chevron-back" size={20} color={text} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 34 }} />
+                )}
+                <View style={styles.sheetIcon}>
+                  <Ionicons name="document-text-outline" size={16} color={MAGENTA} />
+                </View>
               <TextInput
                 value={title}
                 onChangeText={(t) => {
@@ -741,8 +763,21 @@ export default function SpreadsheetEditorModal({
               </ScrollView>
               <Text style={{ color: muted, fontSize: 11 }}>Saved {formatSavedAgo(lastSaved)}</Text>
             </View>
-          </SafeAreaView>
-        </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+
+          {trainerNavChrome ? (
+            <BottomNavBar
+              activeTabKey={trainerNavChrome.activeTabKey || 'files'}
+              onHomePress={trainerNavChrome.onHomePress}
+              onPlusPress={trainerNavChrome.onPlusPress}
+              onVoicePress={trainerNavChrome.onVoicePress}
+              onNutritionPress={trainerNavChrome.onNutritionPress}
+              onWorkoutPress={trainerNavChrome.onWorkoutPress}
+              onMessagesPress={trainerNavChrome.onMessagesPress}
+            />
+          ) : null}
+        </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
   );

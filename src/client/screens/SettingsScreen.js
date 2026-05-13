@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Switch,
-  Linking,
   Platform,
   Alert,
   Modal,
   TextInput,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
@@ -25,10 +26,110 @@ import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAI } from '../../contexts/AIContext';
 
-const SectionHeader = ({ title, colors }) => <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>;
+/** Settings UI — dark pink → dark orange gradient (no purple). */
+const ACCENT_PINK = '#BE185D';
+const ACCENT_ORANGE = '#C2410C';
+const SWITCH_ON = ACCENT_PINK;
+
+/** Sliding pill segment control: animated highlight moves when selection changes. */
+function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
+  const [trackW, setTrackW] = useState(0);
+  const pad = 4;
+  const n = options.length;
+  const activeIndex = useMemo(() => {
+    const i = options.findIndex((o) => o.value === selectedValue);
+    return i >= 0 ? i : 0;
+  }, [options, selectedValue]);
+
+  const segmentW = trackW > 0 ? (trackW - pad * 2) / n : 0;
+  const slide = useRef(new Animated.Value(activeIndex)).current;
+
+  useEffect(() => {
+    Animated.spring(slide, {
+      toValue: activeIndex,
+      useNativeDriver: true,
+      friction: 9,
+      tension: 140,
+      velocity: 0.5,
+    }).start();
+  }, [activeIndex, slide]);
+
+  const translateX =
+    segmentW > 0
+      ? slide.interpolate({
+          inputRange: options.map((_, i) => i),
+          outputRange: options.map((_, i) => i * segmentW),
+        })
+      : slide.interpolate({ inputRange: [0, 1], outputRange: [0, 0] });
+
+  const trackBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+
+  return (
+    <View
+      style={[pillStyles.track, { backgroundColor: trackBg, borderColor: borderCol }]}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+    >
+      {segmentW > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            pillStyles.thumb,
+            {
+              width: segmentW,
+              transform: [{ translateX }],
+              left: pad,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[ACCENT_PINK, ACCENT_ORANGE]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      ) : null}
+      <View style={pillStyles.row}>
+        {options.map((opt) => {
+          const selected = opt.value === selectedValue;
+          return (
+            <Pressable
+              key={String(opt.value)}
+              onPress={() => onChange(opt.value)}
+              style={({ pressed }) => [pillStyles.cell, pressed && { opacity: 0.85 }]}
+            >
+              <Text
+                style={[
+                  pillStyles.cellLabel,
+                  { color: selected ? '#FFFFFF' : colors.textSecondary },
+                  selected && pillStyles.cellLabelSelected,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const SectionHeader = ({ title, colors }) => (
+  <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>
+);
+
+function openSettingsSubScreen(screen, onNavigate) {
+  if (typeof onNavigate === 'function') {
+    onNavigate(screen);
+    return;
+  }
+  Alert.alert('Unavailable', 'This screen could not be opened.');
+}
 
 /** Wall-clock + IANA zone for server-side workout reminder job (matches user's picker). */
 function workoutReminderClockFromDate(d) {
@@ -53,8 +154,9 @@ const SettingsRow = ({ label, value, onPress, children, colors }) => (
 
 export default function SettingsScreen({ onNavigate }) {
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
+  /** Pill position: explicit light/dark, or match current UI when theme follows system. */
+  const appearanceValue = themeMode === 'system' ? (isDark ? 'dark' : 'light') : themeMode;
   const { aiEnabled, toggleAI } = useAI();
-  const [weightUnit, setWeightUnit] = useState('lbs');
   const [workoutReminders, setWorkoutReminders] = useState(false);
   const [reminderTime, setReminderTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -73,7 +175,6 @@ export default function SettingsScreen({ onNavigate }) {
       getDoc(userRef).then(async (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setWeightUnit(data.weightUnit || 'lbs');
           setWorkoutReminders(data.workoutReminder?.enabled || false);
           if (data.workoutReminder?.time) {
             setReminderTime(new Date(data.workoutReminder.time));
@@ -100,18 +201,6 @@ export default function SettingsScreen({ onNavigate }) {
       });
     }
   }, [user]);
-
-  const handleWeightUnitToggle = async (value) => {
-    setWeightUnit(value);
-    if (user) {
-      try {
-        await setDoc(doc(db, 'users', user.uid), { weightUnit: value }, { merge: true });
-      } catch (error) {
-        console.error('Error updating weight unit: ', error);
-        Alert.alert('Error', 'Could not save your preference. Please try again.');
-      }
-    }
-  };
 
   const scheduleWorkoutReminder = async (time) => {
     await Notifications.cancelAllScheduledNotificationsAsync();
@@ -243,41 +332,41 @@ export default function SettingsScreen({ onNavigate }) {
           onProfilePress={onNavigate ? () => onNavigate('profile') : null}
           onSettingsPress={() => {}}
         />
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
         <SectionHeader title="APPEARANCE" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Light Mode" onPress={() => toggleTheme('light')} colors={colors}>
-            <View style={styles.modeIndicator}>
-              <Text style={[styles.modeText, { color: colors.textSecondary }, themeMode === 'light' && styles.activeMode]}>Light</Text>
-              {themeMode === 'light' && <View style={styles.activeDot} />}
-            </View>
-          </SettingsRow>
-          <SettingsRow label="Dark Mode" onPress={() => toggleTheme('dark')} colors={colors}>
-            <View style={styles.modeIndicator}>
-              <Text style={[styles.modeText, { color: colors.textSecondary }, themeMode === 'dark' && styles.activeMode]}>Dark</Text>
-              {themeMode === 'dark' && <View style={styles.activeDot} />}
-            </View>
-          </SettingsRow>
+          <View style={styles.appearanceBlock}>
+            <Text style={[styles.blockTitle, { color: colors.text }]}>Theme</Text>
+            <Text style={[styles.blockSubtitle, { color: colors.textSecondary }]}>
+              {themeMode === 'system'
+                ? 'Following your device — tap to set light or dark.'
+                : themeMode === 'dark'
+                  ? 'Dark mode is on.'
+                  : 'Light mode is on.'}
+            </Text>
+            <SegmentedPills
+              options={[
+                { value: 'light', label: 'Light' },
+                { value: 'dark', label: 'Dark' },
+              ]}
+              selectedValue={appearanceValue}
+              onChange={(mode) => toggleTheme(mode)}
+              isDark={isDark}
+              colors={colors}
+            />
+          </View>
         </View>
 
         <SectionHeader title="PREFERENCES" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Weight Units" colors={colors}>
-            <View style={{ flexDirection: 'row' }}>
-              <TouchableOpacity onPress={() => handleWeightUnitToggle('lbs')} style={[styles.unitButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }, weightUnit === 'lbs' && styles.unitButtonActive]}>
-                <Text style={[styles.unitButtonText, { color: colors.text }, weightUnit === 'lbs' && styles.unitButtonTextActive]}>LBS</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleWeightUnitToggle('kg')} style={[styles.unitButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }, weightUnit === 'kg' && styles.unitButtonActive]}>
-                <Text style={[styles.unitButtonText, { color: colors.text }, weightUnit === 'kg' && styles.unitButtonTextActive]}>KG</Text>
-              </TouchableOpacity>
-            </View>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <SettingsRow label="Workout Reminders" colors={colors}>
             <Switch
               value={workoutReminders}
               onValueChange={handleReminderToggle}
-              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: '#FF6B9D' }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: SWITCH_ON }}
               thumbColor="#FFFFFF"
             />
           </SettingsRow>
@@ -287,17 +376,17 @@ export default function SettingsScreen({ onNavigate }) {
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.row}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={[styles.rowLabel, { color: colors.text }]}>AI-Powered Features</Text>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>AI-powered features</Text>
               <Text style={[styles.aiDescription, { color: colors.textSecondary }]}>
                 {aiEnabled
-                  ? 'AI Fitness Coach and Workout Generator are enabled.'
-                  : 'AI features are disabled. Use trainer-powered coaching.'}
+                  ? 'AI Fitness Coach and workout generator are on.'
+                  : 'Off — your coach and manual tools still work.'}
               </Text>
             </View>
             <Switch
               value={!!aiEnabled}
               onValueChange={(v) => toggleAI(v)}
-              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: '#FF6B9D' }}
+              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: SWITCH_ON }}
               thumbColor="#FFFFFF"
             />
           </View>
@@ -320,30 +409,48 @@ export default function SettingsScreen({ onNavigate }) {
             style={[styles.row, { justifyContent: 'space-between' }]}
             disabled={!user}
           >
-            <Text style={[styles.rowLabel, { color: '#FF3B30', fontWeight: '700' }]}>Delete Account</Text>
+            <Text style={[styles.rowLabel, { color: '#F97316', fontWeight: '700' }]}>Delete Account</Text>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
         </View>
 
         <SectionHeader title="SUPPORT" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Contact Support" onPress={() => Linking.openURL('mailto:support@coachconnect.ai?subject=CoachConnect%20Support%20Request')} colors={colors}>
+          <SettingsRow label="Contact Support" onPress={() => openSettingsSubScreen('contactSupport', onNavigate)} colors={colors}>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Report a Bug" onPress={() => Linking.openURL('mailto:support@coachconnect.ai?subject=Bug%20Report%20%E2%80%94%20CoachConnect&body=Describe%20the%20bug%20here:')} colors={colors}>
+          <SettingsRow label="Report a Bug" onPress={() => openSettingsSubScreen('bugReport', onNavigate)} colors={colors}>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="FAQ" onPress={() => Linking.openURL('https://coachconnect.ai/faq')} colors={colors}>
+          <SettingsRow label="FAQ" onPress={() => openSettingsSubScreen('helpFaq', onNavigate)} colors={colors}>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Terms of Service" onPress={() => Linking.openURL('https://coachconnect.ai/terms')} colors={colors}>
+          <SettingsRow label="Terms of Service" onPress={() => openSettingsSubScreen('terms', onNavigate)} colors={colors}>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Privacy Policy" onPress={() => Linking.openURL('https://coachconnect.ai/privacy')} colors={colors}>
+          <SettingsRow label="Privacy Policy" onPress={() => openSettingsSubScreen('privacy', onNavigate)} colors={colors}>
+            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+          </SettingsRow>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <SettingsRow
+            label="Privacy & data rights"
+            onPress={() =>
+              Alert.alert(
+                'Privacy & your data',
+                'Use Delete Account (above) to permanently remove your account from this app. Details and any limits are in the Privacy Policy.\n\nFor a copy of your data, corrections, or other privacy requests (including under laws like the GDPR), contact us through Contact Support. We may ask you to verify your identity.\n\nThis app cannot provide legal advice; work with counsel if you need a formal compliance review.',
+                [
+                  { text: 'Privacy Policy', onPress: () => openSettingsSubScreen('privacy', onNavigate) },
+                  { text: 'Contact Support', onPress: () => openSettingsSubScreen('contactSupport', onNavigate) },
+                  { text: 'Close', style: 'cancel' },
+                ]
+              )
+            }
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -365,8 +472,19 @@ export default function SettingsScreen({ onNavigate }) {
               value={newPassword}
               onChangeText={setNewPassword}
             />
-            <TouchableOpacity style={styles.confirmButton} onPress={handleChangePassword}>
-              <Text style={styles.confirmButtonText}>Confirm</Text>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={handleChangePassword}
+              style={styles.confirmButtonOuter}
+            >
+              <LinearGradient
+                colors={[ACCENT_PINK, ACCENT_ORANGE]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.confirmButtonGradient}
+              >
+                <Text style={styles.confirmButtonText}>Confirm</Text>
+              </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setPasswordModalVisible(false)}>
               <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
@@ -434,34 +552,85 @@ export default function SettingsScreen({ onNavigate }) {
   );
 }
 
+const pillStyles = StyleSheet.create({
+  track: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    position: 'relative',
+    overflow: 'hidden',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  thumb: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    shadowColor: ACCENT_PINK,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  cell: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+  },
+  cellLabel: { fontSize: 14, fontWeight: '700' },
+  cellLabelSelected: { fontWeight: '800' },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingVertical: 24 },
-  sectionHeader: { textTransform: 'uppercase', fontSize: 11, letterSpacing: 2, marginBottom: 8, marginLeft: 16 },
-  sectionContainer: { borderRadius: 16, borderWidth: 1, marginBottom: 24, overflow: 'hidden' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  rowLabel: { fontSize: 14 },
-  aiDescription: { fontSize: 12, marginTop: 6, lineHeight: 16 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32 },
+  sectionHeader: {
+    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  sectionContainer: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 22,
+    overflow: 'hidden',
+  },
+  appearanceBlock: { padding: 16 },
+  blockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4, letterSpacing: -0.2 },
+  blockSubtitle: { fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 52,
+  },
+  rowLabel: { fontSize: 15, fontWeight: '600' },
+  aiDescription: { fontSize: 13, marginTop: 6, lineHeight: 18 },
   rowValueContainer: { flexDirection: 'row', alignItems: 'center' },
   rowValue: { fontSize: 14 },
-  chevron: { fontSize: 20, marginLeft: 8 },
-  divider: { height: 1, marginHorizontal: 16 },
-  unitButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginLeft: 8 },
-  unitButtonActive: { backgroundColor: '#FF6B9D' },
-  unitButtonText: { fontSize: 12, fontWeight: 'bold' },
-  unitButtonTextActive: { color: 'white' },
+  chevron: { fontSize: 22, marginLeft: 8, fontWeight: '300' },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
   modalContainer: { flex: 1, justifyContent: 'flex-end' },
   bottomSheet: { padding: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   bottomSheetTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 16 },
   passwordInput: { borderRadius: 8, padding: 12, marginBottom: 16, borderWidth: 1 },
-  confirmButton: { backgroundColor: '#FF6B9D', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  confirmButtonOuter: { borderRadius: 10, overflow: 'hidden', marginBottom: 8 },
+  confirmButtonGradient: { paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center' },
   confirmButtonText: { color: 'white', fontWeight: 'bold' },
   cancelButton: { padding: 16, alignItems: 'center' },
   cancelButtonText: { },
-  modeIndicator: { flexDirection: 'row', alignItems: 'center' },
-  modeText: { fontSize: 14, fontWeight: '500' },
-  activeMode: { color: '#FF6B9D' },
-  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B9D', marginLeft: 8 },
   deleteConfirmButton: { backgroundColor: '#FF3B30', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
   deleteWarningText: { fontSize: 13, lineHeight: 18, textAlign: 'center', marginBottom: 14 },
   deleteErrorBox: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },

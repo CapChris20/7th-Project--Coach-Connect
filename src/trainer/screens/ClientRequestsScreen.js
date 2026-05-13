@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,15 +20,22 @@ import TrainerMarketplaceModal from '../components/TrainerMarketplaceModal';
 const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 
 export default function ClientRequestsScreen({ onClose, onProfilePress, onSettingsPress, onClientAdded, embedInLayout }) {
-  const { colors, spacing, isDark } = useTheme();
+  const { isDark } = useTheme();
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = useTrainerPendingRequests(trainerUid);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  const handleClientAdded = async () => {
+  const textColor = isDark ? '#ffffff' : '#1a0a2e';
+  const mutedColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(26,10,46,0.55)';
+
+  const syncListWithParent = useCallback(async () => {
     setSelectedRequest(null);
     await refresh();
-    await onClientAdded?.(); // Refresh client list in parent so dropdown updates
+    await onClientAdded?.();
+  }, [refresh, onClientAdded]);
+
+  const handleClientAdded = async () => {
+    await syncListWithParent();
   };
 
   const renderRequestItem = ({ item }) => {
@@ -84,12 +92,42 @@ export default function ClientRequestsScreen({ onClose, onProfilePress, onSettin
           </TouchableOpacity>
         </View>
       ) : requests.length === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="mail-outline" size={64} color="rgba(255,255,255,0.30)" />
-          <Text style={[styles.emptyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>No pending requests</Text>
-          <Text style={[styles.emptySubtext, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }]}>
-            When clients send you a request, they'll appear here.
-          </Text>
+        <View style={styles.emptyWrap}>
+          <View
+            style={[
+              styles.emptyCardShell,
+              {
+                backgroundColor: isDark ? 'rgba(12,12,18,0.96)' : 'rgba(255,255,255,0.98)',
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
+              },
+              Platform.select({
+                ios: {
+                  shadowColor: '#6366f1',
+                  shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.14,
+                  shadowRadius: 12,
+                },
+                android: { elevation: 8 },
+              }),
+            ]}
+          >
+            <LinearGradient
+              colors={['#fb7185', '#a78bfa']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.emptyTopAccent}
+            />
+            <View style={[styles.emptyInner, { borderColor: 'transparent' }]}>
+              <LinearGradient colors={['#7C3AED', '#EC4899']} style={styles.emptyIconGrad}>
+                <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
+              </LinearGradient>
+              <Text style={[styles.emptyKicker, { color: mutedColor }]}>INBOX</Text>
+              <Text style={[styles.emptyTitle, { color: textColor }]}>You are all caught up</Text>
+              <Text style={[styles.emptySubtext, { color: mutedColor }]}>
+                When a client sends a request from the app, it will show up in this list. Open a row to accept or decline.
+              </Text>
+            </View>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -107,6 +145,7 @@ export default function ClientRequestsScreen({ onClose, onProfilePress, onSettin
         trainerUid={trainerUid}
         onClose={() => setSelectedRequest(null)}
         onClientAdded={handleClientAdded}
+        onRequestRejected={syncListWithParent}
       />
     </>
   );
@@ -156,8 +195,46 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 14, textAlign: 'center', marginBottom: 16 },
   retryButton: { paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#7c3aed', borderRadius: 12 },
   retryText: { color: '#fff', fontWeight: '600' },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  emptySubtext: { fontSize: 14, textAlign: 'center' },
+  emptyWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  emptyCardShell: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  emptyTopAccent: {
+    height: 4,
+    width: '100%',
+  },
+  emptyInner: {
+    paddingHorizontal: 22,
+    paddingVertical: 26,
+    alignItems: 'center',
+    borderTopWidth: 0,
+  },
+  emptyIconGrad: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    marginBottom: 6,
+  },
+  emptyTitle: { fontSize: 20, fontWeight: '900', marginBottom: 10, textAlign: 'center', letterSpacing: -0.35 },
+  emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 21, maxWidth: 320 },
   listContent: { padding: 16, paddingBottom: 40 },
   requestCard: {
     flexDirection: 'row',

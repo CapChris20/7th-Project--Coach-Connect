@@ -8,7 +8,8 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "verify:weekly": "node scripts/verifyWeeklySummaryJob.js"
   },
   "engines": {
     "node": "20"
@@ -19,7 +20,6 @@
     "express": "^4.18.2",
     "ws": "^8.16.0",
     "cors": "^2.8.5",
-    "@anthropic-ai/sdk": "^0.32.0",
     "moment-timezone": "^0.5.45"
   },
   "private": true

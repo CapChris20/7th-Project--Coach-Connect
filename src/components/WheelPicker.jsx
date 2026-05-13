@@ -6,8 +6,10 @@ const ITEM_H = 44;
 
 const COLORS = {
   dark: {
+    /** Wheel row values — full white reads better on tinted glass than low-opacity #000 */
     text: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.55)',
+    /** Column labels (DAY, HOUR, …) — high contrast on dark */
+    textSecondary: 'rgba(255,255,255,0.9)',
     glass: 'rgba(255,255,255,0.05)',
     glassBorder: 'rgba(255,255,255,0.1)',
     fadeEdge: '#0A0A0F',
@@ -15,14 +17,20 @@ const COLORS = {
     accentBandBg: 'rgba(255,107,157,0.14)',
   },
   light: {
-    text: '#000000',
-    textSecondary: 'rgba(0,0,0,0.55)',
+    text: '#0F172A',
+    textSecondary: 'rgba(15,23,42,0.88)',
     glass: 'rgba(0,0,0,0.03)',
     glassBorder: 'rgba(0,0,0,0.1)',
     fadeEdge: '#FFFFFF',
     accent: '#FF6B9D',
     accentBandBg: 'rgba(255,107,157,0.12)',
   },
+};
+
+/** Min opacity for off-center rows — avoids “muddy” brown-gray on warm dark glass */
+const WHEEL_OPACITY_RANGE = {
+  dark: [0.62, 0.86, 1, 0.86, 0.62],
+  light: [0.52, 0.8, 1, 0.8, 0.52],
 };
 
 export const WheelPicker = ({
@@ -32,8 +40,26 @@ export const WheelPicker = ({
   theme = 'dark',
   label,
   height = ITEM_H * 5,
+  /** Optional overrides (e.g. session form warm pink + orange) */
+  glass,
+  glassBorder,
+  fadeEdge,
+  accent,
+  accentBandBg,
+  /** Optional label color (defaults to theme textSecondary) */
+  labelColor,
 }) => {
-  const colors = COLORS[theme] || COLORS.dark;
+  const base = COLORS[theme] || COLORS.dark;
+  const colors = {
+    ...base,
+    ...(glass !== undefined ? { glass } : {}),
+    ...(glassBorder !== undefined ? { glassBorder } : {}),
+    ...(fadeEdge !== undefined ? { fadeEdge } : {}),
+    ...(accent !== undefined ? { accent } : {}),
+    ...(accentBandBg !== undefined ? { accentBandBg } : {}),
+  };
+  const opacityKey = theme === 'light' ? 'light' : 'dark';
+  const opacityOut = WHEEL_OPACITY_RANGE[opacityKey];
   const scrollRef = useRef(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -61,7 +87,9 @@ export const WheelPicker = ({
 
   return (
     <View style={styles.wrap}>
-      {label ? <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text> : null}
+      {label ? (
+        <Text style={[styles.label, { color: labelColor ?? colors.textSecondary }]}>{label}</Text>
+      ) : null}
 
       <View
         style={[
@@ -122,7 +150,7 @@ export const WheelPicker = ({
             ];
             const opacity = scrollY.interpolate({
               inputRange,
-              outputRange: [0.25, 0.55, 1, 0.55, 0.25],
+              outputRange: opacityOut,
               extrapolate: 'clamp',
             });
             const scale = scrollY.interpolate({

@@ -1,5 +1,5 @@
 import { Camera } from 'expo-camera';
-import { Audio } from 'expo-audio';
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 

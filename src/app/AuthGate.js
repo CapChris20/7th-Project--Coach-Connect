@@ -28,6 +28,11 @@ import { clearPushTokensForUid } from '../shared/services/notificationsService';
 
 const getProfileCacheKey = (uid) => `auth_profile_${uid}`;
 
+/** Single source for routing + onboarding; avoids null/undefined flashing the wrong shell. */
+function normalizeAppRole(role) {
+  return String(role || '').toLowerCase().trim() === 'trainer' ? 'trainer' : 'client';
+}
+
 /** Only force onboarding when explicitly incomplete — missing field = legacy users who already use the app. */
 function profileNeedsOnboarding(profile) {
   if (!profile || typeof profile !== 'object') return false;
@@ -474,14 +479,15 @@ export default function AuthGate() {
       <AuthScreen
         onSignupSuccess={(userData, role) => {
           setUser(userData);
-          if (role) setUserRole(role);
+          const r = normalizeAppRole(role);
+          setUserRole(r);
           setShowOnboarding(true); // New users always go to onboarding
-            if (userData?.uid && role) {
-              AsyncStorage.setItem(
-                getProfileCacheKey(userData.uid),
-                JSON.stringify({ uid: userData.uid, role, onboardingCompleted: false })
-              ).catch(() => {});
-            }
+          if (userData?.uid) {
+            AsyncStorage.setItem(
+              getProfileCacheKey(userData.uid),
+              JSON.stringify({ uid: userData.uid, role: r, onboardingCompleted: false })
+            ).catch(() => {});
+          }
         }}
         onLoginSuccess={(userData) => {
           setUser(userData);
@@ -500,17 +506,18 @@ export default function AuthGate() {
   if (showOnboarding) {
     return (
       <OnboardingScreen
-        role={userRole}
+        role={normalizeAppRole(userRole)}
         onComplete={(chosenRole, updateData) => {
-          if (chosenRole) setUserRole(chosenRole);
+          if (chosenRole) setUserRole(normalizeAppRole(chosenRole));
           if (updateData) setUserData(updateData);
           if (user?.uid && chosenRole) {
+            const r = normalizeAppRole(chosenRole);
             AsyncStorage.setItem(
               getProfileCacheKey(user.uid),
               JSON.stringify({
                 uid: user.uid,
                 ...(updateData || {}),
-                role: chosenRole,
+                role: r,
                 onboardingCompleted: true,
               })
             ).catch(() => {});
@@ -522,33 +529,8 @@ export default function AuthGate() {
   }
 
   // User is authenticated - route to appropriate app based on role
-  if (userRole === 'trainer') {
+  if (normalizeAppRole(userRole) === 'trainer') {
     return <TrainerApp user={user} />;
-  }
-  
-  // If role is null/undefined, we need to handle this properly
-  if (userRole === null) {
-    return (
-      <OnboardingScreen
-        role={userRole}
-        onComplete={(chosenRole, updateData) => {
-          if (chosenRole) setUserRole(chosenRole);
-          if (updateData) setUserData(updateData);
-          if (user?.uid && chosenRole) {
-            AsyncStorage.setItem(
-              getProfileCacheKey(user.uid),
-              JSON.stringify({
-                uid: user.uid,
-                ...(updateData || {}),
-                role: chosenRole,
-                onboardingCompleted: true,
-              })
-            ).catch(() => {});
-          }
-          setShowOnboarding(false);
-        }}
-      />
-    );
   }
 
   // Refetch user data (e.g. after trainerId reconciliation in ClientApp)
@@ -593,6 +575,10 @@ export default function AuthGate() {
     }
   };
 
-  // Default to client app
-  return <ClientApp user={user} userData={userData} onRefetchUserData={refetchUserData} />;
+  // Default to client app (includes unknown / missing role — same as Firestore bootstrap fallback)
+  const clientPayload =
+    userData && typeof userData === 'object'
+      ? { ...userData, role: normalizeAppRole(userData.role ?? userRole) }
+      : { uid: user?.uid, role: 'client' };
+  return <ClientApp user={user} userData={clientPayload} onRefetchUserData={refetchUserData} />;
 }

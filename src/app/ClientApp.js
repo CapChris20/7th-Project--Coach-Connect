@@ -34,7 +34,7 @@ import {
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaskedView from '@react-native-masked-view/masked-view';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
@@ -64,9 +64,14 @@ import { subscribeToUnreadCount } from '../ai/services/conversationService';
 import { getOrCreateConversation, sendClientRequest } from '../ai/services/trainerMessaging';
 import AIChatHomeScreen from '../aiChat/screens/AIChatHomeScreen';
 import AIChatScreen from '../aiChat/screens/AIChatScreen';
-import TrainerSearchScreen from '../ai/screens/TrainerSearchScreen';
+import TrainerSearchScreen, { TrainerProfileSheet } from '../ai/screens/TrainerSearchScreen';
 import MyDashboardScreen from '../client/screens/MyDashboardScreen';
 import SettingsScreen from '../client/screens/SettingsScreen';
+import HelpFAQScreen from '../settings/screens/HelpFAQScreen';
+import TermsOfServiceScreen from '../settings/screens/TermsOfServiceScreen';
+import PrivacyPolicyScreen from '../settings/screens/PrivacyPolicyScreen';
+import ContactSupportScreen from '../settings/screens/ContactSupportScreen';
+import BugReportScreen from '../settings/screens/BugReportScreen';
 import { AppNavigationProvider } from '../navigation/AppNavigationContext';
 import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/services/nutritionService';
@@ -75,7 +80,7 @@ import NutritionContainer from '../nutrition/screens/NutritionContainer';
 import ProfileScreen from '../profile/screens/ProfileScreen';
 import AddNotesFilesModal from '../shared/components/AddNotesFilesModal';
 import AppLoadingScreen from '../shared/components/AppLoadingScreen';
-import CoachConnectHeader from '../shared/components/AnatroxHeader';
+import CoachConnectHeader from '../shared/components/CoachConnectHeader';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
 import DocumentViewerModal from '../shared/components/DocumentViewerModal';
 import EmbedWebViewModal from '../shared/components/EmbedWebViewModal';
@@ -93,6 +98,7 @@ import DashboardHeroCard from '../client/components/DashboardHeroCard';
 import { MyFilesSection } from '../client/components/files/MyFilesSection';
 import { TrainerSharedSection } from '../client/components/files/TrainerSharedSection';
 import { NotesFromTrainerSection } from '../client/components/files/NotesFromTrainerSection';
+import FilesNotesSectionPremium from '../shared/components/FilesNotesSectionPremium';
 import {
   persistPushTokensForUid,
   setNotificationTapHandler,
@@ -112,10 +118,9 @@ import ConversationsListScreen from '../trainer/screens/ConversationsListScreen'
 import PhotoGalleryScreen from '../trainer/screens/PhotoGalleryScreen';
 import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
 import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
+import TrainerWeeklyReportScreen from '../trainer/screens/TrainerWeeklyReportScreen';
 import { fetchWorkoutHistory, getActiveWorkout } from '../workouts/services/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
-import TrainerProfileCardModal from '../client/components/TrainerProfileCardModal';
-
 import { clearAllUserData } from '../utils/dataCacheCleanup';
 
 const CARD_GAP = 16;
@@ -126,15 +131,12 @@ const STATS_ROW_PAD_H = 40;
 /** Gap between cards in stat rows — keep in sync with `styles.statsRowContent.gap`. */
 const STATS_ROW_CARD_GAP = 12;
 
-// Import macro icons
-const ProteinIcon = require('../assets/icons/Protein.png');
-const CarbsIcon = require('../assets/icons/Carbs.png');
-const FatsIcon = require('../assets/icons/Fats.png');
 
 // Wellness row empty-state Lotties
 const LOTTIE_SORENESS_EMPTY = require('../assets/sad reaction.json');
 const LOTTIE_ENERGY_EMPTY = require('../assets/Run Hamster... run.json');
 const LOTTIE_STRESS_EMPTY = require('../assets/Stressed Employee At Work.json');
+const LOTTIE_NUTRITION_EMPTY = require('../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json');
 const WORKOUT_EMPTY_ICON = require('../assets/icons/workout.png');
 
 // Builds light/dark style tokens from `isDark` (theme state). 
@@ -206,7 +208,7 @@ const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent })
 
   return (
     <View style={[styles.statCardShadow, { shadowColor: shadow }, style]}>
-      <BlurView intensity={28} tint={isDark ? 'dark' : 'light'} style={styles.statCardBlur}>
+      <BlurBackdropPlate intensity={28} tint={isDark ? 'dark' : 'light'} style={styles.statCardBlur}>
         <View
           style={[
             styles.statCardInner,
@@ -219,7 +221,7 @@ const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent })
         >
           {children}
         </View>
-      </BlurView>
+      </BlurBackdropPlate>
     </View>
   );
 };
@@ -506,7 +508,7 @@ const wellnessKicker = {
   letterSpacing: 0.6,
   textAlign: 'center',
   width: '100%',
-};
+}; 
 const wellnessNumber = {
   fontSize: 30,
   fontWeight: '800',
@@ -615,9 +617,9 @@ const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
   const lottieSize = Math.min(isWide ? 150 : 130, Math.max(96, Math.round((width - 32) * 0.36)));
   const bg = isDark ? 'rgba(11,11,18,0.92)' : 'rgba(255,255,255,0.70)';
   const borderGradient = isDark
-    ? ['rgba(255,107,157,0.65)', 'rgba(192,132,252,0.55)', 'rgba(6,182,212,0.35)']
-    : ['#FF6B9D', '#C084FC'];
-  const cardShadow = isDark ? '#000000' : '#FF6B9D';
+    ? ['rgba(190,24,93,0.72)', 'rgba(194,65,12,0.58)']
+    : ['#BE185D', '#C2410C'];
+  const cardShadow = isDark ? '#000000' : '#C2410C';
   const firstName = String(userName || 'User').trim().split(/\s+/)[0] || 'User';
 
   return (
@@ -626,7 +628,7 @@ const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
         styles.heroOuter,
         {
           shadowColor: cardShadow,
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,107,157,0.18)',
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(194,65,12,0.22)',
           backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'transparent',
         },
       ]}
@@ -698,7 +700,7 @@ const AuroraHeroBanner = ({ isDark, userId, userName = 'User' }) => {
                   end={{ x: 1, y: 1 }}
                   style={styles.heroInlineQuoteBorder}
                 >
-                  <DailyQuotePill userId={userId} isDarkOverride={isDark} maxLines={3} />
+                  <DailyQuotePill userId={userId} isDarkOverride={isDark} />
                 </LinearGradient>
               </View>
             </View>
@@ -1137,45 +1139,53 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
       <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Nutrition Today</Text>
       <View style={styles.nutritionGradientBorder}>
         <LinearGradient
-          colors={['#E91E63', '#FF6B9D', '#C084FC']}
+          colors={['#A78BFA', '#E879C8', '#F0ABFC']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
         <View style={[styles.nutritionCard, !isDark && styles.nutritionCardLight]}>
         {!hasLoggedNutrition ? (
-          <View style={{ alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              gap: 12,
+            }}
+          >
             <LottieView
-              source={require('../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json')}
+              source={LOTTIE_NUTRITION_EMPTY}
               autoPlay
               loop
-              style={{ width: compact ? 150 : 160, height: compact ? 150 : 160 }}
+              style={{ width: 100, height: 100 }}
             />
-            <Text
-              style={{
-                fontSize: 15,
-                fontWeight: '800',
-                color: textPrimary,
-                textAlign: 'center',
-                marginTop: 4,
-                letterSpacing: -0.2,
-              }}
-            >
-              No meals logged yet
-            </Text>
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '600',
-                color: textMuted,
-                textAlign: 'center',
-                marginTop: 6,
-                lineHeight: 18,
-                paddingHorizontal: 12,
-              }}
-            >
-              Log food in Nutrition and your macros will show up here with the rings.
-            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '800',
+                  color: textPrimary,
+                  textAlign: 'left',
+                  letterSpacing: -0.2,
+                }}
+              >
+                No meals logged yet
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '500',
+                  color: textMuted,
+                  textAlign: 'left',
+                  marginTop: 6,
+                  lineHeight: 19,
+                }}
+              >
+                Open Nutrition to log food — macros and rings will show here.
+              </Text>
+            </View>
           </View>
         ) : (
           <>
@@ -1419,6 +1429,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [showConversationsList, setShowConversationsList] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelpFAQ, setShowHelpFAQ] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showContactSupport, setShowContactSupport] = useState(false);
+  const [showBugReport, setShowBugReport] = useState(false);
   const [showWorkoutPlanGenerator, setShowWorkoutPlanGenerator] = useState(false);
   const [showWorkoutOnboarding, setShowWorkoutOnboarding] = useState(false);
   const [showNutrition, setShowNutrition] = useState(false);
@@ -1431,6 +1446,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [showTrainerSearch, setShowTrainerSearch] = useState(false);
   const [showMyDashboard, setShowMyDashboard] = useState(false);
+  const [showClientWeeklyReport, setShowClientWeeklyReport] = useState(false);
   const [showAddNotesFilesModal, setShowAddNotesFilesModal] = useState(false);
   const [showTrainerSharedFilesModal, setShowTrainerSharedFilesModal] = useState(false);
   const [showClientFilesScreen, setShowClientFilesScreen] = useState(false);
@@ -1452,6 +1468,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   /** null = closed, 'home' = AI hub, object = active thread { prefill?, sessionId? } */
   const [aiChatState, setAiChatState] = useState(null);
   const openAIChatHome = useCallback(() => setAiChatState('home'), []);
+  /** Progress Photos: bottom nav "+" calls into gallery (picker + Firebase). Cleared when gallery unmounts. */
+  const progressGalleryAddRef = useRef(null);
+  const registerProgressPhotoAddHandler = useCallback((fn) => {
+    progressGalleryAddRef.current = typeof fn === 'function' ? fn : null;
+  }, []);
 
   // Home screen data state
   const [refreshing, setRefreshing] = useState(false);
@@ -1462,7 +1483,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [calorieGoal, setCalorieGoal] = useState(2000);
   const [nutritionGoals, setNutritionGoals] = useState(null);
-  const [streak, setStreak] = useState(0);
+  const [, setStreak] = useState(0);
   const [workoutCount, setWorkoutCount] = useState(0);
   const [clientCount, setClientCount] = useState(0);
   const [programCount, setProgramCount] = useState(0);
@@ -1621,6 +1642,98 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
     reconcileTrainerId();
   }, [user?.uid, userData?.trainerId, userData?.role, onRefetchUserData]);
+
+  /**
+   * Live trainer link via flat `trainer_client_links` (written when a trainer accepts).
+   * Note: `collectionGroup('clients')` + `where(documentId(), '==', uid)` is invalid — Firestore requires
+   * a full path for documentId() on collection groups (odd segment count error on device).
+   */
+  useEffect(() => {
+    if (!db || !user?.uid || userData?.role !== 'client') return undefined;
+
+    const clientUid = user.uid;
+    let cancelled = false;
+
+    const linksQuery = query(collection(db, 'trainer_client_links'), where('clientId', '==', clientUid));
+
+    const unsub = onSnapshot(
+      linksQuery,
+      async (snap) => {
+        if (cancelled) return;
+
+        if (snap.empty) {
+          setTrainerData(null);
+          return;
+        }
+
+        const activeDocs = snap.docs.filter((d) => {
+          const st = d.data()?.status;
+          if (st == null || st === '') return true;
+          return st === 'active';
+        });
+        if (!activeDocs.length) {
+          setTrainerData(null);
+          return;
+        }
+
+        const linkDoc = activeDocs[0];
+        const trainerUid = String(linkDoc.data()?.trainerId || '').trim();
+        if (!trainerUid || trainerUid === clientUid) {
+          setTrainerData(null);
+          return;
+        }
+
+        try {
+          const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
+          if (!trainerDoc.exists()) {
+            setTrainerData(null);
+            return;
+          }
+          const tData = trainerDoc.data();
+          if (tData?.role !== 'trainer') {
+            setTrainerData(null);
+            return;
+          }
+          setTrainerData({ id: trainerUid, ...tData });
+
+          try {
+            const userRef = doc(db, 'users', clientUid);
+            const uSnap = await getDoc(userRef);
+            const cur = uSnap.exists() ? uSnap.data() : {};
+            if (!cur?.trainerId || String(cur.trainerId) !== String(trainerUid)) {
+              await updateDoc(userRef, {
+                trainerId: trainerUid,
+                trainerName: tData.name || tData.displayName || 'Trainer',
+                trainerAssignedAt: serverTimestamp(),
+              });
+              onRefetchUserData?.();
+            }
+          } catch (e) {
+            console.warn('Mirror trainerId to client user doc skipped:', e?.message || e);
+          }
+        } catch (e) {
+          console.warn('trainer_client_links listener handler:', e?.message || e);
+        }
+      },
+      (err) => {
+        console.warn('trainer_client_links listener:', err?.code || err?.message || err);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      try {
+        unsub();
+      } catch (_) {}
+    };
+  }, [db, user?.uid, userData?.role, onRefetchUserData]);
+
+  // If a CRM link appears while "Find a Trainer" is open, leave that screen — they already have a coach.
+  useEffect(() => {
+    if (trainerData?.id && showTrainerSearch) {
+      setShowTrainerSearch(false);
+    }
+  }, [trainerData?.id, showTrainerSearch]);
 
   // Fetch home screen data
   useEffect(() => {
@@ -2286,8 +2399,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   };
 
   const handleCloseMessaging = () => {
+    setShowTrainerMessaging(false);
+    setShowConversationsList(false);
     setShowNutrition(false);
-    setShowMyDashboard(false);
+    setShowMyDashboard(true);
     setSelectedConversation(null);
   };
 
@@ -2305,9 +2420,15 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     setShowConversationsList(false);
     setShowProfile(false);
     setShowSettings(false);
+    setShowHelpFAQ(false);
+    setShowTermsOfService(false);
+    setShowPrivacyPolicy(false);
+    setShowContactSupport(false);
+    setShowBugReport(false);
     setShowWorkoutPlanGenerator(false);
     setShowWorkoutOnboarding(false);
     setShowNutrition(false);
+    setShowClientWeeklyReport(false);
     setShowMyDashboard(false);
     setSelectedConversation(null);
     setShowPlanViewer(false);
@@ -2348,6 +2469,31 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     if (screen === 'settings' || screen === 'SettingsScreen') {
       handleHomePress();
       setShowSettings(true);
+      return;
+    }
+    if (screen === 'helpFaq') {
+      setShowSettings(false);
+      setShowHelpFAQ(true);
+      return;
+    }
+    if (screen === 'terms') {
+      setShowSettings(false);
+      setShowTermsOfService(true);
+      return;
+    }
+    if (screen === 'privacy') {
+      setShowSettings(false);
+      setShowPrivacyPolicy(true);
+      return;
+    }
+    if (screen === 'contactSupport') {
+      setShowSettings(false);
+      setShowContactSupport(true);
+      return;
+    }
+    if (screen === 'bugReport') {
+      setShowSettings(false);
+      setShowBugReport(true);
       return;
     }
         if (screen === 'nutrition') {
@@ -2402,6 +2548,55 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   };
 
   // Screen navigation checks (messages screens render inside main layout so header/navbar stay visible)
+  if (showClientWeeklyReport && user?.uid) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <TrainerWeeklyReportScreen
+            clientId={user.uid}
+            clientName={userData?.firstName || user?.displayName || 'You'}
+            isClientSelfView
+            isDark={isDark}
+            onClose={() => setShowClientWeeklyReport(false)}
+            onHomePress={() => {
+              setShowClientWeeklyReport(false);
+              handleHomePress();
+            }}
+            onPlusPress={() => {
+              setShowClientWeeklyReport(false);
+              setShowAddNotesFilesModal(true);
+            }}
+            onVoicePress={() => {
+              setShowClientWeeklyReport(false);
+              openAIChatHome();
+            }}
+            onNutritionPress={() => {
+              setShowClientWeeklyReport(false);
+              setShowNutrition(true);
+            }}
+            onWorkoutPress={() => {
+              setShowClientWeeklyReport(false);
+              openWorkout();
+            }}
+            onMessagesPress={() => {
+              setShowClientWeeklyReport(false);
+              handleOpenConversations();
+            }}
+            onProfilePress={() => {
+              setShowClientWeeklyReport(false);
+              setShowProfile(true);
+            }}
+            onSettingsPress={() => {
+              setShowClientWeeklyReport(false);
+              setShowSettings(true);
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
   if (showProfile) {
     return (
       <AppNavigationProvider {...navProviderProps}>
@@ -2412,6 +2607,97 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             userData={userData}
             onboardingData={onboardingData}
             onNavigate={onNavigate}
+            onProfileSaved={async () => {
+              try {
+                onRefetchUserData?.();
+                if (user?.uid && db) {
+                  const snap = await getDoc(doc(db, 'users', user.uid));
+                  if (snap.exists()) setOnboardingData(snap.data());
+                }
+              } catch (e) {
+                console.warn('ProfileScreen refresh after save:', e?.message);
+              }
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
+  if (showContactSupport) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <ContactSupportScreen
+            onClose={() => {
+              setShowContactSupport(false);
+              setShowSettings(true);
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
+  if (showBugReport) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <BugReportScreen
+            onClose={() => {
+              setShowBugReport(false);
+              setShowSettings(true);
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
+  if (showHelpFAQ) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <HelpFAQScreen
+            onClose={() => {
+              setShowHelpFAQ(false);
+              setShowSettings(true);
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
+  if (showTermsOfService) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <TermsOfServiceScreen
+            onClose={() => {
+              setShowTermsOfService(false);
+              setShowSettings(true);
+            }}
+          />
+          {addNotesFilesModalEl}
+        </>
+      </AppNavigationProvider>
+    );
+  }
+
+  if (showPrivacyPolicy) {
+    return (
+      <AppNavigationProvider {...navProviderProps}>
+        <>
+          <PrivacyPolicyScreen
+            onClose={() => {
+              setShowPrivacyPolicy(false);
+              setShowSettings(true);
+            }}
           />
           {addNotesFilesModalEl}
         </>
@@ -2458,6 +2744,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           items={notesAndFiles}
           isDark={isDark}
           onBack={() => setShowClientFilesScreen(false)}
+          onUploadPress={() => setShowAddNotesFilesModal(true)}
         />
         {addNotesFilesModalEl}
       </>
@@ -2492,8 +2779,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         <SafeAreaView style={[styles.safeArea, isDark ? styles.safeAreaDark : styles.safeAreaLight]}>
           <View style={{ flex: 1 }}>
             <PhotoGalleryScreen
-              route={{ params: { clientId: day6Client.id, clientName: day6Client.name } }}
+              route={{ params: { clientId: day6Client.id, clientName: day6Client.name, allowUpload: true } }}
               navigation={{ goBack: () => setShowPhotoGallery(false) }}
+              onRegisterAddHandler={registerProgressPhotoAddHandler}
             />
           </View>
           <BottomNavBar
@@ -2501,7 +2789,13 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               setShowPhotoGallery(false);
               handleHomePress();
             }}
-            onPlusPress={() => setShowAddNotesFilesModal(true)}
+            onPlusPress={() => {
+              if (typeof progressGalleryAddRef.current === 'function') {
+                progressGalleryAddRef.current();
+                return;
+              }
+              setShowAddNotesFilesModal(true);
+            }}
             onVoicePress={openAIChatHome}
             onNutritionPress={() => {
               setShowPhotoGallery(false);
@@ -2533,6 +2827,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               client={day6Client}
               onBack={() => setShowAIWorkouts(false)}
               viewerRole="client"
+              onGenerateWorkout={() => {
+                setShowAIWorkouts(false);
+                setShowWorkoutPlanGenerator(true);
+              }}
               onViewPlan={(plan) => {
                 setViewingPlan(plan);
                 setShowAIWorkouts(false);
@@ -2587,13 +2885,15 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             onSettingsPress={() => setShowSettings(true)}
           />
           <TrainerSearchScreen
-            onRequestTrainer={async (trainer) => {
+            onRequestTrainer={async (trainer, opts = {}) => {
               if (!trainer?.id || !auth?.currentUser?.uid) return;
               const conversationId = await getOrCreateConversation(auth.currentUser.uid, trainer.id);
+              const customIntro = opts?.clientIntro != null ? String(opts.clientIntro).trim() : '';
+              const messageText = customIntro || `Hi! I'd like to work with you as my trainer.`;
               await sendClientRequest(
                 conversationId,
                 auth.currentUser.uid,
-                `Hi! I'd like to work with you as my trainer.`,
+                messageText,
                 { clientName: auth.currentUser.displayName || '', trainerId: trainer.id }
               );
               setSelectedTrainer(trainer);
@@ -2623,61 +2923,32 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     );
   }
 
-  if (showTrainerProfile) return (
-    <>
-    <SafeAreaView
-      style={[
-        styles.safeArea,
-        isDark ? styles.safeAreaDark : styles.safeAreaLight,
-      ]}
-    >
-      <CoachConnectHeader
-        title={profileTrainer?.displayName || profileTrainer?.name || 'Trainer'}
-        isDark={isDark}
-        onBack={() => {
-          setShowTrainerProfile(false);
-          setShowTrainerSearch(true);
-        }}
-        onProfilePress={() => setShowProfile(true)}
-        onSettingsPress={() => setShowSettings(true)}
-      />
-      <TrainerProfileCardModal
-        visible
-        trainer={profileTrainer}
-        onClose={() => {
-          setShowTrainerProfile(false);
-          setShowTrainerSearch(true);
-        }}
-        onMessage={() => {
-          if (!profileTrainer) return;
-          setSelectedTrainer(profileTrainer);
-          setShowTrainerProfile(false);
-          setShowTrainerMessaging(true);
-        }}
-        onRequestTrainer={async () => {
-          if (!profileTrainer?.id || !auth?.currentUser?.uid) return;
-          try {
-            const conversationId = await getOrCreateConversation(auth.currentUser.uid, profileTrainer.id);
-            await sendClientRequest(
-              conversationId,
-              auth.currentUser.uid,
-              `Hi! I'd like to work with you as my trainer.`,
-              { clientName: auth.currentUser.displayName || '', trainerId: profileTrainer.id }
-            );
-            setSelectedTrainer(profileTrainer);
-            setSelectedConversation({ id: conversationId });
+  if (showTrainerProfile && profileTrainer) {
+    return (
+      <>
+        <TrainerProfileSheet
+          trainer={profileTrainer}
+          colorIndex={0}
+          visible
+          variant="connected"
+          onClose={() => {
             setShowTrainerProfile(false);
+            setShowMyDashboard(true);
+          }}
+          onMessage={() => {
+            setSelectedTrainer(profileTrainer);
+            setShowTrainerProfile(false);
+            setShowMyDashboard(true);
             setShowTrainerMessaging(true);
-          } catch (e) {
-            console.error('Request trainer error:', e);
-          }
-        }}
-        accent="purple"
-      />
-    </SafeAreaView>
-    {addNotesFilesModalEl}
-    </>
-  );
+          }}
+          isDark={isDark}
+          requesting={false}
+          onRequest={() => {}}
+        />
+        {addNotesFilesModalEl}
+      </>
+    );
+  }
 
   if (showNutrition) {
     return (
@@ -2904,11 +3175,13 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     <SafeAreaView style={[styles.safeArea, !isDark ? styles.safeAreaLight : styles.safeAreaDark]}>
       <StatusBar barStyle={!isDark ? 'dark-content' : 'light-content'} />
       
-      <CoachConnectHeader
-        isDark={isDark}
-        onProfilePress={() => setShowProfile(true)}
-        onSettingsPress={() => setShowSettings(true)}
-      />
+      {!showTrainerMessaging ? (
+        <CoachConnectHeader
+          isDark={isDark}
+          onProfilePress={() => setShowProfile(true)}
+          onSettingsPress={() => setShowSettings(true)}
+        />
+      ) : null}
 
       {reviewPromptTrainer && (
         <View style={{
@@ -2962,7 +3235,6 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             setShowMyDashboard(false);
             setShowTrainerProfile(true);
           }}
-          streak={streak}
           todayCalories={caloriesConsumed}
           waterOz={waterIntake}
           sleepHoursValue={sleepHours}
@@ -3049,6 +3321,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             }
           }}
           onPressMessage={handleOpenConversations}
+          onPressFindTrainer={handleFindTrainers}
           trainerClientId={user?.uid}
           trainerClientName={userData?.firstName || user?.displayName || 'You'}
           onOpenPhotoGallery={() => {
@@ -3059,6 +3332,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || 'You' });
             setShowAIWorkouts(true);
           }}
+          onOpenWeeklyReport={() => setShowClientWeeklyReport(true)}
         />
       ) : (
       <ScrollView
@@ -3072,6 +3346,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           <DashboardHeroCard
             onPress={() => setShowMyDashboard(true)}
             unreadMessageCount={unreadMessageCount}
+            isDark={isDark}
           />
         )}
         <TopStatsRow
@@ -3122,11 +3397,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           nutritionGoals={nutritionGoals}
           compact
         />
-        {/* Files & Notes (redesigned) */}
-        <View style={{ paddingHorizontal: 16, marginTop: 8, marginBottom: 16 }}>
-          <MyFilesSection
-            clientId={user?.uid}
+        {/* Notes & Files (premium) */}
+        <View style={{ marginTop: 8, marginBottom: 16 }}>
+          <FilesNotesSectionPremium
             items={notesAndFiles}
+            isDark={isDark}
             onOpenItem={openNotesFile}
             onDownloadItem={(x) => x?.url && openNotesFile(x)}
             onShareItem={(x) => x?.url && Share.share({ message: `${x?.name || x?.title || 'File'}\n${x.url}` }).catch(() => {})}
@@ -3134,6 +3409,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               if (deletingMyFiles) return;
               deleteSingleMyFile(x);
             }}
+            onMarkRead={async (x) => {
+              if (!user?.uid || !x?.id) return;
+              try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
+            }}
+            onUploadPress={() => setShowAddNotesFilesModal(true)}
           />
         </View>
 
@@ -3203,24 +3483,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         </View>
         )}
 
-        <View style={{ paddingHorizontal: 16, marginTop: 4, marginBottom: 24 }}>
-          <TrainerSharedSection
-            items={notesAndFiles}
-            onOpenItem={openNotesFile}
-            onDownloadItem={(x) => x?.url && openNotesFile(x)}
-            onMarkRead={async (x) => {
-              if (!user?.uid || !x?.id) return;
-              try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
-            }}
-          />
-          <NotesFromTrainerSection
-            items={notesAndFiles}
-            onMarkRead={async (x) => {
-              if (!user?.uid || !x?.id) return;
-              try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
-            }}
-          />
-        </View>
+        {/* Trainer shared + notes are rendered inside FilesNotesSectionPremium */}
       </ScrollView>
       )}
 

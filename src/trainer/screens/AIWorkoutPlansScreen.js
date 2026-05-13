@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
+  Platform,
+  Modal,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +27,7 @@ import {
   setDoc,
   deleteDoc,
 } from 'firebase/firestore';
+import { listManualWorkoutPlansForTrainer, deleteManualWorkoutPlan } from '../services/manualWorkoutPlanService';
 
 // ============================================================================
 // COLOR SYSTEM
@@ -59,8 +62,20 @@ const THEME = {
   },
 };
 
+/** Rules / index issues — show empty library, not raw Firestore text. */
+function isBenignWorkoutPlansLoadError(e) {
+  if (!e) return false;
+  const code = e.code;
+  if (code === 'permission-denied' || code === 'failed-precondition') return true;
+  const m = String(e.message || '').toLowerCase();
+  if (m.includes('missing or insufficient permissions')) return true;
+  return false;
+}
+
+const EMPTY_CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
+
 // ============================================================================
-// FIRESTORE HOOK (unchanged from original)
+// FIRESTORE HOOK
 // ============================================================================
 function useClientWorkoutPlans(clientId) {
   const [plans, setPlans] = useState([]);
@@ -68,48 +83,68 @@ function useClientWorkoutPlans(clientId) {
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
-    if (!clientId || !db) return;
+    if (!clientId || !db) {
+      setPlans([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
-    try {
-      const results = [];
+    const results = [];
+    let fatalError = null;
 
-      // Primary: users/{clientId}/workoutPlans (collection)
-      const colRef = collection(db, 'users', clientId, 'workoutPlans');
+    const pushSnapDocs = (snap, source) => {
+      snap?.forEach?.((d) => results.push({ id: d.id, ...d.data(), _source: source }));
+    };
+
+    try {
       try {
+        const colRef = collection(db, 'users', clientId, 'workoutPlans');
         const snap = await getDocs(query(colRef, orderBy('generatedAt', 'desc')));
-        snap.forEach((d) => results.push({ id: d.id, ...d.data(), _source: 'usersSubcollection' }));
+        pushSnapDocs(snap, 'usersSubcollection');
       } catch (e) {
-        // ignore if collection missing
+        if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
       }
 
-      // Fallback: users/{clientId}/workoutPlan single doc
       if (!results.length) {
-        const singleRef = doc(db, 'users', clientId, 'workoutPlan', 'current');
-        const singleSnap = await getDoc(singleRef);
-        if (singleSnap.exists()) {
-          results.push({
-            id: singleSnap.id,
-            ...singleSnap.data(),
-            _singleDoc: true,
-            _path: ['users', clientId, 'workoutPlan', 'current'],
-          });
+        try {
+          const singleRef = doc(db, 'users', clientId, 'workoutPlan', 'current');
+          const singleSnap = await getDoc(singleRef);
+          if (singleSnap.exists()) {
+            results.push({
+              id: singleSnap.id,
+              ...singleSnap.data(),
+              _singleDoc: true,
+              _path: ['users', clientId, 'workoutPlan', 'current'],
+            });
+          }
+        } catch (e) {
+          if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
         }
       }
 
-      // Fallback: global workoutPlans with clientId
       if (!results.length) {
-        const globalRef = collection(db, 'workoutPlans');
-        const snap = await getDocs(
-          query(globalRef, where('clientId', '==', clientId), orderBy('generatedAt', 'desc')),
-        );
-        snap.forEach((d) => results.push({ id: d.id, ...d.data(), _source: 'global' }));
+        try {
+          const globalRef = collection(db, 'workoutPlans');
+          const snap = await getDocs(
+            query(globalRef, where('clientId', '==', clientId), orderBy('generatedAt', 'desc')),
+          );
+          pushSnapDocs(snap, 'global');
+        } catch (e) {
+          if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
+        }
       }
 
       setPlans(results);
+      setError(results.length > 0 ? null : fatalError ? String(fatalError.message || fatalError) : null);
     } catch (e) {
-      setError(e?.message || 'Failed to load workout plans');
-      setPlans([]);
+      if (isBenignWorkoutPlansLoadError(e)) {
+        setPlans([]);
+        setError(null);
+      } else {
+        setPlans([]);
+        setError(String(e?.message || e || 'Failed to load workout plans'));
+      }
     } finally {
       setLoading(false);
     }
@@ -150,15 +185,22 @@ function normalizePlan(item) {
   // Derive status: prefer explicit field, else infer from assigned flag
   const status = item.status || (item.assigned ? 'active' : 'paused');
 
+  const isManual = item.source === 'manualBuilder' || item.planKind === 'manual';
+
   // Pick a gradient colour key
   const goalKey = Object.keys(GOAL_COLOR_MAP).find((k) =>
-    (item.goal || item.focus || item.type || '').toLowerCase().includes(k),
+    (item.goal || item.focus || item.type || item.category || '').toLowerCase().includes(k),
   );
   const focusColor = item.focusColor || GOAL_COLOR_MAP[goalKey] || 'pink';
 
-  const totalWeeks     = item.totalWeeks     || item.weeks         || item.durationWeeks || 8;
-  const weeksCompleted = item.weeksCompleted || item.currentWeek   || 0;
-  const daysPerWeek    = item.daysPerWeek    || item.daysPerWeek   || 3;
+  const totalWeeks = isManual
+    ? (item.durationWeeks || item.totalWeeks || item.weeks || 8)
+    : (item.totalWeeks || item.weeks || item.durationWeeks || 8);
+  const weeksCompleted = item.weeksCompleted || item.currentWeek || 0;
+  const daysPerWeek =
+    isManual && typeof item.daysPerWeek === 'number'
+      ? item.daysPerWeek
+      : item.daysPerWeek || 3;
   const sessionMinutes = item.sessionMinutes || item.sessionLength || 45;
 
   // Build a 7-day boolean array from stored field or infer from daysPerWeek
@@ -167,13 +209,20 @@ function normalizePlan(item) {
       ? item.trainingDays
       : Array.from({ length: 7 }, (_, i) => i < daysPerWeek);
 
+  const displayName = isManual
+    ? (item.title || item.name || item.planName || 'Custom plan')
+    : (item.title || item.name || 'Workout Plan');
+  const displayFocus = isManual
+    ? String(item.category || item.focus || 'Custom plan').trim()
+    : (item.focus || item.goal || item.type || 'Training');
+
   return {
     // UI fields
     id:              item.id,
-    name:            item.title || item.name || 'Workout Plan',
+    name:            displayName,
     status,
     focusColor,
-    focus:           item.focus || item.goal || item.type || 'Training',
+    focus:           displayFocus,
     totalWeeks,
     weeksCompleted,
     daysPerWeek,
@@ -528,27 +577,145 @@ const PlanCard = ({ plan, isDark, onPress, onOptions }) => {
 };
 
 // ============================================================================
-// EMPTY STATE
+// EMPTY STATES — gradient hero (matches session / marketplace polish)
 // ============================================================================
-const EmptyState = ({ isDark, message }) => {
+function PlansLibraryEmptyHero({
+  isDark,
+  clientName,
+  clientId,
+  viewerRole,
+  onGenerateWorkout,
+  onBuildCustom,
+  message,
+  compact,
+}) {
   const theme = THEME[isDark ? 'dark' : 'light'];
+  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
+  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  /** Clients build their own plans from the generator CTA. */
+  const showCta =
+    !compact && viewerRole === 'client' && typeof onGenerateWorkout === 'function' && !!clientId;
+  const showTrainerCustom =
+    !compact && viewerRole === 'trainer' && typeof onBuildCustom === 'function' && !!clientId;
+
+  if (compact) {
+    return (
+      <View style={[styles.emptyFilterCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+        <LinearGradient
+          colors={['#FF6B9D', '#C084FC']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.emptyFilterIcon}
+        >
+          <Ionicons name="layers-outline" size={26} color="#FFFFFF" />
+        </LinearGradient>
+        <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>{message || 'Nothing here yet'}</Text>
+        <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>Try another filter or add a new plan.</Text>
+      </View>
+    );
+  }
+
+  const bullets =
+    viewerRole === 'trainer'
+      ? [
+          'Saved plans land here with progress, focus tags, and week layout.',
+          'Use Custom builder for exercise-by-exercise plans, or generate AI blocks from the client dashboard.',
+          'Assign, pause, or remove plans anytime from the ··· menu on a card.',
+        ]
+      : [
+          'Saved plans land here with progress, focus tags, and week layout.',
+          'Use Build a plan to draft a block in the generator—it syncs to this library.',
+          'Your coach can also add plans; you will see them here when they do.',
+        ];
+
   return (
-    <View style={[styles.emptyState, { borderColor: theme.border, backgroundColor: theme.card }]}>
-      <LinearGradient
-        colors={['#FF6B9D', '#C084FC']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.emptyStateIcon}
+    <View style={styles.emptyHeroOuter}>
+      <View
+        style={[
+          styles.emptyHeroInner,
+          {
+            backgroundColor: innerBg,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderBottomWidth: 4,
+            borderBottomColor: '#f59e0b',
+            ...Platform.select({
+              ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 5 },
+                shadowOpacity: isDark ? 0.35 : 0.12,
+                shadowRadius: 12,
+              },
+              android: { elevation: 5 },
+            }),
+          },
+        ]}
       >
-        <MaterialCommunityIcons name="sparkles" size={28} color="#FFF" />
-      </LinearGradient>
-      <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No plans yet</Text>
-      <Text style={[styles.emptyStateText, { color: theme.textMuted }]}>
-        {message || 'Generate a workout plan from the AI generator.'}
-      </Text>
+          <View
+            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' }]}
+            pointerEvents="none"
+          />
+          <View style={styles.emptyHeroContent}>
+            <Text style={[styles.emptyHeroKicker, { color: labelColor }]}>WORKOUT LIBRARY</Text>
+            <Text style={[styles.emptyHeroTitle, { color: theme.text }]}>No plans yet</Text>
+            <Text style={[styles.emptyHeroSub, { color: theme.textMuted }]}>
+              {viewerRole === 'trainer'
+                ? `${clientName} does not have any saved workout plans here yet. Open Workout Plans from Quick Actions on their dashboard to generate one—it will appear in this library.`
+                : 'You do not have any saved workout plans yet. Tap Build a plan to draft one in the generator, or wait for your coach to add one.'}
+            </Text>
+            <View style={styles.emptyHeroBullets}>
+              {bullets.map((line, i) => (
+                <View key={line} style={styles.emptyHeroRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={EMPTY_CHECK_COLORS[i % EMPTY_CHECK_COLORS.length]} />
+                  <Text style={[styles.emptyHeroBullet, { color: theme.text }]}>{line}</Text>
+                </View>
+              ))}
+            </View>
+            {showTrainerCustom ? (
+              <LinearGradient
+                colors={['#FF6B9D', '#F97316']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.emptyHeroCtaGrad, { marginTop: 8 }]}
+              >
+                <TouchableOpacity
+                  style={styles.emptyHeroCtaTouch}
+                  activeOpacity={0.88}
+                  onPress={() => onBuildCustom({ id: clientId, name: clientName })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Build custom workout plan"
+                >
+                  <Ionicons name="construct-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.emptyHeroCtaText}>Build custom plan</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : null}
+            {showCta ? (
+              <LinearGradient
+                colors={['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.emptyHeroCtaGrad, { marginTop: showTrainerCustom ? 12 : 8 }]}
+              >
+                <TouchableOpacity
+                  style={styles.emptyHeroCtaTouch}
+                  activeOpacity={0.88}
+                  onPress={() => onGenerateWorkout({ id: clientId, name: clientName })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Build workout plan"
+                >
+                  <Ionicons name="barbell-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.emptyHeroCtaText}>Build a plan</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : null}
+          </View>
+      </View>
     </View>
   );
-};
+}
 
 // ============================================================================
 // MAIN SCREEN
@@ -559,6 +726,10 @@ export default function AIWorkoutPlansScreen({
   client: clientProp,
   onBack,
   onViewPlan,
+  onGenerateWorkout,
+  onBuildCustom,
+  onEditManualPlan,
+  trainerId,
   viewerRole = 'trainer',
 }) {
   const { isDark } = useTheme();
@@ -569,6 +740,23 @@ export default function AIWorkoutPlansScreen({
 
   const [filter, setFilter] = useState('all');
   const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId);
+
+  const [templatesModal, setTemplatesModal] = useState(false);
+  const [manualTemplates, setManualTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  const loadManualTemplates = useCallback(async () => {
+    if (!trainerId || !db) return;
+    setTemplatesLoading(true);
+    try {
+      const rows = await listManualWorkoutPlansForTrainer(trainerId);
+      setManualTemplates(rows || []);
+    } catch (e) {
+      Alert.alert('Could not load templates', e?.message || 'Unknown error');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [trainerId]);
 
   // Normalize all Firestore docs into UI-friendly shape
   const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);
@@ -676,6 +864,30 @@ export default function AIWorkoutPlansScreen({
           </Text>
         </View>
 
+        {viewerRole === 'trainer' && trainerId && clientId ? (
+          <View style={styles.trainerActionsRow}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}
+              style={[styles.trainerChip, { borderColor: theme.border, backgroundColor: theme.card }]}
+            >
+              <Ionicons name="construct-outline" size={16} color={theme.text} />
+              <Text style={[styles.trainerChipLabel, { color: theme.text }]}>Custom builder</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => {
+                setTemplatesModal(true);
+                loadManualTemplates();
+              }}
+              style={[styles.trainerChip, { borderColor: theme.border, backgroundColor: theme.card }]}
+            >
+              <Ionicons name="folder-open-outline" size={16} color={theme.text} />
+              <Text style={[styles.trainerChipLabel, { color: theme.text }]}>My templates</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Loading */}
         {loading && (
           <View style={styles.centeredFeedback}>
@@ -684,20 +896,44 @@ export default function AIWorkoutPlansScreen({
           </View>
         )}
 
-        {/* Error */}
+        {/* Error — real failures only (not Firestore permission noise) */}
         {error && !loading && (
-          <View style={styles.centeredFeedback}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={reload} style={styles.retryButton}>
-              <Text style={styles.retryButtonLabel}>Retry</Text>
-            </TouchableOpacity>
+          <View style={{ paddingHorizontal: 16 }}>
+            <View
+              style={[
+                styles.loadErrorInner,
+                {
+                  backgroundColor: theme.surface,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderLeftWidth: 4,
+                  borderLeftColor: '#ef4444',
+                },
+              ]}
+            >
+                <Ionicons name="cloud-offline-outline" size={32} color="#FB923C" />
+                <Text style={[styles.loadErrorTitle, { color: theme.text }]}>Could not load plans</Text>
+                <Text style={[styles.loadErrorText, { color: theme.textMuted }]}>{error}</Text>
+                <TouchableOpacity onPress={reload} activeOpacity={0.88} style={styles.loadErrorRetry}>
+                  <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
+                    <Text style={styles.retryGradLabel}>Retry</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+            </View>
           </View>
         )}
 
-        {/* Empty */}
+        {/* Empty library */}
         {!loading && !error && !hasPlans && (
           <View style={{ paddingHorizontal: 16 }}>
-            <EmptyState isDark={isDark} />
+            <PlansLibraryEmptyHero
+              isDark={isDark}
+              clientName={clientName}
+              clientId={clientId}
+              viewerRole={viewerRole}
+              onGenerateWorkout={onGenerateWorkout}
+              onBuildCustom={onBuildCustom}
+            />
           </View>
         )}
 
@@ -726,7 +962,14 @@ export default function AIWorkoutPlansScreen({
                 <FilterChips value={filter} onChange={setFilter} counts={counts} isDark={isDark} />
 
                 {filtered.length === 0 ? (
-                  <EmptyState isDark={isDark} message={`No ${filter} plans.`} />
+                  <PlansLibraryEmptyHero
+                    compact
+                    isDark={isDark}
+                    clientName={clientName}
+                    clientId={clientId}
+                    viewerRole={viewerRole}
+                    message={`No ${filter} plans`}
+                  />
                 ) : (
                   <View style={styles.plansList}>
                     {filtered.map((plan) => (
@@ -745,6 +988,68 @@ export default function AIWorkoutPlansScreen({
           </>
         )}
       </ScrollView>
+
+      <Modal visible={templatesModal} animationType="slide" transparent onRequestClose={() => setTemplatesModal(false)}>
+        <View style={styles.templatesModalBackdrop}>
+          <View style={[styles.templatesModalCard, { backgroundColor: theme.surface }]}>
+            <View style={styles.templatesModalHeader}>
+              <Text style={[styles.templatesModalTitle, { color: theme.text }]}>Custom plans</Text>
+              <TouchableOpacity onPress={() => setTemplatesModal(false)} hitSlop={10}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+            {templatesLoading ? (
+              <ActivityIndicator style={{ marginVertical: 24 }} color="#FF6B9D" />
+            ) : (
+              <FlatList
+                data={manualTemplates}
+                keyExtractor={(item) => item.id}
+                style={{ maxHeight: 420 }}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <Text style={{ color: theme.textMuted, paddingVertical: 16 }}>No saved custom plans yet.</Text>
+                }
+                renderItem={({ item }) => (
+                  <View style={[styles.templateRow, { borderBottomColor: theme.border }]}>
+                    <TouchableOpacity
+                      style={{ flex: 1 }}
+                      onPress={() => {
+                        onEditManualPlan?.(item.id);
+                        setTemplatesModal(false);
+                      }}
+                    >
+                      <Text style={[styles.templateTitle, { color: theme.text }]}>{item.planName || item.title}</Text>
+                      <Text style={[styles.templateSub, { color: theme.textMuted }]}>
+                        {(item.category || '').trim()}
+                        {item.duration ? ` · ${item.duration}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Alert.alert('Delete plan', 'Remove this template and unassign all linked clients?', [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              const r = await deleteManualWorkoutPlan(trainerId, item.id);
+                              if (!r.success) Alert.alert('Error', r.error || 'Could not delete');
+                              else loadManualTemplates();
+                            },
+                          },
+                        ]);
+                      }}
+                      hitSlop={10}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#FF6B9D" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -781,7 +1086,50 @@ const styles = StyleSheet.create({
   logoLabel: { fontSize: 16, fontWeight: '700' },
 
   // Page title
-  pageTitleSection: { paddingHorizontal: 16, marginTop: 20, marginBottom: 24 },
+  pageTitleSection: { paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
+  trainerActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  trainerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  trainerChipLabel: { fontSize: 13, fontWeight: '700' },
+  templatesModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  templatesModalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    maxHeight: '78%',
+  },
+  templatesModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  templatesModalTitle: { fontSize: 18, fontWeight: '800' },
+  templateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  templateTitle: { fontSize: 16, fontWeight: '700' },
+  templateSub: { fontSize: 12, marginTop: 2 },
   pageLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   pageTitle: { fontSize: 28, fontWeight: '700' },
 
@@ -869,10 +1217,44 @@ const styles = StyleSheet.create({
   plansList: { gap: 12, marginTop: 4 },
 
   // Empty state
-  emptyState:        { borderRadius: 24, borderWidth: 2, borderStyle: 'dashed', paddingVertical: 40, paddingHorizontal: 24, alignItems: 'center', gap: 12 },
-  emptyStateIcon:    { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-  emptyStateTitle:   { fontSize: 20, fontWeight: '700' },
-  emptyStateText:    { fontSize: 13, textAlign: 'center' },
+  emptyHeroOuter: { marginTop: 8, marginBottom: 8 },
+  emptyHeroInner: { borderRadius: 22, overflow: 'hidden' },
+  emptyHeroContent: { padding: 20, gap: 12, zIndex: 1 },
+  emptyHeroKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
+  emptyHeroTitle: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5, lineHeight: 32 },
+  emptyHeroSub: { fontSize: 14, fontWeight: '600', lineHeight: 21 },
+  emptyHeroBullets: { gap: 8, marginTop: 4 },
+  emptyHeroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  emptyHeroBullet: { flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 19 },
+  emptyHeroCtaGrad: { borderRadius: 16, overflow: 'hidden' },
+  emptyHeroCtaTouch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minHeight: 52,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+  },
+  emptyHeroCtaText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.2 },
+  emptyFilterCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emptyFilterIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  emptyFilterTitle: { fontSize: 17, fontWeight: '800', marginTop: 14, textAlign: 'center' },
+  emptyFilterSub: { fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 18 },
+
+  loadErrorInner: { borderRadius: 18, padding: 22, alignItems: 'center', gap: 10, marginTop: 8 },
+  loadErrorTitle: { fontSize: 18, fontWeight: '800' },
+  loadErrorText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  loadErrorRetry: { marginTop: 6, borderRadius: 999, overflow: 'hidden' },
+  retryGrad: { paddingVertical: 12, paddingHorizontal: 28, borderRadius: 999 },
+  retryGradLabel: { color: '#FFFFFF', fontWeight: '800', fontSize: 15, textAlign: 'center' },
 
   // Feedback
   centeredFeedback:  { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },

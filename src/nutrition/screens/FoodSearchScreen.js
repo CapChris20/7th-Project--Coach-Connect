@@ -386,8 +386,9 @@ const FoodSearchScreen = ({
     }
   }, []);
 
-  const SEARCH_DEBOUNCE_MS = 700;
-  const MIN_CHARS_AUTO_SEARCH = 6;
+  const SEARCH_DEBOUNCE_MS = 550;
+  /** Auto-search from 2+ chars (6 was too high — short queries like "egg" never fired). */
+  const MIN_CHARS_AUTO_SEARCH = 2;
 
   useEffect(() => {
     const q = String(query || '').trim();

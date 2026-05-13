@@ -22,7 +22,7 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -35,6 +35,10 @@ import {
   subscribeToMessages,
   markMessagesAsRead,
   getUserData,
+  subscribeConversationTyping,
+  pulseConversationTyping,
+  clearMyConversationTyping,
+  TYPING_UI_STALE_MS,
 } from '../../ai/services/trainerMessaging';
 import { auth, db, storage } from '../../app/config';
 import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMService';
@@ -71,6 +75,7 @@ const GRADIENT = {
   sentBubble: ['#C084FC', '#FF6B9D', '#F97316'],
   send: ['#FF6B9D', '#C084FC'],
 };
+/** Thread header accent rim (aligned with session / marketplace heroes). */
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return '';
@@ -89,7 +94,11 @@ function formatTimestamp(timestamp) {
   }
 }
 
-const GlassCard = ({ children, style, isDark }) => {
+/**
+ * BlurBackdropPlate applies flex layout on the outer shell; children sit in an inner View that
+ * defaults to column. Pass row/padding via `contentWrapperStyle` (see BottomNavBar.js).
+ */
+const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
   const t = isDark ? DARK : LIGHT;
   const cardStyle = {
     backgroundColor: t.glass,
@@ -105,12 +114,17 @@ const GlassCard = ({ children, style, isDark }) => {
   };
   if (Platform.OS === 'ios') {
     return (
-      <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={[cardStyle, style]}>
+      <BlurBackdropPlate
+        intensity={20}
+        tint={isDark ? 'dark' : 'light'}
+        style={[cardStyle, style]}
+        contentWrapperStyle={contentWrapperStyle}
+      >
         {children}
-      </BlurView>
+      </BlurBackdropPlate>
     );
   }
-  return <View style={[cardStyle, style]}>{children}</View>;
+  return <View style={[cardStyle, style, contentWrapperStyle]}>{children}</View>;
 };
 
 const GradientAvatar = ({ name, photoURL, size = 44 }) => {
@@ -219,19 +233,100 @@ function ChatBubble({ message, isDark }) {
 }
 
 const chatStyles = StyleSheet.create({
-  headerName: { fontSize: 16, fontWeight: '700' },
-  onlineDot: { width: 8, height: 8, borderRadius: 4 },
-  onlineLabel: { fontSize: 12 },
-  closeBtn: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
+  headerName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.35 },
+  onlineDot: { width: 7, height: 7, borderRadius: 4 },
+  onlineLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+  headerRingOuter: {
+    marginHorizontal: 10,
+    marginBottom: 6,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6366f1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.14,
+        shadowRadius: 10,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  headerInner: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  avatarRing: {
+    padding: 2,
+    borderRadius: 28,
+    borderWidth: 2,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    gap: 6,
+    borderWidth: 1,
+  },
+  closeBtnGradient: {
+    borderRadius: 14,
+    padding: 2,
+    flexShrink: 0,
+    zIndex: 20,
+    elevation: 10,
+  },
+  closeBtnInner: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typingStrip: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, minHeight: 0 },
+  typingBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '88%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+  },
+  typingText: { fontSize: 13, fontWeight: '700' },
+  typingDots: { fontSize: 13, fontWeight: '800', letterSpacing: 2 },
   inputBarOuter: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
-  inputBarInner: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderRadius: 20 },
-  input: { flex: 1, fontSize: 14, paddingVertical: 0 },
+  inputBarInner: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, minWidth: 0 },
+  input: { flex: 1, minWidth: 0, minHeight: 40, fontSize: 14, paddingVertical: 8, paddingHorizontal: 4 },
   sendBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10 },
   sendText: { color: 'white', fontSize: 14, fontWeight: '700' },
   addClientBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 },
   addClientBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  clientBadge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
-  clientBadgeText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
+  clientBadgeWrap: { borderRadius: 999, padding: 2, flexShrink: 0, marginRight: 4 },
+  clientBadgeInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  clientBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 });
 
 export default function TrainerMessagingScreen({ trainer, conversation, onClose, onProfilePress, onSettingsPress, embedInLayout }) {
@@ -248,10 +343,14 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
   const [addingClient, setAddingClient] = useState(false);
   const [uploadingFileName, setUploadingFileName] = useState(null);
   const [previewImageUri, setPreviewImageUri] = useState(null);
+  const [remoteTyping, setRemoteTyping] = useState(false);
   const scrollRef = useRef(null);
   const currentUser = auth.currentUser;
   const unsubscribeRef = useRef(null);
   const cancelledRef = useRef(false);
+  const remoteTypingPulseMsRef = useRef(0);
+  const typingPulseTimerRef = useRef(null);
+  const typingStopTimerRef = useRef(null);
 
   useEffect(() => {
     if (!trainer || !currentUser) return;
@@ -277,6 +376,44 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
       }
     };
   }, [trainer, currentUser, conversation]);
+
+  useEffect(() => {
+    clearTimeout(typingPulseTimerRef.current);
+    clearTimeout(typingStopTimerRef.current);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || !currentUser?.uid) {
+      remoteTypingPulseMsRef.current = 0;
+      setRemoteTyping(false);
+      return undefined;
+    }
+    const unsub = subscribeConversationTyping(conversationId, (meta) => {
+      const tid = meta?.typingUserId;
+      const ta = meta?.typingAt;
+      if (!tid || tid === currentUser.uid) {
+        remoteTypingPulseMsRef.current = 0;
+        setRemoteTyping(false);
+        return;
+      }
+      if (ta) {
+        // Use local receipt time so typing UI does not get stuck if device clock ≠ server.
+        remoteTypingPulseMsRef.current = Date.now();
+        setRemoteTyping(true);
+      }
+    });
+    const tick = setInterval(() => {
+      const ms = remoteTypingPulseMsRef.current;
+      if (ms && Date.now() - ms > TYPING_UI_STALE_MS) {
+        remoteTypingPulseMsRef.current = 0;
+        setRemoteTyping(false);
+      }
+    }, 400);
+    return () => {
+      unsub();
+      clearInterval(tick);
+    };
+  }, [conversationId, currentUser?.uid]);
 
   const checkTrainerRole = async () => {
     if (!currentUser || !db) return;
@@ -342,9 +479,28 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
     }
   };
 
+  const scheduleTypingPulse = (text) => {
+    if (!conversationId || !currentUser?.uid) return;
+    clearTimeout(typingPulseTimerRef.current);
+    clearTimeout(typingStopTimerRef.current);
+    if (!String(text).trim()) {
+      clearMyConversationTyping(conversationId, currentUser.uid);
+      return;
+    }
+    typingPulseTimerRef.current = setTimeout(() => {
+      pulseConversationTyping(conversationId, currentUser.uid);
+    }, 450);
+    typingStopTimerRef.current = setTimeout(() => {
+      clearMyConversationTyping(conversationId, currentUser.uid);
+    }, 2800);
+  };
+
   const handleSendMessage = async () => {
     if (!messageText.trim() || !conversationId || sending) return;
     const text = messageText.trim();
+    clearTimeout(typingPulseTimerRef.current);
+    clearTimeout(typingStopTimerRef.current);
+    await clearMyConversationTyping(conversationId, currentUser.uid);
     setMessageText('');
     setSending(true);
     try {
@@ -505,43 +661,105 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
     );
   }
 
-  const headerBar = (
-    <GlassCard
-      isDark={isDark}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
-        borderTopWidth: 0,
-      }}
-    >
-      <GradientAvatar name={displayName} photoURL={trainerData?.photoURL} size={44} />
-      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-        <Text style={[chatStyles.headerName, { color: t.textPrimary }]}>{displayName}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <View style={[chatStyles.onlineDot, { backgroundColor: trainerData?.isOnline ? '#22c55e' : '#6b7280' }]} />
-          <Text style={[chatStyles.onlineLabel, { color: t.textMuted }]}>{trainerData?.isOnline ? 'Online' : 'Offline'}</Text>
+  const headerInnerBg = isDark ? 'rgba(12,12,18,0.96)' : 'rgba(255,255,255,0.98)';
+  const headerWash = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,107,157,0.04)';
+  const statusOnline = !!trainerData?.isOnline;
+  const statusDot = statusOnline ? '#22C55E' : '#FB923C';
+  const statusBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(194,65,12,0.2)';
+  const statusBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,107,157,0.08)';
+  const avatarRingColor = isDark ? 'rgba(255,107,157,0.45)' : 'rgba(219,39,119,0.35)';
+
+  const identityBlock = (
+    <>
+      <View style={[chatStyles.avatarRing, { borderColor: avatarRingColor }]}>
+        <GradientAvatar name={displayName} photoURL={trainerData?.photoURL} size={48} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }} pointerEvents="box-none">
+        <Text style={[chatStyles.headerName, { color: t.textPrimary }]} numberOfLines={1}>
+          {displayName}
+        </Text>
+        <View
+          style={[
+            chatStyles.statusPill,
+            { backgroundColor: statusBg, borderColor: statusBorder },
+          ]}
+        >
+          <View style={[chatStyles.onlineDot, { backgroundColor: statusDot }]} />
+          <Text style={[chatStyles.onlineLabel, { color: t.textMuted }]}>{statusOnline ? 'Online now' : 'Offline'}</Text>
         </View>
       </View>
-      {isTrainer && !isAlreadyClient && (
-        <TouchableOpacity onPress={handleAddAsClient} disabled={addingClient} style={[chatStyles.addClientBtn, { backgroundColor: '#C084FC' }]}>
-          {addingClient ? <ActivityIndicator size="small" color="#fff" /> : <Text style={chatStyles.addClientBtnText}>+ Add Client</Text>}
-        </TouchableOpacity>
-      )}
-      {isTrainer && isAlreadyClient && (
-        <View style={[chatStyles.clientBadge, { backgroundColor: isDark ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.15)' }]}>
-          <Text style={chatStyles.clientBadgeText}>✓ Client</Text>
+    </>
+  );
+
+  const headerBar = (
+    <View
+      style={[
+        chatStyles.headerRingOuter,
+        { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)' },
+      ]}
+    >
+      <LinearGradient colors={['#6366f1', '#22d3ee']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, width: '100%' }} />
+      <View style={[chatStyles.headerInner, { backgroundColor: headerInnerBg }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: headerWash }]} pointerEvents="none" />
+        <View style={chatStyles.headerRow}>
+          {typeof onProfilePress === 'function' ? (
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={onProfilePress}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${displayName} profile`}
+            >
+              {identityBlock}
+            </TouchableOpacity>
+          ) : (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 }}>{identityBlock}</View>
+          )}
+          {isTrainer && !isAlreadyClient && (
+            <TouchableOpacity
+              onPress={handleAddAsClient}
+              disabled={addingClient}
+              style={[chatStyles.addClientBtn, { backgroundColor: '#C084FC', flexShrink: 0 }]}
+            >
+              {addingClient ? <ActivityIndicator size="small" color="#fff" /> : <Text style={chatStyles.addClientBtnText}>+ Add Client</Text>}
+            </TouchableOpacity>
+          )}
+          {isTrainer && isAlreadyClient && (
+            <LinearGradient
+              colors={['#FF6B9D', '#F97316', '#C084FC']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={chatStyles.clientBadgeWrap}
+            >
+              <View
+                style={[
+                  chatStyles.clientBadgeInner,
+                  {
+                    backgroundColor: isDark ? 'rgba(10,10,15,0.92)' : '#FFFFFF',
+                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,107,157,0.2)',
+                  },
+                ]}
+              >
+                <Ionicons name="checkmark-circle" size={15} color="#FF6B9D" />
+                <Text style={[chatStyles.clientBadgeText, { color: isDark ? '#FF8FAB' : '#DB2777' }]}>Client</Text>
+              </View>
+            </LinearGradient>
+          )}
+          <LinearGradient colors={GRADIENT.send} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={chatStyles.closeBtnGradient}>
+            <TouchableOpacity
+              onPress={onClose}
+              activeOpacity={0.82}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close messages"
+              style={[chatStyles.closeBtnInner, { backgroundColor: headerInnerBg }]}
+            >
+              <Text style={{ color: t.textPrimary, fontSize: 13, fontWeight: '800' }}>Close</Text>
+            </TouchableOpacity>
+          </LinearGradient>
         </View>
-      )}
-      <TouchableOpacity onPress={onClose} style={[chatStyles.closeBtn, { backgroundColor: t.glassSubtle, borderColor: t.glassBorder }]}>
-        <Text style={{ color: t.textPrimary, fontSize: 13, fontWeight: '600' }}>Close</Text>
-      </TouchableOpacity>
-    </GlassCard>
+      </View>
+    </View>
   );
 
   const chatBody = (
@@ -563,7 +781,11 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
             {messagesForBubbles.map((msg) => <ChatBubble key={msg.id} message={msg} isDark={isDark} />)}
             {uploadingFileName != null && (
               <View style={{ marginBottom: 12, alignItems: 'flex-end' }}>
-                <GlassCard isDark={isDark} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, alignSelf: 'flex-end' }}>
+                <GlassCard
+                  isDark={isDark}
+                  style={{ alignSelf: 'flex-end' }}
+                  contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }}
+                >
                   <ActivityIndicator size="small" color="#C084FC" />
                   <Text style={{ color: t.textPrimary, fontSize: 13 }} numberOfLines={1}>{uploadingFileName}</Text>
                 </GlassCard>
@@ -572,6 +794,18 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
           </>
         )}
       </ScrollView>
+
+      {remoteTyping ? (
+        <View style={chatStyles.typingStrip}>
+          <View style={[chatStyles.typingBubble, { backgroundColor: t.msgReceivedBg, borderColor: t.msgReceivedBorder }]}>
+            <Text style={[chatStyles.typingText, { color: t.textMuted }]} numberOfLines={1}>
+              {displayName} is typing
+            </Text>
+            <Text style={[chatStyles.typingDots, { color: t.textMuted }]}> •••</Text>
+          </View>
+        </View>
+      ) : null}
+
       <Modal visible={!!previewImageUri} transparent animationType="fade">
         <TouchableOpacity
           activeOpacity={1}
@@ -584,14 +818,24 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
         </TouchableOpacity>
       </Modal>
       <View style={chatStyles.inputBarOuter}>
-        <GlassCard isDark={isDark} style={chatStyles.inputBarInner}>
+        <GlassCard isDark={isDark} contentWrapperStyle={chatStyles.inputBarInner}>
           <TouchableOpacity onPress={showAttachmentOptions} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="attach-outline" size={22} color={t.inputPlaceholder} />
           </TouchableOpacity>
           <TextInput
             style={[chatStyles.input, { color: t.textPrimary }]}
             value={messageText}
-            onChangeText={setMessageText}
+            onChangeText={(txt) => {
+              setMessageText(txt);
+              scheduleTypingPulse(txt);
+            }}
+            onBlur={() => {
+              clearTimeout(typingPulseTimerRef.current);
+              clearTimeout(typingStopTimerRef.current);
+              if (conversationId && currentUser?.uid) {
+                clearMyConversationTyping(conversationId, currentUser.uid);
+              }
+            }}
             placeholder="Type a message..."
             placeholderTextColor={t.inputPlaceholder}
             returnKeyType="send"

@@ -31,4 +31,5 @@ functions/pglite-debug.log
 # Firebase Admin service accounts (never commit)
 **/serviceAccountKey.json
 serviceAccount*.json
+**/*firebase-adminsdk*.json
 

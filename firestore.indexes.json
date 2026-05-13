@@ -31,6 +31,15 @@
       "fields": [
         {"fieldPath": "startAtMs", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "trainer_workout_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "trainerId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

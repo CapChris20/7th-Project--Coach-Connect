@@ -20,12 +20,13 @@ export function EditModalForm({
   visible,
   fieldKey,
   title,
-  // Lovable design palette (dark-only)
   cardBg = '#0D1117',
   textColor = '#FFFFFF',
   mutedColor = 'rgba(255,255,255,0.55)',
   borderColor = 'rgba(255,255,255,0.12)',
   doneGradient = ['#C084FC', '#FF4D8D'], // premium purple → deep pink
+  /** When false, sheet chrome (handle, cancel fill) uses light-mode neutrals */
+  isDark = true,
   children,
   onClose,
   onDone,
@@ -38,7 +39,12 @@ export function EditModalForm({
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
         <View style={[styles.sheet, { backgroundColor: cardBg, borderColor }]}>
-          <View style={styles.dragHandle} />
+          <View
+            style={[
+              styles.dragHandle,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)' },
+            ]}
+          />
 
           <View style={[styles.header, { borderBottomColor: borderColor }]}>
             <View style={{ flex: 1 }}>
@@ -59,7 +65,13 @@ export function EditModalForm({
           <View style={styles.actions}>
             <TouchableOpacity
               onPress={onClose}
-              style={[styles.cancelBtn, { borderColor, backgroundColor: 'rgba(255,255,255,0.03)' }]}
+              style={[
+                styles.cancelBtn,
+                {
+                  borderColor,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.04)',
+                },
+              ]}
               activeOpacity={0.9}
             >
               <Text style={[styles.cancelText, { color: textColor }]}>Cancel</Text>
@@ -96,7 +108,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.22)',
     alignSelf: 'center',
     marginTop: 10,
     marginBottom: 10,

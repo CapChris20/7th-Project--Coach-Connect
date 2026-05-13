@@ -21,27 +21,32 @@ const defaultSuggestions = [
 ];
 
 export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions }) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
+  const screenBg = isDark ? colors?.background ?? '#0A0A0F' : colors?.background ?? '#F2F2F7';
   const t = isDark
     ? {
-        cardGrad: ['rgba(30,28,48,0.85)', 'rgba(18,16,32,0.92)'],
+        cardBg: '#14121A',
+        cardBorder: 'rgba(255,255,255,0.10)',
         text: '#FFFFFF',
-        textMuted: 'rgba(255,255,255,0.6)',
-        faint: 'rgba(255,255,255,0.3)',
+        textMuted: 'rgba(255,255,255,0.62)',
+        faint: 'rgba(255,255,255,0.28)',
         inputBg: 'rgba(255,255,255,0.06)',
         inputText: '#FFFFFF',
-        inputPlaceholder: 'rgba(255,255,255,0.35)',
-        borderNeutral: 'rgba(255,255,255,0.12)',
+        inputPlaceholder: 'rgba(255,255,255,0.38)',
+        inputBorder: 'rgba(255,255,255,0.12)',
+        chipBg: 'rgba(255,255,255,0.08)',
       }
     : {
-        cardGrad: ['rgba(255,255,255,0.95)', 'rgba(245,243,255,0.98)'],
-        text: '#0A0A0F',
-        textMuted: 'rgba(10,10,15,0.6)',
-        faint: 'rgba(10,10,15,0.35)',
-        inputBg: 'rgba(10,10,15,0.04)',
-        inputText: '#0A0A0F',
-        inputPlaceholder: 'rgba(10,10,15,0.4)',
-        borderNeutral: 'rgba(0,0,0,0.10)',
+        cardBg: '#FFFFFF',
+        cardBorder: 'rgba(15,23,42,0.10)',
+        text: '#0F172A',
+        textMuted: 'rgba(15,23,42,0.55)',
+        faint: 'rgba(15,23,42,0.28)',
+        inputBg: 'rgba(15,23,42,0.04)',
+        inputText: '#0F172A',
+        inputPlaceholder: 'rgba(15,23,42,0.38)',
+        inputBorder: 'rgba(15,23,42,0.12)',
+        chipBg: 'rgba(15,23,42,0.06)',
       };
 
   const [foodName, setFoodName] = useState('');
@@ -76,19 +81,23 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
     setQuantity((q) => Math.max(0, parseFloat((q + delta).toFixed(2))));
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      {/* Card with gradient backdrop */}
+    <ScrollView
+      style={[styles.container, { backgroundColor: screenBg }]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <LinearGradient
-        colors={t.cardGrad}
+        colors={isDark ? ['#BE185D', '#EA580C'] : ['#BE185D', '#FB923C']}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.card}
+        end={{ x: 1, y: 0 }}
+        style={styles.cardRim}
       >
+        <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <LinearGradient
-              colors={['#FF6B9D', '#F97316']}
+              colors={['#9F1239', '#EA580C']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.headerIcon}
@@ -106,8 +115,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
         {/* Food Name */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: t.textMuted }]}>FOOD NAME</Text>
-          <AccentInput
-            accent="cyan"
+          <FieldInput
             placeholder="e.g. Almond milk"
             value={foodName}
             onChangeText={setFoodName}
@@ -118,12 +126,12 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
         {/* Quantity */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: t.textMuted }]}>QUANTITY (SERVINGS)</Text>
-          <View style={styles.quantityContainer}>
+          <View style={[styles.quantityContainer, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
             <TouchableOpacity
-              style={styles.quantityButton}
+              style={[styles.quantityButton, { backgroundColor: t.chipBg }]}
               onPress={() => updateQuantity(-0.5)}
             >
-              <Ionicons name="remove" size={18} color={isDark ? 'rgba(255,255,255,0.85)' : 'rgba(10,10,15,0.7)'} />
+              <Ionicons name="remove" size={18} color={t.textMuted} />
             </TouchableOpacity>
             <TextInput
               style={[styles.quantityInput, { color: t.inputText }]}
@@ -133,10 +141,10 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
               placeholderTextColor={t.inputPlaceholder}
             />
             <TouchableOpacity
-              style={styles.quantityButton}
+              style={[styles.quantityButton, { backgroundColor: t.chipBg }]}
               onPress={() => updateQuantity(0.5)}
             >
-              <Ionicons name="add" size={18} color={isDark ? 'rgba(255,255,255,0.85)' : 'rgba(10,10,15,0.7)'} />
+              <Ionicons name="add" size={18} color={t.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -144,8 +152,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
         {/* Calories */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: t.textMuted }]}>CALORIES</Text>
-          <AccentInput
-            accent="orange"
+          <FieldInput
             placeholder="e.g. 60"
             value={calories}
             onChangeText={setCalories}
@@ -176,47 +183,52 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
               label="Protein (g)"
               value={macros.protein}
               onChange={(v) => updateMacro('protein', v)}
-              accent="#C084FC"
+              dot="#E8799A"
+              t={t}
             />
             <MacroField
               label="Carbs (g)"
               value={macros.carbs}
               onChange={(v) => updateMacro('carbs', v)}
-              accent="#FF6B9D"
+              dot="#FB923C"
+              t={t}
             />
             <MacroField
               label="Fat (g)"
               value={macros.fat}
               onChange={(v) => updateMacro('fat', v)}
-              accent="#7C1D6F"
+              dot="#A78BFA"
+              t={t}
             />
             <MacroField
               label="Sodium (mg)"
               value={macros.sodium}
               onChange={(v) => updateMacro('sodium', v)}
-              accent="#C084FC"
+              dot="#94A3B8"
+              t={t}
             />
             <MacroField
               label="Fiber (g)"
               value={macros.fiber}
               onChange={(v) => updateMacro('fiber', v)}
-              accent="#FF6B9D"
+              dot="#E8799A"
+              t={t}
             />
             <MacroField
               label="Sugar (g)"
               value={macros.sugar}
               onChange={(v) => updateMacro('sugar', v)}
-              accent="#7C1D6F"
+              dot="#FB923C"
+              t={t}
             />
 
             {/* Serving Size */}
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: t.textMuted }]}>SERVING SIZE (G/SERVING)</Text>
-              <ColorInput
+              <FieldInput
                 placeholder="0"
                 value={macros.servingSize}
                 onChangeText={(v) => updateMacro('servingSize', v)}
-                neutral
                 keyboardType="number-pad"
                 t={t}
               />
@@ -225,11 +237,10 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
             {/* Serving Unit */}
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: t.textMuted }]}>SERVING UNIT</Text>
-              <ColorInput
+              <FieldInput
                 placeholder="g, ml, cup..."
                 value={macros.servingUnit}
                 onChangeText={(v) => updateMacro('servingUnit', v)}
-                neutral
                 t={t}
               />
             </View>
@@ -238,9 +249,9 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
 
         {/* Log Food Button */}
         <LinearGradient
-          colors={['#FF6B9D', '#C026D3', '#7C3AED']}
+          colors={['#9F1239', '#EA580C']}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 1, y: 0 }}
           style={[styles.logButton, !isValid && styles.logButtonDisabled]}
         >
           <TouchableOpacity
@@ -252,6 +263,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
             <Text style={styles.logButtonText}>Log Food</Text>
           </TouchableOpacity>
         </LinearGradient>
+        </View>
       </LinearGradient>
     </ScrollView>
   );
@@ -259,66 +271,32 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
 
 /* ============ COMPONENTS ============ */
 
-function AccentInput({ accent, ...props }) {
-  const { t, style, ...rest } = props;
-  const accentMap = {
-    // Updated to match CoachConnect palette request
-    cyan: '#C084FC', // purple
-    orange: '#FF6B9D', // pink
-  };
-
-  const color = accentMap[accent] || '#7C1D6F'; // dark magenta fallback
-
+function FieldInput({ t, style, ...rest }) {
   return (
     <TextInput
       {...rest}
       style={[
-        styles.accentInput,
-        { borderColor: color, borderWidth: 1.5 },
-        { backgroundColor: t?.inputBg, color: t?.inputText },
+        styles.fieldInput,
+        {
+          backgroundColor: t.inputBg,
+          color: t.inputText,
+          borderColor: t.inputBorder,
+        },
         style,
       ]}
-      placeholderTextColor={t?.inputPlaceholder ?? 'rgba(255,255,255,0.35)'}
+      placeholderTextColor={t.inputPlaceholder}
     />
   );
 }
 
-function ColorInput({ accent, neutral = false, ...props }) {
-  const { t, style, ...rest } = props;
-  const borderColor = neutral ? 'rgba(255,255,255,0.12)' : accent;
-  return (
-    <TextInput
-      {...rest}
-      style={[
-        styles.colorInput,
-        { borderColor: neutral ? (t?.borderNeutral ?? borderColor) : borderColor, borderWidth: 1.5 },
-        { backgroundColor: t?.inputBg, color: t?.inputText },
-        style,
-      ]}
-      placeholderTextColor={t?.inputPlaceholder ?? 'rgba(255,255,255,0.35)'}
-    />
-  );
-}
-
-function MacroField({ label, value, onChange, accent }) {
+function MacroField({ label, value, onChange, dot, t }) {
   return (
     <View style={styles.macroField}>
       <View style={styles.macroLabel}>
-        <View
-          style={[
-            styles.macroDot,
-            { backgroundColor: accent, shadowColor: accent },
-          ]}
-        />
-        <Text style={styles.macroLabelText}>{label}</Text>
+        <View style={[styles.macroDot, { backgroundColor: dot }]} />
+        <Text style={[styles.macroLabelText, { color: t.textMuted }]}>{label}</Text>
       </View>
-      <ColorInput
-        neutral
-        value={value}
-        onChangeText={onChange}
-        placeholder="0"
-        keyboardType="number-pad"
-      />
+      <FieldInput t={t} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
     </View>
   );
 }
@@ -330,13 +308,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 24,
-    backgroundColor: '#0A0A0F',
+  },
+  cardRim: {
+    borderRadius: 28,
+    padding: 1,
+    marginBottom: 8,
   },
   card: {
-    borderRadius: 28,
-    padding: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 27,
+    padding: 24,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   header: {
     flexDirection: 'row',
@@ -359,12 +340,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
   },
   headerSubtitle: {
     fontSize: 11,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.45)',
     marginTop: 4,
   },
   inputGroup: {
@@ -373,36 +352,23 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.55)',
     marginBottom: 8,
     letterSpacing: 0.8,
   },
-  accentInput: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 16,
+  fieldInput: {
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
     fontWeight: '500',
-    color: 'white',
-  },
-  colorInput: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    fontWeight: '500',
-    color: 'white',
+    borderWidth: 1,
   },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#7C1D6F', // dark magenta
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
@@ -410,7 +376,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -419,7 +384,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 18,
     fontWeight: 'bold',
-    color: 'white',
   },
   toggleMacros: {
     flexDirection: 'row',
@@ -431,7 +395,6 @@ const styles = StyleSheet.create({
   toggleText: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
   },
   macrosGrid: {
     gap: 12,
@@ -450,14 +413,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 8,
   },
   macroLabelText: {
     fontSize: 11,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.55)',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },

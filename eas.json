@@ -17,11 +17,6 @@
   },
   "submit": {
     "production": {}
-  },
-  "env": {
-    "production": {
-      "API_BASE_URL": "https://api.coachconnect.ai"
-    }
   }
 }
 

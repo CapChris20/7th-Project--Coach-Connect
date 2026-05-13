@@ -3,11 +3,15 @@ import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-const BG_GRADIENT = ['#1a0a2e', '#0f0a1a'];
-const TOP_BORDER_GRADIENT = ['#C084FC', '#64D2FF'];
-const CTA_GRADIENT = ['#FF6B9D', '#C084FC'];
+const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
+const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
+/** Matches Aurora hero + Settings: dark pink → dark orange */
+const TOP_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
+/** Same as Settings pills / header profile: dark pink → dark orange */
+const CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 const CYAN = '#64D2FF';
+const INK = '#0A0A0F';
 
 const FEATURES = [
   { icon: 'fitness-outline', label: 'Workouts' },
@@ -19,7 +23,14 @@ const FEATURES = [
 /**
  * Premium hero for the client home “full dashboard” entry — matches MarketplaceHeroCard hierarchy.
  */
-export default function DashboardHeroCard({ onPress, unreadMessageCount = 0 }) {
+export default function DashboardHeroCard({ onPress, unreadMessageCount = 0, isDark = true }) {
+  const bgGradient = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
+  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.55)';
+  const headlineColor = isDark ? '#FFFFFF' : INK;
+  const subheadColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.6)';
+  const pillBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
+  const pillText = isDark ? '#FFFFFF' : INK;
+  const badgeBorder = isDark ? '#1a0a2e' : '#FFFFFF';
   return (
     <View style={styles.wrapper} accessibilityRole="summary" accessibilityLabel="Your complete dashboard">
       <Pressable
@@ -40,27 +51,27 @@ export default function DashboardHeroCard({ onPress, unreadMessageCount = 0 }) {
               style={styles.topBorder}
             />
             <LinearGradient
-              colors={BG_GRADIENT}
+              colors={bgGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
               style={styles.inner}
             >
               <View style={styles.headerRow}>
-                <Text style={styles.label}>Your Complete Dashboard</Text>
+                <Text style={[styles.label, { color: labelColor }]}>Your Complete Dashboard</Text>
                 <Ionicons name="grid-outline" size={24} color={CYAN} />
               </View>
 
-              <Text style={styles.headline}>Everything You Need in One Place</Text>
+              <Text style={[styles.headline, { color: headlineColor }]}>Everything You Need in One Place</Text>
 
-              <Text style={styles.subhead}>
+              <Text style={[styles.subhead, { color: subheadColor }]}>
                 Log workouts, view stats, track progress, and more
               </Text>
 
               <View style={styles.pillsRow}>
                 {FEATURES.map(({ icon, label }) => (
-                  <View key={label} style={styles.pill}>
+                  <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
                     <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
-                    <Text style={styles.pillText} numberOfLines={1}>
+                    <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
                       {label}
                     </Text>
                   </View>
@@ -69,7 +80,7 @@ export default function DashboardHeroCard({ onPress, unreadMessageCount = 0 }) {
 
               <View style={styles.ctaWrap}>
                 {unreadMessageCount > 0 && (
-                  <View style={styles.badge}>
+                  <View style={[styles.badge, { borderColor: badgeBorder }]}>
                     <Text style={styles.badgeText}>
                       {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                     </Text>
@@ -117,7 +128,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     ...Platform.select({
       ios: {
-        shadowColor: '#C084FC',
+        shadowColor: '#BE185D',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.32,
         shadowRadius: 16,

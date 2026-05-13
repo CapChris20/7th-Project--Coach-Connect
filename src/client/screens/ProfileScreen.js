@@ -19,7 +19,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming, withDelay, Easing, withRepeat, withSpring } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
@@ -123,7 +123,12 @@ const ActionCard = ({ icon, title, subtitle, colors }) => {
       accessibilityHint={subtitle}
     >
       <Animated.View style={animatedStyle}>
-        <BlurView intensity={80} tint="dark" style={styles.actionCard}>
+        <BlurBackdropPlate
+          intensity={80}
+          tint="dark"
+          style={styles.actionCard}
+          contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', flex: 1, alignSelf: 'stretch' }}
+        >
           <LinearGradient colors={colors} style={styles.actionIcon}>
             <Ionicons name={icon} size={28} color="white" />
           </LinearGradient>
@@ -132,7 +137,7 @@ const ActionCard = ({ icon, title, subtitle, colors }) => {
             <Text style={styles.actionSubtitle}>{subtitle}</Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color="rgba(255, 255, 255, 0.3)" />
-        </BlurView>
+        </BlurBackdropPlate>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -175,7 +180,12 @@ const ProgramCard = ({ thumbnail, name, duration, isActive }) => {
       accessibilityHint={isActive ? "This is your active program" : "View program details"}
     >
       <Animated.View style={animatedStyle}>
-        <BlurView intensity={80} tint="dark" style={styles.programCard}>
+        <BlurBackdropPlate
+          intensity={80}
+          tint="dark"
+          style={styles.programCard}
+          contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', flex: 1, alignSelf: 'stretch' }}
+        >
           <Image source={thumbnail} style={styles.programThumbnail} />
           <View style={styles.programInfo}>
             <Text style={styles.programName}>{name}</Text>
@@ -187,7 +197,7 @@ const ProgramCard = ({ thumbnail, name, duration, isActive }) => {
               <Text style={styles.activeText}>ACTIVE</Text>
             </View>
           )}
-        </BlurView>
+        </BlurBackdropPlate>
       </Animated.View>
     </TouchableOpacity>
   );

@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { auth, db } from '../../app/config';
 import { subscribeToConversations, subscribeToUnreadByConversation } from '../../ai/services/conversationService';
@@ -68,7 +68,7 @@ function formatTimestamp(timestamp) {
   }
 }
 
-const GlassCard = ({ children, style, isDark }) => {
+const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
   const t = isDark ? DARK : LIGHT;
   const cardStyle = {
     backgroundColor: t.glass,
@@ -84,12 +84,17 @@ const GlassCard = ({ children, style, isDark }) => {
   };
   if (Platform.OS === 'ios') {
     return (
-      <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={[cardStyle, style]}>
+      <BlurBackdropPlate
+        intensity={20}
+        tint={isDark ? 'dark' : 'light'}
+        style={[cardStyle, style]}
+        contentWrapperStyle={contentWrapperStyle}
+      >
         {children}
-      </BlurView>
+      </BlurBackdropPlate>
     );
   }
-  return <View style={[cardStyle, style]}>{children}</View>;
+  return <View style={[cardStyle, style, contentWrapperStyle]}>{children}</View>;
 };
 
 const GradientAvatar = ({ name, photoURL, size = 48 }) => {
@@ -324,7 +329,7 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
         activeOpacity={0.85}
         style={{ marginHorizontal: 16, marginBottom: 10 }}
       >
-        <GlassCard isDark={isDark} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+        <GlassCard isDark={isDark} contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', padding: 16, minWidth: 0 }}>
           <View style={{ position: 'relative', flexShrink: 0 }}>
             <GradientAvatar name={name} photoURL={otherData.photoURL} size={48} />
             {showBell && (

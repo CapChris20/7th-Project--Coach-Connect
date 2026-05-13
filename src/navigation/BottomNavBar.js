@@ -7,6 +7,7 @@ import { useMergedNavigation } from './AppNavigationContext';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import GradientGeminiNavIcon from '../shared/components/GradientGeminiNavIcon';
 import { useAI } from '../contexts/AIContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -76,7 +77,8 @@ export default function BottomNavBar({
   
   // If all required props are provided, use them directly (no context lookup)
   const hasAllProps = Object.values(directProps).every(prop => prop && typeof prop === 'function');
-  
+
+  const mergedNav = useMergedNavigation(directProps);
   const {
     onHomePress,
     onPlusPress,
@@ -84,7 +86,7 @@ export default function BottomNavBar({
     onNutritionPress,
     onWorkoutPress,
     onMessagesPress,
-  } = hasAllProps ? directProps : useMergedNavigation(directProps);
+  } = hasAllProps ? directProps : mergedNav;
   const { colors, spacing, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { aiEnabled } = useAI();
@@ -241,6 +243,17 @@ export default function BottomNavBar({
   const containerTint = isDark ? 'dark' : 'light';
   const containerTintColor = isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)';
 
+  /** BlurBackdropPlate wraps children in an inner View; it must repeat the row flex from `styles.container` or tabs stack vertically. */
+  const navPlateContentStyle = {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+    alignSelf: 'stretch',
+    position: 'relative',
+    minWidth: 0,
+  };
+
   const activate = (key, handler) => {
     setActiveKey(key);
     AsyncStorage.setItem(ACTIVE_KEY_STORAGE, key).catch(() => {});
@@ -250,10 +263,11 @@ export default function BottomNavBar({
   // Non‑AI users: simple 4-tab bar (no floating center button)
   if (!aiOn) {
     return (
-      <BlurView
+      <BlurBackdropPlate
         intensity={containerBlurIntensity}
         tint={containerTint}
         style={styles.container}
+        contentWrapperStyle={navPlateContentStyle}
       >
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: containerTintColor }]} pointerEvents="none" />
 
@@ -388,15 +402,16 @@ export default function BottomNavBar({
             </Text>
           </View>
         </TouchableOpacity>
-      </BlurView>
+      </BlurBackdropPlate>
     );
   }
 
   return (
-    <BlurView
+    <BlurBackdropPlate
       intensity={containerBlurIntensity}
       tint={containerTint}
       style={styles.container}
+      contentWrapperStyle={navPlateContentStyle}
     >
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: containerTintColor }]} pointerEvents="none" />
       {/* Left Side - 3 items */}
@@ -555,6 +570,6 @@ export default function BottomNavBar({
           <Ionicons name="add" size={38} color="#FFFFFF" />
         </LinearGradient>
       </TouchableOpacity>
-    </BlurView>
+    </BlurBackdropPlate>
   );
 }

@@ -8,7 +8,7 @@ const ACCENT_BORDER_GRADIENT = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF
 
 const CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
 
-const BENEFITS = [
+const DEFAULT_BENEFITS = [
   'Custom Workout Plans',
   'Live Coaching Support',
   'Real-Time Progress Tracking',
@@ -17,16 +17,38 @@ const BENEFITS = [
 
 /**
  * Premium hero for the trainer marketplace on the client home screen.
+ * Optional props reuse the same shell elsewhere (e.g. trainer session form).
+ *
+ * @param {string} [subheadColor] — override subhead text color
+ * @param {string} [benefitTextColor] — override bullet line color
  */
-export default function MarketplaceHeroCard({ onPress, notificationCount = 0, isDark = true /* design is dark-first */ }) {
+export default function MarketplaceHeroCard({
+  onPress,
+  notificationCount = 0,
+  isDark = true /* design is dark-first */,
+  label = 'Trainer Marketplace',
+  headline = 'Find Your Perfect Coach',
+  subhead = 'Search the marketplace, compare trainers, and connect with the coach who fits your goals and style.',
+  benefits = DEFAULT_BENEFITS,
+  ctaLabel = 'Browse Trainers',
+  ctaIcon = 'search',
+  children = null,
+  hideCta = false,
+  accessibilityLabel = 'Trainer marketplace',
+  outerStyle = null,
+  subheadColor: subheadColorProp,
+  benefitTextColor: benefitTextColorProp,
+}) {
   const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
   const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)';
-  const benefitTextColor = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)';
+  const subColor =
+    subheadColorProp ?? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)');
+  const benefitTextColor =
+    benefitTextColorProp ?? (isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)');
   const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
 
   return (
-    <View style={styles.outer} accessibilityRole="summary" accessibilityLabel="Trainer marketplace">
+    <View style={[styles.outer, outerStyle]} accessibilityRole="summary" accessibilityLabel={accessibilityLabel}>
       <LinearGradient
         colors={ACCENT_BORDER_GRADIENT}
         start={{ x: 0, y: 0 }}
@@ -43,40 +65,42 @@ export default function MarketplaceHeroCard({ onPress, notificationCount = 0, is
             pointerEvents="none"
           />
           <View style={styles.content}>
-            <Text style={[styles.label, { color: labelColor }]}>Trainer Marketplace</Text>
+            <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
 
-            <Text style={[styles.headline, { color: headlineColor }]}>Find Your Perfect Coach</Text>
+            <Text style={[styles.headline, { color: headlineColor }]}>{headline}</Text>
 
-            <Text style={[styles.subhead, { color: subColor }]}>
-              Search the marketplace, compare trainers, and connect with the coach who fits your goals and style.
-            </Text>
+            <Text style={[styles.subhead, { color: subColor }]}>{subhead}</Text>
+
+            {children ? <View style={styles.childrenSlot}>{children}</View> : null}
 
             <View style={styles.benefits}>
-              {BENEFITS.map((line, i) => (
-                <View key={line} style={styles.benefitRow}>
+              {(benefits || []).map((line, i) => (
+                <View key={`${line}_${i}`} style={styles.benefitRow}>
                   <Ionicons name="checkmark-circle" size={18} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={styles.checkIcon} />
                   <Text style={[styles.benefitText, { color: benefitTextColor }]}>{line}</Text>
                 </View>
               ))}
             </View>
 
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.ctaGradient}
-            >
-              <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.ctaTouchable} accessibilityRole="button" accessibilityLabel="Browse trainers">
-                <Ionicons name="search" size={20} color="#FFFFFF" />
-                <Text style={styles.ctaText}>Browse Trainers</Text>
-                {notificationCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-                  </View>
-                ) : null}
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            </LinearGradient>
+            {!hideCta && onPress ? (
+              <LinearGradient
+                colors={['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.ctaGradient}
+              >
+                <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.ctaTouchable} accessibilityRole="button" accessibilityLabel={ctaLabel}>
+                  <Ionicons name={ctaIcon} size={20} color="#FFFFFF" />
+                  <Text style={styles.ctaText}>{ctaLabel}</Text>
+                  {notificationCount > 0 ? (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                    </View>
+                  ) : null}
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : null}
           </View>
         </View>
       </LinearGradient>
@@ -119,6 +143,9 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 14,
     zIndex: 1,
+  },
+  childrenSlot: {
+    gap: 10,
   },
   label: {
     fontSize: 11,

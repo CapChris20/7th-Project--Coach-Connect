@@ -78,7 +78,10 @@ module.exports = {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.coachconnect.ai',
+      /** Production API origin — set EXPO_PUBLIC_API_BASE_URL (no trailing slash). */
+      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || '',
+      /** Optional: shown for Contact support / Report a bug in Settings. */
+      supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || '').trim(),
       youtubeApiKey: String(
         process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ||
           process.env.YOUTUBE_API_KEY ||

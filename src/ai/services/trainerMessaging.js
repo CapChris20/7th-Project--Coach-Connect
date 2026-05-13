@@ -13,6 +13,7 @@ import {
   onSnapshot,
   updateDoc,
   runTransaction,
+  deleteField,
 } from 'firebase/firestore';
 import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
 import { randomClientRequestTitle } from '../../shared/notifications/pushCopy';
@@ -241,16 +242,21 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
  */
 export async function sendClientRequest(conversationId, senderId, messageText, metadata = {}) {
   try {
-    if (!conversationId || !senderId || !messageText) {
-      throw new Error('Missing required parameters: conversationId, senderId, or messageText');
+    if (!conversationId || !senderId) {
+      throw new Error('Missing required parameters: conversationId or senderId');
     }
+
+    const trimmed = messageText != null ? String(messageText).trim() : '';
+    const text =
+      trimmed ||
+      "Hi! I'd like to work with you as my trainer.";
 
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const messageData = {
       id: messageId,
       conversationId,
       senderId,
-      text: messageText,
+      text,
       timestamp: serverTimestamp(),
       read: false,
       status: 'pending',
@@ -267,7 +273,7 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
 
       const conversationRef = doc(db, 'conversations', conversationId);
       transaction.update(conversationRef, {
-        lastMessage: messageText,
+        lastMessage: text,
         lastMessageTime: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -283,7 +289,7 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
         void postRemotePushNotify({
           recipientId: trainerId,
           senderName: randomClientRequestTitle(cname),
-          messageText: `${cname}: ${messageText.substring(0, 120)}`,
+          messageText: `${cname}: ${text.substring(0, 120)}`,
           senderId,
           conversationId,
           messageId: result,
@@ -635,4 +641,60 @@ export function subscribeToUnreadCount(userId, callback) {
   };
 }
 
+/** How long after `typingAt` we hide the “typing…” UI without a new pulse. */
+export const TYPING_UI_STALE_MS = 4500;
+
+/**
+ * Live typing hints on `conversations/{conversationId}` (participants may update per rules).
+ * @param {(meta: { typingUserId: string|null, typingAt: object|null }) => void} listener
+ */
+export function subscribeConversationTyping(conversationId, listener) {
+  if (!db || !conversationId || typeof listener !== 'function') return () => {};
+  const ref = doc(db, 'conversations', conversationId);
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        listener({ typingUserId: null, typingAt: null });
+        return;
+      }
+      const d = snap.data() || {};
+      listener({
+        typingUserId: d.typingUserId ?? null,
+        typingAt: d.typingAt ?? null,
+      });
+    },
+    () => listener({ typingUserId: null, typingAt: null }),
+  );
+}
+
+export async function pulseConversationTyping(conversationId, userId) {
+  if (!db || !conversationId || !userId) return;
+  try {
+    await updateDoc(doc(db, 'conversations', conversationId), {
+      typingUserId: userId,
+      typingAt: serverTimestamp(),
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('pulseConversationTyping:', e?.message || e);
+  }
+}
+
+export async function clearMyConversationTyping(conversationId, userId) {
+  if (!db || !conversationId || !userId) return;
+  try {
+    const ref = doc(db, 'conversations', conversationId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const cur = snap.data()?.typingUserId;
+    if (cur === userId) {
+      await updateDoc(ref, {
+        typingUserId: deleteField(),
+        typingAt: deleteField(),
+      });
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('clearMyConversationTyping:', e?.message || e);
+  }
+}
 

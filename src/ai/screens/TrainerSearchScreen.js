@@ -17,12 +17,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import { db, storage } from '../../app/config';
 import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared/utils/trainerProfileMedia';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import TrainerRequestConfirmModal from '../../marketplace/components/TrainerRequestConfirmModal';
+import TrainerRequestIntroModal from '../../marketplace/components/TrainerRequestIntroModal';
 import { useTheme } from '../../shared/ui/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -577,9 +578,21 @@ function specialtyIconKey(raw) {
   return 'ribbon-outline';
 }
 
-function TrainerProfileSheet({ trainer, colorIndex, visible, onClose, onRequest, isDark, requesting }) {
+function TrainerProfileSheet({
+  trainer,
+  colorIndex,
+  visible,
+  onClose,
+  onRequest,
+  isDark,
+  requesting,
+  /** `connected` = client already has this coach — marketplace “Connect” CTA is hidden; use `onMessage` instead. */
+  variant = 'marketplace',
+  onMessage,
+}) {
   if (!trainer) return null;
 
+  const isConnected = variant === 'connected';
   const color = BORDER_COLORS[(colorIndex ?? 0) % BORDER_COLORS.length];
   const colorData = COLOR_MAP[color];
   const name = trainer.displayName || trainer.name || 'Trainer';
@@ -635,7 +648,9 @@ function TrainerProfileSheet({ trainer, colorIndex, visible, onClose, onRequest,
             </View>
           </TouchableOpacity>
           <View style={styles.profileTopCenter}>
-            <Text style={[styles.profileTopKicker, { color: mutedColor }]}>MARKETPLACE</Text>
+            <Text style={[styles.profileTopKicker, { color: mutedColor }]}>
+              {isConnected ? 'YOUR COACH' : 'MARKETPLACE'}
+            </Text>
             <Text style={[styles.profileTopTitle, { color: textColor }]}>Coach profile</Text>
           </View>
           <View style={{ width: 44 }} />
@@ -772,32 +787,46 @@ function TrainerProfileSheet({ trainer, colorIndex, visible, onClose, onRequest,
           ) : null}
         </ScrollView>
 
-        <BlurView intensity={isDark ? 28 : 48} tint={isDark ? 'dark' : 'light'} style={styles.profileFooterBlur}>
+        <BlurBackdropPlate intensity={isDark ? 28 : 48} tint={isDark ? 'dark' : 'light'} style={styles.profileFooterBlur}>
           <View style={[styles.profileFooterInner, { borderTopColor: borderSoft }]}>
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.profileRequestGradient}
-            >
-              <TouchableOpacity
-                activeOpacity={0.88}
-                onPress={onRequest}
-                disabled={requesting}
-                style={[styles.profileRequestBtn, requesting && { opacity: 0.72 }]}
+            {isConnected && typeof onMessage === 'function' ? (
+              <LinearGradient
+                colors={['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.profileRequestGradient}
               >
-                {requesting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Text style={styles.profileRequestText}>Connect with {name.split(' ')[0]}</Text>
-                    <Ionicons name="arrow-forward-circle" size={22} color="#FFFFFF" />
-                  </>
-                )}
-              </TouchableOpacity>
-            </LinearGradient>
+                <TouchableOpacity activeOpacity={0.88} onPress={onMessage} style={styles.profileRequestBtn}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFFFFF" />
+                  <Text style={styles.profileRequestText}>Message</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : (
+              <LinearGradient
+                colors={['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.profileRequestGradient}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.88}
+                  onPress={onRequest}
+                  disabled={requesting}
+                  style={[styles.profileRequestBtn, requesting && { opacity: 0.72 }]}
+                >
+                  {requesting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={styles.profileRequestText}>Connect with {name.split(' ')[0]}</Text>
+                      <Ionicons name="arrow-forward-circle" size={22} color="#FFFFFF" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </LinearGradient>
+            )}
           </View>
-        </BlurView>
+        </BlurBackdropPlate>
       </SafeAreaView>
     </Modal>
   );
@@ -831,6 +860,8 @@ const TrainerSearchScreen = ({
   const [profileColorIndex, setProfileColorIndex] = useState(0);
   const [requesting, setRequesting] = useState(false);
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
+  const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
+  const [requestIntroDraft, setRequestIntroDraft] = useState('');
   const [requestToast, setRequestToast] = useState('');
 
   useEffect(() => {
@@ -1006,11 +1037,29 @@ const TrainerSearchScreen = ({
   };
 
   const openRequestConfirm = (trainer) => {
-    if (trainer) setRequestConfirmTrainer(trainer);
+    if (!trainer) return;
+    setRequestIntroTrainer(trainer);
+    setRequestIntroDraft('');
+  };
+
+  const closeRequestIntro = () => {
+    if (!requesting) {
+      setRequestIntroTrainer(null);
+      setRequestIntroDraft('');
+    }
+  };
+
+  const proceedFromIntroToTrialConfirm = () => {
+    if (!requestIntroTrainer) return;
+    setRequestConfirmTrainer(requestIntroTrainer);
+    setRequestIntroTrainer(null);
   };
 
   const closeRequestConfirm = () => {
-    if (!requesting) setRequestConfirmTrainer(null);
+    if (!requesting) {
+      setRequestConfirmTrainer(null);
+      setRequestIntroDraft('');
+    }
   };
 
   const runRequest = async (trainer) => {
@@ -1018,9 +1067,11 @@ const TrainerSearchScreen = ({
     if (onRequestTrainer) {
       setRequesting(true);
       try {
-        await onRequestTrainer(trainer);
+        const customIntro = String(requestIntroDraft || '').trim();
+        await onRequestTrainer(trainer, { clientIntro: customIntro || undefined });
         closeProfile();
         setRequestConfirmTrainer(null);
+        setRequestIntroDraft('');
         const nm = trainer.displayName || trainer.name || 'your coach';
         setRequestToast(`Request sent to ${nm}! They'll respond soon.`);
       } catch (e) {
@@ -1137,6 +1188,18 @@ const TrainerSearchScreen = ({
         onRequest={() => profileTrainer && openRequestConfirm(profileTrainer)}
         isDark={isDark}
         requesting={requesting}
+      />
+
+      <TrainerRequestIntroModal
+        visible={!!requestIntroTrainer}
+        trainerName={requestIntroTrainer?.displayName || requestIntroTrainer?.name || 'Trainer'}
+        messageDraft={requestIntroDraft}
+        onChangeMessage={setRequestIntroDraft}
+        onSkip={proceedFromIntroToTrialConfirm}
+        onSendMessage={proceedFromIntroToTrialConfirm}
+        onClose={closeRequestIntro}
+        isDark={isDark}
+        busy={requesting}
       />
 
       <TrainerRequestConfirmModal
@@ -1532,4 +1595,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export { TrainerProfileSheet };
 export default TrainerSearchScreen;

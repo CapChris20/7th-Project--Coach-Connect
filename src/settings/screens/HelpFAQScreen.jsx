@@ -1,111 +1,306 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
+import { getSupportEmail } from '../supportConfig';
+import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import BottomNavBar from '../../navigation/BottomNavBar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
+const PURPLE = '#C084FC';
+const PINK = '#FF6B9D';
+const BORDER_PAD = 0.35;
+
+function getCardTokens(isDark) {
+  return isDark
+    ? {
+        bg: '#141419',
+        border: 'rgba(255,255,255,0.08)',
+        text2: 'rgba(255,255,255,0.92)',
+        text3: 'rgba(255,255,255,0.72)',
+        chev: 'rgba(255,255,255,0.65)',
+      }
+    : {
+        bg: '#FFFFFF',
+        border: 'rgba(10,10,15,0.06)',
+        text2: 'rgba(10,10,15,0.86)',
+        text3: 'rgba(10,10,15,0.68)',
+        chev: 'rgba(10,10,15,0.65)',
+      };
+}
+
+function GradientCard({ borderColors, style, innerStyle, children }) {
+  return (
+    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
+      <View style={innerStyle}>{children}</View>
+    </LinearGradient>
+  );
+}
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const FAQ_SECTIONS = [
+  {
+    type: 'heading',
+    title: 'Using the app',
+  },
+  {
+    question: 'What is the dashboard and what does it show?',
+    answer:
+      'The dashboard is your full picture for the week: workouts, check-ins like energy and soreness, and tracking you keep up (like sleep, water, and calories when you log them). Home is the snapshot; “Your Complete Dashboard” is the deeper hub for workouts, progress, and history.',
+  },
+  {
+    question: 'How do I generate a workout?',
+    answer:
+      'Open the workout planner from your training area. Answer the setup questions, then generate a new weekly-style plan. You can view it, edit it, export it, or run an active workout from it.',
+  },
+  {
+    question: 'Can I regenerate a workout if I don’t like it?',
+    answer:
+      'Yes, if you still have full plan generations left this month. There’s a monthly limit on brand-new full plans (the banner shows what’s left and when it resets). If you’re out, you can still edit the plan, use AI Coach for tweaks, or wait for the reset.',
+  },
+  {
+    question: 'What’s in the exercise library and how do I use it?',
+    answer:
+      'The Exercise Library tab is next to your plans. It’s built around searchable exercise videos for demos and technique. Search, watch, and save favorites for later.',
+  },
+  {
+    question: 'How do I filter exercises in the library?',
+    answer:
+      'Use the search bar (muscles, equipment, goals, names). Use the chips and level/equipment hints to narrow results. It’s search plus smart narrowing, not a rigid spreadsheet.',
+  },
+  {
+    question: 'Can I watch exercise videos without internet?',
+    answer:
+      'Usually no—videos stream online. Your written plan still works offline; the video library needs a connection.',
+  },
+  {
+    question: 'How do trainers create workout plans for their clients?',
+    answer:
+      'Trainers use the client workout plans area: plans are stored on that client in the app. Trainers review and manage those plans there. Clients can also generate plans in their own planner.',
+  },
+  {
+    question: 'How do trainers manage multiple clients?',
+    answer:
+      'Through the trainer tools: client list, messaging, scheduling, requests, and per-client areas like notes, nutrition views, progress, and workout plans.',
+  },
+  {
+    question: 'How much do trainers earn and when?',
+    answer:
+      'Coach Connect doesn’t run trainer paychecks in the app. Earnings and payout timing are whatever you arrange outside the app (your business, invoicing, etc.), unless you add billing later.',
+  },
+  {
+    question: 'Can trainers set their own prices?',
+    answer:
+      'Trainer profiles can show a listed monthly-style price in Find trainers, and search can sort or filter by price when that info exists. The app displays what the trainer entered; it doesn’t negotiate or charge for you.',
+  },
+  {
+    question: 'How do athletes find trainers in their area?',
+    answer:
+      'Use Find trainers: browse, search, and filter (specialty, session type, experience, price when listed). Location is what the trainer put on their profile, not automatic GPS matching.',
+  },
+  {
+    question: 'What happens when I request a trainer?',
+    answer:
+      'Your request goes to their pending requests. They accept or decline. After you’re linked, messaging, shared files, and scheduling work the way your coach uses the app.',
+  },
+  {
+    question: 'What’s the difference between a real trainer and AI Coach?',
+    answer:
+      'Your trainer is a person: messages, sessions, files, photos they review. AI Coach is the in-app assistant for training and nutrition habits, with daily limits and a focused scope. Your coach does not automatically see AI Coach chats.',
+  },
+  {
+    question: 'How does progress tracking actually work?',
+    answer:
+      'From completed workouts (including active sessions you finish), daily check-ins on the dashboard, nutrition logs, and optional progress photos in the trainer flow. There is no Apple Health / Google Fit sync in the current app—what you log is what the history uses.',
+  },
+  {
+    type: 'heading',
+    title: 'More common questions',
+  },
+  {
+    question: 'Why are my “Nutrition Today” rings empty on home?',
+    answer: 'Log food in Nutrition; the home card pulls from that.',
+  },
+  {
+    question: 'Why did AI Coach say I hit a daily limit?',
+    answer:
+      'There’s a per-day cap on AI Coach messages so the service stays reliable. Try again tomorrow.',
+  },
+  {
+    question: 'Why won’t AI Coach answer my non-fitness questions?',
+    answer: 'It stays in fitness, nutrition, and healthy habits on purpose.',
+  },
+  {
+    question: 'What is the “Time to workout!” notification?',
+    answer:
+      'If you see a workout reminder notification, it’s coming from your device notifications. The wording is set by the app.',
+  },
+  {
+    question: 'How do I delete my account?',
+    answer: 'Settings → Delete account. Treat it as permanent; save anything important first.',
+  },
+  {
+    question: 'Is this medical advice?',
+    answer: 'No. For medical concerns, talk to a licensed professional.',
+  },
+];
 
 export default function HelpFAQScreen({ onClose }) {
   const { colors, spacing, isDark } = useTheme();
+  const supportEmail = getSupportEmail();
+  const [openKey, setOpenKey] = useState(null);
+  const t = getCardTokens(isDark);
+
+  const fade = useRef(new Animated.Value(0)).current;
+  const rise = useRef(new Animated.Value(10)).current;
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.timing(rise, { toValue: 0, duration: 350, useNativeDriver: true }),
+    ]).start();
+  }, [fade, rise]);
+
+  const rows = useMemo(() => FAQ_SECTIONS, []);
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md + 8,
-      paddingBottom: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: isDark ? 'rgba(88, 86, 214, 0.2)' : colors.border,
-    },
-    headerTitle: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    backButton: {
-      padding: spacing.sm,
-    },
-    backButtonText: {
-      fontSize: 18,
-      color: colors.primary,
-      fontWeight: '600',
+      backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
     },
     scrollContent: {
-      padding: spacing.lg,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      paddingBottom: 24,
     },
-    faqItem: {
-      marginBottom: spacing.xl,
+    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
+    heroInner: {
+      borderRadius: 14,
+      padding: 24,
+      backgroundColor: t.bg,
+      alignItems: 'center',
+      borderWidth: 0,
     },
-    question: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-      marginBottom: spacing.sm,
+    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
+    heroIconInner: {
+      flex: 1,
+      borderRadius: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderWidth: 0,
     },
-    answer: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      lineHeight: 20,
+    heroTitle: { fontSize: 32, fontWeight: '900', color: '#FFFFFF', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+    heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
+
+    introTitle: { fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 8 },
+    introSub: { fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.lg },
+    sectionHeading: {
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: getCardTokens(isDark).text3,
+      marginTop: 24,
+      marginBottom: 12,
     },
+    sectionUnderline: { width: 22, height: 1.5, backgroundColor: PURPLE, marginTop: 8, borderRadius: 999 },
+    sectionHeaderRow: { marginTop: 8, marginBottom: 12 },
+    faqCard: {
+      backgroundColor: getCardTokens(isDark).bg,
+      borderRadius: 12,
+      marginBottom: 10,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    faqCardBody: {
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      minHeight: 56,
+    },
+    faqBottomAccent: {
+      height: 1,
+      width: '100%',
+    },
+    questionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    qText: { flex: 1, fontSize: 14, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', lineHeight: 19, letterSpacing: -0.15 },
+    chev: { fontSize: 18, fontWeight: '900', color: getCardTokens(isDark).chev },
+    answerText: { marginTop: 10, fontSize: 14, fontWeight: '600', color: getCardTokens(isDark).text2, lineHeight: 22 },
+    footer: {
+      marginTop: 16,
+      padding: 16,
+      backgroundColor: getCardTokens(isDark).bg,
+      borderRadius: 12,
+      borderWidth: 0,
+    },
+    footerText: { fontSize: 13, fontWeight: '600', color: getCardTokens(isDark).text2, lineHeight: 20 },
   });
 
-  const faqs = [
-    {
-      question: 'How do I track my workouts?',
-      answer: 'Navigate to the Workout section and start a new workout. You can log exercises, sets, and reps as you complete them. Your progress is automatically saved.',
-    },
-    {
-      question: 'Can I customize my nutrition goals?',
-      answer: 'Yes! Go to Settings > Nutrition Goals to set your daily calorie, protein, carb, and fat targets based on your fitness goals.',
-    },
-    {
-      question: 'How do I connect with a trainer?',
-      answer: 'Use the Trainer Search feature to find certified trainers. You can message them directly and schedule sessions through the app.',
-    },
-    {
-      question: 'Is my data secure?',
-      answer: 'Yes, we use industry-standard encryption to protect your personal information and workout data. Your privacy is our priority.',
-    },
-    {
-      question: 'How do I reset my password?',
-      answer: 'Go to Settings > Change Password to update your password. If you\'ve forgotten your password, use the "Forgot Password" option on the login screen.',
-    },
-  ];
+  const toggle = (key) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenKey((prev) => (prev === key ? null : key));
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.background} />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backButton}>
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>FAQ</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
+      <CoachConnectHeader title="FAQ" isDark={isDark} onBack={onClose} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {faqs.map((faq, index) => (
-          <View key={index} style={styles.faqItem}>
-            <Text style={styles.question}>{faq.question}</Text>
-            <Text style={styles.answer}>{faq.answer}</Text>
+        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
+          <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroOuter} innerStyle={styles.heroInner}>
+            <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>
+              <Ionicons name="help-circle-outline" size={34} color="#FFFFFF" />
+            </GradientCard>
+            <Text style={styles.heroTitle}>Frequently Asked Questions</Text>
+            <Text style={styles.heroSub}>Quick answers, no jargon.</Text>
+          </GradientCard>
+
+          {rows.map((item, index) => {
+          if (item.type === 'heading') {
+            return (
+              <View key={`h-${item.title}`} style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeading}>{item.title}</Text>
+                <View style={styles.sectionUnderline} />
+              </View>
+            );
+          }
+          const key = `${item.question}-${index}`;
+          const isOpen = openKey === key;
+          return (
+            <View key={key} style={styles.faqCard}>
+              <View style={styles.faqCardBody}>
+                <Pressable onPress={() => toggle(key)} style={styles.questionRow}>
+                  <Text style={styles.qText}>{item.question}</Text>
+                  <Text style={styles.chev}>{isOpen ? '⌄' : '›'}</Text>
+                </Pressable>
+                {isOpen ? <Text style={styles.answerText}>{item.answer}</Text> : null}
+              </View>
+              <LinearGradient
+                colors={[PURPLE, PINK]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.faqBottomAccent}
+              />
+            </View>
+          );
+          })}
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              {supportEmail
+                ? `Questions? Email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
+                : 'We can’t give medical advice; for health emergencies, contact local emergency services.'}
+            </Text>
           </View>
-        ))}
+        </Animated.View>
       </ScrollView>
+
+      <BottomNavBar activeTabKey="home" />
     </SafeAreaView>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

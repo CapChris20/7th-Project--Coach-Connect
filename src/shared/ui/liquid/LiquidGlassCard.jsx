@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
-import { BlurView } from 'expo-blur';
+import BlurBackdropPlate from '../BlurBackdropPlate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Liquid } from './liquidTokens';
 
@@ -46,8 +46,8 @@ export default function LiquidGlassCard({
         ]}
       />
 
-      {/* Inner glass */}
-      <BlurView
+      {/* Inner glass — blur behind surface so children (icons/images) are not inside BlurView */}
+      <BlurBackdropPlate
         intensity={blurIntensity}
         tint="dark"
         style={[
@@ -70,7 +70,7 @@ export default function LiquidGlassCard({
         >
           {children}
         </View>
-      </BlurView>
+      </BlurBackdropPlate>
     </Container>
   );
 }

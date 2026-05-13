@@ -5,7 +5,7 @@
  * with Apple-style subtle gradients throughout.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,46 +27,502 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../shared/ui/ThemeContext';
-import { BlurView } from 'expo-blur';
-import { auth } from '../app/config';
+import { auth, db } from '../app/config';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseCandidates } from '../shared/services/baseUrl';
 import { queuePendingOnboardingSync } from '../shared/services/onboardingSync';
 import { useAI } from '../contexts/AIContext';
-import {
-  getOnboardingUiTokens,
-  ONBOARDING_ACCENT,
-  ONBOARDING_ACCENT_SOFT,
-  TRAINER_ONBOARDING_GRADIENT,
-  OnboardingProgressBar,
-  SelectionCard,
-  OnboardingTextArea,
-  OnboardingPrimaryButton,
-  OnboardingSectionLabel,
-  OnboardingInputRow,
-  OnboardingDayPicker,
-  OnboardingOptionChips,
-  OnboardingMultiSelectPills,
-  onboardingHeadingStyles,
-  onboardingGridHalfWidth,
-} from '../shared/components/onboarding/OnboardingLovableUI';
 import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
 import LottieView from 'lottie-react-native';
 import LiquidBackground from '../shared/ui/liquid/LiquidBackground';
 import LiquidBackgroundLight from '../shared/ui/liquid/LiquidBackgroundLight';
 import { getOnboardingIconSource } from '../shared/assets/onboardingIconRegistry';
 import { Ionicons } from '@expo/vector-icons';
+import lottieClient1 from '../assets/lottie/personal-info.json';
+import lottieClient2 from '../assets/lottie/fitness-experience.json';
+import lottieClient3 from '../assets/lottie/fitness-goal.json';
+import lottieClient4 from '../assets/Lotties for Anatrox/fitness (1).json';
+import lottieClient5 from '../assets/lottie/training-frequency.json';
+import lottieClient6 from '../assets/lottie/injuries.json';
+import lottieClient7 from '../assets/icons/weightlifting-competition.json';
+import lottieClientDescribeSituation from '../shared/assets/Walking steps.json';
+import lottieTrainer1 from '../assets/lottie/certifications.json';
+import lottieTrainer2 from '../assets/lottie/experience-timeline.json';
+import lottieTrainer3 from '../assets/lottie/specialties.json';
+import lottieTrainer4 from '../assets/lottie/philosophy.json';
+import lottieTrainer5 from '../assets/lottie/rates.json';
+import lottieTrainer6 from '../assets/lottie/invite-code.json';
+import {
+  ONBOARDING_CTA_GRADIENT,
+  ONBOARDING_BRAND_GRADIENT,
+  TRAINER_ONBOARDING_GRADIENT,
+  ONBOARDING_ACCENT,
+  ONBOARDING_ACCENT_SOFT,
+  getOnboardingUiTokens,
+  OnboardingPrimaryButton,
+} from '../shared/components/onboarding/onboardingAiDeps';
 
 const { width } = Dimensions.get('window');
 const SCREEN_PAD = 16;
 const GRID_GUTTER = 16;
 const TWO_COL_ITEM = (width - SCREEN_PAD * 2 - GRID_GUTTER) / 2;
 
+/** Firestore rejects `undefined` anywhere in nested objects — strip before writes. */
+function stripUndefinedForFirestore(input) {
+  if (input === undefined) return undefined;
+  if (input === null || typeof input !== 'object') return input;
+  if (Array.isArray(input)) {
+    return input
+      .map((item) => stripUndefinedForFirestore(item))
+      .filter((item) => item !== undefined);
+  }
+  const out = {};
+  for (const [key, val] of Object.entries(input)) {
+    if (val === undefined) continue;
+    const next = stripUndefinedForFirestore(val);
+    if (next === undefined) continue;
+    out[key] = next;
+  }
+  return out;
+}
+
+// --- Onboarding UI primitives (rest of components live in this file; tokens + primary CTA in onboardingAiDeps.jsx) ---
+
+function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) {
+  if (iconSource) {
+    const dim = grid ? 40 : large ? 36 : row ? 28 : 28;
+    return <Image source={iconSource} style={{ width: dim, height: dim }} resizeMode="contain" />;
+  }
+  if (iconName) {
+    const size = grid ? 26 : large ? 24 : 20;
+    return <Ionicons name={iconName} size={size} color={iconColor} />;
+  }
+  return null;
+}
+
+export function OnboardingProgressBar({ current, total, t, gradientColors }) {
+  const pct = Math.min((current / total) * 100, 100);
+  const g =
+    Array.isArray(gradientColors) && gradientColors.length >= 2 ? gradientColors : ONBOARDING_BRAND_GRADIENT;
+  const gEnd = g[g.length - 1];
+  return (
+    <View
+      style={{
+        flex: 1,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: t.progressTrack,
+        marginHorizontal: 12,
+        overflow: 'hidden',
+      }}
+    >
+      <LinearGradient
+        colors={[g[0], gEnd]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={{ width: `${pct}%`, height: 4, borderRadius: 2 }}
+      />
+    </View>
+  );
+}
+
+export function SelectionCard({
+  selected,
+  onPress,
+  iconName,
+  iconSource,
+  label,
+  description,
+  variant = 'full',
+  t,
+}) {
+  const bg = selected ? t.cardSelectedBg : t.cardBg;
+  const border = selected ? t.cardSelectedBorder : t.cardBorder;
+  const iconColor = selected ? ONBOARDING_ACCENT : t.textSecondary;
+  const hasIcon = !!(iconSource || iconName);
+
+  if (variant === 'grid') {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        style={{
+          flex: 1,
+          minHeight: 100,
+          backgroundColor: bg,
+          borderWidth: 1.5,
+          borderColor: border,
+          borderRadius: 14,
+          padding: 14,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}
+      >
+        {hasIcon ? (
+          <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} grid />
+        ) : null}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, textAlign: 'center' }}>{label}</Text>
+        {selected ? (
+          <View style={{ position: 'absolute', top: 8, right: 8 }}>
+            <Ionicons name="checkmark" size={14} color={ONBOARDING_ACCENT} />
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
+  }
+
+  if (variant === 'large') {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        style={{
+          flex: 1,
+          backgroundColor: bg,
+          borderWidth: 1.5,
+          borderColor: border,
+          borderRadius: 14,
+          padding: 24,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+        }}
+      >
+        {hasIcon ? (
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: ONBOARDING_ACCENT_SOFT,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={ONBOARDING_ACCENT} large />
+          </View>
+        ) : null}
+        <Text style={{ fontSize: 16, fontWeight: '700', color: t.textPrimary }}>{label}</Text>
+        {description ? (
+          <Text style={{ fontSize: 13, color: t.textSecondary, textAlign: 'center' }}>{description}</Text>
+        ) : null}
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        minHeight: 64,
+        backgroundColor: bg,
+        borderWidth: 1.5,
+        borderColor: border,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        marginBottom: 8,
+      }}
+    >
+      {hasIcon ? (
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: ONBOARDING_ACCENT_SOFT,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 12,
+          }}
+        >
+          <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={ONBOARDING_ACCENT} row />
+        </View>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: t.textPrimary }}>{label}</Text>
+        {description ? (
+          <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 1 }}>{description}</Text>
+        ) : null}
+      </View>
+      {selected ? <Ionicons name="checkmark" size={20} color={ONBOARDING_ACCENT} style={{ marginLeft: 8 }} /> : null}
+    </TouchableOpacity>
+  );
+}
+
+export function OnboardingTextArea({
+  value,
+  onChangeText,
+  placeholder,
+  maxLength = 500,
+  numberOfLines = 5,
+  t,
+  editable = true,
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={{ marginBottom: 4, opacity: editable ? 1 : 0.55 }}>
+      <TextInput
+        value={value}
+        editable={editable}
+        onChangeText={(v) => onChangeText(v.slice(0, maxLength))}
+        placeholder={placeholder}
+        placeholderTextColor={t.textLabel}
+        multiline
+        numberOfLines={numberOfLines}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{
+          backgroundColor: focused ? t.cardBg : t.inputBg,
+          borderWidth: 1.5,
+          borderColor: focused ? ONBOARDING_ACCENT : t.cardBorder,
+          borderRadius: 14,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          fontSize: 14,
+          color: t.textPrimary,
+          textAlignVertical: 'top',
+          minHeight: numberOfLines * 22 + 24,
+        }}
+      />
+      <Text style={{ fontSize: 11, color: t.textLabel, textAlign: 'right', marginTop: 4 }}>
+        {value.length}/{maxLength}
+      </Text>
+    </View>
+  );
+}
+
+export function OnboardingSectionLabel({ text, t, style }) {
+  return (
+    <Text
+      style={[
+        {
+          fontSize: 11,
+          fontWeight: '700',
+          letterSpacing: 1.2,
+          color: t.textLabel,
+          marginBottom: 10,
+          marginTop: 20,
+        },
+        style,
+      ]}
+    >
+      {text}
+    </Text>
+  );
+}
+
+export function OnboardingInputRow({
+  iconName,
+  iconSource,
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = 'default',
+  rightElement,
+  t,
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: focused ? t.cardBg : t.inputBg,
+        borderWidth: 1.5,
+        borderColor: focused ? ONBOARDING_ACCENT : t.cardBorder,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        height: 64,
+        marginBottom: 10,
+      }}
+    >
+      {iconSource ? (
+        <Image source={iconSource} style={{ width: 22, height: 22, marginRight: 12 }} resizeMode="contain" />
+      ) : iconName ? (
+        <Ionicons name={iconName} size={20} color={t.textSecondary} style={{ marginRight: 12 }} />
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, color: t.textLabel, marginBottom: 2 }}>
+          {label}
+        </Text>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={t.textLabel}
+          keyboardType={keyboardType}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{ fontSize: 15, color: t.textPrimary, padding: 0 }}
+        />
+      </View>
+      {rightElement}
+    </View>
+  );
+}
+
+export function OnboardingDayPicker({ value, onChange, t }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 20, marginBottom: 8 }}>
+      {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+        <TouchableOpacity
+          key={n}
+          onPress={() => onChange(n)}
+          activeOpacity={0.8}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          {value === n ? (
+            <LinearGradient
+              colors={ONBOARDING_CTA_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : (
+            <View
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                backgroundColor: t.dayBtnBg,
+                borderWidth: 1.5,
+                borderColor: t.cardBorder,
+                borderRadius: 20,
+              }}
+            />
+          )}
+          <Text style={{ fontSize: 14, fontWeight: '700', color: value === n ? '#fff' : t.textPrimary }}>{n}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+export function OnboardingOptionChips({ options, selected, onSelect, t }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 10,
+        marginTop: 10,
+      }}
+    >
+      {options.map((o) => {
+        const on = selected === o.value;
+        return (
+          <TouchableOpacity
+            key={o.value}
+            onPress={() => onSelect(o.value)}
+            activeOpacity={0.85}
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 18,
+              borderRadius: 16,
+              borderWidth: 1.5,
+              borderColor: on ? 'transparent' : t.cardBorder,
+              backgroundColor: on ? 'transparent' : t.cardBg,
+              overflow: 'hidden',
+              minWidth: 104,
+              alignItems: 'center',
+              ...(on && {
+                shadowColor: ONBOARDING_ACCENT,
+                shadowOpacity: 0.35,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 6,
+              }),
+            }}
+          >
+            {on ? (
+              <LinearGradient
+                colors={ONBOARDING_CTA_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : null}
+            <Text style={{ fontSize: 15, fontWeight: '700', color: on ? '#fff' : t.textPrimary }}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, t }) {
+  const set = new Set(selectedValues || []);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+      {options.map((o) => {
+        const on = set.has(o.value);
+        return (
+          <TouchableOpacity
+            key={o.value}
+            onPress={() => onToggle(o.value)}
+            activeOpacity={0.85}
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              borderRadius: 50,
+              marginRight: 8,
+              marginBottom: 8,
+              borderWidth: 1.5,
+              borderColor: on ? t.cardSelectedBorder : t.cardBorder,
+              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary }}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export const onboardingHeadingStyles = StyleSheet.create({
+  heading: {
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 32,
+    marginTop: 16,
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+});
+
+export function onboardingGridHalfWidth() {
+  return (width - 48) / 2;
+}
+// --- end inlined onboarding UI primitives ---
+
 // Liquid Glass accent tints (subtle, iOS-like)
 const GLASS_TINTS = {
-  cyan: '#64D2FF',  
-  violet: '#AF52DE',
+  cyan: '#64D2FF',
+  violet: '#C1265A',
   magenta: '#FF2D55',
   orange: '#FF9F0A',
 };
@@ -108,23 +564,6 @@ const GRADIENTS = {
   disabled: ['#CBD5E0', '#E2E8F0'],
 };
 
-// Lottie Imports
-import lottieClient1 from '../assets/lottie/personal-info.json';
-import lottieClient2 from '../assets/lottie/fitness-experience.json';
-import lottieClient3 from '../assets/lottie/fitness-goal.json';
-import lottieClient4 from '../assets/Lotties for Anatrox/fitness (1).json';
-import lottieClient5 from '../assets/lottie/training-frequency.json';
-import lottieClient6 from '../assets/lottie/injuries.json';
-import lottieClient7 from '../assets/lottie/trainer-code.json';
-import lottieRoleSelection from '../assets/lottie/role-selection.json';
-
-import lottieTrainer1 from '../assets/lottie/certifications.json';
-import lottieTrainer2 from '../assets/lottie/experience-timeline.json';
-import lottieTrainer3 from '../assets/lottie/specialties.json';
-import lottieTrainer4 from '../assets/lottie/philosophy.json';
-import lottieTrainer5 from '../assets/lottie/rates.json';
-import lottieTrainer6 from '../assets/lottie/invite-code.json';
-
 // Lottie Animation Mapping
 const LOTTIE_ANIMATIONS = {
   // Client Steps
@@ -135,7 +574,7 @@ const LOTTIE_ANIMATIONS = {
   'client-5': lottieClient5,
   'client-6': lottieClient6,
   'client-7': lottieClient7,
-  'client-8': lottieTrainer4, // philosophy.json — situation / lifestyle step
+  'client-8': lottieClientDescribeSituation, // Describe your situation (wide layout step)
   // Trainer Steps
   'trainer-1': lottieTrainer1,
   'trainer-2': lottieTrainer2,
@@ -225,7 +664,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
             end={{ x: 0.5, y: 1 }}
             style={styles.liquidFieldBorder}
           >
-            <BlurView intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidFieldBlur}>
+            <BlurBackdropPlate intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidFieldBlur}>
               <View style={[styles.liquidFieldSurface, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -288,7 +727,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
             )}
           </View>
         </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
         </Animated.View>
       </View>
@@ -322,7 +761,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
       <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1} style={styles.liquidCardHit}>
         <Animated.View style={[styles.liquidCardOuter, { transform: [{ scale }] }, selected && styles.liquidCardOuterSelected]}>
           <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.liquidCardBorder}>
-            <BlurView intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidCardBlur}>
+            <BlurBackdropPlate intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidCardBlur}>
               <View style={[styles.liquidCardSurface, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -354,7 +793,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                   ) : null}
                 </View>
               </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
@@ -412,7 +851,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
             end={{ x: 0.5, y: 1 }}
             style={styles.liquidSelectBorder}
           >
-            <BlurView
+            <BlurBackdropPlate
               intensity={pressed || selected ? 42 : 30}
               tint={isDark ? 'dark' : 'light'}
               style={styles.liquidSelectBlur}
@@ -469,7 +908,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
               </View>
             )}
           </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
@@ -502,7 +941,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
       <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1} style={styles.gradientPillContainer}>
         <Animated.View style={[styles.gradientPill, { transform: [{ scale }] }]}>
           <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.gradientPillBorder}>
-            <BlurView intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.gradientPillBlur}>
+            <BlurBackdropPlate intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.gradientPillBlur}>
               <View style={[styles.gradientPillSurface, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -531,7 +970,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                   {selected ? <Text style={[styles.gradientPillCheckmark, { color: textColor }]}>✓</Text> : null}
             </View>
               </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
@@ -608,7 +1047,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
       >
         <Animated.View style={[styles.equipmentCardShell, { transform: [{ scale }] }, selected && styles.equipmentCardShellSelected]}>
           <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.equipmentCardBorder}>
-            <BlurView intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.equipmentCardBlur}>
+            <BlurBackdropPlate intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.equipmentCardBlur}>
               <View style={[styles.equipmentCardInner, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -642,7 +1081,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
               <View style={styles.equipmentCheckboxOutline} />
           )}
               </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
@@ -674,7 +1113,12 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
       <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1} style={styles.dayCircleHit}>
         <Animated.View style={[styles.dayCircleOuter, { transform: [{ scale }] }, selected && styles.dayCircleOuterSelected]}>
           <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.dayCircleBorder}>
-            <BlurView intensity={pressed || selected ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.dayCircleBlur}>
+            <BlurBackdropPlate
+              intensity={pressed || selected ? 42 : 30}
+              tint={isDark ? 'dark' : 'light'}
+              style={styles.dayCircleBlur}
+              contentWrapperStyle={{ flex: 1 }}
+            >
               <View style={[styles.dayCircleSurface, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -686,11 +1130,16 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                   />
                 ) : null}
           {selected ? (
-                  <LinearGradient colors={GRADIENTS.purplePink} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.dayCircleSelectedOverlay} />
+                  <LinearGradient
+                    colors={ONBOARDING_CTA_GRADIENT}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.dayCircleSelectedOverlay}
+                  />
                 ) : null}
                 <Text style={[styles.dayCircleText, { color: textColor }]}>{day}</Text>
               </View>
-            </BlurView>
+            </BlurBackdropPlate>
             </LinearGradient>
         </Animated.View>
       </TouchableOpacity>
@@ -717,7 +1166,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
         <Text style={[styles.multiLineLabel, { color: labelColor }]}>{String(label || '').toUpperCase()}</Text>
         <View style={[styles.multiLineShell, disabled && { opacity: 0.6 }]}>
           <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.multiLineBorder}>
-            <BlurView intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.multiLineBlur}>
+            <BlurBackdropPlate intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.multiLineBlur}>
               <View style={[styles.multiLineInner, { backgroundColor: surfaceColor }]}>
                 {tintColor ? (
                   <View
@@ -744,37 +1193,8 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
             />
             <Text style={[styles.multiLineCounter, { color: counterColor }]}>{count}/500</Text>
           </View>
-            </BlurView>
+            </BlurBackdropPlate>
           </LinearGradient>
-        </View>
-      </View>
-    );
-  };
-
-  const RateInput = ({ label, value, onChangeText, placeholder }) => {
-    const [focused, setFocused] = useState(false);
-    return (
-      <View style={styles.rateBlock}>
-        <Text style={styles.rateLabel}>{label}</Text>
-        <View style={styles.rateRow}>
-          <Text style={styles.rateCurrency}>$</Text>
-          <TextInput
-            style={styles.rateInput}
-            placeholder={placeholder}
-            placeholderTextColor={COLORS.textSecondary}
-            keyboardType="numeric"
-            value={value}
-            onChangeText={onChangeText}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          />
-        </View>
-        <View style={styles.rateUnderline}>
-          {focused ? (
-            <LinearGradient colors={GRADIENTS.bluePurple} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rateUnderlineFill} />
-          ) : (
-            <View style={styles.rateUnderlineBase} />
-          )}
         </View>
       </View>
     );
@@ -829,7 +1249,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
         <View style={{ position: 'relative', width: '100%', marginBottom: 16 }}>
           <View style={styles.liquidAreaOuter}>
             <LinearGradient colors={borderColors} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.liquidAreaBorder}>
-              <BlurView intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidAreaBlur}>
+              <BlurBackdropPlate intensity={isFocused ? 42 : 30} tint={isDark ? 'dark' : 'light'} style={styles.liquidAreaBlur}>
                 <View style={[styles.liquidAreaSurface, { backgroundColor: surfaceColor }]}>
                   {tintColor ? (
                     <View
@@ -865,7 +1285,7 @@ Examples:
                     <Text style={{ fontSize: 12, color: getCharCountColor() }}>{charCount}/{maxChars}</Text>
           </View>
         </View>
-              </BlurView>
+              </BlurBackdropPlate>
             </LinearGradient>
         </View>
         </View>
@@ -1042,10 +1462,17 @@ Examples:
     );
   };
 
+/** Role comes from signup / Firestore via AuthGate; default client — never show a duplicate full-screen role picker. */
+function normalizeOnboardingRole(roleProp, routeRole) {
+  const s = String(roleProp ?? routeRole ?? '').toLowerCase().trim();
+  return s === 'trainer' ? 'trainer' : 'client';
+}
+
 export default function OnboardingScreen({ route, onComplete, role: roleProp }) {
   const { colors, typography, spacing, isDark: contextIsDark = true } = useTheme();
+  const insets = useSafeAreaInsets();
   const [isDark, setIsDark] = useState(contextIsDark);
-  const [role, setRole] = useState(roleProp || route?.params?.role || null); // 'client' | 'trainer' | null
+  const [role, setRole] = useState(() => normalizeOnboardingRole(roleProp, route?.params?.role));
 
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -1109,6 +1536,11 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
     // Persist theme choice
     AsyncStorage.setItem('themeMode', isDark ? 'dark' : 'light').catch(() => {});
   }, [isDark]);
+
+  useLayoutEffect(() => {
+    const next = normalizeOnboardingRole(roleProp, route?.params?.role);
+    setRole((prev) => (prev === next ? prev : next));
+  }, [roleProp, route?.params?.role]);
 
   const theme = isDark
     ? {
@@ -1200,64 +1632,15 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
   }, [role, currentStep, inviteBorderRotation, inviteBorderPulse]);
 
   // Get total steps based on role
-  const totalSteps = role === 'client' ? 9 : role === 'trainer' ? 7 : 1;
+  const totalSteps = role === 'client' ? 9 : 7;
 
-  const getStepGradient = () => {
-    if (role === 'client') {
-      switch (currentStep) {
-        case 1:
-          return GRADIENTS.bluePurple;
-        case 2:
-          return GRADIENTS.tealBlue;
-        case 3:
-          return GRADIENTS.indigoPurple;
-        case 4:
-          return GRADIENTS.tealBlue;
-        case 5:
-          return GRADIENTS.bluePurple;
-        case 6:
-          return GRADIENTS.greenBlue;
-        case 7:
-          return GRADIENTS.indigoPurple;
-        case 8:
-          return GRADIENTS.purplePink;
-        case 9:
-          return GRADIENTS.purplePink;
-        default:
-          return GRADIENTS.bluePurple;
-      }
-    }
+  /** CTA gradient for onboarding Continue */
+  const getStepGradient = () => ONBOARDING_CTA_GRADIENT;
 
-    // Trainer
-    switch (currentStep) {
-      case 1:
-        return GRADIENTS.bluePurple;
-      case 2:
-        return GRADIENTS.tealBlue;
-      case 3:
-        return GRADIENTS.indigoPurple;
-      case 4:
-        return GRADIENTS.indigoPurple;
-      case 5:
-        return GRADIENTS.greenBlue;
-      case 6:
-        return GRADIENTS.success;
-      default:
-        return GRADIENTS.bluePurple;
-    }
-  };
-  
-  // Get current Lottie animation
+  // Current step Lottie (all client + trainer steps that have a mapping)
   const getCurrentLottie = () => {
-    // If role is null, we're in role selection - don't try to get step-specific animation
-    if (!role) {
-      return null;
-    }
-    
     const key = `${role}-${currentStep}`;
     const animation = LOTTIE_ANIMATIONS[key];
-    
-    // Return animation if found, otherwise return null (not fallback)
     return animation || null;
   };
 
@@ -1556,15 +1939,9 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
           return onboardingData.specialties.length > 0;
         case 4:
           return true;
-        case 5: {
-          const p = onboardingData.pricing || {};
-          const hasRate = (p.perSession != null && p.perSession !== '') || (p.perMonth != null && p.perMonth !== '');
-          return (
-            hasRate &&
-            !!onboardingData.trainerAvailabilityStatus &&
-            !!onboardingData.sessionType
-          );
-        }
+        case 5:
+          // Day 5: in-app subscription / rate card deferred — only availability + session format required
+          return !!onboardingData.trainerAvailabilityStatus && !!onboardingData.sessionType;
         case 6:
           return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
         case 7:
@@ -1625,12 +2002,13 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
     }
 
     setLoading(true);
+    let firestoreSynced = false;
     try {
       const userId = auth.currentUser.uid;
       const finalRole = role || onboardingData.role || 'client';
       const finalOnboardingData = overrideData ? { ...onboardingData, ...overrideData } : onboardingData;
 
-      // Local copy used for app state + AsyncStorage. Server will perform the real writes.
+      // Local copy used for app state + AsyncStorage. Server mirrors extra writes (trainer marketplace, links).
       const nowIso = new Date().toISOString();
       const updateData = {
         ...finalOnboardingData,
@@ -1641,11 +2019,37 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
         ...(finalOnboardingData?.weight != null && finalOnboardingData.weight !== '' ? { startingWeight: finalOnboardingData.weight } : {}),
       };
 
+      const finishToApp = () => {
+        if (onComplete) onComplete(finalRole, updateData);
+      };
+
       // Always persist locally first so user preferences are not lost offline.
       // AuthGate already uses this key as a bootstrap fallback.
       try {
         await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(updateData));
       } catch (_) {}
+
+      // Write the user profile directly to Firestore so completion survives API/network outages
+      // (AI chat already uses Firestore; previously only the server route updated onboardingCompleted).
+      if (db) {
+        try {
+          const { onboardingCompletedAt: _oca, updatedAt: _ua, ...restForFs } = updateData;
+          await setDoc(
+            doc(db, 'users', userId),
+            {
+              ...stripUndefinedForFirestore(restForFs),
+              onboardingCompleted: true,
+              onboardingCompletedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          firestoreSynced = true;
+          console.log('✅ Onboarding merged to Firestore (users/' + userId + ')');
+        } catch (fsErr) {
+          console.error('❌ Firestore users merge failed (onboarding):', fsErr?.message || fsErr);
+        }
+      }
 
       await postOnboardingApi('/api/onboarding/complete', {
         finalRole,
@@ -1656,11 +2060,67 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
       console.log('✅ Onboarding data saved locally + synced to server');
 
       console.log('✅ Onboarding completed for user:', userId);
-      
-      if (onComplete) {
-        onComplete(finalRole, updateData);
-      }
+
+      Alert.alert("You're all set", 'Welcome to CoachConnect. Your profile is ready.', [
+        { text: 'Continue', style: 'default', onPress: finishToApp },
+      ]);
     } catch (error) {
+      if (firestoreSynced) {
+        // Do not console.error — LogBox shows it as a red overlay even though Firestore succeeded.
+        // Typical cause: dev API (localhost / 127.0.0.1) unreachable from a physical device; payload is queued.
+        if (__DEV__) {
+          console.log(
+            '[onboarding] Server sync deferred (Firestore OK):',
+            error?.message || String(error)
+          );
+        }
+        // Profile + onboardingCompleted are already on users/{uid}; queue server for trainer doc / CRM links.
+        try {
+          const userId = auth?.currentUser?.uid;
+          if (userId) {
+            const chosenRole = role || onboardingData.role || 'client';
+            const nowIso = new Date().toISOString();
+            const queuedUpdate = {
+              ...(overrideData ? { ...onboardingData, ...overrideData } : onboardingData),
+              role: chosenRole,
+              onboardingCompleted: true,
+              onboardingCompletedAt: nowIso,
+              updatedAt: nowIso,
+            };
+            await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
+            await queuePendingOnboardingSync(userId, {
+              path: '/api/onboarding/complete',
+              body: {
+                finalRole: chosenRole,
+                onboardingData: queuedUpdate,
+                displayName: auth?.currentUser?.displayName || null,
+              },
+            });
+          }
+        } catch (_) {}
+
+        const finalRole = role || onboardingData.role || 'client';
+        const finalOnboardingData = overrideData ? { ...onboardingData, ...overrideData } : onboardingData;
+        const nowIso = new Date().toISOString();
+        const updateData = {
+          ...finalOnboardingData,
+          role: finalRole,
+          onboardingCompleted: true,
+          onboardingCompletedAt: nowIso,
+          updatedAt: nowIso,
+        };
+        const finishToApp = () => {
+          if (onComplete) onComplete(finalRole, updateData);
+        };
+
+        Alert.alert(
+          "You're all set",
+          'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
+          [{ text: 'Continue', style: 'default', onPress: finishToApp }]
+        );
+        return;
+      }
+
       console.error('❌ Error saving onboarding data:', error);
 
       // Queue a sync attempt for next app start / when API becomes reachable.
@@ -1742,7 +2202,7 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
         'How long have you been training clients?',
         'What are your specialties?',
         'Describe your training philosophy',
-        'Rates & availability',
+        'Availability & session format',
         'Almost done!',
         'Your client invite code',
       ];
@@ -1783,7 +2243,7 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
                 const num = text.replace(/[^0-9.]/g, '');
                 setOnboardingData((prev) => ({ ...prev, height: num ? parseFloat(num) : null }));
               }}
-              placeholder="e.g., 70 (inches)"
+              placeholder={"e.g., 5'8\""}
               keyboardType="numeric"
               rightElement={<Text style={{ fontSize: 12, fontWeight: '700', color: ot.cardSelectedBorder }}>IN</Text>}
             />
@@ -2322,107 +2782,44 @@ Examples:
       case 5:
         return (
           <View style={styles.stepContainer}>
-            {trainerLottie}
             <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>You can always update this later.</Text>
+            <Text style={[H.subtitle, { color: ot.textSecondary }]}>
+              Subscription tiers and in-app billing are coming soon. You can set client rates from your profile later.
+            </Text>
 
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <View
-                style={{
-                  flex: 1,
-                  borderWidth: 1.5,
-                  borderColor: ot.cardBorder,
-                  borderRadius: 14,
-                  padding: 14,
-                  backgroundColor: ot.cardBg,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Ionicons name="calendar-outline" size={14} color={ONBOARDING_ACCENT} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: ot.textLabel, letterSpacing: 1 }}>PER SESSION</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: ot.textSecondary, marginRight: 4 }}>$</Text>
-                  <TextInput
-                    value={onboardingData.pricing.perSession != null ? String(onboardingData.pricing.perSession) : ''}
-                    onChangeText={(text) => {
-                      const num = text.replace(/[^0-9]/g, '');
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        pricing: { ...prev.pricing, perSession: num ? parseInt(num, 10) : null },
-                      }));
-                    }}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor={ot.textLabel}
-                    style={{ flex: 1, fontSize: 16, fontWeight: '600', color: ot.textPrimary, padding: 0 }}
-                  />
-                </View>
-              </View>
-              <View
-                style={{
-                  flex: 1,
-                  borderWidth: 1.5,
-                  borderColor: ot.cardBorder,
-                  borderRadius: 14,
-                  padding: 14,
-                  backgroundColor: ot.cardBg,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Ionicons name="refresh-outline" size={14} color={ONBOARDING_ACCENT} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: ot.textLabel, letterSpacing: 1 }}>PER MONTH</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: ot.textSecondary, marginRight: 4 }}>$</Text>
-                  <TextInput
-                    value={onboardingData.pricing.perMonth != null ? String(onboardingData.pricing.perMonth) : ''}
-                    onChangeText={(text) => {
-                      const num = text.replace(/[^0-9]/g, '');
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        pricing: { ...prev.pricing, perMonth: num ? parseInt(num, 10) : null },
-                      }));
-                    }}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor={ot.textLabel}
-                    style={{ flex: 1, fontSize: 16, fontWeight: '600', color: ot.textPrimary, padding: 0 }}
-                  />
-                </View>
-              </View>
-            </View>
-
-            <RateInput
-              label="Initial consultation (optional)"
-              placeholder="50"
-              value={onboardingData.pricing.initialConsult?.toString() || ''}
-              onChangeText={(text) => {
-                const num = text.replace(/[^0-9]/g, '');
-                setOnboardingData((prev) => ({
-                  ...prev,
-                  pricing: { ...prev.pricing, initialConsult: num ? parseInt(num, 10) : null },
-                }));
+            <View
+              style={{
+                marginTop: 20,
+                marginBottom: 8,
+                borderWidth: 1.5,
+                borderColor: ot.cardBorder,
+                borderRadius: 14,
+                padding: 16,
+                backgroundColor: ot.cardBg,
               }}
-            />
-
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Offer free consultation</Text>
-              <Switch
-                value={!!onboardingData.offerFreeConsultation}
-                onValueChange={(v) => setOnboardingData((prev) => ({ ...prev, offerFreeConsultation: v }))}
-                trackColor={{ false: COLORS.border, true: '#10B981' }}
-                thumbColor={COLORS.white}
-              />
-            </View>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Flexible pricing available</Text>
-              <Switch
-                value={!!onboardingData.flexiblePricingAvailable}
-                onValueChange={(v) => setOnboardingData((prev) => ({ ...prev, flexiblePricingAvailable: v }))}
-                trackColor={{ false: COLORS.border, true: '#10B981' }}
-                thumbColor={COLORS.white}
-              />
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    backgroundColor: ONBOARDING_ACCENT_SOFT,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 12,
+                  }}
+                >
+                  <Ionicons name="pricetag-outline" size={20} color={ONBOARDING_ACCENT} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: ot.textPrimary }}>CoachConnect subscription</Text>
+                  <Text style={{ fontSize: 13, color: ot.textSecondary, marginTop: 4, lineHeight: 18 }}>
+                    Trainer and client plans will use Apple and Google in-app purchase. No payment is required to finish setup
+                    today.
+                  </Text>
+                </View>
+              </View>
             </View>
 
             <OnboardingSectionLabel text="AVAILABILITY" t={ot} />
@@ -2597,12 +2994,10 @@ Examples:
   const dynamicStyles = getStyles(isDark);
   const ot = getOnboardingUiTokens(isDark);
   const hideBottomNav = role === 'client' && currentStep === 9;
-
-  // Auth flow should pass role, but if it doesn't (e.g. transient offline user doc),
-  // keep onboarding usable by falling back to role selection instead of rendering nothing.
-  if (!role) {
-    console.warn('⚠️ OnboardingScreen: Missing role, showing role selection fallback.');
-  }
+  const onboardingFooterPadTop = 12;
+  const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
+  const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
+  const scrollBottomPad = onboardingFooterBarHeight + 28;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -2614,7 +3009,7 @@ Examples:
         >
           <ScrollView
             style={{ flex: 1, backgroundColor: theme.bg }}
-            contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 24, paddingBottom: 80 }]}
+            contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 24, paddingBottom: scrollBottomPad }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -2646,47 +3041,24 @@ Examples:
                 />
               </TouchableOpacity>
 
-              {role ? (
-                <OnboardingProgressBar
-                  current={currentStep}
-                  total={totalSteps}
-                  t={ot}
-                  gradientColors={role === 'trainer' ? TRAINER_ONBOARDING_GRADIENT : undefined}
-                />
-              ) : (
-                <View
-                  style={{
-                    flex: 1,
-                    height: 6,
-                    borderRadius: 99,
-                    backgroundColor: theme.progressBg,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View
-                    style={{
-                      width: `${(currentStep / totalSteps) * 100}%`,
-                      height: '100%',
-                      backgroundColor: '#FF6B9D',
-                      borderRadius: 99,
-                    }}
-                  />
-                </View>
-              )}
+              <OnboardingProgressBar
+                current={currentStep}
+                total={totalSteps}
+                t={ot}
+                gradientColors={role === 'trainer' ? TRAINER_ONBOARDING_GRADIENT : undefined}
+              />
 
-              {role ? (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: theme.subtext,
-                    minWidth: 36,
-                    textAlign: 'right',
-                  }}
-                >
-                  {`${currentStep}/${totalSteps}`}
-                </Text>
-              ) : null}
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: theme.subtext,
+                  minWidth: 36,
+                  textAlign: 'right',
+                }}
+              >
+                {`${currentStep}/${totalSteps}`}
+              </Text>
 
               <TouchableOpacity
                 onPress={() => setIsDark(!isDark)}
@@ -2704,122 +3076,48 @@ Examples:
               </TouchableOpacity>
             </View>
 
-            {!role ? (
-              <View style={styles.stepContainer}>
-                <Text style={dynamicStyles.liquidHeading}>Choose your role</Text>
-                <Text style={dynamicStyles.liquidSubtitle}>This decides your onboarding flow</Text>
-                <View style={{ width: '100%', marginTop: 16, gap: 12 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setRole('client');
-                      setOnboardingData(prev => ({ ...prev, role: 'client' }));
-                      setCurrentStep(1);
-                    }}
-                    activeOpacity={0.85}
-                    style={dynamicStyles.liquidPrimaryButton}
-                  >
-                    <Text style={dynamicStyles.liquidPrimaryButtonText}>I am a Client</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setRole('trainer');
-                      setOnboardingData(prev => ({ ...prev, role: 'trainer' }));
-                      setCurrentStep(1);
-                    }}
-                    activeOpacity={0.85}
-                    style={dynamicStyles.liquidSecondaryButton}
-                  >
-                    <Text style={dynamicStyles.liquidSecondaryButtonText}>I am a Trainer</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : role === 'client' ? renderClientStep() : renderTrainerStep()}
+            {role === 'client' ? renderClientStep() : renderTrainerStep()}
           </ScrollView>
 
-          {/* Bottom Navigation */}
-          {hideBottomNav ? null : <View style={dynamicStyles.navigationBar}>
-            {!role ? (
-              currentStep > 1 ? (
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={handleBack}
-                  disabled={loading}
-                >
-                  <View style={dynamicStyles.backButtonCircle}>
-                    <Text style={dynamicStyles.backButtonIcon}>←</Text>
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={handleLogout}
-                  disabled={loading}
-                >
-                  <View style={[dynamicStyles.backButtonCircle, { backgroundColor: isDark ? '#3A3A3A' : '#FEE2E2' }]}>
-                    <Text style={[dynamicStyles.backButtonIcon, { color: isDark ? '#EF4444' : '#EF4444', fontSize: 24 }]}>×</Text>
-                  </View>
-                </TouchableOpacity>
-              )
-            ) : (
-              <View style={{ width: 44 }} />
-            )}
-
-            {role ? (
-              loading ? (
+          {/* Bottom bar: symmetric layout so Continue stays screen-centered; safe-area + no extra button margins */}
+          {hideBottomNav ? null : (
+            <View
+              style={[
+                dynamicStyles.navigationBar,
+                {
+                  paddingTop: onboardingFooterPadTop,
+                  paddingBottom: onboardingFooterPadBottom,
+                  paddingHorizontal: 16,
+                },
+              ]}
+            >
+              {loading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 56 }}>
-                  <ActivityIndicator size="small" color="#A348D0" />
+                  <ActivityIndicator size="small" color="#C1265A" />
                 </View>
               ) : (
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  {isOptionalStep() ? (
-                    <TouchableOpacity
-                      style={styles.skipButton}
-                      onPress={handleSkip}
-                      disabled={loading}
-                    >
-                      <Text style={dynamicStyles.skipButtonText}>Skip</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <View style={{ flex: 1, marginLeft: isOptionalStep() ? 4 : 0 }}>
+                  <View style={{ width: 80, justifyContent: 'center', alignItems: 'flex-start' }}>
+                    {isOptionalStep() ? (
+                      <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={loading}>
+                        <Text style={dynamicStyles.skipButtonText}>Skip</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 6 }}>
                     <OnboardingPrimaryButton
+                      variant="footer"
                       t={ot}
                       disabled={!validateStep()}
                       onPress={handleNext}
                       label={currentStep === totalSteps ? '✓ Complete Setup' : 'Continue'}
                     />
                   </View>
+                  <View style={{ width: 80 }} />
                 </View>
-              )
-            ) : (
-              <TouchableOpacity
-                style={[
-                  styles.nextButton,
-                  (!validateStep() || loading) && styles.nextButtonDisabledContainer
-                ]}
-                onPress={handleNext}
-                disabled={!validateStep() || loading}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={validateStep() && !loading ? getStepGradient() : ['#E2E8F0', '#CBD5E0']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.nextButtonGradient}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={[
-                      styles.nextButtonText,
-                      (!validateStep() || loading) && styles.nextButtonTextDisabled
-                    ]}>
-                      {currentStep === totalSteps ? '✓ Complete Setup' : 'Continue'}
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-          </View>}
+              )}
+            </View>
+          )}
         </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
@@ -2907,14 +3205,10 @@ const getStyles = (isDark = true) => ({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 20,
+    justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.8)',
-    backdropFilter: 'blur(20px)',
     borderTopWidth: 1,
     borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
   },

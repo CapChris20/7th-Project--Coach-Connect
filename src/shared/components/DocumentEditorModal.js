@@ -22,6 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import { saveTrainerDocument, getTrainerDocument } from '../services/notesAndFilesService';
 import ShareDocumentModal from './ShareDocumentModal';
+import CoachConnectHeader from './CoachConnectHeader';
+import BottomNavBar from '../../navigation/BottomNavBar';
 
 const MAGENTA = '#FF6B9D';
 
@@ -49,6 +51,12 @@ function htmlToPlainText(html) {
 
 function now() {
   return new Date();
+}
+
+function headerTitleFromName(name, fallback) {
+  const s = String(name || '').trim();
+  if (!s) return fallback;
+  return s.length > 28 ? `${s.slice(0, 28)}…` : s;
 }
 
 function formatLastSaved(lastSaved) {
@@ -269,6 +277,8 @@ export default function DocumentEditorModal({
   trainerId,
   documentId = null,
   isDark = true,
+  /** When set, shows CoachConnectHeader + trainer BottomNavBar (same handlers as main TrainerApp). */
+  trainerNavChrome = null,
 }) {
   const webRef = useRef(null);
   const saveTimer = useRef(null);
@@ -474,6 +484,8 @@ export default function DocumentEditorModal({
     setFavorite((v) => !v);
   };
 
+  const nav = trainerNavChrome;
+
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={handleBackPress}>
       <KeyboardAvoidingView
@@ -481,11 +493,23 @@ export default function DocumentEditorModal({
         style={{ flex: 1, backgroundColor: bg }}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+          {nav ? (
+            <CoachConnectHeader
+              title={headerTitleFromName(title, 'Document')}
+              onBack={handleBackPress}
+              onProfilePress={nav.onProfilePress}
+              onSettingsPress={nav.onSettingsPress}
+            />
+          ) : null}
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: borderC, backgroundColor: isEditorDark ? 'rgba(10,10,15,0.72)' : 'rgba(255,255,255,0.85)' }]}>
-            <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
-              <Ionicons name="chevron-back" size={20} color={text} />
-            </TouchableOpacity>
+            {!nav ? (
+              <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
+                <Ionicons name="chevron-back" size={20} color={text} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 38 }} />
+            )}
             <TextInput
               value={title}
               onChangeText={(t) => {
@@ -722,6 +746,18 @@ export default function DocumentEditorModal({
               }
             }}
           />
+
+          {nav ? (
+            <BottomNavBar
+              activeTabKey={nav.activeTabKey || 'files'}
+              onHomePress={nav.onHomePress}
+              onPlusPress={nav.onPlusPress}
+              onVoicePress={nav.onVoicePress}
+              onNutritionPress={nav.onNutritionPress}
+              onWorkoutPress={nav.onWorkoutPress}
+              onMessagesPress={nav.onMessagesPress}
+            />
+          ) : null}
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>

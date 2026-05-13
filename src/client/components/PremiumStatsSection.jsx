@@ -184,7 +184,7 @@ export default function PremiumStatsSection({
               end={{ x: 1, y: 0 }}
               style={styles.metricTopBorder}
             />
-            <View style={[styles.metricBody, { backgroundColor: '#13131A' }]}>
+            <View style={[styles.metricBody, { backgroundColor: isDark ? '#13131A' : 'rgba(255,255,255,0.94)' }]}>
               <View style={styles.metricHeaderRow}>
                 <View
                   style={[
@@ -228,7 +228,7 @@ export default function PremiumStatsSection({
               end={{ x: 1, y: 0 }}
               style={styles.metricTopBorder}
             />
-            <View style={[styles.metricBody, { backgroundColor: '#13131A' }]}>
+            <View style={[styles.metricBody, { backgroundColor: isDark ? '#13131A' : 'rgba(255,255,255,0.94)' }]}>
               <View style={styles.metricHeaderRow}>
                 <View
                   style={[

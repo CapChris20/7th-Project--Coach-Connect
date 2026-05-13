@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
-import { getOnboardingUiTokens, OnboardingPrimaryButton } from './OnboardingLovableUI';
+import { getOnboardingUiTokens, OnboardingPrimaryButton } from './onboardingAiDeps';
 
 const AI_LOTTIE = require('../../../assets/Lotties for Anatrox/Artificial intelligence digital technology (1).json');
 
@@ -84,7 +84,7 @@ export function AIOptInStep({
         ))}
       </View>
 
-      <View style={styles.buttonContainer}>
+      <View style={[styles.buttonContainer, { alignItems: 'center' }]}>
         <OnboardingPrimaryButton t={t} onPress={onEnableAI} label="Yes, Enable AI" />
 
         <TouchableOpacity
@@ -92,6 +92,9 @@ export function AIOptInStep({
           style={[
             styles.secondaryButton,
             {
+              alignSelf: 'center',
+              width: '80%',
+              maxWidth: 400,
               borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
               backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent',
             },

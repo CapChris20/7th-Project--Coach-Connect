@@ -13,17 +13,36 @@ service cloud.firestore {
       // - Owner can read their own doc.
       // - Trainer can read their client's doc (CRM link).
       // - Client can read their trainer's doc (same CRM link, inverse direction).
+      // - Either party can read the other's profile if they already have a client–trainer
+      //   conversation doc (getOrCreateConversation uses conv_{clientId}_{trainerId}).
+      //   This lets "Add as client" load the counterparty user doc before CRM is written.
       allow read: if request.auth != null && (
         request.auth.uid == userId ||
         exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId)) ||
-        exists(/databases/$(database)/documents/trainer_clients/$(userId)/clients/$(request.auth.uid))
+        exists(/databases/$(database)/documents/trainer_clients/$(userId)/clients/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/conversations/$('conv_' + userId + '_' + request.auth.uid)) ||
+        exists(/databases/$(database)/documents/conversations/$('conv_' + request.auth.uid + '_' + userId))
       );
       
       // Allow list queries for trainer search (needed for where('role', '==', 'trainer') queries)
       allow list: if request.auth != null;
-      
-      // Users can only write their own data
-      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Writes: owner full control; trainer may set only trainerId on a client doc (marketplace accept).
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && (
+        request.auth.uid == userId ||
+        (
+          request.auth.uid != userId &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['trainerId']) &&
+          request.resource.data.trainerId == request.auth.uid &&
+          (
+            !('trainerId' in resource.data) ||
+            resource.data.trainerId == null ||
+            resource.data.trainerId == request.auth.uid
+          )
+        )
+      );
     }
 
     // Current workout plan (users/{uid}/workoutPlan/current) — user can read/write own
@@ -76,6 +95,13 @@ service cloud.firestore {
       );
       // Writes should be done by the owner (client) or server-side; keep tight.
       allow create, update, delete: if request.auth != null && request.auth.uid == request.resource.data.clientId;
+    }
+
+    // Trainer-authored manual workout plan templates (trainer-owned; not client-visible at this path)
+    match /trainer_workout_plans/{planId} {
+      allow read, list: if request.auth != null && resource.data.trainerId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.trainerId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.trainerId == request.auth.uid;
     }
     
     // Conversations - only participants can read/update/delete; creators must include themselves

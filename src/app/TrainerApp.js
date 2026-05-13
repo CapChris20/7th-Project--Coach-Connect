@@ -5,7 +5,7 @@
  * When no data → clean empty states with CTAs.
  */
 
-import React, { useState, useMemo, createContext, useContext, useEffect, useRef } from "react";
+import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -28,12 +28,15 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  ActionSheetIOS,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { ArrowRight, ChevronDown, Download, FileSpreadsheet, FileText, Folder, MessageSquare, Trash2 } from 'lucide-react-native';
+import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import LottieView from 'lottie-react-native';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
+import HoldToConfirmModal from '../shared/components/HoldToConfirmModal';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Path, Polyline } from 'react-native-svg';
 import {
@@ -50,8 +53,9 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import CoachConnectHeader from "../shared/components/AnatroxHeader";
+import CoachConnectHeader from "../shared/components/CoachConnectHeader";
 import BottomNavBar from "../navigation/BottomNavBar";
+import { AppNavigationProvider } from "../navigation/AppNavigationContext";
 import TrainerSearchScreen from "../trainer/screens/TrainerSearchScreen";
 import TrainerMessagingScreen from "../trainer/screens/TrainerMessagingScreen";
 import ConversationsListScreen from "../trainer/screens/ConversationsListScreen";
@@ -60,11 +64,17 @@ import AIChatScreen from "../aiChat/screens/AIChatScreen";
 import NutritionContainer from "../nutrition/screens/NutritionContainer";
 import ProfileScreen from '../profile/screens/ProfileScreen';
 import SettingsScreen from "../client/screens/SettingsScreen";
+import HelpFAQScreen from "../settings/screens/HelpFAQScreen";
+import TermsOfServiceScreen from "../settings/screens/TermsOfServiceScreen";
+import PrivacyPolicyScreen from "../settings/screens/PrivacyPolicyScreen";
+import ContactSupportScreen from "../settings/screens/ContactSupportScreen";
+import BugReportScreen from "../settings/screens/BugReportScreen";
 import WorkoutPlanGeneratorScreen from "../workouts/screens/workout";
 import ClientRequestsScreen from "../trainer/screens/ClientRequestsScreen";
 import SessionSchedulingScreen from "../trainer/screens/SessionSchedulingScreen";
 import SessionFormScreen from "../trainer/screens/SessionFormScreen";
 import { useTrainerClients } from "../trainer/hooks/useTrainerClients";
+import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer/lib/trainerClientDisplayName";
 import { useTrainerPendingRequests } from "../trainer/hooks/useTrainerPendingRequests";
 import {
   configureNotifications,
@@ -74,8 +84,9 @@ import {
   subscribePushTokenRefreshOnResume,
 } from "../shared/services/notificationsService";
 import { useTheme as useGlobalTheme } from "../shared/ui/ThemeContext";
-import { httpsCallable } from 'firebase/functions';
+import { httpsCallable } from "firebase/functions";
 import { auth, db, functions } from "../app/config";
+import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { autoLogErrorSync } from "../utils/autoLogError";
 import { getOrCreateConversation } from "../ai/services/trainerMessaging";
 import { getDateKey } from "../app/dateKey";
@@ -107,8 +118,11 @@ import RemoveTrainerSheet from "../shared/components/RemoveTrainerSheet";
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/services/nutritionService";
 import PhotoGalleryScreen from "../trainer/screens/PhotoGalleryScreen";
 import AIWorkoutPlansScreen from "../trainer/screens/AIWorkoutPlansScreen";
+import ManualWorkoutPlanBuilderScreen from "../trainer/screens/ManualWorkoutPlanBuilderScreen";
 import GradientChatBubblesIcon from "../shared/components/GradientChatBubblesIcon";
 import FileGalleryGrid from "../shared/components/FileGalleryGrid";
+import TrainerWeeklyReportSection from "../trainer/components/TrainerWeeklyReportSection";
+import TrainerWeeklyReportScreen from "../trainer/screens/TrainerWeeklyReportScreen";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLIENT CRM SERVICE (merged from trainer/services/clientCRMService.js for review)
@@ -131,6 +145,107 @@ const CRM_TASKS_SUBCOLLECTION = "tasks";
 const CRM_NOTES_SUBCOLLECTION = "notes";
 const TRAINER_CLIENT_LINKS = "trainer_client_links";
 
+// Wellness empty Lotties — same assets as ClientApp `WellnessStatsRow` (soreness / energy / stress).
+// Mood empty state uses Happy SUN (aligned with client dashboard mood card).
+const LOTTIE_WELLNESS_SORENESS_EMPTY = require('../assets/sad reaction.json');
+const LOTTIE_WELLNESS_ENERGY_EMPTY = require('../assets/Run Hamster... run.json');
+const LOTTIE_WELLNESS_STRESS_EMPTY = require('../assets/Stressed Employee At Work.json');
+const LOTTIE_STEPS_EMPTY = require('../shared/assets/Walking steps.json');
+const LOTTIE_MOOD_EMPTY = require('../shared/assets/Happy SUN.json');
+
+function getTrainerDashboardLottieSource(lottieType) {
+  switch (lottieType) {
+    case 'steps':
+      return LOTTIE_STEPS_EMPTY;
+    case 'water':
+      return require('../assets/Lotties for Anatrox/glass water.json');
+    case 'sleep':
+      return require('../assets/Lotties for Anatrox/sleep.json');
+    case 'boxer':
+      return require('../assets/Lotties for Anatrox/boxer lottie.json');
+    case 'nutrition_empty':
+    case 'food':
+      return require('../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json');
+    case 'soreness':
+      return LOTTIE_WELLNESS_SORENESS_EMPTY;
+    case 'energy':
+      return LOTTIE_WELLNESS_ENERGY_EMPTY;
+    case 'stress':
+      return LOTTIE_WELLNESS_STRESS_EMPTY;
+    case 'mood':
+      return LOTTIE_MOOD_EMPTY;
+    default:
+      return null;
+  }
+}
+
+function getTrainerDashboardLottieCaption(lottieType) {
+  switch (lottieType) {
+    case 'steps':
+      return 'Steps not logged yet';
+    case 'water':
+      return 'Water not logged yet';
+    case 'sleep':
+      return 'Sleep not logged yet';
+    case 'boxer':
+      return 'No workout logged yet';
+    case 'nutrition_empty':
+      return 'No nutrition data for this client yet';
+    case 'food':
+      return 'No meals logged yet';
+    case 'soreness':
+      return 'Soreness not logged yet';
+    case 'energy':
+      return 'Energy not logged yet';
+    case 'stress':
+      return 'Stress not logged yet';
+    case 'mood':
+      return 'Mood not logged yet';
+    default:
+      return null;
+  }
+}
+
+/** Trainer may see CRM clients with no `users/{id}` row yet — rules/empty reads are expected. */
+function isBenignTrainerClientFirestoreError(err) {
+  if (!err) return false;
+  const code = err.code;
+  const msg = String(err.message || err || '').toLowerCase();
+  return code === 'permission-denied' || msg.includes('missing or insufficient permissions');
+}
+
+/** Dashboard state when there is no Firestore user profile (or reads are blocked). */
+function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = []) {
+  return {
+    beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
+    currentWeight: currentClient?.weight ?? null,
+    trainingDays: [],
+    programName: currentClient?.programName || 'Custom Program',
+    nutrition: {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sugar: 0,
+      sodium: 0,
+      potassium: 0,
+      proteinGoal: 200,
+      carbsGoal: 300,
+      fatGoal: 80,
+      micros: currentClient?.micros || [],
+      foods: [],
+    },
+    calendar: {
+      completed: currentClient?.completedDays || [],
+      upcoming: currentClient?.upcomingDays || [],
+      missed: currentClient?.missedDays || [],
+      upcomingSessions: currentClient?.upcomingSessions || [],
+    },
+    notesAndFiles,
+  };
+}
+
 export async function getClient(clientId, trainerId = null) {
   if (!clientId || !db) return null;
 
@@ -149,8 +264,10 @@ export async function getClient(clientId, trainerId = null) {
 
     return { id: clientSnap.id, ...clientSnap.data() };
   } catch (error) {
-    console.error("Error getting client:", error);
-    autoLogErrorSync(error, "TrainerApp CRM - getClient");
+    if (!isBenignTrainerClientFirestoreError(error)) {
+      console.error("Error getting client:", error);
+      autoLogErrorSync(error, "TrainerApp CRM - getClient");
+    }
     return null;
   }
 }
@@ -269,11 +386,7 @@ export async function syncClientDataFromUsers(clientId, trainerId) {
 
     const userData = userDoc.data();
 
-    const clientName =
-      userData.name ||
-      `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
-      userData.displayName ||
-      "Client";
+    const clientName = resolveTrainerClientDisplayName({}, userData);
 
     const syncPayload = {
       name: clientName,
@@ -354,17 +467,36 @@ export async function getTrainerClients(trainerId) {
 
     const validClients = [];
     for (const client of clients) {
+      const st = String(client.status || "active").toLowerCase();
+      if (st === "inactive" || st === "removed" || st === "deleted" || client.archived === true) {
+        continue;
+      }
       try {
         const userDoc = await getDoc(doc(db, "users", client.id));
         if (userDoc.exists()) {
           const d = userDoc.data();
-          client.name =
-            client.name ||
-            d.name ||
-            d.displayName ||
-            `${d.firstName || ""} ${d.lastName || ""}`.trim() ||
-            "Client";
+          const tid = d?.trainerId;
+          if (tid == null || tid === "" || String(tid) !== String(trainerId)) {
+            continue;
+          }
+          const crmNameRaw = String(client.name || '').trim();
+          client.name = resolveTrainerClientDisplayName(client, d);
           client.photoURL = client.photoURL || d.photoURL || null;
+          if (
+            client.name &&
+            !isGenericClientDisplayName(client.name) &&
+            isGenericClientDisplayName(crmNameRaw)
+          ) {
+            try {
+              await setDoc(
+                doc(db, `trainer_clients/${trainerId}/clients/${client.id}`),
+                { name: client.name, updatedAt: serverTimestamp() },
+                { merge: true }
+              );
+            } catch (_) {
+              /* ignore */
+            }
+          }
           validClients.push(client);
         }
       } catch (_) {
@@ -889,7 +1021,7 @@ const GRADIENT_BG_LIGHT = ['#f5f5f7', '#f0f0f2', '#ebebed'];
 const GRADIENT_HERO = [PURPLE, PINK];
 const GRADIENT_AVATAR = [PURPLE, CYAN];
 const GRADIENT_USERNAME = [PURPLE, PINK];
-const GRADIENT_TABS = [PINK, ORANGE];
+const GRADIENT_TABS = [S_P, S_K];
 const GRADIENT_BORDER_CARD = [PINK, ORANGE];   // hot pink + orange border
 const GRADIENT_WEIGHT = [PURPLE, PINK];
 const GRADIENT_SLEEP = [CYAN, PURPLE];
@@ -914,17 +1046,23 @@ const S_P = '#A78BFA';   // soft purple
 const S_K = '#E8799A';   // soft pink
 const S_O = '#FB923C';   // soft orange
 const S_C = '#0D9488';   // soft teal
+// Daily metric big numbers — distinct combos (dark pink / dark orange / gray); avoid one hue for all
+const D_PINK_DEEP = '#9F1239';
+const D_PINK_MID = '#BE185D';
+const D_ORANGE_DEEP = '#9A3412';
+const D_ORANGE_SOFT = '#FB923C';
+const D_GRAY_DEEP = '#1F2937';
+const D_GRAY_MID = '#6B7280';
 const PROGRESS_VALUE_WEIGHT = [S_P, S_K];
 const PROGRESS_VALUE_SLEEP = [S_C, S_P];
 const PROGRESS_VALUE_WATER = [S_C, S_O];
 const PROGRESS_VALUE_WORKOUT = [S_O, S_K];
-// Other today — keep top row cohesive (Energy/Steps/Body fat) and bottom row cohesive (Soreness/Stress/Mood)
-const PROGRESS_VALUE_ENERGY = [S_P, S_K];
-const PROGRESS_VALUE_STEPS = [S_P, S_K];
+const PROGRESS_VALUE_ENERGY = [D_PINK_DEEP, D_PINK_MID];
+const PROGRESS_VALUE_STRESS = [D_GRAY_DEEP, D_GRAY_MID];
+const PROGRESS_VALUE_MOOD = [D_ORANGE_DEEP, D_ORANGE_SOFT];
+const PROGRESS_VALUE_SORENESS = [D_PINK_MID, D_ORANGE_DEEP];
+const PROGRESS_VALUE_STEPS = [D_GRAY_MID, S_P];
 const PROGRESS_VALUE_BODYFAT = [S_P, S_K];
-const PROGRESS_VALUE_SORENESS = [S_C, S_O];
-const PROGRESS_VALUE_STRESS = [S_C, S_O];
-const PROGRESS_VALUE_MOOD = [S_C, S_O];
 const PROGRESS_VALUE_DAY = [S_P, S_C];
 
 // Card borders — different combo per section (not one neon purple everywhere)
@@ -1035,7 +1173,11 @@ const GlassCard = ({ children, style, isDark, borderVariant }) => {
     style,
   ];
   if (Platform.OS === 'ios') {
-    return <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={cardStyle}>{children}</BlurView>;
+    return (
+      <BlurBackdropPlate intensity={20} tint={isDark ? 'dark' : 'light'} style={cardStyle}>
+        {children}
+      </BlurBackdropPlate>
+    );
   }
   return <View style={cardStyle}>{children}</View>;
 };
@@ -1061,9 +1203,9 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
   const lottieSize = Math.min(isWide ? 150 : 130, Math.max(96, Math.round((width - 32) * 0.36)));
   const bg = isDark ? 'rgba(11,11,18,0.92)' : 'rgba(255,255,255,0.70)';
   const borderGradient = isDark
-    ? ['rgba(255,107,157,0.65)', 'rgba(192,132,252,0.55)', 'rgba(6,182,212,0.35)']
-    : ['#FF6B9D', '#C084FC'];
-  const cardShadow = isDark ? '#000000' : '#FF6B9D';
+    ? ['rgba(190,24,93,0.72)', 'rgba(194,65,12,0.58)']
+    : ['#BE185D', '#C2410C'];
+  const cardShadow = isDark ? '#000000' : '#C2410C';
   const firstName = String(userName || 'Coach').trim().split(/\s+/)[0] || 'Coach';
 
   return (
@@ -1072,7 +1214,7 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
         heroStyles.outer,
         {
           shadowColor: cardShadow,
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,107,157,0.18)',
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(194,65,12,0.22)',
           backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'transparent',
         },
       ]}
@@ -1130,7 +1272,7 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor }) => {
                   end={{ x: 1, y: 1 }}
                   style={heroStyles.heroInlineQuoteBorder}
                 >
-                  <DailyQuotePill userId={auth?.currentUser?.uid} isDarkOverride={isDark} maxLines={3} />
+                  <DailyQuotePill userId={auth?.currentUser?.uid} isDarkOverride={isDark} />
                 </LinearGradient>
               </View>
             </View>
@@ -1298,68 +1440,82 @@ const getClientInitials = (name) => {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().substring(0, 2) || '?';
 };
 
+/** Roster / cards: show feet/inches; treat plain numbers as total inches (legacy onboarding). */
+const formatClientHeightDisplay = (h) => {
+  if (h == null || h === '') return null;
+  if (typeof h === 'object' && h?.feet != null) {
+    const inch = Number(h.inches) || 0;
+    return `${h.feet}'${inch}"`;
+  }
+  const n = typeof h === 'number' ? h : Number(String(h).replace(/[^0-9.]/g, ''));
+  if (Number.isFinite(n) && n >= 36 && n <= 96) {
+    const total = Math.round(n);
+    return `${Math.floor(total / 12)}'${total % 12}"`;
+  }
+  return typeof h === 'string' && h.trim() ? h.trim() : null;
+};
+
 const getClientSubtext = (client) => {
   const parts = [];
   if (client.goals || client.primaryGoal) parts.push((client.goals || client.primaryGoal || '').replace(/_/g, ' '));
   if (client.age) parts.push(`${client.age}y`);
   if (client.weight) parts.push(`${client.weight} lbs`);
-  if (client.height) {
-    const h = client.height;
-    parts.push(typeof h === 'object' && h?.feet != null ? `${h.feet}'${h.inches || 0}"` : String(h));
-  }
+  const heightLabel = formatClientHeightDisplay(client.height);
+  if (heightLabel) parts.push(heightLabel);
   return parts.length ? parts.join(' · ') : '—';
+};
+
+/** Structured fields for roster “profile” cards (not the old one-line chip). */
+const getClientRosterStats = (client) => {
+  const rawGoal = (client.goals || client.primaryGoal || '').replace(/_/g, ' ').trim();
+  const goal =
+    rawGoal.length > 0
+      ? rawGoal.replace(/\b\w/g, (c) => c.toUpperCase())
+      : null;
+  return {
+    goal,
+    age: client.age != null && client.age !== '' ? String(client.age) : null,
+    weight: client.weight != null && client.weight !== '' ? String(client.weight) : null,
+    height: formatClientHeightDisplay(client.height),
+  };
 };
 
 // ─────────────────────────────────────────────
 // EMPTY STATE
 // ─────────────────────────────────────────────
-const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType }) => {
+const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType, compact }) => {
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
-  
-  const getLottieSource = () => {
-    switch (lottieType) {
-      case 'water':
-        return require('../assets/Lotties for Anatrox/glass water.json');
-      case 'sleep':
-        return require('../assets/Lotties for Anatrox/sleep.json');
-      case 'boxer':
-        return require('../assets/Lotties for Anatrox/boxer lottie.json');
-      case 'food':
-        return require('../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json');
-      default:
-        return null;
-    }
-  };
-  
+  const lottieSource = lottieType ? getTrainerDashboardLottieSource(lottieType) : null;
+  const lottieCaption = lottieType ? getTrainerDashboardLottieCaption(lottieType) : null;
+  const pad = compact ? 20 : 32;
+  const gap = compact ? 8 : 12;
+  const iconWrap = compact ? 44 : 52;
+
   return (
-    <GlassCard isDark={isDark} style={{ padding: 32, alignItems: 'center', gap: 12 }}>
-      {lottieType ? (
+    <GlassCard isDark={isDark} style={{ padding: pad, alignItems: 'center', gap }}>
+      {lottieType && lottieSource ? (
         <>
           <LottieView
-            source={getLottieSource()}
+            source={lottieSource}
             autoPlay
             loop
             style={{ width: 160, height: 160 }}
           />
           <Text style={{ color: mutedColor, fontSize: 14, textAlign: 'center' }}>
-            {lottieType === 'water' ? 'Water not logged yet' : 
-             lottieType === 'sleep' ? 'Sleep not logged yet' : 
-             lottieType === 'boxer' ? 'No workout logged yet' : 
-             lottieType === 'food' ? 'No meals logged yet' : 
-             message}
+            {lottieCaption ?? message}
           </Text>
         </>
       ) : (
         <View style={{
-          width: 52, height: 52, borderRadius: 26,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(124,58,237,0.1)',
+          width: iconWrap, height: iconWrap, borderRadius: iconWrap / 2,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,58,237,0.08)',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Icon name={icon} size={24} color={mutedColor} />
+          <Icon name={icon} size={compact ? 20 : 24} color={mutedColor} />
         </View>
       )}
       {(!lottieType || message) && (
-        <Text style={{ color: mutedColor, fontSize: 14, textAlign: 'center' }}>{message}</Text>
+        <Text style={{ color: mutedColor, fontSize: compact ? 13 : 14, textAlign: 'center', lineHeight: compact ? 19 : 20 }}>{message}</Text>
       )}
       {ctaLabel && onCta && (
         <TouchableOpacity onPress={onCta} activeOpacity={0.8}>
@@ -1382,6 +1538,11 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
   
   const getLottieForCategory = (title) => {
     const titleLower = title.toLowerCase();
+    if (titleLower.includes('soreness')) return 'soreness';
+    if (titleLower.includes('energy')) return 'energy';
+    if (titleLower.includes('stress')) return 'stress';
+    if (titleLower.includes('mood')) return 'mood';
+    if (titleLower.includes('steps')) return 'steps';
     if (titleLower.includes('sleep')) return 'sleep';
     if (titleLower.includes('water')) return 'water';
     if (titleLower.includes('workout') || titleLower.includes('training')) return 'boxer';
@@ -1389,18 +1550,7 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
   };
   
   const lottieType = getLottieForCategory(title);
-  const getLottieSource = () => {
-    switch (lottieType) {
-      case 'water':
-        return require('../assets/Lotties for Anatrox/glass water.json');
-      case 'sleep':
-        return require('../assets/Lotties for Anatrox/sleep.json');
-      case 'boxer':
-        return require('../assets/Lotties for Anatrox/boxer lottie.json');
-      default:
-        return null;
-    }
-  };
+  const lottieSource = lottieType ? getTrainerDashboardLottieSource(lottieType) : null;
   
   // Always show descriptive label when there's a value
   const getDisplayLabel = () => {
@@ -1428,19 +1578,16 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
         </>
       ) : (
         <View style={{ alignItems: 'center' }}>
-          {lottieType ? (
+          {lottieType && lottieSource ? (
             <>
               <LottieView
-                source={getLottieSource()}
+                source={lottieSource}
                 autoPlay
                 loop
                 style={{ width: 120, height: 120 }}
               />
               <Text style={{ color: mutedColor, fontSize: 13, fontStyle: 'italic', marginTop: 8 }}>
-                {lottieType === 'water' ? 'Water not logged yet' : 
-                 lottieType === 'sleep' ? 'Sleep not logged yet' : 
-                 lottieType === 'boxer' ? 'No workout logged yet' : 
-                 emptyLabel || 'No data'}
+                {getTrainerDashboardLottieCaption(lottieType) ?? emptyLabel ?? 'No data'}
               </Text>
             </>
           ) : (
@@ -1588,13 +1735,14 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
     );
   };
 
-  const MetricMini = ({ label, value, scale, borderStart, borderEnd, emptyType, style }) => {
+  const MetricMini = ({ label, value, scale, valueGradient, emptyType, style }) => {
     const hasVal = value != null && value !== '' && Number.isFinite(Number(value));
     const n = hasVal ? Number(value) : null;
     const pct = hasVal ? clampPct(n / scale) : 0;
-    const valueColors = [borderStart, borderEnd];
-    const borderStartRgb = hexToRgbTriple(borderStart);
+    const valueColors = Array.isArray(valueGradient) && valueGradient.length >= 2 ? valueGradient : [S_P, S_K];
+    const borderStartRgb = hexToRgbTriple(valueColors[0]);
     const todayTint = isDark ? 'rgba(148,163,184,0.9)' : `rgba(${borderStartRgb},0.78)`;
+    const emptyLottieSource = emptyType ? getTrainerDashboardLottieSource(emptyType) : null;
 
     return (
       <View style={[{ width: cardWidth }, style]}>
@@ -1613,20 +1761,28 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
               minHeight: 138,
               backgroundColor: isDark ? '#020617' : '#FFFFFF',
               overflow: 'hidden',
+              position: 'relative',
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <Text
                 style={{
+                  flex: 1,
                   fontSize: 10,
                   fontWeight: '800',
                   letterSpacing: 1.4,
                   color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(75,85,99,1)',
+                  paddingRight: 6,
                 }}
                 numberOfLines={1}
               >
                 {label}
               </Text>
+              {hasVal && emptyLottieSource ? (
+                <View pointerEvents="none" style={{ opacity: 0.52 }}>
+                  <LottieView source={emptyLottieSource} autoPlay loop style={{ width: 36, height: 36 }} />
+                </View>
+              ) : null}
             </View>
 
             {hasVal ? (
@@ -1656,25 +1812,19 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
                       width: `${Math.round(pct * 100)}%`,
                       height: 3,
                       borderRadius: 999,
-                      backgroundColor: isDark ? '#FFFFFF' : borderEnd,
+                      backgroundColor: '#06B6D4',
                     }}
                   />
                 </View>
                 <Text style={{ color: todayTint, fontSize: 11, marginTop: 8 }}>Today</Text>
               </>
-            ) : emptyType ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 2 }}>
+            ) : emptyLottieSource ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 2, minHeight: 112 }}>
                 <LottieView
-                  source={
-                    emptyType === 'sleep'
-                      ? require('../assets/Lotties for Anatrox/sleep.json')
-                      : emptyType === 'water'
-                        ? require('../assets/Lotties for Anatrox/glass water.json')
-                        : require('../assets/Lotties for Anatrox/boxer lottie.json')
-                  }
+                  source={emptyLottieSource}
                   autoPlay
                   loop
-                  style={{ width: 84, height: 84 }}
+                  style={{ width: 108, height: 108 }}
                 />
                 <Text
                   style={{
@@ -1684,6 +1834,18 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
                   }}
                 >
                   Not logged
+                </Text>
+              </View>
+            ) : emptyType ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text
+                  style={{
+                    color: isDark ? 'rgba(148,163,184,0.95)' : 'rgba(107,114,128,1)',
+                    fontSize: 13,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  No data
                 </Text>
               </View>
             ) : (
@@ -2080,11 +2242,11 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
           }}
         >
           {[
-            { key: 'energy', label: 'ENERGY / 5', value: log.dashboard_energy, scale: 5, borderStart: '#4B5563', borderEnd: '#111827' },
-            { key: 'stress', label: 'STRESS / 10', value: log.dashboard_stress, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
-            { key: 'mood', label: 'MOOD / 10', value: log.dashboard_mood, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
-            { key: 'soreness', label: 'SORENESS / 10', value: log.dashboard_soreness, scale: 10, borderStart: '#4B5563', borderEnd: '#111827' },
-            { key: 'steps', label: 'STEPS', value: log.dashboard_steps, scale: 15000, borderStart: '#4B5563', borderEnd: '#111827' },
+            { key: 'energy', label: 'ENERGY / 5', value: log.dashboard_energy, scale: 5, valueGradient: PROGRESS_VALUE_ENERGY, emptyType: 'energy' },
+            { key: 'stress', label: 'STRESS / 10', value: log.dashboard_stress, scale: 10, valueGradient: PROGRESS_VALUE_STRESS, emptyType: 'stress' },
+            { key: 'mood', label: 'MOOD / 10', value: log.dashboard_mood, scale: 10, valueGradient: PROGRESS_VALUE_MOOD, emptyType: 'mood' },
+            { key: 'soreness', label: 'SORENESS / 10', value: log.dashboard_soreness, scale: 10, valueGradient: PROGRESS_VALUE_SORENESS, emptyType: 'soreness' },
+            { key: 'steps', label: 'STEPS', value: log.dashboard_steps, scale: 15000, valueGradient: PROGRESS_VALUE_STEPS, emptyType: 'steps' },
           ].map((m, idx, arr) => {
             const isEndOfRow = (idx + 1) % cols === 0;
             const isLast = idx === arr.length - 1;
@@ -2096,8 +2258,8 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
                 label={m.label}
                 value={m.value}
                 scale={m.scale}
-                borderStart={m.borderStart}
-                borderEnd={m.borderEnd}
+                valueGradient={m.valueGradient}
+                emptyType={m.emptyType}
                 style={{
                   marginLeft: shouldCenter ? (metricsGridWidth - cardWidth) / 2 : 0,
                   marginRight: shouldCenter ? 0 : isEndOfRow ? 0 : gridGap,
@@ -2146,11 +2308,76 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, weightTrend7 = [] }) =
 
       {/* keep client note (if present) but visually secondary */}
       {log.dashboard_notes != null && log.dashboard_notes !== '' && (
-        <View style={{ marginTop: 18 }}>
-          <Text style={sectionHeaderStyle}>Client Note</Text>
-          <View style={{ borderRadius: 16, padding: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 22 }}>{log.dashboard_notes}</Text>
-          </View>
+        <View style={{ marginTop: 22 }}>
+          <Text style={[sectionHeaderStyle, { marginTop: 0 }]}>Client note</Text>
+          <LinearGradient
+            colors={isDark ? ['rgba(255,107,157,0.35)', 'rgba(139,92,246,0.28)'] : ['rgba(236,72,153,0.45)', 'rgba(139,92,246,0.35)']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              borderRadius: 18,
+              padding: 1,
+              marginTop: 4,
+            }}
+          >
+            <View
+              style={{
+                borderRadius: 17,
+                overflow: 'hidden',
+                backgroundColor: isDark ? 'rgba(18,18,24,0.96)' : '#FFFFFF',
+                flexDirection: 'row',
+                alignItems: 'stretch',
+              }}
+            >
+              <View
+                style={{
+                  width: 4,
+                  backgroundColor: PINK,
+                  opacity: isDark ? 0.95 : 1,
+                }}
+              />
+              <View style={{ flex: 1, flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 16, gap: 14 }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? 'rgba(255,107,157,0.14)' : 'rgba(236,72,153,0.12)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,107,157,0.28)' : 'rgba(236,72,153,0.22)',
+                  }}
+                >
+                  <Icon name="MessageSquare" size={18} color={PINK} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.5)',
+                      fontSize: 11,
+                      fontWeight: '700',
+                      letterSpacing: 1.2,
+                      textTransform: 'uppercase',
+                      marginBottom: 8,
+                    }}
+                  >
+                    From client (today)
+                  </Text>
+                  <Text
+                    style={{
+                      color: isDark ? 'rgba(255,255,255,0.92)' : 'rgba(15,23,42,0.88)',
+                      fontSize: 15,
+                      lineHeight: 24,
+                      fontWeight: '500',
+                    }}
+                  >
+                    {log.dashboard_notes}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
         </View>
       )}
     </View>
@@ -2178,8 +2405,8 @@ const NutritionTab = ({ isDark, clientData }) => {
       <EmptyState
         isDark={isDark}
         icon="Utensils"
-        message="No meals logged today"
-        lottieType="food"
+        lottieType="nutrition_empty"
+        message="When they log meals in the app, calories and macros show up here."
       />
     );
   }
@@ -2376,7 +2603,14 @@ const CalendarTab = ({ isDark, clientData, trainerId, clientId, clientName, trai
     return <SessionFormScreen sessionId={sessionId} theme={theme} onNavigate={onNavigate} />;
   }
 
-  return <SessionSchedulingScreen theme={theme} onNavigate={onNavigate} />;
+  return (
+    <SessionSchedulingScreen
+      theme={theme}
+      onNavigate={onNavigate}
+      clientId={clientId}
+      clientName={clientName}
+    />
+  );
 };
 
 // ─────────────────────────────────────────────
@@ -2405,10 +2639,104 @@ const NotesFilesTab = ({
   const [deletingTrainerFiles, setDeletingTrainerFiles] = useState(false);
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+  const theme = {
+    bg: '#0A0A0F',
+    card: '#141419',
+    text: '#FFFFFF',
+    text60: 'rgba(255,255,255,0.6)',
+    text40: 'rgba(255,255,255,0.4)',
+    border: 'rgba(255,255,255,0.1)',
+  };
+  const GRADIENTS = {
+    myFiles: ['#FF6B9D', '#C084FC'],
+    trainer: ['#06B6D4', '#C084FC'],
+    notes: ['#C084FC', '#FF6B9D'],
+  };
   const items = clientData?.notesAndFiles || [];
   const fromClient = items.filter((x) => (x.addedBy || 'client') === 'client');
   const fromYou = items.filter((x) => x.addedBy === 'trainer');
   const hasAny = items.length > 0;
+
+  const GradientBorder = ({ gradient, children, borderRadius = 14 }) => (
+    <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius, padding: 2 }}>
+      <View style={{ borderRadius: borderRadius - 2, overflow: 'hidden', backgroundColor: theme.bg }}>{children}</View>
+    </LinearGradient>
+  );
+
+  const SectionHeader = ({ title }) => (
+    <Text style={{ color: theme.text60, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.4, marginTop: 22, marginBottom: 10 }}>
+      {title}
+    </Text>
+  );
+
+  const NoteCard = ({ note }) => {
+    const coach = note?.coach || 'You';
+    const preview = String(note?.content || '').trim();
+    return (
+      <View style={{ marginBottom: 12 }}>
+        <GradientBorder gradient={GRADIENTS.notes} borderRadius={14}>
+          <View style={{ backgroundColor: theme.card, padding: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <MessageSquare size={18} color="#C084FC" />
+              <Text style={{ color: theme.text60, fontSize: 13, fontWeight: '700' }}>From Coach: {coach}</Text>
+            </View>
+            <Text style={{ color: theme.text60, fontSize: 14, lineHeight: 22, marginBottom: 12 }} numberOfLines={3}>
+              &quot;{preview || '—'}&quot;
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#FF6B9D' }}>View Full Note</Text>
+              <ArrowRight size={14} color="#FF6B9D" />
+            </View>
+          </View>
+        </GradientBorder>
+      </View>
+    );
+  };
+
+  const FileRowCard = ({ file, accentGradient, allowDelete }) => {
+    const name = file?.name || file?.title || 'File';
+    const t = file?.type === 'spreadsheet' ? 'spreadsheet' : (file?.type || '');
+    const IconComp = t === 'spreadsheet' ? FileSpreadsheet : FileText;
+    return (
+      <View style={{ marginBottom: 12 }}>
+        <GradientBorder gradient={accentGradient} borderRadius={14}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => openGalleryItem(file)}
+            onLongPress={allowDelete ? () => onLongPressFile?.(file) : undefined}
+            style={{ backgroundColor: theme.card, flexDirection: 'row', gap: 12, padding: 12, alignItems: 'center' }}
+          >
+            <View style={{ width: 60, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(6,182,212,0.10)' }}>
+              <IconComp size={28} color="#06B6D4" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>{name}</Text>
+              <Text style={{ color: theme.text60, fontSize: 12, fontWeight: '500', marginTop: 4 }} numberOfLines={1}>
+                {file?.createdAt ? formatDate(file.createdAt?.toDate?.() || file.createdAt) : ''}
+              </Text>
+            </View>
+            <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(6,182,212,0.3)', justifyContent: 'center', alignItems: 'center' }} onPress={() => openGalleryItem(file)}>
+              <Download size={18} color="#06B6D4" />
+            </TouchableOpacity>
+            {allowDelete ? (
+              <TouchableOpacity
+                style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(239,68,68,0.35)', justifyContent: 'center', alignItems: 'center' }}
+                onPress={() => {
+                  if (file?.addedBy !== 'trainer') return;
+                  Alert.alert('Delete file?', 'This will permanently remove it from Notes & Files.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: () => deleteSingleTrainerFile(file) },
+                  ]);
+                }}
+              >
+                <Trash2 size={18} color="#EF4444" />
+              </TouchableOpacity>
+            ) : null}
+          </TouchableOpacity>
+        </GradientBorder>
+      </View>
+    );
+  };
 
   const deleteSingleTrainerFile = async (file) => {
     if (!clientId || !file?.id) return;
@@ -2536,27 +2864,21 @@ const NotesFilesTab = ({
         }
       : undefined;
 
+    const gradientForSection = sectionTitle === 'From client' ? GRADIENTS.myFiles : GRADIENTS.trainer;
     return (
       <View key={sectionTitle} style={{ marginBottom: 16 }}>
-        <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>{sectionTitle}</Text>
+        <SectionHeader title={sectionTitle} />
         {notes.map((n, i) => (
-          <GlassCard key={n.id || i} isDark={isDark} style={{ padding: 16, marginBottom: 8 }}>
-            <Text style={{ color: mutedColor, fontSize: 11, marginBottom: 4 }}>{formatDate(n.createdAt)}</Text>
-            <Text style={{ color: textColor, fontSize: 14, lineHeight: 20 }}>{n.content}</Text>
-          </GlassCard>
+          <NoteCard key={n.id || i} note={n} />
         ))}
-        {mediaFiles.length > 0 ? (
-          <View style={{ marginBottom: 8 }}>
-            <FileGalleryGrid
-              isDark={isDark}
-              files={mediaFiles}
-              onPressItem={openGalleryItem}
-              holdToDelete={canDeleteInThisSection}
-              holdDurationMs={900}
-              onLongPressItem={canDeleteInThisSection ? (f) => deleteSingleTrainerFile(f) : onLongPressFile}
-            />
-          </View>
-        ) : null}
+        {(mediaFiles || []).map((f, idx) => (
+          <FileRowCard
+            key={f.id || f.url || idx}
+            file={f}
+            accentGradient={gradientForSection}
+            allowDelete={canDeleteInThisSection}
+          />
+        ))}
       </View>
     );
   };
@@ -2565,62 +2887,34 @@ const NotesFilesTab = ({
     <>
     <View style={{ gap: 12 }}>
       {!hasAny && trainerDocuments.length === 0 ? (
-        <EmptyState isDark={isDark} icon="FolderOpen" message="No notes or files yet" ctaLabel="Add note or file" onCta={() => setShowAddModal(true)} lottieType="sleep" />
+        <EmptyState isDark={isDark} icon="FolderOpen" message="No notes or files yet" />
       ) : (
         <>
           {renderBlock(fromClient, 'From client')}
           {renderBlock(fromYou, 'From you')}
           {trainerDocuments.length > 0 && (
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ color: mutedColor, fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>Your documents</Text>
-              <FileGalleryGrid
-                isDark={isDark}
-                files={trainerDocuments.map((doc) => {
-                  const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
-                  const base = doc.title || 'Untitled';
-                  return {
-                    id: doc.id,
-                    type: 'document',
-                    name: isShared ? `${base} · Shared` : base,
-                    title: doc.title,
-                    createdAt: doc.updatedAt || doc.createdAt,
-                    _trainerDoc: doc,
-                  };
-                })}
-                onPressItem={(f) => {
-                  const doc = f._trainerDoc;
-                  if (!doc) return;
-                  onOpenDocumentEditor?.({
-                    id: doc.id,
-                    title: doc.title,
-                    body: doc.body,
-                    trainerId,
-                    initialSharedWith: doc.sharedWith,
-                  });
-                }}
-                onLongPressItem={(f) => {
-                  const doc = f._trainerDoc;
-                  if (!doc) return;
-                  Alert.alert('Document Options', 'Choose an action', [
-                    {
-                      text: 'Edit',
-                      onPress: () =>
-                        onOpenDocumentEditor?.({
-                          id: doc.id,
-                          title: doc.title,
-                          body: doc.body,
-                          trainerId,
-                          initialSharedWith: doc.sharedWith,
-                        }),
-                    },
-                    {
-                      text: 'Share',
-                      onPress: () => onOpenShareModal?.({ documentId: doc.id, initialSharedWith: doc.sharedWith }),
-                    },
-                    { text: 'Cancel', style: 'cancel' },
-                  ]);
-                }}
-              />
+              <SectionHeader title="YOUR DOCUMENTS" />
+              {trainerDocuments.map((doc) => {
+                const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
+                const name = isShared ? `${doc.title || 'Untitled'} · Shared` : (doc.title || 'Untitled');
+                const file = {
+                  id: doc.id,
+                  type: 'document',
+                  name,
+                  title: doc.title,
+                  createdAt: doc.updatedAt || doc.createdAt,
+                  addedBy: 'trainer',
+                };
+                return (
+                  <FileRowCard
+                    key={doc.id}
+                    file={file}
+                    accentGradient={GRADIENTS.trainer}
+                    allowDelete={false}
+                  />
+                );
+              })}
             </View>
           )}
         </>
@@ -2704,7 +2998,7 @@ const TabPills = ({ activeTab, onTabChange, isDark }) => {
 // ─────────────────────────────────────────────
 // CLIENT DETAIL SCREEN
 // ─────────────────────────────────────────────
-const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainerName }) => {
+const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainerName, getTrainerEditorNavChrome }) => {
   const { isDark } = useTrainerTheme();
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
@@ -2716,45 +3010,23 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
   const [todayDailyLog, setTodayDailyLog] = useState(null);
   const [weightTrend7, setWeightTrend7] = useState([]);
   const [refreshNotesAndFilesTrigger, setRefreshNotesAndFilesTrigger] = useState(0);
-  const [weeklySummary, setWeeklySummary] = useState(null);
-  const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
-  const [countdownToNextReport, setCountdownToNextReport] = useState('');
-  const [dataAvailability, setDataAvailability] = useState(null);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetEditor, setSpreadsheetEditor] = useState({ visible: false, documentId: null, title: '', rows: null });
   const [trainerDocuments, setTrainerDocuments] = useState([]);
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
   const [shareModal, setShareModal] = useState({ visible: false, documentId: null, sharedWith: [] });
-  const [reportExpanded, setReportExpanded] = useState(false);
 
-  // Countdown to next weekly report (Monday 1AM ET)
-  useEffect(() => {
-    const calc = () => {
-      const now = new Date();
-      const nm = new Date(now);
-      const d = (8 - now.getDay()) % 7 || 7;
-      nm.setDate(now.getDate() + d);
-      nm.setHours(1, 0, 0, 0);
-      if (now.getDay() === 1 && now.getHours() >= 1) nm.setDate(now.getDate() + 7);
-      const diff = nm - now;
-      const days = Math.floor(diff / 86400000);
-      const hrs = Math.floor((diff % 86400000) / 3600000);
-      const mins = Math.floor((diff % 3600000) / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      let t = '';
-      if (days > 0) t += `${days}d `;
-      if (hrs > 0 || days > 0) t += `${hrs}h `;
-      if (mins > 0 || hrs > 0 || days > 0) t += `${mins}m `;
-      t += `${secs}s`;
-      setCountdownToNextReport(t);
-    };
-    calc();
-    const iv = setInterval(calc, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  useEffect(() => { setReportExpanded(false); }, [weeklySummary?.weekStart]);
+  const trainerEditorNav = useMemo(
+    () =>
+      typeof getTrainerEditorNavChrome === 'function'
+        ? getTrainerEditorNavChrome(() => {
+            setDocumentEditor({ visible: false, documentId: null });
+            setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null });
+          })
+        : null,
+    [getTrainerEditorNavChrome],
+  );
 
   // Real-time dailyLog listener
   useEffect(() => {
@@ -2801,29 +3073,6 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
     return () => { cancelled = true; };
   }, [client?.id]);
 
-  // Data availability check
-  useEffect(() => {
-    if (!client?.id) { setDataAvailability(null); return; }
-    checkWeeklyDataAvailability(client.id).then(setDataAvailability).catch(() => setDataAvailability(null));
-  }, [client?.id]);
-
-  const fetchWeeklySummary = async (cid) => {
-    if (!cid || !db) { setWeeklySummary(null); return; }
-    setWeeklySummaryLoading(true);
-    try {
-      // For now, read the most recent weekly summary for this client (detail screen is read-only).
-      const colRef = collection(db, 'users', cid, 'weeklySummaries');
-      const q = query(colRef);
-      const snap = await getDocs(q);
-      const docs = snap.docs || [];
-      const latest = docs.sort((a, b) => (b.id > a.id ? 1 : -1))[0];
-      setWeeklySummary(latest ? { id: latest.id, ...latest.data() } : null);
-    } catch { setWeeklySummary(null); }
-    finally { setWeeklySummaryLoading(false); }
-  };
-
-  // Client detail screen no longer auto-generates weekly reports; generation is owned by dashboard.
-
   // Fetch all client data
   useEffect(() => {
     if (!client?.id || !trainerId || !db) { setClientData(null); return; }
@@ -2858,9 +3107,10 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
               calendar: tc.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
               notesAndFiles,
             });
-            await fetchWeeklySummary(client.id);
           } catch (e) {
-            console.error('Error building client detail without user doc:', e);
+            if (!isBenignTrainerClientFirestoreError(e)) {
+              console.error('Error building client detail without user doc:', e);
+            }
             setClientData(null);
           }
           return;
@@ -2925,13 +3175,45 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             calendar: clientDocData.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
             notesAndFiles,
           });
-          
-          await fetchWeeklySummary(client.id);
         } catch (e) {
           console.error('Error updating client data:', e);
         }
       },
       (error) => {
+        if (isBenignTrainerClientFirestoreError(error)) {
+          (async () => {
+            try {
+              const tcSnap = await getDoc(doc(db, 'trainer_clients', trainerId, 'clients', client.id));
+              const tc = tcSnap.exists() ? tcSnap.data() : {};
+              let notesAndFiles = [];
+              try {
+                notesAndFiles = await getNotesAndFiles(client.id);
+              } catch (_) {}
+              setClientData({
+                beforeWeight: tc.startingWeight ?? tc.weight ?? client?.startingWeight ?? client?.weight ?? null,
+                currentWeight: tc.weight ?? client?.weight ?? null,
+                trainingDays: [],
+                programName: tc.programName || 'Custom Program',
+                nutrition: {
+                  calories: 0,
+                  protein: 0,
+                  carbs: 0,
+                  fat: 0,
+                  foods: [],
+                  micros: [],
+                },
+                calendar: tc.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
+                notesAndFiles,
+              });
+            } catch (e2) {
+              if (!isBenignTrainerClientFirestoreError(e2)) {
+                console.error('Error building client detail (listener fallback):', e2);
+              }
+              setClientData(null);
+            }
+          })();
+          return;
+        }
         console.error('User document listener error:', error);
         setClientData(null);
       }
@@ -2974,7 +3256,9 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             };
           });
         } catch (e) {
-          console.error('Error updating nutrition data:', e);
+          if (!isBenignTrainerClientFirestoreError(e)) {
+            console.error('Error updating nutrition data:', e);
+          }
         }
       }
     );
@@ -3034,6 +3318,33 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
     };
   }, [client?.id, trainerId]);
 
+  const openRemoveClientMenu = () => {
+    const sheetTitle = 'Remove client?';
+    const sheetMessage =
+      'They will be unlinked from you in Coach Connect. You can invite them again later if you change your mind.';
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Remove from my roster…'],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 1,
+          title: sheetTitle,
+          message: sheetMessage,
+        },
+        (idx) => {
+          if (idx === 1) setShowRemoveSheet(true);
+        }
+      );
+      return;
+    }
+
+    Alert.alert(sheetTitle, sheetMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove from roster', style: 'destructive', onPress: () => setShowRemoveSheet(true) },
+    ]);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0c0c0e' : '#f5f5f7' }}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -3043,14 +3354,19 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ width: 36, alignItems: 'flex-start' }}>
           <Icon name="ChevronLeft" size={26} color={textColor} />
         </TouchableOpacity>
-        <Text style={{ flex: 1, color: textColor, fontSize: 17, fontWeight: '700', textAlign: 'center' }} numberOfLines={1}>
-          {client?.name || 'Client'}
-        </Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: textColor, fontSize: 17, fontWeight: '700', textAlign: 'center' }} numberOfLines={1}>
+            {client?.name || 'Client'}
+          </Text>
+          <Text style={{ color: mutedColor, fontSize: 11, marginTop: 2, textAlign: 'center' }} numberOfLines={1}>
+            Tap ⋮ for remove options
+          </Text>
+        </View>
         <TouchableOpacity
-          onPress={() => Alert.alert('Client', 'Remove this client from your list?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Remove Client', style: 'destructive', onPress: () => setShowRemoveSheet(true) },
-          ])}
+          onPress={openRemoveClientMenu}
+          accessibilityLabel="Client options: remove from roster"
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{ width: 36, alignItems: 'flex-end' }}
         >
           <Ionicons name="ellipsis-vertical" size={22} color={textColor} />
@@ -3092,215 +3408,21 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
               )}
             </View>
           </View>
-        </GlassCard>
-
-        {/* ── Weekly Snapshot ── */}
-        <GlassCard isDark={isDark} borderVariant="progress" style={{ padding: 16 }}>
-          {weeklySummaryLoading ? (
-            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 16 }}>
-              <LinearGradient colors={[PINK, ORANGE, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ width: '100%', height: 64, borderRadius: 16, opacity: 0.9, marginBottom: 10 }} />
-              <Text style={{ color: mutedColor, fontSize: 13 }}>Loading weekly report...</Text>
-            </View>
-          ) : weeklySummary ? (
-            <View style={{ gap: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <LinearGradient colors={[PINK, ORANGE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="Sparkles" size={16} color="#fff" />
-                  </LinearGradient>
-                  <Text style={{ color: textColor, fontSize: 16, fontWeight: '800' }}>Weekly Snapshot</Text>
-                </View>
-                <Text style={{ color: mutedColor, fontSize: 11 }}>{weeklySummary.weekStart} → {weeklySummary.weekEnd}</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 8 }}>
-                {[{ key: 'avgSleep', label: 'sleep', icon: 'MoonAlt', accent: PURPLE }, { key: 'avgWater', label: 'water', icon: 'Droplet', accent: CYAN }, { key: 'avgEnergy', label: 'energy', icon: 'Zap', accent: ORANGE }, { key: 'avgSteps', label: 'steps', icon: 'Footsteps', accent: PINK }].map((item) => (
-                  <View key={item.key} style={{ minWidth: 72, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(15,23,42,0.06)', borderWidth: 1, borderColor: item.accent + '40', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name={item.icon} size={18} color={item.accent} style={{ marginBottom: 4 }} />
-                    <Text style={{ color: isDark ? '#fff' : '#000', fontSize: 15, fontWeight: '700' }}>{weeklySummary[item.key] ?? '—'}</Text>
-                    <Text style={{ color: mutedColor, fontSize: 10 }}>{item.label}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-              {weeklySummary.summary ? (
-                <View style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderLeftWidth: 3, borderLeftColor: PINK }}>
-                  <Text style={{ color: isDark ? 'rgba(249,250,251,0.95)' : '#000', fontSize: 13, lineHeight: 20 }} numberOfLines={reportExpanded ? undefined : 2}>
-                    {weeklySummary.summary}
-                  </Text>
-                  {!reportExpanded && weeklySummary.summary.length > 140 && (
-                    <Text style={{ color: PINK, fontSize: 12, marginTop: 4, fontWeight: '600' }} onPress={() => setReportExpanded(true)}>Read more</Text>
-                  )}
-                </View>
-              ) : null}
-              {Array.isArray(weeklySummary.dayBreakdown) && weeklySummary.dayBreakdown.length > 0 && (
-                <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>Day by day</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].slice(0, weeklySummary.dayBreakdown.length).map((dayLabel, idx) => {
-                      const dayText = weeklySummary.dayBreakdown[idx] || '';
-                      const short = reportExpanded ? dayText : (dayText.length > 36 ? dayText.slice(0, 36) + '…' : dayText);
-                      return (
-                        <View key={idx} style={{ width: 140, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(15,23,42,0.5)' : 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(148,163,184,0.2)' }}>
-                          <Text style={{ color: PINK, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>{dayLabel}</Text>
-                          <Text style={{ color: isDark ? 'rgba(229,231,235,0.9)' : '#000', fontSize: 11, lineHeight: 16 }} numberOfLines={reportExpanded ? undefined : 2}>{short}</Text>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-              {!reportExpanded && (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {Array.isArray(weeklySummary.trends) && weeklySummary.trends.slice(0, 2).map((t, idx) => (
-                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#818cf8' }} />
-                      <Text style={{ color: isDark ? 'rgba(229,231,235,0.9)' : '#000', fontSize: 12, flex: 1 }} numberOfLines={1}>{t}</Text>
-                    </View>
-                  ))}
-                  {Array.isArray(weeklySummary.pros) && weeklySummary.pros.slice(0, 2).map((pro, idx) => (
-                    <View key={`p-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <Text style={{ color: '#4ade80', fontSize: 12 }}>✓</Text>
-                      <Text style={{ color: isDark ? 'rgba(229,231,235,0.9)' : '#000', fontSize: 12, flex: 1 }} numberOfLines={1}>{pro}</Text>
-                    </View>
-                  ))}
-                  {Array.isArray(weeklySummary.wins) && weeklySummary.wins.slice(0, 2).map((win, idx) => (
-                    <View key={`w-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <Text style={{ color: '#fb923c', fontSize: 11 }}>🏆</Text>
-                      <Text style={{ color: isDark ? 'rgba(229,231,235,0.9)' : '#000', fontSize: 12, flex: 1 }} numberOfLines={1}>{win}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-              {reportExpanded && (
-                <>
-                  {Array.isArray(weeklySummary.trends) && weeklySummary.trends.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Trends</Text>
-                      {weeklySummary.trends.map((t, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#818cf8', marginTop: 6 }} />
-                          <Text style={{ color: isDark ? 'rgba(229,231,235,0.92)' : '#000', fontSize: 12, flex: 1, lineHeight: 18 }}>{t}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.pros) && weeklySummary.pros.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>What went well</Text>
-                      {weeklySummary.pros.map((pro, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#4ade80', fontSize: 12 }}>✓</Text>
-                          <Text style={{ color: isDark ? 'rgba(229,231,235,0.92)' : '#000', fontSize: 12, flex: 1 }}>{pro}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.cons) && weeklySummary.cons.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>To improve</Text>
-                      {weeklySummary.cons.map((con, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#f87171', fontSize: 12 }}>!</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{con}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.wins) && weeklySummary.wins.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Wins</Text>
-                      {weeklySummary.wins.map((win, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#fb923c', fontSize: 12 }}>🏆</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{win}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.focus) && weeklySummary.focus.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Focus next week</Text>
-                      {weeklySummary.focus.map((f, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#fb923c', fontSize: 12 }}>→</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{f}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
-              {weeklySummary.signOff ? (
-                <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
-                  <Text style={{ color: 'rgba(209,213,219,0.85)', fontSize: 12, fontStyle: 'italic', textAlign: 'center' }}>{weeklySummary.signOff}</Text>
-                </View>
-              ) : null}
-              <TouchableOpacity
-                onPress={() => setReportExpanded((e) => !e)}
-                style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,107,157,0.15)' : 'rgba(255,107,157,0.12)' }}
-              >
-                <Text style={{ color: PINK, fontSize: 12, fontWeight: '600' }}>{reportExpanded ? 'Show less' : 'Show full report'}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ alignItems: 'center', paddingVertical: 18 }}>
-              <LinearGradient colors={[PINK, ORANGE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                <Icon name="Sparkles" size={22} color="#fff" />
-              </LinearGradient>
-              <Text style={{ color: textColor, fontSize: 16, fontWeight: '700' }}>No weekly report yet</Text>
-              <Text style={{ color: mutedColor, fontSize: 13, textAlign: 'center', marginBottom: 6 }}>
-                Reports are generated automatically every Monday at 1 AM (ET). Nothing has been generated for this client yet.
+          <View
+            style={{
+              marginTop: 14,
+              paddingTop: 14,
+              borderTopWidth: 1,
+              borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+            }}
+          >
+            <TouchableOpacity onPress={openRemoveClientMenu} hitSlop={{ top: 6, bottom: 6 }}>
+              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '600' }}>Remove from my roster</Text>
+              <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
+                Unlinks this client from you (same as the ⋮ menu). They keep their account and can work with another coach.
               </Text>
-              {countdownToNextReport ? (
-                <Text style={{ color: mutedColor, fontSize: 12, textAlign: 'center' }}>
-                  Next automatic run in: {countdownToNextReport}
-                </Text>
-              ) : null}
-              {weeklySummaryLoading ? (
-                <Text style={{ color: mutedColor, fontSize: 12, textAlign: 'center', marginTop: 8 }}>Generating report…</Text>
-              ) : (
-                <LinearGradient
-                  colors={['#FF6B9D', '#C084FC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{
-                    borderRadius: 20,
-                    overflow: 'hidden',
-                    marginTop: 12,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={handleGenerateWeeklyReportNow}
-                    activeOpacity={0.85}
-                    style={{
-                      paddingVertical: 14,
-                      paddingHorizontal: 24,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <Ionicons name="bar-chart" size={16} color="#FFFFFF" />
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
-                        Generate This Week&apos;s Report
-                      </Text>
-                      <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-                    </View>
-                  </TouchableOpacity>
-                </LinearGradient>
-              )}
-              {dataAvailability && (
-                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }}>
-                  <Text style={{ color: textColor, fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 8 }}>
-                    Weekly Data: {dataAvailability.daysWithData}/7 days
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 4, justifyContent: 'center' }}>
-                    {Array.from({ length: 7 }).map((_, i) => (
-                      <View key={i} style={{ width: 32, height: 6, borderRadius: 3, backgroundColor: i < dataAvailability.daysWithData ? '#00B894' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} />
-                    ))}
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
+            </TouchableOpacity>
+          </View>
         </GlassCard>
 
         {/* ── Tab Pills ── */}
@@ -3385,6 +3507,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
         initialRows={spreadsheetEditor.rows}
         onClose={() => setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
         onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+        trainerNavChrome={trainerEditorNav}
       />
       <DocumentEditorModal
         visible={documentEditor.visible}
@@ -3393,6 +3516,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
         isDark={isDark}
         onClose={() => setDocumentEditor({ visible: false, documentId: null })}
         onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+        trainerNavChrome={trainerEditorNav}
       />
       <ShareDocumentModal
         visible={shareModal.visible}
@@ -3410,82 +3534,343 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
 // ─────────────────────────────────────────────
 // CLIENTS LIST SCREEN
 // ─────────────────────────────────────────────
-const ClientsListScreen = ({ clients, onBack, onSelectClient, isDark = true }) => {
+const CLIENT_LIST_DELETE_GRADIENT = ['#BE185D', '#C2410C'];
+const SWIPE_DELETE_WIDTH = 88;
+
+/** Rotating gradient borders for trainer client carousel + full list cards. */
+const CLIENT_CARD_BORDER_GRADIENTS = [
+  [CYAN, PURPLE],
+  [PINK, PURPLE],
+  [PURPLE, CYAN],
+  [PINK, CYAN],
+];
+const CLIENT_CARD_INNER_BG_DARK = '#141419';
+const DELETE_ICON_PINK = '#FF6B9D';
+
+const ClientsListScreen = ({
+  clients,
+  trainerId,
+  onBack,
+  onSelectClient,
+  onClientRemoved,
+  onOpenClientRequests,
+  isDark = true,
+  weeklyReportClientId = null,
+  onOpenWeeklyReport,
+}) => {
+  const [deletePending, setDeletePending] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const swipeRefs = useRef(new Map());
+
   const bg = isDark ? '#0A0A0A' : '#F5F5F7';
   const headerBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)';
   const backColor = isDark ? '#ffffff' : '#1a1040';
   const titleColor = isDark ? '#ffffff' : '#1a1040';
   const emptyColor = isDark ? '#8A8A8A' : 'rgba(0,0,0,0.5)';
-  const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF';
-  const cardBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)';
   const nameColor = isDark ? '#ffffff' : '#1a1040';
   const subtextColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
-  const chevronColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
-  return (
-  <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-    <View style={{
-      flexDirection: 'row', alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingTop: Platform.OS === 'android' ? 16 : 0,
-      paddingBottom: 14,
-      borderBottomWidth: 1, borderBottomColor: headerBorder,
-    }}>
-      <TouchableOpacity
-        onPress={onBack}
-        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        style={{ width: 36, alignItems: 'flex-start' }}
-      >
-        <Ionicons name="chevron-back-outline" size={26} color={backColor} />
-      </TouchableOpacity>
-      <Text style={{ flex: 1, color: titleColor, fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
-        Clients
-      </Text>
-      <View style={{ width: 36 }} />
-    </View>
+  const modalOverlay = 'rgba(0,0,0,0.55)';
+  const modalCardBg = isDark ? '#141419' : '#FFFFFF';
+  const modalText = isDark ? '#FFFFFF' : '#0A0A0F';
+  const modalMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.65)';
 
-    {clients.length === 0 ? (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <Ionicons name="people-outline" size={52} color={emptyColor} />
-        <Text style={{ color: emptyColor, fontSize: 15 }}>No clients yet</Text>
+  const openRemoveSheet = useCallback((client) => {
+    swipeRefs.current.get(client.id)?.close?.();
+    setDeletePending({
+      id: client.id,
+      name: String(client.name || client.displayName || 'Client').trim() || 'Client',
+    });
+  }, []);
+
+  const cancelRemove = useCallback(() => {
+    setDeletePending(null);
+    setRemoveBusy(false);
+  }, []);
+
+  const confirmRemove = useCallback(async () => {
+    if (!deletePending?.id || !trainerId) return;
+    if (!functions) {
+      Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+      return;
+    }
+      const clientId = deletePending.id;
+      const displayName = deletePending.name;
+      setRemoveBusy(true);
+      try {
+        const fn = httpsCallable(functions, 'removeTrainerClientLink');
+        await fn({
+          trainerId,
+          clientId,
+          reasons: [],
+          otherText: null,
+          removedBy: 'trainer',
+        });
+        cancelRemove();
+        onClientRemoved?.(clientId);
+        Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+    } catch (e) {
+      const msg = e?.message || e?.code || 'Could not remove this client. Try again.';
+      Alert.alert('Remove failed', String(msg));
+    } finally {
+      setRemoveBusy(false);
+    }
+  }, [cancelRemove, deletePending, onClientRemoved, trainerId]);
+
+  const renderRightActions = useCallback(
+    (client) => (
+      <View
+        style={{
+          width: SWIPE_DELETE_WIDTH,
+          marginBottom: 12,
+          justifyContent: 'stretch',
+        }}
+      >
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => openRemoveSheet(client)}
+          style={{
+            flex: 1,
+            backgroundColor: '#BE185D',
+            borderTopRightRadius: 14,
+            borderBottomRightRadius: 14,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 6,
+          }}
+        >
+          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
+          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', marginTop: 4 }}>Remove</Text>
+        </TouchableOpacity>
       </View>
-    ) : (
-      <ScrollView contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-        {(clients || []).map((client) => (
+    ),
+    [openRemoveSheet],
+  );
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingTop: Platform.OS === 'android' ? 16 : 0,
+            paddingBottom: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: headerBorder,
+          }}
+        >
           <TouchableOpacity
-            key={client.id}
-            activeOpacity={0.7}
-            onPress={() => onSelectClient(client.id)}
-            style={{
-              flexDirection: 'row', alignItems: 'center',
-              backgroundColor: cardBg,
-              borderWidth: 1, borderColor: cardBorder,
-              borderRadius: 16, paddingVertical: 16, paddingHorizontal: 16,
-              marginBottom: 10, marginHorizontal: 16,
-            }}
+            onPress={onBack}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={{ width: 36, alignItems: 'flex-start' }}
           >
-            <LinearGradient
-              colors={GRADIENT_AVATAR}
-              style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}
-            >
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>{getClientInitials(client.name)}</Text>
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: nameColor, fontWeight: '700', fontSize: 15, marginBottom: 3 }}>{client.name || 'No Name'}</Text>
-              <Text style={{ color: subtextColor, fontSize: 12 }}>{getClientSubtext(client)}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={chevronColor} />
+            <Ionicons name="chevron-back-outline" size={26} color={backColor} />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-    )}
-  </SafeAreaView>
+          <Text style={{ flex: 1, color: titleColor, fontSize: 17, fontWeight: '700', textAlign: 'center' }}>
+            Clients
+          </Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        {clients.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 10 }}>
+            <Ionicons name="people-outline" size={52} color={emptyColor} />
+            <Text style={{ color: titleColor, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>No clients yet</Text>
+            <Text style={{ color: emptyColor, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+              When someone connects or you accept a request, they show up here. Tap the trash on a card or swipe left to remove someone from your roster.
+            </Text>
+            {typeof onOpenClientRequests === 'function' ? (
+              <TouchableOpacity
+                onPress={onOpenClientRequests}
+                activeOpacity={0.9}
+                style={{ marginTop: 16, borderRadius: 14, overflow: 'hidden' }}
+              >
+                <LinearGradient
+                  colors={CLIENT_LIST_DELETE_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ paddingVertical: 14, paddingHorizontal: 22 }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>Client requests</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={{ paddingTop: 16, paddingBottom: 40, paddingHorizontal: 0 }}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                letterSpacing: 1,
+                color: subtextColor,
+                textTransform: 'uppercase',
+                marginBottom: 10,
+                paddingHorizontal: 16,
+              }}
+            >
+              Tap trash or swipe left to remove
+            </Text>
+            {(clients || []).map((client, index) => {
+              const borderGrad = CLIENT_CARD_BORDER_GRADIENTS[index % CLIENT_CARD_BORDER_GRADIENTS.length];
+              const listInnerBg = isDark ? CLIENT_CARD_INNER_BG_DARK : '#FFFFFF';
+              const avatarGrad = borderGrad;
+              return (
+                <Swipeable
+                  key={client.id}
+                  ref={(r) => {
+                    if (r) swipeRefs.current.set(client.id, r);
+                    else swipeRefs.current.delete(client.id);
+                  }}
+                  friction={2}
+                  overshootRight={false}
+                  renderRightActions={() => renderRightActions(client)}
+                >
+                  <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+                    <LinearGradient
+                      colors={borderGrad}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ borderRadius: 14, padding: 2 }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: 12,
+                          backgroundColor: listInnerBg,
+                          paddingVertical: 14,
+                          paddingHorizontal: 14,
+                        }}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.75}
+                          onPress={() => onSelectClient(client.id)}
+                          style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                        >
+                          <View
+                            style={{
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: isDark ? 0.45 : 0.18,
+                              shadowRadius: 4,
+                              elevation: 4,
+                              borderRadius: 20,
+                            }}
+                          >
+                            <LinearGradient
+                              colors={avatarGrad}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                              style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{getClientInitials(client.name)}</Text>
+                            </LinearGradient>
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ color: nameColor, fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+                              {client.name || 'No Name'}
+                            </Text>
+                            <Text style={{ color: subtextColor, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
+                              {getClientSubtext(client)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => openRemoveSheet(client)}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          style={{ paddingLeft: 4, paddingVertical: 4 }}
+                          accessibilityLabel={`Remove ${client.name || 'client'}`}
+                        >
+                          <Ionicons name="trash-outline" size={20} color={DELETE_ICON_PINK} />
+                        </TouchableOpacity>
+                      </View>
+                    </LinearGradient>
+                  </View>
+                </Swipeable>
+              );
+            })}
+
+            {(() => {
+              const wid = weeklyReportClientId || clients[0]?.id;
+              const wc = clients.find((c) => c.id === wid);
+              if (!wid || !wc) return null;
+              return (
+                <View style={{ marginTop: 6, paddingHorizontal: 0 }}>
+                  <TrainerWeeklyReportSection
+                    clientId={wid}
+                    clientName={wc.name || wc.displayName || ''}
+                    isDark={isDark}
+                    onOpenWeeklyReport={onOpenWeeklyReport}
+                  />
+                </View>
+              );
+            })()}
+          </ScrollView>
+        )}
+
+        <Modal visible={!!deletePending} transparent animationType="fade" onRequestClose={cancelRemove}>
+          <Pressable style={{ flex: 1, backgroundColor: modalOverlay, justifyContent: 'center', padding: 24 }} onPress={cancelRemove}>
+            <Pressable
+              onPress={(e) => e.stopPropagation?.()}
+              style={{
+                borderRadius: 16,
+                padding: 20,
+                backgroundColor: modalCardBg,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+              }}
+            >
+              <Text style={{ color: modalText, fontSize: 18, fontWeight: '900', marginBottom: 10 }}>Remove client?</Text>
+              <Text style={{ color: modalMuted, fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
+                {deletePending?.name} will lose access to plans you assigned through Coach Connect. This cannot be undone from the app.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'flex-end' }}>
+                <TouchableOpacity
+                  onPress={cancelRemove}
+                  disabled={removeBusy}
+                  style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, opacity: removeBusy ? 0.5 : 1 }}
+                >
+                  <Text style={{ color: modalMuted, fontSize: 15, fontWeight: '700' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmRemove}
+                  disabled={removeBusy}
+                  style={{
+                    paddingVertical: 12,
+                    paddingHorizontal: 18,
+                    borderRadius: 12,
+                    backgroundColor: DELETE_ICON_PINK,
+                    minWidth: 100,
+                    alignItems: 'center',
+                    opacity: removeBusy ? 0.75 : 1,
+                  }}
+                >
+                  {removeBusy ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Remove</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 };
 
 // ─────────────────────────────────────────────
 // DASHBOARD CONTENT
 // ─────────────────────────────────────────────
-const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCount = 0, unreadMessageCount = 0, onClientRequestsPress, onClientsPress, onMessagesPress, onOpenPhotoGallery, onOpenAIWorkouts, onRefreshClients, userName, trainerId, pdfViewer, setPdfViewer, defaultClientId, onSelectedClientChange }) => {
+const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCount = 0, unreadMessageCount = 0, onClientRequestsPress, onClientsPress, onMessagesPress, onOpenPhotoGallery, onOpenAIWorkouts, onRefreshClients, userName, trainerId, pdfViewer, setPdfViewer, defaultClientId, onSelectedClientChange, onOpenWeeklyReport, onTrainerClientRemoved, getTrainerEditorNavChrome }) => {
+  const { width: screenW } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState('Progress');
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
@@ -3494,25 +3879,28 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   const [todayDailyLog, setTodayDailyLog] = useState(null);
   const [weightTrend7, setWeightTrend7] = useState([]);
   const [refreshNotesAndFilesTrigger, setRefreshNotesAndFilesTrigger] = useState(0);
-  const [weeklySummary, setWeeklySummary] = useState(null);
-  const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
+  /** Whether `users/{id}/weeklySummaries` has any docs (green dot on client chip). */
   const [weeklySummaryMap, setWeeklySummaryMap] = useState({});
-  const [countdownToNextReport, setCountdownToNextReport] = useState('');
-  const [dataAvailability, setDataAvailability] = useState(null);
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
   const [trainerDocuments, setTrainerDocuments] = useState([]);
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
+  const [spreadsheetEditor, setSpreadsheetEditor] = useState({ visible: false, documentId: null, title: '', rows: null });
   const [shareModal, setShareModal] = useState({ visible: false, documentId: null, sharedWith: [] });
   const plusHandlerRef = useRef(() => {});
-  const [reportExpanded, setReportExpanded] = useState(false);
   const [clientUnreadCount, setClientUnreadCount] = useState(0);
+  const [removeClientHold, setRemoveClientHold] = useState(null);
 
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
-  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)';
-  const cardBorder = isDark ? 'rgba(192,132,252,0.25)' : 'rgba(192,132,252,0.4)';
+  /** Wide “profile” cards (~one per viewport + peek of next), not narrow chips. */
+  const rosterCardWidth = Math.max(268, Math.min(340, Math.round((screenW - 40) * 0.9)));
 
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+
+  const promptRemoveClientFromDashboard = useCallback((client) => {
+    if (!client?.id || !trainerId) return;
+    setRemoveClientHold(client);
+  }, [trainerId]);
 
   // Fetch last 7 days of weights (sparkline)
   useEffect(() => {
@@ -3588,37 +3976,6 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     }
   }, [defaultClientId]);
 
-  // Reset report expanded when client or report changes
-  useEffect(() => {
-    setReportExpanded(false);
-  }, [selectedClientId, weeklySummary?.weekStart]);
-
-  // Countdown to next weekly report (Monday 1AM ET)
-  useEffect(() => {
-    const calculateCountdown = () => {
-      const now = new Date();
-      const nextMonday = new Date(now);
-      const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
-      nextMonday.setDate(now.getDate() + daysUntilMonday);
-      nextMonday.setHours(1, 0, 0, 0);
-      if (now.getDay() === 1 && now.getHours() >= 1) nextMonday.setDate(now.getDate() + 7);
-      const diff = nextMonday - now;
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      let countdownText = '';
-      if (days > 0) countdownText += `${days}d `;
-      if (hours > 0 || days > 0) countdownText += `${hours}h `;
-      if (minutes > 0 || hours > 0 || days > 0) countdownText += `${minutes}m `;
-      countdownText += `${seconds}s`;
-      setCountdownToNextReport(countdownText);
-    };
-    calculateCountdown();
-    const interval = setInterval(calculateCountdown, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Real-time listener for selected client's today dailyLogs (check-in badges)
   useEffect(() => {
     if (!currentClient?.id || !db) {
@@ -3630,17 +3987,16 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     const unsubscribe = onSnapshot(
       dailyLogRef,
       (snap) => {
-        console.log('📅 Daily logs listener triggered for', dateKey, snap.exists() ? 'EXISTS' : 'NULL');
         if (snap.exists()) {
-          const data = snap.data();
-          console.log('📊 Daily log data:', data);
-          setTodayDailyLog(data);
+          setTodayDailyLog(snap.data());
         } else {
           setTodayDailyLog(null);
         }
       },
       (error) => {
-        console.error('❌ Daily logs listener error:', error);
+        if (!isBenignTrainerClientFirestoreError(error)) {
+          console.error('Daily logs listener error:', error);
+        }
         setTodayDailyLog(null);
       }
     );
@@ -3714,92 +4070,28 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     return () => clearInterval(id);
   }, [currentClient?.id]);
 
-  // Check weekly data availability for current client
   useEffect(() => {
-    const checkData = async () => {
-      if (!currentClient?.id) { setDataAvailability(null); return; }
+    let cancelled = false;
+    (async () => {
+      if (!currentClient?.id || !db) return;
       try {
-        const availability = await checkWeeklyDataAvailability(currentClient.id);
-        setDataAvailability(availability);
-      } catch { setDataAvailability(null); }
-    };
-    checkData();
-  }, [currentClient?.id]);
-
-  const [selectedWeekStart, setSelectedWeekStart] = useState(null);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-
-  const fetchWeeklySummary = async (clientId, weekStartKey) => {
-    if (!clientId || !db || !weekStartKey) { setWeeklySummary(null); return; }
-    setWeeklySummaryLoading(true);
-    try {
-      const snap = await getDoc(doc(db, 'users', clientId, 'weeklySummaries', weekStartKey));
-      setWeeklySummary(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-    } catch {
-      setWeeklySummary(null);
-    } finally {
-      setWeeklySummaryLoading(false);
-    }
-  };
-
-  // Get canonical last-week key from server when current client changes
-  useEffect(() => {
-    // Local fallback in case Cloud Function is not yet deployed
-    const computeLocalLastWeekStart = () => {
-      const now = new Date();
-      const daysSinceMonday = (now.getDay() + 6) % 7; // Sun=6, Mon=0, Tue=1, ...
-      const thisMonday = new Date(now);
-      thisMonday.setDate(now.getDate() - daysSinceMonday);
-      const lastMonday = new Date(thisMonday);
-      lastMonday.setDate(thisMonday.getDate() - 7);
-      return lastMonday.toISOString().split('T')[0];
-    };
-
-    const loadWeek = async () => {
-      if (!currentClient?.id || !functions) {
-        // Fallback: use local calculation so dashboard still works even without callable
-        const localKey = computeLocalLastWeekStart();
-        setSelectedWeekStart(localKey);
-        await fetchWeeklySummary(currentClient?.id, localKey);
-        return;
-      }
-      try {
-        const getBounds = httpsCallable(functions, 'getWeekBounds');
-        const res = await getBounds({});
-        const weekStartKey = res?.data?.weekStart;
-        setSelectedWeekStart(weekStartKey || null);
-        if (weekStartKey) {
-          await fetchWeeklySummary(currentClient.id, weekStartKey);
+        const snap = await getDocs(collection(db, 'users', currentClient.id, 'weeklySummaries'));
+        if (!cancelled) {
+          setWeeklySummaryMap((prev) => ({
+            ...prev,
+            [currentClient.id]: snap.docs.length > 0,
+          }));
         }
       } catch (e) {
-        console.error('Error loading week bounds for dashboard:', e);
-        // If callable is missing or fails, fall back to local JS week calculation
-        const localKey = computeLocalLastWeekStart();
-        setSelectedWeekStart(localKey);
-        await fetchWeeklySummary(currentClient.id, localKey);
+        if (!isBenignTrainerClientFirestoreError(e)) {
+          console.error('weeklySummaries presence (dashboard):', e);
+        }
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    loadWeek();
-  }, [currentClient?.id, functions]);
-
-  // Manual trigger: trainer taps a button to generate last week's report for this client
-  const handleGenerateWeeklyReportNow = async () => {
-    if (!currentClient?.id || !functions || !selectedWeekStart || weeklySummaryLoading || isGeneratingReport) return;
-    setIsGeneratingReport(true);
-    try {
-      const fn = httpsCallable(functions, 'generateWeeklySummaryForClientForWeek');
-      const res = await fn({ clientId: currentClient.id, weekStart: selectedWeekStart });
-      if (res?.data?.generated) {
-        await fetchWeeklySummary(currentClient.id, selectedWeekStart);
-      } else {
-        await fetchWeeklySummary(currentClient.id, selectedWeekStart);
-      }
-    } catch (e) {
-      console.error('Error generating weekly report from dashboard:', e);
-    } finally {
-      setIsGeneratingReport(false);
-    }
-  };
+  }, [currentClient?.id]);
 
   useEffect(() => {
     if (clients.length === 0) { setSelectedClientId(null); return; }
@@ -3812,7 +4104,6 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   useEffect(() => {
     if (!currentClient?.id || !trainerId || !db) { setClientData(null); return; }
     
-    console.log('🔧 Setting up real-time listeners for client:', currentClient.id);
     const unsubscribers = [];
     
     // Listen to user document changes (weight, profile updates)
@@ -3826,37 +4117,12 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             try {
               notesAndFiles = await getNotesAndFiles(currentClient.id);
             } catch (_) {}
-            setClientData({
-              beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
-              currentWeight: currentClient?.weight ?? null,
-              trainingDays: [],
-              programName: currentClient?.programName || 'Custom Program',
-              nutrition: {
-                calories: 0,
-                protein: 0,
-                carbs: 0,
-                fat: 0,
-                fiber: 0,
-                sugar: 0,
-                sodium: 0,
-                potassium: 0,
-                proteinGoal: 200,
-                carbsGoal: 300,
-                fatGoal: 80,
-                micros: currentClient?.micros || [],
-                foods: [],
-              },
-              calendar: {
-                completed: currentClient?.completedDays || [],
-                upcoming: currentClient?.upcomingDays || [],
-                missed: currentClient?.missedDays || [],
-                upcomingSessions: currentClient?.upcomingSessions || [],
-              },
-              notesAndFiles,
-            });
+            setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles));
           } catch (e) {
-            console.error('Error building client data without user doc:', e);
-            setClientData(null);
+            if (!isBenignTrainerClientFirestoreError(e)) {
+              console.error('Error building client data without user doc:', e);
+            }
+            setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, []));
           }
           return;
         }
@@ -3914,10 +4180,22 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             notesAndFiles,
           });
         } catch (e) {
-          console.error('Error updating client data:', e);
+          if (!isBenignTrainerClientFirestoreError(e)) {
+            console.error('Error updating client data:', e);
+          }
         }
       },
       (error) => {
+        if (isBenignTrainerClientFirestoreError(error)) {
+          (async () => {
+            let notesAndFiles = [];
+            try {
+              notesAndFiles = await getNotesAndFiles(currentClient.id);
+            } catch (_) {}
+            setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles));
+          })();
+          return;
+        }
         console.error('User document listener error:', error);
         setClientData(null);
       }
@@ -3929,16 +4207,13 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     const nutritionUnsub = onSnapshot(
       query(collection(db, 'nutrition_logs'), where('user_id', '==', currentClient.id)),
       async (snapshot) => {
-        console.log('🥗 Real-time nutrition_logs listener triggered!', snapshot.docChanges().length, 'changes');
         // Re-fetch nutrition data when it changes
         try {
           const todayKey = getDateKey();
           const nutritionLogs = await getFoodLogsForDate(currentClient.id, todayKey);
           const nutritionTotals = calculateMacroTotals(nutritionLogs);
           const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
-          
-          console.log('📊 Updated nutrition totals:', nutritionTotals);
-          
+
           setClientData(prev => {
             if (!prev) return prev;
             
@@ -3959,11 +4234,15 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             };
           });
         } catch (e) {
-          console.error('Error updating nutrition data:', e);
+          if (!isBenignTrainerClientFirestoreError(e)) {
+            console.error('Error updating nutrition data:', e);
+          }
         }
       },
       (error) => {
-        console.error('❌ Nutrition listener error:', error);
+        if (!isBenignTrainerClientFirestoreError(error)) {
+          console.error('Nutrition listener error:', error);
+        }
       }
     );
     
@@ -4008,10 +4287,16 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             };
           });
         } catch (e) {
-          console.error('Error syncing notes and files:', e);
+          if (!isBenignTrainerClientFirestoreError(e)) {
+            console.error('Error syncing notes and files:', e);
+          }
         }
       },
-      (err) => console.error('notes_and_files listener error:', err),
+      (err) => {
+        if (!isBenignTrainerClientFirestoreError(err)) {
+          console.error('notes_and_files listener error:', err);
+        }
+      },
     );
     unsubscribers.push(notesUnsub);
 
@@ -4058,7 +4343,9 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
           };
         });
       } catch (e) {
-        console.error('Error refreshing notes and files:', e);
+        if (!isBenignTrainerClientFirestoreError(e)) {
+          console.error('Error refreshing notes and files:', e);
+        }
       }
     };
     refreshNotes();
@@ -4081,7 +4368,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
   const actions = [
     { label: 'Messages', icon: 'MessageSquare', action: 'messages' },
     { label: 'Photo Gallery', imageSource: require('../assets/icons/picture.png'), action: 'photos' },
-    { label: 'AI Workouts', imageSource: require('../assets/ai_workouts.png'), action: 'aiPlans' },
+    { label: 'Workout Plans', imageSource: require('../assets/ai_workouts.png'), action: 'aiPlans' },
   ];
 
   // Test notification function for trainers
@@ -4144,26 +4431,38 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
     letterSpacing: 2,
     color: mutedColor,
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 6,
     paddingHorizontal: 2, // remove hardcoded large padding if needed, but keeping it small
   };
 
+  const trainerEditorNav = useMemo(
+    () =>
+      typeof getTrainerEditorNavChrome === 'function'
+        ? getTrainerEditorNavChrome(() => {
+            setDocumentEditor({ visible: false, documentId: null });
+            setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null });
+          })
+        : null,
+    [getTrainerEditorNavChrome],
+  );
+
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 6 }}>
+    <>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 4 }}>
       <AuroraHeroBanner isDark={isDark} timeOfDay={timeOfDay} userName={userName} textColor={textColor} />
 
       {/* Quote pill is now inside the hero banner */}
 
       {/* Hero stats strip */}
       <LinearGradient
-        colors={['rgba(124,58,237,0.25)', 'rgba(236,72,153,0.15)']}
+        colors={['rgba(124,58,237,0.2)', 'rgba(236,72,153,0.1)']}
         style={{
           borderRadius: 20,
           borderWidth: 1,
-          borderColor: 'rgba(124,58,237,0.3)',
-          padding: 16,
+          borderColor: 'rgba(167,139,250,0.35)',
+          padding: 12,
           marginHorizontal: 0,
-          marginTop: 12,
+          marginTop: 8,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -4177,7 +4476,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             <Text style={{ fontSize: 11, color: mutedColor }}>Pending Requests</Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
           <TouchableOpacity activeOpacity={0.8} onPress={onClientsPress} style={{ flex: 1 }}>
             <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 12, height: 40, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>All Clients</Text>
@@ -4191,298 +4490,242 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
         </View>
       </LinearGradient>
 
-      {/* Client Selector */}
-      <View style={{ marginTop: 24 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Text style={sectionLabelStyle}>Your Clients</Text>
-          {onRefreshClients && (
-            <TouchableOpacity onPress={onRefreshClients} disabled={clientsLoading} style={{ padding: 4 }}>
-              <Text style={{ fontSize: 12, color: mutedColor }}>{clientsLoading ? '...' : '↻ Refresh'}</Text>
-            </TouchableOpacity>
-          )}
+      {/* Client roster — wide profile cards (avatar, goal, stat tiles); scrolls horizontally */}
+      <View style={{ marginTop: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <Text style={[sectionLabelStyle, { marginBottom: 0 }]}>Clients</Text>
+          {clients.length > 0 ? (
+            <View
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 999,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
+              }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: '800', color: mutedColor }}>{clients.length} active</Text>
+            </View>
+          ) : null}
         </View>
 
         {clients.length === 0 ? (
-          <GlassCard isDark={isDark} style={{ padding: 32, alignItems: 'center', gap: 12, borderRadius: 16 }}>
-            <Icon name="UserPlus" size={32} color={mutedColor} />
-            <Text style={{ color: isDark ? 'rgba(255,255,255,0.9)' : '#1a0a2e', fontSize: 16, fontWeight: '600', textAlign: 'center' }}>No clients yet</Text>
-            <Text style={{ color: mutedColor, fontSize: 13, textAlign: 'center' }}>Accept client requests to get started</Text>
-          </GlassCard>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 14,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+            }}
+          >
+            <LinearGradient
+              colors={['#7C3AED', '#EC4899']}
+              style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Icon name="UserPlus" size={20} color="#FFFFFF" />
+            </LinearGradient>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: textColor, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 }}>No clients yet</Text>
+              <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
+                Approve requests from Client Requests — each client appears here.
+              </Text>
+            </View>
+          </View>
         ) : (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, paddingRight: 4 }}>
               {(clients || []).map((client) => {
                 const selected = client.id === currentClient?.id;
-                return (
+                const stats = getClientRosterStats(client);
+                const displayName = client.name || client.displayName || 'Client';
+                const initials = getClientInitials(displayName);
+                const hasWeekly = !!weeklySummaryMap[client.id];
+
+                const innerCardBg = isDark ? '#0f0f16' : '#FAFAFC';
+                const innerPressableStyle = {
+                  width: '100%',
+                  borderRadius: 18,
+                  backgroundColor: innerCardBg,
+                  paddingHorizontal: 16,
+                  paddingTop: 16,
+                  paddingBottom: 16,
+                  minHeight: 152,
+                };
+
+                const cardBody = (
                   <TouchableOpacity
-                    key={client.id}
-                    activeOpacity={0.85}
+                    activeOpacity={0.88}
                     onPress={() => setSelectedClientId(client.id)}
-                    style={{
-                      width: 148,
-                      minHeight: 118,
-                      marginRight: 10,
-                      backgroundColor: selected ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.05)',
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      borderColor: selected ? '#7C3AED' : 'rgba(255,255,255,0.08)',
-                      padding: 12,
-                    }}
+                    style={innerPressableStyle}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                       <LinearGradient
                         colors={['#7C3AED', '#EC4899']}
-                        style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{
+                          width: 52,
+                          height: 52,
+                          borderRadius: 18,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
-                        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>
-                          {client?.name?.charAt(0)?.toUpperCase() || '?'}
+                        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 }}>
+                          {initials}
                         </Text>
                       </LinearGradient>
-                      {weeklySummaryMap[client.id] ? (
-                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' }} />
-                      ) : null}
+                      <View style={{ flex: 1, marginLeft: 14, minWidth: 0, paddingRight: 36 }}>
+                        <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3 }} numberOfLines={1}>
+                          {displayName}
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                          {stats.goal ? (
+                            <View
+                              style={{
+                                paddingHorizontal: 10,
+                                paddingVertical: 5,
+                                borderRadius: 999,
+                                backgroundColor: isDark ? 'rgba(192,132,252,0.18)' : 'rgba(124,58,237,0.12)',
+                                borderWidth: 1,
+                                borderColor: isDark ? 'rgba(192,132,252,0.35)' : 'rgba(124,58,237,0.25)',
+                                marginRight: 8,
+                                marginBottom: 4,
+                              }}
+                            >
+                              <Text style={{ color: isDark ? '#E9D5FF' : '#5B21B6', fontSize: 11, fontWeight: '800' }} numberOfLines={1}>
+                                {stats.goal}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {hasWeekly ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' }} />
+                              <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginLeft: 5 }}>Weekly ready</Text>
+                            </View>
+                          ) : (
+                            <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>No weekly yet</Text>
+                          )}
+                        </View>
+                      </View>
                     </View>
-                    <Text style={{ color: textColor, fontSize: 13, fontWeight: '700', marginTop: 6 }} numberOfLines={1}>
-                      {client.name || 'No Name'}
-                    </Text>
-                    <Text
-                      style={{ color: mutedColor, fontSize: 11, lineHeight: 14, marginTop: 2 }}
-                      numberOfLines={2}
-                    >
-                      {getClientSubtext(client)}
-                    </Text>
+
+                    <View style={{ flexDirection: 'row', marginTop: 14 }}>
+                      {[
+                        { key: 'age', icon: 'calendar-outline', cap: 'Age', val: stats.age ? `${stats.age} yrs` : '—' },
+                        { key: 'wt', icon: 'fitness-outline', cap: 'Weight', val: stats.weight ? `${stats.weight} lbs` : '—' },
+                        { key: 'ht', icon: 'resize-outline', cap: 'Height', val: stats.height || '—' },
+                      ].map((cell, idx) => (
+                        <View
+                          key={cell.key}
+                          style={{
+                            flex: 1,
+                            borderRadius: 14,
+                            paddingVertical: 10,
+                            paddingHorizontal: 8,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
+                            borderWidth: 1,
+                            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
+                            alignItems: 'center',
+                            marginRight: idx < 2 ? 10 : 0,
+                          }}
+                        >
+                          <Ionicons name={cell.icon} size={16} color="#C084FC" />
+                          <Text style={{ color: mutedColor, fontSize: 9, fontWeight: '800', letterSpacing: 0.6, marginTop: 6, textTransform: 'uppercase' }}>
+                            {cell.cap}
+                          </Text>
+                          <Text style={{ color: textColor, fontSize: 13, fontWeight: '800', marginTop: 3 }} numberOfLines={1}>
+                            {cell.val}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </TouchableOpacity>
+                );
+
+                return (
+                  <View key={client.id} style={{ width: rosterCardWidth, marginRight: 12, position: 'relative' }}>
+                    {selected ? (
+                      <LinearGradient
+                        colors={['#EC4899', '#A855F7', '#6366F1']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ borderRadius: 20, padding: 2.5 }}
+                      >
+                        {cardBody}
+                      </LinearGradient>
+                    ) : (
+                      <View
+                        style={{
+                          borderRadius: 20,
+                          borderWidth: 1.5,
+                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
+                          overflow: 'hidden',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.92)',
+                        }}
+                      >
+                        {cardBody}
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      accessibilityLabel={`Remove ${client.name || 'client'} from roster`}
+                      accessibilityHint="Opens a confirmation step"
+                      onPress={() => promptRemoveClientFromDashboard(client)}
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 10,
+                        zIndex: 4,
+                        padding: 8,
+                        borderRadius: 14,
+                        backgroundColor: isDark ? 'rgba(15,15,22,0.92)' : 'rgba(255,255,255,0.95)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
+                      }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={18}
+                        color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.5)'}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 );
               })}
             </ScrollView>
+
+            {currentClient?.id ? (
+              <View style={{ marginTop: 8 }}>
+                <TrainerWeeklyReportSection
+                  clientId={currentClient.id}
+                  clientName={currentClient.name || currentClient.displayName || ''}
+                  isDark={isDark}
+                  onOpenWeeklyReport={onOpenWeeklyReport}
+                />
+              </View>
+            ) : null}
           </>
         )}
       </View>
 
-      {/* Weekly Report — right below client selector (03/08: only when has clients, no button) */}
-      {clients.length > 0 && (
-        <View style={{ marginTop: 24 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-            <Text style={sectionLabelStyle}>Weekly Report</Text>
-            <TouchableOpacity onPress={() => currentClient?.id && fetchWeeklySummary(currentClient.id)} disabled={weeklySummaryLoading} style={{ padding: 4 }}>
-              <Text style={{ fontSize: 12, color: mutedColor }}>{weeklySummaryLoading ? '…' : '↻ Refresh'}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ backgroundColor: 'rgba(124,58,237,0.08)', borderRadius: 24, padding: 2, marginHorizontal: 0 }}>
-          <GlassCard isDark={isDark} borderVariant="progress" style={{ padding: 16, minHeight: 120, borderRadius: 16 }}>
-          {weeklySummaryLoading ? (
-            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 16 }}>
-              <LinearGradient colors={[PINK, ORANGE, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ width: '100%', height: 64, borderRadius: 16, opacity: 0.9, marginBottom: 10 }} />
-              <Text style={{ color: mutedColor, fontSize: 13 }}>Loading weekly report...</Text>
-            </View>
-          ) : weeklySummary ? (
-            <View style={{ gap: 14 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <LinearGradient colors={[PINK, ORANGE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="Sparkles" size={16} color="#fff" />
-                  </LinearGradient>
-                  <Text style={{ color: textColor, fontSize: 16, fontWeight: '800' }}>Weekly Snapshot</Text>
-                </View>
-                <Text style={{ color: mutedColor, fontSize: 11 }}>{weeklySummary.weekStart} → {weeklySummary.weekEnd}</Text>
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 8 }}>
-                {[{ key: 'avgSleep', label: 'sleep', icon: 'MoonAlt', accent: PURPLE }, { key: 'avgWater', label: 'water', icon: 'Droplet', accent: CYAN }, { key: 'avgEnergy', label: 'energy', icon: 'Zap', accent: ORANGE }, { key: 'avgSteps', label: 'steps', icon: 'Footsteps', accent: PINK }].map((item) => (
-                  <View key={item.key} style={{ minWidth: 72, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(15,23,42,0.06)', borderWidth: 1, borderColor: item.accent + '40', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name={item.icon} size={18} color={item.accent} style={{ marginBottom: 4 }} />
-                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{weeklySummary[item.key] ?? '—'}</Text>
-                    <Text style={{ color: mutedColor, fontSize: 10 }}>{item.label}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-
-              {weeklySummary.summary ? (
-                <View style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderLeftWidth: 3, borderLeftColor: PINK }}>
-                  <Text style={{ color: 'rgba(249,250,251,0.95)', fontSize: 13, lineHeight: 20 }} numberOfLines={reportExpanded ? undefined : 2}>
-                    {weeklySummary.summary}
-                  </Text>
-                  {!reportExpanded && weeklySummary.summary.length > 140 && (
-                    <Text style={{ color: PINK, fontSize: 12, marginTop: 4, fontWeight: '600' }} onPress={() => setReportExpanded(true)}>Read more</Text>
-                  )}
-                </View>
-              ) : null}
-
-              {Array.isArray(weeklySummary.dayBreakdown) && weeklySummary.dayBreakdown.length > 0 && (
-                <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>Day by day</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].slice(0, weeklySummary.dayBreakdown.length).map((dayLabel, idx) => {
-                      const dayText = weeklySummary.dayBreakdown[idx] || '';
-                      const short = reportExpanded ? dayText : (dayText.length > 36 ? dayText.slice(0, 36) + '…' : dayText);
-                      return (
-                        <View key={idx} style={{ width: 140, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(15,23,42,0.5)' : 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(148,163,184,0.2)' }}>
-                          <Text style={{ color: PINK, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>{dayLabel}</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.9)', fontSize: 11, lineHeight: 16 }} numberOfLines={reportExpanded ? undefined : 2}>{short}</Text>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-
-              {!reportExpanded && (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {Array.isArray(weeklySummary.trends) && weeklySummary.trends.slice(0, 2).map((t, idx) => (
-                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#818cf8' }} />
-                      <Text style={{ color: 'rgba(229,231,235,0.9)', fontSize: 12, flex: 1 }} numberOfLines={1}>{t}</Text>
-                    </View>
-                  ))}
-                  {Array.isArray(weeklySummary.pros) && weeklySummary.pros.slice(0, 2).map((pro, idx) => (
-                    <View key={`p-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <Text style={{ color: '#4ade80', fontSize: 12 }}>✓</Text>
-                      <Text style={{ color: 'rgba(229,231,235,0.9)', fontSize: 12, flex: 1 }} numberOfLines={1}>{pro}</Text>
-                    </View>
-                  ))}
-                  {Array.isArray(weeklySummary.wins) && weeklySummary.wins.slice(0, 2).map((win, idx) => (
-                    <View key={`w-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-                      <Text style={{ color: '#fb923c', fontSize: 11 }}>🏆</Text>
-                      <Text style={{ color: 'rgba(229,231,235,0.9)', fontSize: 12, flex: 1 }} numberOfLines={1}>{win}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {reportExpanded && (
-                <>
-                  {Array.isArray(weeklySummary.trends) && weeklySummary.trends.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Trends</Text>
-                      {(weeklySummary?.trends || []).map((t, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#818cf8', marginTop: 6 }} />
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1, lineHeight: 18 }}>{t}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.pros) && weeklySummary.pros.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>What went well</Text>
-                      {(weeklySummary?.pros || []).map((pro, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#4ade80', fontSize: 12 }}>✓</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{pro}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.cons) && weeklySummary.cons.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>To improve</Text>
-                      {(weeklySummary?.cons || []).map((con, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#f87171', fontSize: 12 }}>!</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{con}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.wins) && weeklySummary.wins.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Wins</Text>
-                      {(weeklySummary?.wins || []).map((win, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#fb923c', fontSize: 12 }}>🏆</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{win}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {Array.isArray(weeklySummary.focus) && weeklySummary.focus.length > 0 && (
-                    <View style={{ marginTop: 4 }}>
-                      <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>Focus next week</Text>
-                      {(weeklySummary?.focus || []).map((f, idx) => (
-                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <Text style={{ color: '#fb923c', fontSize: 12 }}>→</Text>
-                          <Text style={{ color: 'rgba(229,231,235,0.92)', fontSize: 12, flex: 1 }}>{f}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
-
-              {weeklySummary.signOff ? (
-                <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
-                  <Text style={{ color: 'rgba(209,213,219,0.85)', fontSize: 12, fontStyle: 'italic', textAlign: 'center' }}>{weeklySummary.signOff}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity
-                onPress={() => setReportExpanded((e) => !e)}
-                style={{ alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,107,157,0.15)' : 'rgba(255,107,157,0.12)' }}
-              >
-                <Text style={{ color: PINK, fontSize: 12, fontWeight: '600' }}>{reportExpanded ? 'Show less' : 'Show full report'}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ alignItems: 'center', paddingVertical: 18 }}>
-              <LinearGradient colors={[PINK, ORANGE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                <Icon name="Sparkles" size={22} color="#fff" />
-              </LinearGradient>
-              <Text style={{ color: textColor, fontSize: 16, fontWeight: '700' }}>No weekly report yet</Text>
-              <Text style={{ color: mutedColor, fontSize: 13, textAlign: 'center', marginBottom: 6 }}>Reports are generated on demand. Nothing for this client yet.</Text>
-              {weeklySummaryLoading ? (
-                <Text style={{ color: mutedColor, fontSize: 12, textAlign: 'center' }}>Generating report…</Text>
-              ) : (
-                <LinearGradient
-                  colors={['#FF6B9D', '#C084FC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{
-                    borderRadius: 20,
-                    overflow: 'hidden',
-                    marginTop: 12,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={handleGenerateWeeklyReportNow}
-                    activeOpacity={0.85}
-                    style={{
-                      paddingVertical: 14,
-                      paddingHorizontal: 24,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <Ionicons name="bar-chart" size={16} color="#FFFFFF" />
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
-                        Generate This Week&apos;s Report
-                      </Text>
-                      <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-                    </View>
-                  </TouchableOpacity>
-                </LinearGradient>
-              )}
-              {dataAvailability && (
-                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }}>
-                  <Text style={{ color: textColor, fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 8 }}>Weekly Data: {dataAvailability.daysWithData}/7 days</Text>
-                  <View style={{ flexDirection: 'row', gap: 4, justifyContent: 'center' }}>
-                    {Array.from({ length: 7 }).map((_, i) => (<View key={i} style={{ width: 32, height: 6, borderRadius: 3, backgroundColor: i < dataAvailability.daysWithData ? '#00B894' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} />))}
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-        </GlassCard>
-        </View>
-        </View>
-      )}
-
       {/* Quick Actions */}
-      <View style={{ marginTop: 24, marginBottom: 20 }}>
+      <View style={{ marginTop: 10, marginBottom: 8 }}>
         <Text style={sectionLabelStyle}>Quick Actions</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}
+        >
         {actions.map(({ label, action }) => {
           const accent =
-            label === 'Messages' ? '#FF6B9D' : label === 'Photo Gallery' ? '#64D2FF' : '#C084FC';
+            label === 'Messages' ? '#F472B6' : label === 'Photo Gallery' ? '#22D3EE' : '#A78BFA';
           const iconName =
             label === 'Messages'
               ? 'chatbubbles-outline'
@@ -4524,21 +4767,21 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
                   onOpenPhotoGallery?.(payload);
                 }
               }}
-              style={{ width: 220, marginRight: 12 }}
+              style={{ width: 168, marginRight: 10 }}
             >
               <View
                 style={{
                   backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)',
-                  borderRadius: 20,
-                  padding: 16,
+                  borderRadius: 16,
+                  padding: 12,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.08)',
+                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
                   overflow: 'hidden',
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name={iconName} size={22} color={accent} />
+                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name={iconName} size={20} color={accent} />
                   </View>
 
                   {label === 'Messages' && count > 0 ? (
@@ -4548,14 +4791,14 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
                         height: 22,
                         paddingHorizontal: 8,
                         borderRadius: 11,
-                        backgroundColor: 'rgba(255,107,157,0.18)',
+                        backgroundColor: 'rgba(244,114,182,0.14)',
                         borderWidth: 1,
-                        borderColor: 'rgba(255,107,157,0.35)',
+                        borderColor: 'rgba(244,114,182,0.35)',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ color: '#FF6B9D', fontSize: 12, fontWeight: '800' }}>
+                      <Text style={{ color: '#F9A8D4', fontSize: 12, fontWeight: '800' }}>
                         {count > 99 ? '99+' : count}
                       </Text>
                     </View>
@@ -4564,17 +4807,17 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
                   )}
                 </View>
 
-                <View style={{ marginTop: 12 }}>
-                  <Text style={{ color: textColor, fontSize: 15, fontWeight: '800' }}>{label}</Text>
-                  <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: textColor, fontSize: 14, fontWeight: '800' }}>{label}</Text>
+                  <Text style={{ color: mutedColor, fontSize: 11, marginTop: 3 }} numberOfLines={1}>{subtitle}</Text>
                 </View>
 
-                <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <View
                     style={{
-                      paddingVertical: 8,
-                      paddingHorizontal: 12,
-                      borderRadius: 14,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: 12,
                       backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.08)',
@@ -4583,17 +4826,17 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
                       gap: 8,
                     }}
                   >
-                    <Text style={{ color: accent, fontSize: 12, fontWeight: '800' }}>View all</Text>
-                    <Ionicons name="chevron-forward" size={14} color={accent} />
+                    <Text style={{ color: accent, fontSize: 11, fontWeight: '800' }}>View all</Text>
+                    <Ionicons name="chevron-forward" size={13} color={accent} />
                   </View>
 
                   <View
                     style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
                       backgroundColor: accent,
-                      opacity: 0.9,
+                      opacity: 0.85,
                     }}
                   />
                 </View>
@@ -4601,7 +4844,7 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+        </ScrollView>
       </View>
 
       {/* Client Management Row */}
@@ -4685,6 +4928,18 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
         isDark={isDark}
         onClose={() => setDocumentEditor({ visible: false, documentId: null })}
         onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+        trainerNavChrome={trainerEditorNav}
+      />
+      <SpreadsheetEditorModal
+        visible={spreadsheetEditor.visible}
+        trainerId={trainerId}
+        documentId={spreadsheetEditor.documentId}
+        isDark={isDark}
+        initialTitle={spreadsheetEditor.title}
+        initialRows={spreadsheetEditor.rows}
+        onClose={() => setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
+        onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+        trainerNavChrome={trainerEditorNav}
       />
       <ShareDocumentModal
         visible={shareModal.visible}
@@ -4696,6 +4951,46 @@ const DashboardContent = ({ isDark, clients, clientsLoading, pendingRequestsCoun
         onSaved={() => { getTrainerDocuments(trainerId).then(setTrainerDocuments); setRefreshNotesAndFilesTrigger((t) => t + 1); }}
       />
     </ScrollView>
+
+    <HoldToConfirmModal
+      visible={!!removeClientHold}
+      onClose={() => setRemoveClientHold(null)}
+      isDark={isDark}
+      title="Remove from roster?"
+      message={
+        removeClientHold
+          ? `${String(removeClientHold.name || removeClientHold.displayName || 'Client').trim() || 'Client'} will lose trainer access. They can send a new request if you work together again.`
+          : ''
+      }
+      holdDurationMs={1200}
+      pillLabel="Hold until bar fills to remove"
+      barGradient={['#8B5CF6', '#DB7093']}
+      onHoldComplete={async () => {
+        const client = removeClientHold;
+        if (!client?.id || !trainerId) return;
+        if (!functions) {
+          throw new Error('Cloud Functions are not configured.');
+        }
+        const displayName = String(client.name || client.displayName || 'Client').trim() || 'Client';
+        const fn = httpsCallable(functions, 'removeTrainerClientLink');
+        await fn({
+          trainerId,
+          clientId: client.id,
+          reasons: [],
+          otherText: null,
+          removedBy: 'trainer',
+        });
+        const removedId = client.id;
+        setSelectedClientId((sel) => {
+          if (sel !== removedId) return sel;
+          const remaining = clients.filter((c) => c.id !== removedId);
+          return remaining[0]?.id ?? null;
+        });
+        onTrainerClientRemoved?.(removedId);
+        Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+      }}
+    />
+    </>
   );
 };
 
@@ -4719,6 +5014,11 @@ const AppWithTheme = ({ user }) => {
   const [aiChatState, setAiChatState] = useState('home');
   const [showNutrition, setShowNutrition] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelpFAQ, setShowHelpFAQ] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showContactSupport, setShowContactSupport] = useState(false);
+  const [showBugReport, setShowBugReport] = useState(false);
   const [showWorkoutPlan, setShowWorkoutPlan] = useState(false);
   const [showClientRequests, setShowClientRequests] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -4740,9 +5040,37 @@ const AppWithTheme = ({ user }) => {
   const [generatorClient, setGeneratorClient] = useState(null); // { id, name }
   const [showPlanViewer, setShowPlanViewer] = useState(false);
   const [viewingPlan, setViewingPlan] = useState(null);
+  const [showManualPlanBuilder, setShowManualPlanBuilder] = useState(false);
+  const [manualPlanEditId, setManualPlanEditId] = useState(null);
+  const [manualPlanBuilderClientIds, setManualPlanBuilderClientIds] = useState([]);
+  const [manualBuilderReturnToAI, setManualBuilderReturnToAI] = useState(false);
+  const [aiWorkoutsListKey, setAiWorkoutsListKey] = useState(0);
+  /** Full-screen weekly report for selected client `{ clientId, clientName }`. */
+  const [weeklyReportScreen, setWeeklyReportScreen] = useState(null);
+  const [trainerProfileDoc, setTrainerProfileDoc] = useState(null);
+
+  const refreshTrainerUserDoc = useCallback(async () => {
+    if (!user?.uid || !db) return;
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      setTrainerProfileDoc(snap.exists() ? snap.data() : {});
+    } catch {
+      setTrainerProfileDoc({});
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    refreshTrainerUserDoc();
+  }, [refreshTrainerUserDoc]);
 
   const { clients, loading: clientsLoading, error: clientsError, refresh: refreshClients } = useTrainerClients(user?.uid);
   const { requests: pendingRequests } = useTrainerPendingRequests(user?.uid);
+
+  const handleTrainerClientRemovedFromRoster = useCallback((clientId) => {
+    refreshClients();
+    setNavSelectedClientId((prev) => (prev === clientId ? null : prev));
+    setSelectedClientIdFromDashboard((prev) => (prev === clientId ? null : prev));
+  }, [refreshClients]);
 
   // Clear cache and reset state when user changes
   useEffect(() => {
@@ -4752,6 +5080,7 @@ const AppWithTheme = ({ user }) => {
     
     // Reset all user-specific state
     setUserName(null);
+    setTrainerProfileDoc(null);
     setUnreadMessageCount(0);
     setSelectedTrainer(null);
     setSelectedConversation(null);
@@ -4850,12 +5179,18 @@ const AppWithTheme = ({ user }) => {
 
   const handleHomePress = () => {
     console.log('🔙 handleHomePress called - closing screens');
+    setWeeklyReportScreen(null);
     setShowTrainerSearch(false);
     setShowTrainerMessaging(false);
     setShowConversationsList(false);
     setShowVoiceAI(false);
     setShowNutrition(false);
     setShowSettings(false);
+    setShowHelpFAQ(false);
+    setShowTermsOfService(false);
+    setShowPrivacyPolicy(false);
+    setShowContactSupport(false);
+    setShowBugReport(false);
     setShowWorkoutPlan(false);
     setShowClientRequests(false);
     setShowProfile(false);
@@ -4864,7 +5199,170 @@ const AppWithTheme = ({ user }) => {
     setShowAIWorkouts(false);
     setShowWorkoutGenerator(false);
     setShowPlanViewer(false);
+    setShowManualPlanBuilder(false);
+    setManualPlanEditId(null);
+    setManualPlanBuilderClientIds([]);
+    setManualBuilderReturnToAI(false);
   };
+
+  const handlePlusPress = () => {
+    if (!clients?.length) {
+      Alert.alert('No clients', 'Add a client first to add notes or files for them.');
+      return;
+    }
+    const preferredId = selectedClientIdFromDashboard && clients.some((c) => c.id === selectedClientIdFromDashboard)
+      ? selectedClientIdFromDashboard
+      : clients.length === 1
+        ? clients[0].id
+        : null;
+    if (preferredId) {
+      setAddNotesFilesClientId(preferredId);
+      setShowAddNotesFilesModal(true);
+      return;
+    }
+    Alert.alert(
+      'Add to Notes & Files',
+      'Select a client',
+      [
+        ...clients.map((c) => ({
+          text: c.name || c.displayName || 'Client',
+          onPress: () => {
+            setAddNotesFilesClientId(c.id);
+            setShowAddNotesFilesModal(true);
+          },
+        })),
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const getTrainerEditorNavChrome = useCallback((closeDashboardEditors) => {
+    const closeEditors = () => {
+      closeDashboardEditors?.();
+      setDocumentEditor({ visible: false, documentId: null });
+      setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null });
+    };
+    return {
+      activeTabKey: 'files',
+      onProfilePress: () => {
+        closeEditors();
+        setShowProfile(true);
+      },
+      onSettingsPress: () => {
+        closeEditors();
+        setShowSettings(true);
+      },
+      onHomePress: () => {
+        closeEditors();
+        handleHomePress();
+      },
+      onPlusPress: () => {
+        closeEditors();
+        handlePlusPress();
+      },
+      onVoicePress: () => {
+        closeEditors();
+        setShowVoiceAI(true);
+        setAiChatState('home');
+      },
+      onNutritionPress: () => {
+        closeEditors();
+        setShowNutrition(true);
+      },
+      onWorkoutPress: () => {
+        closeEditors();
+        setShowWorkoutPlan(true);
+      },
+      onMessagesPress: (clientId) => {
+        closeEditors();
+        setSelectedClientIdForMessages(clientId);
+        setShowTrainerMessaging(false);
+        setShowConversationsList(true);
+      },
+    };
+  }, [handleHomePress, handlePlusPress]);
+
+  const onNavigate = (screen) => {
+    if (!screen) return;
+    if (screen === 'home') {
+      handleHomePress();
+      return;
+    }
+    if (screen === 'profile' || screen === 'ProfileScreen') {
+      handleHomePress();
+      setShowProfile(true);
+      return;
+    }
+    if (screen === 'settings' || screen === 'SettingsScreen') {
+      handleHomePress();
+      setShowSettings(true);
+      return;
+    }
+    if (screen === 'nutrition') {
+      handleHomePress();
+      setShowNutrition(true);
+      return;
+    }
+    if (screen === 'workout') {
+      handleHomePress();
+      setShowWorkoutPlan(true);
+      return;
+    }
+    if (screen === 'messages') {
+      handleHomePress();
+      setShowConversationsList(true);
+      return;
+    }
+    if (screen === 'voice' || screen === 'aiChat') {
+      handleHomePress();
+      setShowVoiceAI(true);
+      setAiChatState('home');
+      return;
+    }
+    if (screen === 'create') {
+      handlePlusPress();
+    }
+  };
+
+  if (weeklyReportScreen?.clientId) {
+    return (
+      <TrainerWeeklyReportScreen
+        clientId={weeklyReportScreen.clientId}
+        clientName={weeklyReportScreen.clientName || ''}
+        isDark={isDark}
+        onClose={() => setWeeklyReportScreen(null)}
+        onHomePress={() => setWeeklyReportScreen(null)}
+        onPlusPress={handlePlusPress}
+        onVoicePress={() => {
+          setWeeklyReportScreen(null);
+          setShowVoiceAI(true);
+          setAiChatState('home');
+        }}
+        onNutritionPress={() => {
+          setWeeklyReportScreen(null);
+          setShowNutrition(true);
+        }}
+        onWorkoutPress={() => {
+          setWeeklyReportScreen(null);
+          setShowWorkoutPlan(true);
+        }}
+        onMessagesPress={(clientId) => {
+          setWeeklyReportScreen(null);
+          setSelectedClientIdForMessages(clientId);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(true);
+        }}
+        onProfilePress={() => {
+          setWeeklyReportScreen(null);
+          setShowProfile(true);
+        }}
+        onSettingsPress={() => {
+          setWeeklyReportScreen(null);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
 
   if (showProfile) {
     return (
@@ -4900,9 +5398,10 @@ const AppWithTheme = ({ user }) => {
         <ProfileScreen
           onBack={() => setShowProfile(false)}
           userRole="Trainer"
-          userData={userData}
-          onboardingData={onboardingData}
+          userData={trainerProfileDoc || {}}
+          onboardingData={trainerProfileDoc || {}}
           onNavigate={onNavigate}
+          onProfileSaved={refreshTrainerUserDoc}
         />
       </AppNavigationProvider>
     );
@@ -4910,9 +5409,22 @@ const AppWithTheme = ({ user }) => {
   if (showClientsList) return (
     <ClientsListScreen
       clients={clients}
+      trainerId={user?.uid}
       isDark={isDark}
       onBack={() => setShowClientsList(false)}
-      onSelectClient={(id) => { setNavSelectedClientId(id); setShowClientsList(false); }}
+      onSelectClient={(id) => {
+        setNavSelectedClientId(id);
+        setShowClientsList(false);
+      }}
+      onClientRemoved={handleTrainerClientRemovedFromRoster}
+      onOpenClientRequests={() => {
+        setShowClientsList(false);
+        setShowClientRequests(true);
+      }}
+      weeklyReportClientId={selectedClientIdFromDashboard || clients[0]?.id || null}
+      onOpenWeeklyReport={(clientId, clientName) =>
+        setWeeklyReportScreen({ clientId, clientName: clientName || '' })
+      }
     />
   );
   if (showTrainerSearch) {
@@ -5055,8 +5567,83 @@ const AppWithTheme = ({ user }) => {
       />
     );
   }
+  if (showContactSupport) {
+    return (
+      <ContactSupportScreen
+        onClose={() => {
+          setShowContactSupport(false);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
+  if (showBugReport) {
+    return (
+      <BugReportScreen
+        onClose={() => {
+          setShowBugReport(false);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
+  if (showHelpFAQ) {
+    return (
+      <HelpFAQScreen
+        onClose={() => {
+          setShowHelpFAQ(false);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
+  if (showTermsOfService) {
+    return (
+      <TermsOfServiceScreen
+        onClose={() => {
+          setShowTermsOfService(false);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
+  if (showPrivacyPolicy) {
+    return (
+      <PrivacyPolicyScreen
+        onClose={() => {
+          setShowPrivacyPolicy(false);
+          setShowSettings(true);
+        }}
+      />
+    );
+  }
   if (showSettings) return (
     <SettingsScreen user={user} onClose={() => setShowSettings(false)} onNavigate={(screen) => {
+      if (screen === 'helpFaq') {
+        setShowSettings(false);
+        setShowHelpFAQ(true);
+        return;
+      }
+      if (screen === 'terms') {
+        setShowSettings(false);
+        setShowTermsOfService(true);
+        return;
+      }
+      if (screen === 'privacy') {
+        setShowSettings(false);
+        setShowPrivacyPolicy(true);
+        return;
+      }
+      if (screen === 'contactSupport') {
+        setShowSettings(false);
+        setShowContactSupport(true);
+        return;
+      }
+      if (screen === 'bugReport') {
+        setShowSettings(false);
+        setShowBugReport(true);
+        return;
+      }
       handleHomePress();
       if (screen === 'profile') setShowProfile(true);
       else if (screen === 'voice') setShowVoiceAI(true);
@@ -5064,46 +5651,52 @@ const AppWithTheme = ({ user }) => {
       else if (screen === 'nutrition') setShowNutrition(true);
     }} />
   );
+  if (showManualPlanBuilder && user?.uid) {
+    return (
+      <ManualWorkoutPlanBuilderScreen
+        trainerId={user.uid}
+        clients={clients}
+        editPlanId={manualPlanEditId}
+        defaultAssignedClientIds={manualPlanBuilderClientIds}
+        onClose={() => {
+          const returnTo = manualBuilderReturnToAI;
+          setShowManualPlanBuilder(false);
+          setManualPlanEditId(null);
+          setManualPlanBuilderClientIds([]);
+          setManualBuilderReturnToAI(false);
+          if (returnTo && day6Client?.id) {
+            setShowAIWorkouts(true);
+            setAiWorkoutsListKey((k) => k + 1);
+          }
+        }}
+      />
+    );
+  }
+  const workoutTabClientId =
+    clients?.length > 0 ? selectedClientIdFromDashboard || clients[0]?.id : null;
+  const workoutTabClientRow = workoutTabClientId ? clients.find((c) => c.id === workoutTabClientId) : null;
+  const workoutTabClientName =
+    String(workoutTabClientRow?.name || workoutTabClientRow?.displayName || '').trim() || '';
+
   if (showWorkoutPlan) return (
     <WorkoutPlanGeneratorScreen
-      userId={user?.uid}
+      userId={workoutTabClientId || undefined}
+      trainerRosterEmpty={!clients?.length}
+      viewingClientName={workoutTabClientName}
       onBack={handleHomePress}
       onPlanGenerated={handleHomePress}
+      onNavigate={(route) => {
+        if (route === 'settings') {
+          setShowWorkoutPlan(false);
+          setShowSettings(true);
+          return;
+        }
+        handleHomePress();
+      }}
       onProfilePress={() => setShowProfile(true)}
       onSettingsPress={() => setShowSettings(true)}
     />
   );
-
-  const handlePlusPress = () => {
-    if (!clients?.length) {
-      Alert.alert('No clients', 'Add a client first to add notes or files for them.');
-      return;
-    }
-    const preferredId = selectedClientIdFromDashboard && clients.some((c) => c.id === selectedClientIdFromDashboard)
-      ? selectedClientIdFromDashboard
-      : clients.length === 1
-        ? clients[0].id
-        : null;
-    if (preferredId) {
-      setAddNotesFilesClientId(preferredId);
-      setShowAddNotesFilesModal(true);
-      return;
-    }
-    Alert.alert(
-      'Add to Notes & Files',
-      'Select a client',
-      [
-        ...clients.map((c) => ({
-          text: c.name || c.displayName || 'Client',
-          onPress: () => {
-            setAddNotesFilesClientId(c.id);
-            setShowAddNotesFilesModal(true);
-          },
-        })),
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
 
   const headerTitle = showTrainerMessaging ? 'Messages' : showConversationsList ? 'Messages' : showClientRequests ? 'Client Requests' : 'COACHCONNECT';
 
@@ -5111,7 +5704,7 @@ const AppWithTheme = ({ user }) => {
     <LinearGradient colors={isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        {!showWorkoutGenerator && !showPlanViewer && (
+        {!showWorkoutGenerator && !showPlanViewer && !showTrainerMessaging && (
           <CoachConnectHeader title={headerTitle} isDark={isDark} onProfilePress={() => setShowProfile(true)} onSettingsPress={() => setShowSettings(true)} />
         )}
 
@@ -5189,24 +5782,45 @@ const AppWithTheme = ({ user }) => {
             setPdfViewer={setPdfViewer}
             defaultClientId={navSelectedClientId}
             onSelectedClientChange={setSelectedClientIdFromDashboard}
+            onOpenWeeklyReport={(clientId, clientName) =>
+              setWeeklyReportScreen({ clientId, clientName: clientName || '' })
+            }
+            onTrainerClientRemoved={handleTrainerClientRemovedFromRoster}
+            getTrainerEditorNavChrome={getTrainerEditorNavChrome}
           />
         )}
 
         {!showTrainerMessaging && !showConversationsList && !showClientRequests && showPhotoGallery && day6Client?.id && !showWorkoutGenerator && !showPlanViewer && (
           <PhotoGalleryScreen
-            route={{ params: { clientId: day6Client.id, clientName: day6Client.name } }}
+            route={{ params: { clientId: day6Client.id, clientName: day6Client.name, allowUpload: false } }}
             navigation={{ goBack: () => setShowPhotoGallery(false) }}
           />
         )}
 
         {!showTrainerMessaging && !showConversationsList && !showClientRequests && showAIWorkouts && day6Client?.id && !showWorkoutGenerator && !showPlanViewer && (
           <AIWorkoutPlansScreen
+            key={`aiwp-${day6Client.id}-${aiWorkoutsListKey}`}
             client={day6Client}
+            trainerId={user?.uid}
             onBack={() => setShowAIWorkouts(false)}
             onGenerateWorkout={(client) => {
               setGeneratorClient(client);
               setShowAIWorkouts(false);
               setShowWorkoutGenerator(true);
+            }}
+            onBuildCustom={() => {
+              setManualPlanEditId(null);
+              setManualPlanBuilderClientIds(day6Client?.id ? [day6Client.id] : []);
+              setManualBuilderReturnToAI(true);
+              setShowAIWorkouts(false);
+              setShowManualPlanBuilder(true);
+            }}
+            onEditManualPlan={(planId) => {
+              setManualPlanEditId(planId);
+              setManualPlanBuilderClientIds(day6Client?.id ? [day6Client.id] : []);
+              setManualBuilderReturnToAI(true);
+              setShowAIWorkouts(false);
+              setShowManualPlanBuilder(true);
             }}
             onViewPlan={(plan) => {
               setViewingPlan(plan);
@@ -5323,6 +5937,7 @@ const AppWithTheme = ({ user }) => {
           initialRows={spreadsheetEditor.rows}
           onClose={() => setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
           onSaved={() => refreshClients()}
+          trainerNavChrome={getTrainerEditorNavChrome()}
         />
         <DocumentEditorModal
           visible={documentEditor.visible}
@@ -5331,6 +5946,7 @@ const AppWithTheme = ({ user }) => {
           isDark={isDark}
           onClose={() => setDocumentEditor({ visible: false, documentId: null })}
           onSaved={() => refreshClients()}
+          trainerNavChrome={getTrainerEditorNavChrome()}
         />
       </SafeAreaView>
     </LinearGradient>

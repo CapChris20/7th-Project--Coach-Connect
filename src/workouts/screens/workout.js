@@ -34,7 +34,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Liquid } from '../../shared/ui/liquid/liquidTokens';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import CoachConnectHeader from '../../shared/components/AnatroxHeader';
+import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from './workoutPlanBuilderFieldEditBody';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from '../services/workoutService';
 import Markdown from 'react-native-markdown-display';
@@ -48,7 +48,6 @@ import {
 } from '../services/workoutPlanPdfService';
 import WorkoutPlanPdfViewerModal from '../components/WorkoutPlanPdfViewerModal';
 import PlanViewerScreen from '../../screens/PlanViewerScreen';
-import PlanLimitBanner from '../components/PlanLimitBanner';
 import WorkoutExerciseLibraryTab from '../components/WorkoutExerciseLibraryTab';
 import { EditModalForm } from '../components/EditModalForm_RN';
 
@@ -63,6 +62,29 @@ const nextMonthResetDate = () => {
 };
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+/** Profile height: `{ feet, inches }` or legacy total inches (number). */
+function formatProfileHeightDisplay(h) {
+  if (h == null) return '—';
+  if (typeof h === 'object') {
+    const ftRaw = h.feet;
+    const inRaw = h.inches;
+    const hasFt = ftRaw != null && ftRaw !== '';
+    const hasIn = inRaw != null && inRaw !== '';
+    if (hasFt || hasIn) {
+      const ft = hasFt ? Number(ftRaw) : 0;
+      const inch = hasIn ? Number(inRaw) : 0;
+      if (Number.isFinite(ft) && Number.isFinite(inch)) return `${ft}'${inch}"`;
+    }
+    return '—';
+  }
+  const n = typeof h === 'number' ? h : Number(String(h).replace(/[^0-9.]/g, ''));
+  if (Number.isFinite(n) && n >= 36 && n <= 96) {
+    const t = Math.round(n);
+    return `${Math.floor(t / 12)}'${t % 12}"`;
+  }
+  return '—';
+}
 
 const MARKDOWN_STYLES = {
   body: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 22 },
@@ -552,13 +574,7 @@ function PlanBuilderAnimatedBorderCard({
   duration = 4,
   cardBg,
   padding = 0,
-  borderColors = [
-    '#E91E63',
-    '#FF6B9D',
-    '#C084FC',
-    '#FF6B9D',
-    '#E91E63',
-  ],
+  borderColors = ['#BE185D', '#C2410C', '#BE185D', '#C2410C', '#BE185D'],
 }) {
   const rotateAnim = useMemo(() => new Animated.Value(0), []);
 
@@ -1332,13 +1348,7 @@ function mapStructuredDaysToPlanViewerRows(structured) {
 function PlanViewerAnimatedBorderCard({ children, radius = 20, bg, restDay = false }) {
   const colors = restDay
     ? ['#374151', '#4B5563', '#6B7280', '#4B5563', '#374151']
-    : [
-        PLAN_BUILDER_COLORS.pink,
-        '#C084FC',
-        PLAN_BUILDER_COLORS.cyan,
-        PLAN_BUILDER_COLORS.orange,
-        PLAN_BUILDER_COLORS.pink,
-      ];
+    : ['#BE185D', '#C2410C', '#BE185D', '#C2410C', '#BE185D'];
   return (
     <View style={[planViewerRefStyles.borderCardContainer, { borderRadius: radius }]}>
       <LinearGradient
@@ -1611,6 +1621,10 @@ function parsePlan(rawText) {
 
 export default function WorkoutPlanGeneratorScreen({
   userId,
+  /** When true (trainer app, no roster), show CTA instead of loading trainer onboarding */
+  trainerRosterEmpty = false,
+  /** Optional label for coach context banner */
+  viewingClientName = '',
   onBack,
   onPlanGenerated,
   onNavigate,
@@ -1627,6 +1641,21 @@ export default function WorkoutPlanGeneratorScreen({
   const { aiEnabled, loading: aiPrefLoading, toggleAI } = useAI();
   const aiOn = aiEnabled === true;
   const aiPrefReady = !aiPrefLoading && aiEnabled !== null;
+
+  const profileSubjectUid = useMemo(() => {
+    if (trainerRosterEmpty) return null;
+    const id = userId && String(userId).trim();
+    if (id) return id;
+    return auth.currentUser?.uid || null;
+  }, [userId, trainerRosterEmpty]);
+
+  const isCoachViewingClientProfile = useMemo(
+    () =>
+      Boolean(
+        auth.currentUser?.uid && profileSubjectUid && profileSubjectUid !== auth.currentUser.uid
+      ),
+    [profileSubjectUid]
+  );
 
   // State
   const [onboardingData, setOnboardingData] = useState(null);
@@ -1812,54 +1841,63 @@ export default function WorkoutPlanGeneratorScreen({
     };
   };
 
-  // Load onboarding data
+  // Load onboarding + cached plan for the profile subject (signed-in user, or `userId` when coach opens a client).
   useEffect(() => {
-    loadOnboardingData();
-  }, []);
+    let cancelled = false;
 
-  // Aura pulse (processing state)
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(auraAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(auraAnim, { toValue: 0, duration: 1200, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [auraAnim]);
-
-  const loadOnboardingData = async () => {
-    try {
-      const userId = auth.currentUser?.uid;
-      if (!userId) {
-        Alert.alert('Error', 'User not found');
-        if (onBack) onBack();
+    const run = async () => {
+      if (propPlan) {
+        setLoading(false);
+        return;
+      }
+      if (trainerRosterEmpty) {
+        setOnboardingData(null);
+        setGeneratedPlan(null);
+        setLoading(false);
         return;
       }
 
-      const key = `onboarding_data_${userId}`;
-      let loadedData = null;
-      if (db) {
-        const userSnap = await getDoc(doc(db, 'users', userId));
-        if (userSnap.exists()) {
-          loadedData = userSnap.data();
-          await AsyncStorage.setItem(key, JSON.stringify(loadedData));
-          setOnboardingData(loadedData);
-        }
+      const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+      if (!subjectUid) {
+        Alert.alert('Error', 'User not found');
+        if (onBack) onBack();
+        setLoading(false);
+        return;
       }
-      if (!loadedData) {
-        const data = await AsyncStorage.getItem(key);
-        if (data) {
-          loadedData = JSON.parse(data);
-          setOnboardingData(loadedData);
-        } else {
-          Alert.alert('Error', 'Onboarding data not found');
-          if (onBack) onBack();
+
+      const authUid = auth.currentUser?.uid;
+      const isCoach = Boolean(authUid && subjectUid !== authUid);
+      const isSelf = !isCoach;
+
+      try {
+        const key = `onboarding_data_${subjectUid}`;
+        let loadedData = null;
+        if (db) {
+          const userSnap = await getDoc(doc(db, 'users', subjectUid));
+          if (userSnap.exists()) {
+            loadedData = userSnap.data();
+            if (!cancelled) {
+              await AsyncStorage.setItem(key, JSON.stringify(loadedData));
+              setOnboardingData(loadedData);
+            }
+          }
         }
-      }
-      if (userId) {
-        const firestorePlan = await getCurrentWorkoutPlan(userId);
+        if (!loadedData) {
+          const data = await AsyncStorage.getItem(key);
+          if (data) {
+            loadedData = JSON.parse(data);
+            if (!cancelled) setOnboardingData(loadedData);
+          } else if (isCoach) {
+            if (!cancelled) setOnboardingData({});
+          } else {
+            Alert.alert('Error', 'Onboarding data not found');
+            if (onBack) onBack();
+          }
+        }
+
+        if (cancelled || !subjectUid) return;
+
+        const firestorePlan = await getCurrentWorkoutPlan(subjectUid);
         if (firestorePlan?.rawPlan) {
           let structuredPlan = null;
           let planParseError = false;
@@ -1867,13 +1905,12 @@ export default function WorkoutPlanGeneratorScreen({
             const raw = extractJSON(String(firestorePlan.rawPlan));
             structuredPlan = JSON.parse(raw);
           } catch (e) {
-            // Fallback: legacy markdown/text plan -> structured shape (expected when rawPlan is not JSON)
             try {
               const legacy = parsePlan(String(firestorePlan.rawPlan));
               if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
                 structuredPlan = {
                   overview: legacy.overview || '',
-                  weeklySchedule: (legacy.days || []).map(d => ({
+                  weeklySchedule: (legacy.days || []).map((d) => ({
                     day: d.label || '',
                     focus: d.type || '',
                   })),
@@ -1891,7 +1928,6 @@ export default function WorkoutPlanGeneratorScreen({
             }
           }
 
-          // Auto-migrate old plan -> { overview, workoutPlan: [...] } and persist it.
           try {
             const payload = buildWorkoutPlanPayloadFromStructured(structuredPlan);
             if (payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0) {
@@ -1899,7 +1935,7 @@ export default function WorkoutPlanGeneratorScreen({
               planParseError = false;
               const migratedRaw = JSON.stringify(payload);
               firestorePlan.rawPlan = migratedRaw;
-              await AsyncStorage.setItem(`workout_plan_${userId}`, JSON.stringify({
+              await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify({
                 id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
                 generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
                 userData: loadedData,
@@ -1907,15 +1943,17 @@ export default function WorkoutPlanGeneratorScreen({
                 structuredPlan: payload,
                 planParseError: false,
               }));
-              await AsyncStorage.setItem('@workout_plan', JSON.stringify({
-                id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
-                generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
-                userData: loadedData,
-                planText: migratedRaw,
-                structuredPlan: payload,
-                planParseError: false,
-              }));
-              await setCurrentWorkoutPlan(userId, { rawPlan: migratedRaw });
+              if (isSelf) {
+                await AsyncStorage.setItem('@workout_plan', JSON.stringify({
+                  id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
+                  generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
+                  userData: loadedData,
+                  planText: migratedRaw,
+                  structuredPlan: payload,
+                  planParseError: false,
+                }));
+              }
+              await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
             }
           } catch (e) {
             console.warn('Workout plan migration (Firestore) failed:', e?.message || e);
@@ -1929,9 +1967,11 @@ export default function WorkoutPlanGeneratorScreen({
             structuredPlan,
             planParseError,
           };
-          setGeneratedPlan(saved);
+          if (!cancelled) setGeneratedPlan(saved);
         } else {
-          const planJson = await AsyncStorage.getItem('@workout_plan') || await AsyncStorage.getItem(`workout_plan_${userId}`);
+          const planJson = isSelf
+            ? (await AsyncStorage.getItem('@workout_plan')) || (await AsyncStorage.getItem(`workout_plan_${subjectUid}`))
+            : await AsyncStorage.getItem(`workout_plan_${subjectUid}`);
           if (planJson) {
             const saved = JSON.parse(planJson);
             if (saved && (saved.planText || saved.structuredPlan)) {
@@ -1941,33 +1981,32 @@ export default function WorkoutPlanGeneratorScreen({
                   saved.structuredPlan = JSON.parse(raw);
                   saved.planParseError = false;
                 } catch (e) {
-                    try {
-                      const legacy = parsePlan(String(saved.planText));
-                      if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
-                        saved.structuredPlan = {
-                          overview: legacy.overview || '',
-                          weeklySchedule: (legacy.days || []).map(d => ({
-                            day: d.label || '',
-                            focus: d.type || '',
-                          })),
-                          days: legacy.days || [],
-                          nutritionNotes: '',
-                          generalNotes: legacy.notes || '',
-                        };
-                        saved.planParseError = false;
-                      } else {
-                        saved.structuredPlan = null;
-                        saved.planParseError = true;
-                      }
-                    } catch (fallbackErr) {
-                      console.warn('Stored plan parse failed from AsyncStorage (JSON + legacy):', e?.message || e, fallbackErr?.message || fallbackErr);
+                  try {
+                    const legacy = parsePlan(String(saved.planText));
+                    if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
+                      saved.structuredPlan = {
+                        overview: legacy.overview || '',
+                        weeklySchedule: (legacy.days || []).map((d) => ({
+                          day: d.label || '',
+                          focus: d.type || '',
+                        })),
+                        days: legacy.days || [],
+                        nutritionNotes: '',
+                        generalNotes: legacy.notes || '',
+                      };
+                      saved.planParseError = false;
+                    } else {
                       saved.structuredPlan = null;
                       saved.planParseError = true;
                     }
+                  } catch (fallbackErr) {
+                    console.warn('Stored plan parse failed from AsyncStorage (JSON + legacy):', e?.message || e, fallbackErr?.message || fallbackErr);
+                    saved.structuredPlan = null;
+                    saved.planParseError = true;
+                  }
                 }
               }
 
-              // Auto-migrate old plan -> { overview, workoutPlan: [...] } and persist it.
               try {
                 const payload = buildWorkoutPlanPayloadFromStructured(saved.structuredPlan || tryParseJsonObject(saved.planText));
                 if (payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0) {
@@ -1975,30 +2014,55 @@ export default function WorkoutPlanGeneratorScreen({
                   saved.structuredPlan = payload;
                   saved.planText = migratedRaw;
                   saved.planParseError = false;
-                  await AsyncStorage.setItem(`workout_plan_${userId}`, JSON.stringify(saved));
-                  await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
-                  await setCurrentWorkoutPlan(userId, { rawPlan: migratedRaw });
+                  await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
+                  if (isSelf) {
+                    await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+                  }
+                  await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
                 }
               } catch (e) {
                 console.warn('Workout plan migration (AsyncStorage) failed:', e?.message || e);
               }
 
-              setGeneratedPlan(saved);
+              if (!cancelled) setGeneratedPlan(saved);
             }
           }
         }
+      } catch (error) {
+        console.error('Error loading onboarding data:', error);
+        if (!isCoach) {
+          Alert.alert('Error', 'Failed to load onboarding data');
+          if (onBack) onBack();
+        } else if (!cancelled) {
+          setOnboardingData({});
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading onboarding data:', error);
-      Alert.alert('Error', 'Failed to load onboarding data');
-      if (onBack) onBack();
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when subject client or roster flag changes
+  }, [userId, trainerRosterEmpty, propPlan]);
+
+  // Aura pulse (processing state)
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(auraAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(auraAnim, { toValue: 0, duration: 1200, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [auraAnim]);
 
   // Pre-fill trainer request when onboardingData loads (AI disabled path)
   useEffect(() => {
+    if (isCoachViewingClientProfile) return;
     if (aiOn) return;
     if (!onboardingData) return;
     if (requestText) return;
@@ -2028,6 +2092,10 @@ export default function WorkoutPlanGeneratorScreen({
     null;
 
   const handleSendTrainerRequest = async () => {
+    if (isCoachViewingClientProfile) {
+      Alert.alert('Client app only', 'Clients send plan requests from their account.');
+      return;
+    }
     const clientId = auth?.currentUser?.uid;
     const trainerId = resolvedTrainerId;
     if (!clientId) {
@@ -2066,14 +2134,21 @@ export default function WorkoutPlanGeneratorScreen({
   };
 
   const saveData = async (updatedData) => {
+    if (isCoachViewingClientProfile) {
+      Alert.alert(
+        'View only',
+        "You're seeing this client's onboarding context. They edit their own profile in the client app."
+      );
+      return;
+    }
     try {
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
-      const key = `onboarding_data_${userId}`;
+      const ownerUid = auth.currentUser?.uid;
+      if (!ownerUid) return;
+      const key = `onboarding_data_${ownerUid}`;
       await AsyncStorage.setItem(key, JSON.stringify(updatedData));
       setOnboardingData(updatedData);
       if (db) {
-        await setDoc(doc(db, 'users', userId), { ...updatedData, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(doc(db, 'users', ownerUid), { ...updatedData, updatedAt: serverTimestamp() }, { merge: true });
       }
     } catch (error) {
       console.error('Error saving data:', error);
@@ -2087,7 +2162,13 @@ export default function WorkoutPlanGeneratorScreen({
     if (!onboardingData.weight || onboardingData.weight <= 0) {
       errors.weight = 'Weight is required';
     }
-    if (!onboardingData.height || (!onboardingData.height.feet && !onboardingData.height.inches)) {
+    const h = onboardingData.height;
+    const heightOk =
+      (typeof h === 'number' && Number.isFinite(h) && h >= 36 && h <= 96) ||
+      (typeof h === 'object' &&
+        h != null &&
+        (Number(h.feet) > 0 || Number(h.inches) > 0));
+    if (!heightOk) {
       errors.height = 'Height is required';
     }
     if (!onboardingData.age || onboardingData.age < 13 || onboardingData.age > 100) {
@@ -2133,6 +2214,13 @@ export default function WorkoutPlanGeneratorScreen({
 
   // Generate workout plan
   const generateWorkoutPlan = async () => {
+    if (isCoachViewingClientProfile) {
+      Alert.alert(
+        'Open AI Workouts',
+        'To generate a plan for this client, go to Home, select them on your roster, then use Quick actions → AI Workouts. Plans are saved to their library there.'
+      );
+      return;
+    }
     if (!validateData()) {
       // Scroll to first error and shake
       const firstErrorKey = Object.keys(validationErrors)[0];
@@ -2346,7 +2434,7 @@ Rest Day Recovery Notes Should Include:
       }
 
       const authedUid = auth.currentUser?.uid;
-      const targetUid = userId;
+      const targetUid = profileSubjectUid;
       const planData = {
         id: `plan_${Date.now()}`,
         generatedAt: Date.now(),
@@ -2356,10 +2444,11 @@ Rest Day Recovery Notes Should Include:
         planParseError: false,
       };
 
-      // Cache locally for the currently signed-in user (device UX),
-      // but write plan artifacts (PDF/Firestore) to the target userId.
-      await AsyncStorage.setItem(`workout_plan_${authedUid || 'unknown'}`, JSON.stringify(planData));
-      await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
+      // Cache locally; mirror global @workout_plan only for the signed-in user's own profile.
+      await AsyncStorage.setItem(`workout_plan_${targetUid || authedUid || 'unknown'}`, JSON.stringify(planData));
+      if (targetUid && authedUid && targetUid === authedUid) {
+        await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
+      }
       ui(() => setGeneratedPlan(planData));
       // Update monthly plan limit counter (UI gating only)
       await markPlanGeneratedForLimit();
@@ -2400,7 +2489,7 @@ Rest Day Recovery Notes Should Include:
   };
 
   const handleAddToCollection = async () => {
-    const targetUid = userId;
+    const targetUid = profileSubjectUid;
     if (!generatedPlan || !targetUid || addedToCollection || savingToCollection) return;
     setSavingToCollection(true);
     try {
@@ -2418,6 +2507,13 @@ Rest Day Recovery Notes Should Include:
   };
 
   const handleRegeneratePlan = () => {
+    if (isCoachViewingClientProfile) {
+      Alert.alert(
+        'Open AI Workouts',
+        'Regenerate plans for clients from Home → select client → AI Workouts.'
+      );
+      return;
+    }
     Alert.alert(
       'Regenerate plan?',
       'This will replace your current plan with a new one based on your profile.',
@@ -2435,7 +2531,7 @@ Rest Day Recovery Notes Should Include:
   };
 
   const handleViewPdf = async () => {
-    const uid = userId;
+    const uid = profileSubjectUid;
     const clientName = onboardingData?.name || onboardingData?.firstName || auth.currentUser?.displayName || 'Client';
     if (pdfDownloadUrl || pdfLocalUri) {
       setShowPdfViewer(true);
@@ -2695,6 +2791,39 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   }
 
   if (!onboardingData && !propPlan) {
+    if (trainerRosterEmpty) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+          <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>
+              Add clients first
+            </Text>
+            <Text style={{ fontSize: 14, lineHeight: 21, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(17,24,39,0.75)', marginBottom: 20 }}>
+              The Workout tab uses a client's onboarding and goals as context. Accept people from Client Requests, then select them on Home — their profile appears here.
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+              style={{ alignSelf: 'flex-start', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 14, backgroundColor: 'rgba(255,107,157,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,157,0.45)' }}
+            >
+              <Text style={{ color: '#FF6B9D', fontWeight: '800' }}>Go to Home</Text>
+            </TouchableOpacity>
+          </View>
+          {!hideBottomNav && (
+            <BottomNavBar
+              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+              onProfilePress={() => onNavigate && onNavigate('profile')}
+              onPlusPress={() => onNavigate && onNavigate('create')}
+              onVoicePress={() => onNavigate && onNavigate('voice')}
+              onWorkoutPress={() => onNavigate && onNavigate('workout')}
+              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+              onMessagesPress={() => onNavigate && onNavigate('messages')}
+              activeTabKey="workout"
+            />
+          )}
+        </SafeAreaView>
+      );
+    }
     return (
       <View style={[styles.container, { backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }]}>
         <Text style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>No data found</Text>
@@ -2705,7 +2834,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const rootBg = isDark ? ['#0a0a1a', '#1a0a2e', '#0d1117'] : ['#F5F3FF', '#EDE9FE', '#E9E5FF'];
   const textPrimary = isDark ? '#FFFFFF' : '#1a0a2e';
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.6)';
-  const stickyCtaVisible = aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan);
+  const stickyCtaVisible =
+    aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan) && !isCoachViewingClientProfile;
   const stickyCtaBottom = (hideBottomNav ? 0 : 80) + insets.bottom + 12;
   const stickyCtaExtraScrollPad = stickyCtaVisible ? ((hideBottomNav ? 0 : 80) + 86) : 0;
 
@@ -2977,7 +3107,19 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           { transform: [{ translateX: shakeAnim }] },
         ]}
       >
-        <TouchableOpacity activeOpacity={0.85} onPress={() => setExpandedCard(expanded ? null : fieldKey)}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            if (isCoachViewingClientProfile) {
+              Alert.alert(
+                'View only',
+                'Profile fields are edited by the client. You can review their data here for context.'
+              );
+              return;
+            }
+            setExpandedCard(expanded ? null : fieldKey);
+          }}
+        >
           <PlanBuilderRow
             icon={iconEl}
             label={meta.label}
@@ -3051,6 +3193,30 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
       />
+
+      {isCoachViewingClientProfile ? (
+        <View
+          style={{
+            marginHorizontal: 16,
+            marginTop: 8,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(167,139,250,0.35)' : 'rgba(139,92,246,0.28)',
+            backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(237,233,254,0.95)',
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#DDD6FE' : '#5B21B6', marginBottom: 4 }}>
+            Coach view
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: textPrimary, lineHeight: 18 }}>
+            {viewingClientName
+              ? `Showing onboarding context for ${viewingClientName}. Edits and AI generation here are disabled — use Home → select them → AI Workouts to build plans for their library.`
+              : 'Showing this client onboarding context. Use Home → select them → AI Workouts to generate plans they receive in their app.'}
+          </Text>
+        </View>
+      ) : null}
 
       {isGenerating && (
         <View
@@ -3180,94 +3346,107 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 padding: 18,
               }}
             >
-              <Text style={{ fontSize: 20, fontWeight: '900', color: planBuilderText, marginBottom: 8, textAlign: 'center' }}>
-                Workout Plans (Trainer)
-              </Text>
-              <Text style={{ fontSize: 14, lineHeight: 20, color: planBuilderMuted, textAlign: 'center' }}>
-                AI is disabled. If you have a trainer, send a request for a custom plan.
-              </Text>
-
-              {!resolvedTrainerId ? (
-                <View style={{ marginTop: 18 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: planBuilderText, marginBottom: 6, textAlign: 'center' }}>
-                    You need a trainer first
+              {isCoachViewingClientProfile ? (
+                <>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: planBuilderText, marginBottom: 8, textAlign: 'center' }}>
+                    AI is off (your account)
                   </Text>
-                  <Text style={{ fontSize: 13, lineHeight: 18, color: planBuilderMuted, textAlign: 'center' }}>
-                    Connect with a trainer to receive custom workout plans, or enable AI features in Settings.
+                  <Text style={{ fontSize: 14, lineHeight: 20, color: planBuilderMuted, textAlign: 'center' }}>
+                    Scroll down to review this client's onboarding context. To assign AI plans they receive in-app, use Home → select them → Quick actions → AI Workouts. You can turn AI on for your trainer account in Settings if you want to experiment here.
                   </Text>
-
-                  <View style={{ marginTop: 14, gap: 10 }}>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      onPress={() => onNavigate?.('settings')}
-                      style={{ height: 54, borderRadius: 16, overflow: 'hidden' }}
-                    >
-                      <LinearGradient
-                        colors={['#FF6B9D', '#7C3AED']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Enable AI Features</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      onPress={() => onNavigate?.('home')}
-                      style={{
-                        height: 54,
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        borderColor: planBuilderDivider,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                      }}
-                    >
-                      <Text style={{ color: planBuilderText, fontWeight: '900' }}>Go Home</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                </>
               ) : (
-                <View style={{ marginTop: 18 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: planBuilderText, marginBottom: 10 }}>
-                    Request a custom workout plan
+                <>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: planBuilderText, marginBottom: 8, textAlign: 'center' }}>
+                    Workout Plans (Trainer)
                   </Text>
-                  <TextInput
-                    value={requestText}
-                    onChangeText={setRequestText}
-                    placeholder="Tell your trainer what you want…"
-                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(17,24,39,0.45)'}
-                    multiline
-                    style={{
-                      minHeight: 120,
-                      borderRadius: 16,
-                      borderWidth: 1,
-                      borderColor: planBuilderDivider,
-                      padding: 14,
-                      color: planBuilderText,
-                      backgroundColor: isDark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.75)',
-                      textAlignVertical: 'top',
-                    }}
-                  />
+                  <Text style={{ fontSize: 14, lineHeight: 20, color: planBuilderMuted, textAlign: 'center' }}>
+                    AI is disabled. If you have a trainer, send a request for a custom plan.
+                  </Text>
 
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={handleSendTrainerRequest}
-                    disabled={sendingRequest}
-                    style={{ marginTop: 12, height: 54, borderRadius: 16, overflow: 'hidden', opacity: sendingRequest ? 0.7 : 1 }}
-                  >
-                    <LinearGradient
-                      colors={['#FF6B9D', '#7C3AED']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
-                    >
-                      {sendingRequest ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="send" size={18} color="#FFFFFF" />}
-                      <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Send Request</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                  {!resolvedTrainerId ? (
+                    <View style={{ marginTop: 18 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: planBuilderText, marginBottom: 6, textAlign: 'center' }}>
+                        You need a trainer first
+                      </Text>
+                      <Text style={{ fontSize: 13, lineHeight: 18, color: planBuilderMuted, textAlign: 'center' }}>
+                        Connect with a trainer to receive custom workout plans, or enable AI features in Settings.
+                      </Text>
+
+                      <View style={{ marginTop: 14, gap: 10 }}>
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => onNavigate?.('settings')}
+                          style={{ height: 54, borderRadius: 16, overflow: 'hidden' }}
+                        >
+                          <LinearGradient
+                            colors={['#FF6B9D', '#7C3AED']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Enable AI Features</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => onNavigate?.('home')}
+                          style={{
+                            height: 54,
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: planBuilderDivider,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                          }}
+                        >
+                          <Text style={{ color: planBuilderText, fontWeight: '900' }}>Go Home</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 18 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: planBuilderText, marginBottom: 10 }}>
+                        Request a custom workout plan
+                      </Text>
+                      <TextInput
+                        value={requestText}
+                        onChangeText={setRequestText}
+                        placeholder="Tell your trainer what you want…"
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(17,24,39,0.45)'}
+                        multiline
+                        style={{
+                          minHeight: 120,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: planBuilderDivider,
+                          padding: 14,
+                          color: planBuilderText,
+                          backgroundColor: isDark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.75)',
+                          textAlignVertical: 'top',
+                        }}
+                      />
+
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={handleSendTrainerRequest}
+                        disabled={sendingRequest}
+                        style={{ marginTop: 12, height: 54, borderRadius: 16, overflow: 'hidden', opacity: sendingRequest ? 0.7 : 1 }}
+                      >
+                        <LinearGradient
+                          colors={['#FF6B9D', '#7C3AED']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+                        >
+                          {sendingRequest ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="send" size={18} color="#FFFFFF" />}
+                          <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Send Request</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               )}
             </View>
           </View>
@@ -3278,7 +3457,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         {/* Hero + primary actions */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
           <LinearGradient
-            colors={['#FF6B9D', '#64D2FF', '#C084FC', '#FF6B9D']}
+            colors={['#BE185D', '#C2410C']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ borderRadius: 24, padding: 2 }}
@@ -3368,7 +3547,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 }}
               >
                 <LinearGradient
-                  colors={['#C084FC', '#FF4D8D']}
+                  colors={['#BE185D', '#C2410C']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
@@ -3518,10 +3697,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             const usableW = Math.max(280, screenW - SIDE_PAD * 2);
             const gridCardW = Math.floor((usableW - GRID_GAP) / 2);
 
-            const heightFt = onboardingData?.height?.feet;
-            const heightIn = onboardingData?.height?.inches;
-            const heightText =
-              heightFt != null && heightFt !== '' ? `${heightFt}'${heightIn != null ? ` ${heightIn}"` : ''}` : '—';
+            const heightText = formatProfileHeightDisplay(onboardingData?.height);
 
             const weightText =
               onboardingData?.weight != null && onboardingData?.weight !== '' ? `${onboardingData.weight} lbs` : '—';
@@ -3786,7 +3962,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                   style={{ flex: 1, height: 56, borderRadius: 16, overflow: 'hidden' }}
                 >
                   <LinearGradient
-                    colors={['#FF6B9D', '#C084FC']}
+                    colors={['#BE185D', '#C2410C']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
@@ -3806,31 +3982,37 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                     borderRadius: 16,
                     overflow: 'hidden',
                     opacity: isGenerating ? 0.7 : 1,
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)',
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 10,
                   }}
                 >
-                  <Ionicons name="sparkles" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-                  <Text style={{ color: isDark ? '#FFFFFF' : '#0A0A0F', fontSize: 16, fontWeight: '900' }}>
-                    {isGenerating ? 'Generating…' : 'Generate New'}
-                  </Text>
+                  <LinearGradient
+                    colors={['#BE185D', '#C2410C']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        borderRadius: 14.5,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 10,
+                        backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+                      }}
+                    >
+                      <Ionicons name="sparkles" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+                      <Text style={{ color: isDark ? '#FFFFFF' : '#0A0A0F', fontSize: 16, fontWeight: '900' }}>
+                        {isGenerating ? 'Generating…' : 'Generate New'}
+                      </Text>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={{ gap: 10 }}>
-                <PlanLimitBanner
-                  remaining={plansRemaining}
-                  total={PLAN_LIMIT_TOTAL}
-                  nextReset={nextResetDate}
-                  isDark={isDark}
-                  onTapUpgrade={onNavigate ? () => onNavigate('upgrade') : undefined}
-                />
-
                 <TouchableOpacity
                   activeOpacity={0.92}
                   onPress={() => {
@@ -3847,7 +4029,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                   style={{ height: 56, borderRadius: 16, overflow: 'hidden', opacity: isGenerating ? 0.7 : 1 }}
                 >
                   <LinearGradient
-                    colors={['#FF6B9D', '#C084FC']}
+                    colors={['#BE185D', '#C2410C']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
@@ -3881,11 +4063,13 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         visible={!!editingPillKey}
         fieldKey={editingPillKey}
         title={WORKOUT_BUILDER_ROW_META?.[editingPillKey]?.label}
-        // Use Lovable dark palette (don’t override with builder colors)
-        cardBg="#0D1117"
-        textColor="#FFFFFF"
-        mutedColor="rgba(255,255,255,0.55)"
-        borderColor="rgba(255,255,255,0.12)"
+        // Respect theme toggle
+        cardBg={isDark ? '#0D1117' : '#FFFFFF'}
+        textColor={isDark ? '#FFFFFF' : '#0A0A0F'}
+        mutedColor={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)'}
+        borderColor={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.12)'}
+        doneGradient={isDark ? ['#C084FC', '#FF4D8D'] : ['#FF6B9D', '#C084FC']}
+        isDark={isDark}
         onClose={() => setEditingPillKey(null)}
         onDone={() => {
           setEditingPillKey(null);

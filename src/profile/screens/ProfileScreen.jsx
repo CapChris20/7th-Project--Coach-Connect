@@ -19,11 +19,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../../app/config';
+import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import CoachConnectHeader from '../../shared/components/AnatroxHeader';
+import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useTheme } from '../../shared/ui/ThemeContext';
+import { onUserSignOut } from '../../utils/dataCacheCleanup';
 import {
   Camera,
   Dumbbell,
@@ -35,12 +37,11 @@ import {
   Ruler,
   Scale,
   Target,
-  Layers,
   Building2,
-  Apple,
   Medal,
-  Shield,
   Bell,
+  MapPin,
+  ClipboardList,
 } from 'lucide-react-native';
 
 const ACCENT = {
@@ -74,6 +75,61 @@ const LIGHT = {
 // ============================================================================
 // HERO CARD
 // ============================================================================
+
+function coerceNumber(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Height in Firestore may be a number (inches), string, or legacy object shape.
+ * Returns display string, seed for the edit field (inches as number string), and total inches if known.
+ */
+function parseHeightForProfile(h) {
+  if (h == null || h === '') return { display: '—', editSeed: '', inches: null };
+  if (typeof h === 'number' && Number.isFinite(h)) {
+    return { display: formatInchesAsFeet(h), editSeed: String(h), inches: h };
+  }
+  if (typeof h === 'string') {
+    const n = coerceNumber(h);
+    if (n != null) return { display: formatInchesAsFeet(n), editSeed: String(n), inches: n };
+    const t = h.trim();
+    return t ? { display: t, editSeed: t, inches: null } : { display: '—', editSeed: '', inches: null };
+  }
+  if (typeof h === 'object' && h !== null && !Array.isArray(h)) {
+    const cm = coerceNumber(h.cm ?? h.CM ?? h.centimeters ?? h.cmTotal);
+    if (cm != null) {
+      const inches = cm / 2.54;
+      return { display: `${cm} cm (${formatInchesAsFeet(inches)})`, editSeed: String(Math.round(inches * 10) / 10), inches };
+    }
+    const ft = coerceNumber(h.feet ?? h.ft ?? h.f);
+    const inch = coerceNumber(h.inches ?? h.in ?? h.inch ?? h.ins);
+    if (ft != null || inch != null) {
+      const totalIn = (ft ?? 0) * 12 + (inch ?? 0);
+      return { display: formatInchesAsFeet(totalIn), editSeed: String(Math.round(totalIn * 10) / 10), inches: totalIn };
+    }
+    const total = coerceNumber(h.totalInches ?? h.total_inches ?? h.inchesTotal ?? h.value);
+    if (total != null) return { display: formatInchesAsFeet(total), editSeed: String(total), inches: total };
+  }
+  return { display: '—', editSeed: '', inches: null };
+}
+
+function formatInchesAsFeet(totalIn) {
+  if (totalIn == null || !Number.isFinite(totalIn)) return '—';
+  let ti = Math.round(totalIn);
+  let feet = Math.floor(ti / 12);
+  let inches = ti - feet * 12;
+  if (inches === 12) {
+    feet += 1;
+    inches = 0;
+  }
+  return `${feet}'${inches}"`;
+}
 
 function initialsFromName(name) {
   const s = String(name || '').trim();
@@ -190,6 +246,46 @@ function SectionHeader({ theme, children }) {
   return <Text style={[styles.sectionHeader, { color: theme.muted }]}>{children}</Text>;
 }
 
+const YEARS_COACHING_LABELS = {
+  less_than_1: 'Less than 1 year',
+  '1_2': '1–2 years',
+  '3_5': '3–5 years',
+  '6_10': '6–10 years',
+  '10_plus': '10+ years',
+};
+
+function formatYearsCoaching(v) {
+  if (v == null || v === '') return '—';
+  const key = String(v);
+  return YEARS_COACHING_LABELS[key] || key.replace(/_/g, ' ');
+}
+
+function formatSpecialtyList(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return '—';
+  return arr
+    .map((s) =>
+      String(s || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+    )
+    .join(', ');
+}
+
+function formatCertifications(data) {
+  const list = Array.isArray(data?.certifications) ? [...data.certifications] : [];
+  const other = String(data?.certificationOther || '').trim();
+  if (list.includes('Other') && other) {
+    return list.filter((x) => x !== 'Other').concat(other).join(', ') || other;
+  }
+  return list.length ? list.join(', ') : '—';
+}
+
+function formatAvailability(status) {
+  if (status === 'available') return 'Available — accepting new clients';
+  if (status === 'waitlist') return 'Waitlist — currently full';
+  return status ? String(status).replace(/_/g, ' ') : '—';
+}
+
 // ============================================================================
 // TOGGLE SWITCH
 // ============================================================================
@@ -217,15 +313,23 @@ export function ProfileScreen({
   onWorkoutPress,
   onMessagesPress,
   onProfilePress,
+  userRole = 'Client',
   userData,
   onboardingData,
+  onProfileSaved,
 }) {
+  const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
   const theme = isDark ? DARK : LIGHT;
   const [notificationsOn, setNotificationsOn] = useState(true);
   const [photoURL, setPhotoURL] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  React.useEffect(() => {
+    const fromDoc = onboardingData?.photoURL || userData?.photoURL || auth?.currentUser?.photoURL;
+    setPhotoURL(fromDoc || null);
+  }, [onboardingData?.photoURL, userData?.photoURL, auth?.currentUser?.photoURL]);
   const [isEditing, setIsEditing] = useState(false);
   const [editKey, setEditKey] = useState(null);
   const [editLabel, setEditLabel] = useState('');
@@ -259,6 +363,27 @@ export function ProfileScreen({
     const raw = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w_]/g, '');
     return `@${raw || 'coachconnect'}`;
   }, [displayName]);
+
+  const trainerDoc = useMemo(() => ({ ...(userData || {}), ...(onboardingData || {}) }), [userData, onboardingData]);
+
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await onUserSignOut();
+            await signOut(auth);
+          } catch (error) {
+            console.error('Sign out error:', error);
+            Alert.alert('Error', error?.message || 'Failed to sign out.');
+          }
+        },
+      },
+    ]);
+  };
 
   const pickAndUploadPhoto = async () => {
     const uid = auth?.currentUser?.uid;
@@ -318,12 +443,7 @@ export function ProfileScreen({
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
-  const formatHeight = (h) => {
-    if (h == null || h === '') return '—';
-    const n = Number(h);
-    if (Number.isFinite(n)) return `${n}`;
-    return String(h);
-  };
+  const formatHeight = (h) => parseHeightForProfile(h).display;
 
   const formatWeight = (w) => {
     if (w == null || w === '') return '—';
@@ -332,11 +452,31 @@ export function ProfileScreen({
     return String(w);
   };
 
-  const openEdit = (key, label, currentValue) => {
+  const getEditSeedForKey = (key) => {
+    if (key === 'height') return parseHeightForProfile(onboardingData?.height).editSeed;
+    if (key === 'name') {
+      const first = userData?.firstName != null ? String(userData.firstName).trim() : '';
+      const last = userData?.lastName != null ? String(userData.lastName).trim() : '';
+      const combined = `${first} ${last}`.trim();
+      if (combined) return combined;
+      return String(onboardingData?.name || '').trim();
+    }
+    if (key === 'location') return String(trainerDoc?.location || '').trim();
+    if (key === 'trainerProfileBio') return String(trainerDoc?.trainerProfileBio || '').trim();
+    if (key === 'trainingPhilosophy') return String(trainerDoc?.trainingPhilosophy || '').trim();
+    return '';
+  };
+
+  const openEdit = (key, label, currentDisplay) => {
     if (!isEditing) return;
     setEditKey(key);
     setEditLabel(label);
-    setEditValue(currentValue == null ? '' : String(currentValue));
+    if (key === 'height' || key === 'name') {
+      const seed = getEditSeedForKey(key);
+      setEditValue(seed);
+      return;
+    }
+    setEditValue(currentDisplay == null || currentDisplay === '—' ? '' : String(currentDisplay));
   };
 
   const closeEdit = () => {
@@ -352,17 +492,56 @@ export function ProfileScreen({
     try {
       setSavingField(true);
       const raw = String(editValue ?? '').trim();
-      let next;
-      if (editKey === 'height' || editKey === 'weight' || editKey === 'age') {
+      const updatedAt = new Date().toISOString();
+      let payload = { updatedAt };
+
+      if (editKey === 'name') {
+        const trimmed = raw === '' ? null : raw;
+        const parts = trimmed ? trimmed.split(/\s+/).filter(Boolean) : [];
+        payload.name = trimmed;
+        payload.firstName = parts[0] || '';
+        payload.lastName = parts.slice(1).join(' ') || '';
+      } else if (editKey === 'gender') {
+        const g = raw.toLowerCase().replace(/\s+/g, '_').replace(/'/g, '');
+        if (g === 'male' || g === 'm') payload.gender = 'male';
+        else if (g === 'female' || g === 'f') payload.gender = 'female';
+        else if (g === 'prefer_not_to_say' || g === 'prefernottosay' || g === 'other') payload.gender = g === 'other' ? 'other' : 'prefer_not_to_say';
+        else payload.gender = raw === '' ? null : raw;
+      } else if (editKey === 'height' || editKey === 'weight' || editKey === 'age') {
         const n = raw === '' ? null : Number(raw);
-        next = Number.isFinite(n) ? n : raw;
+        payload[editKey] = Number.isFinite(n) ? n : null;
+      } else if (editKey === 'location' || editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy') {
+        payload[editKey] = raw === '' ? null : raw;
       } else {
-        next = raw === '' ? null : raw;
+        payload[editKey] = raw === '' ? null : raw;
       }
 
-      // Write into users/{uid}. These keys already exist in onboarding/user docs.
-      await setDoc(doc(db, 'users', uid), { [editKey]: next, updatedAt: new Date().toISOString() }, { merge: true });
+      await setDoc(doc(db, 'users', uid), payload, { merge: true });
 
+      try {
+        const us = await getDoc(doc(db, 'users', uid));
+        const role = us.exists() ? String(us.data()?.role || '').toLowerCase() : '';
+        if (role === 'trainer') {
+          if (editKey === 'name') {
+            await setDoc(
+              doc(db, 'trainers', uid),
+              {
+                name: payload.name,
+                firstName: payload.firstName,
+                lastName: payload.lastName,
+                updatedAt,
+              },
+              { merge: true }
+            );
+          } else if (payload[editKey] !== undefined) {
+            await setDoc(doc(db, 'trainers', uid), { [editKey]: payload[editKey], updatedAt }, { merge: true });
+          }
+        }
+      } catch (_) {
+        // ignore trainer mirror failures
+      }
+
+      await onProfileSaved?.();
       closeEdit();
     } catch (e) {
       console.error('Failed saving profile field:', e);
@@ -389,6 +568,7 @@ export function ProfileScreen({
   }, [onNavigate, onHomePress, onPlusPress, onVoicePress, onNutritionPress, onWorkoutPress, onMessagesPress, onProfilePress]);
 
   const email = auth?.currentUser?.email || onboardingData?.email || '—';
+
   const personalData = [
     { key: 'name', color: ACCENT.pink, Icon: User, value: displayName || '—', label: 'FULL NAME' },
     { key: 'email', color: ACCENT.cyan, Icon: Mail, value: String(email || '—'), label: 'EMAIL', readOnly: true },
@@ -401,11 +581,76 @@ export function ProfileScreen({
   const trainingData = [
     { key: 'primaryGoal', color: ACCENT.pink, Icon: Target, value: String(onboardingData?.primaryGoal || '—'), label: 'PRIMARY GOAL' },
     { key: 'fitnessLevel', color: ACCENT.orange, Icon: Dumbbell, value: String(onboardingData?.fitnessLevel || '—'), label: 'FITNESS LEVEL' },
-    { key: 'split', color: ACCENT.cyan, Icon: Layers, value: String(onboardingData?.split || '—'), label: 'SPLIT' },
     { key: 'equipment', color: ACCENT.purple, Icon: Building2, value: String(onboardingData?.equipment || (Array.isArray(onboardingData?.equipmentAccess) ? onboardingData.equipmentAccess.join(', ') : '—')), label: 'EQUIPMENT' },
-    { key: 'diet', color: ACCENT.green, Icon: Apple, value: String(onboardingData?.diet || '—'), label: 'DIET' },
     { key: 'yearsExperience', color: ACCENT.pink, Icon: Medal, value: onboardingData?.yearsExperience != null ? String(onboardingData.yearsExperience) : '—', label: 'EXPERIENCE' },
   ];
+
+  const trainerProfessionalPills = [
+    { key: 'name', color: ACCENT.pink, Icon: User, value: displayName || '—', label: 'DISPLAY NAME' },
+    { key: 'email', color: ACCENT.cyan, Icon: Mail, value: String(email || '—'), label: 'EMAIL', readOnly: true },
+    {
+      key: 'location',
+      color: ACCENT.purple,
+      Icon: MapPin,
+      value: String(trainerDoc?.location || '').trim() || '—',
+      label: 'CITY / REGION',
+    },
+    {
+      key: 'trainerProfileBio',
+      color: ACCENT.green,
+      Icon: ClipboardList,
+      value: String(trainerDoc?.trainerProfileBio || '').trim() || '—',
+      label: 'PUBLIC BIO',
+    },
+  ];
+
+  const trainerCredentialsPills = [
+    {
+      key: 'certifications_display',
+      color: ACCENT.orange,
+      Icon: Medal,
+      value: formatCertifications(trainerDoc),
+      label: 'CERTIFICATIONS',
+      readOnly: true,
+    },
+    {
+      key: 'years_coaching_display',
+      color: ACCENT.pink,
+      Icon: Calendar,
+      value: formatYearsCoaching(trainerDoc?.yearsExperience),
+      label: 'YEARS COACHING CLIENTS',
+      readOnly: true,
+    },
+    {
+      key: 'specialties_display',
+      color: ACCENT.cyan,
+      Icon: Dumbbell,
+      value: formatSpecialtyList(trainerDoc?.specialties),
+      label: 'SPECIALTIES',
+      readOnly: true,
+    },
+  ];
+
+  const trainerAvailabilityPills = [
+    {
+      key: 'availability_display',
+      color: ACCENT.green,
+      Icon: Building2,
+      value: formatAvailability(trainerDoc?.trainerAvailabilityStatus),
+      label: 'AVAILABILITY',
+      readOnly: true,
+    },
+    {
+      key: 'session_display',
+      color: ACCENT.purple,
+      Icon: Target,
+      value: String(trainerDoc?.sessionType || '—'),
+      label: 'SESSION FORMAT',
+      readOnly: true,
+    },
+  ];
+
+  const philosophyText = String(trainerDoc?.trainingPhilosophy || '').trim();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -437,53 +682,153 @@ export function ProfileScreen({
             />
           </Animated.View>
 
-          <Animated.View
-            style={{
-              opacity: personalAnim,
-              transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-            }}
-          >
-            <SectionHeader theme={theme}>PERSONAL INFORMATION</SectionHeader>
-            <View style={styles.pillsContainer}>
-              {personalData.map((item, idx) => (
-                <InfoPill
-                  key={item.key || idx}
-                  theme={theme}
-                  color={item.color}
-                  Icon={item.Icon}
-                  value={item.value}
-                  label={item.label}
-                  isDark={isDark}
-                  editable={isEditing && !item.readOnly}
-                  onEditPress={() => openEdit(item.key, item.label, item.value)}
-                />
-              ))}
-            </View>
-          </Animated.View>
+          {isTrainer ? (
+            <>
+              <Animated.View
+                style={{
+                  opacity: personalAnim,
+                  transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
+                <SectionHeader theme={theme}>PROFESSIONAL</SectionHeader>
+                <View style={styles.pillsContainer}>
+                  {trainerProfessionalPills.map((item, idx) => (
+                    <InfoPill
+                      key={item.key || idx}
+                      theme={theme}
+                      color={item.color}
+                      Icon={item.Icon}
+                      value={item.value}
+                      label={item.label}
+                      isDark={isDark}
+                      editable={isEditing && !item.readOnly}
+                      onEditPress={() => openEdit(item.key, item.label, item.value)}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
 
-          <Animated.View
-            style={{
-              opacity: trainingAnim,
-              transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-            }}
-          >
-            <SectionHeader theme={theme}>TRAINING PREFERENCES</SectionHeader>
-            <View style={styles.pillsContainer}>
-              {trainingData.map((item, idx) => (
-                <InfoPill
-                  key={item.key || idx}
-                  theme={theme}
-                  color={item.color}
-                  Icon={item.Icon}
-                  value={item.value}
-                  label={item.label}
-                  isDark={isDark}
-                  editable={isEditing}
-                  onEditPress={() => openEdit(item.key, item.label, item.value)}
-                />
-              ))}
-            </View>
-          </Animated.View>
+              <Animated.View
+                style={{
+                  opacity: trainingAnim,
+                  transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
+                <SectionHeader theme={theme}>CREDENTIALS & FOCUS</SectionHeader>
+                <View style={styles.pillsContainer}>
+                  {trainerCredentialsPills.map((item, idx) => (
+                    <InfoPill
+                      key={item.key || idx}
+                      theme={theme}
+                      color={item.color}
+                      Icon={item.Icon}
+                      value={item.value}
+                      label={item.label}
+                      isDark={isDark}
+                      editable={false}
+                      onEditPress={() => {}}
+                    />
+                  ))}
+                </View>
+
+                <SectionHeader theme={theme}>COACHING PHILOSOPHY</SectionHeader>
+                <TouchableOpacity
+                  activeOpacity={isEditing ? 0.85 : 1}
+                  disabled={!isEditing}
+                  onPress={() =>
+                    isEditing ? openEdit('trainingPhilosophy', 'COACHING PHILOSOPHY', philosophyText || '—') : undefined
+                  }
+                  style={[
+                    styles.trainerPhilosophyCard,
+                    { backgroundColor: theme.card, borderColor: theme.border },
+                  ]}
+                >
+                  <Text style={[styles.trainerPhilosophyText, { color: philosophyText ? theme.text : theme.muted }]}>
+                    {philosophyText || (isEditing ? 'Tap to add how you coach…' : '—')}
+                  </Text>
+                  {isEditing ? (
+                    <View style={styles.pillEditWrap}>
+                      <Pencil size={16} color={isDark ? 'rgba(255,255,255,0.75)' : 'rgba(10,10,15,0.75)'} />
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              </Animated.View>
+
+              <Animated.View
+                style={{
+                  opacity: accountAnim,
+                  transform: [{ translateY: accountAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
+                <SectionHeader theme={theme}>AVAILABILITY</SectionHeader>
+                <View style={[styles.pillsContainer, { marginBottom: 16 }]}>
+                  {trainerAvailabilityPills.map((item, idx) => (
+                    <InfoPill
+                      key={item.key || idx}
+                      theme={theme}
+                      color={item.color}
+                      Icon={item.Icon}
+                      value={item.value}
+                      label={item.label}
+                      isDark={isDark}
+                      editable={false}
+                      onEditPress={() => {}}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
+            </>
+          ) : (
+            <>
+              <Animated.View
+                style={{
+                  opacity: personalAnim,
+                  transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
+                <SectionHeader theme={theme}>PERSONAL INFORMATION</SectionHeader>
+                <View style={styles.pillsContainer}>
+                  {personalData.map((item, idx) => (
+                    <InfoPill
+                      key={item.key || idx}
+                      theme={theme}
+                      color={item.color}
+                      Icon={item.Icon}
+                      value={item.value}
+                      label={item.label}
+                      isDark={isDark}
+                      editable={isEditing && !item.readOnly}
+                      onEditPress={() => openEdit(item.key, item.label, item.value)}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
+
+              <Animated.View
+                style={{
+                  opacity: trainingAnim,
+                  transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
+                <SectionHeader theme={theme}>TRAINING PREFERENCES</SectionHeader>
+                <View style={styles.pillsContainer}>
+                  {trainingData.map((item, idx) => (
+                    <InfoPill
+                      key={item.key || idx}
+                      theme={theme}
+                      color={item.color}
+                      Icon={item.Icon}
+                      value={item.value}
+                      label={item.label}
+                      isDark={isDark}
+                      editable={isEditing}
+                      onEditPress={() => openEdit(item.key, item.label, item.value)}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
+            </>
+          )}
 
           <Animated.View
             style={{
@@ -494,19 +839,6 @@ export function ProfileScreen({
             <SectionHeader theme={theme}>ACCOUNT</SectionHeader>
             <View style={[styles.accountCard, { backgroundColor: theme.card }]}>
             <View style={styles.accountRow}>
-              <View style={[styles.accountIcon, { backgroundColor: `${ACCENT.purple}22` }]}>
-                <Shield size={16} color={ACCENT.purple} />
-              </View>
-              <View style={styles.accountContent}>
-                <Text style={[styles.accountLabel, { color: theme.muted }]}>SUBSCRIPTION</Text>
-                <Text style={[styles.accountValue, { color: theme.text }]}>Free</Text>
-              </View>
-              <View style={[styles.upgradeBadge, { backgroundColor: `${ACCENT.purple}22` }]}>
-                <Text style={[styles.upgradeBadgeText, { color: ACCENT.purple }]}>Upgrade</Text>
-              </View>
-            </View>
-
-            <View style={[styles.accountRow, { borderBottomColor: theme.border, borderBottomWidth: 1 }]}>
               <View style={[styles.accountIcon, { backgroundColor: `${ACCENT.cyan}22` }]}>
                 <Bell size={16} color={ACCENT.cyan} />
               </View>
@@ -517,7 +849,12 @@ export function ProfileScreen({
             </View>
           </Animated.View>
 
-          <TouchableOpacity style={[styles.signOutButton, { borderColor: theme.border }]}>
+          <TouchableOpacity
+            style={[styles.signOutButton, { borderColor: theme.border }]}
+            onPress={handleSignOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
             <Text style={[styles.signOutText, { color: theme.text }]}>Sign Out</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -537,10 +874,15 @@ export function ProfileScreen({
             <TextInput
               value={editValue}
               onChangeText={setEditValue}
-              placeholder="Enter value"
+              placeholder={editKey === 'height' ? 'Total inches (e.g. 70)' : 'Enter value'}
               placeholderTextColor={theme.muted}
+              keyboardType={editKey === 'height' || editKey === 'weight' || editKey === 'age' ? 'decimal-pad' : 'default'}
+              multiline={editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy'}
+              numberOfLines={editKey === 'trainingPhilosophy' ? 10 : editKey === 'trainerProfileBio' ? 5 : 1}
+              textAlignVertical={editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' ? 'top' : 'center'}
               style={[
                 styles.editInput,
+                editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' ? styles.editInputMultiline : null,
                 {
                   color: theme.text,
                   borderColor: theme.border,
@@ -621,6 +963,21 @@ const styles = StyleSheet.create({
   },
 
   pillsContainer: { gap: 10, marginBottom: 24 },
+  trainerPhilosophyCard: {
+    borderRadius: 14.5,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  trainerPhilosophyText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 21,
+  },
   infoPill: {
     borderRadius: 14.5,
     padding: 14,
@@ -711,6 +1068,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 14,
     fontWeight: '700',
+  },
+  editInputMultiline: {
+    minHeight: 120,
+    paddingTop: 12,
   },
   editActions: {
     flexDirection: 'row',

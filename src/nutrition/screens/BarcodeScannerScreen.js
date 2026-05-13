@@ -21,8 +21,9 @@ const ACCENT = {
   purple: '#C084FC', // Keep your light purple
   cyan: '#06B6D4', // Keep your cyan
   green: '#22C55E', // Keep your green
-  deepPink: '#E91E63', // Dark pink (scanner frame)
-  deepPurple: '#7C3AED', // Deep purple (scanner frame)
+  /** Barcode viewfinder corners — dark pink / dark orange */
+  framePink: '#9F1239',
+  frameOrange: '#C2410C',
 };
 
 function getTokens(isDark) {
@@ -31,21 +32,25 @@ function getTokens(isDark) {
         ...ACCENT,
         screenBg: '#0A0A0F',
         cardBg: 'rgba(255,255,255,0.06)',
-        cardBorder: 'rgba(255,255,255,0.08)',
+        cardBorder: 'rgba(255,255,255,0.10)',
+        surfaceOpaque: '#15151C',
         text: '#ffffff',
-        textMuted: 'rgba(255,255,255,0.6)',
+        textMuted: 'rgba(255,255,255,0.68)',
         textVeryMuted: 'rgba(255,255,255,0.45)',
-        inputBg: 'rgba(255,255,255,0.06)',
+        inputBg: 'rgba(255,255,255,0.07)',
+        secondaryAction: 'rgba(255,255,255,0.88)',
       }
     : {
         ...ACCENT,
         screenBg: '#F5F3FF',
         cardBg: 'rgba(255,255,255,0.92)',
-        cardBorder: 'rgba(0,0,0,0.08)',
+        cardBorder: 'rgba(0,0,0,0.10)',
+        surfaceOpaque: '#FFFFFF',
         text: '#1a0a2e',
         textMuted: 'rgba(26,10,46,0.62)',
         textVeryMuted: 'rgba(26,10,46,0.45)',
-        inputBg: 'rgba(0,0,0,0.05)',
+        inputBg: 'rgba(0,0,0,0.04)',
+        secondaryAction: 'rgba(26,10,46,0.78)',
       };
 }
 
@@ -234,13 +239,24 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
       </View>
       <View style={styles.manualEntryContainer}>
         <LinearGradient
-          colors={[t.hotPink, t.orange]}
+          colors={isDark ? ['#BE185D', '#EA580C'] : ['#BE185D', '#FB923C']}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 1, y: 0 }}
           style={{ borderRadius: 22, padding: 1 }}
         >
-          <View style={{ borderRadius: 21, backgroundColor: t.cardBg, borderWidth: 1, borderColor: t.cardBorder, padding: 18 }}>
-            <Text style={styles.manualEntryTitle} selectable={true}>Manual barcode</Text>
+          <View
+            style={{
+              borderRadius: 21,
+              backgroundColor: t.surfaceOpaque,
+              paddingVertical: 22,
+              paddingHorizontal: 18,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: t.cardBorder,
+            }}
+          >
+            <Text style={styles.manualEntryTitle} selectable={true}>
+              Manual barcode
+            </Text>
             <Text style={styles.manualEntrySubtitle} selectable={true}>
               Type the numbers under the barcode.
             </Text>
@@ -262,7 +278,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
               activeOpacity={0.9}
             >
               <LinearGradient
-                colors={[t.cyan, t.purple]}
+                colors={['#9F1239', '#EA580C']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.searchButtonInner}
@@ -270,12 +286,16 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.searchButtonText} selectable={true}>Look up</Text>
+                  <Text style={styles.searchButtonText} selectable={true}>
+                    Look up
+                  </Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelButtonText} selectable={true}>Cancel</Text>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose} hitSlop={{ top: 8, bottom: 8 }}>
+              <Text style={styles.cancelButtonText} selectable={true}>
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -444,34 +464,34 @@ const createStyles = (spacing, t) =>
       position: 'absolute',
       width: 30,
       height: 30,
-      borderColor: t.deepPink,
+      borderColor: t.framePink,
       borderWidth: 3,
     },
     topLeft: {
       top: 0,
       left: 0,
-      borderColor: t.deepPink,
+      borderColor: t.framePink,
       borderRightWidth: 0,
       borderBottomWidth: 0,
     },
     topRight: {
       top: 0,
       right: 0,
-      borderColor: t.deepPurple,
+      borderColor: t.frameOrange,
       borderLeftWidth: 0,
       borderBottomWidth: 0,
     },
     bottomLeft: {
       bottom: 0,
       left: 0,
-      borderColor: t.deepPink,
+      borderColor: t.frameOrange,
       borderRightWidth: 0,
       borderTopWidth: 0,
     },
     bottomRight: {
       bottom: 0,
       right: 0,
-      borderColor: t.deepPurple,
+      borderColor: t.framePink,
       borderLeftWidth: 0,
       borderTopWidth: 0,
     },
@@ -576,9 +596,9 @@ const createStyles = (spacing, t) =>
     },
     searchButtonInner: {
       borderRadius: 12,
-      padding: spacing.md,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
       alignItems: 'center',
-      marginBottom: spacing.md,
     },
     searchButtonDisabled: {
       opacity: 0.6,
@@ -593,8 +613,9 @@ const createStyles = (spacing, t) =>
       alignItems: 'center',
     },
     cancelButtonText: {
-      color: '#9CA3AF',
+      color: t.secondaryAction,
       fontSize: 14,
+      fontWeight: '600',
     },
     amountStepContent: {
       flex: 1,

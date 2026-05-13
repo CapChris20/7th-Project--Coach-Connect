@@ -230,6 +230,24 @@ class FoodSearchProvider {
   }
 
   /**
+   * When the API returns zero rows (or ranking filtered everything), still try Open Food Facts + local
+   * cache so the client does not cache an empty array and "brick" that query until TTL expires.
+   */
+  async mergeOfflineWhenServerEmpty(query, limit, serverResults) {
+    const q = String(query || '').trim();
+    const base = Array.isArray(serverResults) ? serverResults : [];
+    if (base.length > 0) return base;
+    const [cachedFoods, off] = await Promise.all([
+      this.getCachedFoods().catch(() => []),
+      searchOpenFoodFactsDirect(q, limit).catch(() => []),
+    ]);
+    const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
+      (f?.name || '').toLowerCase().includes(q.toLowerCase()),
+    );
+    return [...local, ...off].slice(0, limit);
+  }
+
+  /**
    * Search for foods using multiple providers
    * Provider order: Nutritionix (primary) -> USDA (fallback)
    */
@@ -321,9 +339,17 @@ class FoodSearchProvider {
       const data = await response.json();
       this.lastSearchHint = data.hint || null;
       const list = Array.isArray(data.results) ? data.results : [];
-      this.setCache(cacheKey, list);
-      if (__DEV__) console.log(`🍔 Found ${list.length} foods from server`);
-      return list;
+      const merged = await this.mergeOfflineWhenServerEmpty(q, limit, list);
+      if (merged.length === 0 && list.length === 0) {
+        this.lastSearchHint = this.lastSearchHint || FOOD_SEARCH_OFFLINE_HINT;
+      }
+      this.setCache(cacheKey, merged);
+      if (__DEV__) {
+        console.log(
+          `🍔 Server returned ${list.length} foods; after OFF/cache merge: ${merged.length}`,
+        );
+      }
+      return merged;
     } catch (error) {
       const isNetwork = (error?.message || '').toLowerCase().includes('network') || (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
       if (__DEV__) console.error('🍔 Error searching foods:', error?.message || error);

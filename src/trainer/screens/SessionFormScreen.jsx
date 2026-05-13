@@ -18,7 +18,6 @@ import {
   Trash2,
   Video,
   StickyNote,
-  User,
   Calendar,
   Clock,
   Hourglass,
@@ -28,10 +27,42 @@ import {
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSessions } from '../../hooks/use-sessions';
+import MarketplaceHeroCard from '../../client/components/MarketplaceHeroCard';
 import { WheelPicker } from '../../components/WheelPicker';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DURATIONS = [15, 30, 45, 60, 75, 90, 120];
+
+/** Dark pink + dark orange wheel chrome (Date / Time on session form) */
+const warmWheelChrome = (isDark) =>
+  isDark
+    ? {
+        glass: 'rgba(255, 107, 157, 0.07)',
+        glassBorder: 'rgba(194, 65, 12, 0.38)',
+        fadeEdge: '#0A0A0F',
+        accent: '#FF6B9D',
+        accentBandBg: 'rgba(234, 88, 12, 0.18)',
+      }
+    : {
+        glass: 'rgba(255, 107, 157, 0.1)',
+        glassBorder: 'rgba(194, 65, 12, 0.28)',
+        fadeEdge: '#FFFFFF',
+        accent: '#DB2777',
+        accentBandBg: 'rgba(234, 88, 12, 0.12)',
+      };
+
+const warmSectionShell = (isDark) =>
+  isDark
+    ? {
+        borderColor: 'rgba(249, 115, 22, 0.35)',
+        backgroundColor: 'rgba(255, 107, 157, 0.05)',
+        shadowColor: '#EA580C',
+      }
+    : {
+        borderColor: 'rgba(219, 39, 119, 0.28)',
+        backgroundColor: 'rgba(249, 115, 22, 0.07)',
+        shadowColor: '#F97316',
+      };
 
 const COLORS = {
   dark: {
@@ -82,6 +113,13 @@ const avatarGradientForClient = (id, name) => {
   for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
   return AVATAR_GRADIENTS[Math.abs(h) % AVATAR_GRADIENTS.length];
 };
+
+const SESSION_HERO_BENEFITS = [
+  'Choose the client this appointment is for',
+  'Set date, time, duration, and notes in one guided flow',
+  'Optional Zoom link keeps everyone aligned',
+  'They see the booking in their app when you save',
+];
 
 export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initialDate, initialClientId, trainerName }) => {
   const colors = COLORS[theme] || COLORS.dark;
@@ -195,6 +233,13 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
   };
 
   const isDarkUi = theme === 'dark';
+  const warmWheel = warmWheelChrome(isDarkUi);
+  const warmShell = warmSectionShell(isDarkUi);
+  const dateTimeIconOrange = isDarkUi ? '#FB923C' : '#C2410C';
+  const dateTimeIconPink = isDarkUi ? '#FF6B9D' : '#DB2777';
+  /** DATE / TIME headings + helper copy — higher contrast than default textSecondary */
+  const dateTimeHeadingColor = isDarkUi ? 'rgba(255,255,255,0.94)' : 'rgba(15,23,42,0.92)';
+  const dateTimeCaptionColor = isDarkUi ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.76)';
 
   return (
     <View style={[styles.root, { backgroundColor: isDarkUi ? '#0A0A0F' : '#FFFFFF' }]}>
@@ -213,38 +258,79 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
 
       <ScrollView
         style={styles.content}
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: (isEdit ? 88 : 28) + insets.bottom }}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
       >
-        {/* Title */}
-        <View style={styles.titleSection}>
-          <Text style={[styles.title, { color: colors.text }]}>{isEdit ? 'Edit session' : 'New session'}</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {isEdit ? 'Update the details below.' : 'Schedule a session — your client will be notified.'}
-          </Text>
+        <MarketplaceHeroCard
+          isDark={isDarkUi}
+          onPress={handleSubmit}
+          ctaLabel={isEdit ? 'Save changes' : 'Create session'}
+          ctaIcon="checkmark-circle"
+          label="Session hub"
+          headline={isEdit ? 'Edit session' : 'New session'}
+          subhead={
+            isEdit
+              ? 'Update any field below — your client sees the latest details after you save.'
+              : 'Schedule a session — set date, time, and options below, then save from the button in this card.'
+          }
+          subheadColor={isDarkUi ? 'rgba(255,255,255,0.84)' : 'rgba(15,23,42,0.84)'}
+          benefitTextColor={isDarkUi ? 'rgba(255,255,255,0.96)' : 'rgba(15,23,42,0.9)'}
+          benefits={SESSION_HERO_BENEFITS}
+          outerStyle={{ marginHorizontal: -16 }}
+          accessibilityLabel="Session form overview"
+        >
           {trainerName ? (
-            <View style={[styles.trainerPill, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-              <Users color={colors.textSecondary} size={14} />
-              <Text style={[styles.trainerPillText, { color: colors.textSecondary }]} numberOfLines={1}>
+            <View
+              style={[
+                styles.heroTrainerRow,
+                { borderColor: isDarkUi ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.1)' },
+              ]}
+            >
+              <Users color={isDarkUi ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.55)'} size={16} />
+              <Text
+                style={[styles.heroTrainerText, { color: isDarkUi ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)' }]}
+                numberOfLines={1}
+              >
                 Trainer: {trainerName}
               </Text>
             </View>
           ) : null}
-        </View>
-
-        {/* Client */}
-        <FormSection title="Client" icon={<User color={colors.textSecondary} size={16} />} colors={colors}>
-          <ClientDropdown clientId={clientId} onChangeClient={setClientId} clients={clients} colors={colors} />
-          {selectedClient && (
-            <View style={[styles.clientBadge, { backgroundColor: colors.primaryLight, borderColor: 'rgba(255,107,157,0.35)' }]}>
+          <Text
+            style={[styles.heroFieldLabel, { color: isDarkUi ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)' }]}
+          >
+            Client
+          </Text>
+          <ClientDropdown
+            clientId={clientId}
+            onChangeClient={setClientId}
+            clients={clients}
+            colors={colors}
+            triggerStyle={{
+              backgroundColor: isDarkUi ? 'rgba(255,255,255,0.07)' : '#FFFFFF',
+              borderColor: isDarkUi ? 'rgba(255,255,255,0.14)' : colors.glassBorder,
+            }}
+          />
+          {selectedClient ? (
+            <View
+              style={[
+                styles.clientBadge,
+                { backgroundColor: colors.primaryLight, borderColor: 'rgba(255,107,157,0.35)' },
+              ]}
+            >
               <Text style={[styles.clientBadgeText, { color: colors.primary }]}>{selectedClient.name}</Text>
             </View>
-          )}
-        </FormSection>
+          ) : null}
+        </MarketplaceHeroCard>
 
         {/* Date — inline wheels (no full-screen modal lists) */}
-        <FormSection title="Date" icon={<Calendar color={colors.textSecondary} size={16} />} colors={colors}>
+        <FormSection
+          title="Date"
+          icon={<Calendar color={dateTimeIconOrange} size={16} />}
+          colors={colors}
+          shellStyle={warmShell}
+          titleColor={dateTimeHeadingColor}
+        >
           <View style={styles.dateGrid}>
             <WheelPicker
               label="Day"
@@ -253,6 +339,7 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               onChange={(v) => setDay(parseInt(v, 10))}
               theme={theme}
               height={176}
+              {...warmWheel}
             />
             <WheelPicker
               label="Month"
@@ -264,6 +351,7 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               }}
               theme={theme}
               height={176}
+              {...warmWheel}
             />
             <WheelPicker
               label="Year"
@@ -272,12 +360,19 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               onChange={(v) => setYear(parseInt(v, 10))}
               theme={theme}
               height={176}
+              {...warmWheel}
             />
           </View>
         </FormSection>
 
         {/* Time */}
-        <FormSection title="Time" icon={<Clock color={colors.textSecondary} size={16} />} colors={colors}>
+        <FormSection
+          title="Time"
+          icon={<Clock color={dateTimeIconPink} size={16} />}
+          colors={colors}
+          shellStyle={warmShell}
+          titleColor={dateTimeHeadingColor}
+        >
           <View style={styles.timeGrid}>
             <WheelPicker
               label="Hour"
@@ -285,6 +380,7 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               value={String(hour12)}
               onChange={(v) => setHour12(parseInt(v, 10))}
               theme={theme}
+              {...warmWheel}
             />
             <WheelPicker
               label="Min"
@@ -292,6 +388,7 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               value={pad(minute)}
               onChange={(v) => setMinute(parseInt(v, 10))}
               theme={theme}
+              {...warmWheel}
             />
             <WheelPicker
               label="AM/PM"
@@ -299,9 +396,10 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
               value={ampm}
               onChange={(v) => setAmpm(v)}
               theme={theme}
+              {...warmWheel}
             />
           </View>
-          <Text style={[styles.timeNote, { color: colors.textSecondary }]}>Scroll or drag · 5-minute steps</Text>
+          <Text style={[styles.timeNote, { color: dateTimeCaptionColor }]}>Scroll or drag · 5-minute steps</Text>
         </FormSection>
 
         {/* Duration */}
@@ -369,33 +467,27 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
 
       </ScrollView>
 
-      {/* Actions */}
-      <View
-        style={[
-          styles.actionBar,
-          {
-            paddingBottom: Math.max(insets.bottom, 12),
-            borderTopColor: colors.glassBorder,
-            backgroundColor: isDarkUi ? '#0A0A0F' : '#FFFFFF',
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.submitBtnOuter} onPress={handleSubmit} activeOpacity={0.9}>
-          <LinearGradient
-            colors={['#FF6B9D', '#E879C8', '#C084FC']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.submitBtnGradient}
+      {isEdit ? (
+        <View
+          style={[
+            styles.actionBar,
+            {
+              paddingBottom: Math.max(insets.bottom, 12),
+              borderTopColor: colors.glassBorder,
+              backgroundColor: isDarkUi ? '#0A0A0F' : '#FFFFFF',
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={[styles.deleteBarBtn, { borderColor: 'rgba(239,68,68,0.45)', backgroundColor: isDarkUi ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.06)' }]}
+            onPress={handleDelete}
+            activeOpacity={0.85}
           >
-            <Text style={styles.submitBtnText}>{isEdit ? 'Save changes' : 'Create session'}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-        {isEdit && (
-          <TouchableOpacity style={[styles.deleteBtn, { borderColor: '#EF4444' }]} onPress={handleDelete}>
-            <Trash2 color="#EF4444" size={20} />
+            <Trash2 color="#EF4444" size={18} />
+            <Text style={styles.deleteBarBtnText}>Delete session</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      ) : null}
       </View>
     </View>
   );
@@ -403,7 +495,7 @@ export const SessionFormScreen = ({ sessionId, theme = 'dark', onNavigate, initi
 
 export default SessionFormScreen;
 
-const FormSection = ({ title, icon, colors, children }) => (
+const FormSection = ({ title, icon, colors, children, shellStyle, titleColor }) => (
   <View
     style={[
       styles.formSection,
@@ -412,17 +504,18 @@ const FormSection = ({ title, icon, colors, children }) => (
         borderColor: colors.glassBorder,
         shadowColor: '#FF6B9D',
       },
+      shellStyle,
     ]}
   >
     <View style={styles.formSectionHeader}>
       {icon}
-      <Text style={[styles.formSectionTitle, { color: colors.textSecondary }]}>{title.toUpperCase()}</Text>
+      <Text style={[styles.formSectionTitle, { color: titleColor ?? colors.textSecondary }]}>{title.toUpperCase()}</Text>
     </View>
     <View style={styles.formSectionContent}>{children}</View>
   </View>
 );
 
-const ClientDropdown = ({ clientId, onChangeClient, clients, colors }) => {
+const ClientDropdown = ({ clientId, onChangeClient, clients, colors, triggerStyle }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const selectedClient = clients.find((c) => c.id === clientId);
@@ -431,7 +524,7 @@ const ClientDropdown = ({ clientId, onChangeClient, clients, colors }) => {
   return (
     <>
       <TouchableOpacity
-        style={[styles.dropdown, { backgroundColor: colors.bg, borderColor: colors.glassBorder }]}
+        style={[styles.dropdown, { backgroundColor: colors.bg, borderColor: colors.glassBorder }, triggerStyle]}
         onPress={() => setModalVisible(true)}
         activeOpacity={0.85}
       >
@@ -557,22 +650,6 @@ const styles = StyleSheet.create({
   },
   backText: { fontSize: 14, fontWeight: '600' },
   content: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
-  titleSection: { marginBottom: 22 },
-  title: { fontSize: 30, fontWeight: '800', marginBottom: 6, letterSpacing: -0.8 },
-  subtitle: { fontSize: 13, lineHeight: 18 },
-  trainerPill: {
-    marginTop: 12,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    maxWidth: '100%',
-  },
-  trainerPillText: { fontSize: 12, fontWeight: '700' },
   formSection: {
     borderRadius: 20,
     padding: 16,
@@ -597,21 +674,52 @@ const styles = StyleSheet.create({
   },
   clientDot: { width: 8, height: 8, borderRadius: 4 },
   dropdownValue: { fontSize: 15, fontWeight: '600', flex: 1 },
+  heroTrainerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  heroTrainerText: { flex: 1, fontSize: 13, fontWeight: '700' },
+  heroFieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 2,
+  },
   clientBadge: {
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
     alignSelf: 'flex-start',
-    marginTop: 12,
+    marginTop: 4,
     borderWidth: 1,
   },
   clientBadgeText: { fontSize: 12, fontWeight: '600' },
   dateGrid: { flexDirection: 'row', gap: 8 },
   timeGrid: { flexDirection: 'row', gap: 8 },
   timeNote: { fontSize: 11, marginTop: 8, textAlign: 'center' },
-  durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  durationBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
-  durationBtnText: { fontSize: 12, fontWeight: '600' },
+  durationGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  durationBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    minWidth: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  durationBtnText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   input: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, fontSize: 15, borderWidth: 1 },
   textarea: {
     borderRadius: 14,
@@ -625,28 +733,20 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 12,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  submitBtnOuter: {
+  deleteBarBtn: {
     flex: 1,
-    borderRadius: 999,
-    overflow: 'hidden',
-    shadowColor: '#FF6B9D',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    elevation: 10,
-  },
-  submitBtnGradient: {
-    paddingVertical: 16,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
   },
-  submitBtnText: { color: 'white', fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
-  deleteBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  deleteBarBtnText: { color: '#EF4444', fontSize: 15, fontWeight: '700' },
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
