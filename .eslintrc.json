@@ -1,0 +1,65 @@
+{
+  "root": true,
+  "ignorePatterns": ["node_modules/", "dist/", "web-build/", ".expo/"],
+  "parser": "@babel/eslint-parser",
+  "parserOptions": {
+    "requireConfigFile": false,
+    "babelOptions": {
+      "presets": ["babel-preset-expo"]
+    },
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/jsx-runtime",
+    "plugin:react-hooks/recommended"
+  ],
+  "plugins": ["react", "react-hooks", "react-native"],
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "env": {
+    "es2021": true,
+    "node": true,
+    "react-native/react-native": true
+  },
+  "globals": {
+    "__DEV__": "readonly",
+    "fetch": "readonly"
+  },
+  "rules": {
+    "no-console": [
+      "warn",
+      {
+        "allow": ["warn", "error"]
+      }
+    ],
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "react/prop-types": "off",
+    "react/react-in-jsx-scope": "off",
+    "react-native/no-color-literals": "off",
+    "react-native/no-inline-styles": "off",
+    "react-native/no-unused-styles": "warn",
+    "react-native/split-platform-components": "warn",
+    "no-unreachable": "warn",
+    "react-hooks/exhaustive-deps": "warn",
+    "no-useless-escape": "warn",
+    "no-empty": "warn",
+    "no-undef": "warn",
+    "no-dupe-keys": "warn",
+    "no-case-declarations": "warn",
+    "react-hooks/rules-of-hooks": "warn"
+  }
+}

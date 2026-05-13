@@ -38,6 +38,7 @@ import BottomNavBar from '../../navigation/BottomNavBar';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import Markdown from 'react-native-markdown-display';
 import { getApiBase } from '../../shared/services/baseUrl';
+import logger from '../../shared/services/logger';
 
 const GRAD = ['#7C3AED', '#EC4899'];
 const { width: SW } = Dimensions.get('window');
@@ -423,7 +424,7 @@ function FeatureCard({ t, icon, title, color, items }) {
 async function postAICoach(payload) {
   const base = String(getApiBase() || '').replace(/\/$/, '');
   const url = `${base}/api/ai-coach`;
-  console.log('[AIChat] requesting URL:', url);
+  logger.debug('[AIChat] requesting URL:', url);
 
   const headers = { 'Content-Type': 'application/json' };
   const idToken = await auth?.currentUser?.getIdToken?.();

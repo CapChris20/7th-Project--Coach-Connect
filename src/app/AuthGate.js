@@ -25,6 +25,7 @@ import { clearOldSharedChats } from '../ai/services/chatStorageService';
 import { clearAllUserData } from '../utils/dataCacheCleanup';
 import { flushPendingOnboardingSync } from '../shared/services/onboardingSync';
 import { clearPushTokensForUid } from '../shared/services/notificationsService';
+import logger from '../shared/services/logger';
 
 const getProfileCacheKey = (uid) => `auth_profile_${uid}`;
 
@@ -344,7 +345,7 @@ export default function AuthGate() {
             if (!data) throw e;
           }
 
-          console.log('🧾 /api/me response', {
+          logger.debug('/api/me response', {
             role: data?.role || null,
             onboardingCompleted: !!data?.onboardingCompleted,
           });

@@ -3,6 +3,7 @@
 // Supports both text and image messages (OpenAI Vision API)
 import { generateResponse } from './openaiClient';
 import { prepareImageForOpenAI } from './imageService';
+import logger from '../../shared/services/logger';
 
 /**
  * Sanitize user input: remove special symbols (#, *, $, etc.) for clean GPT queries
@@ -93,9 +94,9 @@ export async function sendChatMessage(userMessage, conversationHistory = [], opt
   // Generate response with web search enabled (only for text, not images)
   const enableWebSearch = !imageDataUrl;
   if (enableWebSearch) {
-    console.log('🔍 [CHAT] Web search ENABLED - Will attempt to use Serper API');
+    logger.debug('[CHAT] Web search ENABLED - Will attempt to use Serper API');
   } else {
-    console.log('🚫 [CHAT] Web search DISABLED (image query detected)');
+    logger.debug('[CHAT] Web search DISABLED (image query detected)');
   }
   
   return await generateResponse('', {

@@ -13,7 +13,10 @@
     "gen:errors": "node ./scripts/generateErrorList.js",
     "gen:onboarding-icons": "node ./scripts/generateOnboardingIconRegistry.mjs",
     "print:google-oauth": "node ./scripts/printGoogleOAuthClientIds.js",
-    "restore:user": "node ./scripts/restoreUserByEmail.js"
+    "restore:user": "node ./scripts/restoreUserByEmail.js",
+    "lint": "eslint \"src/**/*.{js,jsx}\"",
+    "lint:fix": "eslint \"src/**/*.{js,jsx}\" --fix",
+    "lint:ci": "eslint \"src/**/*.{js,jsx}\" --max-warnings 10000"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.9.1",
@@ -106,9 +109,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@babel/eslint-parser": "^7.28.6",
     "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.1.10",
     "babel-plugin-module-resolver": "^5.0.2",
+    "eslint": "8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "4.6.2",
+    "eslint-plugin-react-native": "^5.0.0",
     "typescript": "^5.3.3"
   },
   "expo": {
