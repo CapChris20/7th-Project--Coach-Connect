@@ -8,7 +8,7 @@ export const onboardingIconRegistry = {
   weight: require('../../assets/onboarding-consolidated/scales.png'),
   scales: require('../../assets/onboarding-consolidated/scales.png'),
   height: require('../../assets/onboarding-consolidated/height.png'),
-  age: require('../../assets/onboarding-consolidated/age.png'),
+  age: require('../../assets/onboarding-consolidated/Age.png'),
 
   "advanced": require("../../assets/onboarding-consolidated/Advanced.png"),
   "beginner": require("../../assets/onboarding-consolidated/Beginner.png"),

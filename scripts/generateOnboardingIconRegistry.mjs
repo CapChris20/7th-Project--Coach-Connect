@@ -35,10 +35,10 @@ lines.push('  // Step 1 inputs');
 lines.push("  weight: require('../../assets/onboarding-consolidated/scales.png'),");
 lines.push("  scales: require('../../assets/onboarding-consolidated/scales.png'),");
 lines.push("  height: require('../../assets/onboarding-consolidated/height.png'),");
-lines.push("  age: require('../../assets/onboarding-consolidated/age.png'),");
+lines.push("  age: require('../../assets/onboarding-consolidated/Age.png'),");
 lines.push('');
 
-const skipFiles = new Set(['scales.png', 'height.png', 'age.png', 'bodyweight_only.png']);
+const skipFiles = new Set(['scales.png', 'height.png', 'Age.png', 'bodyweight_only.png']);
 
 for (const filename of files) {
   if (skipFiles.has(filename)) continue;
