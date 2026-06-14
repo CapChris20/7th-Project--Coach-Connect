@@ -5,6 +5,7 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
 import { getApiBase } from '../../shared/services/baseUrl';
+import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
 import {
   randomSessionScheduledTitle,
   randomSessionScheduledDetailBody,
@@ -96,9 +97,12 @@ async function tryServerNotify({ recipientId, senderName, messageText, senderId,
   try {
     const base = String(getApiBase() || '').replace(/\/$/, '');
     if (!base) return false;
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+    if (!headers.Authorization) return false;
+
     const res = await fetch(`${base}/api/notifications/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         recipientId,
         senderName,

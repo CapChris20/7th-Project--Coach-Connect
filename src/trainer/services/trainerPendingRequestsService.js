@@ -4,6 +4,7 @@
  */
 import { db } from '../../app/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
 
 /**
  * Fetch all pending client requests for a trainer.
@@ -62,6 +63,8 @@ export async function getTrainerPendingRequests(trainerUid) {
             clientExperienceLevel: data.clientExperienceLevel,
             clientEquipment: data.clientEquipment,
             clientLimitations: data.clientLimitations,
+            requestType: data.requestType || 'connection',
+            requestTitle: data.requestTitle || clientRequestTypeLabel(data.requestType),
             message: data.text || '',
             timestamp: data.timestamp,
           });

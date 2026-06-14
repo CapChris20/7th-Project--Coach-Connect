@@ -1,17 +1,21 @@
 /**
- * Daily log date key — resets every 24 hours at midnight America/New_York.
- * Use for: dailyLogs, daily_tracking, trainer hub "today" view.
- * Data is stored per date and kept for weekly stats collection (no delete).
+ * Date keys for Firestore daily docs.
+ *
+ * - **getClientDateKey** — device local midnight (client home, dashboard, AI tools).
+ * - **getDateKey** — America/New_York (trainer weekly jobs / legacy server defaults).
  */
+import { getLocalDateKey } from '../shared/utils/localDay';
+
 const DEFAULT_TZ = 'America/New_York';
 
+/** Client-facing "today" (device timezone). Prefer this for dailyLogs / daily_tracking. */
+export function getClientDateKey(d = new Date()) {
+  return getLocalDateKey(d);
+}
+
 /**
- * Returns YYYY-MM-DD for "today" in the given timezone.
- * Trainer hub and client check-in forms use this so the "today" form
- * resets at midnight ET; yesterday's data stays under yesterday's key
- * and is used by the weekly summary job.
- * @param {string} [timeZone] IANA timezone (default America/New_York)
- * @returns {string} e.g. "2026-03-03"
+ * Trainer / weekly-summary boundary (Eastern Time).
+ * @param {string} [timeZone] IANA timezone
  */
 export function getDateKey(timeZone = DEFAULT_TZ) {
   return new Date().toLocaleDateString('en-CA', { timeZone });

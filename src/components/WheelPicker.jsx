@@ -1,15 +1,19 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { View, Text, Animated, StyleSheet } from 'react-native';
+import {
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const ITEM_H = 44;
 
 const COLORS = {
   dark: {
-    /** Wheel row values — full white reads better on tinted glass than low-opacity #000 */
     text: '#FFFFFF',
-    /** Column labels (DAY, HOUR, …) — high contrast on dark */
-    textSecondary: 'rgba(255,255,255,0.9)',
+    textSecondary: 'rgba(255,255,255,0.55)',
     glass: 'rgba(255,255,255,0.05)',
     glassBorder: 'rgba(255,255,255,0.1)',
     fadeEdge: '#0A0A0F',
@@ -17,8 +21,8 @@ const COLORS = {
     accentBandBg: 'rgba(255,107,157,0.14)',
   },
   light: {
-    text: '#0F172A',
-    textSecondary: 'rgba(15,23,42,0.88)',
+    text: '#000000',
+    textSecondary: 'rgba(0,0,0,0.55)',
     glass: 'rgba(0,0,0,0.03)',
     glassBorder: 'rgba(0,0,0,0.1)',
     fadeEdge: '#FFFFFF',
@@ -27,10 +31,10 @@ const COLORS = {
   },
 };
 
-/** Min opacity for off-center rows — avoids “muddy” brown-gray on warm dark glass */
+/** Off-center rows dim via opacity only — hue stays pure white/black */
 const WHEEL_OPACITY_RANGE = {
-  dark: [0.62, 0.86, 1, 0.86, 0.62],
-  light: [0.52, 0.8, 1, 0.8, 0.52],
+  dark: [0.38, 0.62, 1, 0.62, 0.38],
+  light: [0.32, 0.58, 1, 0.58, 0.32],
 };
 
 export const WheelPicker = ({
@@ -46,6 +50,8 @@ export const WheelPicker = ({
   fadeEdge,
   accent,
   accentBandBg,
+  /** Override wheel value color (#FFFFFF / #000000) */
+  text: textOverride,
   /** Optional label color (defaults to theme textSecondary) */
   labelColor,
 }) => {
@@ -57,6 +63,7 @@ export const WheelPicker = ({
     ...(fadeEdge !== undefined ? { fadeEdge } : {}),
     ...(accent !== undefined ? { accent } : {}),
     ...(accentBandBg !== undefined ? { accentBandBg } : {}),
+    ...(textOverride !== undefined ? { text: textOverride } : {}),
   };
   const opacityKey = theme === 'light' ? 'light' : 'dark';
   const opacityOut = WHEEL_OPACITY_RANGE[opacityKey];
@@ -169,6 +176,7 @@ export const WheelPicker = ({
                       transform: [{ scale }],
                     },
                   ]}
+                  allowFontScaling={false}
                 >
                   {item}
                 </Animated.Text>
@@ -213,7 +221,7 @@ const styles = StyleSheet.create({
   },
   itemText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: -0.2,
   },
 });

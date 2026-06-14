@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Image, Linking, SafeAreaView, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Linking, Platform, SafeAreaView, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowRight, ChevronDown, ChevronRight, Download, FileSpreadsheet, FileText, Folder, MessageSquare, Share2, Upload } from 'lucide-react-native';
+import { ArrowRight, ChevronRight, Download, FileSpreadsheet, FileText, MessageSquare } from 'lucide-react-native';
 import { deleteNotesAndFilesItem, markNotesAndFilesItemRead } from '../../shared/services/notesAndFilesService';
 import {
   getEmbedViewerUri,
@@ -17,6 +17,16 @@ import DocumentViewerModal from '../../shared/components/DocumentViewerModal';
 import MediaViewerModal from '../../shared/components/MediaViewerModal';
 import EmbedWebViewModal from '../../shared/components/EmbedWebViewModal';
 
+const ACCENT_PINK = '#FF6B9D';
+const ACCENT_CYAN = '#06B6D4';
+const ACCENT_PURPLE = '#C084FC';
+
+const SECTION_META = {
+  myFiles: { icon: 'camera', color: ACCENT_PINK, gradient: ['#FF6B9D', '#C084FC'] },
+  trainer: { icon: 'folder', color: ACCENT_CYAN, gradient: ['#06B6D4', '#C084FC'] },
+  notes:   { icon: 'message-circle', color: ACCENT_PURPLE, gradient: ['#C084FC', '#FF6B9D'] },
+};
+
 export default function ClientFilesScreen({ clientId, items, isDark = true, onBack, onUploadPress }) {
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
@@ -28,38 +38,19 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
   const fg = isDark ? '#FFFFFF' : '#0B0B12';
   const muted = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(15,23,42,0.55)';
 
-  const theme = useMemo(
-    () => ({
-      bg: '#0A0A0F',
-      card: '#141419',
-      text: '#FFFFFF',
-      text60: 'rgba(255,255,255,0.6)',
-      text40: 'rgba(255,255,255,0.4)',
-      border: 'rgba(255,255,255,0.1)',
-    }),
-    [],
-  );
-
-  const GRADIENTS = useMemo(
-    () => ({
-      myFiles: ['#FF6B9D', '#C084FC'],
-      trainer: ['#06B6D4', '#C084FC'],
-      notes: ['#C084FC', '#FF6B9D'],
-    }),
-    [],
+  const t = useMemo(
+    () =>
+      isDark
+        ? { bg: '#0A0A0F', card: '#141419', glass: 'rgba(255,255,255,0.04)', text: '#FFF', text70: 'rgba(255,255,255,0.7)', text50: 'rgba(255,255,255,0.5)', text30: 'rgba(255,255,255,0.3)', border: 'rgba(255,255,255,0.08)' }
+        : { bg: '#F7F7FA', card: '#FFFFFF', glass: 'rgba(0,0,0,0.02)', text: '#1A1A2E', text70: 'rgba(0,0,0,0.65)', text50: 'rgba(0,0,0,0.45)', text30: 'rgba(0,0,0,0.25)', border: 'rgba(0,0,0,0.06)' },
+    [isDark],
   );
 
   const FILTERS = useMemo(() => ['All Files', 'Photos', 'Documents', 'Notes'], []);
   const [filter, setFilter] = useState('All Files');
-  const [docsOpen, setDocsOpen] = useState(true);
 
   const FILTER_LABELS = useMemo(
-    () => ({
-      'All Files': 'All Files',
-      Photos: 'Snapshots',
-      Documents: 'Documents',
-      Notes: 'Notes',
-    }),
+    () => ({ 'All Files': 'All', Photos: 'Photos', Documents: 'Docs', Notes: 'Notes' }),
     [],
   );
 
@@ -70,12 +61,7 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
       return;
     }
     if (file?.type === 'document' || (file?.documentId && file?.trainerId)) {
-      setDocumentViewer({
-        visible: true,
-        trainerId: file.trainerId,
-        documentId: file.documentId,
-        title: file.title || file.name || 'Document',
-      });
+      setDocumentViewer({ visible: true, trainerId: file.trainerId, documentId: file.documentId, title: file.title || file.name || 'Document' });
       return;
     }
     if (file?.url && isNotesImageFile(file)) {
@@ -91,25 +77,16 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
       return;
     }
     if (file?.url) {
-      setEmbedWebViewer({
-        visible: true,
-        uri: getEmbedViewerUri(file, file.url),
-        title: file.name || file.title || 'Document',
-      });
+      setEmbedWebViewer({ visible: true, uri: getEmbedViewerUri(file, file.url), title: file.name || file.title || 'Document' });
     }
   }, []);
 
   const lists = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
-    const myFiles = list
-      .filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note')
-      .sort((a, b) => new Date(b?.createdAt?.toDate?.() || b?.createdAt || 0) - new Date(a?.createdAt?.toDate?.() || a?.createdAt || 0));
-    const trainerShared = list
-      .filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId))
-      .sort((a, b) => new Date(b?.createdAt?.toDate?.() || b?.createdAt || 0) - new Date(a?.createdAt?.toDate?.() || a?.createdAt || 0));
-    const notes = list
-      .filter((x) => x?.type === 'note' && x?.addedBy === 'trainer')
-      .sort((a, b) => new Date(b?.createdAt?.toDate?.() || b?.createdAt || 0) - new Date(a?.createdAt?.toDate?.() || a?.createdAt || 0));
+    const srt = (a, b) => new Date(b?.createdAt?.toDate?.() || b?.createdAt || 0) - new Date(a?.createdAt?.toDate?.() || a?.createdAt || 0);
+    const myFiles = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note').sort(srt);
+    const trainerShared = list.filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId)).sort(srt);
+    const notes = list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer').sort(srt);
     return { myFiles, trainerShared, notes };
   }, [items]);
 
@@ -117,34 +94,61 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
   const showDocs = filter === 'All Files' || filter === 'Documents';
   const showNotes = filter === 'All Files' || filter === 'Notes';
 
-  function GradientBorder({ gradient, children, borderRadius = 18, thickness = 3 }) {
-    return (
-      <LinearGradient
-        colors={gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.gradientWrapper, { borderRadius, padding: thickness }]}
-      >
-        <View style={[styles.gradientInner, { borderRadius: borderRadius - thickness, backgroundColor: theme.bg }]}>{children}</View>
-      </LinearGradient>
-    );
-  }
+  const photos = useMemo(() => (lists.myFiles || []).filter((f) => isNotesImageFile(f)), [lists.myFiles]);
+  const nonPhotoMyFiles = useMemo(() => (lists.myFiles || []).filter((f) => !isNotesImageFile(f)), [lists.myFiles]);
 
-  function SectionHeader({ title }) {
-    return (
-      <View style={styles.sectionHeaderWrap}>
-        <Text style={[styles.sectionHeader, { color: theme.text60 }]}>{title}</Text>
-      </View>
-    );
-  }
+  const THUMB = 86;
 
-  const THUMB = 78;
+  const markRead = useCallback(async (item) => {
+    if (!clientId || !item?.id) return;
+    await markNotesAndFilesItemRead(clientId, item.id);
+  }, [clientId]);
+
+  const confirmDelete = useCallback((item) => {
+    if (!clientId || !item?.id) return;
+    Alert.alert('Delete file?', 'This will remove it from your files.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await deleteNotesAndFilesItem(clientId, item); } catch (e) { Alert.alert('Could not delete', e?.message || 'Please try again.'); }
+      }},
+    ]);
+  }, [clientId]);
+
+  const shareItem = useCallback(async (item) => {
+    try {
+      const name = item?.name || item?.title || 'File';
+      const url = item?.url;
+      if (url) await Share.share({ message: `${name}\n${url}` });
+      else await Share.share({ message: name });
+    } catch (_) { /* ignore */ }
+  }, []);
+
+  const downloadItem = useCallback(async (item) => {
+    const url = item?.url;
+    if (!url) return;
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (can) { await Linking.openURL(url); return; }
+      Alert.alert('Download not available', 'Could not open this file URL on your device.');
+    } catch (e) { Alert.alert('Download failed', e?.message || 'Could not open file.'); }
+  }, []);
+
+  const totalCount = useMemo(() => {
+    const list = Array.isArray(items) ? items : [];
+    return {
+      files: list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note').length,
+      shared: list.filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId)).length,
+      notes: list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer').length,
+    };
+  }, [items]);
+
+  /* ─── inline components ─── */
 
   function SnapshotThumbs({ files }) {
     if (!files?.length) return null;
     return (
       <View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 2 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
           {files.map((file) => {
             const thumb = file?.thumbnailUrl || (isNotesImageFile(file) ? file?.url : null);
             return (
@@ -163,83 +167,60 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
                 }}
                 delayLongPress={380}
               >
-                <GradientBorder gradient={GRADIENTS.myFiles} borderRadius={14} thickness={2}>
-                  <View style={{ borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(20,20,25,0.92)' }}>
-                    {thumb ? (
-                      <Image source={{ uri: thumb }} style={{ width: THUMB, height: THUMB }} resizeMode="cover" />
-                    ) : (
-                      <View style={[styles.thumbPlaceholder, { width: THUMB, height: THUMB }]}>
-                        <Text style={{ color: theme.text40, fontSize: 11, fontWeight: '800' }}>Photo</Text>
-                      </View>
-                    )}
-                  </View>
-                </GradientBorder>
+                <View style={[s.thumbWrap, { borderColor: isDark ? 'rgba(255,107,157,0.28)' : 'rgba(255,107,157,0.18)' }]}>
+                  {thumb ? (
+                    <Image source={{ uri: thumb }} style={{ width: THUMB, height: THUMB, borderRadius: 14 }} resizeMode="cover" />
+                  ) : (
+                    <View style={[s.thumbPlaceholder, { width: THUMB, height: THUMB, backgroundColor: t.glass }]}>
+                      <Feather name="image" size={22} color={t.text30} />
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
-        <Text style={[styles.thumbHint, { color: theme.text60 }]}>Tap to open · hold for download, share, or delete</Text>
+        <Text style={[s.thumbHint, { color: t.text50 }]}>Tap to view &middot; hold for options</Text>
       </View>
     );
   }
 
-  function TrainerDocRow({ file }) {
+  function FileRow({ file, accent = ACCENT_CYAN }) {
     const name = getFriendlyFileTitle(file) || file?.name || file?.title || 'File';
-    const t = getFileTypeFromItem(file);
-    const Icon = t === 'spreadsheet' ? FileSpreadsheet : FileText;
-    const typeLabel = t === 'spreadsheet' ? 'Sheet' : t === 'pdf' ? 'PDF' : 'Doc';
+    const fType = getFileTypeFromItem(file);
+    const Icon = fType === 'spreadsheet' ? FileSpreadsheet : FileText;
+    const typeLabel = fType === 'spreadsheet' ? 'Sheet' : fType === 'pdf' ? 'PDF' : 'Doc';
     const when = file?.createdAt ? formatDateShort(file.createdAt?.toDate?.() || file.createdAt) : '';
     return (
-      <View style={{ marginBottom: 8 }}>
-        <View style={[styles.docStrip, { backgroundColor: 'rgba(20,20,25,0.92)', borderColor: 'rgba(6,182,212,0.24)', borderWidth: StyleSheet.hairlineWidth }]}>
-          <LinearGradient colors={GRADIENTS.trainer} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.docStripAccent} />
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={async () => {
-              await markRead(file);
-              openItem(file);
-            }}
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingLeft: 12, paddingRight: 6, gap: 10 }}
-          >
-            <View style={styles.docStripIcon}>
-              <Icon size={20} color="#06B6D4" />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.fileName, { color: theme.text }]} numberOfLines={1}>
-                {name}
-              </Text>
-              <Text style={[styles.docStripMeta, { color: theme.text60 }]} numberOfLines={1}>
-                {typeLabel}
-                {when ? ` · ${when}` : ''}
-              </Text>
-            </View>
-            <ChevronRight size={18} color={theme.text40} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => downloadItem(file)} hitSlop={12} style={[styles.docStripDl, { marginRight: 8 }]} activeOpacity={0.85}>
-            <Download size={17} color="#06B6D4" />
-          </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={async () => { await markRead(file); openItem(file); }}
+        onLongPress={() => {
+          Alert.alert(name, '', [
+            { text: 'Open', onPress: () => openItem(file) },
+            { text: 'Download', onPress: () => downloadItem(file) },
+            { text: 'Share', onPress: () => shareItem(file) },
+            { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(file) },
+            { text: 'Cancel', style: 'cancel' },
+          ]);
+        }}
+        delayLongPress={380}
+        style={[s.fileRow, { backgroundColor: t.card, borderColor: t.border }]}
+      >
+        <View style={[s.fileRowIcon, { backgroundColor: `${accent}12` }]}>
+          <Icon size={20} color={accent} />
         </View>
-      </View>
-    );
-  }
-
-  function CategoryHeader({ title, count, open, onToggle }) {
-    return (
-      <View style={styles.categoryHeaderContainer}>
-        <GradientBorder gradient={GRADIENTS.trainer} borderRadius={16} thickness={3}>
-          <TouchableOpacity onPress={onToggle} style={[styles.categoryHeaderButton, { backgroundColor: 'rgba(20,20,25,0.92)' }]} activeOpacity={0.9}>
-            <View style={styles.categoryLeft}>
-              <Folder size={20} color="#06B6D4" />
-              <View>
-                <Text style={[styles.categoryTitle, { color: theme.text }]}>{title}</Text>
-                <Text style={[styles.categoryCount, { color: theme.text60 }]}>{count} files</Text>
-              </View>
-            </View>
-
-            <ChevronDown size={18} color={theme.text60} style={{ transform: [{ rotate: open ? '0deg' : '-90deg' }] }} />
-          </TouchableOpacity>
-        </GradientBorder>
-      </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[s.fileRowName, { color: t.text }]} numberOfLines={1}>{name}</Text>
+          <Text style={[s.fileRowMeta, { color: t.text50 }]} numberOfLines={1}>
+            {typeLabel}{when ? ` \u00B7 ${when}` : ''}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => downloadItem(file)} hitSlop={12} style={[s.fileRowDl, { borderColor: `${accent}30`, backgroundColor: `${accent}08` }]} activeOpacity={0.8}>
+          <Download size={16} color={accent} />
+        </TouchableOpacity>
+        <ChevronRight size={16} color={t.text30} style={{ marginLeft: 2 }} />
+      </TouchableOpacity>
     );
   }
 
@@ -248,444 +229,259 @@ export default function ClientFilesScreen({ clientId, items, isDark = true, onBa
     const preview = String(note?.content || note?.preview || '').trim();
     const when = note?.createdAt ? formatDateShort(note.createdAt?.toDate?.() || note.createdAt) : null;
     return (
-      <View style={styles.noteCardContainer}>
-        <GradientBorder gradient={GRADIENTS.notes} borderRadius={16} thickness={3}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={async () => {
-              await markRead(note);
-              Alert.alert('Note from coach', preview || '—');
-            }}
-            style={[styles.noteCard, { backgroundColor: 'rgba(20,20,25,0.92)' }]}
-          >
-            <View style={styles.noteHeader}>
-              <View style={styles.noteIconWrap}>
-                <MessageSquare size={18} color="#C084FC" />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.noteLabel, { color: theme.text }]} numberOfLines={1}>
-                  {coach}
-                </Text>
-                <Text style={[styles.noteMeta, { color: theme.text40 }]} numberOfLines={1}>
-                  Coaching note{when ? ` • ${when}` : ''}
-                </Text>
-              </View>
-            </View>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={async () => { await markRead(note); Alert.alert(`Note from ${coach}`, preview || '\u2014'); }}
+        style={[s.noteCard, { backgroundColor: t.card, borderColor: isDark ? 'rgba(192,132,252,0.15)' : 'rgba(192,132,252,0.10)' }]}
+      >
+        <View style={s.noteHeader}>
+          <View style={s.noteIconWrap}>
+            <MessageSquare size={16} color={ACCENT_PURPLE} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[s.noteLabel, { color: t.text }]} numberOfLines={1}>{coach}</Text>
+            <Text style={[s.noteMeta, { color: t.text50 }]}>Coaching note{when ? ` \u00B7 ${when}` : ''}</Text>
+          </View>
+        </View>
+        <Text style={[s.notePreview, { color: t.text70 }]} numberOfLines={3}>{preview || '\u2014'}</Text>
+        <View style={s.noteFooter}>
+          <Text style={s.noteFooterText}>Read full note</Text>
+          <ArrowRight size={13} color={ACCENT_PINK} />
+        </View>
+      </TouchableOpacity>
+    );
+  }
 
-            <Text style={[styles.noteText, { color: theme.text60 }]} numberOfLines={3}>
-              {preview || '—'}
-            </Text>
-
-            <View style={styles.viewFullButton}>
-              <Text style={styles.viewFullText}>View full note</Text>
-              <ArrowRight size={14} color="#FF6B9D" />
-            </View>
-          </TouchableOpacity>
-        </GradientBorder>
+  function SectionBlock({ sectionKey, title, children, count }) {
+    const meta = SECTION_META[sectionKey];
+    return (
+      <View style={s.section}>
+        <View style={s.sectionHead}>
+          <LinearGradient colors={meta.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.sectionAccent} />
+          <View style={[s.sectionIconWrap, { backgroundColor: `${meta.color}14` }]}>
+            <Feather name={meta.icon} size={14} color={meta.color} />
+          </View>
+          <Text style={[s.sectionTitle, { color: t.text50 }]}>{title}</Text>
+          {count != null && <View style={[s.sectionBadge, { backgroundColor: `${meta.color}18` }]}><Text style={[s.sectionBadgeText, { color: meta.color }]}>{count}</Text></View>}
+        </View>
+        <View style={s.sectionBody}>{children}</View>
       </View>
     );
   }
 
-  const markRead = useCallback(async (item) => {
-    if (!clientId || !item?.id) return;
-    await markNotesAndFilesItemRead(clientId, item.id);
-  }, [clientId]);
+  function EmptyCard({ icon, color, title, subtitle, showUpload }) {
+    return (
+      <View style={[s.emptyCard, { borderColor: `${color}${isDark ? '18' : '14'}`, backgroundColor: `${color}06` }]}>
+        <View style={[s.emptyIconWrap, { backgroundColor: `${color}14` }]}>
+          <Feather name={icon} size={24} color={color} />
+        </View>
+        <Text style={[s.emptyTitle, { color: t.text }]}>{title}</Text>
+        <Text style={[s.emptySub, { color: t.text50 }]}>{subtitle}</Text>
+        {showUpload && typeof onUploadPress === 'function' && (
+          <TouchableOpacity activeOpacity={0.85} onPress={onUploadPress}>
+            <LinearGradient colors={[ACCENT_PINK, '#F97316']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.emptyCta}>
+              <Feather name="plus" size={14} color="#fff" />
+              <Text style={s.emptyCtaText}>Upload file</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
-  const confirmDelete = useCallback((item) => {
-    if (!clientId || !item?.id) return;
-    Alert.alert('Delete file?', 'This will remove it from your files.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteNotesAndFilesItem(clientId, item);
-          } catch (e) {
-            Alert.alert('Could not delete', e?.message || 'Please try again.');
-          }
-        },
-      },
-    ]);
-  }, [clientId]);
-
-  const shareItem = useCallback(async (item) => {
-    try {
-      const name = item?.name || item?.title || 'File';
-      const url = item?.url;
-      if (url) {
-        await Share.share({ message: `${name}\n${url}` });
-      } else {
-        await Share.share({ message: name });
-      }
-    } catch (_) {
-      // ignore
-    }
-  }, []);
-
-  const downloadItem = useCallback(async (item) => {
-    const url = item?.url;
-    if (!url) return;
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (can) {
-        await Linking.openURL(url);
-        return;
-      }
-      Alert.alert('Download not available', 'Could not open this file URL on your device.');
-    } catch (e) {
-      Alert.alert('Download failed', e?.message || 'Could not open file.');
-    }
-  }, []);
-
-  const titleCounts = useMemo(() => {
-    const list = Array.isArray(items) ? items : [];
-    const myFilesCount = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note').length;
-    const trainerCount = list.filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId)).length;
-    const notesCount = list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer').length;
-    return { myFilesCount, trainerCount, notesCount };
-  }, [items]);
+  /* ─── render ─── */
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-      <View
-        style={{
-          paddingHorizontal: 14,
-          paddingTop: 8,
-          paddingBottom: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottomWidth: 1,
-          borderBottomColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-        }}
-      >
-        <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }} hitSlop={12}>
+      {/* ── HEADER ── */}
+      <View style={[s.header, { borderBottomColor: t.border }]}>
+        <TouchableOpacity onPress={onBack} style={[s.headerBtn, { backgroundColor: t.glass }]} hitSlop={12}>
           <Feather name="chevron-left" size={20} color={fg} />
         </TouchableOpacity>
-
-        <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8 }}>
-          <Text style={{ color: fg, fontWeight: '900', fontSize: 16, letterSpacing: -0.2 }}>Files & Notes</Text>
-          <Text style={{ color: muted, fontWeight: '700', fontSize: 12 }}>
-            {titleCounts.myFilesCount} files • {titleCounts.trainerCount} shared • {titleCounts.notesCount} notes
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={[s.headerTitle, { color: fg }]}>Files & Notes</Text>
+          <Text style={[s.headerSub, { color: muted }]}>
+            {totalCount.files} files &middot; {totalCount.shared} shared &middot; {totalCount.notes} notes
           </Text>
         </View>
-
-        <View style={{ width: 44 }} />
+        <TouchableOpacity
+          onPress={typeof onUploadPress === 'function' ? onUploadPress : undefined}
+          style={[s.headerBtn, { backgroundColor: isDark ? 'rgba(255,107,157,0.10)' : 'rgba(255,107,157,0.07)' }]}
+          hitSlop={12}
+          activeOpacity={0.8}
+        >
+          <Feather name="plus" size={20} color={ACCENT_PINK} />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[0]}
-      >
-        <View style={[styles.stickyTabsWrap, { backgroundColor: bg }]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsContent}
-          >
-            {FILTERS.map((f, idx) => {
-              const isActive = filter === f;
-              return (
-                <TouchableOpacity
-                  key={f}
-                  onPress={() => setFilter(f)}
-                  style={styles.tabBtn}
-                  activeOpacity={0.85}
-                  hitSlop={12}
-                >
-                  {isActive ? (
-                    <LinearGradient
-                      colors={['#FF6B9D', '#F97316']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.tabGradient, { paddingVertical: 10, shadowColor: '#FF6B9D', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 }]}
-                    >
-                      <Text style={styles.tabTextActive}>{FILTER_LABELS[f] || f}</Text>
-                    </LinearGradient>
-                  ) : (
-                    <Text style={[styles.tabText, { color: theme.text40 }]}>{FILTER_LABELS[f] || f}</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.body}>
-          {showPhotos && (
-            <View style={styles.sectionWrap}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionKicker, { color: theme.text60 }]}>MY SNAPSHOTS</Text>
-                <LinearGradient colors={GRADIENTS.myFiles} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sectionUnderline} />
-              </View>
-              <View style={{ gap: 8 }}>
-                {(lists.myFiles || []).filter((f) => isNotesImageFile(f)).length > 0 ? (
-                  <SnapshotThumbs files={(lists.myFiles || []).filter((f) => isNotesImageFile(f))} />
-                ) : null}
-                {(lists.myFiles || []).filter((f) => isNotesImageFile(f)).length === 0 ? (
-                  <View style={[styles.emptyCard, { borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(255,107,157,0.05)' }]}>
-                    <View style={styles.emptyIconCircle}>
-                      <Share2 size={26} color="rgba(255,255,255,0.75)" />
+      {/* ── FILTER PILLS ── */}
+      <View style={[s.pillBar, { backgroundColor: bg, borderBottomColor: t.border }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillScroll}>
+          {FILTERS.map((f) => {
+            const active = filter === f;
+            return (
+              <TouchableOpacity key={f} onPress={() => setFilter(f)} activeOpacity={0.85}>
+                {active ? (
+                  <LinearGradient colors={[ACCENT_PURPLE, ACCENT_PINK, '#F97316']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.pillActive}>
+                    <Text style={s.pillActiveText}>{FILTER_LABELS[f]}</Text>
+                  </LinearGradient>
+                ) : (
+                  <LinearGradient colors={['rgba(192,132,252,0.30)', 'rgba(255,107,157,0.20)', 'rgba(249,115,22,0.15)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.pillIdleRing}>
+                    <View style={[s.pillIdleInner, { backgroundColor: t.bg }]}>
+                      <Text style={[s.pillIdleText, { color: t.text50 }]}>{FILTER_LABELS[f]}</Text>
                     </View>
-                    <Text style={[styles.emptyTitle, { color: theme.text }]}>No snapshots yet</Text>
-                    <Text style={[styles.emptySubtitle, { color: theme.text60 }]}>
-                      Upload progress photos to keep a visual timeline of your wins.
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+                  </LinearGradient>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ── BODY ── */}
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* HERO: FROM YOUR COACH (only shown if has content) */}
+        {showDocs && (lists.trainerShared || []).length > 0 && (
+          <SectionBlock sectionKey="trainer" title="FROM YOUR COACH" count={lists.trainerShared.length}>
+            <View style={{ gap: 8 }}>
+              {lists.trainerShared.map((file) => (
+                <FileRow key={file.id || file.url || file.name} file={file} accent={ACCENT_CYAN} />
+              ))}
             </View>
-          )}
+          </SectionBlock>
+        )}
 
-          {showDocs && (
-            <View style={styles.sectionWrap}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionKicker, { color: theme.text60 }]}>TRAINER SHARED</Text>
-                <LinearGradient colors={GRADIENTS.trainer} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sectionUnderline} />
+        {/* SECONDARY: MY FILES */}
+        {showPhotos && (
+          <SectionBlock sectionKey="myFiles" title="MY FILES" count={lists.myFiles?.length || 0}>
+            {photos.length > 0 && <SnapshotThumbs files={photos} />}
+
+            {nonPhotoMyFiles.length > 0 && (
+              <View style={{ gap: 8, marginTop: photos.length > 0 ? 10 : 0 }}>
+                {nonPhotoMyFiles.map((file) => (
+                  <FileRow key={file.id || file.url || file.name} file={file} accent={ACCENT_PINK} />
+                ))}
               </View>
+            )}
 
-              <CategoryHeader
-                title="Documents"
-                count={(lists.trainerShared || []).length}
-                open={docsOpen}
-                onToggle={() => setDocsOpen((v) => !v)}
+            {(lists.myFiles || []).length === 0 && (
+              <EmptyCard
+                icon="upload-cloud"
+                color={ACCENT_PINK}
+                title="Share your progress"
+                subtitle="Upload photos, documents, or spreadsheets using the + button above."
               />
-              {docsOpen ? (
-                <View style={{ gap: 8 }}>
-                  {(lists.trainerShared || []).map((file) => (
-                    <TrainerDocRow key={file.id || file.url || file.name} file={file} />
-                  ))}
-                  {(lists.trainerShared || []).length === 0 ? (
-                    <View style={[styles.emptyCard, { borderColor: 'rgba(255,255,255,0.10)', backgroundColor: 'rgba(6,182,212,0.05)' }]}>
-                      <View style={styles.emptyIconCircle}>
-                        <FileText size={26} color="rgba(255,255,255,0.75)" />
-                      </View>
-                      <Text style={[styles.emptyTitle, { color: theme.text }]}>No shared docs yet</Text>
-                      <Text style={[styles.emptySubtitle, { color: theme.text60 }]}>
-                        When your trainer shares documents, they’ll show up here.
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
-          )}
+            )}
 
-          {showNotes && (
-            <View style={styles.sectionWrap}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionKicker, { color: theme.text60 }]}>NOTES FROM TRAINER</Text>
-                <LinearGradient colors={GRADIENTS.notes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sectionUnderline} />
-              </View>
+          </SectionBlock>
+        )}
 
-              {(lists.notes || []).length > 0 ? (
-                <View style={{ gap: 10 }}>
-                  {(lists.notes || []).map((note) => (
-                    <NoteCard key={note.id || note.createdAt || Math.random()} note={note} />
-                  ))}
-                </View>
-              ) : (
-                <GradientBorder gradient={GRADIENTS.notes} borderRadius={16} thickness={2}>
-                  <View style={[styles.notesEmpty, { backgroundColor: 'rgba(192,132,252,0.05)' }]}>
-                    <MessageSquare size={32} color="#C084FC" />
-                    <Text style={[styles.notesEmptyTitle, { color: theme.text }]}>No notes yet</Text>
-                    <Text style={[styles.notesEmptySub, { color: theme.text60 }]}>
-                      Your trainer will share coaching notes here.
-                    </Text>
-                  </View>
-                </GradientBorder>
-              )}
+        {/* TERTIARY: COACHING NOTES (only shown if has content) */}
+        {showNotes && (lists.notes || []).length > 0 && (
+          <SectionBlock sectionKey="notes" title="COACHING NOTES" count={lists.notes.length}>
+            <View style={{ gap: 10 }}>
+              {lists.notes.map((note) => (
+                <NoteCard key={note.id || note.createdAt || Math.random()} note={note} />
+              ))}
             </View>
-          )}
-        </View>
+          </SectionBlock>
+        )}
+
+        {/* Totally empty state */}
+        {(lists.trainerShared || []).length === 0 && (lists.myFiles || []).length === 0 && (lists.notes || []).length === 0 && (
+          <View style={s.totallyEmpty}>
+            <Feather name="folder" size={44} color="rgba(255,255,255,0.2)" />
+            <Text style={s.totallyEmptyTitle}>Files and documents will appear here</Text>
+            <Text style={s.totallyEmptySubtext}>Uploads, coach documents, and notes all in one place</Text>
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      <TouchableOpacity
-        activeOpacity={0.92}
-        onPress={typeof onUploadPress === 'function' ? onUploadPress : undefined}
-        style={[styles.fab, typeof onUploadPress === 'function' ? null : { opacity: 0.45 }]}
-        hitSlop={10}
-      >
-        <LinearGradient colors={['#FF6B9D', '#F97316']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fabGrad}>
-          <Upload size={22} color="#FFFFFF" />
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <PdfViewerModal
-        visible={pdfViewer.visible}
-        url={pdfViewer.url}
-        name={pdfViewer.name}
-        isDark={isDark}
-        onClose={() => setPdfViewer({ visible: false, url: null, name: null })}
-      />
-      <SpreadsheetViewerModal
-        visible={spreadsheetViewer.visible}
-        url={spreadsheetViewer.url}
-        name={spreadsheetViewer.name}
-        isDark={isDark}
-        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null })}
-      />
-      <DocumentViewerModal
-        visible={documentViewer.visible}
-        trainerId={documentViewer.trainerId}
-        documentId={documentViewer.documentId}
-        title={documentViewer.title}
-        isDark={isDark}
-        onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })}
-      />
-      <MediaViewerModal
-        visible={mediaViewer.visible}
-        url={mediaViewer.url}
-        kind={mediaViewer.kind}
-        name={mediaViewer.name}
-        isDark={isDark}
-        onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
-      />
-      <EmbedWebViewModal
-        visible={embedWebViewer.visible}
-        uri={embedWebViewer.uri}
-        title={embedWebViewer.title}
-        isDark={isDark}
-        onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
-      />
+      {/* ── MODALS ── */}
+      <PdfViewerModal visible={pdfViewer.visible} url={pdfViewer.url} name={pdfViewer.name} isDark={isDark} onClose={() => setPdfViewer({ visible: false, url: null, name: null })} />
+      <SpreadsheetViewerModal visible={spreadsheetViewer.visible} url={spreadsheetViewer.url} name={spreadsheetViewer.name} isDark={isDark} onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null })} />
+      <DocumentViewerModal visible={documentViewer.visible} trainerId={documentViewer.trainerId} documentId={documentViewer.documentId} title={documentViewer.title} isDark={isDark} onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })} />
+      <MediaViewerModal visible={mediaViewer.visible} url={mediaViewer.url} kind={mediaViewer.kind} name={mediaViewer.name} isDark={isDark} onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })} />
+      <EmbedWebViewModal visible={embedWebViewer.visible} uri={embedWebViewer.uri} title={embedWebViewer.title} isDark={isDark} onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 112 },
-  stickyTabsWrap: { paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  tabsShell: {
-    marginHorizontal: 16,
-  },
-  tabsContent: { paddingHorizontal: 0, paddingVertical: 0, gap: 18 },
-  tabsUnderline: { display: 'none' },
-  tabBtn: { borderRadius: 12, overflow: 'hidden', paddingVertical: 6, paddingHorizontal: 16 },
-  tabBtnActive: {},
-  tabBtnInactive: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  tabGradient: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabText: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
-  tabTextActive: { fontSize: 13, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.2 },
+/* ───────── STYLES ───────── */
 
-  body: { paddingHorizontal: 16, paddingTop: 18, gap: 24 },
-  sectionWrap: { gap: 12 },
-  sectionHeaderWrap: { marginTop: 0 },
-  sectionHeaderRow: { gap: 8 },
-  sectionKicker: { fontSize: 11, fontWeight: '900', letterSpacing: 1.6 },
-  sectionUnderline: { height: 2, width: 120, borderRadius: 2, opacity: 0.95 },
-  sectionHeader: { fontSize: 11, fontWeight: '900', letterSpacing: 1.6 },
+const s = StyleSheet.create({
+  /* header */
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerBtn: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '900', letterSpacing: -0.3 },
+  headerSub: { fontSize: 11, fontWeight: '700', marginTop: 1 },
 
-  gradientWrapper: {},
-  gradientInner: { overflow: 'hidden' },
-
-  thumbHint: { fontSize: 11, fontWeight: '600', marginTop: 6, marginBottom: 2 },
-  thumbPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)' },
-  docStrip: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, overflow: 'hidden' },
-  docStripAccent: { width: 4, alignSelf: 'stretch' },
-  docStripIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: 'rgba(6,182,212,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,182,212,0.22)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  /* pills */
+  pillBar: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  pillScroll: { paddingHorizontal: 16, gap: 8 },
+  pillActive: {
+    paddingHorizontal: 20, paddingVertical: 9, borderRadius: 20,
+    ...Platform.select({ ios: { shadowColor: ACCENT_PURPLE, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }, android: { elevation: 6 } }),
   },
-  docStripMeta: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  docStripDl: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(6,182,212,0.28)',
-    backgroundColor: 'rgba(6,182,212,0.06)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  pillActiveText: { fontSize: 13, fontWeight: '800', color: '#FFF', letterSpacing: -0.2 },
+  pillIdleRing: { borderRadius: 20, padding: 1.5 },
+  pillIdleInner: { paddingHorizontal: 18, paddingVertical: 7.5, borderRadius: 19 },
+  pillIdleText: { fontSize: 13, fontWeight: '700', letterSpacing: -0.2 },
 
-  fileName: { fontSize: 14, fontWeight: '900', letterSpacing: -0.2 },
+  /* scroll body */
+  scroll: { paddingHorizontal: 16, paddingTop: 16 },
 
-  categoryHeaderContainer: { marginHorizontal: 0, marginBottom: 0 },
-  categoryHeaderButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: 50,
-    paddingHorizontal: 16,
-  },
-  categoryLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
-  categoryTitle: { fontSize: 14, fontWeight: '900', letterSpacing: -0.2 },
-  categoryCount: { fontSize: 12, marginTop: 2, fontWeight: '700' },
+  /* section wrapper */
+  section: { marginBottom: 24 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 8 },
+  sectionAccent: { width: 3, height: 16, borderRadius: 2 },
+  sectionIconWrap: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1.4, flex: 1 },
+  sectionBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  sectionBadgeText: { fontSize: 11, fontWeight: '800' },
+  sectionBody: { gap: 0 },
 
-  noteCardContainer: { marginHorizontal: 0, marginBottom: 0 },
-  noteCard: { padding: 14 },
-  noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  noteIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    backgroundColor: 'rgba(192,132,252,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(192,132,252,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noteLabel: { fontSize: 14, fontWeight: '900', letterSpacing: -0.2 },
-  noteMeta: { marginTop: 2, fontSize: 11, fontWeight: '700' },
-  noteText: { fontSize: 13, fontWeight: '600', lineHeight: 20, marginBottom: 10 },
-  viewFullButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  viewFullText: { fontSize: 12, fontWeight: '800', color: '#FF6B9D' },
+  /* snapshot thumbs */
+  thumbWrap: { borderRadius: 16, borderWidth: 2, overflow: 'hidden' },
+  thumbPlaceholder: { borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  thumbHint: { fontSize: 11, fontWeight: '600', marginTop: 8 },
 
-  emptyCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 24,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    gap: 10,
+  /* file row */
+  fileRow: {
+    flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, borderWidth: 1, gap: 12,
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }, android: { elevation: 1 } }),
   },
-  emptyIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
-  emptySubtitle: { fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 18 },
+  fileRowIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  fileRowName: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  fileRowMeta: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  fileRowDl: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 
-  notesEmpty: { paddingVertical: 18, paddingHorizontal: 18, alignItems: 'center', gap: 8 },
-  notesEmptyTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -0.2, marginTop: 2 },
-  notesEmptySub: { fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 17, marginTop: 2 },
-
-  fab: { position: 'absolute', right: 18, bottom: 18, width: 56, height: 56, borderRadius: 28, elevation: 6 },
-  fabGrad: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+  /* note card */
+  noteCard: {
+    borderRadius: 16, borderWidth: 1, padding: 16,
+    ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }, android: { elevation: 1 } }),
   },
+  noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  noteIconWrap: { width: 34, height: 34, borderRadius: 12, backgroundColor: 'rgba(192,132,252,0.12)', alignItems: 'center', justifyContent: 'center' },
+  noteLabel: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  noteMeta: { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  notePreview: { fontSize: 13, fontWeight: '600', lineHeight: 20, marginBottom: 12 },
+  noteFooter: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  noteFooterText: { fontSize: 12, fontWeight: '800', color: ACCENT_PINK },
+
+  /* empty card */
+  emptyCard: { borderWidth: 1, borderRadius: 18, borderStyle: 'dashed', paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center', gap: 10 },
+  emptyIconWrap: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  emptyTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
+  emptySub: { fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 19, maxWidth: 260 },
+  emptyCta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 6 },
+  emptyCtaText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+
+  /* totally empty state */
+  totallyEmpty: { paddingVertical: 60, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  totallyEmptyTitle: { fontSize: 15, fontWeight: '800', color: 'rgba(255,255,255,0.5)', letterSpacing: -0.2 },
+  totallyEmptySubtext: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.3)', textAlign: 'center', maxWidth: 260 },
 });
-

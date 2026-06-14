@@ -1,20 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  ActionSheetIOS,
   ActivityIndicator,
-  FlatList,
-  Modal,
-  Image,
   Alert,
-  Share,
+  Animated,
+  FlatList,
+  Image,
+  Modal,
   Platform,
   Pressable,
-  ActionSheetIOS,
-  Animated,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
   useWindowDimensions,
+  View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';

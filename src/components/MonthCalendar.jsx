@@ -6,26 +6,28 @@ const COLORS = {
   dark: {
     text: '#FFFFFF',
     textSecondary: 'rgba(255,255,255,0.6)',
-    border: 'rgba(255,255,255,0.1)',
+    border: 'rgba(255,255,255,0.10)',
     glass: 'rgba(255,255,255,0.04)',
     glassBorder: 'rgba(255,255,255,0.08)',
+    surface: '#141418',
     primary: '#FF6B9D',
     primaryLight: 'rgba(255,107,157,0.15)',
   },
   light: {
-    text: '#000000',
-    textSecondary: 'rgba(0,0,0,0.6)',
-    border: 'rgba(0,0,0,0.1)',
-    glass: 'rgba(0,0,0,0.04)',
-    glassBorder: 'rgba(0,0,0,0.08)',
+    text: '#0A0A0F',
+    textSecondary: 'rgba(10,10,15,0.55)',
+    border: 'rgba(10,10,15,0.10)',
+    glass: '#FFFFFF',
+    glassBorder: 'rgba(10,10,15,0.10)',
+    surface: '#FFFFFF',
     primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.15)',
+    primaryLight: 'rgba(255,107,157,0.12)',
   },
 };
 
 const toKey = (d) => d.toISOString().slice(0, 10);
 
-export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme = 'dark' }) => {
+export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme = 'dark', borderless = false }) => {
   const colors = COLORS[theme] || COLORS.dark;
   const selected = selectedDate ? new Date(String(selectedDate).slice(0, 10) + 'T12:00:00') : null;
   const [cursor, setCursor] = useState(() => selected || new Date());
@@ -56,7 +58,17 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
   }, [year, month0, startWeekday, daysInMonth]);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+    <View
+      style={[
+        styles.card,
+        borderless && styles.cardBorderless,
+        {
+          backgroundColor: borderless ? 'transparent' : colors.surface,
+          borderColor: colors.glassBorder,
+          borderWidth: borderless ? 0 : 1,
+        },
+      ]}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => setCursor(new Date(year, month0 - 1, 1))}
@@ -75,11 +87,11 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
         </TouchableOpacity>
       </View>
 
-      <View style={styles.weekdays}>
+      <View style={[styles.weekdays, borderless && styles.weekdaysBorderless]}>
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, idx) => (
-          <Text key={`${d}-${idx}`} style={[styles.weekday, { color: colors.textSecondary }]}>
-            {d}
-          </Text>
+          <View key={`${d}-${idx}`} style={styles.weekdayCell}>
+            <Text style={[styles.weekday, { color: colors.textSecondary }]}>{d}</Text>
+          </View>
         ))}
       </View>
 
@@ -105,13 +117,15 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
                 <Text style={[styles.dayText, { color: isSelected ? 'white' : colors.text }]}>
                   {cell.getDate()}
                 </Text>
-                {hasSession && (
+                {hasSession ? (
                   <View
                     style={[
                       styles.dot,
                       { backgroundColor: isSelected ? 'white' : colors.primary },
                     ]}
                   />
+                ) : (
+                  <View style={styles.dotSpacer} />
                 )}
               </TouchableOpacity>
             );
@@ -125,14 +139,18 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
 const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
-    borderWidth: 1,
     padding: 12,
+  },
+  cardBorderless: {
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   title: {
     fontSize: 14,
@@ -149,15 +167,28 @@ const styles = StyleSheet.create({
   },
   weekdays: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-    paddingHorizontal: 6,
+    marginBottom: 4,
   },
-  weekday: { width: 32, textAlign: 'center', fontSize: 11, fontWeight: '700' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 6, marginBottom: 6 },
-  cell: { width: 32, height: 38, alignItems: 'center', justifyContent: 'center' },
-  dayBtn: { borderRadius: 12 },
-  dayText: { fontSize: 12, fontWeight: '700' },
-  dot: { width: 5, height: 5, borderRadius: 3, marginTop: 2 },
+  weekdaysBorderless: {
+    marginBottom: 2,
+  },
+  weekdayCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekday: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  row: { flexDirection: 'row', marginBottom: 4 },
+  cell: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+  },
+  dayBtn: { borderRadius: 10 },
+  dayText: { fontSize: 13, fontWeight: '700', lineHeight: 16 },
+  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 2 },
+  dotSpacer: { width: 4, height: 4, marginTop: 2 },
 });
 

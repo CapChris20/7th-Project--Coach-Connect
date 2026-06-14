@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image as RNImage } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import FluidGlass from '../ui/FluidGlass';
+import BlurBackdropPlate from '../ui/BlurBackdropPlate';
 import { useMergedNavigation } from '../../navigation/AppNavigationContext';
 import { useTheme } from '../ui/ThemeContext';
 
@@ -43,20 +44,28 @@ function GradientProfileHeaderIcon({ size = 36 }) {
 
 /**
  * Main app header: title, optional back, profile + settings actions.
- * (Firebase/backend project id may still be `anatrox-auth`; this UI is Coach Connect.)
+ * When the parent is SafeAreaView (top edge), pass skipTopSafeInset so top inset is not applied twice.
  */
 export default function CoachConnectHeader({
   title = 'COACHCONNECT',
   onBack,
+  headerLeft,
   onProfilePress: onProfilePressProp,
   onSettingsPress: onSettingsPressProp,
-  ...rest
+  skipTopSafeInset = false,
+  /** When true, profile + settings stay visible even with a back button (default: hidden on sub-screens). */
+  showHeaderActions,
 }) {
-  const { colors, isDark } = useTheme();
-  const titleColor = colors.text;
-  const headerBackground = isDark ? colors.background : '#FFFFFF';
-  const borderColor = colors.border;
-  const Container = isDark ? View : FluidGlass;
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const colors = theme?.colors ?? {};
+  const isDark = Boolean(theme?.isDark);
+  const titleColor = colors.text ?? (isDark ? '#FFFFFF' : '#111827');
+  const borderColor = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)';
+  const containerBlurIntensity = isDark ? 28 : 18;
+  const containerTint = isDark ? 'dark' : 'light';
+  const containerTintColor = isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)';
+  const glassBackground = isDark ? 'rgba(12,12,18,0.55)' : 'rgba(255,255,255,0.55)';
   const titleShadowStyle = isDark
     ? {}
     : {
@@ -70,72 +79,109 @@ export default function CoachConnectHeader({
     onSettingsPress: onSettingsPressProp,
   });
 
+  const sideActionsVisible = showHeaderActions ?? !onBack;
+
   return (
-    <Container
-      {...(!isDark && {
-        transmission: 0.92,
-        roughness: 0.1,
-        tint: headerBackground,
-      })}
+    <BlurBackdropPlate
+      intensity={containerBlurIntensity}
+      tint={containerTint}
       style={[
         styles.header,
         {
-          backgroundColor: headerBackground,
+          paddingTop: (skipTopSafeInset ? 0 : insets.top) + 12,
           borderBottomColor: borderColor,
+          backgroundColor: glassBackground,
         },
       ]}
+      contentWrapperStyle={styles.headerContent}
     >
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: containerTintColor }]} pointerEvents="none" />
       {onBack ? (
         <TouchableOpacity onPress={onBack} style={styles.backButton} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Ionicons name="chevron-back" size={28} color={titleColor} />
         </TouchableOpacity>
-      ) : null}
+      ) : headerLeft ? (
+        <View style={styles.headerLeftWrap}>{headerLeft}</View>
+      ) : (
+        <View style={styles.headerSideSlot} />
+      )}
       <Text
-        style={[styles.headerTitle, titleShadowStyle, { color: titleColor, opacity: onBack ? 1 : 0 }]}
+        style={[
+          styles.headerTitle,
+          titleShadowStyle,
+          { color: titleColor, opacity: sideActionsVisible && !onBack && !headerLeft ? 0 : 1 },
+        ]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
       >
         {title}
       </Text>
-      <View style={styles.headerActions}>
-        <TouchableOpacity onPress={onProfilePress} style={styles.headerProfileButton}>
-          <GradientProfileHeaderIcon size={36} />
-        </TouchableOpacity>
+      {sideActionsVisible ? (
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={onProfilePress} style={styles.headerProfileButton}>
+            <GradientProfileHeaderIcon size={36} />
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={onSettingsPress} style={styles.settingsButton}>
-          <Image
-            source={require('../../assets/icons/settings.png')}
-            style={styles.settingsIcon}
-          />
-        </TouchableOpacity>
-      </View>
-    </Container>
+          <TouchableOpacity onPress={onSettingsPress} style={styles.settingsButton}>
+            <Image
+              source={require('../../assets/icons/settings.png')}
+              style={styles.settingsIcon}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.headerSideSlot} />
+      )}
+    </BlurBackdropPlate>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    borderBottomWidth: 1,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 24,
+    zIndex: 100,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingLeft: 12,
     paddingRight: 8,
-    paddingTop: 12,
     paddingBottom: 12,
-    marginTop: 0,
-    borderBottomWidth: 1,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    position: 'relative',
   },
   backButton: {
     padding: 8,
-    marginRight: 4,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSideSlot: {
+    width: 44,
+    height: 44,
+  },
+  headerLeftWrap: {
+    flexShrink: 0,
+    maxWidth: 148,
+    justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: 0.4,
     textAlign: 'center',
+    paddingHorizontal: 4,
   },
   headerActions: {
     flexDirection: 'row',

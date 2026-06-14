@@ -1,0 +1,1566 @@
+{
+  "ranAt": "2026-05-29T06:01:12.829Z",
+  "caseCount": 100,
+  "results": [
+    {
+      "id": "smashburger-classic",
+      "query": "smashburger classic smash",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "Double Classic Smash Burger by Smashburger and ...",
+        "calories": 970,
+        "protein": 54,
+        "carbs": 42,
+        "fat": 62,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "steak-n-shake-double",
+      "query": "steak n shake double steakburger",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "Steak N Shake Double Steakburger",
+        "calories": 560,
+        "protein": 0,
+        "carbs": 34,
+        "fat": 34,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 6
+    },
+    {
+      "id": "freddys-steakburger",
+      "query": "freddys steakburger single",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "freddys steakburger single",
+        "calories": 1070,
+        "protein": 83,
+        "carbs": 31,
+        "fat": 70,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "cookout-cheddar",
+      "query": "cookout cheddar burger",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "CookOut Burger and Nutrition Facts - fatsecret",
+        "calories": 325,
+        "protein": 22,
+        "carbs": 27,
+        "fat": 14,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "habit-charburger",
+      "query": "habit charburger with cheese",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "Results for \"The Habit Charburger with Cheese\"",
+        "calories": 570,
+        "protein": 22,
+        "carbs": 47,
+        "fat": 31,
+        "serving": "The Habit Charburger with Cheese",
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "fatburger-kingburger",
+      "query": "fatburger kingburger",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "fatburger kingburger",
+        "calories": 850,
+        "protein": 50,
+        "carbs": 69,
+        "fat": 41,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "rallys-big-buford",
+      "query": "rallys big buford",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "rallys big buford",
+        "calories": 660,
+        "protein": 38,
+        "carbs": 39,
+        "fat": 39,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "checkers-baconzilla",
+      "query": "checkers baconzilla",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "checkers baconzilla",
+        "calories": 810,
+        "protein": 46,
+        "carbs": 40,
+        "fat": 52,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "white-castle-sliders",
+      "query": "white castle cheese slider 4 pack",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "White Castle Cheese Slider 4 Pack",
+        "calories": 170,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 9,
+        "serving": null,
+        "consistency": 65
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "krystal-steamed",
+      "query": "krystal steamed cheeseburger",
+      "category": "burger",
+      "ok": false,
+      "error": "no_rows",
+      "rowCount": 0
+    },
+    {
+      "id": "portillos-italian-beef",
+      "query": "portillos italian beef sandwich",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "Portillos Italian Beef Sandwich with Peppers by Portillo's ...",
+        "calories": 671,
+        "protein": 47,
+        "carbs": 60,
+        "fat": 28,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "applebees-classic-burger",
+      "query": "applebees classic burger",
+      "category": "burger",
+      "ok": true,
+      "top": {
+        "name": "applebees classic burger",
+        "calories": 781,
+        "protein": 0,
+        "carbs": 45,
+        "fat": 48,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "wawa-italian-hoagie",
+      "query": "wawa italian hoagie shorti",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "wawa italian hoagie shorti",
+        "calories": 530,
+        "protein": 34,
+        "carbs": 55,
+        "fat": 23,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "schlotzskys-original",
+      "query": "schlotzskys small original sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Schlotzsky's Deli The Original Sandwich",
+        "calories": 520,
+        "protein": 28,
+        "carbs": 47,
+        "fat": 24,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "quiznos-turkey-guac",
+      "query": "quiznos turkey bacon guacamole sub",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Quiznos Turkey Bacon Guacamole",
+        "calories": 420,
+        "protein": 0,
+        "carbs": 33,
+        "fat": 20,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "blimpie-turkey-sub",
+      "query": "blimpie turkey sub 6 inch",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Sub Components Meats Protein Turkey by Blimpie and ...",
+        "calories": 30,
+        "protein": 5,
+        "carbs": 1,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "mcalisters-club",
+      "query": "mcalisters club sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "The McAlister's Club Sandwich by ...",
+        "calories": 900,
+        "protein": 45,
+        "carbs": 90,
+        "fat": 44,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "einstein-lox-bagel",
+      "query": "einstein bros nova lox sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Nova Lox on Plain Bagel by Einstein Brothers Bagels ...",
+        "calories": 520,
+        "protein": 24,
+        "carbs": 61,
+        "fat": 20,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "corner-bakery-turkey",
+      "query": "corner bakery cafe turkey harvest sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Corner Bakery Cafe Turkey Harvest Sandwich",
+        "calories": 470,
+        "protein": 39,
+        "carbs": 66,
+        "fat": 5,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "pret-chicken-avocado",
+      "query": "pret a manger chicken avocado sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Pret A Manger Chicken Avocado Sandwich",
+        "calories": 920,
+        "protein": 28,
+        "carbs": 85,
+        "fat": 55,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "capriottis-bobbie",
+      "query": "capriottis the bobbie sandwich",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Capriottis The Bobbie Sandwich",
+        "calories": 992,
+        "protein": 127,
+        "carbs": 32,
+        "fat": 32,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "potbelly-mushroom",
+      "query": "potbelly mushroom melt original",
+      "category": "sandwich",
+      "ok": true,
+      "top": {
+        "name": "Potbelly Mushroom Melt Original",
+        "calories": 720,
+        "protein": 51,
+        "carbs": 67,
+        "fat": 27,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "round-table-personal",
+      "query": "round table personal pepperoni pizza",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Round Table Personal Pepperoni Pizza · ¼ pizza",
+        "calories": 160,
+        "protein": 7,
+        "carbs": 16,
+        "fat": 8,
+        "serving": "¼ pizza",
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "cpk-bbq-chicken-slice",
+      "query": "california pizza kitchen bbq chicken pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "California Pizza Kitchen Crispy Thin Crust Bbq Chicken ...",
+        "calories": 410,
+        "protein": 11,
+        "carbs": 51,
+        "fat": 15,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "donatos-pepperoni-thin",
+      "query": "donatos pepperoni thin crust pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Donatos Pepperoni Thin Crust Pizza Slice · 4 slices",
+        "calories": 560,
+        "protein": 36,
+        "carbs": 40,
+        "fat": 28,
+        "serving": "4 slices",
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "godfathers-taco-slice",
+      "query": "godfathers taco pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Godfathers Taco Pizza Slice",
+        "calories": 200,
+        "protein": 8,
+        "carbs": 25,
+        "fat": 8,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "jets-buffalo-slice",
+      "query": "jets pizza buffalo chicken pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Jets Pizza Buffalo Chicken Pizza Slice · 2 slices",
+        "calories": 760,
+        "protein": 38,
+        "carbs": 80,
+        "fat": 32,
+        "serving": "2 slices",
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "east-of-chicago-pepperoni",
+      "query": "east of chicago pepperoni pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "East Of Chicago Pepperoni Pizza Slice · 2 slices",
+        "calories": 400,
+        "protein": 20,
+        "carbs": 30,
+        "fat": 24,
+        "serving": "2 slices",
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "pagliacci-cheese-slice",
+      "query": "pagliacci cheese pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Pagliacci Cheese Pizza Slice",
+        "calories": 460,
+        "protein": 22,
+        "carbs": 58,
+        "fat": 16,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "ledo-pepperoni-square",
+      "query": "ledo pizza pepperoni square slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "ledo pizza pepperoni square slice · 4 slices",
+        "calories": 560,
+        "protein": 20,
+        "carbs": 32,
+        "fat": 40,
+        "serving": "4 slices",
+        "consistency": 100
+      },
+      "rowCount": 6
+    },
+    {
+      "id": "rosatis-thin-cheese",
+      "query": "rosatis thin crust cheese pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "rosatis thin crust cheese pizza slice",
+        "calories": 120,
+        "protein": 7,
+        "carbs": 6,
+        "fat": 8,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "unos-deep-dish",
+      "query": "unos deep dish cheese pizza slice",
+      "category": "pizza",
+      "ok": true,
+      "top": {
+        "name": "Unos Deep Dish Cheese Pizza Slice · ¼ pizza",
+        "calories": 2220,
+        "protein": 92,
+        "carbs": 112,
+        "fat": 157,
+        "serving": "¼ pizza",
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "kfc-pot-pie",
+      "query": "kfc chicken pot pie",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Chicken Pot Pie by Kfc and Nutrition Facts - MyNetDiary",
+        "calories": 720,
+        "protein": 26,
+        "carbs": 60,
+        "fat": 41,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "kfc-mac-bowl",
+      "query": "kfc mac and cheese bowl",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Kfc Mac And Cheese Bowl · KFC Meals The ultimate tool to track calories, protein, carbs, and fat in y",
+        "calories": 820,
+        "protein": 37,
+        "carbs": 70,
+        "fat": 43,
+        "serving": "KFC Meals The ultimate tool to track calories, protein, carbs, and fat in y",
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "bojangles-cajun-biscuit",
+      "query": "bojangles cajun chicken fillet biscuit",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Bojangles' Cajun Filet Biscuit",
+        "calories": 570,
+        "protein": 23,
+        "carbs": 57,
+        "fat": 27,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "golden-chick-2pc",
+      "query": "golden chick 2 piece mixed chicken",
+      "category": "chicken",
+      "ok": false,
+      "error": "no_rows",
+      "rowCount": 0
+    },
+    {
+      "id": "slim-chickens-tenders",
+      "query": "slim chickens tenders 3 piece",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "slim chickens tenders 3 piece",
+        "calories": 285,
+        "protein": 33,
+        "carbs": 9,
+        "fat": 15,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "wingstop-mango-8",
+      "query": "wingstop mango habanero wings 8 piece",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Mango Habanero Boneless Wings by Wingstop by Wing ...",
+        "calories": 450,
+        "protein": 20,
+        "carbs": 45,
+        "fat": 23,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "hooters-fried-pickles",
+      "query": "hooters fried pickles basket",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Fried Pickles by Hooters and Nutrition Facts - MyNetDiary",
+        "calories": 580,
+        "protein": 6,
+        "carbs": 44,
+        "fat": 43,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "jollibee-chickenjoy",
+      "query": "jollibee chickenjoy 2 piece",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Jollibee Chickenjoy 2 Piece",
+        "calories": 380,
+        "protein": 15,
+        "carbs": 15,
+        "fat": 21,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "pollo-tropical-tropichop",
+      "query": "pollo tropical tropichop original",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Pollo Tropical Tropichop Original",
+        "calories": 340,
+        "protein": 34,
+        "carbs": 31,
+        "fat": 9,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "nandos-quarter",
+      "query": "nandos medium chicken quarter",
+      "category": "chicken",
+      "ok": true,
+      "top": {
+        "name": "Nandos Medium Chicken Quarter",
+        "calories": 140,
+        "protein": 13,
+        "carbs": 0,
+        "fat": 9,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "del-taco-chicken-taco",
+      "query": "del taco grilled chicken soft taco",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Del Taco Grilled Chicken Soft Taco",
+        "calories": 480,
+        "protein": 22,
+        "carbs": 37,
+        "fat": 26,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "torchys-trailer-park",
+      "query": "torchys tacos trailer park taco",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Secret Menu Trailer Park Hillbilly Style by Torchy's Tacos ...",
+        "calories": 638,
+        "protein": 35,
+        "carbs": 24,
+        "fat": 40,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "rubios-fish-taco-plate",
+      "query": "rubios coastal grill fish taco plate",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Rubios Coastal Grill Fish Taco Plate",
+        "calories": 690,
+        "protein": 70,
+        "carbs": 43,
+        "fat": 32,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "chronic-tacos-burrito",
+      "query": "chronic tacos carne asada burrito",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Proteins Carne Asada by Chronic Tacos and Nutrition ...",
+        "calories": 100,
+        "protein": 12,
+        "carbs": 1,
+        "fat": 6,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "on-the-border-sampler",
+      "query": "on the border grande sampler",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "On The Border Grande Sampler",
+        "calories": 2000,
+        "protein": 0,
+        "carbs": 109,
+        "fat": 134,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "chilis-skillet-queso",
+      "query": "chilis skillet queso with chips",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Chilis Skillet Queso With Chips",
+        "calories": 420,
+        "protein": 21,
+        "carbs": 13,
+        "fat": 31,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "tgi-mozzarella",
+      "query": "tgi fridays mozzarella sticks",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Tgi Fridays Mozzarella Sticks",
+        "calories": 540,
+        "protein": 32,
+        "carbs": 71,
+        "fat": 17,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "chilis-fajitas",
+      "query": "chilis chicken fajitas",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Chilis Chicken Fajitas",
+        "calories": 580,
+        "protein": 57,
+        "carbs": 25,
+        "fat": 30,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "baja-fresh-burrito",
+      "query": "baja fresh burrito mexicano chicken",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Burritos Chicken Mexicano by Baja Fresh and Nutrition ...",
+        "calories": 790,
+        "protein": 50,
+        "carbs": 117,
+        "fat": 13,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "taco-cabana-breakfast",
+      "query": "taco cabana breakfast taco potato and egg",
+      "category": "mexican",
+      "ok": true,
+      "top": {
+        "name": "Taco Cabana Potato & Egg",
+        "calories": 220,
+        "protein": 0,
+        "carbs": 22,
+        "fat": 11,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "peets-medium-latte",
+      "query": "peets coffee medium latte",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "peets coffee medium latte",
+        "calories": 160,
+        "protein": 11,
+        "carbs": 15,
+        "fat": 6,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "caribou-northern-lite",
+      "query": "caribou coffee northern lite latte medium",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "caribou coffee northern lite latte medium",
+        "calories": 150,
+        "protein": 0,
+        "carbs": 21,
+        "fat": 1,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 5
+    },
+    {
+      "id": "dutch-bros-rebel",
+      "query": "dutch bros rebel energy drink medium",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "Electric Berry Blue Rebel Energy Drink Medium ...",
+        "calories": 230,
+        "protein": 1,
+        "carbs": 61,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "tim-hortons-double-double",
+      "query": "tim hortons double double medium",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "Tim Hortons Medium Double",
+        "calories": 212,
+        "protein": 0,
+        "carbs": 22,
+        "fat": 14,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "scooters-caramelicious",
+      "query": "scooters coffee caramelicious medium",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "Scooters Coffee Caramelicious Medium",
+        "calories": 430,
+        "protein": 0,
+        "carbs": 78,
+        "fat": 10,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "philz-mint-mojito",
+      "query": "philz coffee iced mint mojito",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "Mint Mojito Coffee Large by Philz Coffee and Nutrition ...",
+        "calories": 370,
+        "protein": 2,
+        "carbs": 31,
+        "fat": 27,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "blue-bottle-nola",
+      "query": "blue bottle new orleans iced coffee",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "New Orleans Style Iced Coffee with Oat Milk 16 Oz by ...",
+        "calories": 120,
+        "protein": 2,
+        "carbs": 15,
+        "fat": 5,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "jamba-strawberry-whirl",
+      "query": "jamba juice strawberry whirl medium",
+      "category": "coffee",
+      "ok": true,
+      "top": {
+        "name": "Jamba Juice Strawberry Whirl Smoothie (Medium)",
+        "calories": 315,
+        "protein": 0,
+        "carbs": 80,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "cracker-barrel-fried-steak",
+      "query": "cracker barrel country fried steak",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Cracker Barrel Grandpa's Country Fried Breakfast Chicken ...",
+        "calories": 610,
+        "protein": 37,
+        "carbs": 51,
+        "fat": 29,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "waffle-house-hash",
+      "query": "waffle house scattered smothered hash browns",
+      "category": "breakfast",
+      "ok": false,
+      "error": "no_rows",
+      "rowCount": 0
+    },
+    {
+      "id": "bob-evans-biscuit",
+      "query": "bob evans sausage gravy biscuit",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Bob Evans Original Pork Sausage Gravy & Biscuits",
+        "calories": 350,
+        "protein": 7,
+        "carbs": 35,
+        "fat": 20,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "first-watch-trifecta",
+      "query": "first watch trifecta omelette",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "First Watch Trifecta Omelette",
+        "calories": 940,
+        "protein": 31,
+        "carbs": 97,
+        "fat": 50,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "le-peep-western",
+      "query": "le peep western omelette",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Le Peep Egg Whites Lightening Omelette",
+        "calories": 780,
+        "protein": 56,
+        "carbs": 64,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "another-broken-egg-benedict",
+      "query": "another broken egg farm benedict",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Another Broken Egg",
+        "calories": 870,
+        "protein": 31,
+        "carbs": 50,
+        "fat": 49,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "snooze-pancake-flight",
+      "query": "snooze am pancake flight",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Signature Pancake Flight by Snooze An A.m. Eatery and ...",
+        "calories": 880,
+        "protein": 15,
+        "carbs": 118,
+        "fat": 41,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "huddle-house-omelette",
+      "query": "huddle house meat lovers omelette",
+      "category": "breakfast",
+      "ok": true,
+      "top": {
+        "name": "Huddle House Meat Lovers Omelette",
+        "calories": 650,
+        "protein": 34,
+        "carbs": 9,
+        "fat": 53,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "rallys-fries-large",
+      "query": "rallys seasoned fries large",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "Famous Seasoned Fries by Checkers Rally's and ...",
+        "calories": 165,
+        "protein": 2,
+        "carbs": 25,
+        "fat": 6,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "arbys-jamocha-shake",
+      "query": "arbys jamocha shake medium",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "arbys jamocha shake medium",
+        "calories": 540,
+        "protein": 13,
+        "carbs": 81,
+        "fat": 17,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 5
+    },
+    {
+      "id": "popeyes-biscuits-3",
+      "query": "popeyes buttermilk biscuits 3 piece",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "popeyes buttermilk biscuits 3 piece",
+        "calories": 445,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 21,
+        "serving": null,
+        "consistency": 65
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "long-john-hush",
+      "query": "long john silvers hush puppies",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "long john silvers hush puppies",
+        "calories": 150,
+        "protein": 3,
+        "carbs": 19,
+        "fat": 7,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "checkers-fries",
+      "query": "checkers fries medium",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "Checkers Fries Medium",
+        "calories": 590,
+        "protein": 7,
+        "carbs": 63,
+        "fat": 24,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 6
+    },
+    {
+      "id": "del-taco-fries",
+      "query": "del taco crinkle cut fries",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "Del Taco Crinkle Cut Fries",
+        "calories": 320,
+        "protein": 0,
+        "carbs": 34,
+        "fat": 19,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "capriottis-wings-6",
+      "query": "capriottis wing order 6 piece",
+      "category": "sides",
+      "ok": false,
+      "error": "no_rows",
+      "rowCount": 0
+    },
+    {
+      "id": "cookout-fries-tray",
+      "query": "cookout fries tray",
+      "category": "sides",
+      "ok": true,
+      "top": {
+        "name": "cookout fries tray",
+        "calories": 430,
+        "protein": 5,
+        "carbs": 61,
+        "fat": 17,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "cold-stone-cake-batter",
+      "query": "cold stone cake batter ice cream like it",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Cold Stone Creamery Cake Batter Ice Cream (Like It)",
+        "calories": 360,
+        "protein": 0,
+        "carbs": 43,
+        "fat": 19,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "baskin-pralines",
+      "query": "baskin robbins pralines n cream scoop",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Baskin Robbins Pralines N Cream Scoop · 1 1/2 cup",
+        "calories": 180,
+        "protein": 0,
+        "carbs": 0,
+        "fat": 10,
+        "serving": "1 1/2 cup",
+        "consistency": 65
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "marble-slab-shake",
+      "query": "marble slab birthday cake shake",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Marble Slab Birthday Cake Shake",
+        "calories": 236,
+        "protein": 3,
+        "carbs": 25,
+        "fat": 14,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "carvel-flying-saucer",
+      "query": "carvel flying saucer ice cream sandwich",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Flying Saucers Ice Cream by Carvel and ...",
+        "calories": 340,
+        "protein": 4,
+        "carbs": 49,
+        "fat": 15,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "auntie-annes-pretzel",
+      "query": "auntie anne pretzel bites",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Loaded pretzel bites by AUNTIE ANNE'S",
+        "calories": 140,
+        "protein": 5,
+        "carbs": 22,
+        "fat": 5,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "wetzels-pretzel",
+      "query": "wetzels pretzels original pretzel",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Wetzels Pretzels Original Pretzel",
+        "calories": 540,
+        "protein": 17,
+        "carbs": 39,
+        "fat": 35,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "pinkberry-original",
+      "query": "pinkberry original frozen yogurt small",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Original Frozen Yogurt (Small)",
+        "calories": 150,
+        "protein": 21,
+        "carbs": 21,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "yogurtland-tart",
+      "query": "yogurtland plain tart frozen yogurt small",
+      "category": "dessert",
+      "ok": true,
+      "top": {
+        "name": "Yogurtland Plain Tart Frozen Yogurt Small",
+        "calories": 30,
+        "protein": 1,
+        "carbs": 7,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "teriyaki-madness-bowl",
+      "query": "teriyaki madness chicken teriyaki bowl",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Chicken Breast Teriyaki Bowl with Brown Rice and ...",
+        "calories": 427,
+        "protein": 56,
+        "carbs": 30,
+        "fat": 11,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "wok-box-orange",
+      "query": "wok box orange chicken",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Breaded Crispy Chicken Orange with Rice by Wok Box ...",
+        "calories": 661,
+        "protein": 67,
+        "carbs": 66,
+        "fat": 11,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "pei-wei-dynamite",
+      "query": "pei wei dynamite shrimp",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Signature Dishes Thai Dynamite Shrimp by Pei Wei ...",
+        "calories": 305,
+        "protein": 9,
+        "carbs": 45,
+        "fat": 11,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "bibibop-spicy-chicken",
+      "query": "bibibop spicy chicken bowl",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Protein Spicy Chicken by Bibibop Asian Grill and ...",
+        "calories": 169,
+        "protein": 20,
+        "carbs": 11,
+        "fat": 5,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "genghis-grill-bowl",
+      "query": "genghis grill create your own bowl chicken",
+      "category": "asian",
+      "ok": false,
+      "error": "no_rows",
+      "rowCount": 0
+    },
+    {
+      "id": "flame-broiler-plate",
+      "query": "flame broiler chicken plate white rice",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Chicken Veggie Bowl White Rice by Flame Broiler and ...",
+        "calories": 510,
+        "protein": 49,
+        "carbs": 58,
+        "fat": 11,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 5
+    },
+    {
+      "id": "ll-hawaiian-katsu",
+      "query": "l and l hawaiian bbq chicken katsu",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "l and l hawaiian bbq chicken katsu",
+        "calories": 350,
+        "protein": 22,
+        "carbs": 12,
+        "fat": 24,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 8
+    },
+    {
+      "id": "sarku-japan-chicken",
+      "query": "sarku japan teriyaki chicken",
+      "category": "asian",
+      "ok": true,
+      "top": {
+        "name": "Sarku Japan Teriyaki Chicken",
+        "calories": 640,
+        "protein": 28,
+        "carbs": 79,
+        "fat": 24,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "red-lobster-bisque",
+      "query": "red lobster lobster bisque cup",
+      "category": "seafood",
+      "ok": true,
+      "top": {
+        "name": "Red Lobster Lobster Bisque Cup",
+        "calories": 410,
+        "protein": 12,
+        "carbs": 31,
+        "fat": 31,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 4
+    },
+    {
+      "id": "bonefish-salmon",
+      "query": "bonefish grill grilled salmon",
+      "category": "seafood",
+      "ok": true,
+      "top": {
+        "name": "Grilled Fish Atlantic Salmon (regular) by Bonefish Grill ...",
+        "calories": 490,
+        "protein": 51,
+        "carbs": 2,
+        "fat": 31,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 5
+    },
+    {
+      "id": "legal-sea-chowder",
+      "query": "legal sea foods clam chowder cup",
+      "category": "seafood",
+      "ok": true,
+      "top": {
+        "name": "Legal Sea Foods Clam Chowder Cup",
+        "calories": 280,
+        "protein": 9,
+        "carbs": 16,
+        "fat": 20,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 3
+    },
+    {
+      "id": "captain-d-sandwich",
+      "query": "captain d's fish sandwich",
+      "category": "seafood",
+      "ok": true,
+      "top": {
+        "name": "Captain D's Fish Sandwich",
+        "calories": 210,
+        "protein": 49,
+        "carbs": 0,
+        "fat": 0,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "zoup-tomato-basil",
+      "query": "zoup tomato basil soup cup",
+      "category": "soup",
+      "ok": true,
+      "top": {
+        "name": "zoup tomato basil soup cup",
+        "calories": 276,
+        "protein": 0,
+        "carbs": 20,
+        "fat": 21,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    },
+    {
+      "id": "panera-ten-veg",
+      "query": "panera ten vegetable soup cup",
+      "category": "soup",
+      "ok": true,
+      "top": {
+        "name": "Panera 10 Vegetable Soup Recipe: Only 200 Calories",
+        "calories": 200,
+        "protein": 6,
+        "carbs": 35,
+        "fat": 5,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "sweet-tomatoes-salad",
+      "query": "sweet tomatoes garden salad",
+      "category": "salad",
+      "ok": true,
+      "top": {
+        "name": "Garden Salad with Tomatoes Cucumbers Croutons and ...",
+        "calories": 390,
+        "protein": 8,
+        "carbs": 18,
+        "fat": 33,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 1
+    },
+    {
+      "id": "chopt-kale-caesar",
+      "query": "chopt kale caesar salad",
+      "category": "salad",
+      "ok": true,
+      "top": {
+        "name": "chopt kale caesar salad",
+        "calories": 420,
+        "protein": 35,
+        "carbs": 28,
+        "fat": 17,
+        "serving": null,
+        "consistency": 100
+      },
+      "rowCount": 2
+    }
+  ]
+}

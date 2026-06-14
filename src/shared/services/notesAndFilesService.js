@@ -310,6 +310,13 @@ export async function getTrainerDocuments(trainerId) {
   }
 }
 
+/** Coach documents are stored under the trainer uid; only show a doc in a *client* workspace if sharedWith includes that client. */
+export function filterTrainerDocumentsForClient(documents, clientId) {
+  if (!clientId || !Array.isArray(documents)) return [];
+  const cid = String(clientId);
+  return documents.filter((d) => Array.isArray(d?.sharedWith) && d.sharedWith.some((id) => String(id) === cid));
+}
+
 export async function getTrainerDocument(trainerId, docId) {
   if (!db || !trainerId || !docId) return null;
   try {

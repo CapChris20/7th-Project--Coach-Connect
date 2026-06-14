@@ -5,22 +5,22 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
   ActivityIndicator,
+  Alert,
   Animated,
-  StatusBar,
-  Platform,
-  Modal,
-  KeyboardAvoidingView,
   AppState,
-  FlatList,
   Dimensions,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,15 +34,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Liquid } from '../../shared/ui/liquid/liquidTokens';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from './workoutPlanBuilderFieldEditBody';
+import ProfileCardIcon from '../../shared/components/ProfileCardIcon';
+import {
+  PROFILE_CARD_ICON_SIZE,
+  PROFILE_FIELD_ICON_ID,
+  profileCardIconWrapStyle,
+} from '../../shared/workout/profileCardIcons';
+import {
+  filterProfileCardSections,
+  getProfileCardSectionLabels,
+} from '../../shared/workout/profileCardVisibility';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from '../services/workoutService';
 import Markdown from 'react-native-markdown-display';
 import { useAI } from '../../contexts/AIContext';
-import { getOrCreateConversation, sendClientRequest, getUserData } from '../../ai/services/trainerMessaging';
+import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai/services/trainerMessaging';
+import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
+import { getWorkoutGenerationApiBases, PRODUCTION_API_BASE_URL } from '../../shared/services/baseUrl';
+import { postJsonWithTimeout, logApiAttempt } from '../../shared/services/apiFetch';
 import {
-  parsePlanForPdf,
-  generateAndSavePlanPdf,
   stripMarkdown,
   stripEmojis,
 } from '../services/workoutPlanPdfService';
@@ -54,12 +66,179 @@ import { EditModalForm } from '../components/EditModalForm_RN';
 /** Survives screen unmount so ClientApp / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
 
-const PLAN_LIMIT_TOTAL = 2;
+const PLAN_LIMIT_TOTAL = 3;
 const planLimitMonthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 const nextMonthResetDate = () => {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth() + 1, 1);
 };
+const nextMonthResetsAtIso = (d = new Date()) => {
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+function formatWorkoutLimitResetLabel(resetsAt) {
+  const raw = String(resetsAt || nextMonthResetsAtIso()).trim();
+  const d = new Date(`${raw.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function buildDefaultWorkoutUsage(used = 0) {
+  return {
+    generations_used: used,
+    generations_limit: PLAN_LIMIT_TOTAL,
+    resets_at: nextMonthResetsAtIso(),
+  };
+}
+
+function planGeneratedThisMonth(generatedAt) {
+  if (generatedAt == null) return false;
+  const ts = Number(generatedAt);
+  if (!Number.isFinite(ts) || ts <= 0) return false;
+  return planLimitMonthKey(new Date(ts)) === planLimitMonthKey();
+}
+
+/** Prefer server/Firestore counts; infer 1 when a plan exists this month but usage was never recorded. */
+function mergeWorkoutGenerationUsage({
+  apiUsage = null,
+  firestoreUsage = null,
+  justGenerated = false,
+  generatedPlan = null,
+} = {}) {
+  const base = firestoreUsage || buildDefaultWorkoutUsage(0);
+  const limit = Number(apiUsage?.generations_limit) || Number(base.generations_limit) || PLAN_LIMIT_TOTAL;
+  const resets_at = apiUsage?.resets_at || base.resets_at || nextMonthResetsAtIso();
+  let used = Math.max(Number(apiUsage?.generations_used) || 0, Number(base.generations_used) || 0);
+  if (used <= 0 && (justGenerated || planGeneratedThisMonth(generatedPlan?.generatedAt))) {
+    used = 1;
+  }
+  return {
+    generations_used: Math.min(Math.max(used, 0), limit),
+    generations_limit: limit,
+    resets_at,
+  };
+}
+
+export async function resolveWorkoutGenerationUsage(uid, opts = {}) {
+  const firestoreUsage = uid ? await loadWorkoutGenerationUsage(uid) : buildDefaultWorkoutUsage(0);
+  return mergeWorkoutGenerationUsage({ firestoreUsage, ...opts });
+}
+
+export async function loadWorkoutGenerationUsage(uid) {
+  if (!uid || !db) return buildDefaultWorkoutUsage(0);
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'usage', 'workout_generations'));
+    const month = planLimitMonthKey();
+    if (!snap.exists()) return buildDefaultWorkoutUsage(0);
+    const data = snap.data() || {};
+    const used = data.month === month ? Number(data.count) || 0 : 0;
+    return buildDefaultWorkoutUsage(used);
+  } catch (_) {
+    return buildDefaultWorkoutUsage(0);
+  }
+}
+
+const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
+
+export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
+  const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+  if (!headers.Authorization) {
+    throw new Error('Sign in to generate a workout plan.');
+  }
+
+  const bases = getWorkoutGenerationApiBases();
+  const body = {
+    onboardingData,
+    subjectUserId: subjectUserId || auth.currentUser?.uid,
+  };
+
+  if (__DEV__) {
+    console.log('[workout] generate plan — trying API bases:', bases.slice(0, 6).join(' → '));
+  }
+
+  let lastErr = null;
+  for (const base of bases) {
+    const url = `${String(base).replace(/\/$/, '')}/api/workout/generate`;
+    try {
+      const res = await postJsonWithTimeout(url, body, headers, WORKOUT_PLAN_FETCH_TIMEOUT_MS);
+      const payload = await res.json().catch(() => ({}));
+      if (res.status === 429 && payload?.error === 'monthly_limit_reached') {
+        const err = new Error(
+          payload.message ||
+            `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(payload.resets_at)}.`,
+        );
+        err.code = 'monthly_limit_reached';
+        err.limitPayload = payload;
+        throw err;
+      }
+      if (!res.ok) {
+        const err = new Error(payload?.message || payload?.error || `Request failed (${res.status})`);
+        err.httpStatus = res.status;
+        err.fromHttpResponse = true;
+        throw err;
+      }
+      if (!payload?.text) {
+        throw new Error('Empty response from workout generator');
+      }
+      if (__DEV__) {
+        console.log('[workout] generate plan OK via', base);
+      }
+      return {
+        text: String(payload.text),
+        usage: payload.usage ?? null,
+      };
+    } catch (e) {
+      logApiAttempt('workout/generate', url, e);
+      if (e?.code === 'monthly_limit_reached') throw e;
+      if (e?.code === 'timeout') throw e;
+      // Server answered (e.g. missing API key) — don't mask with localhost "Network request failed"
+      if (e?.fromHttpResponse) throw e;
+      lastErr = e;
+    }
+  }
+
+  const tried = bases.slice(0, 6).join(', ');
+  const msg = String(lastErr?.message || '');
+  const hint = msg.includes('timed out')
+    ? 'The server took too long. Try again on Wi‑Fi.'
+    : msg.includes('AI provider unavailable')
+      ? 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh'
+      : `Could not reach the workout API. Check internet, then reload with: npm start (dev build).`;
+  throw lastErr || new Error(`${hint}${tried ? ` Tried: ${tried}` : ''}`);
+}
+
+export async function loadOnboardingAndPlanArtifacts({ userId, propPlan } = {}) {
+  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+  if (!subjectUid) {
+    throw new Error('User not found');
+  }
+  let onboardingData = null;
+  if (db) {
+    const userSnap = await getDoc(doc(db, 'users', subjectUid));
+    if (userSnap.exists()) onboardingData = userSnap.data();
+  }
+  if (!onboardingData) {
+    const cached = await AsyncStorage.getItem(`onboarding_data_${subjectUid}`);
+    if (cached) onboardingData = JSON.parse(cached);
+  }
+  let plan = propPlan || null;
+  if (!plan) {
+    plan = await getCurrentWorkoutPlan(subjectUid);
+  }
+  return { onboardingData, plan };
+}
+
+export async function generateWorkoutPlanWithClaude({ onboardingData, userId }) {
+  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+  const { text, usage } = await requestWorkoutPlanFromApi(onboardingData, subjectUid);
+  return {
+    planText: text,
+    generatedAt: Date.now(),
+    userData: onboardingData,
+    usage,
+  };
+}
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -205,11 +384,12 @@ const WORKOUT_PLAN_BUILDER_SECTIONS = [
 // Uses the existing builder field keys so functionality stays identical.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Profile pill card rims — dark pink → dark orange (design-system warm CTA) */
 const LOVABLE_ACCENTS = [
-  { key: 'pink', gradient: ['#FF6B9D', '#C084FC'], text: '#FF6B9D' },
-  { key: 'cyan', gradient: ['#64D2FF', '#C084FC'], text: '#64D2FF' },
-  { key: 'orange', gradient: ['#F97316', '#FF6B9D'], text: '#F97316' },
-  { key: 'purple', gradient: ['#C084FC', '#64D2FF'], text: '#C084FC' },
+  { key: 'warm-a', gradient: ['#BE185D', '#C2410C'], text: '#BE185D' },
+  { key: 'warm-b', gradient: ['#C2410C', '#BE185D'], text: '#C2410C' },
+  { key: 'warm-c', gradient: ['#BE185D', '#9A3412'], text: '#BE185D' },
+  { key: 'warm-d', gradient: ['#9A3412', '#C2410C'], text: '#C2410C' },
 ];
 
 const LOVABLE_PILLS = [
@@ -1182,16 +1362,6 @@ const planViewerRefStyles = StyleSheet.create({
   },
   overviewLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1.4, marginBottom: 8 },
   overviewBody: { fontSize: 14, lineHeight: 22 },
-  pdfRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  pdfBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  pdfBtnText: { fontWeight: '700', fontSize: 14 },
   metaLine: { fontSize: 13, marginBottom: 14 },
   errorContainer: {
     flex: 1,
@@ -1289,6 +1459,7 @@ function normalizeRouteWorkoutPlanItem(item, index) {
         : item.restGuidance != null
           ? String(item.restGuidance)
           : undefined,
+    recoveryActivities: Array.isArray(item.recoveryActivities) ? item.recoveryActivities : undefined,
     exercises,
     warmUp: Array.isArray(item.warmUp) ? item.warmUp : [],
     coolDown: Array.isArray(item.coolDown) ? item.coolDown : [],
@@ -1338,6 +1509,7 @@ function mapStructuredDaysToPlanViewerRows(structured) {
       focusColor,
       rest: !!day?.isRest,
       recoveryNote: day?.isRest ? String(day?.restGuidance || '') : undefined,
+      recoveryActivities: Array.isArray(day?.recoveryActivities) ? day.recoveryActivities : undefined,
       exercises,
       warmUp: Array.isArray(day?.warmUp) ? day.warmUp : [],
       coolDown: Array.isArray(day?.coolDown) ? day.coolDown : [],
@@ -1467,6 +1639,7 @@ function buildWorkoutPlanPayloadFromStructured(structuredRaw) {
     focusColor: d.focusColor || PLAN_BUILDER_COLORS.pink,
     rest: !!d.rest,
     recoveryNote: d.recoveryNote != null ? String(d.recoveryNote) : undefined,
+    recoveryActivities: Array.isArray(d.recoveryActivities) ? d.recoveryActivities : undefined,
     exercises: Array.isArray(d.exercises) ? d.exercises : [],
   }));
 
@@ -1619,6 +1792,122 @@ function parsePlan(rawText) {
   return result;
 }
 
+/** Trainer-only banner when viewing a client's onboarding on Workout Plans. */
+function CoachViewContextBanner({ isDark, clientName, textColor, mutedColor }) {
+  const rim = ['#9333EA', '#DB2777'];
+  const innerBg = isDark ? '#0A0812' : '#FFFFFF';
+  const bgGrad = isDark ? ['#12081f', '#08050f'] : ['#F3F0FA', '#FFFFFF'];
+  const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
+  const displayName = String(clientName || '').trim() || 'Your client';
+  const steps = [
+    'Scroll down to review profile cards',
+    'Home → select client → AI Workouts to assign plans',
+  ];
+
+  return (
+    <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 10 }}>
+      <LinearGradient
+        colors={rim}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          borderRadius: 20,
+          padding: 1.5,
+          ...(Platform.OS === 'ios'
+            ? { shadowColor: '#9333EA', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12 }
+            : { elevation: 4 }),
+        }}
+      >
+        <View style={{ borderRadius: 18.5, overflow: 'hidden', backgroundColor: innerBg }}>
+          <LinearGradient colors={bgGrad} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
+            <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, width: '100%' }} />
+            <View style={{ flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 14, alignItems: 'flex-start' }}>
+              <LinearGradient
+                colors={rim}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ width: 48, height: 48, borderRadius: 16, padding: 1.5 }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: 14.5,
+                    backgroundColor: iconInnerBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="eye-outline" size={24} color={isDark ? '#E9D5FF' : '#7C3AED'} />
+                </View>
+              </LinearGradient>
+
+              <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '900',
+                      letterSpacing: 1.1,
+                      textTransform: 'uppercase',
+                      color: isDark ? '#DDD6FE' : '#7C3AED',
+                    }}
+                  >
+                    Coach view
+                  </Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 999,
+                      backgroundColor: isDark ? 'rgba(147,51,234,0.22)' : 'rgba(124,58,237,0.1)',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(167,139,250,0.35)' : 'rgba(139,92,246,0.22)',
+                    }}
+                  >
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#C4B5FD' : '#6D28D9' }}>Read only</Text>
+                  </View>
+                </View>
+
+                <Text
+                  style={{ fontSize: 17, fontWeight: '900', color: textColor, marginTop: 6, letterSpacing: -0.3 }}
+                  numberOfLines={1}
+                >
+                  {displayName}
+                </Text>
+
+                <Text style={{ fontSize: 12, fontWeight: '600', color: mutedColor, lineHeight: 17, marginTop: 6 }}>
+                  Onboarding context for plan building — edits and AI generation here are disabled on this screen.
+                </Text>
+
+                <View style={{ marginTop: 10, gap: 7 }}>
+                  {steps.map((line) => (
+                    <View key={line} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                      <View
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          marginTop: 1,
+                          backgroundColor: isDark ? 'rgba(147,51,234,0.2)' : 'rgba(124,58,237,0.1)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="checkmark" size={11} color={isDark ? '#DDD6FE' : '#7C3AED'} />
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: mutedColor, lineHeight: 15 }}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
 export default function WorkoutPlanGeneratorScreen({
   userId,
   /** When true (trainer app, no roster), show CTA instead of loading trainer onboarding */
@@ -1638,7 +1927,7 @@ export default function WorkoutPlanGeneratorScreen({
   const theme = useTheme();
   const { isDark, toggleTheme } = theme;
   const insets = useSafeAreaInsets();
-  const { aiEnabled, loading: aiPrefLoading, toggleAI } = useAI();
+  const { aiEnabled, loading: aiPrefLoading } = useAI();
   const aiOn = aiEnabled === true;
   const aiPrefReady = !aiPrefLoading && aiEnabled !== null;
 
@@ -1668,6 +1957,8 @@ export default function WorkoutPlanGeneratorScreen({
   const [generatedPlan, setGeneratedPlan] = useState(propPlan || null);
   const [addedToCollection, setAddedToCollection] = useState(false);
   const [savingToCollection, setSavingToCollection] = useState(false);
+  const generatedPlanId = generatedPlan?.id;
+  useEffect(() => { setAddedToCollection(false); }, [generatedPlanId]);
   const [showFullPlan, setShowFullPlan] = useState(!!readOnly);
   const [viewerErrorDelayElapsed, setViewerErrorDelayElapsed] = useState(false);
   const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
@@ -1690,37 +1981,29 @@ export default function WorkoutPlanGeneratorScreen({
   const [planViewerExpandedDay, setPlanViewerExpandedDay] = useState(null);
   const [activeTab, setActiveTab] = useState('plans'); // 'plans' | 'library'
 
-  // Plan generation limit (simple monthly counter, UI only)
-  const [plansUsedThisMonth, setPlansUsedThisMonth] = useState(0);
-  const plansRemaining = Math.max(0, PLAN_LIMIT_TOTAL - (Number(plansUsedThisMonth) || 0));
-  const nextResetDate = useMemo(() => nextMonthResetDate(), []);
+  // Plan generation limit (server-enforced; usage synced from Firestore + API responses)
+  const [workoutGenUsage, setWorkoutGenUsage] = useState(null);
+  const plansUsedThisMonth = Number(workoutGenUsage?.generations_used) || 0;
+  const planGenerationLimit = Number(workoutGenUsage?.generations_limit) || PLAN_LIMIT_TOTAL;
+  const plansRemaining = Math.max(0, planGenerationLimit - plansUsedThisMonth);
+  const nextResetDate = useMemo(() => {
+    const raw = workoutGenUsage?.resets_at || nextMonthResetsAtIso();
+    const d = new Date(`${String(raw).slice(0, 10)}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? nextMonthResetDate() : d;
+  }, [workoutGenUsage?.resets_at]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      try {
-        const key = `planGenUsed_${planLimitMonthKey()}`;
-        const raw = await AsyncStorage.getItem(key);
-        const n = raw != null ? parseInt(raw, 10) : 0;
-        if (mounted) setPlansUsedThisMonth(Number.isFinite(n) ? n : 0);
-      } catch (_) {
-        if (mounted) setPlansUsedThisMonth(0);
-      }
+      const uid = profileSubjectUid || auth.currentUser?.uid;
+      if (!uid) return;
+      const usage = await resolveWorkoutGenerationUsage(uid, { generatedPlan });
+      if (mounted) setWorkoutGenUsage(usage);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
-
-  const markPlanGeneratedForLimit = useCallback(async () => {
-    const monthKey = planLimitMonthKey();
-    const key = `planGenUsed_${monthKey}`;
-    setPlansUsedThisMonth((prev) => {
-      const next = clamp((Number(prev) || 0) + 1, 0, PLAN_LIMIT_TOTAL);
-      AsyncStorage.setItem(key, String(next)).catch(() => {});
-      return next;
-    });
-  }, []);
+  }, [profileSubjectUid, generatedPlan?.generatedAt, generatedPlan?.id]);
 
   // Trainer-request UI state (AI disabled path)
   const [requestText, setRequestText] = useState('');
@@ -1815,30 +2098,12 @@ export default function WorkoutPlanGeneratorScreen({
     return () => clearInterval(t);
   }, [isGenerating]);
 
-  const resolveClaudeConfig = () => {
-    const isRealSecret = (v) => {
-      if (typeof v !== 'string') return false;
-      const s = v.trim();
-      if (!s) return false;
-      if (s.startsWith('process.env')) return false;
-      if (s.includes('your_key_here') || s.includes('YOUR_') || s.includes('your_claude_key')) return false;
-      if (s.length < 20) return false;
-      return true;
-    };
-
-    const apiKeyCandidate =
-      Constants.expoConfig?.extra?.claudeApiKey ||
-      process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
-      process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-
-    const apiKey = isRealSecret(apiKeyCandidate) ? apiKeyCandidate.trim() : null;
-    const apiUrl = 'https://api.anthropic.com/v1/messages';
-
-    return {
-      apiUrl,
-      apiKey,
-      hasAnyConfig: !!apiKey,
-    };
+  const fetchWorkoutPlanFromServer = async (data, subjectUserId) => {
+    const uid = subjectUserId || auth.currentUser?.uid;
+    const { text, usage } = await requestWorkoutPlanFromApi(data, uid);
+    const merged = await resolveWorkoutGenerationUsage(uid, { apiUsage: usage, justGenerated: true });
+    setWorkoutGenUsage(merged);
+    return text;
   };
 
   // Load onboarding + cached plan for the profile subject (signed-in user, or `userId` when coach opens a client).
@@ -2117,14 +2382,18 @@ export default function WorkoutPlanGeneratorScreen({
       const conversationId = await getOrCreateConversation(clientId, trainerId);
       const me = await getUserData(clientId);
       await sendClientRequest(conversationId, clientId, text, {
+        requestType: CLIENT_REQUEST_TYPES.WORKOUT_PLAN,
+        allowDefaultIntro: false,
         clientName: me?.name || me?.firstName || auth?.currentUser?.displayName || 'Client',
         clientGoals: onboardingData?.goal || onboardingData?.primaryGoal || 'Not specified',
         clientExperienceLevel: onboardingData?.fitnessLevel || onboardingData?.experience || 'Beginner',
         clientEquipment: onboardingData?.equipment || onboardingData?.availableEquipment || 'Not specified',
         clientLimitations: onboardingData?.injuries || onboardingData?.limitations || 'None',
       });
-      Alert.alert('Sent', 'Your request was sent to your trainer.');
-      onNavigate?.('messages');
+      Alert.alert(
+        'Request sent',
+        'Your trainer will see this in Client Requests — not as a chat message. They can acknowledge it from their dashboard.',
+      );
     } catch (e) {
       console.error('Send trainer request failed:', e);
       Alert.alert('Send failed', e?.message || 'Could not send your request.');
@@ -2221,6 +2490,13 @@ export default function WorkoutPlanGeneratorScreen({
       );
       return;
     }
+    if (plansRemaining <= 0) {
+      Alert.alert(
+        'Monthly limit reached',
+        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+      );
+      return;
+    }
     if (!validateData()) {
       // Scroll to first error and shake
       const firstErrorKey = Object.keys(validationErrors)[0];
@@ -2235,25 +2511,6 @@ export default function WorkoutPlanGeneratorScreen({
       return;
     }
 
-    const { apiUrl, apiKey, hasAnyConfig } = resolveClaudeConfig();
-
-    if (!hasAnyConfig) {
-      Alert.alert(
-        'Configuration Error',
-        "Claude API is not configured.\n\nSet this in .env and restart Expo:\n- EXPO_PUBLIC_CLAUDE_API_KEY=sk-ant-...\n\nThen run: npx expo start --clear",
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    if (!apiKey) {
-      Alert.alert(
-        'Configuration Error',
-        'API key is required for Claude. Set EXPO_PUBLIC_CLAUDE_API_KEY in .env and restart with: npx expo start --clear',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     setIsGenerating(true);
     setGenerationError(null);
     workoutPlanGenerationInFlight = true;
@@ -2263,140 +2520,22 @@ export default function WorkoutPlanGeneratorScreen({
     };
 
     try {
-      console.log('🧠 Workout plan generation config:', {
-        hasApiKey: !!apiKey,
-        apiUrl: apiUrl ? apiUrl.replace(/\/\/([^/]+).*/, '//***') : null,
-      });
+      const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+      const rawText = await fetchWorkoutPlanFromServer(onboardingData, subjectUid);
 
-      const buildWorkoutSystemPrompt = (data) => {
-        return `You are an expert strength and conditioning coach. Generate a complete 7-day personalized workout plan.
-
-RESPONSE FORMAT:
-Return ONLY a JSON object with this structure (NO markdown, NO prose, just JSON):
-
-{
-  "success": true,
-  "overview": "2-4 sentences summarizing the program focus, weekly split, progression intent, and 1 key form/safety theme. No fluff.",
-  "plan": [
-    {
-      "day": "Monday",
-      "short": "MON",
-      "focus": "Push — Chest/Shoulders/Triceps",
-      "focusColor": "pink",
-      "rest": false,
-      "warmup": "Specific warmup protocol for push day",
-      "estimatedDuration": "55-65 min",
-      "exercises": [
-        {
-          "name": "Exercise Name",
-          "sets": 4,
-          "reps": "6-8 reps",
-          "rest": "120s rest",
-          "muscle": "Muscle Group",
-          "tempo": "3-1-1",
-          "notes": "Short execution cue",
-          "tips": [
-            "Detailed coaching tip 1",
-            "Detailed coaching tip 2",
-            "Detailed coaching tip 3"
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-CRITICAL RULES:
-1. Generate exactly 7 days (Monday-Sunday)
-2. Include 3-5 exercises per training day
-3. Each exercise MUST have: name, sets, reps, rest, muscle, tempo, notes, tips[]
-4. Rest days MUST have recoveryNote and NO exercises
-5. focusColor MUST be one of: "pink", "purple", "cyan", "orange", "green", or "gray"
-6. tips MUST be an array of exactly 3 strings (detailed coaching points)
-7. Output ONLY JSON - no markdown, no prose, no code blocks
-8. Include warmup and estimatedDuration for every training day
-9. Rest days: set "rest": true, NO exercises array
-10. Training days: set "rest": false, INCLUDE exercises array
-11. NO repetition: do NOT reuse the same exact sentence/phrase across different exercises (especially in notes/tips). Avoid generic filler.
-12. You MUST include a top-level "overview" string (2–4 sentences). Make it specific to the user's goal and the week's split.
-
-COACHING CONTENT REQUIREMENTS (VERY IMPORTANT):
-
-EXERCISE notes (single string per exercise):
-- Must be SPECIFIC and actionable for that exact exercise (setup + execution + one safety/form point).
-- Include tempo cues when relevant (e.g., "3-second eccentric, pause, explode") and tie it to the movement.
-- Include at least one concrete setup detail when relevant (e.g., stance, grip width, bar path, torso angle).
-- Make every note distinct. Do NOT repeat generic phrases like "control the descent" or "squeeze at the top" across the plan.
-
-EXERCISE tips (tips[] must be EXACTLY 3 strings, each 1–2 sentences max):
-- Tip 1 (TECHNIQUE): a crisp form/tech cue for THIS exercise.
-- Tip 2 (SAFETY / COMMON MISTAKE): call out one common mistake + how to fix/avoid it.
-- Tip 3 (PERFORMANCE / PROGRESSION): a progression or performance lever (load, reps in reserve, rest, tempo, range, grip).
-- No generic tips. No duplicates across exercises. Each tip should sound like a real coach speaking.
-
-WARMUP (warmup string):
-- Must be more specific than a generic list.
-- Include the WHY for each warmup step using a simple arrow format.
-- Example format: "5 min easy row (blood flow) → 15 band pull-aparts (rear delt activation) → 10 arm circles (shoulder mobility)".
-
-Rest Day Recovery Notes Should Include:
-- Type of activity (walking, yoga, stretching, etc)
-- Estimated duration
-- Recovery focus (sleep, hydration, mobility, etc)`;
-      };
-
-      const systemPrompt = buildWorkoutSystemPrompt(onboardingData);
-
-      const userPrompt = buildUserPrompt(onboardingData);
-
-      const model =
-        process.env.EXPO_PUBLIC_CLAUDE_MODEL ||
-        process.env.EXPO_PUBLIC_ANTHROPIC_MODEL ||
-        'claude-sonnet-4-6';
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 8000,
-          temperature: 0.7,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorData?.error?.message ||
-          errorData?.message ||
-          `Request failed: ${response.status} ${response.statusText}`;
-        console.warn('Claude API error:', response.status, errorData);
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      const rawText =
-        data?.content?.find?.((c) => c?.type === 'text')?.text ||
-        '';
       if (rawText) {
         console.log(
-          'RAW CLAUDE RESPONSE length:',
+          'RAW WORKOUT RESPONSE length:',
           rawText.length,
           '| preview:',
           JSON.stringify(String(rawText).slice(0, 600)),
         );
       }
 
-      if (!rawText || typeof rawText !== 'string') throw new Error('Empty response from Claude. Please try again.');
+      if (!rawText || typeof rawText !== 'string') throw new Error('Empty response from server. Please try again.');
 
       let planText = rawText;
-      const stopReason = data?.stop_reason || null;
+      const stopReason = null;
       if (!planText || typeof planText !== 'string') {
         throw new Error('Empty response from Claude. Please try again.');
       }
@@ -2450,10 +2589,15 @@ Rest Day Recovery Notes Should Include:
         await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
       }
       ui(() => setGeneratedPlan(planData));
-      // Update monthly plan limit counter (UI gating only)
-      await markPlanGeneratedForLimit();
       if (targetUid) {
-        await setCurrentWorkoutPlan(targetUid, { rawPlan: planText });
+        await setCurrentWorkoutPlan(targetUid, {
+          rawPlan: planText,
+          planText,
+          structuredPlan: generatedPlan?.structuredPlan || null,
+          title: generatedPlan?.structuredPlan?.goal
+            ? `${String(generatedPlan.structuredPlan.goal).slice(0, 48)} plan`
+            : undefined,
+        });
       }
 
       ui(() => setPdfGenerationError(null));
@@ -2472,6 +2616,20 @@ Rest Day Recovery Notes Should Include:
       }
     } catch (error) {
       console.error('Error generating workout plan:', error);
+      if (error?.code === 'monthly_limit_reached') {
+        if (error.limitPayload) {
+          setWorkoutGenUsage({
+            generations_used: Number(error.limitPayload.used) || planGenerationLimit,
+            generations_limit: Number(error.limitPayload.limit) || planGenerationLimit,
+            resets_at: error.limitPayload.resets_at || nextMonthResetsAtIso(),
+          });
+        }
+        ui(() => setGenerationError(error.message));
+        if (mountedRef.current) {
+          Alert.alert('Monthly limit reached', error.message);
+        }
+        return;
+      }
       ui(() => setGenerationError(error.message || 'Failed to generate workout plan'));
       if (mountedRef.current) {
         Alert.alert(
@@ -2514,6 +2672,13 @@ Rest Day Recovery Notes Should Include:
       );
       return;
     }
+    if (plansRemaining <= 0) {
+      Alert.alert(
+        'Monthly limit reached',
+        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+      );
+      return;
+    }
     Alert.alert(
       'Regenerate plan?',
       'This will replace your current plan with a new one based on your profile.',
@@ -2528,31 +2693,6 @@ Rest Day Recovery Notes Should Include:
     const raw = generatedPlan?.planText || '';
     setEditPlanText(raw);
     setShowEditPlanModal(true);
-  };
-
-  const handleViewPdf = async () => {
-    const uid = profileSubjectUid;
-    const clientName = onboardingData?.name || onboardingData?.firstName || auth.currentUser?.displayName || 'Client';
-    if (pdfDownloadUrl || pdfLocalUri) {
-      setShowPdfViewer(true);
-      return;
-    }
-    if (!generatedPlan?.planText || !uid) return;
-    const parsed = parsePlanForPdf(generatedPlan.planText);
-    if (parsed) {
-      try {
-        const { pdfLocalUri: localUri, pdfDownloadUrl: downloadUrl } = await generateAndSavePlanPdf(uid, parsed, clientName);
-        setPdfLocalUri(localUri);
-        setPdfDownloadUrl(downloadUrl);
-        setPlanTitleForPdf(parsed.title || 'Workout Plan');
-        setShowPdfViewer(true);
-      } catch (e) {
-        Alert.alert('PDF unavailable', e.message || 'Could not generate PDF.');
-      }
-    } else {
-      setShowPdfViewer(false);
-      Alert.alert('PDF unavailable', 'Plan could not be parsed for PDF. Use Edit to view or modify the plan.');
-    }
   };
 
   const handleSaveEditedPlan = async () => {
@@ -2667,8 +2807,15 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       }
 
       if (day.rest === true) {
+        const rawActivities = Array.isArray(day.recoveryActivities) ? day.recoveryActivities : [];
+        const recoveryActivities = rawActivities
+          .filter((a) => a && typeof a === 'object' && typeof a.label === 'string' && a.label.trim())
+          .map((a) => ({
+            label: String(a.label).trim(),
+            detail: typeof a.detail === 'string' ? a.detail.trim() : '',
+          }));
         const recoveryNote =
-          day.recoveryNote || 'Active recovery day. Focus on mobility and sleep.';
+          day.recoveryNote || (recoveryActivities.length > 0 ? recoveryActivities.map((a) => a.label).join(' → ') : 'Active recovery day. Focus on mobility and sleep.');
         return {
           day: day.day,
           short: day.short,
@@ -2676,6 +2823,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           focusColor: day.focusColor,
           rest: true,
           recoveryNote,
+          recoveryActivities,
         };
       }
 
@@ -2756,21 +2904,59 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   };
 
   // Format display value: show "Tap to complete" for empty/placeholder values
+  const humanizeOnboardingToken = (token) => {
+    const key = String(token || '').trim().toLowerCase();
+    const labels = {
+      full_gym: 'Full Gym',
+      home_gym: 'Home Gym',
+      dumbbells: 'Dumbbells',
+      barbell: 'Barbell',
+      machines: 'Machines',
+      bands: 'Resistance Bands',
+      bodyweight: 'Bodyweight',
+      less_than_4: 'Less than 4 cups/day',
+      '4_8': '4–8 cups/day',
+      more_than_8: 'More than 8 cups/day',
+    };
+    if (labels[key]) return labels[key];
+    return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
   const formatDisplayValue = (raw) => {
     if (raw == null || raw === undefined || raw === '') return null;
-    const s = String(raw).trim();
+    let s = String(raw).trim();
     if (!s) return null;
     if (s === 'Not set' || s === 'None selected' || s === 'None reported' || s === 'Not provided') return null;
     if (s === 'undefined' || s.toLowerCase() === 'undefined') return null;
     if (/^N\/A,\s*N\/Ayrs,\s*N\/Albs,\s*0'0"$/i.test(s)) return null;
     if (/^0\s*days\s*per\s*week$/i.test(s)) return null;
+    if (s.includes('_') && (s.includes(',') || /^[a-z0-9_]+$/i.test(s))) {
+      s = s
+        .split(',')
+        .map((part) => humanizeOnboardingToken(part))
+        .join(', ');
+    } else if (/^[a-z0-9_]+$/i.test(s) && s.includes('_')) {
+      s = humanizeOnboardingToken(s);
+    }
     return s;
   };
+
+  const renderWorkoutChromeHeader = (options = {}) => (
+    <CoachConnectHeader
+      title={options.title ?? (hideBottomNav ? '' : 'Workout')}
+      skipTopSafeInset={true}
+      onBack={options.onBack ?? (hideBottomNav ? onBack : undefined)}
+      onProfilePress={onProfilePress}
+      onSettingsPress={onSettingsPress}
+      showHeaderActions={options.showHeaderActions ?? true}
+    />
+  );
 
   if (loading) {
     // Keep the bottom navbar visible so you can see tab highlight transitions.
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+        {renderWorkoutChromeHeader()}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="small" color="#FF6B9D" />
         </View>
@@ -2794,6 +2980,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     if (trainerRosterEmpty) {
       return (
         <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+          {renderWorkoutChromeHeader()}
           <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
             <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>
               Add clients first
@@ -2836,8 +3023,9 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.6)';
   const stickyCtaVisible =
     aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan) && !isCoachViewingClientProfile;
-  const stickyCtaBottom = (hideBottomNav ? 0 : 80) + insets.bottom + 12;
-  const stickyCtaExtraScrollPad = stickyCtaVisible ? ((hideBottomNav ? 0 : 80) + 86) : 0;
+  const bottomNavPad = BOTTOM_NAV_BAR_HEIGHT + insets.bottom;
+  const stickyCtaBottom = bottomNavPad + 12;
+  const stickyCtaExtraScrollPad = stickyCtaVisible ? bottomNavPad + 86 : bottomNavPad + 20;
 
   // Full-screen viewer mode (no editor UI).
   if (generatedPlan && (readOnly || showFullPlan)) {
@@ -2972,41 +3160,12 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       <View style={{ flex: 1, backgroundColor: pvBg }}>
         <SafeAreaView style={{ flex: 1 }} edges={['top']}>
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderC }}>
-            <TouchableOpacity
-              onPress={() => { if (readOnly) { onBack?.(); } else { setShowFullPlan(false); } }}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="chevron-back" size={24} color={text} />
-            </TouchableOpacity>
-            <Text
-              style={{
-                fontSize: 17,
-                fontWeight: '600',
-                flex: 1,
-                textAlign: 'center',
-                color: text,
-                fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-              }}
-            >
-              Weekly Plan
-            </Text>
-            <TouchableOpacity
-              onPress={handleAddToCollection}
-              disabled={addedToCollection || savingToCollection}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: addedToCollection ? 0.7 : 1 }}
-            >
-              {savingToCollection ? (
-                <ActivityIndicator size="small" color={text} />
-              ) : (
-                <Ionicons
-                  name={addedToCollection ? 'checkmark-circle-outline' : 'bookmark-outline'}
-                  size={22}
-                  color={text}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
+          <CoachConnectHeader
+            title="Weekly Plan"
+            isDark={isDark}
+            skipTopSafeInset
+            onBack={() => { if (readOnly) { onBack?.(); } else { setShowFullPlan(false); } }}
+          />
           <PlanViewerScreen
             route={{
               params: {
@@ -3030,7 +3189,43 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               setCollectionViewingPlan(null);
             }}
           />
+          {!readOnly && generatedPlan && (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+              <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={handleAddToCollection}
+                disabled={addedToCollection || savingToCollection}
+                style={{ borderRadius: 16, overflow: 'hidden', opacity: addedToCollection ? 0.7 : 1 }}
+              >
+                <LinearGradient
+                  colors={addedToCollection ? ['#10B981', '#059669'] : ['#BE185D', '#C2410C']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, borderRadius: 16 }}
+                >
+                  {savingToCollection ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons name={addedToCollection ? 'checkmark-circle' : 'bookmark-outline'} size={18} color="#FFFFFF" />
+                  )}
+                  <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
+                    {addedToCollection ? 'Saved to Library' : 'Save to Library'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
+        <BottomNavBar
+          onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+          onProfilePress={() => onNavigate && onNavigate('profile')}
+          onPlusPress={() => onNavigate && onNavigate('create')}
+          onVoicePress={() => onNavigate && onNavigate('voice')}
+          onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+          onWorkoutPress={() => onNavigate && onNavigate('workout')}
+          onMessagesPress={() => onNavigate && onNavigate('messages')}
+          activeTabKey="workout"
+        />
       </View>
     );
   }
@@ -3049,9 +3244,13 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const planBuilderMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.58)';
   const planBuilderDivider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)';
   const planBuilderSectionLabelColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(10,10,15,0.38)';
+  const planBuilderSecondaryRing = isDark
+    ? ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)']
+    : ['rgba(190,24,93,0.38)', 'rgba(194,65,12,0.28)'];
 
   const lovableText = planBuilderText;
   const lovableMuted = planBuilderMuted;
+  const lovableSubtle = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.52)';
 
   // IMPORTANT: no hooks here (this code runs after an early return when onboardingData is null).
   // Using useCallback/useMemo here would change hook order between renders.
@@ -3075,6 +3274,11 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const heroGoal = displayForFieldKey('goal');
   const heroLevel = displayForFieldKey('fitnessLevel');
   const heroPersonal = displayForFieldKey('personalInfo');
+  const profileCardSectionLabels = getProfileCardSectionLabels(onboardingData);
+  const profileCardPillText =
+    profileCardSectionLabels.length > 0
+      ? profileCardSectionLabels.join(' · ')
+      : 'Onboarding answers';
   const heroGreeting = (() => {
     const h = new Date().getHours();
     if (h >= 5 && h < 12) return 'Good morning';
@@ -3092,12 +3296,19 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     const expanded = expandedCard === fieldKey;
     const hasError = validationErrors[fieldKey];
     const shakeAnim = shakeAnimations.current[fieldKey] || new Animated.Value(0);
-    const iconEl =
-      meta.iconLib === 'mci' ? (
-        <MaterialCommunityIcons name={meta.icon} size={22} color={meta.color} />
-      ) : (
-        <Ionicons name={meta.icon} size={22} color={meta.color} />
-      );
+    const profileIconId = PROFILE_FIELD_ICON_ID[fieldKey];
+    const iconEl = profileIconId ? (
+      <ProfileCardIcon
+        itemId={profileIconId}
+        onboardingData={onboardingData}
+        size={34}
+        fallbackIcon={meta.iconLib === 'mci' ? meta.icon : meta.icon}
+      />
+    ) : meta.iconLib === 'mci' ? (
+      <MaterialCommunityIcons name={meta.icon} size={22} color={meta.color} />
+    ) : (
+      <Ionicons name={meta.icon} size={22} color={meta.color} />
+    );
     return (
       <Animated.View
         key={fieldKey}
@@ -3178,45 +3389,21 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     <View style={[styles.root, { backgroundColor: planBuilderBg }]}>
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <CoachConnectHeader
-        title=""
-        isDark={isDark}
-        onBack={() => {
-          if (isGenerating) {
-            console.log(
-              'Workout plan: leaving screen — generation continues in background; you will get',
-              'a notification when finished if you are not on this screen or the app is in background.',
-            );
-          }
-          onBack?.();
-        }}
-        onProfilePress={onProfilePress}
-        onSettingsPress={onSettingsPress}
-      />
-
-      {isCoachViewingClientProfile ? (
-        <View
-          style={{
-            marginHorizontal: 16,
-            marginTop: 8,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(167,139,250,0.35)' : 'rgba(139,92,246,0.28)',
-            backgroundColor: isDark ? 'rgba(124,58,237,0.12)' : 'rgba(237,233,254,0.95)',
-          }}
-        >
-          <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#DDD6FE' : '#5B21B6', marginBottom: 4 }}>
-            Coach view
-          </Text>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: textPrimary, lineHeight: 18 }}>
-            {viewingClientName
-              ? `Showing onboarding context for ${viewingClientName}. Edits and AI generation here are disabled — use Home → select them → AI Workouts to build plans for their library.`
-              : 'Showing this client onboarding context. Use Home → select them → AI Workouts to generate plans they receive in their app.'}
-          </Text>
-        </View>
-      ) : null}
+      {renderWorkoutChromeHeader(
+        hideBottomNav
+          ? {
+              onBack: () => {
+                if (isGenerating) {
+                  console.log(
+                    'Workout plan: leaving screen — generation continues in background; you will get',
+                    'a notification when finished if you are not on this screen or the app is in background.',
+                  );
+                }
+                onBack?.();
+              },
+            }
+          : {},
+      )}
 
       {isGenerating && (
         <View
@@ -3317,6 +3504,14 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           }}
           showsVerticalScrollIndicator={false}
         >
+        {isCoachViewingClientProfile ? (
+          <CoachViewContextBanner
+            isDark={isDark}
+            clientName={viewingClientName}
+            textColor={textPrimary}
+            mutedColor={planBuilderMuted}
+          />
+        ) : null}
         {!aiPrefReady ? (
           <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 18 }}>
             <View
@@ -3361,7 +3556,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                     Workout Plans (Trainer)
                   </Text>
                   <Text style={{ fontSize: 14, lineHeight: 20, color: planBuilderMuted, textAlign: 'center' }}>
-                    AI is disabled. If you have a trainer, send a request for a custom plan.
+                    AI is disabled. Send a workout plan request to your trainer — it shows up in their Client Requests inbox, not Messages.
                   </Text>
 
                   {!resolvedTrainerId ? (
@@ -3440,8 +3635,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                           end={{ x: 1, y: 0 }}
                           style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
                         >
-                          {sendingRequest ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="send" size={18} color="#FFFFFF" />}
-                          <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Send Request</Text>
+                          {sendingRequest ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />}
+                          <Text style={{ color: '#FFFFFF', fontWeight: '900' }}>Send to Client Requests</Text>
                         </LinearGradient>
                       </TouchableOpacity>
                     </View>
@@ -3588,7 +3783,13 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 }}
               >
                 <LinearGradient
-                  colors={addedToCollection ? ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.10)'] : ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)']}
+                  colors={
+                    addedToCollection
+                      ? isDark
+                        ? ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.10)']
+                        : ['rgba(16,185,129,0.55)', 'rgba(5,150,105,0.4)']
+                      : planBuilderSecondaryRing
+                  }
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
@@ -3622,72 +3823,108 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 </LinearGradient>
               </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleViewPdf}
-              style={{
-                marginTop: 12,
-                height: 50,
-                borderRadius: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-              }}
-            >
-              <LinearGradient
-                colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ flex: 1, width: '100%', padding: 1.5, borderRadius: 16 }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    width: '100%',
-                    borderRadius: 14.5,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
-                  }}
-                >
-                  <Ionicons name="download-outline" size={16} color={planBuilderMuted} />
-                  <View style={{ width: 8 }} />
-                  <Text style={{ color: planBuilderMuted, fontWeight: '900' }}>Export / View PDF</Text>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Profile pills (premium, sectioned, spacious) */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 10 }}>
-          <View>
-            <Text style={{ fontSize: 22, fontWeight: '900', color: lovableText, marginBottom: 6 }}>Profile Cards</Text>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: lovableMuted, lineHeight: 18 }}>
-              Tap any pill to edit your plan inputs.
-            </Text>
+        {generationError ? (
+          <View style={[styles.generationErrorBanner, { marginHorizontal: 16, marginBottom: 16 }]}>
+            <Ionicons name="warning" size={20} color="#F59E0B" />
+            <Text style={[styles.generationErrorText, { color: planBuilderText }]}>{generationError}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setGenerationError(null);
+                generateWorkoutPlan();
+              }}
+              style={styles.generationErrorRetry}
+            >
+              <Text style={[styles.generationErrorRetryText, { color: isDark ? '#FFF' : '#1a0a2e' }]}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        </>
+        ) : null}
 
-            <View style={{ alignItems: 'flex-end', marginTop: 12 }}>
+        {/* Profile pills — always visible (coach review + client edits), not gated on AI */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 12, alignItems: 'center' }}>
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: '900',
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              color: isDark ? 'rgba(233,213,255,0.72)' : 'rgba(109,40,217,0.75)',
+              textAlign: 'center',
+            }}
+          >
+            Onboarding snapshot
+          </Text>
+          <Text
+            style={{
+              fontSize: 22,
+              fontWeight: '900',
+              color: lovableText,
+              marginTop: 6,
+              textAlign: 'center',
+              letterSpacing: -0.3,
+            }}
+          >
+            Profile Cards
+          </Text>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '600',
+              color: lovableMuted,
+              lineHeight: 19,
+              textAlign: 'center',
+              marginTop: 8,
+              maxWidth: 320,
+            }}
+          >
+            {isCoachViewingClientProfile
+              ? 'Only fields they answered during onboarding appear below.'
+              : 'Only your onboarding answers appear here — tap a card to edit.'}
+          </Text>
+
+          {profileCardSectionLabels.length > 0 ? (
+            <LinearGradient
+              colors={['#9333EA', '#DB2777']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ borderRadius: 999, padding: 1, marginTop: 14 }}
+            >
               <View
                 style={{
                   borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  backgroundColor: isDark ? 'rgba(10,8,18,0.96)' : 'rgba(255,255,255,0.98)',
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: '900', color: lovableMuted, letterSpacing: 0.2 }}>
-                  {`Personal • Training • Recovery`}
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.72)',
+                    letterSpacing: 0.3,
+                    textAlign: 'center',
+                  }}
+                >
+                  {profileCardPillText}
                 </Text>
               </View>
-            </View>
-          </View>
+            </LinearGradient>
+          ) : null}
+
+          <View
+            style={{
+              marginTop: 18,
+              width: '100%',
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: planBuilderDivider,
+            }}
+          />
+        </View>
 
           {(() => {
             // Deterministic 2-col grid: avoids `gap` / % width layout quirks that can stack-left.
@@ -3748,8 +3985,10 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               },
             ];
 
+            const visibleSections = filterProfileCardSections(sections, onboardingData);
+
             const SectionHeader = ({ text }) => (
-              <View style={{ marginTop: 26, marginBottom: 12 }}>
+              <View style={{ marginTop: 20, marginBottom: 12 }}>
                 <Text
                   style={{
                     fontSize: 11,
@@ -3761,7 +4000,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 >
                   {text}
                 </Text>
-                <View style={{ marginTop: 10, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+                <View style={{ marginTop: 10, height: 1, backgroundColor: planBuilderDivider }} />
               </View>
             );
 
@@ -3770,7 +4009,10 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               const isFullWidth = item.fullWidth === true || isJourney;
               const cellStyle = isFullWidth ? { width: usableW, alignSelf: 'center' } : { width: gridCardW };
               const cardBg = isDark ? '#13131A' : '#FFFFFF';
-              const iconBg = cardBg;
+              const isEditable = !isCoachViewingClientProfile;
+              const pillColors = ['#6D28D9', '#C2410C'];
+              const pillText = isEditable ? 'Tap to edit' : 'Read only';
+              const pillTextColor = '#FFFFFF';
 
               // Special "My Journey" layout (full width, taller, horizontal, preview)
               if (isJourney) {
@@ -3779,38 +4021,57 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                     key={item.id}
                     activeOpacity={0.9}
                     onPress={() => setEditingPillKey(item.editKey)}
+                    disabled={!isEditable}
                     style={[cellStyle, { marginTop: 10, marginBottom: 6 }]}
                   >
-                    <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 1.5 }}>
+                    <View
+                      style={{
+                        borderRadius: 22,
+                        borderWidth: 1,
+                        borderColor: planBuilderDivider,
+                        backgroundColor: cardBg,
+                      }}
+                    >
                       <View
                         style={{
-                          borderRadius: 21,
-                          backgroundColor: cardBg,
                           padding: 16,
                           minHeight: 172,
                           flexDirection: 'row',
                           alignItems: 'flex-start',
                         }}
                       >
-                        <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 22, padding: 1.5 }}>
-                          <View style={{ width: '100%', height: '100%', borderRadius: 21, backgroundColor: iconBg, justifyContent: 'center', alignItems: 'center' }}>
-                            <Ionicons name={item.icon} size={18} color={accent.text} />
+                        <View style={{ flex: 1, flexDirection: 'row' }}>
+                          <View style={profileCardIconWrapStyle(isDark)}>
+                            <ProfileCardIcon itemId={item.id} onboardingData={onboardingData} fallbackIcon={item.icon} />
                           </View>
-                        </LinearGradient>
 
-                        <View style={{ flex: 1, marginLeft: 14 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '900', letterSpacing: 0.8, color: lovableMuted, textTransform: 'uppercase' }}>
-                            {item.label}
-                          </Text>
-                          <Text style={{ fontSize: 14, fontWeight: '800', color: lovableText, marginTop: 8 }} numberOfLines={2}>
-                            {item.value}
-                          </Text>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: lovableMuted, marginTop: 10 }}>
-                            Tap to expand
-                          </Text>
+                          <View style={{ flex: 1, marginLeft: 14 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '900', letterSpacing: 0.8, color: lovableMuted, textTransform: 'uppercase' }}>
+                              {item.label}
+                            </Text>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: lovableText, marginTop: 8 }} numberOfLines={2}>
+                              {item.value}
+                            </Text>
+                            <LinearGradient
+                              colors={isEditable ? pillColors : ['rgba(148,163,184,0.45)', 'rgba(148,163,184,0.35)']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 0 }}
+                              style={{
+                                alignSelf: 'flex-start',
+                                marginTop: 12,
+                                paddingHorizontal: 12,
+                                paddingVertical: 7,
+                                borderRadius: 999,
+                              }}
+                            >
+                              <Text style={{ color: pillTextColor, fontSize: 11, fontWeight: '900', letterSpacing: 0.2 }}>
+                                {pillText}
+                              </Text>
+                            </LinearGradient>
+                          </View>
                         </View>
                       </View>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                 );
               }
@@ -3821,45 +4082,89 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                   key={item.id}
                   activeOpacity={0.9}
                   onPress={() => setEditingPillKey(item.editKey)}
+                  disabled={!isEditable}
                   style={[cellStyle, { marginBottom: 14 }]}
                 >
-                  <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 1.5 }}>
-                    <View
-                      style={{
-                        borderRadius: 21,
-                        backgroundColor: cardBg,
-                        paddingHorizontal: 16,
-                        paddingVertical: 16,
-                        minHeight: 138,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <LinearGradient colors={accent.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 22, padding: 1.5 }}>
-                        <View style={{ width: '100%', height: '100%', borderRadius: 21, backgroundColor: iconBg, justifyContent: 'center', alignItems: 'center' }}>
-                          <Ionicons name={item.icon} size={18} color={accent.text} />
+                  <View
+                    style={{
+                      borderRadius: 22,
+                      borderWidth: 1,
+                      borderColor: planBuilderDivider,
+                      backgroundColor: cardBg,
+                      paddingHorizontal: 16,
+                      paddingVertical: 16,
+                      minHeight: 138,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                      <View style={{ width: '100%', alignItems: 'center' }}>
+                        <View style={profileCardIconWrapStyle(isDark)}>
+                          <ProfileCardIcon itemId={item.id} onboardingData={onboardingData} fallbackIcon={item.icon} />
                         </View>
-                      </LinearGradient>
 
-                      <Text style={{ marginTop: 12, fontSize: 9, fontWeight: '800', letterSpacing: 0.9, color: lovableMuted, textTransform: 'uppercase', textAlign: 'center' }}>
-                        {item.label}
-                      </Text>
-                      <Text style={{ marginTop: 8, fontSize: 17, fontWeight: '900', color: lovableText, textAlign: 'center' }} numberOfLines={2}>
-                        {item.value}
-                      </Text>
-                      <Text style={{ marginTop: 8, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.62)', textAlign: 'center' }} numberOfLines={1}>
-                        {item.helper}
-                      </Text>
+                        <Text style={{ marginTop: 12, fontSize: 9, fontWeight: '800', letterSpacing: 0.9, color: lovableMuted, textTransform: 'uppercase', textAlign: 'center' }}>
+                          {item.label}
+                        </Text>
+                        <Text style={{ marginTop: 8, fontSize: 17, fontWeight: '900', color: lovableText, textAlign: 'center' }} numberOfLines={2}>
+                          {item.value}
+                        </Text>
+                        <Text style={{ marginTop: 8, fontSize: 11, fontWeight: '600', color: lovableSubtle, textAlign: 'center' }} numberOfLines={1}>
+                          {item.helper}
+                        </Text>
+
+                        <LinearGradient
+                          colors={isEditable ? pillColors : ['rgba(148,163,184,0.45)', 'rgba(148,163,184,0.35)']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={{
+                            marginTop: 12,
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            borderRadius: 999,
+                          }}
+                        >
+                          <Text style={{ color: pillTextColor, fontSize: 11, fontWeight: '900', letterSpacing: 0.2 }}>
+                            {pillText}
+                          </Text>
+                        </LinearGradient>
+                      </View>
                     </View>
-                  </LinearGradient>
                 </TouchableOpacity>
               );
             };
 
             let globalIdx = 0;
+
+            if (visibleSections.length === 0) {
+              return (
+                <View
+                  style={{
+                    marginTop: 8,
+                    marginBottom: 16,
+                    paddingVertical: 28,
+                    paddingHorizontal: 20,
+                    alignItems: 'center',
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={28} color={lovableMuted} />
+                  <Text style={{ color: lovableText, fontSize: 16, fontWeight: '800', marginTop: 12, textAlign: 'center' }}>
+                    No onboarding answers yet
+                  </Text>
+                  <Text style={{ color: lovableMuted, fontSize: 13, lineHeight: 18, marginTop: 6, textAlign: 'center', maxWidth: 280 }}>
+                    Cards appear here only for fields this client completed during onboarding.
+                  </Text>
+                </View>
+              );
+            }
+
             return (
               <View style={{ paddingBottom: 10 }}>
-                {sections.map((sec) => (
+                {visibleSections.map((sec) => (
                   <View key={sec.title}>
                     <SectionHeader text={sec.title} />
                     {(() => {
@@ -3914,25 +4219,6 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               </View>
             );
           })()}
-        </View>
-
-        {generationError ? (
-          <View style={[styles.generationErrorBanner, { marginHorizontal: 16, marginBottom: 16 }]}>
-            <Ionicons name="warning" size={20} color="#F59E0B" />
-            <Text style={[styles.generationErrorText, { color: planBuilderText }]}>{generationError}</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setGenerationError(null);
-                generateWorkoutPlan();
-              }}
-              style={styles.generationErrorRetry}
-            >
-              <Text style={[styles.generationErrorRetryText, { color: isDark ? '#FFF' : '#1a0a2e' }]}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        </>
-        ) : null}
       </ScrollView>
       ) : (
         <WorkoutExerciseLibraryTab
@@ -3954,6 +4240,22 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               },
             ]}
           >
+            {!isCoachViewingClientProfile ? (
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
+                  textAlign: 'center',
+                  marginBottom: 10,
+                }}
+              >
+                {plansUsedThisMonth} of {planGenerationLimit} plans used this month
+                {plansRemaining <= 0
+                  ? ` · Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}`
+                  : ''}
+              </Text>
+            ) : null}
             {generatedPlan ? (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity
@@ -4018,8 +4320,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                   onPress={() => {
                     if (plansRemaining <= 0) {
                       Alert.alert(
-                        'Plan limit reached',
-                        'You’ve used your 2 AI plan generations for this month. You can still use AI Coach for unlimited modifications.',
+                        'Monthly limit reached',
+                        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
                       );
                       return;
                     }
@@ -4068,7 +4370,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         textColor={isDark ? '#FFFFFF' : '#0A0A0F'}
         mutedColor={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)'}
         borderColor={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.12)'}
-        doneGradient={isDark ? ['#C084FC', '#FF4D8D'] : ['#FF6B9D', '#C084FC']}
+        doneGradient={['#BE185D', '#C2410C']}
         isDark={isDark}
         onClose={() => setEditingPillKey(null)}
         onDone={() => {
@@ -4834,8 +5136,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    borderLeftWidth: 3,
-    borderLeftColor: '#FF6B9D',
+    borderTopWidth: 3,
+    borderTopColor: '#FF6B9D',
   },
   planOverviewLabel: {
     color: '#ffffff',

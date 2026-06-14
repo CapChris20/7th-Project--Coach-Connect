@@ -84,6 +84,12 @@ export function AIOptInStep({
         ))}
       </View>
 
+      <Text style={[styles.meterHint, { color: t.textSecondary }]}>
+        This choice does not use your monthly switch allowance. Later, you can turn AI on or off in Settings — each flip uses
+        part of a small monthly allowance, so choose wisely. If you turn it off repeatedly and leave it off, we may keep it off
+        for about a month so you can decide what you want.
+      </Text>
+
       <View style={[styles.buttonContainer, { alignItems: 'center' }]}>
         <OnboardingPrimaryButton t={t} onPress={onEnableAI} label="Yes, Enable AI" />
 
@@ -146,7 +152,7 @@ const styles = StyleSheet.create({
   },
   featuresContainer: {
     gap: 12,
-    marginBottom: 22,
+    marginBottom: 14,
   },
   featureCard: {
     flexDirection: 'row',
@@ -174,6 +180,13 @@ const styles = StyleSheet.create({
   featureDescription: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  meterHint: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 18,
+    paddingHorizontal: 10,
   },
   buttonContainer: {
     gap: 12,

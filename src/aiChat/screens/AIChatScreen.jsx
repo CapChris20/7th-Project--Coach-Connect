@@ -8,61 +8,337 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
+  Animated,
+  Alert,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Pressable,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
-  Modal,
-  ScrollView,
-  Image,
-  Dimensions,
-  StyleSheet,
-  Keyboard,
+  View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LottieView from 'lottie-react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
+import { showCoachAttachMenu } from '../lib/showCoachAttachMenu';
+import {
+  pickCoachDocuments,
+  pickCoachPhotoFromCamera,
+  pickCoachPhotosFromLibrary,
+} from '../lib/coachAttachmentPickers';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import logger from '../../shared/services/logger';
 import { db } from '../../app/config';
 import { auth } from '../../app/config';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import Markdown from 'react-native-markdown-display';
-import { getApiBase } from '../../shared/services/baseUrl';
-import logger from '../../shared/services/logger';
+import Markdown, { openUrl } from 'react-native-markdown-display';
+import { loadCoachContextEnhanced } from '../../ai/contextAggregation';
+import { sendCoachMessageWithRetry } from '../../ai/deepseekService';
+import ToolConfirmationModal from '../components/ToolConfirmationModal';
+import { executeCoachTool, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai/toolExecutor';
+import { inferToolCallFromCoachMessage } from '../../ai/inferCoachToolCallClient';
+import { useCoachSpeech } from '../hooks/useCoachSpeech';
+import { shouldShowWebSearchUI } from '../../ai/webSearchRouting';
+import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../shared/accessibility/a11yProps';
+import { AI_COACH_UI } from '../aiCoachUiTokens';
+import AICoachGlassCard from '../components/AICoachGlassCard';
+import { stripCoachToolJsonFromReply, parseCoachToolCalls } from '../../shared/parseCoachToolCalls';
+import { coerceMisroutedDeleteTool } from '../../ai/coachDeleteLogRouting';
 
-const GRAD = ['#7C3AED', '#EC4899'];
-const { width: SW } = Dimensions.get('window');
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
+const USER_BUBBLE_GRAD = AI_COACH_UI.gradient.userBubble;
+const ACTION_GRAD = AI_COACH_UI.gradient.ctaWarm;
+const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
+const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 
-// ─── Theme tokens (same as home screen) ──────────────────────────────────────
+/** Firestore rejects undefined anywhere in a document. */
+function stripUndefinedDeep(value) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(stripUndefinedDeep)
+      .filter((item) => item !== undefined);
+  }
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (val === undefined) continue;
+    const cleaned = stripUndefinedDeep(val);
+    if (cleaned !== undefined) out[key] = cleaned;
+  }
+  return out;
+}
+
+function serializeChatMessage(m) {
+  if (!m) return null;
+  const payload = {
+    role: m.role === 'ai' ? 'ai' : 'user',
+    content: m.text,
+    time: m.time,
+    source: m.source || null,
+  };
+  if (Array.isArray(m.attachments) && m.attachments.length > 0) {
+    payload.attachments = m.attachments.map((a) =>
+      stripUndefinedDeep({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        preview: a.preview,
+      })
+    );
+  }
+  if (m.toolCall) payload.toolCall = m.toolCall;
+  if (m.toolConfirmed) payload.toolConfirmed = true;
+  if (m.isToolResult) payload.isToolResult = true;
+  return stripUndefinedDeep(payload);
+}
+
+function resolveIncomingCoachTool(coachResponse, userText = '') {
+  const rawReply = coachResponse?.message || '';
+  const user = String(userText || '').trim();
+  const rawTool = coachResponse?.toolCall || parseCoachToolCalls(rawReply)[0] || null;
+  const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
+  if (coerced) return coerced;
+  const displayReply = stripCoachToolJsonFromReply(rawReply) || rawReply;
+  return inferToolCallFromCoachMessage(displayReply, userText);
+}
+
+function resolveMessageToolCall(message, userMessage = '') {
+  if (!message || message.toolConfirmed || message.isToolResult) return null;
+  if (message.toolCall) return normalizeToolCall(message.toolCall);
+  return inferToolCallFromCoachMessage(message.text, userMessage);
+}
+
+function coachActionPromptVisible(message, userMessage = '') {
+  if (!message || message.role === 'user' || message.toolConfirmed) return false;
+  return Boolean(resolveMessageToolCall(message, userMessage));
+}
+
+function formatToolActionSummary(toolCall) {
+  const t = normalizeToolCall(toolCall);
+  if (!t) {
+    return { icon: 'flash-outline', title: 'Confirm action', detail: 'Review what the coach will update' };
+  }
+  const p = t.params || {};
+  const joinParts = (...parts) => parts.filter(Boolean).join(' · ');
+
+  switch (t.name) {
+    case 'logNutrition':
+      return {
+        icon: 'restaurant-outline',
+        title: p.food || p.foodName || 'Log meal',
+        detail: joinParts(
+          p.calories || p.cals ? `${Math.round(Number(p.calories || p.cals))} cal` : null,
+          p.protein ? `${Math.round(Number(p.protein))}g protein` : null,
+          p.mealType ? String(p.mealType) : null
+        ) || 'Add this food to your nutrition log',
+      };
+    case 'adjustMacroTargets':
+      return {
+        icon: 'nutrition-outline',
+        title: 'Update macro targets',
+        detail: joinParts(
+          p.calories ? `${Math.round(Number(p.calories))} cal/day` : null,
+          p.protein ? `${Math.round(Number(p.protein))}g protein` : null,
+          p.carbs ? `${Math.round(Number(p.carbs))}g carbs` : null,
+          p.fat ? `${Math.round(Number(p.fat))}g fat` : null
+        ),
+      };
+    case 'logSleep':
+      return {
+        icon: 'moon-outline',
+        title: 'Log sleep',
+        detail: joinParts(
+          p.hours || p.sleepHours ? `${p.hours || p.sleepHours} hours` : null,
+          p.date && p.date !== 'Today' ? `on ${p.date}` : 'on your dashboard'
+        ),
+      };
+    case 'logWater':
+      return {
+        icon: 'water-outline',
+        title: 'Log water',
+        detail: `${p.amount_oz ?? p.amountOz ?? p.amount ?? '—'} oz on your dashboard`,
+      };
+    case 'logSteps':
+      return {
+        icon: 'footsteps-outline',
+        title: 'Log steps',
+        detail: `${Number(p.step_count ?? p.steps ?? 0).toLocaleString()} steps on your dashboard`,
+      };
+    case 'rateEnergy':
+      return {
+        icon: 'flash-outline',
+        title: 'Log energy level',
+        detail: joinParts(p.rating ? `${p.rating}/10 energy` : null, p.notes ? String(p.notes) : null),
+      };
+    case 'logMood':
+      return {
+        icon: 'happy-outline',
+        title: 'Log mood',
+        detail: joinParts(p.mood ? `Feeling ${p.mood}` : null, p.notes ? String(p.notes) : null),
+      };
+    case 'rateWorkout':
+      return {
+        icon: 'barbell-outline',
+        title: 'Rate workout',
+        detail: p.rating ? `${p.rating}/10 workout rating` : 'Save how that session felt',
+      };
+    case 'updateWorkout': {
+      const add =
+        typeof p.newExercise === 'object'
+          ? p.newExercise?.name
+          : p.newExercise || p.exerciseName;
+      return {
+        icon: 'swap-horizontal-outline',
+        title: 'Swap exercise',
+        detail: add ? `Replace with ${add}` : 'Update an exercise in your plan',
+      };
+    }
+    case 'logRestDay':
+      return {
+        icon: 'bed-outline',
+        title: 'Log rest day',
+        detail: joinParts(p.date && p.date !== 'Today' ? `on ${p.date}` : 'on your dashboard today'),
+      };
+    case 'bookSession':
+      return {
+        icon: 'calendar-outline',
+        title: 'Book session',
+        detail: joinParts(p.dateTime || p.sessionDate || p.date, p.sessionTime || p.time),
+      };
+    case 'openWorkoutPlan':
+      return {
+        icon: 'document-text-outline',
+        title: 'Open workout plan',
+        detail: p.planId === 'current' ? 'Your active program + today\'s session' : `Plan ${p.planId}`,
+      };
+    case 'updateGoal':
+      return { icon: 'flag-outline', title: 'Update goal', detail: p.newGoal ? `New goal: ${p.newGoal}` : 'Change your primary goal' };
+    case 'notifyTrainer':
+      return {
+        icon: 'chatbubble-ellipses-outline',
+        title: 'Notify trainer',
+        detail: p.message ? String(p.message).slice(0, 80) : 'Send a message to your trainer',
+      };
+    case 'deleteLog': {
+      const logType = String(p.logType || 'nutrition').toLowerCase();
+      if (logType === 'nutrition') {
+        if (p.deleteAll || p.all) {
+          return { icon: 'trash-outline', title: 'Delete all food logs', detail: `Clear food entries for ${p.date || 'today'}` };
+        }
+        if (p.foodName || p.food) {
+          return { icon: 'trash-outline', title: 'Delete food log', detail: `Remove ${p.foodName || p.food}` };
+        }
+        return { icon: 'trash-outline', title: 'Delete last food entry', detail: 'Remove your most recent meal log' };
+      }
+      return {
+        icon: 'trash-outline',
+        title: 'Delete log',
+        detail: joinParts(`Clear ${logType} entry`, p.date && p.date !== 'Today' ? `for ${p.date}` : 'for today'),
+      };
+    }
+    default:
+      return {
+        icon: 'checkmark-circle-outline',
+        title: TOOL_DISPLAY_NAMES[t.name] || 'Confirm action',
+        detail: t.reasoning || 'Review and confirm this coach action',
+      };
+  }
+}
+
+function ToolActionChip({ message, onPress, t, userMessage = '' }) {
+  const toolCall = resolveMessageToolCall(message, userMessage);
+  if (!toolCall) return null;
+  const summary = formatToolActionSummary(toolCall);
+  const handlePress = () => onPress?.(toolCall, message.id);
+
+  return (
+    <AICoachGlassCard
+      heroFill
+      borderColors={AI_COACH_UI.gradient.borderWarm}
+      borderRadius={14}
+      padding={1.5}
+      style={{ marginTop: 10 }}
+      contentStyle={{ paddingBottom: 0 }}
+    >
+      <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12, flexDirection: 'row', gap: 12 }}>
+        <LinearGradient
+          colors={ACTION_GRAD}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={summary.icon} size={20} color="#FFFFFF" />
+        </LinearGradient>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: t.textPrimary }} numberOfLines={2}>
+            {summary.title}
+          </Text>
+          <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4, lineHeight: 17 }} numberOfLines={3}>
+            {summary.detail}
+          </Text>
+        </View>
+      </View>
+      <TouchableOpacity
+        onPress={handlePress}
+        activeOpacity={0.88}
+        hitSlop={MIN_TOUCH_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel={`${summary.title}. Confirm action.`}
+      >
+        <LinearGradient
+          colors={ACTION_GRAD}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{
+            minHeight: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>Confirm Action</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </AICoachGlassCard>
+  );
+}
+// ─── Theme tokens (aligned with design-system.md) ────────────────────────────
 const DARK = {
-  bg: '#0A0A0F',
-  cardBg: 'rgba(255,255,255,0.05)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.5)',
-  textMuted: 'rgba(255,255,255,0.3)',
-  inputBg: 'rgba(255,255,255,0.05)',
-  inputBorder: 'rgba(255,255,255,0.08)',
+  bg: AI_COACH_UI.bg,
+  cardBg: AI_COACH_UI.glass,
+  cardBorder: AI_COACH_UI.borderHairline,
+  textPrimary: AI_COACH_UI.textPrimary,
+  textSecondary: AI_COACH_UI.textSecondary,
+  textMuted: AI_COACH_UI.textMuted,
+  inputBg: AI_COACH_UI.glass,
+  inputBorder: AI_COACH_UI.borderHairline,
   divider: 'rgba(255,255,255,0.05)',
-  chipBg: 'rgba(255,255,255,0.07)',
+  chipBg: AI_COACH_UI.glassStrong,
   chipBorder: 'rgba(255,255,255,0.12)',
   inputBarBg: '#0C0C14',
-  inputBarBorder: 'rgba(255,255,255,0.08)',
-  aiBubbleBg: 'rgba(255,255,255,0.1)',
+  inputBarBorder: AI_COACH_UI.borderHairline,
+  aiBubbleBg: AI_COACH_UI.glassStrong,
   aiBubbleBorder: 'rgba(255,255,255,0.15)',
-  msgReceivedBg: 'rgba(255,255,255,0.07)',
-  msgReceivedBorder: 'rgba(255,255,255,0.1)',
+  msgReceivedBg: AI_COACH_UI.glass,
+  msgReceivedBorder: 'rgba(255,255,255,0.10)',
   msgTimestamp: 'rgba(255,255,255,0.35)',
 };
 
@@ -160,52 +436,13 @@ function deriveChatTitle(firstUserText) {
   return cleaned ? toTitleCase(cleaned) : 'Chat';
 }
 
-function shouldUseWebAuto(userText) {
-  const raw = String(userText || '');
-  const t = raw.toLowerCase();
-  if (!t.trim()) return false;
-
-  const keywords = [
-    'latest',
-    'today',
-    'this week',
-    'this month',
-    '2025',
-    '2026',
-    'news',
-    'update',
-    'price',
-    'cost',
-    'release',
-    'version',
-    'study',
-    'research',
-    'meta-analysis',
-    'paper',
-    'source',
-    'cite',
-    'link',
-    'near me',
-    'restaurant',
-    'menu',
-    'nutrition facts',
-    'calories in',
-  ];
-  if (keywords.some((k) => t.includes(k))) return true;
-
-  const hasNumbers = /\d/.test(t);
-  const long = t.length >= 120;
-  const hasQuoted = /"[^"]{6,}"/.test(raw);
-  return (long && hasNumbers) || hasQuoted;
-}
-
 // ─── Feature explanation cards (inline in AI messages) ────────────────────────
 const FEATURE_COLORS = {
-  analysis: '#C084FC', // purple
-  generation: '#FF6B9D', // pink
-  optimization: '#06B6D4', // cyan
-  goals: '#10B981', // green
-  tracking: '#F97316', // orange
+  analysis: AI_COACH_UI.purple,
+  generation: AI_COACH_UI.pink,
+  optimization: AI_COACH_UI.cyan,
+  goals: AI_COACH_UI.green,
+  tracking: AI_COACH_UI.orange,
 };
 
 const inferFlowType = (userText) => {
@@ -421,209 +658,191 @@ function FeatureCard({ t, icon, title, color, items }) {
   );
 }
 
-async function postAICoach(payload) {
-  const base = String(getApiBase() || '').replace(/\/$/, '');
-  const url = `${base}/api/ai-coach`;
-  logger.debug('[AIChat] requesting URL:', url);
+const COACH_WAIT_LABELS = {
+  thinking: { icon: 'sparkles-outline', text: 'Coach is thinking…' },
+  context: { icon: 'analytics-outline', text: 'Reviewing your week…' },
+  drafting: { icon: 'create-outline', text: 'Writing your reply…' },
+  web: { icon: 'globe-outline', text: 'Searching the web…' },
+  working: { icon: 'checkmark-circle-outline', text: 'Applying your request…' },
+};
 
-  const headers = { 'Content-Type': 'application/json' };
-  const idToken = await auth?.currentUser?.getIdToken?.();
-  if (idToken && typeof idToken === 'string') {
-    headers.Authorization = `Bearer ${idToken}`;
-  }
-
-  const controller = new AbortController();
-  const timeoutMs = 15000;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      console.error('[AIChat] /api/ai-coach non-200:', response.status, url);
-      let errDetail = '';
-      try {
-        const errJson = await response.json();
-        errDetail = errJson?.error || errJson?.message || '';
-      } catch (_) {}
-      console.error('[AIChat] /api/ai-coach error body:', errDetail || '(none)');
-      throw new Error('Could not reach the server. Check your connection and try again.');
-    }
-
-    if (__DEV__) console.log('✅ AI Coach response received (/api/ai-coach)');
-    return response.json();
-  } catch (error) {
-    const isTimeout = error?.name === 'AbortError';
-    console.error('❌ AI Coach error:', {
-      message: error?.message,
-      isTimeout,
-      hasAuth: !!idToken,
-      url,
-    });
-    if (isTimeout) {
-      throw new Error('AI Coach took too long to respond. Please try again.');
-    }
-    throw new Error('Could not reach the server. Check your connection and try again.');
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-function TypingIndicator({ t, searchingWeb }) {
-  const anims = [
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-  ];
+// ─── Typing / status bubbles while AI responds ───────────────────────────────
+function TypingIndicator({ t, phase = 'thinking' }) {
+  const dot1 = useRef(new Animated.Value(0.35)).current;
+  const dot2 = useRef(new Animated.Value(0.35)).current;
+  const dot3 = useRef(new Animated.Value(0.35)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Keep these JS-driven to avoid native-driver node reuse issues during Fast Refresh.
-    const animations = anims.map((anim, i) =>
+    const dots = [dot1, dot2, dot3];
+    const loops = dots.map((anim, i) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: false }),
-          Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: false }),
+          Animated.delay(i * 160),
+          Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0.35, duration: 380, useNativeDriver: true }),
         ])
       )
     );
-    animations.forEach((a) => a.start());
-    return () => animations.forEach((a) => a.stop());
-  }, [anims]);
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loops.forEach((l) => l.start());
+    pulseLoop.start();
+    return () => {
+      loops.forEach((l) => l.stop());
+      pulseLoop.stop();
+    };
+  }, [dot1, dot2, dot3, pulse]);
+
+  const meta = COACH_WAIT_LABELS[phase] || COACH_WAIT_LABELS.thinking;
+  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
 
   return (
-    <View style={{ marginBottom: 12 }}>
-      {searchingWeb ? (
-        <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              backgroundColor: t.aiBubbleBg,
-              borderWidth: 1,
-              borderColor: t.aiBubbleBorder,
-              borderRadius: 18,
-              borderBottomLeftRadius: 4,
-            }}
-          >
-            <Ionicons name="globe-outline" size={16} color={t.textSecondary} />
-            <Text style={{ color: t.textSecondary, fontSize: 13, fontWeight: '600' }}>Searching the web…</Text>
-          </View>
-        </View>
-      ) : null}
-
-      <View style={{ flexDirection: 'row' }}>
+    <View style={{ marginBottom: 12, alignItems: 'flex-start' }}>
+      <Animated.View style={{ opacity: pulseOpacity, marginBottom: 8 }}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
+            gap: 8,
             paddingHorizontal: 14,
-            paddingVertical: 12,
+            paddingVertical: 9,
             backgroundColor: t.aiBubbleBg,
             borderWidth: 1,
-            borderColor: t.aiBubbleBorder,
-            borderRadius: 18,
-            borderBottomLeftRadius: 4,
+            borderColor: phase === 'web' ? `${AI_COACH_UI.cyan}73` : t.aiBubbleBorder,
+            borderRadius: 16,
           }}
         >
-          {anims.map((anim, i) => (
-            <Animated.View
-              key={i}
-              style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: t.textMuted, opacity: anim }}
-            />
-          ))}
+          <Ionicons
+            name={meta.icon}
+            size={15}
+            color={phase === 'web' ? AI_COACH_UI.cyan : AI_COACH_UI.pink}
+          />
+          <Text style={{ color: t.textSecondary, fontSize: 13, fontWeight: '600' }}>{meta.text}</Text>
         </View>
+      </Animated.View>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          backgroundColor: t.msgReceivedBg,
+          borderWidth: 1,
+          borderColor: t.msgReceivedBorder,
+          borderRadius: 18,
+          borderBottomLeftRadius: 4,
+        }}
+      >
+        {[dot1, dot2, dot3].map((anim, i) => (
+          <Animated.View
+            key={i}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: AI_COACH_UI.pink,
+              opacity: anim,
+              transform: [
+                {
+                  scale: anim.interpolate({
+                    inputRange: [0.35, 1],
+                    outputRange: [0.85, 1.15],
+                  }),
+                },
+              ],
+            }}
+          />
+        ))}
       </View>
     </View>
   );
 }
 
-// ─── Action Sheet ─────────────────────────────────────────────────────────────
-function AttachActionSheet({ visible, onClose, onPhotoLibrary, onCamera, onFile, t }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}
-        activeOpacity={1}
-        onPress={onClose}
-      />
-      <View
-        style={{
-          backgroundColor: t.cardBg === '#FFFFFF' ? '#FFFFFF' : 'rgba(20,20,30,0.98)',
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          borderWidth: 1,
-          borderColor: t.cardBorder,
-          paddingBottom: insets.bottom + 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -8 },
-          shadowOpacity: 0.3,
-          shadowRadius: 16,
-        }}
-      >
-        {/* Handle bar */}
-        <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }}>
-          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: t.textMuted }} />
-        </View>
+/** Lets you highlight / copy AI markdown replies (default Markdown Text is not selectable). */
+const MARKDOWN_SELECTABLE_RULES = {
+  text: (node, children, parent, styles, inheritedStyles = {}) => (
+    <Text key={node.key} selectable style={[inheritedStyles, styles.text]}>
+      {node.content}
+    </Text>
+  ),
+  textgroup: (node, children, parent, styles) => (
+    <Text key={node.key} selectable style={styles.textgroup}>
+      {children}
+    </Text>
+  ),
+  strong: (node, children, parent, styles) => (
+    <Text key={node.key} selectable style={styles.strong}>
+      {children}
+    </Text>
+  ),
+  em: (node, children, parent, styles) => (
+    <Text key={node.key} selectable style={styles.em}>
+      {children}
+    </Text>
+  ),
+  s: (node, children, parent, styles) => (
+    <Text key={node.key} selectable style={styles.s}>
+      {children}
+    </Text>
+  ),
+  code_inline: (node, children, parent, styles, inheritedStyles = {}) => (
+    <Text key={node.key} selectable style={[inheritedStyles, styles.code_inline]}>
+      {node.content}
+    </Text>
+  ),
+  fence: (node, children, parent, styles, inheritedStyles = {}) => {
+    let content = node.content;
+    if (
+      typeof content === 'string' &&
+      content.charAt(content.length - 1) === '\n'
+    ) {
+      content = content.substring(0, content.length - 1);
+    }
+    return (
+      <Text key={node.key} selectable style={[inheritedStyles, styles.fence]}>
+        {content}
+      </Text>
+    );
+  },
+  link: (node, children, parent, styles, onLinkPress) => (
+    <Text
+      key={node.key}
+      selectable
+      style={styles.link}
+      onPress={() => openUrl(node.attributes.href, onLinkPress)}
+    >
+      {children}
+    </Text>
+  ),
+};
 
-        {[
-          { label: 'Photo Library', icon: 'image-outline', action: onPhotoLibrary },
-          { label: 'Camera', icon: 'camera-outline', action: onCamera },
-          { label: 'File', icon: 'document-outline', action: onFile },
-        ].map((item, i) => (
-          <TouchableOpacity
-            key={item.label}
-            onPress={() => {
-              item.action();
-              onClose();
-            }}
-            activeOpacity={0.7}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 14,
-              paddingHorizontal: 24,
-              paddingVertical: 16,
-              borderBottomWidth: 1,
-              borderBottomColor: t.divider,
-            }}
-          >
-            <Ionicons name={item.icon} size={22} color={t.textSecondary} />
-            <Text style={{ fontSize: 16, color: t.textPrimary, fontWeight: '500' }}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-
-        {/* Cancel */}
-        <TouchableOpacity
-          onPress={onClose}
-          activeOpacity={0.7}
-          style={{ paddingHorizontal: 24, paddingVertical: 16, alignItems: 'center' }}
-        >
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
+async function copyMessageToClipboard(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return;
+  await Clipboard.setStringAsync(raw);
+  try {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  } catch (_) {
+    /* ignore */
+  }
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ message, t }) {
+function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = '', toolModalVisible = false }) {
   const sent = message.role === 'user';
   const atts = Array.isArray(message.attachments) ? message.attachments : [];
   const firstImage = atts.find((a) => a?.preview);
   const firstFile = !firstImage ? atts.find((a) => a && !a.preview) : null;
-  const hasText = !!String(message.text || '').trim();
+  const rawText = String(message.text || '');
+  const displayText = sent ? rawText : stripCoachToolJsonFromReply(rawText);
+  const hasText = !!displayText.trim();
 
   const renderContent = () => {
     if (!hasText && firstImage?.preview) {
@@ -645,10 +864,15 @@ function MessageBubble({ message, t }) {
       );
     }
     if (sent) {
-      return <Text style={{ color: '#ffffff', fontSize: 14, lineHeight: 20 }}>{String(message.text || '')}</Text>;
+      return (
+        <Text selectable style={{ color: '#ffffff', fontSize: 14, lineHeight: 20 }}>
+          {displayText}
+        </Text>
+      );
     }
     return (
       <Markdown
+        rules={MARKDOWN_SELECTABLE_RULES}
         style={{
           body: { color: t.textPrimary, fontSize: 14, lineHeight: 20 },
           strong: { color: t.textPrimary, fontWeight: '800' },
@@ -659,14 +883,22 @@ function MessageBubble({ message, t }) {
           ordered_list: { marginBottom: 8 },
           code_inline: {
             color: t.textPrimary,
-            backgroundColor: t.chipBg,
+            backgroundColor: isDark ? AI_COACH_UI.surfaceElevated : t.chipBg,
             paddingHorizontal: 6,
             paddingVertical: 2,
             borderRadius: 6,
           },
+          fence: {
+            color: t.textPrimary,
+            backgroundColor: isDark ? AI_COACH_UI.surfaceElevated : t.chipBg,
+            padding: 10,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: isDark ? AI_COACH_UI.borderHairline : t.chipBorder,
+          },
         }}
       >
-        {String(message.text || '')}
+        {displayText}
       </Markdown>
     );
   };
@@ -675,20 +907,30 @@ function MessageBubble({ message, t }) {
   const bubbleBase = { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 };
   const attachmentOnly = !hasText && (firstImage || firstFile);
   const mediaStyle = attachmentOnly ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null;
+  const onCopyLongPress = hasText ? () => copyMessageToClipboard(message.text) : undefined;
 
   if (sent) {
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
         <View style={wrapStyle}>
+          <Pressable onLongPress={onCopyLongPress} delayLongPress={350}>
           <LinearGradient
-            colors={GRAD}
+            colors={USER_BUBBLE_GRAD}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[bubbleBase, { borderBottomRightRadius: 4 }, mediaStyle]}
           >
             {renderContent()}
           </LinearGradient>
-          <Text style={{ fontSize: 11, marginTop: 4, color: t.msgTimestamp, textAlign: 'right' }}>{message.time}</Text>
+          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            {hasText ? (
+              <TouchableOpacity onPress={() => copyMessageToClipboard(message.text)} hitSlop={8}>
+                <Ionicons name="copy-outline" size={16} color={t.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
+            <Text style={{ fontSize: 11, color: t.msgTimestamp }}>{message.time}</Text>
+          </View>
         </View>
       </View>
     );
@@ -697,21 +939,64 @@ function MessageBubble({ message, t }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 12 }}>
       <View style={wrapStyle}>
-        <View
-          style={[
-            bubbleBase,
-            {
-              borderWidth: 1,
-              borderColor: t.msgReceivedBorder,
-              backgroundColor: t.msgReceivedBg,
-              borderBottomLeftRadius: 4,
-            },
-            mediaStyle,
-          ]}
-        >
-          {renderContent()}
+        <Pressable onLongPress={onCopyLongPress} delayLongPress={350}>
+          {isDark ? (
+            <LinearGradient
+              colors={['rgba(190,24,93,0.28)', 'rgba(194,65,12,0.18)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ borderRadius: 18, padding: 1 }}
+            >
+              <View
+                style={[
+                  bubbleBase,
+                  {
+                    borderWidth: 1,
+                    borderColor: AI_COACH_UI.borderHairline,
+                    backgroundColor: AI_COACH_UI.surface,
+                    borderBottomLeftRadius: 4,
+                    overflow: 'hidden',
+                  },
+                  mediaStyle,
+                ]}
+              >
+                <LinearGradient
+                  colors={AI_COACH_UI.heroInner}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                {renderContent()}
+              </View>
+            </LinearGradient>
+          ) : (
+            <View
+              style={[
+                bubbleBase,
+                {
+                  borderWidth: 1,
+                  borderColor: t.msgReceivedBorder,
+                  backgroundColor: t.msgReceivedBg,
+                  borderBottomLeftRadius: 4,
+                },
+                mediaStyle,
+              ]}
+            >
+              {renderContent()}
+            </View>
+          )}
+        </Pressable>
+        {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
+          <ToolActionChip message={message} onPress={onToolPress} t={t} userMessage={lastUserText} />
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <Text style={{ fontSize: 11, color: t.msgTimestamp, flex: 1 }}>{message.time}</Text>
+          {hasText ? (
+            <TouchableOpacity onPress={() => copyMessageToClipboard(message.text)} hitSlop={8}>
+              <Ionicons name="copy-outline" size={16} color={t.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
-        <Text style={{ fontSize: 11, marginTop: 4, color: t.msgTimestamp, textAlign: 'left' }}>{message.time}</Text>
       </View>
     </View>
   );
@@ -723,107 +1008,247 @@ export default function AIChatScreen({
   sessionId: initialSessionId,
   userId,
   userProfile,
+  trainerId: trainerIdProp,
   onBack,
+  initialAttachments = [],
   openAttachmentsOnMount = false,
   onHomePress,
   onPlusPress,
   onVoicePress,
   onNutritionPress,
   onWorkoutPress,
+  onOpenWorkoutPlan,
   onMessagesPress,
   onProfilePress,
   onSettingsPress,
+  onNutritionDataChanged,
+  hideBottomNav = false,
 }) {
   const insets = useSafeAreaInsets();
+  const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : 0;
   const { isDark } = useTheme();
   const t = isDark ? DARK : LIGHT;
-  const NAV_HEIGHT = 80 + (insets.bottom || 0); // matches BottomNavBar minHeight
-  const INPUT_BAR_BASE_HEIGHT = 64; // approximate row height (padding + controls)
   const flatListRef = useRef(null);
   const prefillSent = useRef(false);
+  const mountAttachmentsRef = useRef(Array.isArray(initialAttachments) ? initialAttachments : []);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [searchingWeb, setSearchingWeb] = useState(false);
-  const [attachments, setAttachments] = useState([]);
-  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [coachWaitPhase, setCoachWaitPhase] = useState('thinking');
+  const [attachments, setAttachments] = useState(() =>
+    Array.isArray(initialAttachments) ? initialAttachments : []
+  );
   const [sessionId] = useState(initialSessionId || `aiChat_${Date.now()}`);
   const [loadedSession, setLoadedSession] = useState(!initialSessionId);
   const [activeFeatureCards, setActiveFeatureCards] = useState([]);
+  const [coachContext, setCoachContext] = useState(null);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [contextQuality, setContextQuality] = useState(0);
+  const [recalibrationNote, setRecalibrationNote] = useState(null);
+  const [toolModalVisible, setToolModalVisible] = useState(false);
+  const [pendingToolCall, setPendingToolCall] = useState(null);
+  const [pendingToolMessageId, setPendingToolMessageId] = useState(null);
+  const [toolExecuting, setToolExecuting] = useState(false);
   const featureTimers = useRef([]);
 
+  const trainerId = trainerIdProp || userProfile?.trainerId || userProfile?.trainer?.id || null;
+  const planId = 'current';
+
   const canSend = input.trim().length > 0 || attachments.length > 0;
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const inputBorderAnim = useRef(new Animated.Value(0)).current;
-  const inputScale = useRef(new Animated.Value(1)).current;
-  const sendPress = useRef(new Animated.Value(0)).current;
-  const micPulse = useRef(new Animated.Value(0)).current;
-  const [micActive, setMicActive] = useState(false);
-  const kb = useRef(new Animated.Value(0)).current; // keyboard height
+
+  const coachSpeech = useCoachSpeech({
+    onPartialTranscript: (text) => setInput(text),
+    onFinalTranscript: (text) => setInput(text),
+  });
+  const { listening, toggleListen } = coachSpeech;
 
   useEffect(() => {
-    let loop;
-    if (isInputFocused) {
-      loop = Animated.loop(Animated.timing(inputBorderAnim, { toValue: 1, duration: 2000, useNativeDriver: false }));
-      loop.start();
-      Animated.spring(inputScale, { toValue: 1.02, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
-    } else {
-      inputBorderAnim.stopAnimation();
-      inputBorderAnim.setValue(0);
-      Animated.spring(inputScale, { toValue: 1, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
-    }
-    return () => loop?.stop?.();
-  }, [isInputFocused, inputBorderAnim, inputScale]);
-
-  useEffect(() => {
-    if (!micActive) {
-      micPulse.stopAnimation();
-      micPulse.setValue(0);
+    if (!typing) {
+      setCoachWaitPhase('thinking');
       return undefined;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(micPulse, { toValue: 1, duration: 500, useNativeDriver: false }),
-        Animated.timing(micPulse, { toValue: 0, duration: 500, useNativeDriver: false }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [micActive, micPulse]);
-
-  const handleMicPress = () => {
-    setMicActive(true);
-    try {
-      onVoicePress?.();
-    } finally {
-      setTimeout(() => setMicActive(false), 2200);
+    if (searchingWeb) {
+      setCoachWaitPhase('web');
+      return undefined;
     }
-  };
+    setCoachWaitPhase('thinking');
+    const tContext = setTimeout(() => setCoachWaitPhase('context'), 1400);
+    const tDraft = setTimeout(() => setCoachWaitPhase('drafting'), 3200);
+    return () => {
+      clearTimeout(tContext);
+      clearTimeout(tDraft);
+    };
+  }, [typing, searchingWeb]);
 
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const onShow = (e) => {
-      const h = e?.endCoordinates?.height ?? 0;
-      Animated.timing(kb, { toValue: h, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
-    };
-    const onHide = () => {
-      Animated.timing(kb, { toValue: 0, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
-    };
-
-    const subShow = Keyboard.addListener(showEvt, onShow);
-    const subHide = Keyboard.addListener(hideEvt, onHide);
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, [kb]);
+    if (typing || toolExecuting) scrollToBottom();
+  }, [typing, toolExecuting, coachWaitPhase, searchingWeb]);
 
   const scrollToBottom = () => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
   };
+
+  const refreshCoachContext = async (skipRecalibration = false) => {
+    if (!userId) {
+      setCoachContext(null);
+      setContextLoading(false);
+      return;
+    }
+    setContextLoading(true);
+    const ctx = await loadCoachContextEnhanced(userId, userProfile || {}, { skipRecalibration });
+    setCoachContext(ctx);
+    setContextQuality(ctx?._dataQuality ?? 0);
+    setRecalibrationNote(ctx?._recalibrationNote || null);
+    setContextLoading(false);
+  };
+
+  const openToolModal = (toolCall, messageId = null) => {
+    const normalized = normalizeToolCall(toolCall);
+    if (!normalized) {
+      Alert.alert('Action unavailable', 'This coach action could not be loaded. Try asking again.');
+      return;
+    }
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (_) {
+      /* ignore */
+    }
+    setPendingToolCall(normalized);
+    setPendingToolMessageId(messageId);
+    setToolModalVisible(true);
+  };
+
+  const handleToolConfirm = async (confirmedParams = {}, toolOverride = null) => {
+    const baseTool = toolOverride || pendingToolCall;
+    if (!userId) {
+      Alert.alert('Sign in required', 'Please sign in again to run coach actions.');
+      return;
+    }
+    if (!baseTool) {
+      Alert.alert('Nothing to confirm', 'Tap Confirm Action on the coach message first.');
+      return;
+    }
+    if (toolExecuting) return;
+
+    const merged = {
+      ...baseTool,
+      params: { ...(baseTool.params || {}), ...(confirmedParams || {}) },
+    };
+
+    console.log('[DEBUG] Tool confirm:', { toolName: merged.name, params: merged.params });
+
+    setToolExecuting(true);
+    try {
+      const result = await executeCoachTool({
+        userId,
+        trainerId,
+        planId,
+        toolCall: merged,
+        navigationHandlers: { onOpenWorkoutPlan },
+      });
+
+      console.log('[DEBUG] Tool result:', { success: result.success, message: result.message });
+
+      const resultMsg = {
+        id: `msg_tool_${Date.now()}`,
+        role: 'ai',
+        text: result.message || 'Could not complete that action.',
+        time: now(),
+        isError: true,
+        toolConfirmed: true,
+        isToolResult: true,
+      };
+
+      setMessages((prev) => {
+        let targetId = pendingToolMessageId;
+        if (!targetId) {
+          const match = [...prev].reverse().find(
+            (m) =>
+              m.role === 'ai' &&
+              !m.toolConfirmed &&
+              (m.toolCall || resolveMessageToolCall(m))
+          );
+          targetId = match?.id || null;
+        }
+        const marked = prev.map((m) => {
+          if (!targetId || m.id !== targetId) return m;
+          return {
+            ...m,
+            toolConfirmed: result.success,
+            toolCall: m.toolCall || merged,
+          };
+        });
+        const next = result.success ? marked : [...marked, resultMsg];
+        if (db && userId) {
+          setDoc(
+            doc(db, 'users', userId, 'aiChats', sessionId),
+            {
+              updatedAt: serverTimestamp(),
+              messages: next.map(serializeChatMessage).filter(Boolean),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+        return next;
+      });
+
+      if (result.success) {
+        try {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (_) {
+          /* ignore */
+        }
+        await refreshCoachContext(true);
+        if (merged.name === 'logNutrition' || merged.name === 'adjustMacroTargets' || merged.name === 'deleteLog') {
+          await onNutritionDataChanged?.();
+        }
+      } else {
+        Alert.alert('Action failed', result.message || 'Could not complete that action.');
+      }
+
+      setToolModalVisible(false);
+      setPendingToolCall(null);
+      setPendingToolMessageId(null);
+      scrollToBottom();
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg_tool_err_${Date.now()}`,
+          role: 'ai',
+          text: e?.message || 'Something went wrong running that action.',
+          time: now(),
+          isError: true,
+        },
+      ]);
+    } finally {
+      setToolExecuting(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!userId) {
+        setCoachContext(null);
+        setContextLoading(false);
+        return;
+      }
+      setContextLoading(true);
+      const ctx = await loadCoachContextEnhanced(userId, userProfile || {});
+      if (!cancelled) {
+        setCoachContext(ctx);
+        setContextQuality(ctx?._dataQuality ?? 0);
+        setRecalibrationNote(ctx?._recalibrationNote || null);
+        setContextLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, userProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -842,14 +1267,25 @@ export default function AIChatScreen({
         const saved = Array.isArray(data.messages) ? data.messages : [];
         const restored = saved
           .filter((m) => m && typeof m === 'object')
-          .map((m, idx) => ({
-            id: `msg_restored_${idx}`,
-            role: m.role === 'ai' ? 'ai' : 'user',
-            text: typeof m.content === 'string' ? m.content : '',
-            time: typeof m.time === 'string' ? m.time : now(),
-            source: m.source || null,
-          }))
-          .filter((m) => m.text.trim().length > 0);
+          .map((m, idx) => {
+            const text = typeof m.content === 'string' ? m.content : '';
+            const parsedTool =
+              m.toolCall ||
+              parseCoachToolCalls(text)[0] ||
+              null;
+            return {
+              id: `msg_restored_${idx}`,
+              role: m.role === 'ai' ? 'ai' : 'user',
+              text: m.role === 'ai' ? stripCoachToolJsonFromReply(text) || text : text,
+              time: typeof m.time === 'string' ? m.time : now(),
+              source: m.source || null,
+              attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
+              toolCall: parsedTool ? normalizeToolCall(parsedTool) : null,
+              toolConfirmed: m.toolConfirmed === true,
+              isToolResult: m.isToolResult === true,
+            };
+          })
+          .filter((m) => m.text.trim().length > 0 || (Array.isArray(m.attachments) && m.attachments.length > 0));
 
         if (!cancelled) {
           setMessages(restored);
@@ -874,7 +1310,21 @@ export default function AIChatScreen({
   const sendMessage = async (text, atts = []) => {
     if (!text.trim() && atts.length === 0) return;
 
-    const plannedWeb = shouldUseWebAuto(text);
+    const imageAtts = atts.filter((a) => a?.type === 'image' || a?.preview);
+    const hasFilesOnly = atts.some((a) => a?.type === 'file') && imageAtts.length === 0;
+    if (hasFilesOnly) {
+      Alert.alert(
+        'Photos work best',
+        'The coach can analyze progress photos right now. PDF and document reading is not wired yet — attach a photo instead.'
+      );
+      return;
+    }
+    if (atts.length > 0 && imageAtts.length === 0) {
+      Alert.alert('Could not read photo', 'Try picking the image again.');
+      return;
+    }
+
+    const plannedWeb = shouldShowWebSearchUI(text);
     const plannedCards = buildFeatureCards({ userText: text, userProfile: userProfile || {} });
     const userMsg = {
       id: `msg_${Date.now()}`,
@@ -911,40 +1361,49 @@ export default function AIChatScreen({
             title,
             ...(isFirstMessage ? { createdAt: serverTimestamp() } : {}),
             updatedAt: serverTimestamp(),
-            messages: updatedMessages.map((m) => ({
-              role: m.role,
-              content: m.text,
-              time: m.time,
-              source: m.source || null,
-            })),
+            messages: updatedMessages.map(serializeChatMessage).filter(Boolean),
           },
           { merge: true }
         );
       }
 
-      const data = await postAICoach({
+      const coachResponse = await sendCoachMessageWithRetry({
         userId,
+        userMessage: text.trim(),
+        messages: updatedMessages,
         userProfile: userProfile || {},
-        options: { web: 'auto' },
-        messages: updatedMessages.map((m) => ({
-          role: m.role === 'ai' ? 'assistant' : 'user',
-          content: m.text,
-        })),
+        coachContext,
+        attachments: imageAtts,
       });
-      const aiText = (data && data.reply) || 'Sorry, I could not get a response. Please try again.';
+
+      const resolvedTool = resolveIncomingCoachTool(coachResponse, text.trim());
 
       const aiMsg = {
         id: `msg_${Date.now() + 1}`,
         role: 'ai',
-        text: aiText,
+        text: stripCoachToolJsonFromReply(coachResponse.message) || coachResponse.message,
         time: now(),
-        source: data.source,
-        webProvider: data.usedWeb ? (data.webProvider || (data.source === 'perplexity' ? 'perplexity' : null)) : null,
+        source: coachResponse.source,
+        toolCall: resolvedTool,
+        searchedWeb: coachResponse.searchedWeb === true,
+        webProvider: coachResponse.webProvider || null,
+        route: coachResponse.route || null,
         featureCards: plannedCards,
+        isError: !coachResponse.success,
       };
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
+
+      if (resolvedTool) {
+        openToolModal(resolvedTool, aiMsg.id);
+      } else if (
+        coachResponse.success &&
+        /\b(log|swap|bump|schedule|deload|notify|adjust)\b/i.test(text.trim())
+      ) {
+        // Model gave advice only — nudge user that actions need a tool proposal
+        logger.debug('AI Coach: action-like message but no toolCall returned');
+      }
 
       if (db && userId) {
         await setDoc(
@@ -953,33 +1412,22 @@ export default function AIChatScreen({
             sessionId,
             title: deriveChatTitle(finalMessages.find((m) => m.role === 'user')?.text || ''),
             updatedAt: serverTimestamp(),
-            messages: finalMessages.map((m) => ({
-              role: m.role,
-              content: m.text,
-              time: m.time,
-              source: m.source || null,
-            })),
+            messages: finalMessages.map(serializeChatMessage).filter(Boolean),
           },
           { merge: true }
         );
       }
     } catch (err) {
       console.error('AI coach error:', err);
-      const errMsg = String(err?.message || '');
-      const userFacing =
-        errMsg.includes('too long') || errMsg.includes('timed out')
-          ? 'AI Coach took too long to respond. Please try again.'
-          : errMsg.includes('Could not reach')
-            ? errMsg
-            : 'Could not reach the server. Check your connection and try again.';
       setMessages((prev) => [
         ...prev,
         {
           id: `msg_err_${Date.now()}`,
           role: 'ai',
-          text: userFacing,
+          text: String(err?.message || 'Something went wrong. Please try again.'),
           time: now(),
           featureCards: plannedCards,
+          isError: true,
         },
       ]);
     } finally {
@@ -992,57 +1440,42 @@ export default function AIChatScreen({
   };
 
   useEffect(() => {
-    if (loadedSession && prefill && !prefillSent.current) {
-      prefillSent.current = true;
-      setTimeout(() => sendMessage(prefill), 300);
-    }
+    if (!loadedSession || prefillSent.current) return;
+    const text = String(prefill || '').trim();
+    const atts = mountAttachmentsRef.current || [];
+    if (!text && atts.length === 0) return;
+    prefillSent.current = true;
+    setTimeout(() => sendMessage(text, atts), 350);
   }, [prefill, loadedSession]);
 
-  useEffect(() => {
-    if (loadedSession && openAttachmentsOnMount) {
-      setShowActionSheet(true);
-    }
-  }, [loadedSession, openAttachmentsOnMount]);
-
   const handlePhotoLibrary = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      const assets = Array.isArray(result.assets) ? result.assets : [];
-      const newAtts = assets.map((a) => ({
-        id: `att_${Date.now()}_${Math.random()}`,
-        preview: a.uri,
-        name: a.fileName || 'image.jpg',
-        type: 'image',
-      }));
-      if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
-    }
+    const newAtts = await pickCoachPhotosFromLibrary();
+    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
   };
 
   const handleCamera = async () => {
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!result.canceled) {
-      const a = result.assets[0];
-      setAttachments((prev) => [...prev, { id: `att_${Date.now()}`, preview: a.uri, name: 'photo.jpg', type: 'image' }]);
-    }
+    const newAtts = await pickCoachPhotoFromCamera();
+    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
   };
 
   const handleFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ multiple: true });
-    if (result.type !== 'cancel') {
-      const assets = Array.isArray(result.assets) ? result.assets : [];
-      const newAtts = assets.map((a) => ({
-        id: `att_${Date.now()}_${Math.random()}`,
-        name: a.name,
-        uri: a.uri,
-        type: 'file',
-      }));
-      if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
-    }
+    const newAtts = await pickCoachDocuments();
+    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
   };
+
+  const openAttachMenu = () => {
+    showCoachAttachMenu({
+      onPhotoLibrary: handlePhotoLibrary,
+      onCamera: handleCamera,
+      onFile: handleFile,
+    });
+  };
+
+  useEffect(() => {
+    if (loadedSession && openAttachmentsOnMount) {
+      openAttachMenu();
+    }
+  }, [loadedSession, openAttachmentsOnMount]);
 
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
@@ -1088,20 +1521,18 @@ export default function AIChatScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={{ paddingTop: insets.top }}>
-        <CoachConnectHeader
-          title="AI Coach"
-          isDark={isDark}
-          onBack={onBack}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
-      </View>
+      <CoachConnectHeader
+        title="AI Coach"
+        isDark={isDark}
+        onBack={onBack}
+        onProfilePress={onProfilePress}
+        onSettingsPress={onSettingsPress}
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         {messages.length === 0 && !typing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1109,7 +1540,7 @@ export default function AIChatScreen({
               source={require('../../assets/Lotties for Anatrox/Cloud robotics abstract.json')}
               autoPlay
               loop
-              style={{ width: 120, height: 120 }}
+              style={{ width: 100, height: 100 }}
             />
             <Text style={{ color: t.textSecondary, fontSize: 14, marginTop: 16 }}>Ask me anything to get started.</Text>
           </View>
@@ -1117,52 +1548,83 @@ export default function AIChatScreen({
           <FlatList
             ref={flatListRef}
             data={messages}
+            accessibilityLabel="Coach conversation messages"
             keyExtractor={(m) => m.id}
-            renderItem={({ item, index }) => (
-              <MessageBubble message={item} t={t} />
-            )}
+            renderItem={({ item, index }) => {
+              let lastUserText = '';
+              for (let i = index - 1; i >= 0; i -= 1) {
+                if (messages[i]?.role === 'user') {
+                  lastUserText = messages[i].text || '';
+                  break;
+                }
+              }
+              return (
+                <MessageBubble
+                  message={item}
+                  t={t}
+                  isDark={isDark}
+                  onToolPress={openToolModal}
+                  lastUserText={lastUserText}
+                  toolModalVisible={toolModalVisible}
+                />
+              );
+            }}
+            style={{ flex: 1 }}
             contentContainerStyle={{
               paddingHorizontal: 16,
               paddingTop: 16,
-              paddingBottom: 16 + NAV_HEIGHT + INPUT_BAR_BASE_HEIGHT + (attachments.length > 0 ? 76 : 0),
+              paddingBottom: 16 + shellNavPad,
             }}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             onContentSizeChange={scrollToBottom}
-            // Regular messaging UI: no feature cards / web typing banners.
+            ListFooterComponent={
+              typing || toolExecuting ? (
+                <TypingIndicator t={t} phase={toolExecuting ? 'working' : coachWaitPhase} />
+              ) : null
+            }
+            ListFooterComponentStyle={{ paddingBottom: 4 }}
           />
         )}
 
-        {/* Fixed input/attachments bar ABOVE BottomNavBar - MUST BE ANIMATED.VIEW FOR TRANSFORM */}
-        <Animated.View
+        <View
           style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: NAV_HEIGHT,
-            backgroundColor: 'transparent',
-            paddingTop: attachments.length > 0 ? 8 : 8,
-            paddingHorizontal: 12,
-            paddingBottom: 6,
-            transform: [{ translateY: Animated.multiply(kb, -1) }],
-            zIndex: 5,
+            paddingHorizontal: 16,
+            paddingTop: attachments.length > 0 ? 10 : 8,
+            paddingBottom: 8 + shellNavPad,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: t.inputBarBorder,
+            backgroundColor: t.inputBarBg,
           }}
         >
-          {attachments.length > 0 && (
+          {attachments.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
+              keyboardShouldPersistTaps="handled"
+              style={{ flexGrow: 0, marginBottom: 10 }}
+              contentContainerStyle={{ gap: 10, alignItems: 'center' }}
             >
               {attachments.map((att) => (
                 <View key={att.id} style={{ position: 'relative' }}>
                   {att.preview ? (
-                    <Image source={{ uri: att.preview }} style={{ width: 56, height: 56, borderRadius: 10 }} resizeMode="cover" />
+                    <Image
+                      source={{ uri: att.preview }}
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: t.chipBorder,
+                      }}
+                      resizeMode="cover"
+                    />
                   ) : (
                     <View
                       style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 10,
+                        width: 72,
+                        height: 72,
+                        borderRadius: 12,
                         backgroundColor: t.chipBg,
                         borderWidth: 1,
                         borderColor: t.chipBorder,
@@ -1170,186 +1632,144 @@ export default function AIChatScreen({
                         justifyContent: 'center',
                       }}
                     >
-                      <Ionicons name="document-outline" size={20} color={t.textSecondary} />
+                      <Ionicons name="document-outline" size={22} color={t.textSecondary} />
                     </View>
                   )}
                   <TouchableOpacity
                     onPress={() => removeAttachment(att.id)}
+                    {...a11yButton('Remove attachment')}
+                    hitSlop={MIN_TOUCH_HIT_SLOP}
                     style={{
                       position: 'absolute',
                       top: -6,
                       right: -6,
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
                       backgroundColor: t.textSecondary,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Ionicons name="close" size={12} color={t.bg} />
+                    <Ionicons name="close" size={13} color={t.bg} />
                   </TouchableOpacity>
                 </View>
               ))}
             </ScrollView>
-          )}
+          ) : null}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56 }}>
-            <Pressable
-              onPress={() => setShowActionSheet(true)}
-              style={({ pressed }) => [
-                {
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+            <TouchableOpacity
+              onPress={openAttachMenu}
+              {...a11yButton('Add attachment', 'Attach a photo or document')}
+              hitSlop={MIN_TOUCH_HIT_SLOP}
+              style={{ padding: 4, marginBottom: 4 }}
+            >
+              <Ionicons
+                name="add-circle-outline"
+                size={26}
+                color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight}
+              />
+            </TouchableOpacity>
+            <TextInput
+              style={{
+                flex: 1,
+                minWidth: 0,
+                minHeight: 40,
+                maxHeight: 120,
+                fontSize: 15,
+                color: t.textPrimary,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                backgroundColor: t.inputBg,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: t.inputBorder,
+              }}
+              value={input}
+              onChangeText={setInput}
+              placeholder="Ask your coach..."
+              placeholderTextColor={t.textMuted}
+              accessibilityLabel="Message input"
+              accessibilityHint="Type a question for your AI coach"
+              multiline
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              onPress={toggleListen}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 2,
+                backgroundColor: listening
+                  ? (isDark ? AI_COACH_UI.composer.micActiveBg : AI_COACH_UI.composer.micActiveBgLight)
+                  : 'transparent',
+              }}
+              accessibilityLabel={listening ? 'Stop voice input' : 'Start voice input'}
+            >
+              <Ionicons
+                name={listening ? 'mic' : 'mic-outline'}
+                size={22}
+                color={isDark ? AI_COACH_UI.composer.iconMic : AI_COACH_UI.composer.iconMicLight}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => sendMessage(input, attachments)}
+              disabled={!canSend}
+              activeOpacity={0.85}
+              {...a11yButton('Send message', 'Sends your message to the AI coach')}
+              accessibilityState={{ disabled: !canSend }}
+              hitSlop={MIN_TOUCH_HIT_SLOP}
+              style={{ marginBottom: 2, opacity: canSend ? 1 : 0.45 }}
+            >
+              <LinearGradient
+                colors={isDark ? COMPOSER_SEND_GRAD : COMPOSER_SEND_GRAD_LIGHT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
                   width: 44,
                   height: 44,
                   borderRadius: 22,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: pressed ? 'rgba(255,107,157,0.10)' : 'transparent',
-                  borderWidth: 1,
-                  borderColor: '#FF6B9D',
-                },
-              ]}
-            >
-              <Ionicons name="add" size={24} color="#FF6B9D" />
-            </Pressable>
-
-            <Animated.View style={{ flex: 1, transform: [{ scale: inputScale }] }}>
-              <View style={{ width: '100%', borderRadius: 28, overflow: 'hidden' }}>
-                <View style={{ padding: 1.5, borderRadius: 28, overflow: 'hidden' }}>
-                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                    <AnimatedLinearGradient
-                      colors={['#FF6B9D', '#C084FC', '#FF6B9D']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        width: SW * 2,
-                        height: '100%',
-                        transform: [
-                          {
-                            translateX: inputBorderAnim.interpolate({ inputRange: [0, 1], outputRange: [-SW, 0] }),
-                          },
-                        ],
-                        opacity: isInputFocused ? 1 : 0.7,
-                      }}
-                    />
-                  </View>
-
-                  <View
-                    style={{
-                      borderRadius: 26.5,
-                      minHeight: 56,
-                      maxHeight: 120,
-                      paddingLeft: 18,
-                      paddingRight: 44,
-                      paddingVertical: 10,
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                      backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
-                    }}
-                  >
-                    <LinearGradient
-                      colors={
-                        isDark
-                          ? ['rgba(255,107,157,0.08)', 'rgba(192,132,252,0.08)']
-                          : ['rgba(255,107,157,0.06)', 'rgba(192,132,252,0.06)']
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <TextInput
-                      value={input}
-                      onChangeText={setInput}
-                      placeholder="Ask your coach..."
-                      placeholderTextColor={isDark ? '#808080' : '#999999'}
-                      multiline
-                      style={{
-                        fontSize: 15,
-                        color: isDark ? '#FFFFFF' : '#333333',
-                        lineHeight: 20,
-                        fontStyle: input ? 'normal' : 'italic',
-                      }}
-                      cursorColor="#FF6B9D"
-                      onFocus={() => setIsInputFocused(true)}
-                      onBlur={() => setIsInputFocused(false)}
-                      returnKeyType="send"
-                    />
-
-                    <Pressable
-                      onPress={handleMicPress}
-                      style={({ pressed }) => [
-                        {
-                          position: 'absolute',
-                          right: 10,
-                          top: 12,
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transform: [{ scale: pressed ? 0.9 : 1 }],
-                        },
-                      ]}
-                      hitSlop={10}
-                    >
-                      <Animated.View style={{ opacity: micActive ? micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) : 1 }}>
-                        <Ionicons name="mic" size={18} color="#FF6B9D" />
-                      </Animated.View>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Animated.View>
-
-            <Pressable
-              onPress={() => sendMessage(input, attachments)}
-              disabled={!canSend}
-              onPressIn={() => Animated.spring(sendPress, { toValue: 1, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
-              onPressOut={() => Animated.spring(sendPress, { toValue: 0, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
-              style={{ opacity: canSend ? 1 : 0.4 }}
-            >
-              <Animated.View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  overflow: 'hidden',
-                  transform: [{ scale: sendPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] }) }],
-                  shadowColor: '#FF6B9D',
-                  shadowOpacity: sendPress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.65] }),
-                  shadowRadius: sendPress.interpolate({ inputRange: [0, 1], outputRange: [12, 18] }),
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 10,
                 }}
               >
-                <LinearGradient colors={['#FF6B9D', '#E91E63']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-                </LinearGradient>
-              </Animated.View>
-            </Pressable>
+                <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </KeyboardAvoidingView>
 
-      <AttachActionSheet
-        visible={showActionSheet}
-        onClose={() => setShowActionSheet(false)}
-        onPhotoLibrary={handlePhotoLibrary}
-        onCamera={handleCamera}
-        onFile={handleFile}
-        t={t}
+      <ToolConfirmationModal
+        visible={toolModalVisible}
+        toolCall={pendingToolCall}
+        onConfirm={handleToolConfirm}
+        onCancel={() => {
+          if (toolExecuting) return;
+          setToolModalVisible(false);
+          setPendingToolCall(null);
+          setPendingToolMessageId(null);
+        }}
+        loading={toolExecuting}
       />
 
-      <BottomNavBar
-        onHomePress={onHomePress || (() => {})}
-        onPlusPress={onPlusPress || (() => {})}
-        onVoicePress={onVoicePress || (() => {})}
-        onNutritionPress={onNutritionPress || (() => {})}
-        onWorkoutPress={onWorkoutPress || (() => {})}
-        onMessagesPress={onMessagesPress || (() => {})}
-        onProfilePress={onProfilePress || (() => {})}
-        activeTabKey="ai"
-      />
+      {!hideBottomNav ? (
+        <BottomNavBar
+          onHomePress={onHomePress || (() => {})}
+          onPlusPress={onPlusPress || (() => {})}
+          onVoicePress={onVoicePress || (() => {})}
+          onNutritionPress={onNutritionPress || (() => {})}
+          onWorkoutPress={onWorkoutPress || (() => {})}
+          onMessagesPress={onMessagesPress || (() => {})}
+          onProfilePress={onProfilePress || (() => {})}
+          activeTabKey="ai"
+        />
+      ) : null}
     </View>
   );
 }

@@ -5,7 +5,14 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, TextInput } from 'react-native';
+import {
+  Image,
+  Modal,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import FluidGlass from './FluidGlass';
 
 // ====================================================

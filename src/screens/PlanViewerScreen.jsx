@@ -16,41 +16,34 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const SERIF = Platform.select({ ios: "Georgia", android: "serif", default: "serif" });
 
+const CTA_GRAD = ["#BE185D", "#C2410C"];
+
 const TOKENS = {
   pink: "#FF6B9D",
   cyan: "#06B6D4",
   orange: "#F97316",
   bgDark: "#0A0A0F",
-  bgLight: "#F5F5F5",
-  cardDark: "rgba(255,255,255,0.04)",
-  cardLight: "rgba(0,0,0,0.03)",
+  bgLight: "#F2F2F7",
+  cardDark: "rgba(255,255,255,0.045)",
+  cardLight: "#FFFFFF",
   borderDark: "rgba(255,255,255,0.08)",
-  borderLight: "rgba(10,10,15,0.08)",
+  borderLight: "rgba(10,10,15,0.07)",
   textDark: "#FFFFFF",
   textLight: "#0A0A0F",
-  mutedDark: "rgba(255,255,255,0.6)",
+  mutedDark: "rgba(255,255,255,0.62)",
   mutedLight: "rgba(10,10,15,0.58)",
-  tertiaryDark: "rgba(255,255,255,0.4)",
-  tertiaryLight: "rgba(10,10,15,0.45)",
+  tertiaryDark: "rgba(255,255,255,0.42)",
+  tertiaryLight: "rgba(10,10,15,0.42)",
 };
 
 const FOCUS_KEYS = {
-  pink: { badge: "#FF6B9D", gradient: ["#FF6B9D", "#C084FC"], rgb: "255, 107, 157" },
-  purple: { badge: "#C084FC", gradient: ["#C084FC", "#D4A5FF"], rgb: "192, 132, 252" },
-  cyan: { badge: "#06B6D4", gradient: ["#06B6D4", "#22D3EE"], rgb: "6, 182, 212" },
-  orange: { badge: "#F97316", gradient: ["#F97316", "#FB923C"], rgb: "249, 115, 22" },
-  green: { badge: "#10B981", gradient: ["#10B981", "#34D399"], rgb: "16, 185, 129" },
-  gray: { badge: "#9CA3AF", gradient: ["#9CA3AF", "#C5CBD3"], rgb: "156, 163, 175" },
+  pink: { badge: "#FF6B9D", tint: "rgba(255,107,157,0.12)" },
+  purple: { badge: "#FF6B9D", tint: "rgba(255,107,157,0.12)" },
+  cyan: { badge: "#06B6D4", tint: "rgba(6,182,212,0.12)" },
+  orange: { badge: "#F97316", tint: "rgba(249,115,22,0.12)" },
+  green: { badge: "#10B981", tint: "rgba(16,185,129,0.12)" },
+  gray: { badge: "#94A3B8", tint: "rgba(148,163,184,0.12)" },
 };
-
-function hexToRgbTriple(hex) {
-  const h = String(hex || "").replace("#", "").trim();
-  if (h.length !== 6) return "255, 107, 157";
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `${r}, ${g}, ${b}`;
-}
 
 /** Normalize API `focusColor` (hex or palette key) to accent tokens. */
 function resolveAccent(focusColor) {
@@ -111,19 +104,60 @@ function splitTips(text) {
   return parts.length ? parts : [t];
 }
 
-/** Recovery copy → list items (like “exercises”) for preview + detail + modal. */
-function splitRecoverySegments(note) {
-  const raw = String(note || "").trim();
-  if (!raw) return ["Light movement, hydration, and quality sleep."];
-  const lines = raw
-    .split(/\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+/** Legacy recovery note splitter for old plans without recoveryActivities. */
+function splitLegacyNote(raw) {
+  const lines = raw.split(/\n+/).map((s) => s.trim()).filter(Boolean);
   if (lines.length > 1) return lines;
   const byArrow = raw.split(/\s*(?:→|➝|->)\s*/).map((s) => s.trim()).filter(Boolean);
   if (byArrow.length > 1) return byArrow;
   const sentences = splitTips(raw);
   return sentences.length ? sentences : [raw];
+}
+
+function toRecoveryItems(day) {
+  if (Array.isArray(day?.recoveryActivities) && day.recoveryActivities.length > 0) {
+    return day.recoveryActivities
+      .filter((a) => a && typeof a === "object" && typeof a.label === "string" && a.label.trim())
+      .map((a) => ({ label: extractShortLabel(a.label), detail: String(a.detail || "").trim() }));
+  }
+  const raw = String(day?.recoveryNote || day?.focus || "").trim();
+  if (!raw) return [{ label: "Light movement & rest", detail: "" }];
+  return splitLegacyNote(raw).map((seg) => ({
+    label: extractShortLabel(seg),
+    detail: seg.trim(),
+  }));
+}
+
+function extractShortLabel(seg) {
+  let s = String(seg || "").trim().replace(/\s+/g, " ");
+  if (!s) return "Recovery focus";
+
+  s = s.replace(/^[-–—•*]\s*/, "").replace(/\.\s*$/, "");
+
+  s = s
+    .replace(/^Follow\s+with\s+/i, "")
+    .replace(/^Prioritize\s+/i, "")
+    .replace(/^Focus\s+on\s+/i, "")
+    .replace(/^Consider\s+(doing\s+)?/i, "")
+    .replace(/^Use\s+this\s+time\s+to\s+/i, "")
+    .replace(/^Try\s+(to\s+)?/i, "")
+    .replace(/^Aim\s+for\s+/i, "")
+    .replace(/^If\s+you\s+feel\s+\w+,\s*/i, "")
+    .replace(/^Given\s+[^,]+,\s*/i, "")
+    .replace(/^A\s+(?=\d)/i, "");
+
+  s = s.charAt(0).toUpperCase() + s.slice(1);
+
+  const cutPoints = /\s+(?:—|--|to\s+(?:promote|reduce|help|improve|support|aid|maintain|prevent|enhance|avoid|ensure|allow|boost|keep|build|maximize|minimize|flush|speed|accelerate))\b|\s+(?:outdoors|indoors|especially|throughout|tonight|today|this\s+week|for\s+the\s+(?:next|rest|week|upcoming)|focus(?:ing)?\s+on|targeting|this\s+helps|which\s+helps|helps\s|if\s+you|and\s+dr)|\s*[;:]\s*/i;
+  const beforeCut = s.split(cutPoints)[0].trim();
+  if (beforeCut && beforeCut.length >= 8) s = beforeCut;
+
+  const words = s.split(/\s+/);
+  if (words.length > 6) s = words.slice(0, 6).join(" ");
+
+  if (s.length > 44) s = s.slice(0, 41).replace(/\s+\S*$/, "");
+
+  return s || "Recovery focus";
 }
 
 function recoveryDayDisplayName(day) {
@@ -132,33 +166,12 @@ function recoveryDayDisplayName(day) {
     .trim() || String(day?.short || "Rest");
 }
 
-/** Title line for a recovery segment (card row / modal header). */
-function segmentHeadline(seg) {
-  const s = String(seg || "").trim().replace(/\s+/g, " ");
-  if (!s) return "Recovery focus";
-  const beforeArrow = s.split(/\s*(?:→|➝|->)\s*/)[0].trim();
-  if (beforeArrow && beforeArrow.length <= 88) return beforeArrow;
-  const firstSentence = splitTips(s)[0];
-  if (firstSentence && firstSentence.length <= 100) return firstSentence;
-  return s.length > 88 ? `${s.slice(0, 85)}…` : s;
-}
 
-/** Subline under headline in list rows (optional). */
-function segmentSubline(seg) {
-  const s = String(seg || "").trim();
-  const head = segmentHeadline(seg).replace(/…$/, "");
-  if (!s || s.length <= head.length + 8) return "";
-  let rest = s.slice(head.length).replace(/^[.\s—\-]+/, "").trim();
-  if (!rest) return "";
-  return rest.length > 96 ? `${rest.slice(0, 93)}…` : rest;
-}
-
-/** Rotate brand accents so recovery days feel as premium as training days (not flat grey). */
+/** Rotate accents for recovery days — pink / orange / cyan only. */
 const RECOVERY_ACCENTS = [
-  { badge: "#FF6B9D", rgb: "255, 107, 157" },
-  { badge: "#06B6D4", rgb: "6, 182, 212" },
-  { badge: "#F97316", rgb: "249, 115, 22" },
-  { badge: "#C084FC", rgb: "192, 132, 252" },
+  { badge: "#FF6B9D", tint: "rgba(255,107,157,0.12)" },
+  { badge: "#F97316", tint: "rgba(249,115,22,0.12)" },
+  { badge: "#06B6D4", tint: "rgba(6,182,212,0.12)" },
 ];
 
 function getRecoveryAccent(index) {
@@ -173,29 +186,29 @@ function muscleToTargets(muscle) {
     .filter(Boolean);
 }
 
-function PlanSummaryCard({ title, weeksRemaining, focus }) {
+function PlanSummaryCard({ title, weeksRemaining, focus, isDark = true }) {
+  const cardBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
+  const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
+  const textPrimary = isDark ? TOKENS.textDark : TOKENS.textLight;
+  const textMuted = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
+  const textSecondary = isDark ? TOKENS.mutedDark : TOKENS.mutedLight;
+  const boxBg = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
+
   return (
-    <LinearGradient
-      colors={["#FF6B9D", "#C084FC"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.summaryGradient}
-    >
-      <View style={styles.summaryGlow} />
-      <Text style={styles.summarySparkle}>✦</Text>
-      <Text style={styles.summaryLabel}>PLAN SUMMARY</Text>
-      <Text style={styles.summaryTitle}>{title}</Text>
+    <View style={[styles.summaryPanel, { backgroundColor: cardBg, borderColor: borderC }]}>
+      <Text style={[styles.summaryLabel, { color: textMuted }]}>Plan summary</Text>
+      <Text style={[styles.summaryTitle, { color: textPrimary }]}>{title}</Text>
       <View style={styles.summaryRow}>
-        <View style={styles.summaryBox}>
-          <Text style={styles.summaryBoxLabel}>WEEKS LEFT</Text>
-          <Text style={styles.summaryBoxValueSerif}>{weeksRemaining}</Text>
+        <View style={[styles.summaryBox, { backgroundColor: boxBg, borderColor: borderC }]}>
+          <Text style={[styles.summaryBoxLabel, { color: textMuted }]}>Weeks left</Text>
+          <Text style={[styles.summaryBoxValueSerif, { color: textPrimary }]}>{weeksRemaining}</Text>
         </View>
-        <View style={[styles.summaryBox, { flex: 2 }]}>
-          <Text style={styles.summaryBoxLabel}>FOCUS</Text>
-          <Text style={styles.summaryBoxFocus}>{focus}</Text>
+        <View style={[styles.summaryBox, { flex: 2, backgroundColor: boxBg, borderColor: borderC }]}>
+          <Text style={[styles.summaryBoxLabel, { color: textMuted }]}>Focus</Text>
+          <Text style={[styles.summaryBoxFocus, { color: textSecondary }]}>{focus}</Text>
         </View>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -204,23 +217,21 @@ function TrainingDayCard({ day, onPress, isDark }) {
   const { title, subtitle } = sessionTitleLines(day);
   const preview = (day.exercises || []).slice(0, 3);
   const remaining = (day.exercises || []).length - preview.length;
-  const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
   const cardBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
+  const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
-  const muted = isDark ? TOKENS.mutedDark : TOKENS.mutedLight;
   const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
 
   return (
     <TouchableOpacity
-      activeOpacity={0.75}
+      activeOpacity={0.78}
       onPress={onPress}
-      style={[styles.trainCard, { backgroundColor: cardBg, borderColor: borderC }]}
+      style={[styles.dayCard, { backgroundColor: cardBg, borderColor: borderC }]}
     >
-      <View style={[styles.trainAccent, { backgroundColor: accent.badge }]} />
       <View style={styles.trainHeaderRow}>
         <View style={styles.trainHeaderLeft}>
-          <View style={[styles.trainBadge, { backgroundColor: accent.badge }]}>
-            <Text style={styles.trainBadgeText}>{day.short}</Text>
+          <View style={[styles.dayPill, { backgroundColor: accent.tint, borderColor: `${accent.badge}44` }]}>
+            <Text style={[styles.dayPillText, { color: accent.badge }]}>{day.short}</Text>
           </View>
           <View style={styles.trainTitles}>
             <Text style={[styles.trainTitle, { color: text }]}>{title}</Text>
@@ -231,12 +242,13 @@ function TrainingDayCard({ day, onPress, isDark }) {
             )}
           </View>
         </View>
-        <Ionicons name="chevron-down" size={16} color={tertiary} />
+        <Ionicons name="chevron-forward" size={16} color={tertiary} />
       </View>
+
       <View style={styles.trainPreview}>
         {preview.map((ex, i) => (
           <View key={`${ex.name}-${i}`} style={styles.trainExRow}>
-            <Text style={[styles.trainExIdx, { color: tertiary }]}>{String(i + 1).padStart(2, "0")}</Text>
+            <Text style={[styles.trainExIdx, { color: accent.badge }]}>{String(i + 1).padStart(2, "0")}</Text>
             <View style={{ flex: 1 }}>
               <Text style={[styles.trainExName, { color: text }]}>{ex.name}</Text>
               <Text style={[styles.trainExMeta, { color: tertiary }]}>{formatExerciseMeta(ex)}</Text>
@@ -245,7 +257,7 @@ function TrainingDayCard({ day, onPress, isDark }) {
         ))}
       </View>
       {remaining > 0 && (
-        <View style={[styles.trainMoreRow, { borderTopColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}>
+        <View style={[styles.trainMoreRow, { borderTopColor: borderC }]}>
           <Text style={[styles.trainMoreText, { color: tertiary }]}>
             + {remaining} more {remaining === 1 ? "exercise" : "exercises"}
           </Text>
@@ -269,8 +281,8 @@ function DayDetailScreen({ day, onBack, onOpenExercise, isDark }) {
         <TouchableOpacity onPress={onBack} style={styles.iconHit} hitSlop={12}>
           <Ionicons name="arrow-back" size={22} color={text} />
         </TouchableOpacity>
-        <View style={[styles.detailBadge, { backgroundColor: accent.badge }]}>
-          <Text style={styles.trainBadgeText}>{day.short}</Text>
+        <View style={[styles.detailBadge, { backgroundColor: accent.tint, borderColor: `${accent.badge}44` }]}>
+          <Text style={[styles.dayPillText, { color: accent.badge }]}>{day.short}</Text>
         </View>
         <Text style={[styles.detailHeaderTitle, { color: isDark ? TOKENS.mutedDark : TOKENS.mutedLight }]} numberOfLines={1}>
           {headerSubtitle}
@@ -310,7 +322,6 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
   const exercises = day?.exercises || [];
   const ex = exerciseIndex != null ? exercises[exerciseIndex] : null;
   const accent = resolveAccent(day?.focusColor);
-  const rgb = hexToRgbTriple(accent.badge);
   const { title: sessionName } = day ? sessionTitleLines(day) : { title: "" };
   const { sets, reps, rest } = ex ? parseSetsRepsRest(ex) : { sets: "—", reps: "—", rest: "—" };
   const tips = ex ? splitTips(ex.notes) : [];
@@ -338,17 +349,12 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
             },
           ]}
         >
-          <LinearGradient
-            colors={[`rgba(${rgb}, 0.22)`, `rgba(${rgb}, 0)`]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0.65 }}
-            style={styles.sheetHero}
-          >
+          <View style={[styles.sheetHero, { borderBottomColor: borderC }]}>
             <View style={styles.sheetTopRow}>
-              <TouchableOpacity onPress={onClose} style={styles.sheetBackBtn}>
+              <TouchableOpacity onPress={onClose} style={[styles.sheetBackBtn, { backgroundColor: cardBg }]}>
                 <Ionicons name="arrow-back" size={20} color={text} />
               </TouchableOpacity>
-              <View style={styles.sheetCounter}>
+              <View style={[styles.sheetCounter, { borderColor: `${accent.badge}44`, backgroundColor: accent.tint }]}>
                 <Text style={[styles.sheetCounterText, { color: accent.badge }]}>
                   {String(exerciseIndex + 1).padStart(2, "0")} / {String(exercises.length).padStart(2, "0")}
                 </Text>
@@ -359,7 +365,7 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
               {day.short} · {sessionName}
             </Text>
             <Text style={[styles.sheetTitle, { color: text }]}>{ex.name}</Text>
-          </LinearGradient>
+          </View>
 
           <ScrollView
             contentContainerStyle={styles.sheetBody}
@@ -426,10 +432,17 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
               <TouchableOpacity
                 onPress={() => hasNext && onChangeIndex(exerciseIndex + 1)}
                 disabled={!hasNext}
-                style={[styles.navBtnPrimary, { backgroundColor: accent.badge, opacity: hasNext ? 1 : 0.35 }]}
+                style={{ flex: 1, opacity: hasNext ? 1 : 0.35 }}
               >
-                <Text style={styles.navBtnPrimaryText}>Next</Text>
-                <Ionicons name="chevron-forward" size={18} color="#0A0A0F" />
+                <LinearGradient
+                  colors={CTA_GRAD}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.navBtnPrimary}
+                >
+                  <Text style={styles.navBtnPrimaryText}>Next</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -439,29 +452,26 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
   );
 }
 
-/** Same shell as a training day card — accent + badge + preview rows + chevron. */
 function RecoveryDayCard({ day, onPress, isDark, accent }) {
-  const note = day.recoveryNote || day.focus || "Recovery and light movement.";
-  const segments = splitRecoverySegments(note);
-  const preview = segments.slice(0, 3);
-  const remaining = segments.length - preview.length;
-  const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
+  const items = toRecoveryItems(day);
+  const preview = items.slice(0, 3);
+  const remaining = items.length - preview.length;
   const cardBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
+  const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
   const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
   const displayName = recoveryDayDisplayName(day);
 
   return (
     <TouchableOpacity
-      activeOpacity={0.75}
+      activeOpacity={0.78}
       onPress={onPress}
-      style={[styles.trainCard, { backgroundColor: cardBg, borderColor: borderC }]}
+      style={[styles.dayCard, { backgroundColor: cardBg, borderColor: borderC }]}
     >
-      <View style={[styles.trainAccent, { backgroundColor: accent.badge }]} />
       <View style={styles.trainHeaderRow}>
         <View style={styles.trainHeaderLeft}>
-          <View style={[styles.trainBadge, { backgroundColor: accent.badge }]}>
-            <Text style={styles.trainBadgeText}>{day.short}</Text>
+          <View style={[styles.dayPill, { backgroundColor: accent.tint, borderColor: `${accent.badge}44` }]}>
+            <Text style={[styles.dayPillText, { color: accent.badge }]}>{day.short}</Text>
           </View>
           <View style={styles.trainTitles}>
             <Text style={[styles.trainTitle, { color: text }]}>Rest & Recovery</Text>
@@ -470,27 +480,23 @@ function RecoveryDayCard({ day, onPress, isDark, accent }) {
             </Text>
           </View>
         </View>
-        <Ionicons name="chevron-down" size={16} color={tertiary} />
+        <Ionicons name="chevron-forward" size={16} color={tertiary} />
       </View>
+
       <View style={styles.trainPreview}>
-        {preview.map((seg, i) => (
-          <View key={`${i}-${seg.slice(0, 12)}`} style={styles.trainExRow}>
-            <Text style={[styles.trainExIdx, { color: tertiary }]}>{String(i + 1).padStart(2, "0")}</Text>
+        {preview.map((item, i) => (
+          <View key={`${i}-${item.label.slice(0, 12)}`} style={styles.trainExRow}>
+            <Text style={[styles.trainExIdx, { color: accent.badge }]}>{String(i + 1).padStart(2, "0")}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.trainExName, { color: text }]} numberOfLines={2}>
-                {segmentHeadline(seg)}
+              <Text style={[styles.trainExName, { color: text }]} numberOfLines={1}>
+                {item.label}
               </Text>
-              {!!segmentSubline(seg) && (
-                <Text style={[styles.trainExMeta, { color: tertiary }]} numberOfLines={2}>
-                  {segmentSubline(seg)}
-                </Text>
-              )}
             </View>
           </View>
         ))}
       </View>
       {remaining > 0 && (
-        <View style={[styles.trainMoreRow, { borderTopColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }]}>
+        <View style={[styles.trainMoreRow, { borderTopColor: borderC }]}>
           <Text style={[styles.trainMoreText, { color: tertiary }]}>
             + {remaining} more {remaining === 1 ? "focus" : "focus areas"}
           </Text>
@@ -500,7 +506,7 @@ function RecoveryDayCard({ day, onPress, isDark, accent }) {
   );
 }
 
-function RecoveryDayDetailScreen({ day, segments, onBack, onOpenSegment, isDark, accent }) {
+function RecoveryDayDetailScreen({ day, items, onBack, onOpenSegment, isDark, accent }) {
   const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
   const cardBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
@@ -514,32 +520,30 @@ function RecoveryDayDetailScreen({ day, segments, onBack, onOpenSegment, isDark,
         <TouchableOpacity onPress={onBack} style={styles.iconHit} hitSlop={12}>
           <Ionicons name="arrow-back" size={22} color={text} />
         </TouchableOpacity>
-        <View style={[styles.detailBadge, { backgroundColor: accent.badge }]}>
-          <Text style={styles.trainBadgeText}>{day.short}</Text>
+        <View style={[styles.detailBadge, { backgroundColor: accent.tint, borderColor: `${accent.badge}44` }]}>
+          <Text style={[styles.dayPillText, { color: accent.badge }]}>{day.short}</Text>
         </View>
         <Text style={[styles.detailHeaderTitle, { color: isDark ? TOKENS.mutedDark : TOKENS.mutedLight }]} numberOfLines={1}>
           {headerSubtitle}
         </Text>
       </View>
       <ScrollView contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.detailCount, { color: text }]}>{segments.length} recovery focus areas</Text>
+        <Text style={[styles.detailCount, { color: text }]}>{items.length} recovery focus areas</Text>
         <Text style={[styles.detailHint, { color: tertiary }]}>Tap any item for full guidance.</Text>
         <View style={{ gap: 10, marginTop: 16 }}>
-          {segments.map((seg, i) => (
+          {items.map((item, i) => (
             <TouchableOpacity
-              key={`${i}-${seg.slice(0, 16)}`}
-              activeOpacity={0.75}
+              key={`${i}-${item.label.slice(0, 16)}`}
+              activeOpacity={0.72}
               onPress={() => onOpenSegment(i)}
               style={[styles.detailExCard, { backgroundColor: cardBg, borderColor: borderC }]}
             >
-              <Text style={[styles.trainExIdx, { color: tertiary, width: 22 }]}>{String(i + 1).padStart(2, "0")}</Text>
+              <Text style={[styles.trainExIdx, { color: accent.badge, width: 24 }]}>{String(i + 1).padStart(2, "0")}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.trainExName, { color: text }]} numberOfLines={3}>
-                  {segmentHeadline(seg)}
-                </Text>
-                {!!segmentSubline(seg) && (
-                  <Text style={[styles.trainExMeta, { color: tertiary }]} numberOfLines={2}>
-                    {segmentSubline(seg)}
+                <Text style={[styles.trainExName, { color: text }]} numberOfLines={1}>{item.label}</Text>
+                {!!item.detail && (
+                  <Text style={[styles.rcvDetailPreview, { color: tertiary }]} numberOfLines={1}>
+                    {item.detail}
                   </Text>
                 )}
               </View>
@@ -552,19 +556,47 @@ function RecoveryDayDetailScreen({ day, segments, onBack, onOpenSegment, isDark,
   );
 }
 
-function RecoveryFocusModal({ visible, day, segments, segmentIndex, onClose, onChangeIndex, isDark, accent }) {
-  const seg = segmentIndex != null ? segments[segmentIndex] : null;
+function parseRecoveryMeta(label) {
+  const l = String(label).toLowerCase();
+  const durMatch = l.match(/(\d[\d–\-]*\s*(?:min(?:ute)?s?|hours?|hr))/i);
+  const duration = durMatch ? durMatch[1] : null;
+  let type = "Activity";
+  if (/walk|cardio|jog|run|hike/i.test(l)) type = "Walking";
+  else if (/yoga/i.test(l)) type = "Yoga";
+  else if (/stretch|mobil|flex/i.test(l)) type = "Stretching";
+  else if (/foam\s*roll/i.test(l)) type = "Foam Roll";
+  else if (/sleep|rest|nap/i.test(l)) type = "Sleep";
+  else if (/water|hydra|drink/i.test(l)) type = "Hydration";
+  else if (/nutri|meal|eat|food|prep/i.test(l)) type = "Nutrition";
+  else if (/breath|meditat|mindful/i.test(l)) type = "Mindfulness";
+  let focus = "Recovery";
+  if (/muscle|sore|blood\s*flow|circulation/i.test(l)) focus = "Muscle recovery";
+  else if (/stress|mental|mind/i.test(l)) focus = "Mental health";
+  else if (/sleep|energy/i.test(l)) focus = "Energy";
+  else if (/mobil|flex/i.test(l)) focus = "Mobility";
+  return { duration, type, focus };
+}
+
+function splitDetailIntoSteps(detail) {
+  if (!detail) return [];
+  const sentences = detail.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 8);
+  return sentences;
+}
+
+function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChangeIndex, isDark, accent }) {
+  const item = segmentIndex != null ? items[segmentIndex] : null;
   const hasPrev = segmentIndex > 0;
-  const hasNext = segmentIndex < segments.length - 1;
+  const hasNext = segmentIndex < items.length - 1;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
   const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
   const muted = isDark ? TOKENS.mutedDark : TOKENS.mutedLight;
   const cardBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
   const borderC = isDark ? TOKENS.borderDark : TOKENS.borderLight;
-  const tips = seg ? splitTips(seg) : [];
   const displayName = day ? recoveryDayDisplayName(day) : "";
+  const meta = item ? parseRecoveryMeta(item.label) : {};
+  const steps = item ? splitDetailIntoSteps(item.detail) : [];
 
-  if (!visible || seg == null || !day) return null;
+  if (!visible || item == null || !day) return null;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -579,43 +611,66 @@ function RecoveryFocusModal({ visible, day, segments, segmentIndex, onClose, onC
             },
           ]}
         >
-          <LinearGradient
-            colors={[`rgba(${accent.rgb}, 0.22)`, `rgba(${accent.rgb}, 0)`]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0.65 }}
-            style={styles.sheetHero}
-          >
+          <View style={[styles.sheetHero, { borderBottomColor: borderC }]}>
             <View style={styles.sheetTopRow}>
-              <TouchableOpacity onPress={onClose} style={styles.sheetBackBtn}>
+              <TouchableOpacity onPress={onClose} style={[styles.sheetBackBtn, { backgroundColor: cardBg }]}>
                 <Ionicons name="arrow-back" size={20} color={text} />
               </TouchableOpacity>
-              <View style={styles.sheetCounter}>
+              <View style={[styles.sheetCounter, { borderColor: `${accent.badge}44`, backgroundColor: accent.tint }]}>
                 <Text style={[styles.sheetCounterText, { color: accent.badge }]}>
-                  {String(segmentIndex + 1).padStart(2, "0")} / {String(segments.length).padStart(2, "0")}
+                  {String(segmentIndex + 1).padStart(2, "0")} / {String(items.length).padStart(2, "0")}
                 </Text>
               </View>
               <View style={{ width: 36 }} />
             </View>
             <Text style={[styles.sheetKicker, { color: tertiary }]}>
-              {day.short} · REST · {displayName}
+              {day.short} · Rest · {displayName}
             </Text>
-            <Text style={[styles.sheetTitle, { color: text }]}>{segmentHeadline(seg)}</Text>
-          </LinearGradient>
+            <Text style={[styles.sheetTitle, { color: text }]}>{item.label}</Text>
+          </View>
 
           <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
-            <View style={styles.sectionBlock}>
-              <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
-              {tips.length > 1 ? (
-                tips.map((tip, i) => (
+            <View style={styles.statRow}>
+              <View style={[styles.statBox, { borderColor: isDark ? "rgba(255,255,255,0.08)" : borderC }]}>
+                <Text style={[styles.statLabel, { color: tertiary }]}>TYPE</Text>
+                <Text style={[styles.statValue, { color: text, fontSize: 16 }]}>{meta.type}</Text>
+              </View>
+              {meta.duration && (
+                <View style={[styles.statBox, { borderColor: isDark ? "rgba(255,255,255,0.08)" : borderC }]}>
+                  <Text style={[styles.statLabel, { color: tertiary }]}>DURATION</Text>
+                  <Text style={[styles.statValue, { color: text, fontSize: 16 }]}>{meta.duration}</Text>
+                </View>
+              )}
+              <View style={[styles.statBox, { borderColor: isDark ? "rgba(255,255,255,0.08)" : borderC }]}>
+                <Text style={[styles.statLabel, { color: tertiary }]}>FOCUS</Text>
+                <Text style={[styles.statValue, { color: text, fontSize: 16 }]}>{meta.focus}</Text>
+              </View>
+            </View>
+
+            {steps.length > 1 ? (
+              <View style={styles.sectionBlock}>
+                <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
+                {steps.map((step, i) => (
                   <View key={i} style={styles.tipRow}>
                     <Text style={[styles.tipIdx, { color: accent.badge }]}>{String(i + 1).padStart(2, "0")}</Text>
-                    <Text style={[styles.tipBody, { color: muted }]}>{tip}</Text>
+                    <Text style={[styles.tipBody, { color: muted }]}>{step}</Text>
                   </View>
-                ))
-              ) : (
-                <Text style={[styles.recoveryModalBody, { color: muted }]}>{seg}</Text>
-              )}
-            </View>
+                ))}
+              </View>
+            ) : item.detail ? (
+              <View style={styles.sectionBlock}>
+                <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
+                <Text style={[styles.recoveryModalBody, { color: muted }]}>{item.detail}</Text>
+              </View>
+            ) : (
+              <View style={styles.sectionBlock}>
+                <View style={[styles.rcvEmptyGuidance, { borderColor: borderC }]}>
+                  <Text style={[styles.rcvEmptyText, { color: tertiary }]}>
+                    Focus on {meta.type.toLowerCase()} and listen to your body.
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.navRow}>
               <TouchableOpacity
@@ -632,13 +687,17 @@ function RecoveryFocusModal({ visible, day, segments, segmentIndex, onClose, onC
               <TouchableOpacity
                 onPress={() => hasNext && onChangeIndex(segmentIndex + 1)}
                 disabled={!hasNext}
-                style={[
-                  styles.navBtnPrimary,
-                  { backgroundColor: accent.badge, opacity: hasNext ? 1 : 0.35 },
-                ]}
+                style={{ flex: 1, opacity: hasNext ? 1 : 0.35 }}
               >
-                <Text style={styles.navBtnPrimaryText}>Next</Text>
-                <Ionicons name="chevron-forward" size={18} color="#0A0A0F" />
+                <LinearGradient
+                  colors={CTA_GRAD}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.navBtnPrimary}
+                >
+                  <Text style={styles.navBtnPrimaryText}>Next</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -678,11 +737,9 @@ export default function PlanViewerScreen({ route }) {
 
   const recoveryAccent = useMemo(() => getRecoveryAccent(openRecoveryIndex ?? 0), [openRecoveryIndex]);
 
-  const recoverySegments = useMemo(() => {
+  const recoveryItems = useMemo(() => {
     if (!openRecoveryDay) return [];
-    return splitRecoverySegments(
-      openRecoveryDay.recoveryNote || openRecoveryDay.focus || ""
-    );
+    return toRecoveryItems(openRecoveryDay);
   }, [openRecoveryDay]);
 
   const onBackFromDay = useCallback(() => {
@@ -726,7 +783,7 @@ export default function PlanViewerScreen({ route }) {
       <View style={{ flex: 1, backgroundColor: bg }}>
         <RecoveryDayDetailScreen
           day={openRecoveryDay}
-          segments={recoverySegments}
+          items={recoveryItems}
           onBack={onBackFromRecovery}
           onOpenSegment={(idx) => setRecoveryModalIndex(idx)}
           isDark={isDark}
@@ -735,7 +792,7 @@ export default function PlanViewerScreen({ route }) {
         <RecoveryFocusModal
           visible={recoveryModalIndex != null}
           day={openRecoveryDay}
-          segments={recoverySegments}
+          items={recoveryItems}
           segmentIndex={recoveryModalIndex}
           onClose={() => setRecoveryModalIndex(null)}
           onChangeIndex={setRecoveryModalIndex}
@@ -749,19 +806,19 @@ export default function PlanViewerScreen({ route }) {
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <PlanSummaryCard title={heroTitle} weeksRemaining={weeksRemaining} focus={focusSummary} />
+        <PlanSummaryCard title={heroTitle} weeksRemaining={weeksRemaining} focus={focusSummary} isDark={isDark} />
 
         {!!overview.trim() && (
           <View style={styles.overviewBlock}>
-            <Text style={[styles.sectionHeading, { color: tertiary }]}>OVERVIEW</Text>
-            <Text style={[styles.overviewSerif, { color: text }]}>{overview.trim()}</Text>
+            <Text style={[styles.sectionHeading, { color: tertiary }]}>Overview</Text>
+            <Text style={[styles.overviewBody, { color: text }]}>{overview.trim()}</Text>
           </View>
         )}
 
         {workoutDays.length > 0 && (
           <View style={styles.trainSection}>
-            <Text style={[styles.sectionHeading, { color: tertiary }]}>TRAINING DAYS</Text>
-            <View style={{ gap: 12 }}>
+            <Text style={[styles.sectionHeading, { color: tertiary }]}>Training days</Text>
+            <View style={{ gap: 16 }}>
               {workoutDays.map((day, idx) => (
                 <TrainingDayCard
                   key={`${day.short}-${idx}`}
@@ -781,8 +838,8 @@ export default function PlanViewerScreen({ route }) {
 
         {restDays.length > 0 && (
           <View style={styles.trainSection}>
-            <Text style={[styles.sectionHeading, { color: tertiary }]}>RECOVERY DAYS</Text>
-            <View style={{ gap: 12 }}>
+            <Text style={[styles.sectionHeading, { color: tertiary }]}>Recovery days</Text>
+            <View style={{ gap: 16 }}>
               {restDays.map((day, idx) => (
                 <RecoveryDayCard
                   key={`${day.short}-${idx}`}
@@ -807,133 +864,104 @@ export default function PlanViewerScreen({ route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 40, paddingHorizontal: 16, paddingTop: 8 },
-  summaryGradient: {
-    borderRadius: 24,
-    padding: 20,
+  scrollContent: { paddingBottom: 120, paddingHorizontal: 16, paddingTop: 8 },
+  summaryPanel: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 18,
     marginBottom: 8,
-    overflow: "hidden",
-  },
-  summaryGlow: {
-    position: "absolute",
-    top: -40,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 180,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    opacity: 0.5,
-  },
-  summarySparkle: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    fontSize: 14,
-    color: "rgba(255,255,255,0.5)",
   },
   summaryLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 1.2,
-    color: "rgba(255,255,255,0.75)",
-    marginBottom: 12,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
   },
   summaryTitle: {
     fontFamily: SERIF,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "700",
-    color: "#FFFFFF",
     marginBottom: 16,
+    letterSpacing: -0.3,
   },
   summaryRow: { flexDirection: "row", gap: 8 },
   summaryBox: {
     flex: 1,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
   },
   summaryBoxLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   summaryBoxValueSerif: {
     fontFamily: SERIF,
     fontSize: 22,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginTop: 8,
+    marginTop: 6,
   },
   summaryBoxFocus: {
     fontSize: 13,
-    color: "#FFFFFF",
-    marginTop: 8,
+    marginTop: 6,
     lineHeight: 18,
   },
-  overviewBlock: { marginTop: 24 },
-  overviewSerif: {
-    fontFamily: SERIF,
+  overviewBlock: { marginTop: 22 },
+  overviewBody: {
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 23,
     marginTop: 8,
+    fontWeight: "400",
   },
   sectionHeading: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 1.6,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
     marginBottom: 12,
   },
-  trainSection: { marginTop: 28 },
-  trainCard: {
+  trainSection: { marginTop: 24 },
+  dayCard: {
     borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    paddingLeft: 16 + 6,
-    overflow: "hidden",
-    position: "relative",
-  },
-  trainAccent: {
-    position: "absolute",
-    left: 0,
-    top: 12,
-    bottom: 12,
-    width: 4,
-    borderRadius: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
   },
   trainHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   trainHeaderLeft: { flexDirection: "row", gap: 12, flex: 1 },
-  trainBadge: {
-    minWidth: 40,
+  dayPill: {
+    minWidth: 44,
     height: 40,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: 12,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  trainBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  trainTitles: { flex: 1 },
-  trainTitle: { fontSize: 15, fontWeight: "700" },
-  trainSubtitle: { fontSize: 12, marginTop: 2 },
-  trainPreview: { gap: 8 },
-  trainExRow: { flexDirection: "row", gap: 12 },
-  trainExIdx: { fontSize: 11, width: 22 },
+  dayPillText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  trainTitles: { flex: 1, paddingTop: 2 },
+  trainTitle: { fontSize: 16, fontWeight: "700", letterSpacing: -0.2 },
+  trainSubtitle: { fontSize: 12, marginTop: 3, fontWeight: "500", lineHeight: 17 },
+  trainPreview: { gap: 10 },
+  trainExRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  trainExIdx: { fontSize: 12, fontWeight: "800", width: 24, paddingTop: 1 },
   trainExName: { fontSize: 14, fontWeight: "600" },
-  trainExMeta: { fontSize: 11, marginTop: 2 },
+  trainExMeta: { fontSize: 11, marginTop: 2, fontWeight: "500" },
   trainMoreRow: {
     marginTop: 12,
     paddingTop: 12,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     alignItems: "center",
   },
-  trainMoreText: { fontSize: 11, letterSpacing: 0.4 },
+  trainMoreText: { fontSize: 11, letterSpacing: 0.2, fontWeight: "600" },
   detailRoot: { flex: 1 },
   detailHeader: {
     flexDirection: "row",
@@ -945,10 +973,11 @@ const styles = StyleSheet.create({
   },
   iconHit: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   detailBadge: {
-    minWidth: 36,
+    minWidth: 40,
     height: 32,
     paddingHorizontal: 8,
     borderRadius: 10,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -974,7 +1003,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: "hidden",
   },
-  sheetHero: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 },
+  sheetHero: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   sheetTopRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -990,8 +1024,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sheetCounter: {
-    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 20,
+    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -1049,6 +1083,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  navBtnPrimaryText: { fontSize: 14, fontWeight: "700", color: "#0A0A0F" },
+  navBtnPrimaryText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
   recoveryModalBody: { fontSize: 15, lineHeight: 24 },
+
+  rcvDetailPreview: {
+    fontSize: 12,
+    marginTop: 3,
+    lineHeight: 16,
+  },
+
+  rcvEmptyGuidance: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  rcvEmptyText: {
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });

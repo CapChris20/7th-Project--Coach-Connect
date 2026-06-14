@@ -1,5 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, CalendarDays, List as ListIcon, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,10 +17,11 @@ import { formatDateLong } from '../../lib/sessions';
 
 const COLORS = {
   dark: {
-    bg: '#0A0A0F',
+    bg: '#0c0c0e',
+    surface: '#141418',
     text: '#FFFFFF',
     textSecondary: 'rgba(255,255,255,0.6)',
-    border: 'rgba(255,255,255,0.1)',
+    border: 'rgba(255,255,255,0.10)',
     glass: 'rgba(255,255,255,0.04)',
     glassBorder: 'rgba(255,255,255,0.08)',
     primary: '#FF6B9D',
@@ -22,19 +29,20 @@ const COLORS = {
     primaryGlow: 'rgba(255,107,157,0.4)',
   },
   light: {
-    bg: '#FFFFFF',
-    text: '#000000',
-    textSecondary: 'rgba(0,0,0,0.6)',
-    border: 'rgba(0,0,0,0.1)',
-    glass: 'rgba(0,0,0,0.04)',
-    glassBorder: 'rgba(0,0,0,0.08)',
+    bg: '#f5f5f7',
+    surface: '#FFFFFF',
+    text: '#0A0A0F',
+    textSecondary: 'rgba(10,10,15,0.55)',
+    border: 'rgba(10,10,15,0.10)',
+    glass: '#FFFFFF',
+    glassBorder: 'rgba(10,10,15,0.10)',
     primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.15)',
+    primaryLight: 'rgba(255,107,157,0.12)',
     primaryGlow: 'rgba(255,107,157,0.4)',
   },
 };
 
-export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, clientName }) => {
+export const SessionSchedulingScreen = ({ theme = 'dark', embedded = true, onNavigate, clientId, clientName }) => {
   const colors = COLORS[theme] || COLORS.dark;
   const { sessions } = useSessions();
   const [selectedDate, setSelectedDate] = useState(null);
@@ -79,13 +87,16 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
     return `/sessions/new?date=${encodeURIComponent(dateKey)}`;
   };
 
+  const Root = embedded ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
-      {/* Aurora background */}
-      <View style={[styles.aurora, { backgroundColor: colors.bg }]} />
+    <Root style={[styles.container, embedded ? styles.embeddedRoot : null, { backgroundColor: embedded ? 'transparent' : colors.bg }]}>
+      {!embedded ? <View style={[styles.aurora, { backgroundColor: colors.bg }]} /> : null}
 
       {/* Sticky Header */}
-      <View style={[styles.header, { borderBottomColor: colors.glassBorder }]}>
+      <View style={[styles.header, embedded ? styles.headerEmbedded : null, { backgroundColor: embedded ? 'transparent' : colors.bg }, !embedded && { borderBottomColor: colors.glassBorder, borderBottomWidth: 1 }]}>
+        {!embedded ? (
+          <>
         <View style={styles.headerContent}>
           {/* Brand */}
           <View style={styles.brandContainer}>
@@ -105,12 +116,13 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
             </View>
           </View>
 
-          {/* Theme toggle (placeholder) */}
           <View style={styles.themeToggle} />
         </View>
+          </>
+        ) : null}
 
         {/* Segmented Control */}
-        <View style={[styles.segmentedControl, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.segmentedControl, embedded && styles.segmentedEmbedded, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
           <SegBtn
             active={tab === 'calendar'}
             onPress={() => setTab('calendar')}
@@ -131,22 +143,25 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
       {/* Content */}
       <ScrollView
         style={styles.content}
-        contentContainerStyle={{ paddingBottom: scrollBottomPad }}
+        contentContainerStyle={[styles.scrollContent, embedded && styles.scrollContentEmbedded, { paddingBottom: scrollBottomPad }]}
         showsVerticalScrollIndicator={false}
       >
         <SchedulingHeroCard
           theme={theme}
+          colors={colors}
+          embedded={embedded}
           clientName={clientLabel}
           onNewSession={() => onNavigate?.(newSessionPath(selectedDate))}
         />
 
         {tab === 'calendar' && (
-          <View style={styles.section}>
+          <View style={[styles.section, embedded && styles.sectionEmbedded]}>
             <MonthCalendar
               sessions={sessionsForClient}
               selectedDate={selectedDate}
               onSelectDate={(d) => setSelectedDate(d)}
               theme={theme}
+              borderless={embedded}
             />
 
             {/* Day List */}
@@ -172,14 +187,14 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
                 ) : (
                   <View style={styles.sessionsList}>
                     {dayList.map((s) => (
-                      <TouchableOpacity key={s.id} onPress={() => onNavigate?.(`/sessions/${s.id}`)} activeOpacity={0.85}>
-                        <SessionCard session={s} theme={theme} />
+                      <TouchableOpacity key={s.id} onPress={() => onNavigate?.(`/sessions/${s.id}`)} activeOpacity={0.88}>
+                        <SessionCard session={s} theme={theme} showDate={false} />
                       </TouchableOpacity>
                     ))}
                   </View>
                 )
               ) : (
-                <View style={[styles.emptyPrompt, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+                <View style={[styles.emptyPrompt, embedded && styles.emptyPromptEmbedded, !embedded && { backgroundColor: colors.glass, borderColor: colors.glassBorder, borderWidth: 1 }]}>
                   <Text style={[styles.emptyPromptText, { color: colors.textSecondary }]}>
                     {clientId
                       ? `Tap a day to see ${clientLabel}'s sessions for that date.`
@@ -192,7 +207,7 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
         )}
 
         {tab === 'list' && (
-          <View style={styles.section}>
+          <View style={[styles.section, embedded && styles.sectionEmbedded]}>
             <View style={styles.listHeader}>
               <Text style={[styles.listTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
               <Text style={[styles.listCount, { color: colors.textSecondary }]}>
@@ -215,8 +230,8 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
             ) : (
               <View style={styles.sessionsList}>
                 {upcoming.map((s) => (
-                  <TouchableOpacity key={s.id} onPress={() => onNavigate?.(`/sessions/${s.id}`)} activeOpacity={0.85}>
-                    <SessionCard session={s} theme={theme} />
+                  <TouchableOpacity key={s.id} onPress={() => onNavigate?.(`/sessions/${s.id}`)} activeOpacity={0.88}>
+                    <SessionCard session={s} theme={theme} showDate />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -225,13 +240,12 @@ export const SessionSchedulingScreen = ({ theme = 'dark', onNavigate, clientId, 
         )}
 
       </ScrollView>
-    </SafeAreaView>
+    </Root>
   );
 };
 
 export default SessionSchedulingScreen;
 
-const HERO_BORDER = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF6B9D'];
 const CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
 
 const HERO_BULLETS_FOR = (clientName) => [
@@ -241,93 +255,74 @@ const HERO_BULLETS_FOR = (clientName) => [
   'Add notes and video links in each session so expectations stay clear.',
 ];
 
-const SchedulingHeroCard = ({ theme, onNewSession, clientName }) => {
+const SchedulingHeroCard = ({ theme, colors, embedded, onNewSession, clientName }) => {
   const isDark = theme === 'dark';
-  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)';
-  const benefitTextColor = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)';
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  const headlineColor = colors.text;
+  const subColor = colors.textSecondary;
+  const benefitTextColor = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.82)';
+  const labelColor = colors.textSecondary;
   const bullets = HERO_BULLETS_FOR(clientName || 'this client');
 
   return (
-    <View style={heroStyles.outer}>
-      <LinearGradient
-        colors={HERO_BORDER}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[heroStyles.ring, isDark ? heroStyles.ringShadowD : heroStyles.ringShadowL]}
+    <View style={[heroStyles.outer, embedded ? heroStyles.outerEmbedded : null]}>
+      <View
+        style={[
+          heroStyles.content,
+          embedded ? heroStyles.contentEmbedded : null,
+          !embedded ? { backgroundColor: colors.surface, borderColor: colors.border } : null,
+        ]}
       >
-        <View style={[heroStyles.inner, { backgroundColor: innerBg }]}>
-          <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' }]}
-            pointerEvents="none"
-          />
-          <View style={heroStyles.content}>
-            <Text style={[heroStyles.label, { color: labelColor }]}>Session scheduling</Text>
-            <Text style={[heroStyles.headline, { color: headlineColor }]}>Plan sessions like a pro</Text>
-            <Text style={[heroStyles.sub, { color: subColor }]}>
-              You are viewing one client at a time — dots and lists match {clientName || 'this client'} only.
-            </Text>
-            <View style={heroStyles.bullets}>
-              {bullets.map((line, i) => (
-                <View key={line} style={heroStyles.bulletRow}>
-                  <Ionicons name="checkmark-circle" size={18} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={heroStyles.checkIcon} />
-                  <Text style={[heroStyles.bulletText, { color: benefitTextColor }]}>{line}</Text>
-                </View>
-              ))}
-            </View>
-            <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={heroStyles.ctaRing}>
-              <TouchableOpacity onPress={onNewSession} activeOpacity={0.88} style={heroStyles.ctaTouch} accessibilityRole="button" accessibilityLabel="New session">
-                <Plus color="#FFFFFF" size={20} />
-                <Text style={heroStyles.ctaText}>New session</Text>
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            </LinearGradient>
+          <Text style={[heroStyles.label, { color: labelColor }]}>Session scheduling</Text>
+          <Text style={[embedded ? heroStyles.headlineEmbedded : heroStyles.headline, { color: headlineColor }]}>
+            Plan sessions like a pro
+          </Text>
+          <Text style={[heroStyles.sub, { color: subColor }]}>
+            You are viewing one client at a time — dots and lists match {clientName || 'this client'} only.
+          </Text>
+          <View style={heroStyles.bullets}>
+            {bullets.map((line, i) => (
+              <View key={line} style={heroStyles.bulletRow}>
+                <Ionicons name="checkmark-circle" size={16} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={heroStyles.checkIcon} />
+                <Text style={[heroStyles.bulletText, { color: benefitTextColor }]}>{line}</Text>
+              </View>
+            ))}
           </View>
-        </View>
-      </LinearGradient>
+          <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={heroStyles.ctaRing}>
+            <TouchableOpacity onPress={onNewSession} activeOpacity={0.88} style={heroStyles.ctaTouch} accessibilityRole="button" accessibilityLabel="New session">
+              <Plus color="#FFFFFF" size={18} />
+              <Text style={heroStyles.ctaText}>New session</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </LinearGradient>
+      </View>
     </View>
   );
 };
 
 const heroStyles = StyleSheet.create({
   outer: { marginTop: 4, marginBottom: 18, paddingHorizontal: 16 },
-  ring: { borderRadius: 24, padding: 2.5 },
-  ringShadowD: {
-    shadowColor: '#C084FC',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  ringShadowL: {
-    shadowColor: '#A855F7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  inner: { borderRadius: 21, overflow: 'hidden' },
-  content: { padding: 20, gap: 12, zIndex: 1 },
-  label: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  outerEmbedded: { marginTop: 0, marginBottom: 0, paddingHorizontal: 0 },
+  content: { padding: 18, gap: 12, borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
+  contentEmbedded: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, borderWidth: 0, borderRadius: 0, gap: 8 },
+  label: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   headline: { fontSize: 26, fontWeight: '900', lineHeight: 32, letterSpacing: -0.5 },
-  sub: { fontSize: 14, fontWeight: '600', lineHeight: 21 },
-  bullets: { gap: 8, marginTop: 2 },
-  bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headlineEmbedded: { fontSize: 22, fontWeight: '800', lineHeight: 28, letterSpacing: -0.3 },
+  sub: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
+  bullets: { gap: 6 },
+  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   checkIcon: { marginTop: 1 },
   bulletText: { flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  ctaRing: { borderRadius: 16, marginTop: 6, overflow: 'hidden' },
+  ctaRing: { borderRadius: 14, marginTop: 4, overflow: 'hidden' },
   ctaTouch: {
-    minHeight: 54,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
   },
-  ctaText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.2 },
+  ctaText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.2 },
 });
 
 const SegBtn = ({ active, onPress, icon, label, colors }) => (
@@ -355,11 +350,16 @@ const EmptyState = ({ title, subtitle, cta, onCta, colors }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  embeddedRoot: { flexGrow: 0, flexShrink: 0 },
   aurora: { position: 'absolute', inset: 0 },
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
+  },
+  headerEmbedded: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 12,
   },
   headerContent: {
     flexDirection: 'row',
@@ -396,26 +396,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 4,
   },
+  segmentedEmbedded: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    padding: 0,
+    gap: 8,
+  },
   segBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 8,
-    borderRadius: 16,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
   segBtnText: { fontSize: 12, fontWeight: '600' },
-  content: { flex: 1 },
-  section: { padding: 16 },
-  dayListSection: { marginTop: 20 },
+  content: { flexGrow: 0 },
+  scrollContent: { gap: 0 },
+  scrollContentEmbedded: { gap: 16 },
+  section: { padding: 16, paddingTop: 0 },
+  sectionEmbedded: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+  dayListSection: { marginTop: 14 },
   dayListHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 4,
+    marginBottom: 8,
+    paddingHorizontal: 0,
   },
   dayListTitle: { fontSize: 14, fontWeight: '700' },
   clearBtn: { fontSize: 12, fontWeight: '600' },
@@ -428,13 +437,17 @@ const styles = StyleSheet.create({
   },
   listTitle: { fontSize: 14, fontWeight: '700' },
   listCount: { fontSize: 12 },
-  sessionsList: { gap: 12 },
+  sessionsList: { gap: 14 },
   emptyPrompt: {
     borderRadius: 16,
     paddingVertical: 24,
     paddingHorizontal: 16,
     alignItems: 'center',
-    borderWidth: 1,
+  },
+  emptyPromptEmbedded: {
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    alignItems: 'flex-start',
   },
   emptyPromptText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
   emptyState: {

@@ -1,18 +1,18 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  FlatList,
   ActivityIndicator,
-  Modal,
-  Dimensions,
   Animated,
-  Pressable,
-  StyleSheet,
+  Dimensions,
+  FlatList,
+  Modal,
   Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,8 +28,17 @@ import ShortsCard from './ShortsCard';
 const { width: SCREEN_W } = Dimensions.get('window');
 const GUTTER = 20;
 const SAVED_KEY = '@coachconnect_exercise_library_saved';
-/** Same as client `DashboardHeroCard` / Settings — dark pink → dark orange ring */
-const SEARCH_FIELD_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
+/** Aurora rim — hot pink → dark orange (matches home hero + user prefs) */
+const LIBRARY_RIM = ['#FF6B9D', '#C2410C'];
+const SEARCH_FIELD_BORDER_GRADIENT = LIBRARY_RIM;
+const SECTION_GRADIENT = {
+  primary: ['#FF6B9D', '#C084FC'],
+  goals: ['#C2410C', '#FF6B9D'],
+  form: ['#06B6D4', '#C2410C'],
+  shorts: ['#F97316', '#FF6B9D'],
+  search: LIBRARY_RIM,
+};
+const FILTER_ACTIVE_GRADIENT = LIBRARY_RIM;
 const TRANS_MS = 260;
 const CARD_GAP = 12;
 
@@ -94,6 +103,178 @@ const MUSCLE_KEYWORDS = [
   { label: 'Calves', re: /\b(calf|calves)\b/i },
   { label: 'Core', re: /\b(core|ab|plank|crunch)\b/i },
 ];
+
+/** Lowercase blob from onboarding — drives which journey filter pills appear. */
+function extractOnboardingCorpus(onboardingData) {
+  if (!onboardingData || typeof onboardingData !== 'object') return '';
+  const parts = [];
+  const add = (v) => {
+    if (v == null || v === '') return;
+    if (Array.isArray(v)) {
+      v.forEach((x) => add(x));
+      return;
+    }
+    parts.push(String(v));
+  };
+  add(onboardingData.goal);
+  add(onboardingData.primaryGoal);
+  add(onboardingData.situationDescription);
+  add(onboardingData.fitnessLevel);
+  add(onboardingData.experience);
+  add(onboardingData.frequency);
+  add(onboardingData.daysPerWeek);
+  add(onboardingData.workoutsPerWeek);
+  add(onboardingData.trainingEnvironment);
+  add(onboardingData.equipmentAccess);
+  add(onboardingData.equipment);
+  add(onboardingData.availableEquipment);
+  add(onboardingData.limitations);
+  add(onboardingData.personalInfo);
+  add(onboardingData.exercisesDislike);
+  add(onboardingData.injuries);
+  add(onboardingData.goals);
+  return parts.join(' ').replace(/_/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Goal / split keyword pills only when onboarding copy implies them.
+ * `re` filters video rows when a pill is selected (unchanged behavior).
+ */
+function buildJourneyKeywordPillsFromCorpus(corpusRaw) {
+  const c = String(corpusRaw || '').trim();
+  if (!c) return [];
+
+  const GOAL_META = [
+    {
+      id: 'body_recomp',
+      label: 'Body Recomp',
+      type: 'kw',
+      includeIf: /\b(body\s*recomp|recomposition|recomp\b|maingain|lean\s*bulk|body\s*recomposition)\b/,
+      re: /\b(body\s*)?recomp(ositions?)?\b|\bmaingain\b|\brecomp\b/i,
+    },
+    {
+      id: 'skinny_fat',
+      label: 'Skinny-Fat',
+      type: 'kw',
+      includeIf: /\b(skinny[\s-]?fat|thin[\s-]?fat|skinnyfat)\b/,
+      re: /\bskinny[-\s]?fat\b|\bthin\s*fat\b/i,
+    },
+    {
+      id: 'bulking',
+      label: 'Bulking',
+      type: 'kw',
+      includeIf: /\b(bulk|bulking|mass\s*gain|caloric\s*surplus|surplus|weight\s*gain|gain\s*weight|size\b)\b/,
+      re: /\bbulk(?:ing)?\b|\bmass\s*gain\b/i,
+    },
+    {
+      id: 'cutting',
+      label: 'Cutting',
+      type: 'kw',
+      includeIf: /\b(cut\b|cutting|shred|shredded|caloric\s*deficit|deficit\b|lean\s*out|get\s*lean)\b/,
+      re: /\bcut(?:ting)?\b|\bshred\b/i,
+    },
+    {
+      id: 'fat_loss',
+      label: 'Fat Loss',
+      type: 'kw',
+      includeIf: /\b(fat\s*loss|lose\s*(weight|fat)|weight\s*loss|burn\s*fat|drop\s*(weight|lbs)|shed|slim)\b/,
+      re: /\bfat\s*loss\b|\bweight\s*loss\b|\bcutting\b/i,
+    },
+    {
+      id: 'muscle_gain',
+      label: 'Muscle Gain',
+      type: 'kw',
+      includeIf: /\b(muscle\s*gain|build(ing)?\s*muscle|hypertrophy|get\s*bigger|more\s*musc|gain\s*musc|strength\s*&\s*size)\b/,
+      re: /\bmuscle\b|\bhypertrophy\b|\bstrength\b/i,
+    },
+  ];
+
+  const STYLE_META = [
+    {
+      id: 'full_body',
+      label: 'Full Body',
+      type: 'kw',
+      includeIf: /\bfull\s*body\b/,
+      re: /\bfull\s*body\b/i,
+    },
+    {
+      id: 'upper_body',
+      label: 'Upper Body',
+      type: 'kw',
+      includeIf: /\bupper\s*body\b/,
+      re: /\bupper\s*body\b/i,
+    },
+    {
+      id: 'lower_body',
+      label: 'Lower Body',
+      type: 'kw',
+      includeIf: /\blower\s*body\b/,
+      re: /\blower\s*body\b/i,
+    },
+    {
+      id: 'ppl',
+      label: 'Push Pull Legs',
+      type: 'kw',
+      includeIf: /\b(ppl|push[\s-]?pull[\s-]?legs)\b/,
+      re: /\b(push\s*pull|ppl|legs\s*day)\b/i,
+    },
+    {
+      id: 'hiit',
+      label: 'HIIT',
+      type: 'kw',
+      includeIf: /\bhiit\b|\bhigh[\s-]?intensity\b|\binterval\s*training\b/,
+      re: /\bhiit\b|\binterval\b/i,
+    },
+    {
+      id: 'strength',
+      label: 'Strength',
+      type: 'kw',
+      includeIf: /\bstrength\b|\bpowerlifting\b|\b5x5\b|\b1rm\b|\bmax\s*strength\b/,
+      re: /\bstrength\b|\bpower\b/i,
+    },
+    {
+      id: 'cardio',
+      label: 'Cardio',
+      type: 'kw',
+      includeIf: /\bcardio\b|\bcycling\b|\brunning\b|\bconditioning\b|\bendurance\b|\bzone\s*2\b/,
+      re: /\bcardio\b|\bconditioning\b/i,
+    },
+    {
+      id: 'functional',
+      label: 'Functional',
+      type: 'kw',
+      includeIf: /\bfunctional\b|\bathletic\b|\bcrossfit\b|\bmovement\b/,
+      re: /\bfunctional\b/i,
+    },
+  ];
+
+  const out = [];
+  for (const row of GOAL_META) {
+    if (!row.includeIf.test(c)) continue;
+    if (row.id === 'muscle_gain' && out.some((p) => p.id === 'bulking')) continue;
+    if (row.id === 'fat_loss' && out.some((p) => p.id === 'cutting')) continue;
+    const { includeIf, ...pill } = row;
+    out.push(pill);
+  }
+  for (const row of STYLE_META) {
+    if (!row.includeIf.test(c)) continue;
+    const { includeIf, ...pill } = row;
+    out.push(pill);
+  }
+  return out;
+}
+
+function buildUtilityKeywordPills() {
+  const add = (id, label, type, re) => ({ id, label, type, re });
+  return [
+    add('dur_5_15', '5-15 min', 'dur', null),
+    add('dur_15_30', '15-30 min', 'dur', null),
+    add('dur_30_plus', '30+ min', 'dur', null),
+    add('lvl_beginner', 'Beginner', 'lvl', null),
+    add('lvl_intermediate', 'Intermediate', 'lvl', null),
+    add('lvl_advanced', 'Advanced', 'lvl', null),
+  ];
+}
 
 const BADGE_COLORS = ['pink', 'purple', 'cyan', 'orange'];
 
@@ -237,40 +418,47 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
     return mapFitnessToDifficulty(onboardingData?.fitnessLevel);
   }, [activeDifficulty, onboardingData?.fitnessLevel]);
 
-  // --- Keyword pills (dynamic, multi-select) ---
+  const onboardingCorpusKey = useMemo(
+    () => extractOnboardingCorpus(onboardingData),
+    [
+      onboardingData?.goal,
+      onboardingData?.primaryGoal,
+      onboardingData?.situationDescription,
+      onboardingData?.fitnessLevel,
+      onboardingData?.experience,
+      onboardingData?.frequency,
+      onboardingData?.daysPerWeek,
+      onboardingData?.workoutsPerWeek,
+      onboardingData?.trainingEnvironment,
+      onboardingData?.equipmentAccess,
+      onboardingData?.equipment,
+      onboardingData?.availableEquipment,
+      onboardingData?.limitations,
+      onboardingData?.personalInfo,
+      onboardingData?.exercisesDislike,
+      onboardingData?.injuries,
+      onboardingData?.goals,
+    ],
+  );
+
+  // --- Keyword pills: journey/style from onboarding corpus; duration + level always ---
   const keywordPills = useMemo(() => {
-    const out = [];
-    const add = (id, label, type, re) => out.push({ id, label, type, re });
+    const journey = buildJourneyKeywordPillsFromCorpus(onboardingCorpusKey);
+    return [...journey, ...buildUtilityKeywordPills()];
+  }, [onboardingCorpusKey]);
 
-    // Goal / body type
-    add('body_recomp', 'Body Recomp', 'kw', /\b(body\s*)?recomp(ositions?)?\b|\bmaingain\b|\brecomp\b/i);
-    add('skinny_fat', 'Skinny-Fat', 'kw', /\bskinny[-\s]?fat\b|\bthin\s*fat\b/i);
-    add('bulking', 'Bulking', 'kw', /\bbulk(?:ing)?\b|\bmass\s*gain\b/i);
-    add('cutting', 'Cutting', 'kw', /\bcut(?:ting)?\b|\bshred\b/i);
-    add('fat_loss', 'Fat Loss', 'kw', /\bfat\s*loss\b|\bweight\s*loss\b|\bcutting\b/i);
-    add('muscle_gain', 'Muscle Gain', 'kw', /\bmuscle\b|\bhypertrophy\b|\bstrength\b/i);
-
-    // Duration (requires durationMinutes)
-    add('dur_5_15', '5-15 min', 'dur', null);
-    add('dur_15_30', '15-30 min', 'dur', null);
-    add('dur_30_plus', '30+ min', 'dur', null);
-
-    // Level
-    add('lvl_beginner', 'Beginner', 'lvl', null);
-    add('lvl_intermediate', 'Intermediate', 'lvl', null);
-    add('lvl_advanced', 'Advanced', 'lvl', null);
-
-    // Style
-    add('full_body', 'Full Body', 'kw', /\bfull\s*body\b/i);
-    add('upper_body', 'Upper Body', 'kw', /\bupper\s*body\b/i);
-    add('lower_body', 'Lower Body', 'kw', /\blower\s*body\b/i);
-    add('hiit', 'HIIT', 'kw', /\bhiit\b|\binterval\b/i);
-    add('strength', 'Strength', 'kw', /\bstrength\b|\bpower\b/i);
-    add('cardio', 'Cardio', 'kw', /\bcardio\b|\bconditioning\b/i);
-    add('functional', 'Functional', 'kw', /\bfunctional\b/i);
-
-    return out;
-  }, []);
+  useEffect(() => {
+    const valid = new Set(keywordPills.map((p) => p.id));
+    setSelectedKeywords((prev) => {
+      let changed = false;
+      const next = new Set();
+      prev.forEach((id) => {
+        if (valid.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [keywordPills]);
 
   // Pills should behave like typing the same keywords in the search bar.
   // When pills are selected and the user hasn't typed a query, we generate a query string.
@@ -409,21 +597,17 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
         stickyHeaderIndices={[1]}
       >
         <View style={styles.headerBlock}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.title, { color: COLORS.text }]}>Exercise Library</Text>
-              <Text style={[styles.kicker, { color: COLORS.textMuted }]}>CoachConnect</Text>
-            </View>
-          </View>
+          <Text style={[styles.kicker, { color: COLORS.textMuted }]}>CoachConnect</Text>
+          <Text style={[styles.title, { color: COLORS.text }]}>Exercise Library</Text>
+          <Text style={[styles.headerSub, { color: COLORS.textMuted }]}>
+            Technique videos tailored to your goals
+          </Text>
         </View>
 
         <View
           style={[
             styles.stickyHeader,
-            {
-              backgroundColor: COLORS.background,
-              borderBottomColor: COLORS.border,
-            },
+            { backgroundColor: COLORS.background },
           ]}
         >
           <View style={{ paddingHorizontal: GUTTER, paddingBottom: 10 }}>
@@ -471,7 +655,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                     <TouchableOpacity onPress={() => toggleKeyword(item.id)} activeOpacity={0.88}>
                       {isActive ? (
                         <LinearGradient
-                          colors={['#C084FC', '#FF6B9D']}
+                          colors={FILTER_ACTIVE_GRADIENT}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 1 }}
                           style={styles.filterPillGrad}
@@ -479,7 +663,15 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           <Text style={styles.filterPillTextActive}>{item.label}</Text>
                         </LinearGradient>
                       ) : (
-                        <View style={[styles.filterPillIdle, { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' }]}>
+                        <View
+                          style={[
+                            styles.filterPillIdle,
+                            {
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                            },
+                          ]}
+                        >
                           <Text style={[styles.filterPillText, { color: COLORS.text }]}>{item.label}</Text>
                         </View>
                       )}
@@ -505,7 +697,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
             <ExerciseSection
                   title="Filtered Results"
                   subtitle={`Showing ${filteredExercises.length} long-form video${filteredExercises.length === 1 ? '' : 's'} for your selected filters`}
-                  accentGradient={['#C084FC', '#FF6B9D']}
+                  accentGradient={SECTION_GRADIENT.primary}
                   style={{ marginTop: 6 }}
               colors={COLORS}
               isDark={isDark}
@@ -528,7 +720,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         <ExerciseCard
                           exercise={item}
                           colors={COLORS}
-                          accentGradient={['#C084FC', '#FF6B9D']}
+                          accentGradient={SECTION_GRADIENT.primary}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
                           onToggleSave={() => toggleSave(item.id)}
@@ -543,7 +735,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                   <ExerciseSection
                     title="YouTube Shorts"
                     subtitle={`Showing ${filteredShorts.length} short${filteredShorts.length === 1 ? '' : 's'} (kept separate)`}
-                    accentGradient={['#F97316', '#06B6D4']}
+                    accentGradient={SECTION_GRADIENT.shorts}
                     style={{ marginTop: 0 }}
                     colors={COLORS}
                     isDark={isDark}
@@ -558,7 +750,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         <ShortsCard
                           item={item}
                           width={110}
-                          accentGradient={['#F97316', '#06B6D4']}
+                          accentGradient={SECTION_GRADIENT.shorts}
                           isDark={isDark}
                           saved={saved.has(item.id)}
                           onToggleSave={() => toggleSave(item.id)}
@@ -574,9 +766,9 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
             {selectedKeywords.size ? null : (
               <>
                 <ExerciseSection
-                  title="Recommended for You"
+                  title="Recommended for you"
                   subtitle="Tailored to your onboarding goals and journey"
-                  accentGradient={['#C084FC', '#FF6B9D']}
+                  accentGradient={SECTION_GRADIENT.primary}
                   style={{ marginTop: 6 }}
                   colors={COLORS}
                   isDark={isDark}
@@ -588,14 +780,15 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                   ) : null}
 
                   {!recommendedLoading && !recommendedError && exercises.length === 0 ? (
-                    <View style={[styles.emptyState, { borderColor: COLORS.border, backgroundColor: COLORS.surface }]}>
-                      <Ionicons name="cloud-offline-outline" size={22} color={COLORS.textMuted} />
-                      <Text style={[styles.emptyTitle, { color: COLORS.text }]}>No videos loaded</Text>
-                      <Text style={[styles.emptyBody, { color: COLORS.textMuted }]}>
-                        The app could not get results from YouTube. Restart with a clear cache after setting your API key in
-                        .env, or check billing and YouTube Data API v3 on your Google Cloud key.
-                      </Text>
-                    </View>
+                    <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emptyRim}>
+                      <View style={[styles.emptyState, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', marginHorizontal: 0 }]}>
+                        <Ionicons name="cloud-offline-outline" size={24} color={COLORS.pink} />
+                        <Text style={[styles.emptyTitle, { color: COLORS.text }]}>No videos loaded</Text>
+                        <Text style={[styles.emptyBody, { color: COLORS.textMuted }]}>
+                          Sign in and ensure your YouTube API key is configured, then reload.
+                        </Text>
+                      </View>
+                    </LinearGradient>
                   ) : null}
 
                   <FlatList
@@ -616,7 +809,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         <ExerciseCard
                           exercise={item}
                           colors={COLORS}
-                          accentGradient={['#C084FC', '#FF6B9D']}
+                          accentGradient={SECTION_GRADIENT.primary}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
                           onToggleSave={() => toggleSave(item.id)}
@@ -630,7 +823,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                 <ExerciseSection
                   title="YouTube Shorts"
                   subtitle="Quick demos — separated from long-form"
-                  accentGradient={['#F97316', '#06B6D4']}
+                          accentGradient={SECTION_GRADIENT.shorts}
                   style={{ marginTop: 0 }}
                   colors={COLORS}
                   isDark={isDark}
@@ -645,7 +838,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                       <ShortsCard
                         item={item}
                         width={110}
-                        accentGradient={['#F97316', '#06B6D4']}
+                        accentGradient={SECTION_GRADIENT.shorts}
                         isDark={isDark}
                         saved={saved.has(item.id)}
                         onToggleSave={() => toggleSave(item.id)}
@@ -658,7 +851,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                 <ExerciseSection
                   title="Based on Your Goals"
                   subtitle={journeyHint || 'Pulled from your journey text and goals'}
-                  accentGradient={['#F97316', '#FF6B9D']}
+                  accentGradient={SECTION_GRADIENT.goals}
                   colors={COLORS}
                   isDark={isDark}
                 >
@@ -680,7 +873,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         <ExerciseCard
                           exercise={item}
                           colors={COLORS}
-                          accentGradient={['#F97316', '#FF6B9D']}
+                          accentGradient={SECTION_GRADIENT.goals}
                           accentPlacement="bottom"
                           saved={saved.has(item.id)}
                           onToggleSave={() => toggleSave(item.id)}
@@ -694,7 +887,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                 <ExerciseSection
                   title="Form Fundamentals"
                   subtitle="Technique and cueing"
-                  accentGradient={['#06B6D4', '#C084FC']}
+                  accentGradient={SECTION_GRADIENT.form}
                   colors={COLORS}
                   isDark={isDark}
                 >
@@ -716,7 +909,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         <ExerciseCard
                           exercise={item}
                           colors={COLORS}
-                          accentGradient={['#06B6D4', '#C084FC']}
+                          accentGradient={SECTION_GRADIENT.form}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
                           onToggleSave={() => toggleSave(item.id)}
@@ -731,9 +924,9 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
           </>
         ) : (
           <ExerciseSection
-            title={`${effectiveQuery || 'Search'} Results`}
-            subtitle={searchGridVideos.length ? `Showing ${searchGridVideos.length} video${searchGridVideos.length === 1 ? '' : 's'}` : 'No results'}
-            accentGradient={['#C084FC', '#FF6B9D']}
+            title={`${effectiveQuery || 'Search'} results`}
+            subtitle={searchGridVideos.length ? `${searchGridVideos.length} video${searchGridVideos.length === 1 ? '' : 's'} found` : 'No results yet'}
+            accentGradient={SECTION_GRADIENT.search}
             style={{ marginTop: 6 }}
             colors={COLORS}
             isDark={isDark}
@@ -744,13 +937,15 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
               </View>
             ) : null}
             {!searchLoading && !searchGridVideos.length ? (
-              <View style={[styles.emptyState, { borderColor: COLORS.border, backgroundColor: 'rgba(255,255,255,0.03)', marginHorizontal: 16, marginTop: 10 }]}>
-                <Ionicons name="search-outline" size={22} color={COLORS.textMuted} />
-                <Text style={[styles.emptyTitle, { color: COLORS.text }]}>No exercises found</Text>
-                <Text style={[styles.emptyBody, { color: COLORS.textMuted }]}>
-                  Try a broader query or clear filters.
-                </Text>
-              </View>
+              <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emptyRim}>
+                <View style={[styles.emptyState, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', marginHorizontal: 0 }]}>
+                  <Ionicons name="search-outline" size={24} color={COLORS.pink} />
+                  <Text style={[styles.emptyTitle, { color: COLORS.text }]}>No exercises found</Text>
+                  <Text style={[styles.emptyBody, { color: COLORS.textMuted }]}>
+                    Try a broader query or clear filters.
+                  </Text>
+                </View>
+              </LinearGradient>
             ) : (
               <>
               <FlatList
@@ -771,7 +966,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                     <ExerciseCard
                       exercise={item}
                       colors={COLORS}
-                      accentGradient={['#C084FC', '#FF6B9D']}
+                      accentGradient={SECTION_GRADIENT.primary}
                       accentPlacement="left"
                       saved={saved.has(item.id)}
                       onToggleSave={() => toggleSave(item.id)}
@@ -784,7 +979,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                 <ExerciseSection
                   title="YouTube Shorts"
                   subtitle="Quick demos — separated from long-form"
-                  accentGradient={['#F97316', '#06B6D4']}
+                          accentGradient={SECTION_GRADIENT.shorts}
                   colors={COLORS}
                   isDark={isDark}
                 >
@@ -798,7 +993,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                       <ShortsCard
                         item={item}
                         width={110}
-                        accentGradient={['#F97316', '#06B6D4']}
+                        accentGradient={SECTION_GRADIENT.shorts}
                         isDark={isDark}
                         saved={saved.has(item.id)}
                         onToggleSave={() => toggleSave(item.id)}
@@ -968,6 +1163,30 @@ function VideoTile({ video, onOpen, colors, thumbTier, onThumbError }) {
   );
 }
 
+function DetailSection({ colors, isDark, icon, title, children }) {
+  const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
+  return (
+    <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.mdlSectionRim}>
+      <View style={[styles.mdlSection, { backgroundColor: innerBg }]}>
+        <LinearGradient
+          colors={isDark ? ['rgba(255,107,157,0.10)', 'rgba(194,65,12,0.05)', 'transparent'] : ['rgba(255,107,157,0.06)', 'rgba(194,65,12,0.04)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, { borderRadius: 13 }]}
+        />
+        <View style={styles.mdlSectionHeader}>
+          <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.mdlSectionIconGrad}>
+            <Ionicons name={icon} size={14} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={[styles.mdlSectionTitle, { color: colors.textMuted }]}>{title}</Text>
+        </View>
+        {children}
+      </View>
+    </LinearGradient>
+  );
+}
+
 function ExerciseDetailModal({ exercise, onClose, colors, playerMode, onPlayerModeChange }) {
   const embedW = Math.floor(SCREEN_W - 36);
   const embedH = Math.max(230, Math.round((embedW * 9) / 16));
@@ -975,11 +1194,13 @@ function ExerciseDetailModal({ exercise, onClose, colors, playerMode, onPlayerMo
     260,
     Dimensions.get('window').height - (Platform.OS === 'ios' ? 112 : 96),
   );
+  const isDark = colors.background === COLORS_DARK.background;
+  const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
 
         {playerMode === 'fullscreen' ? (
           <View style={[styles.fsLayer, { backgroundColor: colors.background }]}>
@@ -1004,93 +1225,110 @@ function ExerciseDetailModal({ exercise, onClose, colors, playerMode, onPlayerMo
             </View>
           </View>
         ) : (
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]} numberOfLines={2}>
+          <View style={[styles.mdlSheet, { backgroundColor: colors.background }]}>
+            <LinearGradient
+              colors={[`${colors.pink}18`, 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0.8 }}
+              style={styles.mdlHeroGrad}
+            >
+              <View style={styles.mdlTopRow}>
+                <TouchableOpacity onPress={onClose} style={[styles.mdlBackBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]} hitSlop={10}>
+                  <Ionicons name="arrow-back" size={20} color={colors.text} />
+                </TouchableOpacity>
+                <View style={styles.modeRow}>
+                  <TouchableOpacity onPress={() => onPlayerModeChange('embedded')} activeOpacity={0.88}>
+                    {playerMode === 'embedded' ? (
+                      <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.modeChipActive}>
+                        <Ionicons name="play-circle-outline" size={14} color="#FFFFFF" />
+                        <Text style={styles.modeChipTextActive}>Inline</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={[styles.modeChip, { borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)' }]}>
+                        <Ionicons name="play-circle-outline" size={14} color={colors.textMuted} />
+                        <Text style={[styles.modeChipText, { color: colors.textMuted }]}>Inline</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => onPlayerModeChange('fullscreen')} activeOpacity={0.88}>
+                    {playerMode === 'fullscreen' ? (
+                      <LinearGradient colors={['#06B6D4', '#C2410C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.modeChipActive}>
+                        <Ionicons name="expand-outline" size={14} color="#FFFFFF" />
+                        <Text style={styles.modeChipTextActive}>Theater</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={[styles.modeChip, { borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)' }]}>
+                        <Ionicons name="expand-outline" size={14} color={colors.textMuted} />
+                        <Text style={[styles.modeChipText, { color: colors.textMuted }]}>Theater</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Text style={[styles.mdlKicker, { color: colors.textMuted }]}>
+                {exercise.channel || 'Exercise Library'}
+              </Text>
+              <Text style={[styles.mdlTitle, { color: colors.text }]} numberOfLines={2}>
                 {exercise.name}
               </Text>
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.modeRow}>
-              <TouchableOpacity
-                onPress={() => onPlayerModeChange('embedded')}
-                style={[
-                  styles.modeChip,
-                  playerMode === 'embedded' && { borderColor: colors.pink, backgroundColor: `${colors.pink}18` },
-                  { borderColor: colors.border },
-                ]}
-              >
-                <Ionicons name="tablet-portrait-outline" size={14} color={colors.text} />
-                <Text style={[styles.modeChipText, { color: colors.text }]}>Embedded</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => onPlayerModeChange('fullscreen')}
-                style={[
-                  styles.modeChip,
-                  playerMode === 'fullscreen' && { borderColor: colors.cyan, backgroundColor: `${colors.cyan}18` },
-                  { borderColor: colors.border },
-                ]}
-              >
-                <Ionicons name="expand-outline" size={14} color={colors.text} />
-                <Text style={[styles.modeChipText, { color: colors.text }]}>Fullscreen</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={[styles.embedWrap, { height: embedH }]}>
-              <YouTubeIframeExercisePlayer
-                videoId={exercise.videoId}
-                width={embedW}
-                height={embedH}
-                play
-              />
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
-              <Image
-                source={{ uri: `https://i.ytimg.com/vi/${exercise.videoId}/hqdefault.jpg` }}
-                style={[styles.modalHero, { backgroundColor: colors.surface }]}
-                contentFit="cover"
-                transition={TRANS_MS}
-              />
-
-              <Text style={[styles.blockTitle, { color: colors.text }]}>Description</Text>
-              <Text style={[styles.blockBody, { color: colors.textMuted }]}>{exercise.description}</Text>
-
-              <Text style={[styles.blockTitle, { color: colors.text, marginTop: 14 }]}>Form tips</Text>
-              {exercise.formTips.map((tip, idx) => (
-                <Text key={idx} style={[styles.blockBody, { color: colors.textMuted }]}>
-                  {`\u2022 ${tip}`}
-                </Text>
-              ))}
-
-              <Text style={[styles.blockTitle, { color: colors.text, marginTop: 14 }]}>Variations</Text>
-              {exercise.variations?.length ? (
-                exercise.variations.map((variation, idx) => (
-                  <Text key={idx} style={[styles.blockBody, { color: colors.textMuted }]}>
-                    {`\u2022 ${variation}`}
-                  </Text>
-                ))
-              ) : (
-                <Text style={[styles.blockBody, { color: colors.textMuted }]}>
-                  Search the form library for related videos on this pattern.
-                </Text>
-              )}
-
-              <Text style={[styles.blockTitle, { color: colors.text, marginTop: 14 }]}>Muscle groups</Text>
-              <View style={styles.badgeRow}>
+              <View style={[styles.mdlMusclePills, { marginTop: 10 }]}>
                 {exercise.muscles.map((m) => (
                   <View
                     key={m.label}
-                    style={[styles.badge, { backgroundColor: `${colors[m.color]}22`, borderColor: colors[m.color] }]}
+                    style={[styles.mdlPill, { backgroundColor: `${colors[m.color]}20`, borderColor: `${colors[m.color]}55` }]}
                   >
-                    <Text style={[styles.badgeText, { color: colors[m.color] }]}>{m.label}</Text>
+                    <View style={[styles.mdlPillDot, { backgroundColor: colors[m.color] }]} />
+                    <Text style={[styles.mdlPillText, { color: colors[m.color] }]}>{m.label}</Text>
                   </View>
                 ))}
               </View>
-              <View style={{ height: 24 }} />
+            </LinearGradient>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.mdlScroll}>
+              <LinearGradient colors={LIBRARY_RIM} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.mdlPlayerRim}>
+                <View style={[styles.mdlPlayerWrap, { backgroundColor: '#000' }]}>
+                  <YouTubeIframeExercisePlayer
+                    videoId={exercise.videoId}
+                    width={embedW}
+                    height={embedH}
+                    play
+                  />
+                </View>
+              </LinearGradient>
+
+              {!!exercise.description && (
+                <DetailSection colors={colors} isDark={isDark} icon="document-text-outline" title="ABOUT">
+                  <Text style={[styles.mdlBody, { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.72)' }]}>
+                    {exercise.description}
+                  </Text>
+                </DetailSection>
+              )}
+
+              {exercise.formTips?.length > 0 && (
+                <DetailSection colors={colors} isDark={isDark} icon="checkmark-circle-outline" title="FORM TIPS">
+                  {exercise.formTips.map((tip, idx) => (
+                    <View key={idx} style={styles.mdlTipRow}>
+                      <Text style={[styles.mdlTipIdx, { color: colors.pink }]}>{String(idx + 1).padStart(2, '0')}</Text>
+                      <Text style={[styles.mdlTipText, { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.72)' }]}>{tip}</Text>
+                    </View>
+                  ))}
+                </DetailSection>
+              )}
+
+              {exercise.variations?.length > 0 && (
+                <DetailSection colors={colors} isDark={isDark} icon="shuffle-outline" title="VARIATIONS">
+                  {exercise.variations.map((v, idx) => (
+                    <View key={idx} style={styles.mdlTipRow}>
+                      <Ionicons name="arrow-forward" size={12} color={colors.orange} style={{ marginTop: 3 }} />
+                      <Text style={[styles.mdlTipText, { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.72)' }]}>{v}</Text>
+                    </View>
+                  ))}
+                </DetailSection>
+              )}
+
+              <View style={{ height: 32 }} />
             </ScrollView>
           </View>
         )}
@@ -1105,8 +1343,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   stickyHeader: {
-    paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingTop: 2,
     zIndex: 10,
   },
   sectionHeaderRow: {
@@ -1118,23 +1355,26 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   carouselCard: { width: '100%', maxWidth: 200, alignSelf: 'flex-start' },
-  headerBlock: { paddingHorizontal: GUTTER, paddingTop: 18, paddingBottom: 10 },
-  headerRow: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-start', marginBottom: 16 },
-  kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  title: { fontSize: 26, fontWeight: '800', marginTop: 6 },
+  headerBlock: { paddingHorizontal: GUTTER, paddingTop: 16, paddingBottom: 12 },
+  kicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase' },
+  title: { fontSize: 28, fontWeight: '900', marginTop: 6, letterSpacing: -0.6 },
+  headerSub: { fontSize: 13, fontWeight: '600', marginTop: 8, lineHeight: 18 },
   themeBtn: { height: 44, width: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  searchGrad: { borderRadius: 24, padding: 2.5 },
+  searchGrad: {
+    borderRadius: 22,
+    padding: 1.5,
+    ...Platform.select({
+      ios: { shadowColor: '#FF6B9D', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+      android: { elevation: 4 },
+    }),
+  },
   searchInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 22,
+    gap: 10,
+    borderRadius: 20.5,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    paddingVertical: 13,
   },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   filtersPad: { paddingHorizontal: GUTTER, paddingBottom: 6 },
@@ -1146,8 +1386,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   filterList: { gap: 8, paddingRight: 12, paddingBottom: 2 },
-  filterPillGrad: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  filterPillIdle: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  filterPillGrad: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999 },
+  filterPillIdle: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   filterPillText: { fontSize: 13, fontWeight: '600' },
   filterPillTextActive: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   filterPillSecondary: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
@@ -1163,15 +1408,21 @@ const styles = StyleSheet.create({
   },
   bannerText: { flex: 1, fontSize: 12, lineHeight: 18 },
   emptyState: {
-    marginHorizontal: 0,
+    marginHorizontal: 20,
     marginBottom: 14,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
+    padding: 18,
+    borderRadius: 16.5,
     gap: 8,
+    alignItems: 'center',
   },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptyBody: { fontSize: 13, lineHeight: 20 },
+  emptyRim: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    borderRadius: 18,
+    padding: 1.5,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  emptyBody: { fontSize: 13, lineHeight: 20, textAlign: 'center' },
   sectionTitle: { fontSize: 18, fontWeight: '700' },
   sectionSub: { fontSize: 11, marginTop: 4 },
   cardOuter: { width: CARD_W },
@@ -1237,48 +1488,13 @@ const styles = StyleSheet.create({
   tileTitle: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
   tileSub: { fontSize: 8, color: 'rgba(255,255,255,0.72)' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', position: 'relative' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
   fsLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,
     flexDirection: 'column',
     paddingTop: Platform.OS === 'ios' ? 44 : 28,
   },
-  modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    maxHeight: '88%',
-  },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
-  modalTitle: { flex: 1, fontSize: 17, fontWeight: '700' },
-  modeRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  modeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  modeChipText: { fontSize: 12, fontWeight: '600' },
-  embedWrap: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(128,128,128,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
-  },
-  embedWeb: { flex: 1, backgroundColor: '#000', minHeight: 200 },
-  modalScroll: { maxHeight: 320 },
-  modalHero: { width: '100%', height: 120, borderRadius: 12, marginBottom: 12 },
-  blockTitle: { fontSize: 14, fontWeight: '600', marginBottom: 6 },
-  blockBody: { fontSize: 13, lineHeight: 20, marginBottom: 4 },
   fsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1289,4 +1505,141 @@ const styles = StyleSheet.create({
   },
   fsTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
   fsWeb: { flex: 1, backgroundColor: '#000' },
+
+  modeRow: { flexDirection: 'row', gap: 8 },
+  modeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  modeChipActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  modeChipText: { fontSize: 11, fontWeight: '700' },
+  modeChipTextActive: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+
+  mdlSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '92%',
+    overflow: 'hidden',
+  },
+  mdlHeroGrad: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  mdlTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  mdlBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mdlKicker: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  mdlTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 28,
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+  },
+  mdlMusclePills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  mdlPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  mdlPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  mdlPillText: { fontSize: 11, fontWeight: '600' },
+
+  mdlScroll: {
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: 20,
+  },
+  mdlPlayerRim: {
+    borderRadius: 18,
+    padding: 1.5,
+    marginBottom: 16,
+  },
+  mdlPlayerWrap: {
+    borderRadius: 16.5,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  mdlSectionRim: {
+    borderRadius: 16,
+    padding: 1.5,
+    marginBottom: 12,
+  },
+  mdlSection: {
+    borderRadius: 14.5,
+    padding: 14,
+    gap: 10,
+    overflow: 'hidden',
+  },
+  mdlSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  mdlSectionIconGrad: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mdlSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  mdlBody: { fontSize: 14, lineHeight: 22, fontWeight: '500' },
+  mdlTipRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  mdlTipIdx: {
+    fontSize: 13,
+    fontWeight: '800',
+    minWidth: 22,
+  },
+  mdlTipText: { flex: 1, fontSize: 14, lineHeight: 22, fontWeight: '500' },
 });

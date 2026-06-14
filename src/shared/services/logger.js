@@ -2,8 +2,9 @@
  * Centralized logging for CoachConnect.
  * - debug/info: development only
  * - warn: development only (keeps production logs quiet)
- * - error: always emitted (Crashlytics/Sentry can hook in later)
+ * - error: always emitted; forwarded to Sentry when configured (see monitoring.js)
  */
+import { captureException } from './monitoring';
 
 export const logger = {
   debug: (message, data) => {
@@ -27,6 +28,8 @@ export const logger = {
       stack: error?.stack,
       ...context,
     });
+    const errObj = error instanceof Error ? error : new Error(String(error ?? message));
+    captureException(errObj, { logMessage: message, ...context });
   },
 
   warn: (message, data) => {

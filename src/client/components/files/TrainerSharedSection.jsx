@@ -13,10 +13,9 @@ const CATEGORIES = [
   { id: 'other', label: 'Other', color: '#9CA3AF', match: (t) => t === 'file' },
 ];
 
-export function TrainerSharedSection({ items, onOpenItem, onDownloadItem, onMarkRead }) {
+export function TrainerSharedSection({ items, isDark = true, onOpenItem, onDownloadItem, onMarkRead }) {
   const [expanded, setExpanded] = useState('documents');
   const [detail, setDetail] = useState(null);
-  const isDark = true;
   const theme = isDark
     ? {
         card: '#141419',

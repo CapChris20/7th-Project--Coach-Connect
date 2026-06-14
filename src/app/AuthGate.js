@@ -20,7 +20,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeErrorSync } from '../../utils/errorSyncService';
-import { loadApiKey } from '../ai/services/apiKeyService';
 import { clearOldSharedChats } from '../ai/services/chatStorageService';
 import { clearAllUserData } from '../utils/dataCacheCleanup';
 import { flushPendingOnboardingSync } from '../shared/services/onboardingSync';
@@ -41,7 +40,30 @@ function profileNeedsOnboarding(profile) {
   const v = profile.onboardingCompleted;
   if (v === true || v === 'true' || v === 1) return false;
   if (v === false || v === 'false' || v === 0) return true;
+  if (
+    profile.authProvider === 'google' &&
+    !profile.onboardingCompletedAt &&
+    profile.createdAt
+  ) {
+    const createdMs = new Date(profile.createdAt).getTime();
+    const recent =
+      Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
+    if (recent) return true;
+  }
   return false;
+}
+
+/** Firestore may not exist yet when auth fires right after first Google/email sign-up. */
+function isLikelyNewFirebaseUser(firebaseUser) {
+  if (!firebaseUser?.metadata) return false;
+  try {
+    const created = new Date(firebaseUser.metadata.creationTime).getTime();
+    const lastSignIn = new Date(firebaseUser.metadata.lastSignInTime).getTime();
+    if (!Number.isFinite(created) || !Number.isFinite(lastSignIn)) return false;
+    return Math.abs(lastSignIn - created) < 3 * 60 * 1000;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -99,9 +121,6 @@ export default function AuthGate() {
       try {
         // Initialize automatic error syncing
         await initializeErrorSync();
-        
-        // Load API key
-        await loadApiKey();
       } catch (e) {
         console.error('Failed to load API key:', e);
       } finally {
@@ -233,7 +252,7 @@ export default function AuthGate() {
               const profile = { uid, ...(cached || {}) };
               setUserData(profile);
               setUserRole(cachedRole);
-              setShowOnboarding(false);
+              setShowOnboarding(profileNeedsOnboarding(profile));
               setAuthLoading(false);
               setOnboardingChecked(true);
               return;
@@ -244,9 +263,14 @@ export default function AuthGate() {
         }
 
         const uid = firebaseUser?.uid || null;
-        setUserData(uid ? { uid, role: 'client', onboardingCompleted: true } : null);
+        const likelyNew = isLikelyNewFirebaseUser(firebaseUser);
+        setUserData(
+          uid
+            ? { uid, role: 'client', onboardingCompleted: likelyNew ? false : true }
+            : null
+        );
         setUserRole('client');
-        setShowOnboarding(false);
+        setShowOnboarding(likelyNew);
         setAuthLoading(false);
         setOnboardingChecked(true);
         return;
@@ -395,8 +419,7 @@ export default function AuthGate() {
                 const profile = { uid, ...(cached || {}) };
                 setUserData(profile);
                 setUserRole(cachedRole);
-                // If we have a role cache, keep user in app flow even when network is down.
-                setShowOnboarding(false);
+                setShowOnboarding(profileNeedsOnboarding(profile));
                 return;
               }
             }
@@ -490,8 +513,30 @@ export default function AuthGate() {
             ).catch(() => {});
           }
         }}
-        onLoginSuccess={(userData) => {
+        onLoginSuccess={async (userData) => {
           setUser(userData);
+          if (!userData?.uid || !db) return;
+          try {
+            const snap = await getDoc(doc(db, 'users', userData.uid));
+            if (!snap.exists()) {
+              const likelyNew = isLikelyNewFirebaseUser(userData);
+              if (likelyNew) {
+                setUserRole('client');
+                setShowOnboarding(true);
+                setOnboardingChecked(true);
+              }
+              return;
+            }
+            const profile = { uid: userData.uid, ...(snap.data() || {}) };
+            if (profile.role) {
+              setUserData(profile);
+              setUserRole(profile.role);
+              setShowOnboarding(profileNeedsOnboarding(profile));
+              setOnboardingChecked(true);
+            }
+          } catch (_) {
+            /* onAuthStateChanged will reconcile */
+          }
         }}
         onForgotPasswordPress={() => setShowForgotPassword(true)}
       />

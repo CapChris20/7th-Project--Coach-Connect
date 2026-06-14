@@ -3,7 +3,7 @@
  * Real-time via subscribeToConversations; account isolation via participants + trainer clients filter.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,12 +21,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { auth, db } from '../../app/config';
-import { subscribeToConversations, subscribeToUnreadByConversation } from '../../ai/services/conversationService';
+import {
+  subscribeToConversations,
+  subscribeToUnreadByConversation,
+  fetchMoreConversations,
+} from '../../ai/services/conversationService';
 import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMService';
 import { getOrCreateConversation, markMessagesAsRead } from '../../ai/services/trainerMessaging';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -131,10 +136,42 @@ const screenStyles = StyleSheet.create({
   addBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   clientBadge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
   clientBadgeText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
+  emptyWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 32,
+  },
+  emptyIconBox: {
+    width: 76,
+    height: 76,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 300 },
+  emptyCta: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  emptyCtaText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
 
 export default function ConversationsListScreen({ onSelectConversation, onClose, onProfilePress, onSettingsPress, embedInLayout, selectedClientId }) {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
+  const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) : 0;
   const t = isDark ? DARK : LIGHT;
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +181,12 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
   const [isTrainer, setIsTrainer] = useState(false);
   const [trainerClients, setTrainerClients] = useState([]);
   const [addingClient, setAddingClient] = useState({});
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [listError, setListError] = useState(null);
+  const [listRefreshKey, setListRefreshKey] = useState(0);
+  const [startingChat, setStartingChat] = useState(false);
+  const lastConversationDocRef = useRef(null);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -178,14 +221,22 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
 
   useEffect(() => {
     if (!currentUser) return;
-    const unsubscribe = subscribeToConversations(currentUser.uid, ({ conversations: list, participantNames: names, participantData: data }) => {
-      setConversations(list);
-      setParticipantNames(names || {});
-      setParticipantData(data || {});
-      setLoading(false);
-    });
+    setLoading(true);
+    setListError(null);
+    const unsubscribe = subscribeToConversations(
+      currentUser.uid,
+      ({ conversations: list, participantNames: names, participantData: data, lastDoc, hasMore, error }) => {
+        setConversations(list || []);
+        setParticipantNames(names || {});
+        setParticipantData(data || {});
+        lastConversationDocRef.current = lastDoc ?? null;
+        setHasMoreConversations(Boolean(hasMore));
+        setListError(error || null);
+        setLoading(false);
+      },
+    );
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, listRefreshKey]);
 
   const filteredConversations = useMemo(() => {
     if (!conversations.length) return [];
@@ -281,6 +332,118 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
     }
   };
 
+  const handleMessageCoach = async () => {
+    if (!currentUser?.uid || startingChat) return;
+    setStartingChat(true);
+    try {
+      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+      const trainerId = userDoc.exists() ? userDoc.data()?.trainerId : null;
+      if (!trainerId) {
+        Alert.alert('No coach yet', 'Find a trainer in the app to start messaging.');
+        return;
+      }
+      const conversationId = await getOrCreateConversation(currentUser.uid, trainerId);
+      const convSnap = await getDoc(doc(db, 'conversations', conversationId));
+      const trainerSnap = await getDoc(doc(db, 'users', trainerId));
+      const trainerData = trainerSnap.exists() ? trainerSnap.data() : {};
+      const conversation = convSnap.exists()
+        ? { id: conversationId, ...convSnap.data() }
+        : { id: conversationId, participants: [currentUser.uid, trainerId] };
+      onSelectConversation?.(conversation, { id: trainerId, ...trainerData });
+    } catch (error) {
+      console.error('handleMessageCoach failed:', error);
+      Alert.alert('Could not open chat', error?.message || 'Please try again.');
+    } finally {
+      setStartingChat(false);
+    }
+  };
+
+  const renderEmptyState = () => {
+    const filteredOut =
+      !listError &&
+      conversations.length > 0 &&
+      filteredConversations.length === 0 &&
+      isTrainer;
+
+    if (listError) {
+      return (
+        <View style={screenStyles.emptyWrap}>
+          <View style={[screenStyles.emptyIconBox, { borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.08)' }]}>
+            <Ionicons name="cloud-offline-outline" size={34} color="#f87171" />
+          </View>
+          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>Couldn't load messages</Text>
+          <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+            Check your connection, then try again.
+          </Text>
+          <TouchableOpacity
+            onPress={() => setListRefreshKey((k) => k + 1)}
+            activeOpacity={0.85}
+            style={{ marginTop: 20 }}
+          >
+            <LinearGradient colors={GRADIENT.badge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.emptyCta}>
+              <Text style={screenStyles.emptyCtaText}>Retry</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (filteredOut) {
+      return (
+        <View style={screenStyles.emptyWrap}>
+          <View
+            style={[
+              screenStyles.emptyIconBox,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+              },
+            ]}
+          >
+            <GradientChatBubblesIcon size={34} />
+          </View>
+          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No client chats yet</Text>
+          <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+            Conversations with people who aren't in your client list are hidden here.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+        <View style={screenStyles.emptyWrap}>
+          <View
+            style={[
+              screenStyles.emptyIconBox,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+              },
+            ]}
+          >
+            <GradientChatBubblesIcon size={34} />
+          </View>
+          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No conversations yet</Text>
+        <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+          {isTrainer
+            ? 'Message a client from your roster, or add someone new from a chat.'
+            : 'Say hi to your coach — your thread will show up here.'}
+        </Text>
+        {!isTrainer ? (
+          <TouchableOpacity onPress={handleMessageCoach} disabled={startingChat} activeOpacity={0.85} style={{ marginTop: 20 }}>
+            <LinearGradient colors={GRADIENT.badge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.emptyCta}>
+              {startingChat ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={screenStyles.emptyCtaText}>Message your coach</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+
   const renderRow = ({ item: conversation }) => {
     if (!conversation?.participants) return null;
     const otherId = conversation.participants.find((id) => id !== currentUser?.uid);
@@ -361,7 +524,7 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
 
   const headerBlock = (
     <>
-      <View style={screenStyles.header}>
+      <View style={[screenStyles.header, embedTopPad ? { paddingTop: embedTopPad + 12 } : null]}>
         <TouchableOpacity onPress={onClose} style={{ padding: 8 }}>
           <Ionicons name="arrow-back" size={22} color={t.textPrimary} />
         </TouchableOpacity>
@@ -372,42 +535,63 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
   );
 
   const listContent = (
-    <>
+    <View style={{ flex: 1 }}>
       {headerBlock}
       {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 48 }}>
+        <View style={screenStyles.emptyWrap}>
           <ActivityIndicator size="large" color={colors?.primary ?? '#6C5CE7'} />
         </View>
       ) : filteredConversations.length === 0 ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <View
-            style={{
-              width: 76,
-              height: 76,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 16,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-              overflow: 'hidden',
-            }}
-          >
-            <GradientChatBubblesIcon size={34} />
-          </View>
-          <Text style={{ fontSize: 16, color: t.textMuted, textAlign: 'center' }}>No conversations yet</Text>
-          <Text style={{ fontSize: 14, color: t.textTimestamp, textAlign: 'center', marginTop: 8 }}>Start a conversation with a trainer or client</Text>
-        </View>
+        renderEmptyState()
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={filteredConversations}
           keyExtractor={(item) => item.id}
           renderItem={renderRow}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 }}
+          contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 + embedBottomPad, flexGrow: 1 }}
+          ListFooterComponent={
+            hasMoreConversations ? (
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!currentUser?.uid || loadingMoreConversations || !lastConversationDocRef.current) return;
+                  setLoadingMoreConversations(true);
+                  try {
+                    const page = await fetchMoreConversations(
+                      currentUser.uid,
+                      lastConversationDocRef.current,
+                    );
+                    if (page.lastDoc) lastConversationDocRef.current = page.lastDoc;
+                    setHasMoreConversations(page.hasMore);
+                    if (page.conversations?.length) {
+                      setConversations((prev) => {
+                        const byId = new Map((prev || []).map((c) => [c.id, c]));
+                        for (const c of page.conversations) byId.set(c.id, c);
+                        return [...byId.values()];
+                      });
+                    }
+                  } catch (e) {
+                    console.error('fetchMoreConversations failed:', e);
+                  } finally {
+                    setLoadingMoreConversations(false);
+                  }
+                }}
+                disabled={loadingMoreConversations}
+                accessibilityRole="button"
+                accessibilityLabel="Load more conversations"
+                style={{ alignSelf: 'center', marginTop: 12, paddingVertical: 10, paddingHorizontal: 16 }}
+              >
+                {loadingMoreConversations ? (
+                  <ActivityIndicator size="small" color={colors?.primary ?? '#6C5CE7'} />
+                ) : (
+                  <Text style={{ color: t.textMuted, fontSize: 13, fontWeight: '700' }}>Load more</Text>
+                )}
+              </TouchableOpacity>
+            ) : null
+          }
         />
       )}
-    </>
+    </View>
   );
 
   const inner = (
@@ -421,7 +605,7 @@ export default function ConversationsListScreen({ onSelectConversation, onClose,
   }
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <CoachConnectHeader title="Messages" isDark={isDark} onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
+      <CoachConnectHeader title="Messages" isDark={isDark} skipTopSafeInset onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
       {inner}
     </SafeAreaView>
   );

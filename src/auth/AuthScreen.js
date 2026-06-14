@@ -5,19 +5,19 @@
  * into a single file with internal state management for navigation.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  SafeAreaView,
+  Dimensions,
+  Image,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
   ScrollView,
-  Image,
-  Dimensions,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Animated as RNAnimated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -62,6 +62,17 @@ function extractGoogleOAuthTokens(authentication, params = {}) {
     params.accessToken ||
     null;
   return { idToken, accessToken };
+}
+
+/**
+ * iOS Google OAuth clients require the reversed-client-id redirect, not {bundleId}:/oauthredirect.
+ * @see https://developers.google.com/identity/sign-in/ios/start-integrating
+ */
+function getGoogleIosOAuthRedirectUri(iosClientId) {
+  if (Platform.OS !== 'ios' || !iosClientId) return undefined;
+  const prefix = String(iosClientId).replace(/\.apps\.googleusercontent\.com$/i, '').trim();
+  if (!prefix) return undefined;
+  return `com.googleusercontent.apps.${prefix}:/oauthredirect`;
 }
 
 /** Auth + onboarding CTA (dark pink → dark orange) */
@@ -519,13 +530,23 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
 
   // Google OAuth configuration (shared for signup and login)
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const googleRedirectUri = useMemo(
+    () => getGoogleIosOAuthRedirectUri(googleIosClientId),
+    [googleIosClientId]
+  );
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    // Android requires a client id in expo-auth-session; use Android OAuth client from GCP when set.
-    androidClientId:
-      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: googleIosClientId,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri: googleRedirectUri,
   });
+
+  if (__DEV__ && request) {
+    console.log('Google OAuth redirect URI:', request.redirectUri);
+    console.log('Google OAuth code challenge:', request.codeChallenge);
+  }
 
   /** Latest screen for Google OAuth callback (signup vs login) */
   const currentViewRef = useRef(currentView);
@@ -540,6 +561,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     if (!response) return;
 
     if (response.type === 'cancel' || response.type === 'dismiss') {
+      console.log('Google OAuth cancelled/dismissed by user');
       setIsLoadingGoogle(false);
       setSignupLoading(false);
       setLoginLoading(false);
@@ -550,7 +572,11 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       setIsLoadingGoogle(false);
       setSignupLoading(false);
       setLoginLoading(false);
-      console.error('Google OAuth error:', response.error);
+      console.error('Google OAuth error:', {
+        error: response.error,
+        description: response.params?.error_description,
+        redirectUri: request?.redirectUri,
+      });
       setErrorModal({
         title: 'Google Sign-In',
         message: 'Google sign-in failed. Please try again.',
@@ -563,9 +589,13 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     const params = response.params || {};
     const { idToken, accessToken } = extractGoogleOAuthTokens(response.authentication, params);
 
-    // Installed apps use authorization code + PKCE; expo merges tokens into `response` after exchange.
-    // First `success` can arrive before `id_token` exists — wait for the next update.
     if (!idToken) {
+      console.error('Google OAuth: no id_token in response', { params, authentication: response.authentication });
+      setIsLoadingGoogle(false);
+      setErrorModal({
+        title: 'Sign-In Failed',
+        message: 'Google sign-in did not complete successfully. Please try again.',
+      });
       return;
     }
 
@@ -577,7 +607,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
     } else {
       void handleGoogleSignInRef.current?.(payload);
     }
-  }, [response]);
+  }, [response, request]);
 
   // ==================== SIGNUP HANDLERS ====================
   const handlePickImage = async () => {
@@ -940,6 +970,32 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
       if (userDoc.exists()) {
         const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
         if (!roleOk) return;
+
+        const existing = userDoc.data() || {};
+        const explicitlyIncomplete =
+          existing.onboardingCompleted === false ||
+          existing.onboardingCompleted === 'false' ||
+          existing.onboardingCompleted === 0;
+        const createdMs = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
+        const recentAccount =
+          Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
+        const recentGoogleWithoutOnboarding =
+          existing.authProvider === 'google' &&
+          !existing.onboardingCompletedAt &&
+          existing.onboardingCompleted !== true &&
+          existing.onboardingCompleted !== 'true' &&
+          existing.onboardingCompleted !== 1 &&
+          recentAccount;
+
+        if (explicitlyIncomplete || recentGoogleWithoutOnboarding) {
+          if (recentGoogleWithoutOnboarding && !explicitlyIncomplete) {
+            await setDoc(userRef, { onboardingCompleted: false }, { merge: true });
+          }
+          if (onSignupSuccess) {
+            onSignupSuccess(userCredential.user, existing.role || role);
+            return;
+          }
+        }
       }
 
       if (!userDoc.exists()) {
@@ -949,6 +1005,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
           email: userCredential.user.email || '',
           name: userCredential.user.displayName || 'User',
           role,
+          onboardingCompleted: false,
           title: 'Coach Connect Invite Code',
           createdAt: new Date().toISOString(),
           authProvider: 'google',
@@ -957,7 +1014,11 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         if (role === 'trainer' && gPhoto) {
           await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL: gPhoto, avatarUrl: gPhoto }, { merge: true });
         }
-        console.log('User document created for Google sign-in');
+        console.log('New user created via Google sign-in — routing to onboarding');
+        if (onSignupSuccess) {
+          onSignupSuccess(userCredential.user, role);
+          return;
+        }
       } else {
         await setDoc(
           userRef,
@@ -1085,93 +1146,71 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         </TouchableOpacity>
       </View>
 
-      {/* Welcome wordmark — gradient frame only; glass interior (no solid fills). */}
+      {/* Welcome wordmark — clean card, no gradient frame; blends with landing background. */}
       <View style={{ width: '100%', alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
-        <LinearGradient
-          colors={['#FF6B9D', '#C084FC', '#F97316']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        <View
           style={{
             width: '88%',
             maxWidth: 460,
             borderRadius: 24,
-            padding: 3,
-            ...(Platform.OS === 'ios'
-              ? {
-                  shadowColor: '#C084FC',
-                  shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 0.28,
-                  shadowRadius: 20,
-                }
-              : { elevation: 5 }),
+            paddingVertical: 22,
+            paddingHorizontal: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
           }}
         >
+          <Text
+            style={{
+              fontSize: 38,
+              fontWeight: '900',
+              letterSpacing: 3,
+              textAlign: 'center',
+              color: t.heading,
+            }}
+          >
+            COACH
+          </Text>
+          <Text
+            style={{
+              fontSize: 38,
+              fontWeight: '900',
+              letterSpacing: 3,
+              textAlign: 'center',
+              marginTop: -2,
+              color: '#FF6B9D',
+            }}
+          >
+            CONNECT
+          </Text>
+
           <View
             style={{
-              borderRadius: 21,
-              paddingVertical: 22,
-              paddingHorizontal: 20,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.72)' : 'rgba(255,255,255,0.82)',
+              marginTop: 16,
+              borderRadius: 999,
+              paddingVertical: 11,
+              paddingHorizontal: 18,
+              alignSelf: 'stretch',
+              maxWidth: 340,
               borderWidth: 1,
-              borderColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.65)',
+              borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)',
             }}
           >
             <Text
               style={{
-                fontSize: 38,
-                fontWeight: '900',
-                letterSpacing: 3,
-                textAlign: 'center',
+                fontSize: 16,
+                fontWeight: '800',
+                letterSpacing: 0.2,
                 color: t.heading,
-              }}
-            >
-              COACH
-            </Text>
-            <Text
-              style={{
-                fontSize: 38,
-                fontWeight: '900',
-                letterSpacing: 3,
                 textAlign: 'center',
-                marginTop: -2,
-                color: '#FF6B9D',
+                fontStyle: 'italic',
               }}
             >
-              CONNECT
+              {"\u201cOne Day or Day One!\u201d"}
             </Text>
-
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ marginTop: 16, borderRadius: 999, padding: 2, alignSelf: 'stretch', maxWidth: 340 }}
-            >
-              <View
-                style={{
-                  borderRadius: 999,
-                  paddingVertical: 11,
-                  paddingHorizontal: 18,
-                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.75)' : 'rgba(255,255,255,0.92)',
-                  borderWidth: 0,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '800',
-                    letterSpacing: 0.2,
-                    color: t.heading,
-                    textAlign: 'center',
-                  }}
-                >
-                  {"\u201cOne Day or Day One!\u201d"}
-                </Text>
-              </View>
-            </LinearGradient>
           </View>
-        </LinearGradient>
+        </View>
       </View>
 
       {/* Lottie animations */}
@@ -2149,6 +2188,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         });
         return;
       }
+      setIsLoadingGoogle(true);
       promptAsync();
     };
 
@@ -2518,6 +2558,7 @@ export default function AuthScreen({ onSignupSuccess, onLoginSuccess, onForgotPa
         });
         return;
       }
+      setIsLoadingGoogle(true);
       promptAsync();
     };
 

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts } from './workout';
+import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from './workout';
 
 /**
  * UI wrapper for workout plan generation.
@@ -28,6 +28,20 @@ export default function WorkoutPlanGeneratorScreenUI({
   const [generatedPlan, setGeneratedPlan] = useState(propPlan || null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
+  const [genUsage, setGenUsage] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const uid = userId && String(userId).trim();
+      if (!uid) return;
+      const usage = await loadWorkoutGenerationUsage(uid);
+      if (mounted) setGenUsage(usage);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -105,6 +119,12 @@ export default function WorkoutPlanGeneratorScreenUI({
           )}
 
           {!readOnly ? (
+            <>
+              {genUsage ? (
+                <Text style={{ color: muted, marginTop: 14, fontSize: 13, fontWeight: '600' }}>
+                  {genUsage.generations_used} of {genUsage.generations_limit} plans used this month
+                </Text>
+              ) : null}
             <TouchableOpacity
               onPress={async () => {
                 if (!onboardingData) {
@@ -115,10 +135,22 @@ export default function WorkoutPlanGeneratorScreenUI({
                 setError(null);
                 try {
                   const plan = await generateWorkoutPlanWithClaude({ onboardingData, userId });
+                  if (plan?.usage) setGenUsage(plan.usage);
                   setGeneratedPlan(plan);
                   Alert.alert('Success', 'Plan generated and saved.');
                 } catch (e) {
-                  Alert.alert('Generation failed', e?.message || 'Failed to generate workout plan.');
+                  if (e?.code === 'monthly_limit_reached') {
+                    if (e.limitPayload) {
+                      setGenUsage({
+                        generations_used: e.limitPayload.used,
+                        generations_limit: e.limitPayload.limit,
+                        resets_at: e.limitPayload.resets_at,
+                      });
+                    }
+                    Alert.alert('Monthly limit reached', e.message);
+                  } else {
+                    Alert.alert('Generation failed', e?.message || 'Failed to generate workout plan.');
+                  }
                 } finally {
                   setIsGenerating(false);
                 }
@@ -140,6 +172,7 @@ export default function WorkoutPlanGeneratorScreenUI({
                 <Text style={{ color: '#fff', fontWeight: '800' }}>Generate New Plan</Text>
               )}
             </TouchableOpacity>
+            </>
           ) : null}
         </View>
       </SafeAreaView>

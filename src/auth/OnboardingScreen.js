@@ -7,22 +7,22 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
-  Share,
-  Switch,
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
@@ -41,6 +41,12 @@ import LottieView from 'lottie-react-native';
 import LiquidBackground from '../shared/ui/liquid/LiquidBackground';
 import LiquidBackgroundLight from '../shared/ui/liquid/LiquidBackgroundLight';
 import { getOnboardingIconSource } from '../shared/assets/onboardingIconRegistry';
+import {
+  formatHeightInputDisplay,
+  parseHeightInputText,
+  isHeightComplete,
+  finalizeHeightFromDraft,
+} from '../shared/utils/heightFeetInches';
 import { Ionicons } from '@expo/vector-icons';
 import lottieClient1 from '../assets/lottie/personal-info.json';
 import lottieClient2 from '../assets/lottie/fitness-experience.json';
@@ -93,13 +99,26 @@ function stripUndefinedForFirestore(input) {
 // --- Onboarding UI primitives (rest of components live in this file; tokens + primary CTA in onboardingAiDeps.jsx) ---
 
 function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) {
-  if (iconSource) {
-    const dim = grid ? 40 : large ? 36 : row ? 28 : 28;
-    return <Image source={iconSource} style={{ width: dim, height: dim }} resizeMode="contain" />;
+  const [imageFailed, setImageFailed] = useState(false);
+  const dim = grid ? 40 : large ? 36 : row ? 28 : 28;
+  const ionSize = grid ? 26 : large ? 24 : 20;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [iconSource]);
+
+  if (iconSource && !imageFailed) {
+    return (
+      <Image
+        source={iconSource}
+        style={{ width: dim, height: dim }}
+        resizeMode="contain"
+        onError={() => setImageFailed(true)}
+      />
+    );
   }
   if (iconName) {
-    const size = grid ? 26 : large ? 24 : 20;
-    return <Ionicons name={iconName} size={size} color={iconColor} />;
+    return <Ionicons name={iconName} size={ionSize} color={iconColor} />;
   }
   return null;
 }
@@ -326,10 +345,12 @@ export function OnboardingInputRow({
   label,
   value,
   onChangeText,
+  onBlur,
   placeholder,
   keyboardType = 'default',
   rightElement,
   t,
+  textInputProps = {},
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -362,8 +383,17 @@ export function OnboardingInputRow({
           placeholderTextColor={t.textLabel}
           keyboardType={keyboardType}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            onBlur?.();
+          }}
+          autoCorrect={false}
+          autoComplete="off"
+          spellCheck={false}
+          textContentType="none"
+          importantForAutofill="no"
           style={{ fontSize: 15, color: t.textPrimary, padding: 0 }}
+          {...textInputProps}
         />
       </View>
       {rightElement}
@@ -1475,12 +1505,14 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
   const [role, setRole] = useState(() => normalizeOnboardingRole(roleProp, route?.params?.role));
 
   const [currentStep, setCurrentStep] = useState(1);
+  /** Step 1 height field — feet'in" text while typing (e.g. 5'11"). */
+  const [heightDraft, setHeightDraft] = useState('');
   const [loading, setLoading] = useState(false);
-  const { toggleAI } = useAI();
+  const { setAIFromOnboarding } = useAI();
   const [onboardingData, setOnboardingData] = useState({
     // Client fields - Basic Info
     weight: null, // in kg or lbs
-    height: null, // in cm or inches
+    height: null, // { feet, inches } from input like 5'11"
     age: null,
     gender: null, // 'male', 'female', 'other', 'prefer_not_to_say'
     // Client fields - Fitness Info
@@ -1897,15 +1929,41 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
     }
   };
 
+  useEffect(() => {
+    if (role === 'client' && currentStep === 1) {
+      setHeightDraft(formatHeightInputDisplay(onboardingData.height));
+    }
+  }, [role, currentStep]);
+
+  const resolveClientHeight = () => {
+    if (isHeightComplete(onboardingData.height)) return onboardingData.height;
+    return finalizeHeightFromDraft(heightDraft);
+  };
+
+  const getClientStep1Blockers = () => {
+    const missing = [];
+    const weight = onboardingData.weight;
+    if (weight == null || !Number.isFinite(weight) || weight <= 0) {
+      missing.push('weight');
+    }
+    if (!isHeightComplete(resolveClientHeight())) {
+      missing.push('height (e.g. 5\'11" or 5,11)');
+    }
+    if (onboardingData.age == null || !Number.isFinite(onboardingData.age) || onboardingData.age <= 0) {
+      missing.push('age');
+    }
+    if (!onboardingData.gender) {
+      missing.push('gender');
+    }
+    return missing;
+  };
+
   const validateStep = () => {
     if (role === 'client') {
       switch (currentStep) {
         case 1:
           // Basic info: weight, height, age, gender all required
-          return onboardingData.weight !== null && 
-                 onboardingData.height !== null && 
-                 onboardingData.age !== null && 
-                 onboardingData.gender !== null;
+          return getClientStep1Blockers().length === 0;
         case 2:
           return onboardingData.fitnessLevel !== null;
         case 3:
@@ -1953,6 +2011,13 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
   };
 
   const handleNext = () => {
+    if (role === 'client' && currentStep === 1) {
+      const finalizedHeight = resolveClientHeight();
+      if (finalizedHeight && !isHeightComplete(onboardingData.height)) {
+        setOnboardingData((prev) => ({ ...prev, height: finalizedHeight }));
+        setHeightDraft(formatHeightInputDisplay(finalizedHeight));
+      }
+    }
     if (!validateStep()) return;
 
     if (currentStep < totalSteps) {
@@ -2238,14 +2303,25 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
               iconSource={getOnboardingIconSource('height')}
               iconName="resize-outline"
               label="HEIGHT"
-              value={onboardingData.height != null ? String(onboardingData.height) : ''}
+              value={heightDraft}
               onChangeText={(text) => {
-                const num = text.replace(/[^0-9.]/g, '');
-                setOnboardingData((prev) => ({ ...prev, height: num ? parseFloat(num) : null }));
+                const { text: formatted, height } = parseHeightInputText(text);
+                setHeightDraft(formatted);
+                setOnboardingData((prev) => ({ ...prev, height }));
               }}
-              placeholder={"e.g., 5'8\""}
-              keyboardType="numeric"
-              rightElement={<Text style={{ fontSize: 12, fontWeight: '700', color: ot.cardSelectedBorder }}>IN</Text>}
+              onBlur={() => {
+                const finalized = finalizeHeightFromDraft(heightDraft);
+                if (!finalized) return;
+                setOnboardingData((prev) => ({ ...prev, height: finalized }));
+                setHeightDraft(formatHeightInputDisplay(finalized));
+              }}
+              placeholder={'e.g., 5\'11" or 5,11'}
+              keyboardType="default"
+              textInputProps={{
+                autoCapitalize: 'none',
+                autoCorrect: false,
+                smartInsertDelete: false,
+              }}
             />
             <OnboardingInputRow
               t={ot}
@@ -2616,13 +2692,13 @@ Examples:
               onEnableAI={async () => {
                 setOnboardingData((prev) => ({ ...prev, aiEnabled: true }));
                 await AsyncStorage.setItem('aiEnabled', 'true');
-                toggleAI(true);
+                setAIFromOnboarding(true);
                 handleFinish({ aiEnabled: true });
               }}
               onSkipAI={async () => {
                 setOnboardingData((prev) => ({ ...prev, aiEnabled: false }));
                 await AsyncStorage.setItem('aiEnabled', 'false');
-                toggleAI(false);
+                setAIFromOnboarding(false);
                 handleFinish({ aiEnabled: false });
               }}
             />
@@ -3109,6 +3185,17 @@ Examples:
                       variant="footer"
                       t={ot}
                       disabled={!validateStep()}
+                      onDisabledPress={() => {
+                        if (role === 'client' && currentStep === 1) {
+                          const missing = getClientStep1Blockers();
+                          if (missing.length) {
+                            Alert.alert(
+                              'Almost there',
+                              `Please complete: ${missing.join(', ')}. Scroll up if you need to enter weight or height.`
+                            );
+                          }
+                        }
+                      }}
                       onPress={handleNext}
                       label={currentStep === totalSteps ? '✓ Complete Setup' : 'Continue'}
                     />

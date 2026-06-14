@@ -193,7 +193,7 @@ export default function HelpFAQScreen({ onClose }) {
       backgroundColor: 'rgba(255,255,255,0.03)',
       borderWidth: 0,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: '#FFFFFF', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
     heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
 
     introTitle: { fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 8 },
@@ -248,7 +248,7 @@ export default function HelpFAQScreen({ onClose }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <CoachConnectHeader title="FAQ" isDark={isDark} onBack={onClose} />
+      <CoachConnectHeader title="FAQ" skipTopSafeInset onBack={onClose} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>

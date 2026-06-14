@@ -332,6 +332,71 @@ export async function deleteFoodLog(logId) {
   }
 }
 
+function foodNameMatches(logName, query) {
+  const a = String(logName || '').toLowerCase().trim();
+  const bRaw = String(query || '').toLowerCase().trim();
+  if (!a || !bRaw) return false;
+
+  let b = bRaw
+    .replace(/^(the|my|both|one|two|three|\d+)\s+/i, '')
+    .replace(/\s+(today|yesterday|from.*)$/i, '')
+    .trim();
+
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const tokens = b.split(/[\s,]+/).filter((w) => w.length >= 4);
+  if (tokens.some((t) => a.includes(t))) return true;
+
+  if (/pizza|domino/.test(b) && /pizza|domino/.test(a)) return true;
+  if (/chicken/.test(b) && /chicken/.test(a)) return true;
+  if (/rice/.test(b) && /rice/.test(a)) return true;
+
+  return false;
+}
+
+/** Delete nutrition log(s) for a date — used by Nutrition tab and AI Coach. */
+export async function deleteFoodLogsForDate(
+  userId,
+  { date, foodName, logId, deleteAll = false } = {},
+) {
+  if (!userId || !db) throw new Error('User required');
+
+  if (logId) {
+    await deleteFoodLog(logId);
+    return { deletedCount: 1, deletedNames: foodName ? [String(foodName)] : ['entry'] };
+  }
+
+  const logs = await getFoodLogsForDate(userId, date || new Date());
+  let targets = logs;
+
+  if (deleteAll) {
+    targets = logs;
+  } else if (foodName) {
+    targets = logs.filter((l) => foodNameMatches(l.food_name, foodName));
+  } else if (logs.length) {
+    targets = [...logs]
+      .sort((a, b) => {
+        const ta = a.created_at?.toMillis?.() || a.created_at?.seconds * 1000 || 0;
+        const tb = b.created_at?.toMillis?.() || b.created_at?.seconds * 1000 || 0;
+        return tb - ta;
+      })
+      .slice(0, 1);
+  }
+
+  if (!targets.length) {
+    return { deletedCount: 0, deletedNames: [] };
+  }
+
+  for (const log of targets) {
+    await deleteFoodLog(log.id);
+  }
+
+  return {
+    deletedCount: targets.length,
+    deletedNames: targets.map((l) => l.food_name || 'Food item'),
+  };
+}
+
 export function calculateMacroTotals(logs = []) {
   const totals = (logs || []).reduce(
     (acc, item) => {
@@ -549,6 +614,29 @@ export async function getRecentFoods(userId, limit = 10) {
     return recent;
   } catch (error) {
     if (__DEV__) console.error('Error getting recent foods:', error);
+    return [];
+  }
+}
+
+export async function getTopLoggedFoodNames(userId, maxItems = 3) {
+  try {
+    if (!userId || !db) return [];
+    const logsRef = collection(db, LOGS_COLLECTION);
+    const q = query(logsRef, where('user_id', '==', userId), limitFn(100));
+    const snap = await getDocs(q);
+    const freq = {};
+    snap.forEach((d) => {
+      const name = String(d.data().food_name || '').trim();
+      if (!name || name === 'Food') return;
+      const key = name.toLowerCase();
+      if (!freq[key]) freq[key] = { name, n: 0 };
+      freq[key].n += 1;
+    });
+    return Object.values(freq)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, maxItems)
+      .map((f) => f.name);
+  } catch (_e) {
     return [];
   }
 }

@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
+  Alert,
+  Dimensions,
   FlatList,
   Modal,
-  Alert,
   Pressable,
-  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -37,18 +37,22 @@ const DURATIONS = [15, 30, 45, 60, 75, 90, 120];
 const warmWheelChrome = (isDark) =>
   isDark
     ? {
-        glass: 'rgba(255, 107, 157, 0.07)',
-        glassBorder: 'rgba(194, 65, 12, 0.38)',
+        text: '#FFFFFF',
+        labelColor: 'rgba(255,255,255,0.55)',
+        glass: 'rgba(255, 255, 255, 0.05)',
+        glassBorder: 'rgba(249, 115, 22, 0.32)',
         fadeEdge: '#0A0A0F',
         accent: '#FF6B9D',
-        accentBandBg: 'rgba(234, 88, 12, 0.18)',
+        accentBandBg: 'rgba(255, 107, 157, 0.12)',
       }
     : {
-        glass: 'rgba(255, 107, 157, 0.1)',
-        glassBorder: 'rgba(194, 65, 12, 0.28)',
+        text: '#000000',
+        labelColor: 'rgba(0, 0, 0, 0.55)',
+        glass: 'rgba(0, 0, 0, 0.03)',
+        glassBorder: 'rgba(249, 115, 22, 0.22)',
         fadeEdge: '#FFFFFF',
         accent: '#DB2777',
-        accentBandBg: 'rgba(234, 88, 12, 0.12)',
+        accentBandBg: 'rgba(255, 107, 157, 0.1)',
       };
 
 const warmSectionShell = (isDark) =>

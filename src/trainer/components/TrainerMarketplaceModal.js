@@ -3,7 +3,7 @@ import { View, Text, Modal, TouchableOpacity, StyleSheet, Alert, ActivityIndicat
 import { doc, collection, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app/config';
 import { syncClientDataFromUsers } from '../services/clientCRMService';
-import { getOrCreateConversation, sendMessage, updateMessageStatus } from '../../ai/services/trainerMessaging';
+import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared/ui/ThemeContext';
 
@@ -30,6 +30,11 @@ const TrainerMarketplaceModal = ({
   const [rejectBusy, setRejectBusy] = useState(false);
   const hasRequest = !!clientRequest;
   const req = clientRequest || {};
+  const requestType = req.requestType || CLIENT_REQUEST_TYPES.CONNECTION;
+  const isConnectionRequest = requestType === CLIENT_REQUEST_TYPES.CONNECTION;
+  const modalTitle = req.requestTitle || clientRequestTypeLabel(requestType);
+  const acceptLabel = isConnectionRequest ? 'Accept client' : 'Acknowledge';
+  const messageSectionLabel = isConnectionRequest ? 'MESSAGE' : 'REQUEST DETAILS';
   const anyBusy = acceptBusy || rejectBusy;
 
   const t = useMemo(() => {
@@ -87,20 +92,35 @@ const TrainerMarketplaceModal = ({
         throw new Error('Invalid user roles or missing users');
       }
 
-      // Check for existing relationship - if already linked, just mark request as accepted (Path A)
       const relationshipDoc = await getDoc(doc(db, `trainer_clients/${trainerUid}/clients/${req.clientUid}`));
-      if (relationshipDoc.exists()) {
+      const alreadyLinked = relationshipDoc.exists();
+
+      if (alreadyLinked || !isConnectionRequest) {
         await updateMessageStatus(req.messageId, {
           status: 'accepted',
           responseTimestamp: serverTimestamp(),
         });
+        if (!isConnectionRequest) {
+          try {
+            const conversationId = await getOrCreateConversation(req.clientUid, trainerUid);
+            await sendMessage(
+              conversationId,
+              trainerUid,
+              requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN
+                ? "Got your workout plan request — I'll build your program and follow up soon."
+                : "Got your request — I'll follow up soon.",
+            );
+          } catch (msgErr) {
+            console.warn('Acknowledgment message skipped:', msgErr?.message || msgErr);
+          }
+        }
         onClientAdded(req);
         onClose();
         setAcceptBusy(false);
         return;
       }
 
-      // Execute batch write
+      // New connection — link trainer ↔ client
       const batch = writeBatch(db);
 
       // 1a. Add to trainer_client_links (flat collection - easy to see in Firebase Console)
@@ -195,11 +215,10 @@ const TrainerMarketplaceModal = ({
 
       try {
         const conversationId = await getOrCreateConversation(req.clientUid, trainerUid);
-        await sendMessage(
-          conversationId,
-          trainerUid,
-          `Thank you for your interest! I'm currently not accepting new clients at this time.`,
-        );
+        const declineText = isConnectionRequest
+          ? `Thank you for your interest! I'm currently not accepting new clients at this time.`
+          : `Thanks for your request — I can't take this on right now, but feel free to message me if you want to discuss.`;
+        await sendMessage(conversationId, trainerUid, declineText);
       } catch (msgErr) {
         console.warn('Reject notification message skipped:', msgErr?.message || msgErr);
       }
@@ -273,18 +292,27 @@ const TrainerMarketplaceModal = ({
               },
             ]}
           >
-              <Text style={[styles.modalTitle, { color: t.text }]}>New Client Request</Text>
+              <Text style={[styles.modalTitle, { color: t.text }]}>{modalTitle}</Text>
               <Text style={[styles.clientName, { color: t.clientName }]}>{req.clientName}</Text>
 
-              <View style={styles.infoGrid}>
-                <InfoCell label="GOALS" value={formatDisplayValue(req.clientGoals) || 'Not specified'} />
-                <InfoCell label="EXPERIENCE" value={formatDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
-                <InfoCell label="EQUIPMENT" value={formatDisplayValue(req.clientEquipment) || 'None'} />
-                <InfoCell label="LIMITATIONS" value={formatDisplayValue(req.clientLimitations) || 'None'} />
-              </View>
+              {isConnectionRequest ? (
+                <View style={styles.infoGrid}>
+                  <InfoCell label="GOALS" value={formatDisplayValue(req.clientGoals) || 'Not specified'} />
+                  <InfoCell label="EXPERIENCE" value={formatDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
+                  <InfoCell label="EQUIPMENT" value={formatDisplayValue(req.clientEquipment) || 'None'} />
+                  <InfoCell label="LIMITATIONS" value={formatDisplayValue(req.clientLimitations) || 'None'} />
+                </View>
+              ) : (
+                <View style={styles.infoGrid}>
+                  <InfoCell label="TYPE" value={modalTitle} />
+                  <InfoCell label="GOALS" value={formatDisplayValue(req.clientGoals) || 'Not specified'} />
+                  <InfoCell label="EXPERIENCE" value={formatDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
+                  <InfoCell label="EQUIPMENT" value={formatDisplayValue(req.clientEquipment) || 'None'} />
+                </View>
+              )}
 
               <View style={[styles.messagePreview, { backgroundColor: t.glassBg, borderColor: t.glassBorder }]}>
-                <Text style={[styles.messageLabel, { color: t.label }]}>MESSAGE</Text>
+                <Text style={[styles.messageLabel, { color: t.label }]}>{messageSectionLabel}</Text>
                 <Text style={[styles.messageText, { color: t.text }]} numberOfLines={6}>
                   {req.message || 'No message provided.'}
                 </Text>
@@ -296,7 +324,7 @@ const TrainerMarketplaceModal = ({
                     {acceptBusy ? (
                       <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
-                      <Text style={styles.acceptText}>Accept</Text>
+                      <Text style={styles.acceptText}>{acceptLabel}</Text>
                     )}
                   </LinearGradient>
                 </PressScale>

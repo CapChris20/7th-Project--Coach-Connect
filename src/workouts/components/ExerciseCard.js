@@ -1,10 +1,17 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Animated, StyleSheet } from 'react-native';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const TRANS_MS = 220;
+const DEFAULT_RIM = ['#FF6B9D', '#C2410C'];
 
 function ytThumb(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
@@ -13,9 +20,8 @@ function ytThumb(videoId) {
 export default function ExerciseCard({
   exercise,
   colors,
-  accentGradient,
-  accentPlacement = 'left', // 'left' | 'bottom'
-  imageHeight = 140,
+  accentGradient = DEFAULT_RIM,
+  imageHeight = 132,
   onPress,
   saved = false,
   onToggleSave,
@@ -40,16 +46,10 @@ export default function ExerciseCard({
   };
 
   const isDark = (colors?.background || '').toLowerCase() === '#0a0a0f';
-  const cardBg = isDark
-    ? pressed
-      ? 'rgba(255,255,255,0.08)'
-      : 'rgba(255,255,255,0.04)'
-    : pressed
-      ? 'rgba(0,0,0,0.04)'
-      : 'rgba(0,0,0,0.02)';
-  const border = isDark ? (pressed ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)') : pressed ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.08)';
-  const channelColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
-  const metaColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
+  const channelColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.62)';
+  const metaColor = isDark ? 'rgba(255,255,255,0.48)' : 'rgba(10,10,15,0.48)';
+  const rim = accentGradient?.length >= 2 ? accentGradient : DEFAULT_RIM;
 
   const instructorInitials = useMemo(() => {
     const ch = String(exercise?.channel || '').trim();
@@ -59,6 +59,8 @@ export default function ExerciseCard({
     return ini || 'CC';
   }, [exercise?.channel]);
 
+  const difficulty = exercise?.difficulty ? String(exercise.difficulty) : null;
+
   return (
     <Pressable
       onPress={onPress}
@@ -67,51 +69,53 @@ export default function ExerciseCard({
       style={[styles.press, style]}
     >
       <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <View style={[styles.card, { borderColor: border, backgroundColor: cardBg }]}>
-          {accentPlacement === 'left' ? (
-            <LinearGradient colors={accentGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.accentLeft} />
-          ) : (
-            <LinearGradient colors={accentGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.accentBottom} />
-          )}
-
-          <View style={[styles.imageWrap, { height: imageHeight }]}>
-            <Image source={{ uri: ytThumb(exercise.videoId) }} style={styles.image} contentFit="cover" transition={TRANS_MS} />
-            <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.18)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
-            {onToggleSave ? (
-              <Pressable
-                onPress={(e) => {
-                  e?.stopPropagation?.();
-                  onToggleSave();
-                }}
-                hitSlop={10}
-                style={styles.saveBtn}
-              >
-                <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={18} color={saved ? '#FF6B9D' : '#FFFFFF'} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          <View style={styles.body}>
-            <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
-              {exercise?.name || '—'}
-            </Text>
-
-            <View style={styles.instructorRow}>
-              <LinearGradient colors={accentGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
-                <View style={styles.avatarInner}>
-                  <Text style={styles.avatarText}>{instructorInitials}</Text>
-                </View>
-              </LinearGradient>
-              <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
-                {exercise?.channel || '—'}
-              </Text>
+        <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rim}>
+          <View style={[styles.card, { backgroundColor: innerBg }]}>
+            <View style={[styles.imageWrap, { height: imageHeight }]}>
+              <Image source={{ uri: ytThumb(exercise.videoId) }} style={styles.image} contentFit="cover" transition={TRANS_MS} />
+              <LinearGradient colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+              {onToggleSave ? (
+                <Pressable
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    onToggleSave();
+                  }}
+                  hitSlop={10}
+                  style={styles.saveBtn}
+                >
+                  <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={16} color={saved ? '#FF6B9D' : '#FFFFFF'} />
+                </Pressable>
+              ) : null}
             </View>
 
-            <Text style={[styles.meta, { color: metaColor }]} numberOfLines={1}>
-              {metaText || '—'}
-            </Text>
+            <View style={styles.body}>
+              <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
+                {exercise?.name || '—'}
+              </Text>
+
+              <View style={styles.instructorRow}>
+                <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
+                  <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' }]}>
+                    <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>{instructorInitials}</Text>
+                  </View>
+                </LinearGradient>
+                <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
+                  {exercise?.channel || '—'}
+                </Text>
+              </View>
+
+              {difficulty ? (
+                <LinearGradient colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.diffChip}>
+                  <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
+                </LinearGradient>
+              ) : metaText ? (
+                <Text style={[styles.meta, { color: metaColor }]} numberOfLines={1}>
+                  {metaText}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
+        </LinearGradient>
       </Animated.View>
     </Pressable>
   );
@@ -119,34 +123,18 @@ export default function ExerciseCard({
 
 const styles = StyleSheet.create({
   press: { width: '100%' },
+  rim: {
+    borderRadius: 16,
+    padding: 1.5,
+  },
   card: {
-    borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 14.5,
     overflow: 'hidden',
-  },
-  accentLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    opacity: 0.3,
-    zIndex: 2,
-  },
-  accentBottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 2,
-    opacity: 0.3,
-    zIndex: 2,
   },
   imageWrap: {
     width: '100%',
-    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   image: { width: '100%', height: '100%' },
   saveBtn: {
@@ -158,21 +146,28 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.28)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   body: {
-    padding: 12,
-    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
     gap: 8,
   },
-  title: { fontSize: 14, fontWeight: '900', lineHeight: 20 },
+  title: { fontSize: 13, fontWeight: '800', lineHeight: 18, letterSpacing: -0.2 },
   instructorRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarGrad: { width: 24, height: 24, borderRadius: 12, padding: 1.5, marginRight: 8 },
-  avatarInner: { flex: 1, borderRadius: 10.5, backgroundColor: 'rgba(0,0,0,0.30)', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 10, fontWeight: '900', color: '#FFFFFF' },
-  instructor: { fontSize: 12, fontWeight: '700' },
-  meta: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)' },
+  avatarGrad: { width: 22, height: 22, borderRadius: 11, padding: 1, marginRight: 7 },
+  avatarInner: { flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 9, fontWeight: '900' },
+  instructor: { flex: 1, fontSize: 11, fontWeight: '700' },
+  meta: { fontSize: 10, fontWeight: '700' },
+  diffChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  diffText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
 });
-

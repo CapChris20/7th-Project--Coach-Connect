@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { getOpenAIKey } from './apiKeyService';
 import { getApiBase } from '../../shared/services/baseUrl';
+import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
 
 // Resolve backend URL for server-side web search
 function getBaseUrl() {
@@ -68,7 +68,8 @@ export async function searchWeb(query, maxResults = 3) {
     }
     try {
       // Check if server is available by making a test request
-      const apiKey = getOpenAIKey?.() || undefined;
+      const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+      if (!headers.Authorization) throw new Error('Not signed in');
       const serverResponse = await axios.post(
         `${baseUrl}/api/ask`,
         {
@@ -76,7 +77,7 @@ export async function searchWeb(query, maxResults = 3) {
           enableWeb: true,
         },
         {
-          headers: apiKey ? { 'x-openai-key': apiKey } : undefined,
+          headers,
           timeout: 10000
         }
       );

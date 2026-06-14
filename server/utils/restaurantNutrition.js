@@ -1,30 +1,17 @@
 /**
- * Restaurant nutrition detection, search-query building, and LLM extraction.
+ * Restaurant / menu-style nutrition detection and search-query building.
  * Used by the server only (Serper + fetch + OpenAI). Client has its own helper that uses cache + this API.
  */
 
-const RESTAURANT_KEYWORDS = [
-  'mcdonald',
-  'wendy',
-  'burger king',
-  'chipotle',
-  'taco bell',
-  'subway',
-  'pizza',
-  'jets',
-  'kfc',
-  'popeyes',
-];
+const { isMenuStyleQuery } = require('../../src/nutrition/services/foodSearchQueryMatch');
 
 /**
- * Returns true if query contains known restaurant keywords (case insensitive).
+ * True when the query looks like a restaurant menu item (generic heuristics, no brand list).
  * @param {string} query
  * @returns {boolean}
  */
 function detectRestaurantQuery(query) {
-  if (typeof query !== 'string' || !query.trim()) return false;
-  const lower = query.toLowerCase().trim();
-  return RESTAURANT_KEYWORDS.some((kw) => lower.includes(kw));
+  return isMenuStyleQuery(query);
 }
 
 /**

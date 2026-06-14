@@ -43,9 +43,7 @@ export default function TermsOfServiceScreen({ onClose }) {
   const { colors, spacing, isDark } = useTheme();
   const supportEmail = getSupportEmail();
   const t = getCardTokens(isDark);
-  const contactLine = supportEmail
-    ? `Contact: ${supportEmail}`
-    : 'Contact: use the support address configured for your app build (EXPO_PUBLIC_SUPPORT_EMAIL).';
+  const contactLine = `Contact: ${supportEmail}`;
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
@@ -70,7 +68,7 @@ export default function TermsOfServiceScreen({ onClose }) {
       borderWidth: 0.5,
       borderColor: 'rgba(255,255,255,0.08)',
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: '#FFFFFF', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
     heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
 
     pageSub: { fontSize: 14, fontWeight: '600', color: t.text2, lineHeight: 22, marginBottom: 16 },
@@ -192,7 +190,7 @@ export default function TermsOfServiceScreen({ onClose }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <CoachConnectHeader title="Terms of Service" isDark={isDark} onBack={onClose} />
+      <CoachConnectHeader title="Terms of Service" skipTopSafeInset onBack={onClose} />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>

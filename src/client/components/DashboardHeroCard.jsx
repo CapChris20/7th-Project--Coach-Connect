@@ -32,60 +32,63 @@ export default function DashboardHeroCard({ onPress, unreadMessageCount = 0, isD
   const pillText = isDark ? '#FFFFFF' : INK;
   const badgeBorder = isDark ? '#1a0a2e' : '#FFFFFF';
   return (
-    <View style={styles.wrapper} accessibilityRole="summary" accessibilityLabel="Your complete dashboard">
-      <Pressable
-        onPress={onPress}
-        style={({ pressed, hovered }) => [
-          styles.pressable,
-          pressed && styles.pressablePressed,
-          hovered && styles.pressableHovered,
-        ]}
-        android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
-      >
-        <View style={styles.cardShadow}>
-          <View style={styles.cardClip}>
-            <LinearGradient
-              colors={TOP_BORDER_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.topBorder}
-            />
-            <LinearGradient
-              colors={bgGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={styles.inner}
-            >
-              <View style={styles.headerRow}>
-                <Text style={[styles.label, { color: labelColor }]}>Your Complete Dashboard</Text>
-                <Ionicons name="grid-outline" size={24} color={CYAN} />
-              </View>
+    <View style={styles.wrapper}>
+      <View style={styles.cardShadow}>
+        <View style={styles.cardClip}>
+          <LinearGradient
+            colors={TOP_BORDER_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.topBorder}
+          />
+          <LinearGradient
+            colors={bgGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.inner}
+          >
+            <View style={styles.headerRow}>
+              <Text style={[styles.label, { color: labelColor }]}>Your Complete Dashboard</Text>
+              <Ionicons name="grid-outline" size={24} color={CYAN} />
+            </View>
 
-              <Text style={[styles.headline, { color: headlineColor }]}>Everything You Need in One Place</Text>
+            <Text style={[styles.headline, { color: headlineColor }]}>Everything You Need in One Place</Text>
 
-              <Text style={[styles.subhead, { color: subheadColor }]}>
-                Log workouts, view stats, track progress, and more
-              </Text>
+            <Text style={[styles.subhead, { color: subheadColor }]}>
+              Log workouts, view stats, track progress, and more
+            </Text>
 
-              <View style={styles.pillsRow}>
-                {FEATURES.map(({ icon, label }) => (
-                  <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
-                    <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
-                    <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
-                      {label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
+            <View style={styles.pillsRow}>
+              {FEATURES.map(({ icon, label }) => (
+                <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
+                  <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
+                  <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
+                    {label}
+                  </Text>
+                </View>
+              ))}
+            </View>
 
-              <View style={styles.ctaWrap}>
-                {unreadMessageCount > 0 && (
-                  <View style={[styles.badge, { borderColor: badgeBorder }]}>
-                    <Text style={styles.badgeText}>
-                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                    </Text>
-                  </View>
-                )}
+            <View style={styles.ctaWrap}>
+              {unreadMessageCount > 0 && (
+                <View style={[styles.badge, { borderColor: badgeBorder }]} pointerEvents="none">
+                  <Text style={styles.badgeText}>
+                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                  </Text>
+                </View>
+              )}
+              <Pressable
+                onPress={onPress}
+                accessibilityRole="button"
+                accessibilityLabel="Explore Dashboard"
+                disabled={typeof onPress !== 'function'}
+                style={({ pressed, hovered }) => [
+                  styles.ctaPressable,
+                  pressed && styles.ctaPressablePressed,
+                  hovered && styles.ctaPressableHovered,
+                ]}
+                android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+              >
                 <LinearGradient
                   colors={CTA_GRADIENT}
                   start={{ x: 0, y: 0 }}
@@ -97,11 +100,11 @@ export default function DashboardHeroCard({ onPress, unreadMessageCount = 0, isD
                     <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
                   </View>
                 </LinearGradient>
-              </View>
-            </LinearGradient>
-          </View>
+              </Pressable>
+            </View>
+          </LinearGradient>
         </View>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -111,16 +114,17 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     paddingHorizontal: 16,
   },
-  pressable: {
-    borderRadius: 24,
+  ctaPressable: {
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  pressablePressed: {
-    opacity: 0.94,
-    transform: [{ scale: 0.985 }],
+  ctaPressablePressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
   },
-  pressableHovered: {
+  ctaPressableHovered: {
     ...Platform.select({
-      web: { transform: [{ translateY: -2 }] },
+      web: { opacity: 0.96 },
       default: {},
     }),
   },
@@ -226,8 +230,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   ctaGradient: {
-    borderRadius: 14,
-    overflow: 'hidden',
     height: 48,
     justifyContent: 'center',
   },

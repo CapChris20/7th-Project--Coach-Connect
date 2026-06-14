@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../shared/ui/ThemeContext';
@@ -64,8 +70,7 @@ export default function BottomNavBar({
   // Optional: force the initial highlighted tab instantly (used when screens remount).
   activeTabKey: activeTabKeyProp,
 }) {
-  // Use props directly if provided, otherwise fall back to context
-  const directProps = {
+  const mergedNav = useMergedNavigation({
     onHomePress: onHomePressProp,
     onPlusPress: onPlusPressProp,
     onVoicePress: onVoicePressProp,
@@ -73,12 +78,7 @@ export default function BottomNavBar({
     onWorkoutPress: onWorkoutPressProp,
     onProfilePress: onProfilePressProp,
     onMessagesPress: onMessagesPressProp,
-  };
-  
-  // If all required props are provided, use them directly (no context lookup)
-  const hasAllProps = Object.values(directProps).every(prop => prop && typeof prop === 'function');
-
-  const mergedNav = useMergedNavigation(directProps);
+  });
   const {
     onHomePress,
     onPlusPress,
@@ -86,7 +86,7 @@ export default function BottomNavBar({
     onNutritionPress,
     onWorkoutPress,
     onMessagesPress,
-  } = hasAllProps ? directProps : mergedNav;
+  } = mergedNav;
   const { colors, spacing, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { aiEnabled } = useAI();
@@ -156,12 +156,13 @@ export default function BottomNavBar({
       justifyContent: 'space-around',
       paddingHorizontal: 0,
       position: 'relative',
+      zIndex: 100,
       overflow: 'hidden',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: -4 },
       shadowOpacity: 0.15,
       shadowRadius: 16,
-      elevation: 12,
+      elevation: 24,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
     },
@@ -196,16 +197,16 @@ export default function BottomNavBar({
       letterSpacing: 0.3,
     },
     plusButton: {
-      width: 64,
-      height: 64,
+      width: 56,
+      height: 56,
       marginBottom: spacing.md,
       position: 'absolute',
       left: '50%',
-      marginLeft: -32,
+      marginLeft: -28,
       zIndex: 10,
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'visible',
+      overflow: 'hidden',
     },
     plusFab: {
       width: 56,
@@ -483,8 +484,8 @@ export default function BottomNavBar({
         </View>
       </TouchableOpacity>
 
-      {/* Spacer — keep at 64 so gap next to plus matches other icons */}
-      <View style={{ width: 64, flexShrink: 0 }} />
+      {/* Spacer — matches the 56px plus button so adjacent tabs stay tappable */}
+      <View style={{ width: 56, flexShrink: 0 }} />
 
       {/* Right Side - 3 items */}
       {/* AI Coach */}

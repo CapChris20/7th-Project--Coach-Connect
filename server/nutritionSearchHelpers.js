@@ -1,6 +1,12 @@
 'use strict';
 
 const crypto = require('crypto');
+const {
+  isMenuStyleQuery,
+  itemMatchesQuery,
+  isRetailFoodNoise,
+  significantQueryTokens,
+} = require('../src/nutrition/services/foodSearchQueryMatch');
 
 const EMPTY_SEARCH_HINT =
   "Can't find that. Try searching differently or add manually";
@@ -20,8 +26,8 @@ function normalizeSearchKey(q) {
  * Branded / restaurant / prepared-menu style → Open Food Facts & Serper before loose USDA matches.
  * Generic / grocery → USDA first (includes Branded for packaged foods + Foundation / SR / survey).
  */
-function classifyNutritionSearchMode(queryLower, restaurantChainHit) {
-  if (restaurantChainHit) return 'branded';
+function classifyNutritionSearchMode(queryLower) {
+  if (isMenuStyleQuery(queryLower)) return 'branded';
   // Pizza and labeled pizza orders rarely match USDA branded rows well.
   if (/\bpizza\b/.test(queryLower)) return 'branded';
   // Chain-style menu language
@@ -107,8 +113,66 @@ function extractMacrosFromChunk(text) {
   if (!fat) fat = parseFloatSafe(t.match(/fat[:\s]+(\d+(?:\.\d+)?)\s*g/i)?.[1]);
   if (!fat) fat = parseFloatSafe(t.match(/(\d+(?:\.\d+)?)\s*g\s*fat\b/i)?.[1]);
   if (!fat) fat = parseFloatSafe(t.match(/F[:\s]+(\d+(?:\.\d+)?)\s*g\b/i)?.[1]);
+  if (!fat) fat = parseFloatSafe(t.match(/\bFat\.?\s*(\d+(?:\.\d+)?)\s*g\b/i)?.[1]);
+
+  if (!carbs) carbs = parseFloatSafe(t.match(/\bCarbs\.?\s*(\d+(?:\.\d+)?)\s*g\b/i)?.[1]);
+  if (!protein) protein = parseFloatSafe(t.match(/\bProtein\.?\s*(\d+(?:\.\d+)?)\s*g\b/i)?.[1]);
+
+  if (!calories) {
+    const nearPortion = t.match(
+      /(?:1\s+slice|large\s+slice|medium|small|regular|per\s+serving|serving)[^0-9]{0,40}(\d{2,3})(?:\s*cal|\s*[\.\s,])/i,
+    );
+    if (nearPortion) calories = parseFloatSafe(nearPortion[1]);
+  }
 
   return { calories, protein, carbs, fat };
+}
+
+/**
+ * Chain PDF dot-rows, (cal/fat/carbs/protein) slashes, FatSecret-style labels — any restaurant.
+ */
+function parseStructuredNutritionSnippet(text) {
+  const t = String(text || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) return null;
+
+  const servingLabel =
+    extractServingLabelFromSegment(t) || portionDescriptionFromText(t) || null;
+
+  const slash = t.match(
+    /(\d{2,4})\s*cal\/(\d+(?:\.\d+)?)\s*g\s*fat\/[^/]*\/(\d+(?:\.\d+)?)\s*g\s*carbs\/[^/]*\/(\d+(?:\.\d+)?)\s*g\s*protein/i,
+  );
+  if (slash) {
+    return {
+      calories: parseFloatSafe(slash[1]),
+      fat: parseFloatSafe(slash[2]),
+      carbs: parseFloatSafe(slash[3]),
+      protein: parseFloatSafe(slash[4]),
+      servingLabel,
+    };
+  }
+
+  const dotRow6 = t.match(
+    /([A-Za-z][A-Za-z0-9\s'&/()-]{3,52})\.\s*(\d{2,4})\s*\.\s*(\d+(?:\.\d+)?)\s*\.\s*(\d+(?:\.\d+)?)\s*\.\s*(\d+(?:\.\d+)?)\s*\.\s*(\d+(?:\.\d+)?)\s*\.\s*(\d+(?:\.\d+)?)/i,
+  );
+  if (dotRow6) {
+    const calories = parseFloatSafe(dotRow6[2]);
+    const carbs = parseFloatSafe(dotRow6[3]);
+    const fat = parseFloatSafe(dotRow6[5]);
+    const protein = parseFloatSafe(dotRow6[7]);
+    if (calories >= 50 && calories <= 2500 && macroCalories(protein, carbs, fat) >= 15) {
+      return { calories, carbs, fat, protein, servingLabel };
+    }
+  }
+
+  const labeled = extractMacrosFromChunk(t);
+  if (labeled.calories > 0 && macroCalories(labeled.protein, labeled.carbs, labeled.fat) >= 20) {
+    return { ...labeled, servingLabel };
+  }
+
+  return null;
 }
 
 function splitNutritionSegments(text) {
@@ -275,6 +339,13 @@ function portionDescriptionFromText(text) {
   }
 
   if (/\b1\s*slice\b|\bone\s+slice\b|\bper\s+slice\b/i.test(low)) return '1 slice';
+  if (/\blarge\s+slice\b/i.test(low)) return '1 large slice';
+
+  if (/\bgarlic\s+cheese\s+bread\b|\bcheese\s+bread\b|\bbreadsticks?\b/i.test(low)) {
+    if (/\b2\s+slices?\b|\btwo\s+slices?\b/i.test(low)) return '2 pieces';
+    if (/\b1\s+(?:slice|piece|order|serving)\b|\bone\s+(?:slice|piece)\b/i.test(low)) return '1 piece';
+    return '1 order';
+  }
 
   return null;
 }
@@ -292,6 +363,9 @@ function servingLabelFromQueryHint(queryHint, text) {
   }
   if (/\bwhopper\b/.test(q)) return '1 Whopper';
   if (/\bbig\s+mac\b/.test(q)) return '1 Big Mac';
+  if (/\bbread\b/.test(q) && !/\bpizza\b/.test(q)) {
+    if (/\bgarlic\b|\bcheese\b/i.test(q) || /\bgarlic\s+cheese\s+bread\b/i.test(tt)) return '1 order';
+  }
   return null;
 }
 
@@ -375,6 +449,18 @@ function extractMacrosFromText(text, queryHint = '') {
 
   const qh = String(queryHint || '').toLowerCase();
 
+  const structured = parseStructuredNutritionSnippet(t);
+  if (structured && structured.calories > 0) {
+    const refineEarly = (obj) => {
+      let o = reconcileBurgerSandwichCarbs({ ...obj }, qh, t);
+      o = reconcilePizzaSliceCalories(o, qh, t);
+      let label = o.servingLabel || servingLabelFromQueryHint(qh, t);
+      if (!label) label = extractServingLabelFromSegment(t);
+      return { ...o, servingLabel: label || o.servingLabel || null };
+    };
+    return refineEarly(structured);
+  }
+
   const refine = (obj, portionSegmentOpt) => {
     const { _portionHintText, ...rest } = obj || {};
     let o = reconcileBurgerSandwichCarbs({ ...rest }, qh, t);
@@ -437,12 +523,95 @@ function extractMacrosFromText(text, queryHint = '') {
 }
 
 /**
+ * Normalize brand spelling / punctuation for web search (user-visible query unchanged).
+ */
+function normalizeRestaurantSearchQuery(q) {
+  let s = String(q || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[''`]/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  s = s.replace(/\bwendys\b/g, "wendy's");
+  s = s.replace(/\bdennys\b/g, "denny's");
+  s = s.replace(/\bchickfilas?\b/g, 'chick fil a');
+  s = s.replace(/\bchick\s+fil\s+a\b/g, 'chick fil a');
+  s = s.replace(/\bin\s+n\s+out\b/g, 'in n out');
+  s = s.replace(/\bin-n-out\b/g, 'in n out');
+  s = s.replace(/\bdouble\s+double\b/g, 'double double');
+  s = s.replace(/\bcheesecake\s+factory\s+brown\s+bread\b/g, 'cheesecake factory brown wheat bread');
+  s = s.replace(/\bgrand\s+slam\s+breakfast\b/g, 'original grand slam');
+  s = s.replace(/\s+/g, ' ').trim();
+
+  return s;
+}
+
+/**
+ * Alternate Serper queries when the primary search returns no usable rows.
+ */
+function buildSerperFallbackQueries(userQuery) {
+  const primary = normalizeRestaurantSearchQuery(userQuery);
+  const out = [];
+  const seen = new Set();
+  const add = (q) => {
+    const k = String(q || '').toLowerCase().trim();
+    if (!k || seen.has(k)) return;
+    seen.add(k);
+    out.push(q.trim());
+  };
+
+  add(primary);
+
+  if (/cheesecake factory.*brown.*bread/.test(primary)) {
+    add('cheesecake factory brown wheat bread');
+    add('cheesecake factory complimentary bread');
+  }
+  if (/denny.*grand slam/.test(primary)) {
+    add("denny's original grand slam");
+    add("denny's grand slam");
+  }
+  if (/wendy.*baconator/.test(primary)) {
+    add("wendy's baconator sandwich");
+  }
+  if (/chick fil a.*biscuit/.test(primary)) {
+    add('chick fil a chicken biscuit nutrition');
+  }
+  if (/in n out.*double/.test(primary)) {
+    add('in n out double double burger');
+  }
+  if (/burger king.*whopper/.test(primary) && !/\bcheese\b/.test(primary)) {
+    add('burger king whopper sandwich no cheese');
+  }
+  if (/chipotle.*burrito/.test(primary)) {
+    add('chipotle steak burrito calories protein fatsecret');
+  }
+  if (/\b(dairy queen|dq)\b/.test(primary) && /\bblizzard\b/.test(primary) && /\bmedium\b/.test(primary)) {
+    add('dairy queen oreo blizzard medium calories');
+  }
+
+  const tokens = significantQueryTokens(primary);
+  if (tokens.length >= 3) {
+    add(tokens.slice(-3).join(' '));
+  }
+  if (tokens.length >= 2) {
+    add(tokens.slice(-2).join(' '));
+  }
+
+  return out;
+}
+
+/**
  * Fix common typos before sending to Serper (does not change user-visible query).
  */
 function fixTypoForSerperQuery(q) {
-  let s = String(q);
+  let s = normalizeRestaurantSearchQuery(q) || String(q).trim().toLowerCase();
   if (/red\s+robin/i.test(s) && /\bglucks\b/i.test(s)) {
-    s = s.replace(/\bglucks\b/gi, 'Clucks');
+    s = s.replace(/\bglucks\b/gi, 'clucks');
+  }
+  if (isMenuStyleQuery(s) && !/\bnutrition\b/i.test(s)) {
+    s = `${s} nutrition facts calories protein carbs fat menu`;
   }
   return s;
 }
@@ -451,12 +620,192 @@ function searchResultsDocId(normalizedKey) {
   return crypto.createHash('sha256').update(normalizedKey).digest('hex').slice(0, 40);
 }
 
+const {
+  scoreOrganicNutritionHit,
+  isPlausibleRestaurantNutritionRow,
+  rankSerperFoodResultRows,
+} = require('../src/nutrition/utils/restaurantSerperQuality');
+const {
+  displayNameForSerperRow,
+  isJunkWebSearchTitle,
+} = require('../src/nutrition/utils/foodSearchTitle');
+
+const MIN_ORGANIC_HIT_SCORE = 18;
+const MIN_ORGANIC_HIT_SCORE_RELAXED = 8;
+
+/** Fill missing P/C/F when Serper snippets only expose calories. */
+function enrichParsedMacros(macros, sourceText, queryHint) {
+  const m = { ...macros };
+  const mc = macroCalories(m.protein, m.carbs, m.fat);
+  if (m.calories < 80 || mc >= 25) return m;
+
+  const text = String(sourceText || '');
+  const windowed = extractAroundDominantCalorie(text);
+  if (windowed) {
+    return {
+      calories: m.calories || windowed.calories,
+      protein: windowed.protein || m.protein,
+      carbs: windowed.carbs || m.carbs,
+      fat: windowed.fat || m.fat,
+      servingLabel: m.servingLabel || windowed.servingLabel || null,
+    };
+  }
+
+  const full = extractMacrosFromText(text, queryHint);
+  const fullMc = macroCalories(full.protein, full.carbs, full.fat);
+  if (fullMc > mc) {
+    return {
+      calories: m.calories || full.calories,
+      protein: full.protein || m.protein,
+      carbs: full.carbs || m.carbs,
+      fat: full.fat || m.fat,
+      servingLabel: m.servingLabel || full.servingLabel || null,
+    };
+  }
+  return m;
+}
+
+/**
+ * Build multiple Serper rows from organic hits + per-snippet macro blocks (sizes, slices, etc.).
+ */
+function extractMultipleSerperRowsFromOrganic(
+  organicResults,
+  userQuery,
+  queryHint,
+  maxRows = 10,
+  { relaxed = false } = {},
+) {
+  const out = [];
+  const keys = new Set();
+  const minOrganic = relaxed ? MIN_ORGANIC_HIT_SCORE_RELAXED : MIN_ORGANIC_HIT_SCORE;
+
+  const push = (rawTitle, macros, organicScore = 0, sourceText = '') => {
+    const enriched = enrichParsedMacros(macros, sourceText, queryHint);
+    const lowCalDrink = enriched.calories > 0 && enriched.calories <= 80;
+    if (!isPlausibleRestaurantNutritionRow(enriched, { relaxed }) && !lowCalDrink) return;
+    const k = `${Math.round(enriched.calories)}|${Math.round(enriched.protein)}|${Math.round(enriched.carbs)}|${Math.round(enriched.fat)}|${enriched.servingLabel || ''}`;
+    if (keys.has(k)) return;
+    keys.add(k);
+    out.push({
+      displayName: displayNameForSerperRow(rawTitle, userQuery, enriched),
+      macros: enriched,
+      organicScore,
+    });
+  };
+
+  const list = (Array.isArray(organicResults) ? organicResults : [])
+    .map((r) => ({ r, score: scoreOrganicNutritionHit(r, userQuery) }))
+    .filter((x) => x.score >= minOrganic)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const at = String(a.r.title || '').toLowerCase();
+      const bt = String(b.r.title || '').toLowerCase();
+      return at.localeCompare(bt);
+    });
+
+  for (const { r, score } of list.slice(0, 10)) {
+    const text = `${r.title || ''} ${r.snippet || ''}`;
+    const rawTitle = isJunkWebSearchTitle(r.title) ? userQuery : String(r.title || userQuery).trim();
+
+    push(rawTitle, extractMacrosFromText(text, queryHint), score, text);
+
+    for (const seg of splitNutritionSegments(text)) {
+      const parsed = extractMacrosFromChunk(seg);
+      const segScore = segmentNutritionScore(seg, parsed);
+      if (segScore < 80) continue;
+      const servingLabel = extractServingLabelFromSegment(seg);
+      push(
+        rawTitle,
+        {
+          calories: parsed.calories,
+          protein: parsed.protein,
+          carbs: parsed.carbs,
+          fat: parsed.fat,
+          servingLabel: servingLabel || null,
+        },
+        score,
+        seg,
+      );
+    }
+  }
+
+  if (out.length === 0 && list.length > 0) {
+    for (const { r, score } of list.slice(0, 6)) {
+      const text = `${r.title || ''} ${r.snippet || ''}`;
+      const rawTitle = isJunkWebSearchTitle(r.title) ? userQuery : String(r.title || userQuery).trim();
+      const enriched = enrichParsedMacros(extractMacrosFromText(text, queryHint), text, queryHint);
+      if (!isPlausibleRestaurantNutritionRow(enriched, { relaxed: true })) continue;
+      const k = `${Math.round(enriched.calories)}|${Math.round(enriched.protein)}|${Math.round(enriched.carbs)}|${Math.round(enriched.fat)}|${enriched.servingLabel || ''}`;
+      if (keys.has(k)) continue;
+      keys.add(k);
+      out.push({
+        displayName: displayNameForSerperRow(rawTitle, userQuery, enriched),
+        macros: enriched,
+        organicScore: score,
+      });
+    }
+  }
+
+  if (out.length === 0 && list.length > 0) {
+    const mega = list.map(({ r }) => `${r.title || ''} ${r.snippet || ''}`).join('\n');
+    push(userQuery, extractMacrosFromText(mega, queryHint), list[0]?.score || 0, mega);
+  }
+
+  if (/\bmedium\b/i.test(queryHint)) {
+    for (const { r, score } of list) {
+      const title = String(r.title || '');
+      if (!/\bmedium\b/i.test(title)) continue;
+      const text = `${title} ${r.snippet || ''}`;
+      push(title.trim(), extractMacrosFromText(text, queryHint), score + 15, text);
+    }
+  }
+
+  if (out.length === 0) return [];
+
+  const appRows = out.map((p) => ({
+    food_name: p.displayName,
+    name: p.displayName,
+    nf_calories: p.macros.calories,
+    nf_protein: p.macros.protein,
+    nf_total_carbohydrate: p.macros.carbs,
+    nf_total_fat: p.macros.fat,
+    serving_label: p.macros.servingLabel || null,
+    _organicScore: p.organicScore || 0,
+    source: 'serper',
+  }));
+
+  const ranked = rankSerperFoodResultRows(appRows, userQuery);
+
+  return ranked.slice(0, maxRows).map((r) => ({
+    displayName: r.food_name || r.name,
+    macros: {
+      calories: r.nf_calories ?? r.calories,
+      protein: r.nf_protein ?? r.protein,
+      carbs: r.nf_total_carbohydrate ?? r.carbs,
+      fat: r.nf_total_fat ?? r.fat,
+      servingLabel: r.serving_label || null,
+    },
+    organicScore: r._organicScore || 0,
+    multiServingFallback: r.multiServingFallback,
+    servingMultiplier: r.servingMultiplier,
+    nutrition_unverified: r.nutrition_unverified,
+  }));
+}
+
 module.exports = {
   EMPTY_SEARCH_HINT,
   normalizeSearchKey,
   classifyNutritionSearchMode,
   extractMacrosFromText,
+  extractMultipleSerperRowsFromOrganic,
+  rankSerperFoodResultRows,
   fixTypoForSerperQuery,
+  normalizeRestaurantSearchQuery,
+  buildSerperFallbackQueries,
+  isMenuStyleQuery,
+  itemMatchesQuery,
+  isRetailFoodNoise,
+  significantQueryTokens,
   searchResultsDocId,
   parseFloatSafe,
 };

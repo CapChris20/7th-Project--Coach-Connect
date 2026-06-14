@@ -139,7 +139,7 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
 }
 
 /** `maxLines` only when you want truncation; omit for full quote (wraps). */
-export function DailyQuotePill({ userId, isDarkOverride, maxLines }) {
+export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = false }) {
   const { isDark: themeIsDark } = useTheme();
   const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : themeIsDark;
 
@@ -177,14 +177,25 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines }) {
   const quote = quotes[quoteIndex] || quotes[0] || { q: 'Keep showing up.', a: 'Daily Motivation' };
 
   return (
-    <View style={pillStyles.wrap}>
+    <View style={[pillStyles.wrap, embedded && pillStyles.wrapEmbedded]}>
       <View
         style={[
           pillStyles.inner,
           {
-            // More opaque fill so the border gradient doesn't tint the pill.
-            backgroundColor: isDark ? 'rgba(10,10,15,0.80)' : 'rgba(255,255,255,0.92)',
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)',
+            backgroundColor: embedded
+              ? 'transparent'
+              : isDark
+                ? 'rgba(10,10,15,0.80)'
+                : 'rgba(255,255,255,0.92)',
+            borderColor: embedded
+              ? isDark
+                ? 'rgba(255,255,255,0.12)'
+                : 'rgba(10,10,15,0.10)'
+              : isDark
+                ? 'rgba(255,255,255,0.08)'
+                : 'rgba(10,10,15,0.06)',
+            borderWidth: 1,
+            borderRadius: embedded ? 14 : 26,
           },
         ]}
       >
@@ -253,11 +264,13 @@ const styles = StyleSheet.create({
 
 const pillStyles = StyleSheet.create({
   wrap: {
-    // Parent controls width/maxWidth; keep pill full-width inside gradient border.
     width: '100%',
     alignSelf: 'center',
     borderRadius: 28,
     overflow: 'hidden',
+  },
+  wrapEmbedded: {
+    borderRadius: 0,
   },
   inner: {
     borderRadius: 26,

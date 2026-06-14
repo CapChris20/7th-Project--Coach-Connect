@@ -1,12 +1,10 @@
 const fs = require("fs");
 
-// Load .env for local runs (EXPO_PUBLIC_CLAUDE_API_KEY lives here in this repo)
+// Load .env for local runs
 require("dotenv").config();
 
-const apiKey =
-  process.env.EXPO_PUBLIC_CLAUDE_API_KEY ||
-  process.env.ANTHROPIC_API_KEY ||
-  "";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8001";
+const FIREBASE_ID_TOKEN = process.env.TEST_FIREBASE_ID_TOKEN || "";
 
 const GOALS = ["Body Recomp", "Strength", "Hypertrophy", "Weight Loss"];
 
@@ -67,24 +65,27 @@ Rules (non-negotiable):
 `;
 
 async function callClaudeMessages(prompt) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(`${API_BASE_URL}/api/workout/generate`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      "authorization": `Bearer ${FIREBASE_ID_TOKEN}`,
     },
     body: JSON.stringify({
-      model: "claude-opus-4-6",
-      max_tokens: 2500,
-      temperature: 0.2,
-      messages: [{ role: "user", content: prompt }],
+      goal: "Test",
+      userPrompt: prompt,
     }),
   });
 
   const text = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${text}`);
-  return JSON.parse(text);
+  
+  const data = JSON.parse(text);
+  if (!data.message) throw new Error("No message in response");
+  
+  return {
+    content: [{ text: data.message }],
+  };
 }
 
 function extractResponseText(message) {
@@ -186,9 +187,9 @@ function validateWorkoutPlan(plan, goal) {
 }
 
 async function testWorkoutGeneration() {
-  if (!apiKey) {
+  if (!FIREBASE_ID_TOKEN) {
     console.error(
-      "Missing EXPO_PUBLIC_CLAUDE_API_KEY (or ANTHROPIC_API_KEY). Set it before running this test."
+      "Missing TEST_FIREBASE_ID_TOKEN. Set it before running this test."
     );
     process.exit(1);
   }

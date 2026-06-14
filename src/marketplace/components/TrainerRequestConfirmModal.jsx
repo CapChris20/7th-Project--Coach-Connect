@@ -20,7 +20,7 @@ import { trainerPhotoUri } from '../../shared/utils/trainerProfileMedia';
 const { width: SCREEN_W } = Dimensions.get('window');
 const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);
 
-const BORDER_LOOP = ['#FF6B9D', '#64D2FF', '#C084FC', '#FF6B9D'];
+const BORDER_LOOP = ['#F06BA8', '#FB923C', '#C084FC', '#F06BA8'];
 
 function getTrainerPrice(t) {
   if (!t) return null;
@@ -173,7 +173,7 @@ export default function TrainerRequestConfirmModal({
                   style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }], opacity: busy ? 0.85 : 1 }]}
                 >
                   <LinearGradient
-                    colors={['#FF6B9D', '#C084FC']}
+                    colors={['#F06BA8', '#FB923C']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.btnGradient}

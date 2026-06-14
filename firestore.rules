@@ -1,6 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isConversationParticipant(conversationId) {
+      return request.auth != null
+        && conversationId is string
+        && conversationId.size() > 4
+        && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+    }
     // Trainers collection (searchable trainer profiles)
     match /trainers/{trainerId} {
       allow read: if request.auth != null;
@@ -45,14 +52,27 @@ service cloud.firestore {
       );
     }
 
-    // Current workout plan (users/{uid}/workoutPlan/current) — user can read/write own
+    // Current workout plan (users/{uid}/workoutPlan/current) — client owns; linked trainer can read
     match /users/{userId}/workoutPlan/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId))
+      );
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
     // AI Chat Coach sessions (users/{uid}/aiChats/{sessionId}) — user can read/write own
     match /users/{userId}/aiChats/{sessionId} {
       allow read, list, create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Macro targets + history (AI Coach day-14 recalibration)
+    match /users/{userId}/macroTargets/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/macroHistory/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Progress photos (users/{clientId}/progressPhotos/*) — client or linked trainer can read/write
@@ -134,42 +154,46 @@ service cloud.firestore {
       }
     }
     
-    // Messages (top-level collection)
+    // Messages (top-level collection) — participants of the conversation only
     match /messages/{messageId} {
+      allow read: if request.auth != null
+        && resource.data.conversationId is string
+        && isConversationParticipant(resource.data.conversationId);
 
-      // Any signed-in user can read/list messages (queries already filter)
-      allow read, list: if request.auth != null;
+      allow list: if request.auth != null;
 
-      // Create: sender must be the authed user
       allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.senderId;
+        && request.auth.uid == request.resource.data.senderId
+        && request.resource.data.conversationId is string
+        && isConversationParticipant(request.resource.data.conversationId);
 
-      // Update:
-      // - Sender can change anything on their own message
-      // - Anyone signed in can set read: true, status, or responseTimestamp
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.senderId ||
-        (
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['read']) &&
-          request.resource.data.read == true
-        ) ||
-        (
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'responseTimestamp']) &&
-          (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')
-        ) ||
-        (
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
-          (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected' || request.resource.data.status == 'pending')
-        ) ||
-        (
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['responseTimestamp']) &&
-          request.resource.data.responseTimestamp != null
-        )
-      );
+      allow update: if request.auth != null
+        && resource.data.conversationId is string
+        && isConversationParticipant(resource.data.conversationId)
+        && (
+          request.auth.uid == resource.data.senderId ||
+          (
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['read']) &&
+            request.resource.data.read == true
+          ) ||
+          (
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'responseTimestamp']) &&
+            (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected')
+          ) ||
+          (
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
+            (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected' || request.resource.data.status == 'pending')
+          ) ||
+          (
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['responseTimestamp']) &&
+            request.resource.data.responseTimestamp != null
+          )
+        );
 
-      // Delete: only sender
       allow delete: if request.auth != null
-        && request.auth.uid == resource.data.senderId;
+        && request.auth.uid == resource.data.senderId
+        && resource.data.conversationId is string
+        && isConversationParticipant(resource.data.conversationId);
     }
     
     // Workouts (legacy - daily workouts)
@@ -246,9 +270,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
-    // Saved Workout Plans (AI-generated plans added to collection)
+    // Saved Workout Plans (legacy top-level collection)
     match /savedWorkoutPlans/{planId} {
-      allow read, list: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read, list: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(resource.data.userId))
+      );
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
@@ -700,6 +727,76 @@ service cloud.firestore {
       allow create, update: if request.auth != null && request.auth.uid == userId;
       
       // Delete: User can delete their own daily tracking
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Server-tracked API usage counters (read-only for clients)
+    match /users/{userId}/usage/{docId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // AI Coach actions (audit log) - NEW
+    match /users/{userId}/aiCoachActions/{actionId} {
+      // Read: User can read their own AI Coach audit trail
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow list queries - user can query their own AI Coach actions
+      allow list: if request.auth != null && request.auth.uid == userId;
+      
+      // Create: User can create their own AI Coach action logs (via AI Coach tool executor)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Update/Delete: No writes to audit trail after creation (immutable)
+      allow update, delete: if false;
+    }
+
+    // Sleep logs - NEW
+    match /users/{userId}/sleep_logs/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Water logs - NEW
+    match /users/{userId}/water_logs/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Step logs - NEW
+    match /users/{userId}/step_logs/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Energy logs - NEW
+    match /users/{userId}/energy_logs/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Mood logs - NEW
+    match /users/{userId}/mood_logs/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Workout ratings - NEW
+    match /users/{userId}/workout_ratings/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Daily metrics (aggregated dashboard data) - NEW
+    match /users/{userId}/dailyMetrics/{dateId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
   }

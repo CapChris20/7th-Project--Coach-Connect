@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
-  Alert,
   ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../shared/ui/ThemeContext';
 // import { migrateUserRoles, setTrainersByEmail } from '../utils/migrateUserRoles'; // File is missing
 

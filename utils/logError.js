@@ -186,13 +186,20 @@ Last updated: ${readableUpdateTime}
       };
 
       const baseUrl = getBaseUrl();
-      fetch(`${baseUrl}/api/log-error`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(errorData),
-      }).catch(() => {
+      (async () => {
+        try {
+          const { getApiAuthHeaders } = require('../src/shared/services/apiAuthHeaders');
+          const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+          if (!headers.Authorization) return;
+          await fetch(`${baseUrl}/api/log-error`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(errorData),
+          });
+        } catch (_) {
+          /* queue below */
+        }
+      })().catch(() => {
         // Server not available, queue for later sync
         try {
           const errorSyncModule = require('./errorSyncService');

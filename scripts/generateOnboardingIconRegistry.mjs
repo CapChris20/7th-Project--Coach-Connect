@@ -35,10 +35,10 @@ lines.push('  // Step 1 inputs');
 lines.push("  weight: require('../../assets/onboarding-consolidated/scales.png'),");
 lines.push("  scales: require('../../assets/onboarding-consolidated/scales.png'),");
 lines.push("  height: require('../../assets/onboarding-consolidated/height.png'),");
-lines.push("  age: require('../../assets/onboarding-consolidated/Age.png'),");
+lines.push("  age: require('../../assets/onboarding-consolidated/age.png'),");
 lines.push('');
 
-const skipFiles = new Set(['scales.png', 'height.png', 'Age.png']);
+const skipFiles = new Set(['scales.png', 'height.png', 'age.png', 'bodyweight_only.png']);
 
 for (const filename of files) {
   if (skipFiles.has(filename)) continue;
@@ -48,16 +48,10 @@ for (const filename of files) {
   lines.push(`  ${JSON.stringify(key)}: require(${JSON.stringify(requirePath)}),`);
 }
 
-lines.push("  bodyweight: require('../../assets/onboarding-consolidated/Bodyweight Only.png'),");
+lines.push("  bodyweight: require('../../assets/onboarding-consolidated/bodyweight_only.png'),");
 
 lines.push('};');
 lines.push('');
 
 fs.writeFileSync(outFile, lines.join('\n'), 'utf8');
 console.log(`✅ Wrote ${path.relative(projectRoot, outFile)} with ${files.length} icons`);
-
-
-
-
-
-

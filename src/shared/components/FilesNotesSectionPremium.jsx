@@ -1,252 +1,48 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  ArrowRight,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  FileSpreadsheet,
-  FileText,
-  Folder,
-  MessageSquare,
-} from 'lucide-react-native';
-import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../utils/fileFormatting';
+import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../utils/fileFormatting';
 
-const COLORS = {
-  dark: {
-    bg: '#0A0A0F',
-    card: '#141419',
-    text: '#FFFFFF',
-    text60: 'rgba(255,255,255,0.6)',
-    text40: 'rgba(255,255,255,0.4)',
-    border: 'rgba(255,255,255,0.1)',
-  },
-  light: {
-    bg: '#FFFFFF',
-    card: '#F7F7FB',
-    text: '#0A0A0F',
-    text60: 'rgba(10,10,15,0.6)',
-    text40: 'rgba(10,10,15,0.4)',
-    border: 'rgba(10,10,15,0.10)',
-  },
+/** Coach / docs — dark cyan → dark gold */
+const GRAD_COACH = ['#0891B2', '#B45309'];
+/** My files / images — dark pink → dark orange */
+const GRAD_MY = ['#DB2777', '#C2410C'];
+
+const HERO_BORDER = [...GRAD_COACH, ...GRAD_MY];
+const UPLOAD_GRADIENT = GRAD_MY;
+
+const FILE_TYPE_META = {
+  pdf:         { label: 'PDF',    icon: 'file-text',  gradient: GRAD_COACH },
+  video:       { label: 'VIDEO',  icon: 'play-circle', gradient: GRAD_COACH },
+  document:    { label: 'DOC',    icon: 'file-text',  gradient: GRAD_COACH },
+  spreadsheet: { label: 'SHEET',  icon: 'grid',       gradient: GRAD_COACH },
+  image:       { label: 'IMAGE',  icon: 'image',      gradient: GRAD_MY },
+  file:        { label: 'FILE',   icon: 'file',       gradient: GRAD_COACH },
 };
 
-const GRADIENTS = {
-  myFiles: ['#FF6B9D', '#C084FC'],
-  trainer: ['#06B6D4', '#C084FC'],
-  notes: ['#C084FC', '#FF6B9D'],
-};
+const CARD_GRADIENT_COACH = ['rgba(8,145,178,0.20)', 'rgba(180,83,9,0.12)', 'rgba(10,10,15,0.95)'];
+const CARD_GRADIENT_MY    = ['rgba(219,39,119,0.22)', 'rgba(194,65,12,0.14)', 'rgba(10,10,15,0.95)'];
+const CARD_GRADIENT_COACH_LIGHT = ['rgba(8,145,178,0.12)', 'rgba(180,83,9,0.08)', 'rgba(248,249,252,0.95)'];
+const CARD_GRADIENT_MY_LIGHT    = ['rgba(219,39,119,0.12)', 'rgba(194,65,12,0.08)', 'rgba(248,249,252,0.95)'];
 
-const FILTERS = ['All Files', 'Photos', 'Documents', 'Notes'];
-
-function normalizeGenericTitle(rawTitle, kind) {
-  const t = String(rawTitle || '').trim();
-  const lower = t.toLowerCase();
-
-  const isGenericPhoto =
-    kind === 'image' &&
-    (lower === 'progress photo' ||
-      lower.startsWith('progress photo') ||
-      lower === 'photo' ||
-      lower.startsWith('photo'));
-
-  const isGenericDoc =
-    (kind === 'document' || kind === 'pdf' || kind === 'spreadsheet') &&
-    (lower === 'document' ||
-      lower.startsWith('document') ||
-      lower === 'pdf' ||
-      lower.startsWith('pdf') ||
-      lower === 'spreadsheet' ||
-      lower.startsWith('spreadsheet') ||
-      lower === 'file' ||
-      lower.startsWith('file'));
-
-  const stripTrailingDate = (s) =>
-    s
-      .replace(/\s*[•\-]\s*[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}\s*$/i, '')
-      .replace(/\s*[•\-]\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i, '')
-      .trim();
-
-  if (isGenericPhoto) {
-    return stripTrailingDate('Snapshot');
-  }
-  if (isGenericDoc) {
-    if (kind === 'pdf') return stripTrailingDate('Coach PDF');
-    if (kind === 'spreadsheet') return stripTrailingDate('Tracker');
-    return stripTrailingDate('Coach Doc');
-  }
-  return stripTrailingDate(t);
-}
-
-function GradientBorder({ gradient, children, borderRadius = 18 }) {
+function GradientPill({ colors, style, children }) {
   return (
-    <LinearGradient
-      colors={gradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.gradientWrapper, { borderRadius }]}
-    >
-      <View style={[styles.gradientInner, { borderRadius: borderRadius - 2 }]}>{children}</View>
+    <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={style}>
+      {children}
     </LinearGradient>
   );
 }
 
-function SectionHeader({ title, isDark }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  return <Text style={[styles.sectionHeader, { color: theme.text60 }]}>{title}</Text>;
-}
-
-function CategoryHeader({ title, count, open, onToggle, isDark }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  return (
-    <View style={styles.categoryHeaderContainer}>
-      <GradientBorder gradient={GRADIENTS.trainer} borderRadius={14}>
-        <TouchableOpacity onPress={onToggle} style={[styles.categoryHeaderButton, { backgroundColor: theme.card }]} activeOpacity={0.9}>
-          <View style={styles.categoryLeft}>
-            <Folder size={20} color="#06B6D4" />
-            <View>
-              <Text style={[styles.categoryTitle, { color: theme.text }]}>{title}</Text>
-              <Text style={[styles.categoryCount, { color: theme.text60 }]}>{count} files</Text>
-            </View>
-          </View>
-          <ChevronDown size={18} color={theme.text60} style={{ transform: [{ rotate: open ? '0deg' : '-90deg' }] }} />
-        </TouchableOpacity>
-      </GradientBorder>
-    </View>
-  );
-}
-
-const PHOTO_THUMB = 76;
-
-function MyPhotoThumbnailsRow({ files, isDark, onOpenItem, onDownloadItem, onShareItem, onDeleteItem }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  if (!files?.length) return null;
-
-  const confirmDelete = (file) => {
-    if (!onDeleteItem) return;
-    Alert.alert('Delete file?', 'This will remove it from your files.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => onDeleteItem(file) },
-    ]);
-  };
-
-  const photoMenu = (file) => {
-    Alert.alert('Your photo', 'Open, share, download, or delete.', [
-      { text: 'Open', onPress: () => onOpenItem?.(file) },
-      { text: 'Download', onPress: () => onDownloadItem?.(file) },
-      { text: 'Share', onPress: () => onShareItem?.(file) },
-      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(file) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  return (
-    <View style={styles.thumbRowWrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRowContent}>
-        {files.map((file) => {
-          const thumb = file?.thumbnailUrl || file?.url || null;
-          return (
-            <TouchableOpacity
-              key={file.id || file.url || file.name}
-              activeOpacity={0.88}
-              onPress={() => onOpenItem?.(file)}
-              onLongPress={() => photoMenu(file)}
-              delayLongPress={380}
-            >
-              <GradientBorder gradient={GRADIENTS.myFiles} borderRadius={14}>
-                <View style={[styles.thumbInner, { backgroundColor: theme.card }]}>
-                  {thumb ? (
-                    <Image source={{ uri: thumb }} style={styles.thumbImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.thumbImage, styles.thumbPlaceholder]}>
-                      <Text style={[styles.thumbPlaceholderText, { color: theme.text40 }]}>Photo</Text>
-                    </View>
-                  )}
-                </View>
-              </GradientBorder>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-      <Text style={[styles.thumbHint, { color: theme.text60 }]}>Tap to open · hold for share, download, or delete</Text>
-    </View>
-  );
-}
-
-function TrainerDocStrip({ file, onDownload, onOpen, isDark }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  const t = getFileTypeFromItem(file);
-  const rawName = getFriendlyFileTitle(file) || file?.name || file?.title || 'File';
-  const kind = t === 'pdf' ? 'pdf' : t === 'spreadsheet' ? 'spreadsheet' : 'document';
-  const name = normalizeGenericTitle(rawName, kind);
-  const Icon = t === 'spreadsheet' ? FileSpreadsheet : FileText;
-  const typeLabel = t === 'spreadsheet' ? 'Sheet' : t === 'pdf' ? 'PDF' : 'Doc';
-  const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
-  const dateLabel = createdAt ? formatDateShort(createdAt) : '';
-
-  return (
-    <View style={styles.trainerStripOuter}>
-      <View
-        style={[
-          styles.trainerStripTouchable,
-          { backgroundColor: theme.card, borderColor: isDark ? 'rgba(6,182,212,0.22)' : 'rgba(6,182,212,0.35)' },
-        ]}
-      >
-        <LinearGradient colors={GRADIENTS.trainer} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.trainerStripAccent} />
-        <TouchableOpacity onPress={onOpen} activeOpacity={0.9} style={styles.trainerStripMain}>
-          <View style={[styles.trainerStripIcon, { borderColor: isDark ? 'rgba(6,182,212,0.35)' : 'rgba(6,182,212,0.25)' }]}>
-            <Icon size={20} color="#06B6D4" />
-          </View>
-          <View style={styles.trainerStripText}>
-            <Text style={[styles.trainerStripTitle, { color: theme.text }]} numberOfLines={1}>
-              {name}
-            </Text>
-            <Text style={[styles.trainerStripMeta, { color: theme.text60 }]} numberOfLines={1}>
-              {typeLabel}
-              {dateLabel ? ` · ${dateLabel}` : ''}
-            </Text>
-          </View>
-          <ChevronRight size={18} color={theme.text40} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onDownload} hitSlop={12} style={[styles.trainerStripDl, { marginRight: 8 }]} activeOpacity={0.85}>
-          <Download size={17} color="#06B6D4" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-function NoteCard({ note, onOpen, isDark }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  const coach = note?.coach || note?.fromName || 'Coach';
-  const preview = String(note?.content || note?.preview || '').trim();
-
-  return (
-    <View style={styles.noteCardContainer}>
-      <GradientBorder gradient={GRADIENTS.notes} borderRadius={14}>
-        <TouchableOpacity style={[styles.noteCard, { backgroundColor: theme.card }]} onPress={onOpen} activeOpacity={0.9}>
-          <View style={styles.noteHeader}>
-            <MessageSquare size={16} color="#C084FC" />
-            <Text style={[styles.noteLabel, { color: theme.text60 }]}>From Coach: {coach}</Text>
-          </View>
-
-          <Text style={[styles.noteText, { color: theme.text60 }]} numberOfLines={2}>
-            &quot;{preview}&quot;
-          </Text>
-
-          <View style={styles.viewFullButton}>
-            <Text style={styles.viewFullText}>View Full Note</Text>
-            <ArrowRight size={14} color="#FF6B9D" />
-          </View>
-        </TouchableOpacity>
-      </GradientBorder>
-    </View>
-  );
-}
-
+/**
+ * Premium files grid — client home Notes & Files workspace and trainer client workspace.
+ * @param {'client'|'trainer'} audience
+ */
 export default function FilesNotesSectionPremium({
   items = [],
+  trainerDocuments = [],
+  audience = 'client',
+  clientName = '',
   isDark = true,
   onOpenItem,
   onDownloadItem,
@@ -254,242 +50,393 @@ export default function FilesNotesSectionPremium({
   onDeleteItem,
   onMarkRead,
   onUploadPress,
+  uploadLabel = 'Add note or file',
 }) {
-  const theme = isDark ? COLORS.dark : COLORS.light;
-  const [filter, setFilter] = useState('All Files');
-  const [docsOpen, setDocsOpen] = useState(true);
+  const th = isDark
+    ? { bg: '#0A0A0F', card: '#141419', text: '#FFF', text70: 'rgba(255,255,255,0.7)', text50: 'rgba(255,255,255,0.5)', text30: 'rgba(255,255,255,0.3)', border: 'rgba(255,255,255,0.08)' }
+    : { bg: '#F7F7FA', card: '#FFFFFF', text: '#1A1A2E', text70: 'rgba(0,0,0,0.65)', text50: 'rgba(0,0,0,0.45)', text30: 'rgba(0,0,0,0.25)', border: 'rgba(0,0,0,0.06)' };
 
-  const { myPhotos, trainerDocs, notes } = useMemo(() => {
+  const isTrainer = audience === 'trainer';
+
+  const {
+    coachFiles,
+    myFiles,
+    notes,
+    yourDocuments,
+  } = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
-    const myFiles = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note');
-    const myPhotosOnly = myFiles.filter((x) => getFileTypeFromItem(x) === 'image');
-    const shared = list.filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId));
-    const trainerDocsOnly = shared.filter((x) => {
-      const t = getFileTypeFromItem(x);
-      return t === 'document' || t === 'pdf' || t === 'spreadsheet';
-    });
-    const trainerNotes = list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer');
-    return { myPhotos: myPhotosOnly, trainerDocs: trainerDocsOnly, notes: trainerNotes };
-  }, [items]);
+    if (isTrainer) {
+      const fromClient = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note');
+      const fromYou = list.filter((x) => x?.addedBy === 'trainer' && x?.type !== 'note');
+      const allNotes = list.filter((x) => x?.type === 'note');
+      const docs = (Array.isArray(trainerDocuments) ? trainerDocuments : []).map((doc) => {
+        const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
+        const title = doc.title || 'Untitled';
+        return {
+          id: doc.id,
+          type: 'document',
+          name: isShared ? `${title} · Shared` : title,
+          title,
+          createdAt: doc.updatedAt || doc.createdAt,
+          addedBy: 'trainer',
+          documentId: doc.id,
+        };
+      });
+      return {
+        coachFiles: fromYou,
+        myFiles: fromClient,
+        notes: allNotes,
+        yourDocuments: docs,
+      };
+    }
+    const coach = list.filter((x) => (x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId)) && x?.type !== 'note');
+    const mine = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note');
+    const n = list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer');
+    return { coachFiles: coach, myFiles: mine, notes: n, yourDocuments: [] };
+  }, [items, isTrainer, trainerDocuments]);
 
-  const showPhotos = filter === 'All Files' || filter === 'Photos';
-  const showDocs = filter === 'All Files' || filter === 'Documents';
-  const showNotes = filter === 'All Files' || filter === 'Notes';
+  const heroCopy = isTrainer
+    ? {
+        title: 'Files & Notes',
+        kicker: 'CLIENT WORKSPACE',
+        brand: clientName ? String(clientName).trim() : 'Your client',
+        tagline: 'EVERYTHING SHARED IN THIS LIBRARY',
+      }
+    : {
+        title: 'Files & Notes',
+        kicker: 'WELCOME TO',
+        brand: 'Coach Connect',
+        tagline: 'EVERYTHING SHARED WITH YOUR COACH',
+      };
+
+  const labels = isTrainer
+    ? {
+        coachSection: 'FROM YOU',
+        mySection: 'FROM CLIENT',
+        notesSection: 'NOTES',
+        docsSection: 'YOUR DOCUMENTS',
+        myEmpty: 'No client uploads yet',
+        coachEmpty: 'Nothing from you yet — add a note or file below',
+      }
+    : {
+        coachSection: 'FROM YOUR COACH',
+        mySection: 'MY FILES',
+        notesSection: 'COACHING NOTES',
+        docsSection: null,
+        myEmpty: 'No files yet — tap + Add file below',
+        coachEmpty: null,
+      };
+
+  const getFileMeta = (file) => {
+    const fType = getFileTypeFromItem(file);
+    const meta = FILE_TYPE_META[fType] || FILE_TYPE_META.file;
+    const name = file?.name || file?.title || 'File';
+    const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
+    const when = createdAt ? formatDateShort(createdAt) : '';
+    const size = file?.size ? formatFileSize(file.size) : '';
+    const datePart = when ? when.replace(/,?\s*\d{4}$/, '').toUpperCase() : '';
+    return { ...meta, name, when: datePart, size, fType };
+  };
+
+  const canDeleteFile = (file) => {
+    if (!onDeleteItem || !file) return false;
+    if (isTrainer) return file?.addedBy === 'trainer';
+    return file?.addedBy !== 'trainer';
+  };
+
+  const FileCard = ({ file, variant = 'coach' }) => {
+    const { label, icon, gradient, name, when, size, fType } = getFileMeta(file);
+    const accentGrad = variant === 'coach' ? GRAD_COACH : GRAD_MY;
+    const badgeGrad = gradient || accentGrad;
+    const accent = badgeGrad[0];
+    const cardGrad = variant === 'coach'
+      ? (isDark ? CARD_GRADIENT_COACH : CARD_GRADIENT_COACH_LIGHT)
+      : (isDark ? CARD_GRADIENT_MY : CARD_GRADIENT_MY_LIGHT);
+    const borderCol = variant === 'coach'
+      ? (isDark ? 'rgba(8,145,178,0.28)' : 'rgba(8,145,178,0.18)')
+      : (isDark ? 'rgba(219,39,119,0.28)' : 'rgba(219,39,119,0.18)');
+
+    return (
+      <TouchableOpacity
+        style={[s.fileCard, { borderColor: borderCol }]}
+        activeOpacity={0.88}
+        onPress={async () => { try { await onMarkRead?.(file); } catch (_e) {} onOpenItem?.(file); }}
+        onLongPress={() => {
+          const actions = [
+            { text: 'Open', onPress: () => onOpenItem?.(file) },
+            { text: 'Download', onPress: () => onDownloadItem?.(file) },
+            { text: 'Share', onPress: () => onShareItem?.(file) },
+          ];
+          if (canDeleteFile(file)) {
+            actions.push({ text: 'Delete', style: 'destructive', onPress: () => onDeleteItem?.(file) });
+          }
+          actions.push({ text: 'Cancel', style: 'cancel' });
+          Alert.alert(name, '', actions);
+        }}
+        delayLongPress={380}
+      >
+        {fType === 'image' && (file?.thumbnailUrl || file?.url) ? (
+          <View style={s.fileCardGradient}>
+            <Image source={{ uri: file.thumbnailUrl || file.url }} style={s.fileCardThumb} resizeMode="cover" />
+            <GradientPill colors={badgeGrad} style={s.typeBadge}>
+              <Text style={s.typeBadgeText}>{label}</Text>
+            </GradientPill>
+            <TouchableOpacity
+              style={[s.dlBtn, { borderColor: 'rgba(255,255,255,0.4)' }]}
+              onPress={() => onDownloadItem?.(file)}
+              hitSlop={12}
+              activeOpacity={0.7}
+            >
+              <Feather name="download" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <LinearGradient colors={cardGrad} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={s.fileCardGradient}>
+            <GradientPill colors={badgeGrad} style={s.typeBadge}>
+              <Text style={s.typeBadgeText}>{label}</Text>
+            </GradientPill>
+            <View style={s.fileCardIconWrap}>
+              <Feather name={icon} size={40} color={accent} />
+            </View>
+            <TouchableOpacity
+              style={[s.dlBtn, { borderColor: `${accent}55` }]}
+              onPress={() => onDownloadItem?.(file)}
+              hitSlop={12}
+              activeOpacity={0.7}
+            >
+              <Feather name="download" size={18} color={accent} />
+            </TouchableOpacity>
+          </LinearGradient>
+        )}
+        <View style={s.fileCardInfo}>
+          <Text style={[s.fileCardName, { color: th.text }]} numberOfLines={1}>{name}</Text>
+          <Text style={[s.fileCardMeta, { color: th.text50 }]} numberOfLines={1}>
+            {when}{size ? ` \u00B7 ${size}` : ''}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const SectionHead = ({ title, count, gradient }) => (
+    <View style={s.sectionHead}>
+      <Text style={[s.sectionTitle, { color: th.text }]}>{title}</Text>
+      {count != null && count > 0 && (
+        <GradientPill colors={gradient} style={s.sectionBadge}>
+          <Text style={s.sectionBadgeText}>{count}</Text>
+        </GradientPill>
+      )}
+      <LinearGradient
+        colors={gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={s.sectionLine}
+      />
+    </View>
+  );
+
+  const NoteCard = ({ note }) => {
+    const preview = String(note?.content || note?.preview || '').trim();
+    const createdAt = note?.createdAt?.toDate?.() || note?.createdAt;
+    const when = createdAt ? formatDateShort(createdAt) : null;
+    const dateStr = when ? when.toUpperCase() : '';
+    const noteTitle = isTrainer
+      ? (note?.addedBy === 'trainer' ? 'Your note' : 'Client note')
+      : 'Coaching Note';
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={async () => {
+          try { await onMarkRead?.(note); } catch (_e) {}
+          Alert.alert(noteTitle, preview || '\u2014');
+        }}
+        style={[s.noteCard, { backgroundColor: isDark ? '#0f1018' : '#FFFFFF', borderColor: isDark ? 'rgba(8,145,178,0.18)' : 'rgba(8,145,178,0.12)' }]}
+      >
+        <LinearGradient colors={GRAD_COACH} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.noteAccent} />
+        <View style={s.noteContent}>
+          {dateStr ? <Text style={s.noteDate}>{dateStr}</Text> : null}
+          <Text style={[s.noteText, { color: th.text70 }]} numberOfLines={4}>{preview || '\u2014'}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const EmptyCard = ({ message, gradient = GRAD_MY }) => (
+    <View style={[s.emptyCard, { borderColor: isDark ? 'rgba(219,39,119,0.15)' : 'rgba(219,39,119,0.10)' }]}>
+      <Feather name="upload-cloud" size={28} color={gradient[0]} />
+      <Text style={[s.emptyText, { color: th.text50 }]}>{message}</Text>
+    </View>
+  );
+
+  const renderGrid = (files, variant) => (
+    <View style={s.grid}>
+      {files.map((f) => (
+        <FileCard key={f.id || f.url || f.name} file={f} variant={variant} />
+      ))}
+    </View>
+  );
+
+  const hasAnyContent =
+    coachFiles.length > 0 ||
+    myFiles.length > 0 ||
+    notes.length > 0 ||
+    yourDocuments.length > 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
-        {FILTERS.map((f) => {
-          const isActive = filter === f;
-          return (
-            <TouchableOpacity
-              key={f}
-              onPress={() => setFilter(f)}
-              style={[styles.filterButton, { borderColor: theme.border }, isActive && styles.filterButtonActive]}
-              activeOpacity={0.85}
-            >
-              {isActive ? (
-                <LinearGradient colors={GRADIENTS.myFiles} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.filterGradient}>
-                  <Text style={styles.filterTextActive}>{f}</Text>
-                </LinearGradient>
-              ) : (
-                <Text style={[styles.filterText, { color: theme.text60 }]}>{f}</Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+    <View style={{ flex: 1 }}>
+      <View style={s.heroOuter}>
+        <LinearGradient colors={HERO_BORDER} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroBorderRing}>
+          <View style={[s.heroInner, { backgroundColor: isDark ? '#0A0A0F' : '#F0F0F8' }]}>
+            <Text style={[s.heroTitle, { color: th.text }]}>{heroCopy.title}</Text>
+            <LinearGradient colors={GRAD_COACH} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.heroRule} />
+            <Text style={[s.heroKicker, { color: th.text50 }]}>{heroCopy.kicker}</Text>
+            <Text style={s.heroBrand}>{heroCopy.brand}</Text>
+            <Text style={[s.heroTagline, { color: th.text30 }]}>{heroCopy.tagline}</Text>
+          </View>
+        </LinearGradient>
+      </View>
 
-      {showPhotos && (
-        <View>
-          <SectionHeader title="MY FILES" isDark={isDark} />
+      {!hasAnyContent && isTrainer ? (
+        <View style={s.sectionWrap}>
+          <EmptyCard message="No notes or files yet — add something for your client below" gradient={GRAD_COACH} />
+        </View>
+      ) : null}
 
-          {typeof onUploadPress === 'function' ? (
-            <LinearGradient colors={GRADIENTS.myFiles} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.uploadGradient}>
-              <TouchableOpacity style={styles.uploadButton} onPress={onUploadPress} activeOpacity={0.9}>
-                <Text style={styles.uploadText}>Upload File</Text>
-              </TouchableOpacity>
+      {isTrainer ? (
+        <View style={s.sectionWrap}>
+          <SectionHead title={labels.mySection} count={myFiles.length} gradient={GRAD_MY} />
+          {myFiles.length > 0 ? renderGrid(myFiles, 'my') : (
+            <EmptyCard message={labels.myEmpty} gradient={GRAD_MY} />
+          )}
+        </View>
+      ) : coachFiles.length > 0 ? (
+        <View style={s.sectionWrap}>
+          <SectionHead title={labels.coachSection} count={coachFiles.length} gradient={GRAD_COACH} />
+          {renderGrid(coachFiles, 'coach')}
+        </View>
+      ) : null}
+
+      <View style={s.sectionWrap}>
+        <SectionHead
+          title={isTrainer ? labels.coachSection : labels.mySection}
+          count={isTrainer ? coachFiles.length : myFiles.length}
+          gradient={isTrainer ? GRAD_COACH : GRAD_MY}
+        />
+        {(isTrainer ? coachFiles : myFiles).length > 0 ? (
+          renderGrid(isTrainer ? coachFiles : myFiles, isTrainer ? 'coach' : 'my')
+        ) : (
+          <EmptyCard message={isTrainer ? labels.coachEmpty : labels.myEmpty} gradient={isTrainer ? GRAD_COACH : GRAD_MY} />
+        )}
+      </View>
+
+      {yourDocuments.length > 0 ? (
+        <View style={s.sectionWrap}>
+          <SectionHead title={labels.docsSection} count={yourDocuments.length} gradient={GRAD_COACH} />
+          {renderGrid(yourDocuments, 'coach')}
+        </View>
+      ) : null}
+
+      {notes.length > 0 ? (
+        <View style={s.sectionWrap}>
+          <SectionHead title={labels.notesSection} count={notes.length} gradient={GRAD_COACH} />
+          <View style={{ gap: 12, paddingHorizontal: 16 }}>
+            {notes.map((n) => (
+              <NoteCard key={n.id || String(n.createdAt)} note={n} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {onUploadPress ? (
+        <View style={s.uploadWrap}>
+          <TouchableOpacity onPress={onUploadPress} activeOpacity={0.88}>
+            <LinearGradient colors={UPLOAD_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.uploadBtn}>
+              <Feather name="upload" size={16} color="#fff" />
+              <Text style={s.uploadText}>{uploadLabel}</Text>
             </LinearGradient>
-          ) : null}
-
-          {myPhotos.length > 0 ? (
-            <MyPhotoThumbnailsRow
-              files={myPhotos}
-              isDark={isDark}
-              onOpenItem={onOpenItem}
-              onDownloadItem={onDownloadItem}
-              onShareItem={onShareItem}
-              onDeleteItem={onDeleteItem}
-            />
-          ) : (
-            <View style={[styles.photosEmptyInline, { borderColor: theme.border, backgroundColor: isDark ? 'rgba(255,107,157,0.06)' : 'rgba(255,107,157,0.08)' }]}>
-              <Text style={[styles.photosEmptyText, { color: theme.text60 }]}>No photos yet — tap Upload to add progress shots.</Text>
-            </View>
-          )}
+          </TouchableOpacity>
         </View>
-      )}
-
-      {showDocs && (
-        <View>
-          <SectionHeader title="TRAINER SHARED" isDark={isDark} />
-          <CategoryHeader title="Documents" count={trainerDocs.length} open={docsOpen} onToggle={() => setDocsOpen((v) => !v)} isDark={isDark} />
-          {docsOpen
-            ? trainerDocs.map((file) => (
-                <TrainerDocStrip
-                  key={file.id || file.url || file.name}
-                  file={file}
-                  isDark={isDark}
-                  onOpen={async () => {
-                    try {
-                      await onMarkRead?.(file);
-                    } catch (_) {}
-                    onOpenItem?.(file);
-                  }}
-                  onDownload={() => onDownloadItem?.(file)}
-                />
-              ))
-            : null}
-        </View>
-      )}
-
-      {showNotes && (
-        <View>
-          <SectionHeader title="NOTES FROM TRAINER" isDark={isDark} />
-          {notes.length > 0 ? (
-            notes.map((note) => (
-              <NoteCard
-                key={note.id || String(note.createdAt) || Math.random()}
-                note={note}
-                isDark={isDark}
-                onOpen={async () => {
-                  try {
-                    await onMarkRead?.(note);
-                  } catch (_) {}
-                  Alert.alert('Note from coach', String(note?.content || '').trim() || '—');
-                }}
-              />
-            ))
-          ) : (
-            <View style={[styles.emptyState, { borderColor: theme.border }]}>
-              <MessageSquare size={28} color={theme.text40} />
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>No notes yet</Text>
-            </View>
-          )}
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  filterScroll: { marginVertical: 8 },
-  filterContent: { paddingHorizontal: 16, gap: 8 },
-  filterButton: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    minHeight: 36,
-    justifyContent: 'center',
+const s = StyleSheet.create({
+  heroOuter: { paddingHorizontal: 16, marginTop: 8, marginBottom: 20 },
+  heroBorderRing: { borderRadius: 22, padding: 2 },
+  heroInner: {
+    borderRadius: 20, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center',
   },
-  filterButtonActive: { borderWidth: 0, paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' },
-  filterGradient: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 6, justifyContent: 'center' },
-  filterText: { fontSize: 13, fontWeight: '500' },
-  filterTextActive: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  sectionHeader: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.4,
-    marginTop: 20,
-    marginBottom: 10,
-    marginHorizontal: 16,
-  },
-  gradientWrapper: { padding: 2 },
-  gradientInner: { overflow: 'hidden' },
-  uploadGradient: { marginHorizontal: 16, marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
-  uploadButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: 46 },
-  uploadText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  thumbRowWrap: { marginBottom: 4 },
-  thumbRowContent: { paddingHorizontal: 16, gap: 10, alignItems: 'center', paddingBottom: 2 },
-  thumbInner: { borderRadius: 12, overflow: 'hidden' },
-  thumbImage: { width: PHOTO_THUMB, height: PHOTO_THUMB, backgroundColor: 'rgba(255,255,255,0.05)' },
-  thumbPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  thumbPlaceholderText: { fontSize: 11, fontWeight: '700' },
-  thumbHint: { fontSize: 11, fontWeight: '600', marginTop: 8, marginHorizontal: 16, marginBottom: 4 },
-  photosEmptyInline: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  photosEmptyText: { fontSize: 13, fontWeight: '600', lineHeight: 18, textAlign: 'center' },
-  trainerStripOuter: { marginHorizontal: 16, marginBottom: 8 },
-  trainerStripTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  trainerStripAccent: { width: 4, alignSelf: 'stretch' },
-  trainerStripMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingLeft: 12,
-    paddingRight: 6,
-    gap: 10,
-    minWidth: 0,
-  },
-  trainerStripIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: 'rgba(6,182,212,0.10)',
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trainerStripText: { flex: 1, minWidth: 0 },
-  trainerStripTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
-  trainerStripMeta: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  trainerStripDl: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(6,182,212,0.28)',
-    backgroundColor: 'rgba(6,182,212,0.06)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryHeaderContainer: { marginHorizontal: 16, marginBottom: 8 },
-  categoryHeaderButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 48, paddingHorizontal: 14 },
-  categoryLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  categoryTitle: { fontSize: 14, fontWeight: '700' },
-  categoryCount: { fontSize: 12, marginTop: 2 },
-  noteCardContainer: { marginHorizontal: 16, marginBottom: 10 },
-  noteCard: { padding: 12 },
-  noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  noteLabel: { fontSize: 12, fontWeight: '700' },
-  noteText: { fontSize: 13, lineHeight: 20, marginBottom: 8 },
-  viewFullButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  viewFullText: { fontSize: 12, fontWeight: '600', color: '#FF6B9D' },
-  emptyState: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  emptyTitle: { fontSize: 13, fontWeight: '700', marginTop: 8 },
-});
+  heroTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.3 },
+  heroRule: { width: 36, height: 3, borderRadius: 2, marginVertical: 12 },
+  heroKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 },
+  heroBrand: { fontSize: 30, fontWeight: '900', color: GRAD_MY[0], letterSpacing: -0.5, marginBottom: 8 },
+  heroTagline: { fontSize: 10, fontWeight: '700', letterSpacing: 1.8, textTransform: 'uppercase' },
 
+  sectionWrap: { marginBottom: 24 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 14, gap: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: '900', letterSpacing: 1.6 },
+  sectionBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  sectionBadgeText: { fontSize: 11, fontWeight: '900', color: '#fff' },
+  sectionLine: { flex: 1, height: 2, borderRadius: 1, marginLeft: 4 },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 },
+
+  fileCard: {
+    width: '47%', flexGrow: 1, borderRadius: 18, borderWidth: 1, overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+      android: { elevation: 4 },
+    }),
+  },
+  fileCardGradient: { height: 160, padding: 12, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  fileCardThumb: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  typeBadge: {
+    position: 'absolute', top: 10, left: 10,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+  },
+  typeBadgeText: { fontSize: 10, fontWeight: '900', color: '#fff', letterSpacing: 0.8 },
+  fileCardIconWrap: { alignItems: 'center', justifyContent: 'center' },
+  dlBtn: {
+    position: 'absolute', bottom: 10, right: 10,
+    width: 34, height: 34, borderRadius: 17, borderWidth: 1.5,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  fileCardInfo: { padding: 12, paddingTop: 10 },
+  fileCardName: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  fileCardMeta: { fontSize: 11, fontWeight: '600', marginTop: 3 },
+
+  noteCard: {
+    flexDirection: 'row', borderRadius: 16, borderWidth: 1, overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+      android: { elevation: 2 },
+    }),
+  },
+  noteAccent: { width: 4 },
+  noteContent: { flex: 1, padding: 16 },
+  noteDate: { fontSize: 12, fontWeight: '800', color: GRAD_MY[0], letterSpacing: 0.5, marginBottom: 8 },
+  noteText: { fontSize: 14, fontWeight: '600', lineHeight: 22 },
+
+  emptyCard: {
+    marginHorizontal: 16, borderWidth: 1, borderStyle: 'dashed', borderRadius: 18,
+    paddingVertical: 32, alignItems: 'center', gap: 10,
+  },
+  emptyText: { fontSize: 13, fontWeight: '600', textAlign: 'center', paddingHorizontal: 12 },
+
+  uploadWrap: { paddingHorizontal: 16, paddingBottom: 24, marginTop: 4 },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 20,
+    ...Platform.select({
+      ios: { shadowColor: GRAD_MY[0], shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+      android: { elevation: 4 },
+    }),
+  },
+  uploadText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+});

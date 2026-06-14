@@ -13,10 +13,9 @@ module.exports = {
     version: '1.0.0',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
-    scheme: 'anatrox',
+    scheme: 'coachconnect',
     plugins: [
-      ['expo-camera', { cameraPermission: 'Allow Coach Connect to access your camera for progress photos.' }],
-      ['expo-barcode-scanner', { cameraPermission: 'Allow Coach Connect to scan food barcodes.' }],
+      ['expo-camera', { cameraPermission: 'Allow Coach Connect to access your camera for progress photos and barcode scanning.' }],
       ['expo-image-picker', {
         photosPermission: 'Allow Coach Connect to access your photos to add images to chats.',
         cameraPermission: 'Allow Coach Connect to take photos for progress tracking.',
@@ -32,15 +31,26 @@ module.exports = {
         }
       ],
       'expo-apple-authentication',
+      [
+        'expo-speech-recognition',
+        {
+          microphonePermission:
+            'Allow Coach Connect to use the microphone so you can talk to your AI Coach.',
+          speechRecognitionPermission:
+            'Allow Coach Connect to transcribe your voice for AI Coach messages.',
+        },
+      ],
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.coachconnect',
+      bundleIdentifier: 'com.chrisshina.coachconnect',
       buildNumber: '1',
       usesAppleSignIn: true,
       infoPlist: {
         NSCameraUsageDescription: 'This app uses the camera for progress photos and barcode scanning.',
-        NSMicrophoneUsageDescription: 'This app uses the microphone for voice coaching features.',
+        NSMicrophoneUsageDescription: 'This app uses the microphone so you can talk to your AI Coach.',
+        NSSpeechRecognitionUsageDescription:
+          'This app uses speech recognition to turn your voice into messages for your AI Coach.',
         NSPhotoLibraryUsageDescription: 'This app needs access to your photo library to save progress photos.',
         // Allow insecure HTTP loads to local dev API (LAN IP / localhost).
         // Without this, iOS may block `http://192.168.x.x:4000` with "Network request failed".
@@ -64,7 +74,7 @@ module.exports = {
     },
     newArchEnabled: true,
     android: {
-      package: 'com.yourcompany.anatrox',
+      package: 'com.chrisshina.coachconnect',
       versionCode: 1,
       permissions: ['CAMERA', 'RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'],
     },
@@ -78,16 +88,12 @@ module.exports = {
       firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
       firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
       firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-      /** Production API origin — set EXPO_PUBLIC_API_BASE_URL (no trailing slash). */
-      API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || '',
+      /** Always-on Cloud Run API — override with EXPO_PUBLIC_API_BASE_URL if needed. */
+      API_BASE_URL:
+        process.env.EXPO_PUBLIC_API_BASE_URL ||
+        'https://coachconnect-api-421005574501.us-central1.run.app',
       /** Optional: shown for Contact support / Report a bug in Settings. */
-      supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || '').trim(),
-      youtubeApiKey: String(
-        process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ||
-          process.env.YOUTUBE_API_KEY ||
-          process.env.REACT_NATIVE_YOUTUBE_API_KEY ||
-          '',
-      ).trim(),
+      supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'coachconnect@gmail.com').trim(),
     },
   },
 };

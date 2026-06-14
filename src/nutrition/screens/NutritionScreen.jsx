@@ -3,10 +3,24 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
 import { useTheme } from '../../shared/ui/ThemeContext';
+
+// Nutrition Today gradients (macro donuts + calorie ring when logging)
+const NUT_CALORIES_GRADIENT = ['#BE185D', '#C2410C'];
+const NUT_MACRO_GRADIENTS = {
+  protein: ['#BE185D', '#C2410C'],
+  carbs: ['#BE185D', '#C2410C'],
+  fat: ['#BE185D', '#C2410C'],
+};
+
+const NUT_NEUTRAL_TRACK = {
+  dark: 'rgba(255,255,255,0.12)',
+  light: 'rgba(0,0,0,0.08)',
+};
 
 const G_TO_OZ = 1 / 28.3495;
 const ML_TO_FL_OZ = 1 / 29.5735;
@@ -21,8 +35,8 @@ const ACCENT = {
 
 /** Meal card action row — matches vibrant macro / brand styling */
 const NUT_SCAN_CYAN = '#64D2FF';
-const NUT_SEARCH_GRADIENT = ['#FF6B9D', '#F97316'];
 const NUT_QUICK_PURPLE = '#C084FC';
+const NUT_SEARCH_GRADIENT = ['#FF6B9D', '#F97316'];
 
 function getColors(isDark) {
   return isDark
@@ -111,44 +125,43 @@ const getMealEmptyVisual = (mealName) => {
   };
 };
 
-const CalorieRing = ({ consumed, total, isDark = true }) => {
+const CalorieRing = ({ consumed, total, isDark = true, isEmpty = false }) => {
   const size = 264;
   const cx = size / 2;
   const cy = size / 2;
-  const strokeOuter = 13;
   const strokeInner = 16;
   const rInner = (size - strokeInner) / 2 - 12;
   const circumferenceInner = Math.PI * 2 * rInner;
   const progress = total > 0 ? Math.min(consumed / total, 1) : 0;
   const offset = circumferenceInner - progress * circumferenceInner;
-  // Remove the outer decorative ring entirely (it made the circle look "cut"/segmented).
-  const trackOuter = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+  const trackOuter = isDark ? NUT_NEUTRAL_TRACK.dark : NUT_NEUTRAL_TRACK.light;
   const innerDiscR = Math.max(rInner - strokeInner / 2 - 14, size * 0.26);
   const innerDiscFill = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.035)';
   const innerDiscStroke = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
+
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
       <Defs>
         <SvgGradient id="calorieGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor="#FF2D78" stopOpacity={1} />
-          <Stop offset="45%" stopColor="#F97316" stopOpacity={1} />
-          <Stop offset="100%" stopColor="#EC4899" stopOpacity={1} />
+          <Stop offset="0%" stopColor={NUT_CALORIES_GRADIENT[0]} stopOpacity={1} />
+          <Stop offset="100%" stopColor={NUT_CALORIES_GRADIENT[1]} stopOpacity={1} />
         </SvgGradient>
       </Defs>
-      {/* Inner hub — drawn first so rings sit on top */}
       <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
       <Circle cx={cx} cy={cy} r={rInner} stroke={trackOuter} strokeWidth={strokeInner} fill="none" />
-      <Circle
-        cx={cx}
-        cy={cy}
-        r={rInner}
-        stroke="url(#calorieGrad)"
-        strokeWidth={strokeInner}
-        fill="none"
-        strokeDasharray={circumferenceInner}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-      />
+      {!isEmpty ? (
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={rInner}
+          stroke="url(#calorieGrad)"
+          strokeWidth={strokeInner}
+          fill="none"
+          strokeDasharray={circumferenceInner}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      ) : null}
     </Svg>
   );
 };
@@ -157,51 +170,61 @@ const ArcProgress = ({
   size,
   stroke,
   progress,
-  color,
+  gradientColors = NUT_CALORIES_GRADIENT,
   trackColor = 'rgba(255,255,255,0.08)',
   isDark = true,
+  isEmpty = false,
 }) => {
   const cx = size / 2;
   const cy = size / 2;
   const r = (size - stroke) / 2;
   const circumference = Math.PI * 2 * r;
-  const offset = circumference - (progress / 100) * circumference;
-  const innerDiscR = Math.max(r - stroke / 2 - 10, size * 0.22);
+  const offset = circumference - (Math.min(Math.max(progress, 0), 100) / 100) * circumference;
+  const innerDiscR = Math.max(r - stroke / 2 - 8, size * 0.2);
   const innerDiscFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)';
   const innerDiscStroke = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
-  const gradId = `macroGrad-${String(color).replace(/[^a-z0-9]/gi, '')}-${size}`;
+  const gradId = `macroGrad-${size}-${gradientColors.join('-')}`;
+
+  if (isEmpty) {
+    return (
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
+        <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
+      </Svg>
+    );
+  }
+
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
       <Defs>
-        <SvgGradient id={gradId} x1="0" y1="0" x2={String(size)} y2={String(size)}>
-          <Stop offset="0" stopColor={color} stopOpacity={1} />
-          <Stop offset="1" stopColor={isDark ? '#FFFFFF' : '#000000'} stopOpacity={0.08} />
+        <SvgGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={gradientColors[0]} stopOpacity={1} />
+          <Stop offset="100%" stopColor={gradientColors[1]} stopOpacity={1} />
         </SvgGradient>
       </Defs>
       <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
       <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
-      <Circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        stroke={`url(#${gradId})`}
-        strokeWidth={stroke}
-        fill="none"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-      />
+      {progress > 0 ? (
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          stroke={`url(#${gradId})`}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      ) : null}
     </Svg>
   );
 };
 
-const MACRO_RING_COLORS = {
-  Protein: '#FF6B9D',
-  Carbs: '#64D2FF',
-  Fat: '#C084FC',
-};
-
-const getMacroRingColor = (label) => MACRO_RING_COLORS[label] || '#EC4899';
+// Percent text inside donut should follow theme (not macro colors)
+const MacroPercentText = ({ children, style, color }) => (
+  <Text style={[style, { color }]}>{children}</Text>
+);
 
 /** Whole numbers when exact (3 → "3"); one decimal when needed (4.5 → "4.5"). */
 function formatNutrientAmount(n) {
@@ -563,7 +586,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         </LinearGradient>
       </Pressable>
       <Pressable
-        onPress={() => onQuickAdd && onQuickAdd(mealType)}
+        onPress={() => onQuickAdd?.(mealType)}
         style={({ pressed }) => [
           mealS.quickAddBtn,
           {
@@ -575,7 +598,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         ]}
       >
         <View style={mealS.quickAddContent}>
-          <Ionicons name="add-circle-outline" size={18} color={NUT_QUICK_PURPLE} />
+          <Ionicons name="create-outline" size={18} color={NUT_QUICK_PURPLE} />
           <Text style={[mealS.quickAddBtnText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
         </View>
       </Pressable>
@@ -661,7 +684,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 </LinearGradient>
               </Pressable>
               <Pressable
-                onPress={() => onQuickAdd && onQuickAdd(mealType)}
+                onPress={() => onQuickAdd?.(mealType)}
                 style={({ pressed }) => [
                   emptyStyles.quickBtn,
                   {
@@ -673,7 +696,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 ]}
               >
                 <View style={emptyStyles.quickAddContent}>
-                  <Ionicons name="add-circle-outline" size={18} color={NUT_QUICK_PURPLE} />
+                  <Ionicons name="create-outline" size={18} color={NUT_QUICK_PURPLE} />
                   <Text style={[emptyStyles.quickText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
                 </View>
               </Pressable>
@@ -772,7 +795,7 @@ const createMealS = (colors) =>
       borderWidth: 1.5,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 14,
+      paddingHorizontal: 10,
       paddingVertical: 12,
     },
     quickAddContent: {
@@ -784,7 +807,7 @@ const createMealS = (colors) =>
       maxWidth: '100%',
     },
     quickAddBtnText: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '800',
       letterSpacing: 0.15,
       textAlign: 'center',
@@ -796,14 +819,14 @@ const createEmptyStyles = (colors) =>
   StyleSheet.create({
     container: {
       alignItems: 'center',
-      paddingVertical: 20,
+      paddingVertical: 12,
       paddingHorizontal: 12,
-      gap: 6,
+      gap: 4,
     },
     lottieWrap: {
-      width: 120,
-      height: 120,
-      marginBottom: 4,
+      width: 80,
+      height: 80,
+      marginBottom: 2,
     },
     lottie: {
       width: '100%',
@@ -820,12 +843,12 @@ const createEmptyStyles = (colors) =>
     buttonRow: {
       flexDirection: 'row',
       gap: 10,
-      marginTop: 12,
+      marginTop: 8,
       width: '100%',
       alignItems: 'center',
       flexWrap: 'nowrap',
       justifyContent: 'space-between',
-      paddingVertical: 2,
+      paddingVertical: 0,
     },
     scanBtn: {
       flex: 1,
@@ -1035,14 +1058,21 @@ export const NutritionScreen = ({
   onRemoveLog,
   onEditLog,
   onSearch   = () => {},
+  onPillSearch,
   onOpenSettings,
   onQuickAdd = () => {},
+  topFoodNames = [],
 }) => {
   const { isDark } = useTheme();
   const colors = useMemo(() => getColors(isDark), [isDark]);
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
+  const quickPills = topFoodNames.length > 0
+    ? topFoodNames.slice(0, 3)
+    : ['Chicken Breast', 'Rice', 'Eggs'];
   const solidCardBg = isDark ? '#0A0A0F' : '#FFFFFF';
+  const isEmpty = consumed <= 0;
+  const remainingKcal = Math.max(Math.round(goal - consumed), 0);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screenBg }}>
@@ -1060,12 +1090,11 @@ export const NutritionScreen = ({
                 ringShadow,
               ]}
             >
-              <View style={[screen.searchInner, { backgroundColor: colors.inputBg }]}>
+              <View style={[screen.searchInner, { backgroundColor: colors.inputBg, opacity: 0.92 }]}>
                 <Ionicons name="search-outline" size={18} color={colors.textMuted} />
                 <Text style={[screen.searchPlaceholder, { color: colors.textMuted }]} numberOfLines={1}>
                   Search foods, brands...
                 </Text>
-                <Ionicons name="barcode-outline" size={22} color={ACCENT.hotPink} />
               </View>
             </TouchableOpacity>
             {onOpenSettings ? (
@@ -1079,10 +1108,16 @@ export const NutritionScreen = ({
             ) : null}
           </View>
           <View style={screen.suggRow}>
-            {['McDonalds', 'Chicken Breast', 'Chipotle'].map((t) => (
-              <View key={t} style={[screen.suggChip, { backgroundColor: colors.chipBg, borderColor: colors.cardBorder }]}>
+            {quickPills.map((t) => (
+              <TouchableOpacity
+                key={t}
+                activeOpacity={0.7}
+                onPress={() => onPillSearch?.(t)}
+                style={[screen.suggChip, { backgroundColor: colors.chipBg, borderColor: colors.cardBorder }]}
+              >
+                <Ionicons name="search-outline" size={11} color={colors.textMuted} style={{ marginRight: 4 }} />
                 <Text style={[screen.suggText, { color: colors.textMuted }]}>{t}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
           {/* Theme toggle removed — controlled via Settings */}
@@ -1098,25 +1133,36 @@ export const NutritionScreen = ({
           ]}
         >
           <View style={screen.ringCenter}>
-            <CalorieRing consumed={consumed} total={goal} isDark={isDark} />
+            <CalorieRing consumed={consumed} total={goal} isDark={isDark} isEmpty={isEmpty} />
             <View style={screen.ringTextOverlay}>
-              <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>CONSUMED</Text>
-              <Text style={[screen.ringBigNumber, { color: colors.text }]}>{Math.round(consumed).toLocaleString()}</Text>
-              <Text style={[screen.ringSubLabel, { color: colors.textMuted }]}>of {goal.toLocaleString()} kcal</Text>
+              {isEmpty ? (
+                <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>Start logging</Text>
+              ) : (
+                <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>CONSUMED</Text>
+              )}
+              <Text style={[screen.ringBigNumber, { color: colors.text }]}>
+                {(isEmpty ? remainingKcal : Math.round(consumed)).toLocaleString()}
+              </Text>
+              <Text style={[screen.ringSubLabel, { color: colors.textMuted }]}>
+                {isEmpty
+                  ? `of ${goal.toLocaleString()} remaining`
+                  : `of ${goal.toLocaleString()} kcal`}
+              </Text>
             </View>
           </View>
         </View>
 
         {/* Macro rings + bars */}
         <View style={screen.macroRow}>
-          {(macros || DEFAULT_MACROS).map((m) => {
-            const ringColor = getMacroRingColor(m.label);
-            const trackColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+          {(macros || DEFAULT_MACROS).map((m, macroIndex) => {
             const pct = Math.min(Math.max(Math.round(Number(m.pct) || 0), 0), 999);
             const pctFill = Math.min(Number(m.pct) || 0, 100);
             const val = Math.round(Number(m.val) || 0);
             const gGoal = Math.round(Number(m.goal) || 0);
-            const labelColor = colors.textMuted;
+            const macroKey = String(m.label || '').toLowerCase();
+            const macroEmpty = val <= 0 && pctFill <= 0;
+            const trackColor = isDark ? NUT_NEUTRAL_TRACK.dark : NUT_NEUTRAL_TRACK.light;
+            const gradColors = NUT_MACRO_GRADIENTS[macroKey] ?? NUT_CALORIES_GRADIENT;
             return (
               <View
                 key={m.label}
@@ -1131,24 +1177,36 @@ export const NutritionScreen = ({
                     size={100}
                     stroke={8}
                     progress={pctFill}
-                    color={ringColor}
+                    gradientColors={gradColors}
                     trackColor={trackColor}
                     isDark={isDark}
+                    isEmpty={macroEmpty}
                   />
                   <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={[screen.macroPct, { color: ringColor }]}>{pct}%</Text>
+                    <MacroPercentText style={screen.macroPct} color={colors.text}>
+                      {pct}%
+                    </MacroPercentText>
                     <Text style={[screen.macroRemaining, { color: colors.textMuted }]}>
                       {Math.max(gGoal - val, 0)}g left
                     </Text>
                   </View>
                 </View>
-                <Text style={[screen.macroLabel, { color: labelColor }]}>{m.label}</Text>
+                <Text style={[screen.macroLabel, { color: colors.textMuted }]}>{m.label}</Text>
                 <Text style={[screen.macroGoal, { color: colors.text }]}>
                   {val} / {gGoal}g
                 </Text>
-                <View style={[screen.macroBarTrack, { backgroundColor: trackColor }]}>
-                  <View style={[screen.macroBarFill, { width: `${pctFill}%`, backgroundColor: ringColor }]} />
-                </View>
+                {macroEmpty ? null : (
+                  <View style={[screen.macroBarTrack, { backgroundColor: trackColor }]}>
+                    <View style={[screen.macroBarFill, { width: `${pctFill}%` }]}>
+                      <LinearGradient
+                        colors={gradColors}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={StyleSheet.absoluteFill}
+                      />
+                    </View>
+                  </View>
+                )}
               </View>
             );
           })}
@@ -1171,14 +1229,8 @@ export const NutritionScreen = ({
           />
         ))}
 
-        <View style={{ height: 90 }} />
+        <View style={{ height: 24 }} />
       </ScrollView>
-
-      <TouchableOpacity onPress={() => handleOpenQuickAdd('snacks')} activeOpacity={0.85} style={screen.fabWrapper}>
-        <LinearGradient colors={['#FF5D9E', '#FF834D']} style={screen.fab}>
-          <Text style={screen.fabText}>+</Text>
-        </LinearGradient>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -1226,7 +1278,7 @@ const screen = StyleSheet.create({
   },
   searchPlaceholder: { flex: 1, fontSize: 13 },
   suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
-  suggChip: { borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
+  suggChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
   suggText: { fontSize: 11, fontWeight: '600' },
   ringCardOuter: {
     marginBottom: 12,
@@ -1265,10 +1317,7 @@ const screen = StyleSheet.create({
     marginTop: 2,
     overflow: 'hidden',
   },
-  macroBarFill: { height: '100%', borderRadius: 99 },
-  fabWrapper: { position: 'absolute', bottom: 24, right: 20 },
-  fab: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
-  fabText: { color: 'white', fontSize: 30, fontWeight: '300', lineHeight: 34 },
+  macroBarFill: { height: '100%', borderRadius: 99, overflow: 'hidden' },
 });
 
 export default NutritionScreen;

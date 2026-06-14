@@ -1,4 +1,6 @@
 const admin = require('firebase-admin');
+const { aggregateCoachWeeklyData, resolveCoachContextStartMs } = require('./lib/coachWeeklyData');
+const { fetchCoachExtendedContext } = require('./lib/coachExtendedContext');
 
 /**
  * @typedef {Object} WeeklyContext
@@ -135,7 +137,7 @@ function computeVolumeTrend(dailyVolumes) {
 }
 
 /**
- * Aggregate a user's last 7 days into a WeeklyContext.
+ * Aggregate a user's app history (since account creation) into coach context.
  *
  * Queries:
  * - users/{userId}/profile
@@ -158,8 +160,6 @@ async function getWeeklyContext(userId) {
   }
 
   const db = admin.firestore();
-  const now = admin.firestore.Timestamp.now();
-  const startTs = admin.firestore.Timestamp.fromMillis(now.toMillis() - 7 * 24 * 60 * 60 * 1000);
 
   // ── Profile (required for 404) ─────────────────────────────────────────────
   // Preferred (as requested): users/{userId}/profile/current
@@ -186,127 +186,36 @@ async function getWeeklyContext(userId) {
     throw new NotFoundError(`User profile not found for userId=${userId}`);
   }
 
-  // ── Macro targets (optional) ───────────────────────────────────────────────
-  const targetsRef = db.collection('users').doc(userId).collection('macroTargets').doc('current');
-  const targetsSnap = await targetsRef.get().catch(() => null);
-  const targets = targetsSnap && targetsSnap.exists ? (targetsSnap.data() || {}) : null;
-
-  // ── Nutrition logs (optional) ──────────────────────────────────────────────
-  const nutritionDocs = await queryLast7ByTimestamp(
-    db.collection('users').doc(userId).collection('nutritionLogs'),
-    startTs
-  );
-  const nutritionDays = [];
-  for (const d of nutritionDocs) {
-    const data = d.data() || {};
-    const totals = data.dayTotals || data.totals || {};
-    const calories = toNumberOrNull(totals.calories);
-    const protein = toNumberOrNull(totals.protein);
-    const carbs = toNumberOrNull(totals.carbs);
-    const fat = toNumberOrNull(totals.fat);
-    if (calories != null || protein != null || carbs != null || fat != null) {
-      nutritionDays.push({ calories, protein, carbs, fat });
-    }
-  }
-
-  /**
-   * nutritionAnalysis calculations:
-   * - avgDailyCalories/macros: mean across days with any totals present
-   * - daysLogged: count of days with totals present
-   * - consistencyScore: daysLogged / 7 * 100
-   */
-  const daysLogged = nutritionDays.length;
-  const nutritionAnalysis = daysLogged
-    ? {
-        avgDailyCalories: meanOrNull(nutritionDays.map((x) => x.calories).filter((n) => n != null)),
-        avgProtein: meanOrNull(nutritionDays.map((x) => x.protein).filter((n) => n != null)),
-        avgCarbs: meanOrNull(nutritionDays.map((x) => x.carbs).filter((n) => n != null)),
-        avgFat: meanOrNull(nutritionDays.map((x) => x.fat).filter((n) => n != null)),
-        daysLogged,
-        consistencyScore: Math.round((daysLogged / 7) * 100),
-      }
-    : null;
-
-  // ── Workout logs (optional) ────────────────────────────────────────────────
-  const workoutDocs = await queryLast7ByTimestamp(
-    db.collection('users').doc(userId).collection('workoutLogs'),
-    startTs
-  );
-  const workoutVolumes = [];
-  const workoutRpes = [];
-  for (const d of workoutDocs) {
-    const data = d.data() || {};
-    const v = toNumberOrNull(data.totalVolume);
-    const r = toNumberOrNull(data.avgRPE);
-    if (v != null) workoutVolumes.push(v);
-    if (r != null) workoutRpes.push(r);
-  }
-
-  /**
-   * workoutAnalysis calculations:
-   * - sessionsLogged: number of docs returned in last 7 days (even if some fields missing)
-   * - totalVolume: sum(totalVolume) across docs where present
-   * - avgRPE: mean(avgRPE) across docs where present
-   * - volumeTrend: compare early-week vs late-week mean volumes ('up'|'down'|'flat')
-   */
-  const sessionsLogged = workoutDocs.length;
-  const totalVolume = workoutVolumes.length ? workoutVolumes.reduce((a, b) => a + b, 0) : null;
-  const workoutAnalysis = sessionsLogged
-    ? {
-        sessionsLogged,
-        totalVolume,
-        avgRPE: meanOrNull(workoutRpes),
-        volumeTrend: computeVolumeTrend(workoutVolumes),
-      }
-    : null;
-
-  // ── Sleep logs (optional) ──────────────────────────────────────────────────
-  const sleepDocs = await queryLast7ByTimestamp(
-    db.collection('users').doc(userId).collection('sleepLogs'),
-    startTs
-  );
-  const sleepHours = [];
-  const sleepQualities = [];
-  for (const d of sleepDocs) {
-    const data = d.data() || {};
-    const h = toNumberOrNull(data.hours);
-    if (h != null) sleepHours.push(h);
-    if (typeof data.quality === 'string' && data.quality.trim()) sleepQualities.push(data.quality.trim());
-  }
-
-  /**
-   * sleepAnalysis calculations:
-   * - avgHours: mean(hours) across docs where present
-   * - quality: most recent non-empty quality string if present
-   * - isDepleted: avgHours < 6.5
-   */
-  const avgHours = meanOrNull(sleepHours);
-  const sleepAnalysis = sleepDocs.length
-    ? {
-        avgHours,
-        quality: sleepQualities.length ? sleepQualities[0] : null,
-        isDepleted: avgHours == null ? null : avgHours < 6.5,
-      }
-    : null;
+  const startMs = resolveCoachContextStartMs(profile);
+  const [{
+    nutritionAnalysis,
+    workoutAnalysis,
+    sleepAnalysis,
+    macroTargets,
+    weightLog,
+    weightTrend,
+    wellnessAnalysis,
+    streakData,
+    contextMeta,
+  }, extendedContext] = await Promise.all([
+    aggregateCoachWeeklyData(db, userId, startMs),
+    fetchCoachExtendedContext(db, userId, profile),
+  ]);
 
   /** user object: coerce known profile fields. */
   const user = {
     age: toNumberOrNull(profile.age),
     weight: toNumberOrNull(profile.weight),
     height: toNumberOrNull(profile.height),
-    goal: typeof profile.goal === 'string' ? profile.goal : null,
-    trainingLevel: typeof profile.trainingLevel === 'string' ? profile.trainingLevel : null,
+    goal:
+      (typeof profile.primaryGoal === 'string' && profile.primaryGoal) ||
+      (typeof profile.goal === 'string' && profile.goal) ||
+      null,
+    trainingLevel:
+      (typeof profile.fitnessLevel === 'string' && profile.fitnessLevel) ||
+      (typeof profile.trainingLevel === 'string' && profile.trainingLevel) ||
+      null,
   };
-
-  /** macroTargets: coerce target fields if present. */
-  const macroTargets = targets
-    ? {
-        calories: toNumberOrNull(targets.calories),
-        protein: toNumberOrNull(targets.protein),
-        carbs: toNumberOrNull(targets.carbs),
-        fat: toNumberOrNull(targets.fat),
-      }
-    : null;
 
   return {
     user,
@@ -314,6 +223,15 @@ async function getWeeklyContext(userId) {
     nutritionAnalysis,
     workoutAnalysis,
     sleepAnalysis,
+    weightLog: weightLog || [],
+    weightTrend: weightTrend || 'unknown',
+    wellnessAnalysis: wellnessAnalysis || null,
+    streakData: streakData || null,
+    contextMeta: contextMeta || null,
+    workoutPlan: extendedContext?.workoutPlan || null,
+    notesAndFiles: extendedContext?.notesAndFiles || null,
+    trainerDocuments: extendedContext?.trainerDocuments || null,
+    linkedTrainerId: extendedContext?.linkedTrainerId || null,
   };
 }
 

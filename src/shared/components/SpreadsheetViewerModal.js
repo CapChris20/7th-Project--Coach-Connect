@@ -1,6 +1,21 @@
 /**
- * In-app spreadsheet viewer for .csv and .xlsx files.
- * Parses and renders first sheet as a scrollable table. No external app.
+ * SpreadsheetViewerModal — read-only viewer for uploaded .csv / .xlsx files.
+ *
+ * NOTE: This is NOT SpreadsheetEditorModal (trainer edit UI lives at
+ * src/trainer/components/documents/SpreadsheetEditorModal.js). Clients and trainers
+ * use this modal to preview file attachments from a download URL.
+ *
+ * Flow:
+ *   1. Parent passes visible + url + filename
+ *   2. fetch(url) → parse CSV text OR XLSX binary
+ *   3. Render rows in a scrollable table (horizontal + vertical ScrollViews)
+ *
+ * Props:
+ *   visible — show/hide modal
+ *   url     — Firebase Storage or HTTPS URL to the file
+ *   name    — filename (used to detect .csv vs .xlsx)
+ *   isDark  — light/dark chrome for header and cells
+ *   onClose — back button / Android back
  */
 
 import React, { useState, useEffect } from 'react';
@@ -17,50 +32,60 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import XLSX from '../../utils/xlsx';
+import XLSX from '../../utils/xlsx'; // SheetJS build for React Native
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_PADDING = 10;
-const MIN_CELL_WIDTH = 80;
+const MIN_CELL_WIDTH = 80; // each column at least this wide for readability
 
+/**
+ * parseCSV — turn raw CSV/TSV text into a 2D array of strings.
+ * Handles quoted fields and escaped quotes ("" inside quotes).
+ */
 function parseCSV(text) {
   const rows = [];
   let row = [];
   let cell = '';
   let inQuotes = false;
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+
     if (inQuotes) {
       if (ch === '"') {
         if (text[i + 1] === '"') {
-          cell += '"';
+          cell += '"'; // escaped quote
           i++;
         } else {
-          inQuotes = false;
+          inQuotes = false; // end of quoted field
         }
       } else {
         cell += ch;
       }
       continue;
     }
+
     if (ch === '"') {
       inQuotes = true;
       continue;
     }
+
     if (ch === ',' || ch === '\t') {
       row.push(cell.trim());
       cell = '';
       if (ch === '\t' && row.length === 1 && !cell) continue;
     } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
+      if (ch === '\r' && text[i + 1] === '\n') i++; // Windows CRLF
       row.push(cell.trim());
       cell = '';
-      if (row.some((c) => c !== '')) rows.push(row);
+      if (row.some((c) => c !== '')) rows.push(row); // skip blank lines
       row = [];
     } else {
       cell += ch;
     }
   }
+
+  // Last row if file doesn't end with newline
   if (cell !== '' || row.length > 0) {
     row.push(cell.trim());
     rows.push(row);
@@ -68,19 +93,26 @@ function parseCSV(text) {
   return rows;
 }
 
+/**
+ * fetchSpreadsheetData — download file and return rows[][].
+ * CSV → text + parseCSV. XLSX → arrayBuffer + SheetJS.
+ */
 async function fetchSpreadsheetData(url, filename) {
   const isCsv = (filename || '').toLowerCase().endsWith('.csv');
   const res = await fetch(url, { method: 'GET' });
   if (!res.ok) throw new Error('Failed to load file');
+
   if (isCsv) {
     const text = await res.text();
     return parseCSV(text);
   }
+
   const ab = await res.arrayBuffer();
   const wb = XLSX.read(ab, { type: 'array' });
   const firstSheetName = wb.SheetNames[0];
   if (!firstSheetName) return [];
   const ws = wb.Sheets[firstSheetName];
+  // header: 1 → array of rows (not array of objects)
   const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   return data;
 }
@@ -97,13 +129,16 @@ export default function SpreadsheetViewerModal({ visible, url, name, isDark = tr
       setLoading(true);
       return;
     }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
+
     fetchSpreadsheetData(url, name)
       .then((data) => {
         if (!cancelled) {
           const raw = Array.isArray(data) && data.length ? data : [];
+          // Pad short rows so every row has the same column count
           const maxCols = Math.max(0, ...raw.map((r) => (Array.isArray(r) ? r.length : 1)));
           const normalized = raw.map((r) => {
             const arr = Array.isArray(r) ? [...r] : [r];
@@ -121,6 +156,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, isDark = tr
           setLoading(false);
         }
       });
+
     return () => { cancelled = true; };
   }, [visible, url, name]);
 
@@ -146,6 +182,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, isDark = tr
           </Text>
           <View style={{ width: 40 }} />
         </View>
+
         <View style={styles.content}>
           {loading && (
             <View style={styles.loadingBlock}>
@@ -209,9 +246,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, isDark = tr
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -221,9 +256,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  backBtn: {
-    padding: 4,
-  },
+  backBtn: { padding: 4 },
   title: {
     flex: 1,
     textAlign: 'center',
@@ -231,41 +264,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginHorizontal: 8,
   },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  loadingBlock: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 15,
-  },
-  errorBlock: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  errorText: {
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  scrollVertical: {
-    flex: 1,
-  },
-  scrollContentVertical: {
-    paddingBottom: 24,
-  },
+  content: { flex: 1, padding: 16 },
+  loadingBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 15 },
+  errorBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  errorText: { fontSize: 15, textAlign: 'center' },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  scrollVertical: { flex: 1 },
+  scrollContentVertical: { paddingBottom: 24 },
   table: {
     borderWidth: 1,
     borderRadius: 12,
@@ -283,10 +290,6 @@ const styles = StyleSheet.create({
     padding: CELL_PADDING,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  cellText: {
-    fontSize: 12,
-  },
-  headerText: {
-    fontWeight: '700',
-  },
+  cellText: { fontSize: 12 },
+  headerText: { fontWeight: '700' },
 });

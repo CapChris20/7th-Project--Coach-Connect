@@ -16,6 +16,7 @@ import { auth } from '../../app/config';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useTrainerPendingRequests } from '../hooks/useTrainerPendingRequests';
 import TrainerMarketplaceModal from '../components/TrainerMarketplaceModal';
+import { clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
 
 const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 
@@ -56,6 +57,9 @@ export default function ClientRequestsScreen({ onClose, onProfilePress, onSettin
         </LinearGradient>
         <View style={styles.requestContent}>
           <Text style={[styles.requestName, { color: isDark ? '#fff' : '#1e293b' }]}>{item.clientName}</Text>
+          <Text style={[styles.requestType, { color: isDark ? '#C084FC' : '#7c3aed' }]}>
+            {item.requestTitle || clientRequestTypeLabel(item.requestType)}
+          </Text>
           <Text style={[styles.requestPreview, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }]} numberOfLines={2}>
             {item.message || `${item.clientGoals || 'No goals'} · ${item.clientExperienceLevel || '—'}`}
           </Text>
@@ -124,7 +128,7 @@ export default function ClientRequestsScreen({ onClose, onProfilePress, onSettin
               <Text style={[styles.emptyKicker, { color: mutedColor }]}>INBOX</Text>
               <Text style={[styles.emptyTitle, { color: textColor }]}>You are all caught up</Text>
               <Text style={[styles.emptySubtext, { color: mutedColor }]}>
-                When a client sends a request from the app, it will show up in this list. Open a row to accept or decline.
+                Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
               </Text>
             </View>
           </View>
@@ -162,6 +166,7 @@ export default function ClientRequestsScreen({ onClose, onProfilePress, onSettin
       <CoachConnectHeader
         title="Client Requests"
         isDark={isDark}
+        skipTopSafeInset
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
       />
@@ -248,7 +253,8 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   requestContent: { flex: 1, marginLeft: 12, minWidth: 0 },
-  requestName: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  requestName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  requestType: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 },
   requestPreview: { fontSize: 13 },
   chevron: { fontSize: 20, color: 'rgba(255,255,255,0.5)', marginLeft: 8 },
 });

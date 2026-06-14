@@ -1,6 +1,6 @@
 /**
- * COACHCONNECT — Nutrition Settings Screen
- * Edit daily goals (calories, protein, carbs, fat) and reset to onboarding.
+ * Nutrition goals editor — full redesign (May 2026).
+ * Pink / orange palette, custom macro PNGs, no gradient-rim cards.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -8,71 +8,149 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
   ScrollView,
   Alert,
-  KeyboardAvoidingView,
   Platform,
+  StatusBar,
+  Image,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared/ui/ThemeContext';
 
-const ACCENT = {
-  hotPink: '#FF6B9D', // Keep your hot pink
-  orange: '#F97316', // Keep your orange
-  purple: '#C084FC', // Keep your light purple
-  cyan: '#06B6D4', // Keep your cyan
-  green: '#22C55E', // Keep your green
-};
+const PINK = '#BE185D';
+const PINK_SOFT = '#FF6B9D';
+const ORANGE = '#C2410C';
+const ORANGE_SOFT = '#F97316';
+const CYAN = '#06B6D4';
+const CTA_GRAD = [PINK, ORANGE];
 
-function getColors(isDark) {
+const MACRO_LANES = [
+  {
+    key: 'protein',
+    label: 'Protein',
+    icon: require('../../assets/icons/Protein.png'),
+    accent: PINK_SOFT,
+    barMax: 250,
+  },
+  {
+    key: 'carbs',
+    label: 'Carbs',
+    icon: require('../../assets/icons/Carbs.png'),
+    accent: ORANGE_SOFT,
+    barMax: 350,
+  },
+  {
+    key: 'fat',
+    label: 'Fat',
+    icon: require('../../assets/icons/Fats.png'),
+    accent: CYAN,
+    barMax: 120,
+  },
+];
+
+function getPalette(isDark) {
   return isDark
     ? {
-        ...ACCENT,
-        cardBg: 'rgba(255,255,255,0.05)',
-        cardBorder: 'rgba(255,255,255,0.09)',
-        text: '#ffffff',
-        textMuted: 'rgba(255,255,255,0.5)',
-        inputBg: 'rgba(255,255,255,0.06)',
-        screenBg: '#0A0A0F',
+        bg: '#0A0A0F',
+        panel: 'rgba(255,255,255,0.045)',
+        panelBorder: 'rgba(255,255,255,0.07)',
+        text: '#FFFFFF',
+        textSoft: 'rgba(255,255,255,0.62)',
+        textMuted: 'rgba(255,255,255,0.38)',
+        inputBg: 'rgba(255,255,255,0.07)',
+        stepBg: 'rgba(190,24,93,0.14)',
+        stepBorder: 'rgba(190,24,93,0.35)',
+        destructive: '#FCA5A5',
       }
     : {
-        ...ACCENT,
-        cardBg: 'rgba(0,0,0,0.04)',
-        cardBorder: 'rgba(0,0,0,0.08)',
-        text: '#1a0a2e',
-        textMuted: 'rgba(26,10,46,0.6)',
-        inputBg: 'rgba(0,0,0,0.06)',
-        screenBg: '#F5F3F7',
+        bg: '#F4F4F8',
+        panel: '#FFFFFF',
+        panelBorder: 'rgba(10,10,15,0.07)',
+        text: '#0A0A0F',
+        textSoft: 'rgba(10,10,15,0.62)',
+        textMuted: 'rgba(10,10,15,0.42)',
+        inputBg: 'rgba(0,0,0,0.04)',
+        stepBg: 'rgba(190,24,93,0.08)',
+        stepBorder: 'rgba(190,24,93,0.22)',
+        destructive: '#DC2626',
       };
 }
 
-const OZ_TO_G = 28.3495;
+function MacroLane({ row, value, onChange, palette }) {
+  const n = Math.max(0, parseFloat(value) || 0);
+  const fill = Math.min(1, n / row.barMax);
+
+  return (
+    <View style={[lane.wrap, { backgroundColor: palette.panel, borderColor: palette.panelBorder }]}>
+      <View style={lane.topRow}>
+        <Image source={row.icon} style={lane.icon} resizeMode="contain" />
+        <Text style={[lane.label, { color: palette.text }]}>{row.label}</Text>
+        <View style={lane.inputWrap}>
+          <TextInput
+            style={[lane.input, { color: palette.text, backgroundColor: palette.inputBg }]}
+            value={value}
+            onChangeText={onChange}
+            keyboardType="number-pad"
+            maxLength={3}
+            selectTextOnFocus
+            accessibilityLabel={`${row.label} grams`}
+          />
+          <Text style={[lane.unit, { color: palette.textMuted }]}>g</Text>
+        </View>
+      </View>
+      <View style={[lane.track, { backgroundColor: palette.inputBg }]}>
+        <View style={[lane.fill, { width: `${fill * 100}%`, backgroundColor: row.accent }]} />
+      </View>
+    </View>
+  );
+}
 
 export default function NutritionSettingsScreen({
   onClose,
   onGoalsUpdated,
   onResetOnboarding,
   currentGoals = {},
+  /** Parent renders CoachConnectHeader + bottom nav (NutritionContainer). */
+  embedded = false,
 }) {
   const { isDark } = useTheme();
-  const colors = useMemo(() => getColors(isDark), [isDark]);
+  const palette = useMemo(() => getPalette(isDark), [isDark]);
+  const insets = useSafeAreaInsets();
+  const scrollBottomPad = Math.max(insets.bottom, 16) + (embedded ? 12 : 32);
 
   const [calories, setCalories] = useState(String(currentGoals.calories ?? 2000));
-  const [protein, setProtein] = useState(String(((currentGoals.proteinTarget ?? 150) / OZ_TO_G).toFixed(1)));
-  const [carbs, setCarbs] = useState(String(((currentGoals.carbsTarget ?? 200) / OZ_TO_G).toFixed(1)));
-  const [fat, setFat] = useState(String(((currentGoals.fatTarget ?? 65) / OZ_TO_G).toFixed(1)));
+  const [protein, setProtein] = useState(String(currentGoals.proteinTarget ?? 150));
+  const [carbs, setCarbs] = useState(String(currentGoals.carbsTarget ?? 200));
+  const [fat, setFat] = useState(String(currentGoals.fatTarget ?? 65));
   const [saving, setSaving] = useState(false);
+
+  const macroValues = { protein, carbs, fat };
+  const macroSetters = { protein: setProtein, carbs: setCarbs, fat: setFat };
+
+  const estMacros = useMemo(() => {
+    const cal = Number(calories) || 0;
+    return {
+      protein: Math.round((cal * 0.3) / 4),
+      carbs: Math.round((cal * 0.4) / 4),
+      fat: Math.round((cal * 0.3) / 9),
+    };
+  }, [calories]);
+
+  const nudgeCalories = (delta) => {
+    const next = Math.max(500, Math.min(5000, (parseInt(calories, 10) || 2000) + delta));
+    setCalories(String(next));
+  };
 
   const handleSave = () => {
     if (onGoalsUpdated) {
       const cal = Math.max(500, Math.min(5000, parseInt(calories, 10) || 2000));
-      const pro = Math.round(Math.max(0, Math.min(500, parseFloat(protein) || 0) * OZ_TO_G));
-      const carb = Math.round(Math.max(0, Math.min(600, parseFloat(carbs) || 0) * OZ_TO_G));
-      const f = Math.round(Math.max(0, Math.min(200, parseFloat(fat) || 0) * OZ_TO_G));
+      const pro = Math.round(Math.max(0, Math.min(500, parseFloat(protein) || 0)));
+      const carb = Math.round(Math.max(0, Math.min(600, parseFloat(carbs) || 0)));
+      const f = Math.round(Math.max(0, Math.min(200, parseFloat(fat) || 0)));
       setSaving(true);
       onGoalsUpdated({
         calories: cal,
@@ -91,7 +169,7 @@ export default function NutritionSettingsScreen({
   const handleResetOnboarding = () => {
     Alert.alert(
       'Reset nutrition goals?',
-      'This will clear your calorie and macro goals. You’ll see the onboarding flow again next time you open Nutrition.',
+      'This clears your targets and shows onboarding again next time you open Nutrition.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -106,150 +184,317 @@ export default function NutritionSettingsScreen({
     );
   };
 
-  const numInput = (value, setValue, label, placeholder) => (
-    <View style={[s.row, { borderBottomColor: colors.cardBorder }]}>
-      <Text style={[s.label, { color: colors.text }]}>{label}</Text>
-      <TextInput
-        style={[s.input, { color: colors.text, backgroundColor: colors.inputBg }]}
-        value={value}
-        onChangeText={setValue}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        keyboardType="numeric"
-      />
-    </View>
-  );
-
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.screenBg }]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
-        <View style={[s.header, { borderBottomColor: colors.cardBorder }]}>
-          <TouchableOpacity onPress={onClose} style={s.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[s.title, { color: colors.text }]}>Nutrition Settings</Text>
-          <View style={s.placeholder} />
-        </View>
-
-        <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={[s.card, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-            <Text style={[s.sectionTitle, { color: colors.textMuted }]}>Daily goals</Text>
-            {numInput(calories, setCalories, 'Calories (kcal/day)', '2000')}
-            {numInput(protein, setProtein, 'Protein (oz)', '5.3')}
-            {numInput(carbs, setCarbs, 'Carbs (oz)', '7.1')}
-            {numInput(fat, setFat, 'Fat (oz)', '2.3')}
-          </View>
-
-          <Text style={[s.estimatedMacrosLabel, { color: colors.textMuted }]}>
-            Estimated macros at this calorie target
+  const body = (
+    <ScrollView
+      style={s.scroll}
+      contentContainerStyle={[s.scrollContent, { paddingBottom: scrollBottomPad }]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets
+    >
+          <Text style={[s.kicker, { color: palette.textMuted }]}>Daily targets</Text>
+          <Text style={[s.headline, { color: palette.text }]}>Set your numbers</Text>
+          <Text style={[s.subline, { color: palette.textSoft }]}>
+            Tap values to edit. Use +/− for calories.
           </Text>
-          <View style={s.macroPreviewRow}>
-            <Text style={[s.macroPreviewText, { color: colors.textMuted }]}>
-              Protein: {Math.round((Number(calories) || 0) * 0.3 / 4)}g  ·  Carbs: {Math.round((Number(calories) || 0) * 0.4 / 4)}g  ·  Fat: {Math.round((Number(calories) || 0) * 0.3 / 9)}g
+
+          <View style={[s.calPanel, { backgroundColor: palette.panel, borderColor: palette.panelBorder }]}>
+            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.calStripe} />
+            <Text style={[s.calLabel, { color: palette.textMuted }]}>CALORIES PER DAY</Text>
+
+            <View style={s.calRow}>
+              <TouchableOpacity
+                onPress={() => nudgeCalories(-50)}
+                style={[s.stepBtn, { backgroundColor: palette.stepBg, borderColor: palette.stepBorder }]}
+                activeOpacity={0.75}
+              >
+                <Text style={[s.stepBtnText, { color: PINK_SOFT }]}>−50</Text>
+              </TouchableOpacity>
+
+              <View style={s.calCenter}>
+                <TextInput
+                  style={[s.calInput, { color: palette.text }]}
+                  value={calories}
+                  onChangeText={setCalories}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  selectTextOnFocus
+                  accessibilityLabel="Daily calories"
+                />
+                <Text style={[s.calUnit, { color: palette.textMuted }]}>kcal</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => nudgeCalories(50)}
+                style={[s.stepBtn, { backgroundColor: palette.stepBg, borderColor: palette.stepBorder }]}
+                activeOpacity={0.75}
+              >
+                <Text style={[s.stepBtnText, { color: ORANGE_SOFT }]}>+50</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[s.splitHint, { color: palette.textMuted }]}>
+              Balanced split at this level{' '}
+              <Text style={{ color: PINK_SOFT }}>{estMacros.protein}g P</Text>
+              {' · '}
+              <Text style={{ color: ORANGE_SOFT }}>{estMacros.carbs}g C</Text>
+              {' · '}
+              <Text style={{ color: CYAN }}>{estMacros.fat}g F</Text>
             </Text>
           </View>
 
-          <TouchableOpacity onPress={handleSave} activeOpacity={0.9} style={s.saveBtnWrap} disabled={saving}>
-            <LinearGradient
-              colors={[colors.hotPink, colors.orange]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={s.saveBtn}
-            >
-              <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save goals'}</Text>
+          <Text style={[s.sectionTitle, { color: palette.textMuted }]}>Macro targets</Text>
+
+          {MACRO_LANES.map((row) => (
+            <MacroLane
+              key={row.key}
+              row={row}
+              value={macroValues[row.key]}
+              onChange={macroSetters[row.key]}
+              palette={palette}
+            />
+          ))}
+
+          <TouchableOpacity onPress={handleSave} activeOpacity={0.88} style={s.saveWrap} disabled={saving}>
+            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
+              <Text style={s.saveText}>{saving ? 'Saving…' : 'Save goals'}</Text>
             </LinearGradient>
           </TouchableOpacity>
 
-          <View style={[s.card, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 24 }]}>
-            <Text style={[s.sectionTitle, { color: colors.textMuted }]}>Reset</Text>
-            <Text style={[s.resetDesc, { color: colors.textMuted }]}>
-              Clear your goals and see the onboarding flow again (calorie and macro setup).
+          <View style={[s.resetZone, { borderTopColor: palette.panelBorder }]}>
+            <Text style={[s.resetHint, { color: palette.textSoft }]}>
+              Want to start fresh? This clears targets and runs setup again.
             </Text>
-            <TouchableOpacity
-              onPress={handleResetOnboarding}
-              style={[s.resetBtn, { backgroundColor: colors.inputBg, borderColor: colors.cardBorder }]}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="refresh-outline" size={20} color={colors.orange} />
-              <Text style={[s.resetBtnText, { color: colors.text }]}>Reset to onboarding</Text>
+            <TouchableOpacity onPress={handleResetOnboarding} activeOpacity={0.7} hitSlop={8}>
+              <Text style={[s.resetLink, { color: palette.destructive }]}>Reset to onboarding</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+  );
+
+  if (embedded) {
+    return <View style={[s.root, { backgroundColor: palette.bg }]}>{body}</View>;
+  }
+
+  return (
+    <SafeAreaView style={[s.root, { backgroundColor: palette.bg }]} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <View style={[s.standaloneHeader, { borderBottomColor: palette.panelBorder }]}>
+        <TouchableOpacity onPress={onClose} style={s.standaloneBack} hitSlop={12}>
+          <Ionicons name="chevron-back" size={28} color={palette.text} />
+        </TouchableOpacity>
+        <Text style={[s.standaloneTitle, { color: palette.text }]}>Goals</Text>
+        <View style={s.standaloneBack} />
+      </View>
+      {body}
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  root: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  standaloneHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 8,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  closeBtn: { padding: 4 },
-  title: { fontSize: 18, fontWeight: '700' },
-  placeholder: { width: 32 },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  card: {
-    borderWidth: 1,
+  standaloneBack: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  standaloneTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  kicker: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  headline: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+    marginBottom: 6,
+  },
+  subline: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 22,
+  },
+  calPanel: {
     borderRadius: 20,
-    padding: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    marginBottom: 28,
+    overflow: 'hidden',
+  },
+  calStripe: {
+    height: 3,
+    marginHorizontal: -18,
+    marginBottom: 16,
+  },
+  calLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  calRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 14,
+  },
+  stepBtn: {
+    minWidth: 52,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  stepBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  calCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  calInput: {
+    fontSize: 44,
+    fontWeight: '800',
+    letterSpacing: -1.5,
+    padding: 0,
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  calUnit: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  splitHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
   },
   sectionTitle: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  estimatedMacrosLabel: { fontSize: 12, marginBottom: 6 },
-  macroPreviewRow: { marginBottom: 16 },
-  macroPreviewText: { fontSize: 14 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+  saveWrap: {
+    marginTop: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: PINK,
+        shadowRadius: 14,
+        shadowOpacity: 0.28,
+        shadowOffset: { width: 0, height: 8 },
+      },
+      android: { elevation: 5 },
+    }),
   },
-  label: { fontSize: 15, fontWeight: '500' },
-  input: {
-    width: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  saveBtnWrap: { marginTop: 20 },
   saveBtn: {
-    borderRadius: 20,
-    padding: 16,
-    alignItems: 'center',
-  },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  resetDesc: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 14,
-  },
-  resetBtn: {
-    flexDirection: 'row',
+    paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    padding: 14,
     borderRadius: 16,
-    borderWidth: 1,
   },
-  resetBtnText: { fontSize: 15, fontWeight: '600' },
+  saveText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  resetZone: {
+    marginTop: 28,
+    paddingTop: 22,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    gap: 10,
+  },
+  resetHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  resetLink: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});
+
+const lane = StyleSheet.create({
+  wrap: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    marginBottom: 12,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  icon: {
+    width: 40,
+    height: 40,
+  },
+  label: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  input: {
+    minWidth: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  unit: {
+    fontSize: 14,
+    fontWeight: '600',
+    width: 14,
+  },
+  track: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: 2,
+  },
 });

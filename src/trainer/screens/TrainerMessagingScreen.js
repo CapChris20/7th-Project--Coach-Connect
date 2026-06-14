@@ -33,6 +33,7 @@ import {
   sendMessage,
   sendAttachmentMessage,
   subscribeToMessages,
+  loadEarlierMessages,
   markMessagesAsRead,
   getUserData,
   subscribeConversationTyping,
@@ -44,6 +45,7 @@ import { auth, db, storage } from '../../app/config';
 import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMService';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -127,21 +129,31 @@ const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
   return <View style={[cardStyle, style, contentWrapperStyle]}>{children}</View>;
 };
 
-const GradientAvatar = ({ name, photoURL, size = 44 }) => {
+const PlainAvatar = ({ name, photoURL, size = 44, isDark }) => {
   const initials = (name || '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  const borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)';
+  const fallbackBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
+  const fallbackText = isDark ? '#FFFFFF' : '#1A1040';
   return (
-    <LinearGradient
-      colors={GRADIENT.primary}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor,
+        backgroundColor: fallbackBg,
+      }}
     >
       {photoURL ? (
         <Image source={{ uri: photoURL }} style={{ width: size, height: size }} />
       ) : (
-        <Text style={{ color: 'white', fontWeight: '700', fontSize: size * 0.28 }}>{initials}</Text>
+        <Text style={{ color: fallbackText, fontWeight: '700', fontSize: size * 0.28 }}>{initials}</Text>
       )}
-    </LinearGradient>
+    </View>
   );
 };
 
@@ -244,12 +256,12 @@ const chatStyles = StyleSheet.create({
     borderWidth: 1,
     ...Platform.select({
       ios: {
-        shadowColor: '#6366f1',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.14,
+        shadowOpacity: 0.1,
         shadowRadius: 10,
       },
-      android: { elevation: 5 },
+      android: { elevation: 3 },
     }),
   },
   headerInner: {
@@ -264,9 +276,7 @@ const chatStyles = StyleSheet.create({
     gap: 12,
   },
   avatarRing: {
-    padding: 2,
     borderRadius: 28,
-    borderWidth: 2,
   },
   statusPill: {
     flexDirection: 'row',
@@ -279,15 +289,15 @@ const chatStyles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
   },
-  closeBtnGradient: {
-    borderRadius: 14,
-    padding: 2,
+  closeBtnOuter: {
+    borderRadius: 12,
+    borderWidth: 1,
     flexShrink: 0,
     zIndex: 20,
     elevation: 10,
   },
   closeBtnInner: {
-    borderRadius: 12,
+    borderRadius: 11,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
@@ -316,7 +326,6 @@ const chatStyles = StyleSheet.create({
   sendText: { color: 'white', fontSize: 14, fontWeight: '700' },
   addClientBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8 },
   addClientBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  clientBadgeWrap: { borderRadius: 999, padding: 2, flexShrink: 0, marginRight: 4 },
   clientBadgeInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,12 +334,17 @@ const chatStyles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
+    flexShrink: 0,
+    marginRight: 4,
   },
   clientBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 });
 
 export default function TrainerMessagingScreen({ trainer, conversation, onClose, onProfilePress, onSettingsPress, embedInLayout }) {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
+  const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) : 0;
   const t = isDark ? DARK : LIGHT;
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
@@ -344,7 +358,10 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
   const [uploadingFileName, setUploadingFileName] = useState(null);
   const [previewImageUri, setPreviewImageUri] = useState(null);
   const [remoteTyping, setRemoteTyping] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const scrollRef = useRef(null);
+  const oldestTimestampRef = useRef(null);
   const currentUser = auth.currentUser;
   const unsubscribeRef = useRef(null);
   const cancelledRef = useRef(false);
@@ -465,8 +482,11 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
       if (!convId) throw new Error('Failed to create conversation');
       setConversationId(convId);
 
-      const unsubscribe = subscribeToMessages(convId, (newMessages) => {
+      const unsubscribe = subscribeToMessages(convId, (newMessages, meta) => {
         setMessages(newMessages);
+        setHasMoreMessages(Boolean(meta?.hasMore));
+        oldestTimestampRef.current =
+          meta?.oldestTimestamp ?? (newMessages.length ? newMessages[0].timestamp : null);
         markMessagesAsRead(convId, currentUser.uid);
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
       });
@@ -662,17 +682,16 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
   }
 
   const headerInnerBg = isDark ? 'rgba(12,12,18,0.96)' : 'rgba(255,255,255,0.98)';
-  const headerWash = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,107,157,0.04)';
+  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)';
   const statusOnline = !!trainerData?.isOnline;
-  const statusDot = statusOnline ? '#22C55E' : '#FB923C';
-  const statusBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(194,65,12,0.2)';
-  const statusBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,107,157,0.08)';
-  const avatarRingColor = isDark ? 'rgba(255,107,157,0.45)' : 'rgba(219,39,119,0.35)';
+  const statusDot = statusOnline ? '#22C55E' : '#94A3B8';
+  const statusBorder = hairline;
+  const statusBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.04)';
 
   const identityBlock = (
     <>
-      <View style={[chatStyles.avatarRing, { borderColor: avatarRingColor }]}>
-        <GradientAvatar name={displayName} photoURL={trainerData?.photoURL} size={48} />
+      <View style={chatStyles.avatarRing}>
+        <PlainAvatar name={displayName} photoURL={trainerData?.photoURL} size={48} isDark={isDark} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }} pointerEvents="box-none">
         <Text style={[chatStyles.headerName, { color: t.textPrimary }]} numberOfLines={1}>
@@ -695,12 +714,10 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
     <View
       style={[
         chatStyles.headerRingOuter,
-        { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)' },
+        { borderColor: hairline, ...(embedTopPad ? { marginTop: embedTopPad } : null) },
       ]}
     >
-      <LinearGradient colors={['#6366f1', '#22d3ee']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, width: '100%' }} />
       <View style={[chatStyles.headerInner, { backgroundColor: headerInnerBg }]}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: headerWash }]} pointerEvents="none" />
         <View style={chatStyles.headerRow}>
           {typeof onProfilePress === 'function' ? (
             <TouchableOpacity
@@ -725,38 +742,34 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
             </TouchableOpacity>
           )}
           {isTrainer && isAlreadyClient && (
-            <LinearGradient
-              colors={['#FF6B9D', '#F97316', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={chatStyles.clientBadgeWrap}
+            <View
+              style={[
+                chatStyles.clientBadgeInner,
+                {
+                  backgroundColor: headerInnerBg,
+                  borderColor: hairline,
+                },
+              ]}
             >
-              <View
-                style={[
-                  chatStyles.clientBadgeInner,
-                  {
-                    backgroundColor: isDark ? 'rgba(10,10,15,0.92)' : '#FFFFFF',
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,107,157,0.2)',
-                  },
-                ]}
-              >
-                <Ionicons name="checkmark-circle" size={15} color="#FF6B9D" />
-                <Text style={[chatStyles.clientBadgeText, { color: isDark ? '#FF8FAB' : '#DB2777' }]}>Client</Text>
-              </View>
-            </LinearGradient>
+              <Ionicons name="checkmark-circle" size={15} color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.45)'} />
+              <Text style={[chatStyles.clientBadgeText, { color: t.textMuted }]}>Client</Text>
+            </View>
           )}
-          <LinearGradient colors={GRADIENT.send} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={chatStyles.closeBtnGradient}>
-            <TouchableOpacity
-              onPress={onClose}
-              activeOpacity={0.82}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="Close messages"
-              style={[chatStyles.closeBtnInner, { backgroundColor: headerInnerBg }]}
-            >
+          <TouchableOpacity
+            onPress={onClose}
+            activeOpacity={0.82}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close messages"
+            style={[
+              chatStyles.closeBtnOuter,
+              { borderColor: hairline, backgroundColor: headerInnerBg },
+            ]}
+          >
+            <View style={chatStyles.closeBtnInner}>
               <Text style={{ color: t.textPrimary, fontSize: 13, fontWeight: '800' }}>Close</Text>
-            </TouchableOpacity>
-          </LinearGradient>
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -768,7 +781,7 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 + embedBottomPad }}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
         {messagesForBubbles.length === 0 ? (
@@ -778,6 +791,41 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
           </View>
         ) : (
           <>
+            {hasMoreMessages ? (
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!conversationId || loadingEarlier || !oldestTimestampRef.current) return;
+                  setLoadingEarlier(true);
+                  try {
+                    const { messages: older, hasMore } = await loadEarlierMessages(
+                      conversationId,
+                      oldestTimestampRef.current,
+                    );
+                    const seen = new Set(messages.map((m) => m.id));
+                    const uniqueOlder = older.filter((m) => !seen.has(m.id));
+                    if (uniqueOlder.length) {
+                      oldestTimestampRef.current = uniqueOlder[0].timestamp ?? oldestTimestampRef.current;
+                      setMessages((prev) => [...uniqueOlder, ...prev]);
+                    }
+                    setHasMoreMessages(hasMore);
+                  } catch (e) {
+                    console.error('loadEarlierMessages failed:', e);
+                  } finally {
+                    setLoadingEarlier(false);
+                  }
+                }}
+                disabled={loadingEarlier}
+                style={{ alignSelf: 'center', marginBottom: 12, paddingVertical: 8, paddingHorizontal: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Load earlier messages"
+              >
+                {loadingEarlier ? (
+                  <ActivityIndicator size="small" color="#C084FC" />
+                ) : (
+                  <Text style={{ color: t.textMuted, fontSize: 13, fontWeight: '700' }}>Load earlier messages</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
             {messagesForBubbles.map((msg) => <ChatBubble key={msg.id} message={msg} isDark={isDark} />)}
             {uploadingFileName != null && (
               <View style={{ marginBottom: 12, alignItems: 'flex-end' }}>
@@ -817,7 +865,7 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
           ) : null}
         </TouchableOpacity>
       </Modal>
-      <View style={chatStyles.inputBarOuter}>
+      <View style={[chatStyles.inputBarOuter, { paddingBottom: 16 + embedBottomPad }]}>
         <GlassCard isDark={isDark} contentWrapperStyle={chatStyles.inputBarInner}>
           <TouchableOpacity onPress={showAttachmentOptions} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="attach-outline" size={22} color={t.inputPlaceholder} />
@@ -864,7 +912,7 @@ export default function TrainerMessagingScreen({ trainer, conversation, onClose,
   }
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <CoachConnectHeader title="Messages" isDark={isDark} onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
+      <CoachConnectHeader title="Messages" isDark={isDark} skipTopSafeInset onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
       {inner}
     </SafeAreaView>
   );

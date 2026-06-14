@@ -2,14 +2,118 @@
 // Provides live updates for conversation lists across trainer and client apps
 
 import { db } from '../../app/config';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  onSnapshot,
+  getDocs,
+} from 'firebase/firestore';
 import { getUserData } from './trainerMessaging';
+import { getDocsWithIndexFallback, sortDocsByMillis } from '../../shared/services/firestorePagedQuery';
+
+export const CONVERSATIONS_PAGE_SIZE = 40;
+
+function mapConversationDoc(docSnap) {
+  return { id: docSnap.id, ...docSnap.data() };
+}
+
+function sortConversations(conversations) {
+  return [...conversations].sort((a, b) => {
+    const timeA = a.updatedAt?.toMillis?.() || a.updatedAt || 0;
+    const timeB = b.updatedAt?.toMillis?.() || b.updatedAt || 0;
+    return timeB - timeA;
+  });
+}
+
+async function hydrateParticipants(uid, conversations, namesCache, dataCache) {
+  const loadPromises = [];
+  for (const conv of conversations) {
+    const otherParticipantId = conv.participants?.find(
+      (id) => typeof id === 'string' && id.trim() && id !== uid,
+    );
+    if (otherParticipantId && !namesCache[otherParticipantId]) {
+      loadPromises.push(
+        getUserData(otherParticipantId)
+          .then((userData) => {
+            if (userData) {
+              const userName =
+                userData.name ||
+                `${userData.firstName || ''} ${userData.lastName || ''}`.trim() ||
+                userData.displayName ||
+                'User';
+              namesCache[otherParticipantId] = userName;
+              dataCache[otherParticipantId] = userData;
+            }
+          })
+          .catch((err) => {
+            console.warn('⚠️ Failed to load user data for', otherParticipantId, err);
+          }),
+      );
+    }
+  }
+  await Promise.all(loadPromises);
+}
+
+function buildConversationsQuery(uid, pageSize, startAfterDoc = null) {
+  const conversationsRef = collection(db, 'conversations');
+  if (startAfterDoc) {
+    return query(
+      conversationsRef,
+      where('participants', 'array-contains', uid),
+      orderBy('updatedAt', 'desc'),
+      startAfter(startAfterDoc),
+      limit(pageSize),
+    );
+  }
+  return query(
+    conversationsRef,
+    where('participants', 'array-contains', uid),
+    orderBy('updatedAt', 'desc'),
+    limit(pageSize),
+  );
+}
+
+function conversationsFallbackQuery(uid) {
+  return query(
+    collection(db, 'conversations'),
+    where('participants', 'array-contains', uid),
+    limit(CONVERSATIONS_PAGE_SIZE),
+  );
+}
 
 /**
- * Subscribe to real-time conversation updates for a user
- * @param {string} userId - The user's ID
- * @param {Function} callback - Callback function to receive conversations
- * @returns {Function} Unsubscribe function
+ * Fetch next page of conversations (call from Load more).
+ */
+export async function fetchMoreConversations(userId, startAfterDoc) {
+  const uid = typeof userId === 'string' ? userId.trim() : '';
+  if (!uid || !startAfterDoc) {
+    return { conversations: [], lastDoc: null, hasMore: false };
+  }
+
+  const snap = await getDocsWithIndexFallback(
+    buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE, startAfterDoc),
+    () => conversationsFallbackQuery(uid),
+    'conversations loadMore',
+  );
+
+  let docs = snap.docs;
+  if (docs.length > 0 && !docs[0].data()?.updatedAt) {
+    docs = sortDocsByMillis(docs, 'updatedAt', 'desc');
+  }
+
+  const conversations = docs.map(mapConversationDoc);
+  const lastDoc = docs.length ? docs[docs.length - 1] : null;
+  const hasMore = docs.length >= CONVERSATIONS_PAGE_SIZE;
+
+  return { conversations, lastDoc, hasMore };
+}
+
+/**
+ * Subscribe to the most recent conversation page (real-time, bounded).
  */
 export function subscribeToConversations(userId, callback) {
   const uid = typeof userId === 'string' ? userId.trim() : '';
@@ -18,109 +122,134 @@ export function subscribeToConversations(userId, callback) {
     return () => {};
   }
 
-  if (__DEV__) console.log('🔍 Setting up real-time conversations listener for:', uid);
-  
-  const conversationsRef = collection(db, 'conversations');
-  const q = query(
-    conversationsRef,
-    where('participants', 'array-contains', uid)
-  );
+  const participantNamesCache = {};
+  const participantDataCache = {};
 
-  let participantNamesCache = {};
-  let participantDataCache = {};
+  const primary = buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE);
+  const buildFallback = () => conversationsFallbackQuery(uid);
 
-  const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+  let unsubscribe = () => {};
+  let cancelled = false;
+
+  const handleSnapshot = async (querySnapshot) => {
     try {
-      const conversations = [];
-      querySnapshot.forEach((doc) => {
-        conversations.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
-
-      // Sort by updatedAt in JavaScript
-      conversations.sort((a, b) => {
-        const timeA = a.updatedAt?.toMillis?.() || a.updatedAt || 0;
-        const timeB = b.updatedAt?.toMillis?.() || b.updatedAt || 0;
-        return timeB - timeA; // Descending order (newest first)
-      });
-
-      if (__DEV__) console.log('📨 Real-time conversations update:', conversations.length);
-
-      // Load participant data for new conversations only
-      const loadPromises = [];
-      for (const conv of conversations) {
-        const otherParticipantId = conv.participants?.find(id => typeof id === 'string' && id.trim() && id !== uid);
-        if (otherParticipantId && typeof otherParticipantId === 'string' && !participantNamesCache[otherParticipantId]) {
-          loadPromises.push(
-            getUserData(otherParticipantId).then(userData => {
-              if (userData) {
-                const userName = userData.name || 
-                  `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 
-                  userData.displayName || 
-                  'User';
-                participantNamesCache[otherParticipantId] = userName;
-                participantDataCache[otherParticipantId] = userData;
-              }
-            }).catch(err => {
-              console.warn('⚠️ Failed to load user data for', otherParticipantId, err);
-            })
-          );
-        }
+      let docs = querySnapshot.docs;
+      if (docs.length > 0 && !docs[0].data()?.updatedAt) {
+        docs = sortDocsByMillis(docs, 'updatedAt', 'desc').slice(0, CONVERSATIONS_PAGE_SIZE);
       }
 
-      await Promise.all(loadPromises);
+      const lastDoc = docs.length ? docs[docs.length - 1] : null;
+      const hasMore = docs.length >= CONVERSATIONS_PAGE_SIZE;
+      const conversations = sortConversations(docs.map(mapConversationDoc));
 
-      // Return conversations with participant data
+      await hydrateParticipants(uid, conversations, participantNamesCache, participantDataCache);
+
       callback({
         conversations,
-        participantNames: participantNamesCache,
-        participantData: participantDataCache,
+        participantNames: { ...participantNamesCache },
+        participantData: { ...participantDataCache },
+        lastDoc,
+        hasMore,
+        error: null,
       });
     } catch (error) {
       console.error('❌ Error in conversations listener:', error);
-      callback({ conversations: [], participantNames: {}, participantData: {} });
+      callback({
+        conversations: [],
+        participantNames: {},
+        participantData: {},
+        lastDoc: null,
+        hasMore: false,
+        error: error?.message || 'Could not load conversations',
+      });
     }
-  }, (error) => {
+  };
+
+  const handleListenerError = (error, mode) => {
+    if (cancelled) return;
+    if (isFirestoreIndexError(error) && mode === 'primary') {
+      attachListener('fallback');
+      return;
+    }
     console.error('❌ Firestore listener error:', error);
-    callback({ conversations: [], participantNames: {}, participantData: {} });
-  });
+    callback({
+      conversations: [],
+      participantNames: {},
+      participantData: {},
+      lastDoc: null,
+      hasMore: false,
+      error: error?.message || 'Could not load conversations',
+    });
+  };
+
+  const attachListener = (mode) => {
+    const q = mode === 'fallback' ? buildFallback() : primary;
+    try {
+      unsubscribe();
+    } catch (_) {
+      /* ignore */
+    }
+    unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        void handleSnapshot(snap);
+      },
+      (err) => handleListenerError(err, mode),
+    );
+  };
+
+  const boot = async () => {
+    try {
+      await getDocs(primary);
+      if (!cancelled) attachListener('primary');
+    } catch (err) {
+      if (isFirestoreIndexError(err)) {
+        if (!cancelled) attachListener('fallback');
+        return;
+      }
+      console.error('❌ conversations probe failed:', err);
+      callback({
+        conversations: [],
+        participantNames: {},
+        participantData: {},
+        lastDoc: null,
+        hasMore: false,
+        error: err?.message || 'Could not load conversations',
+      });
+    }
+  };
+
+  void boot();
 
   return () => {
-    console.log('🔇 Cleaning up conversations listener for:', uid);
-    unsubscribe();
+    cancelled = true;
+    try {
+      unsubscribe();
+    } catch (_) {
+      /* ignore */
+    }
   };
 }
 
-/**
- * Subscribe to unread message count for a user
- * @param {string} userId - The user's ID
- * @param {Function} callback - Callback function to receive unread count
- * @returns {Function} Unsubscribe function
- */
 export function subscribeToUnreadCount(userId, callback) {
   if (!userId || !callback) {
     console.error('❌ subscribeToUnreadCount: Missing userId or callback');
     return () => {};
   }
 
-  const conversationsRef = collection(db, 'conversations');
   const conversationsQuery = query(
-    conversationsRef,
-    where('participants', 'array-contains', userId)
+    collection(db, 'conversations'),
+    where('participants', 'array-contains', userId),
+    limit(50),
   );
 
   let unsubscribeFunctions = [];
 
   const conversationsUnsubscribe = onSnapshot(conversationsQuery, async (conversationsSnapshot) => {
-    // Clean up previous message listeners
-    unsubscribeFunctions.forEach(unsub => unsub());
+    unsubscribeFunctions.forEach((unsub) => unsub());
     unsubscribeFunctions = [];
 
-    let totalUnread = 0;
     const conversationIds = [];
-
     conversationsSnapshot.forEach((convDoc) => {
       conversationIds.push(convDoc.id);
     });
@@ -130,91 +259,78 @@ export function subscribeToUnreadCount(userId, callback) {
       return;
     }
 
-    // Count unread messages for each conversation
-    const countPromises = conversationIds.map(async (conversationId) => {
-      const messagesRef = collection(db, 'messages');
-      const messagesQuery = query(
-        messagesRef,
-        where('conversationId', '==', conversationId)
-      );
-
-      return new Promise((resolve) => {
-        const unsubscribe = onSnapshot(messagesQuery, (messagesSnapshot) => {
-          let unreadCount = 0;
-          messagesSnapshot.forEach((doc) => {
-            const messageData = doc.data();
-            if (messageData.senderId !== userId && messageData.read === false) {
-              unreadCount++;
-            }
+    const countPromises = conversationIds.map(
+      (conversationId) =>
+        new Promise((resolve) => {
+          const messagesQuery = query(
+            collection(db, 'messages'),
+            where('conversationId', '==', conversationId),
+            limit(100),
+          );
+          const unsub = onSnapshot(messagesQuery, (messagesSnapshot) => {
+            let unreadCount = 0;
+            messagesSnapshot.forEach((docSnap) => {
+              const messageData = docSnap.data();
+              if (messageData.senderId !== userId && messageData.read === false) {
+                unreadCount++;
+              }
+            });
+            resolve(unreadCount);
           });
-          resolve(unreadCount);
-        });
-        unsubscribeFunctions.push(unsubscribe);
-      });
-    });
+          unsubscribeFunctions.push(unsub);
+        }),
+    );
 
     try {
       const counts = await Promise.all(countPromises);
-      totalUnread = counts.reduce((sum, count) => sum + count, 0);
-      callback(totalUnread);
+      callback(counts.reduce((sum, count) => sum + count, 0));
     } catch (error) {
       console.error('❌ Error counting unread messages:', error);
       callback(0);
     }
   });
 
-  // Return cleanup function
   return () => {
     conversationsUnsubscribe();
-    unsubscribeFunctions.forEach(unsub => unsub());
+    unsubscribeFunctions.forEach((unsub) => unsub());
   };
 }
 
-/**
- * Subscribe to per-conversation unread counts (messages sent by others, not read by current user).
- * Use this to show a bell/badge only on rows where that person sent unread messages.
- * @param {string} userId - Current user's ID
- * @param {Function} callback - Called with { [conversationId]: unreadCount }
- * @returns {Function} Unsubscribe function
- */
 export function subscribeToUnreadByConversation(userId, callback) {
   if (!userId || !callback) return () => {};
 
-  console.log('🔔 Setting up unread tracking for user:', userId);
-  const conversationsRef = collection(db, 'conversations');
-  const q = query(conversationsRef, where('participants', 'array-contains', userId));
+  const q = query(
+    collection(db, 'conversations'),
+    where('participants', 'array-contains', userId),
+    limit(50),
+  );
   let unreadByConv = {};
   let messageUnsubscribes = [];
 
   const conversationsUnsubscribe = onSnapshot(q, (conversationsSnapshot) => {
-    console.log('📨 Conversations updated:', conversationsSnapshot.size, 'conversations');
     messageUnsubscribes.forEach((unsub) => unsub());
     messageUnsubscribes = [];
     const convIds = [];
-    conversationsSnapshot.forEach((doc) => convIds.push(doc.id));
+    conversationsSnapshot.forEach((docSnap) => convIds.push(docSnap.id));
 
     if (convIds.length === 0) {
-      console.log('📭 No conversations found');
       callback({});
       return;
     }
 
-    console.log('🔍 Tracking unread for conversations:', convIds);
-
     convIds.forEach((conversationId) => {
-      const messagesRef = collection(db, 'messages');
-      const messagesQuery = query(messagesRef, where('conversationId', '==', conversationId));
+      const messagesQuery = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId),
+        limit(100),
+      );
       const unsub = onSnapshot(messagesQuery, (messagesSnapshot) => {
         let count = 0;
         messagesSnapshot.forEach((docSnap) => {
           const d = docSnap.data();
-          if (d.senderId !== userId && d.read === false) {
-            count++;
-            console.log('📩 Found unread message in', conversationId, 'from', d.senderId);
-          }
+          if (d.senderId !== userId && d.read === false) count++;
         });
         unreadByConv[conversationId] = count;
-        console.log('🔢 Unread count for', conversationId, ':', count);
         callback({ ...unreadByConv });
       });
       messageUnsubscribes.push(unsub);
@@ -226,5 +342,3 @@ export function subscribeToUnreadByConversation(userId, callback) {
     messageUnsubscribes.forEach((unsub) => unsub());
   };
 }
-
-

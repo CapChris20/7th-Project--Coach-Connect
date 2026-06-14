@@ -9,14 +9,57 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  limit,
+  startAfter,
   serverTimestamp,
   onSnapshot,
   updateDoc,
   runTransaction,
   deleteField,
 } from 'firebase/firestore';
+import { getDocsWithIndexFallback } from '../../shared/services/firestorePagedQuery';
 import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
 import { randomClientRequestTitle } from '../../shared/notifications/pushCopy';
+
+export const MESSAGES_PAGE_SIZE = 80;
+
+function messageMillis(m) {
+  const t = m?.timestamp;
+  if (t?.toMillis) return t.toMillis();
+  if (typeof t === 'number') return t;
+  return 0;
+}
+
+function sortMessagesAsc(messages) {
+  return [...messages].sort((a, b) => messageMillis(a) - messageMillis(b));
+}
+
+function mapMessageDoc(docSnap) {
+  return { id: docSnap.id, ...docSnap.data() };
+}
+
+/** Client → trainer requests (not normal chat). */
+export const CLIENT_REQUEST_TYPES = {
+  CONNECTION: 'connection',
+  WORKOUT_PLAN: 'workout_plan',
+  GENERAL: 'general',
+};
+
+export function clientRequestTypeLabel(type) {
+  if (type === CLIENT_REQUEST_TYPES.WORKOUT_PLAN) return 'Workout plan request';
+  if (type === CLIENT_REQUEST_TYPES.GENERAL) return 'Client request';
+  return 'Connection request';
+}
+
+export function isPendingClientRequestMessage(message) {
+  return String(message?.status || '') === 'pending';
+}
+
+/** Hide pending client requests from message threads — they live in Client Requests. */
+export function filterChatMessages(messages) {
+  return (messages || []).filter((m) => !isPendingClientRequestMessage(m));
+}
 
 async function notifyRecipientMessagePush({
   recipientId,
@@ -246,10 +289,19 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
       throw new Error('Missing required parameters: conversationId or senderId');
     }
 
+    const requestType = metadata.requestType || CLIENT_REQUEST_TYPES.CONNECTION;
+    const requestTitle = metadata.requestTitle || clientRequestTypeLabel(requestType);
     const trimmed = messageText != null ? String(messageText).trim() : '';
+    const allowDefaultIntro = metadata.allowDefaultIntro !== false;
     const text =
       trimmed ||
-      "Hi! I'd like to work with you as my trainer.";
+      (allowDefaultIntro && requestType === CLIENT_REQUEST_TYPES.CONNECTION
+        ? "Hi! I'd like to work with you as my trainer."
+        : '');
+    const lastMessagePreview =
+      requestType === CLIENT_REQUEST_TYPES.CONNECTION
+        ? text || 'Connection request'
+        : requestTitle;
 
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const messageData = {
@@ -260,6 +312,8 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
       timestamp: serverTimestamp(),
       read: false,
       status: 'pending',
+      requestType,
+      requestTitle,
       clientName: metadata.clientName || 'Client',
       clientGoals: metadata.clientGoals || 'Not specified',
       clientExperienceLevel: metadata.clientExperienceLevel || 'Beginner',
@@ -273,7 +327,7 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
 
       const conversationRef = doc(db, 'conversations', conversationId);
       transaction.update(conversationRef, {
-        lastMessage: text,
+        lastMessage: lastMessagePreview,
         lastMessageTime: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -286,10 +340,24 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
       const trainerId = convSnap.exists() ? convSnap.data()?.trainerId : null;
       if (trainerId && trainerId !== senderId) {
         const cname = metadata.clientName || metadata.name || 'Client';
+        const pushTitle =
+          requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN
+            ? `Workout plan request from ${cname}`
+            : requestType === CLIENT_REQUEST_TYPES.GENERAL
+              ? `New request from ${cname}`
+              : randomClientRequestTitle(cname);
+        const pushBody =
+          requestType === CLIENT_REQUEST_TYPES.CONNECTION
+            ? text
+              ? `${cname}: ${text.substring(0, 120)}`
+              : `${cname} sent a connection request`
+            : text
+              ? `${requestTitle}: ${text.substring(0, 120)}`
+              : requestTitle;
         void postRemotePushNotify({
           recipientId: trainerId,
-          senderName: randomClientRequestTitle(cname),
-          messageText: `${cname}: ${text.substring(0, 120)}`,
+          senderName: pushTitle,
+          messageText: pushBody,
           senderId,
           conversationId,
           messageId: result,
@@ -323,39 +391,54 @@ export async function updateMessageStatus(messageId, updates) {
 }
 
 /**
- * Get all messages for a conversation
- * @param {string} conversationId - The conversation ID
- * @returns {Promise<Array>} Array of messages
+ * Fetch one page of messages (newest first in query, returned ascending).
  */
 export async function getMessages(conversationId) {
+  if (!conversationId) return [];
   try {
     const messagesRef = collection(db, 'messages');
-    const q = query(
+    const primary = query(
       messagesRef,
-      where('conversationId', '==', conversationId)
-      // Removed orderBy to avoid requiring composite index - we'll sort in JavaScript
+      where('conversationId', '==', conversationId),
+      orderBy('timestamp', 'desc'),
+      limit(MESSAGES_PAGE_SIZE),
     );
+    const fallback = () =>
+      query(messagesRef, where('conversationId', '==', conversationId), limit(MESSAGES_PAGE_SIZE));
 
-    const querySnapshot = await getDocs(q);
-    const messages = [];
-
-    querySnapshot.forEach((doc) => {
-      messages.push({
-        id: doc.id,
-        ...doc.data(),
-      });
-    });
-
-    // Sort by timestamp in JavaScript
-    messages.sort((a, b) => {
-      const timeA = a.timestamp?.toMillis?.() || a.timestamp || 0;
-      const timeB = b.timestamp?.toMillis?.() || b.timestamp || 0;
-      return timeA - timeB;
-    });
-
-    return messages;
+    const snap = await getDocsWithIndexFallback(primary, fallback, 'getMessages');
+    return filterChatMessages(sortMessagesAsc(snap.docs.map(mapMessageDoc)));
   } catch (error) {
     console.error('Error getting messages:', error);
+    throw error;
+  }
+}
+
+/**
+ * Load older messages before `beforeTimestamp` (for Load earlier UI).
+ */
+export async function loadEarlierMessages(conversationId, beforeTimestamp) {
+  if (!conversationId || !beforeTimestamp) {
+    return { messages: [], hasMore: false };
+  }
+  try {
+    const messagesRef = collection(db, 'messages');
+    const primary = query(
+      messagesRef,
+      where('conversationId', '==', conversationId),
+      orderBy('timestamp', 'desc'),
+      startAfter(beforeTimestamp),
+      limit(MESSAGES_PAGE_SIZE),
+    );
+    const fallback = () =>
+      query(messagesRef, where('conversationId', '==', conversationId), limit(MESSAGES_PAGE_SIZE));
+
+    const snap = await getDocsWithIndexFallback(primary, fallback, 'loadEarlierMessages');
+    const messages = filterChatMessages(sortMessagesAsc(snap.docs.map(mapMessageDoc)));
+    const hasMore = snap.docs.length >= MESSAGES_PAGE_SIZE;
+    return { messages, hasMore };
+  } catch (error) {
+    console.error('Error loading earlier messages:', error);
     throw error;
   }
 }
@@ -367,31 +450,55 @@ export async function getMessages(conversationId) {
  * @returns {Function} Unsubscribe function
  */
 export function subscribeToMessages(conversationId, callback) {
-  const messagesRef = collection(db, 'messages');
-  const q = query(
-    messagesRef,
-    where('conversationId', '==', conversationId)
-    // Removed orderBy to avoid requiring composite index - we'll sort in JavaScript
-  );
+  if (!conversationId || !callback) return () => {};
 
-  return onSnapshot(q, (querySnapshot) => {
-    const messages = [];
-    querySnapshot.forEach((doc) => {
-      messages.push({
-        id: doc.id,
-        ...doc.data(),
-      });
+  const messagesRef = collection(db, 'messages');
+  const pageSize = MESSAGES_PAGE_SIZE;
+  const primary = query(
+    messagesRef,
+    where('conversationId', '==', conversationId),
+    orderBy('timestamp', 'desc'),
+    limit(pageSize),
+  );
+  const fallback = () =>
+    query(messagesRef, where('conversationId', '==', conversationId), limit(pageSize));
+
+  let unsubscribe = () => {};
+  let activeQuery = primary;
+
+  const attach = () => {
+    unsubscribe = onSnapshot(
+      activeQuery,
+      (querySnapshot) => {
+        const messages = filterChatMessages(sortMessagesAsc(querySnapshot.docs.map(mapMessageDoc)));
+        const hasMore = querySnapshot.docs.length >= pageSize;
+        const oldestTimestamp = messages.length ? messages[0].timestamp : null;
+        callback(messages, { hasMore, oldestTimestamp });
+      },
+      (err) => {
+        console.error('subscribeToMessages error:', err);
+        callback([], { hasMore: false, oldestTimestamp: null });
+      },
+    );
+  };
+
+  void getDocsWithIndexFallback(primary, fallback, 'subscribeToMessages')
+    .then(() => {
+      activeQuery = primary;
+      attach();
+    })
+    .catch(() => {
+      activeQuery = fallback();
+      attach();
     });
-    
-    // Sort by timestamp in JavaScript
-    messages.sort((a, b) => {
-      const timeA = a.timestamp?.toMillis?.() || a.timestamp || 0;
-      const timeB = b.timestamp?.toMillis?.() || b.timestamp || 0;
-      return timeA - timeB;
-    });
-    
-    callback(messages);
-  });
+
+  return () => {
+    try {
+      unsubscribe();
+    } catch (_) {
+      /* ignore */
+    }
+  };
 }
 
 /**

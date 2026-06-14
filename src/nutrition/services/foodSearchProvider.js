@@ -5,9 +5,14 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-import { getApiBase, getApiBaseCandidates } from '../../shared/services/baseUrl';
+import { getResilientApiBases } from '../../shared/services/baseUrl';
+import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
 import logger from '../../shared/services/logger';
+const {
+  isMenuStyleQuery,
+  itemMatchesQuery,
+  isRetailFoodNoise,
+} = require('./foodSearchQueryMatch');
 
 const { normalizeOpenFoodFactsProduct } = require('../utils/nutritionNormalization');
 
@@ -15,52 +20,12 @@ const { normalizeOpenFoodFactsProduct } = require('../utils/nutritionNormalizati
 const OPEN_FOOD_FACTS_USER_AGENT =
   'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
 
-/** Shown when the phone cannot reach your Express API and OFF also fails (no keys on device for USDA/Serper). */
+/** Shown when the phone cannot reach the API and OFF also fails. */
 export const FOOD_SEARCH_OFFLINE_HINT =
-  "Food search needs your Coach Connect server on Wi‑Fi (port 4000). Set EXPO_PUBLIC_API_BASE_URL to your computer's LAN IP — on a real phone, localhost never reaches your Mac. Then restaurant items work.";
+  "Could not reach the food search server. Check your internet connection and try again.";
 
 function getServerUrl() {
-  return String(getApiBase() || '').replace(/\/$/, '');
-}
-
-function isPhysicalDevice() {
-  return Constants.isDevice === true;
-}
-
-function isLoopbackBase(base) {
-  return /localhost|127\.0\.0\.1/i.test(String(base || ''));
-}
-
-/**
- * Bases to try for /api/food/search when the primary URL fails (wrong LAN IP, server moved, etc.).
- * On a physical phone, localhost/127.0.0.1 point at the phone — skip them (they always fail).
- */
-function getFoodSearchServerBases() {
-  const list = [];
-  const push = (u) => {
-    const s = String(u || '').trim().replace(/\/$/, '');
-    if (!s || list.includes(s)) return;
-    if (isPhysicalDevice() && isLoopbackBase(s)) return;
-    list.push(s);
-  };
-
-  const uriCandidates = [
-    Constants.expoConfig?.hostUri,
-    Constants.expoGoConfig?.debuggerHost,
-    Constants.manifest?.debuggerHost,
-    Constants.manifest2?.extra?.expoGo?.debuggerHost,
-  ];
-  for (const uri of uriCandidates) {
-    if (typeof uri !== 'string') continue;
-    const host = uri.split(':')[0]?.trim();
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      push(`http://${host}:4000`);
-    }
-  }
-
-  push(getApiBase());
-  getApiBaseCandidates().forEach(push);
-  return list;
+  return String(getResilientApiBases()[0] || '').replace(/\/$/, '');
 }
 
 function mapOffProductToRow(p, limitIndex) {
@@ -127,6 +92,17 @@ function mapOffProductsToRows(products, limit) {
     .map((p, i) => mapOffProductToRow(p, i));
 }
 
+/** Keep rows that match the user's search tokens (no restaurant name whitelist). */
+function preferQueryRelevantMatches(query, rows, limit) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return [];
+  const matched = list.filter((r) => {
+    const text = `${r.name || ''} ${r.brand || ''}`;
+    return itemMatchesQuery(text, query) && !isRetailFoodNoise(text);
+  });
+  return (matched.length > 0 ? matched : list).slice(0, limit);
+}
+
 /** Alternate wording when apostrophes/special chars trigger HTML blocks from CDN/WAF. */
 function openFoodFactsQueryVariants(raw) {
   const q = String(raw || '').trim();
@@ -144,6 +120,61 @@ const OFF_SEARCH_HEADERS = {
   Accept: 'application/json',
   'User-Agent': OPEN_FOOD_FACTS_USER_AGENT,
 };
+
+/** OFF’s hosted Elasticsearch search (JSON). Legacy `/cgi/search.pl` often returns HTML to mobile clients. */
+const OPEN_FOOD_FACTS_SEARCH_API = 'https://search.openfoodfacts.org';
+const SAL_SEARCH_FIELDS = 'code,product_name,product_name_en,brands,nutriments';
+
+function salHitToOffStyleProduct(hit) {
+  if (!hit || typeof hit !== 'object') return null;
+  let brandStr = null;
+  if (Array.isArray(hit.brands)) {
+    brandStr = hit.brands.filter(Boolean).join(', ') || null;
+  } else if (typeof hit.brands === 'string' && hit.brands.trim()) {
+    brandStr = hit.brands.trim();
+  }
+  const name =
+    (typeof hit.product_name === 'string' && hit.product_name.trim()) ||
+    (typeof hit.product_name_en === 'string' && hit.product_name_en.trim()) ||
+    (typeof hit.product_name_fr === 'string' && hit.product_name_fr.trim()) ||
+    null;
+  if (!name) return null;
+  const code = hit.code != null ? String(hit.code) : undefined;
+  return {
+    code,
+    product_name: name,
+    brands: brandStr,
+    nutriments: hit.nutriments && typeof hit.nutriments === 'object' ? hit.nutriments : {},
+  };
+}
+
+async function searchOpenFoodFactsSearchALicious(query, limit = 20) {
+  const raw = String(query || '').trim();
+  if (!raw) return [];
+  const q = raw.replace(/[+\-&|!(){}\[\]^"~*?:\\]/g, ' ').replace(/\s+/g, ' ').trim() || raw;
+  const pageSize = Math.min(Math.max(limit, 1), 24);
+  const params = new URLSearchParams({
+    q,
+    page_size: String(pageSize),
+    page: '1',
+    langs: 'en',
+    fields: SAL_SEARCH_FIELDS,
+  });
+  const url = `${OPEN_FOOD_FACTS_SEARCH_API}/search?${params.toString()}`;
+  const res = await fetchWithTimeout(url, { method: 'GET', headers: OFF_SEARCH_HEADERS }, OFF_FETCH_TIMEOUT_MS);
+  const text = await res.text();
+  if (!res.ok) {
+    if (__DEV__) logger.warn('🍔 OFF Search-a-licious HTTP', { status: res.status });
+    return [];
+  }
+  const data = parseOffSearchJson(text);
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.errors) && data.errors.length && !Array.isArray(data.hits)) return [];
+  const hits = data.hits;
+  if (!Array.isArray(hits) || hits.length === 0) return [];
+  const products = hits.map(salHitToOffStyleProduct).filter(Boolean);
+  return mapOffProductsToRows(products, limit);
+}
 
 /** React Native fetch has no `timeout` option — abort stalled requests instead. */
 const FOOD_SERVER_FETCH_TIMEOUT_MS = 10000;
@@ -164,6 +195,15 @@ async function searchOpenFoodFactsDirect(query, limit = 20) {
   const pageSize = Math.min(Math.max(limit, 1), 24);
   const variants = openFoodFactsQueryVariants(query);
   if (variants.length === 0) return [];
+
+  for (const searchTerms of variants) {
+    try {
+      const salRows = await searchOpenFoodFactsSearchALicious(searchTerms, limit);
+      if (salRows.length > 0) return preferQueryRelevantMatches(query, salRows, limit);
+    } catch (err) {
+      if (__DEV__) logger.warn('🍔 OFF Search-a-licious failed', { message: err?.message });
+    }
+  }
 
   const hosts = ['https://world.openfoodfacts.org', 'https://us.openfoodfacts.org'];
 
@@ -248,14 +288,9 @@ class FoodSearchProvider {
     return this._serverUrl;
   }
 
-  /**
-   * When the API returns zero rows (or ranking filtered everything), still try Open Food Facts + local
-   * cache so the client does not cache an empty array and "brick" that query until TTL expires.
-   */
-  async mergeOfflineWhenServerEmpty(query, limit, serverResults) {
+  /** Local cache + Open Food Facts when the Cloud Run search API is empty or unreachable. */
+  async offlineFoodFallback(query, limit) {
     const q = String(query || '').trim();
-    const base = Array.isArray(serverResults) ? serverResults : [];
-    if (base.length > 0) return base;
     const [cachedFoods, off] = await Promise.all([
       this.getCachedFoods().catch(() => []),
       searchOpenFoodFactsDirect(q, limit).catch(() => []),
@@ -267,11 +302,27 @@ class FoodSearchProvider {
   }
 
   /**
+   * When the API returns zero rows (or ranking filtered everything), still try Open Food Facts + local
+   * cache so the client does not cache an empty array and "brick" that query until TTL expires.
+   */
+  async mergeOfflineWhenServerEmpty(query, limit, serverResults) {
+    const q = String(query || '').trim();
+    const base = Array.isArray(serverResults) ? serverResults : [];
+    if (base.length > 0) return base;
+    const merged = await this.offlineFoodFallback(q, limit);
+    if (merged.length === 0 && isMenuStyleQuery(q)) {
+      this.lastSearchHint =
+        'No results yet. Make sure the app can reach your Coach Connect API (Serper/USDA run on the server, not in the app).';
+    }
+    return merged;
+  }
+
+  /**
    * Search for foods using multiple providers
    * Provider order: Nutritionix (primary) -> USDA (fallback)
    */
   async searchFoods(query, limit = 20) {
-    const cacheKey = `search_${query}_${limit}`;
+    const cacheKey = `search_v28_${query}_${limit}`;
     try {
       this.lastSearchHint = null;
       logger.debug('🍔 Searching foods for', query);
@@ -285,31 +336,36 @@ class FoodSearchProvider {
         return Array.isArray(cached) ? cached : [];
       }
 
-      const appSecret = process.env.EXPO_PUBLIC_APP_SECRET;
       const serverUrl = this.serverUrl;
       const hasServer = !!serverUrl && serverUrl !== 'null' && serverUrl !== 'undefined';
-      const hasSecret = !!appSecret;
-      logger.debug('🔑 APP_SECRET being sent', hasSecret ? 'SET' : 'UNDEFINED');
 
-      // If server URL or secret is missing, fall back immediately.
-      if (!hasServer || !hasSecret) {
-        logger.warn('🍔 Server URL/secret missing. Using cached + Open Food Facts fallback.');
-        const [cachedFoods, off] = await Promise.all([
-          this.getCachedFoods().catch(() => []),
-          searchOpenFoodFactsDirect(q, limit).catch(() => []),
-        ]);
-        const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
-          (f?.name || '').toLowerCase().includes(q.toLowerCase()),
-        );
-        const merged = [...local, ...off].slice(0, limit);
-        this.setCache(cacheKey, merged);
+      // Serper/USDA/Nutritionix run on the Express API — the phone only calls /api/food/search.
+      if (!hasServer) {
+        logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.');
+        const merged = await this.offlineFoodFallback(q, limit);
+        if (merged.length === 0) {
+          this.lastSearchHint = 'Set EXPO_PUBLIC_API_BASE_URL to your Coach Connect API (Cloud Run URL).';
+        }
+        if (merged.length > 0) this.setCache(cacheKey, merged);
         return merged;
+      }
+
+      let authHeaders;
+      try {
+        authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+      } catch (_) {
+        this.lastSearchHint = 'Sign in to search foods on the server.';
+        return this.offlineFoodFallback(q, limit);
+      }
+      if (!authHeaders.Authorization) {
+        this.lastSearchHint = 'Sign in to search foods on the server.';
+        return this.offlineFoodFallback(q, limit);
       }
 
       // Try Metro LAN host + env URL — fixes "Network request failed" when EXPO_PUBLIC_API_BASE_URL is stale.
       let response;
       let fetchErr;
-      const bases = getFoodSearchServerBases();
+      const bases = getResilientApiBases();
       for (const base of bases) {
         const url = `${base}/api/food/search?query=${encodeURIComponent(q)}&limit=${limit}`;
         try {
@@ -318,10 +374,7 @@ class FoodSearchProvider {
             url,
             {
               method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-app-secret': appSecret || '',
-              },
+              headers: authHeaders,
             },
             FOOD_SERVER_FETCH_TIMEOUT_MS
           );
@@ -343,20 +396,12 @@ class FoodSearchProvider {
       }
 
       if (!response.ok) {
-        // Treat auth/config/server issues as "fallback-worthy" so search still works.
         const status = response.status;
         const fallbackStatus = status === 401 || status === 403 || status === 404 || status === 429 || status >= 500;
         if (fallbackStatus) {
-          logger.warn(`🍔 Server search failed (${status}). Using cached + Open Food Facts fallback.`);
-          const [cachedFoods, off] = await Promise.all([
-            this.getCachedFoods().catch(() => []),
-            searchOpenFoodFactsDirect(q, limit).catch(() => []),
-          ]);
-          const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
-            (f?.name || '').toLowerCase().includes(q.toLowerCase()),
-          );
-          const merged = [...local, ...off].slice(0, limit);
-          this.setCache(cacheKey, merged);
+          logger.warn(`🍔 Server search failed (${status}). Using cached + OFF fallback.`);
+          const merged = await this.offlineFoodFallback(q, limit);
+          if (merged.length > 0) this.setCache(cacheKey, merged);
           return merged;
         }
         throw new Error(`Food search failed: ${status}`);
@@ -369,7 +414,8 @@ class FoodSearchProvider {
       if (merged.length === 0 && list.length === 0) {
         this.lastSearchHint = this.lastSearchHint || FOOD_SEARCH_OFFLINE_HINT;
       }
-      this.setCache(cacheKey, merged);
+      // Do not cache empty — avoids locking in a failed search for 5 minutes.
+      if (merged.length > 0) this.setCache(cacheKey, merged);
       logger.debug(
         `✅ Food search success: server ${list.length} rows; after OFF/cache merge: ${merged.length}`,
       );
@@ -379,29 +425,30 @@ class FoodSearchProvider {
         error?.name === 'AbortError' ||
         (error?.message || '').toLowerCase().includes('network') ||
         (error?.name === 'TypeError' && (error?.message || '').includes('fetch'));
-      logger.error('🍔 Error searching foods', error);
       if (isNetwork) {
-        logger.warn('🍔 Server unreachable. Using Open Food Facts directly so search still works.');
+        const qTrim = String(query || '').trim();
+        logger.warn('🍔 Server unreachable; trying cache + Open Food Facts', {
+          message: error?.message || String(error),
+          menuStyle: isMenuStyleQuery(qTrim),
+        });
         try {
-          const [cachedFoods, off] = await Promise.all([
-            this.getCachedFoods().catch(() => []),
-            searchOpenFoodFactsDirect(String(query || '').trim(), limit).catch(() => []),
-          ]);
-          const q = String(query || '').trim();
-          const local = (Array.isArray(cachedFoods) ? cachedFoods : []).filter((f) =>
-            (f?.name || '').toLowerCase().includes(q.toLowerCase()),
-          );
-          const merged = [...local, ...off].slice(0, limit);
+          const merged = await this.offlineFoodFallback(qTrim, limit);
           if (merged.length > 0) {
             this.setCache(cacheKey, merged);
             logger.debug(`🍔 Fallback returned ${merged.length} results`);
             return merged;
           }
-          this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
+          if (!this.lastSearchHint) this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
+          logger.warn('🍔 Food search: server unreachable and fallback returned no rows', {
+            query: qTrim,
+            serverMessage: error?.message,
+          });
         } catch (fallbackErr) {
-          logger.warn('🍔 Fallback search failed', { message: fallbackErr?.message || String(fallbackErr) });
-          this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
+          logger.error('🍔 Food search fallback failed', fallbackErr);
+          if (!this.lastSearchHint) this.lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
         }
+      } else {
+        logger.error('🍔 Error searching foods', error);
       }
       return [];
     }
@@ -423,15 +470,16 @@ class FoodSearchProvider {
         return cached;
       }
 
-      // Call server endpoint
+      const authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+      if (!authHeaders.Authorization) {
+        throw new Error('Sign in to scan barcodes');
+      }
+
       const response = await fetchWithTimeout(
         `${this.serverUrl}/api/food/barcode`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-app-secret': process.env.EXPO_PUBLIC_APP_SECRET,
-          },
+          headers: authHeaders,
           body: JSON.stringify({ barcode }),
         },
         FOOD_SERVER_FETCH_TIMEOUT_MS
@@ -457,7 +505,7 @@ class FoodSearchProvider {
         try {
           const res = await fetchWithTimeout(
             `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`,
-            {},
+            { headers: OFF_SEARCH_HEADERS },
             OFF_FETCH_TIMEOUT_MS
           );
           const data = await res.json();

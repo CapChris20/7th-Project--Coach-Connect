@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import foodSearchProvider from '../services/foodSearchProvider';
 import { cacheFoodProduct } from '../services/nutritionService';

@@ -38,6 +38,7 @@ export async function clearAllUserData() {
         key.startsWith('COACHCONNECT_') || 
         key.startsWith('coachconnect_') ||
         key.startsWith('@COACHCONNECT_') ||
+        key.startsWith('user_ai_') ||
         key.includes('user_data') ||
         key.includes('dashboard') ||
         key.includes('nutrition') ||
@@ -73,6 +74,9 @@ export async function clearUserSpecificData(userId) {
       `COACHCONNECT_WORKOUTS_${userId}`,
       `COACHCONNECT_TRAINER_${userId}`,
       `COACHCONNECT_CLIENT_${userId}`,
+      `user_ai_enabled_${userId}`,
+      `user_ai_toggle_events_${userId}`,
+      `user_ai_freeze_off_until_${userId}`,
     ];
     
     for (const key of userSpecificKeys) {

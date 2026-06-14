@@ -1,0 +1,24 @@
+# Cloud Run deploy — do not wipe API keys
+
+## Critical
+
+- **NEVER** use `gcloud run deploy ... --set-env-vars` with only `NODE_ENV` (or any partial list). It **replaces all** environment variables and deletes `DEEPSEEK_API_KEY`, `SERPER_API_KEY`, etc.
+- Use **`--update-env-vars`** to merge, or run **`./scripts/syncCloudRunEnv.sh`** after deploy.
+- After any deploy, run **`./scripts/verifyProductionApi.sh`** — must show `aiCoachReady: true`.
+
+## Standard deploy flow
+
+```bash
+./server/deploy.sh          # deploy + sync .env + verify (fails if broken)
+# or
+npm run api:deploy
+```
+
+## Production mobile builds
+
+- `EXPO_PUBLIC_API_BASE_URL` must be the Cloud Run URL (`*.run.app`), baked in via `.env` or `eas.json` production profile.
+- Before `eas build --profile production`: `npm run prerelease`
+
+## Firebase
+
+- Production Firebase project ID stays **`anatrox-auth`** — do not bulk-rename to coachconnect in config/env.

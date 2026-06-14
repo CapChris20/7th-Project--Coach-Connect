@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+ios/
+android/
+assets/
+docs/
+scripts/
+.git/
+.cursor/
+__tests__/
+*.test.js
+*.spec.js
+.env
+.env.*

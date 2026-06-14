@@ -7,14 +7,14 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
-  FlatList,
   Alert,
   Platform,
-  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared/ui/ThemeContext';
+import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { db } from '../../app/config';
 import {
   collection,
@@ -27,7 +27,7 @@ import {
   setDoc,
   deleteDoc,
 } from 'firebase/firestore';
-import { listManualWorkoutPlansForTrainer, deleteManualWorkoutPlan } from '../services/manualWorkoutPlanService';
+import { fetchClientWorkoutPlansForLibrary } from '../../workouts/services/clientWorkoutPlansLibrary';
 
 // ============================================================================
 // COLOR SYSTEM
@@ -62,17 +62,12 @@ const THEME = {
   },
 };
 
-/** Rules / index issues — show empty library, not raw Firestore text. */
-function isBenignWorkoutPlansLoadError(e) {
-  if (!e) return false;
-  const code = e.code;
-  if (code === 'permission-denied' || code === 'failed-precondition') return true;
-  const m = String(e.message || '').toLowerCase();
-  if (m.includes('missing or insufficient permissions')) return true;
-  return false;
-}
+/** design-system.md — card rims & CTAs (dark pink → dark orange), not cyan/purple rainbow */
+const WARM_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
+const WARM_CTA_GRADIENT = ['#BE185D', '#C2410C'];
+const WARM_ACCENT = '#FF6B9D';
 
-const EMPTY_CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
+const EMPTY_CHECK_COLORS = ['#FF6B9D', '#F97316', '#BE185D', '#C2410C'];
 
 // ============================================================================
 // FIRESTORE HOOK
@@ -90,61 +85,13 @@ function useClientWorkoutPlans(clientId) {
     }
     setLoading(true);
     setError(null);
-    const results = [];
-    let fatalError = null;
-
-    const pushSnapDocs = (snap, source) => {
-      snap?.forEach?.((d) => results.push({ id: d.id, ...d.data(), _source: source }));
-    };
-
     try {
-      try {
-        const colRef = collection(db, 'users', clientId, 'workoutPlans');
-        const snap = await getDocs(query(colRef, orderBy('generatedAt', 'desc')));
-        pushSnapDocs(snap, 'usersSubcollection');
-      } catch (e) {
-        if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
-      }
-
-      if (!results.length) {
-        try {
-          const singleRef = doc(db, 'users', clientId, 'workoutPlan', 'current');
-          const singleSnap = await getDoc(singleRef);
-          if (singleSnap.exists()) {
-            results.push({
-              id: singleSnap.id,
-              ...singleSnap.data(),
-              _singleDoc: true,
-              _path: ['users', clientId, 'workoutPlan', 'current'],
-            });
-          }
-        } catch (e) {
-          if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
-        }
-      }
-
-      if (!results.length) {
-        try {
-          const globalRef = collection(db, 'workoutPlans');
-          const snap = await getDocs(
-            query(globalRef, where('clientId', '==', clientId), orderBy('generatedAt', 'desc')),
-          );
-          pushSnapDocs(snap, 'global');
-        } catch (e) {
-          if (!isBenignWorkoutPlansLoadError(e)) fatalError = fatalError || e;
-        }
-      }
-
-      setPlans(results);
-      setError(results.length > 0 ? null : fatalError ? String(fatalError.message || fatalError) : null);
+      const { plans: loaded, error: loadError } = await fetchClientWorkoutPlansForLibrary(clientId);
+      setPlans(loaded);
+      setError(loadError);
     } catch (e) {
-      if (isBenignWorkoutPlansLoadError(e)) {
-        setPlans([]);
-        setError(null);
-      } else {
-        setPlans([]);
-        setError(String(e?.message || e || 'Failed to load workout plans'));
-      }
+      setPlans([]);
+      setError(String(e?.message || e || 'Failed to load workout plans'));
     } finally {
       setLoading(false);
     }
@@ -177,8 +124,65 @@ const GOAL_COLOR_MAP = {
 function formatDate(raw) {
   if (!raw) return '';
   const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
-  if (isNaN(d)) return '';
+  if (!d || isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** "MAY 5, 2026" for history card headers */
+function formatCreatedUpper(raw) {
+  if (!raw) return '';
+  const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
+  if (!d || isNaN(d.getTime())) return '';
+  return d
+    .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    .toUpperCase();
+}
+
+function deriveExerciseCount(item) {
+  const explicit = item?.totalExerciseCount ?? item?.exerciseCount ?? item?.exerciseTotal;
+  if (typeof explicit === 'number' && explicit > 0) return explicit;
+  const sp = item?.structuredPlan;
+  const days = sp?.days || sp?.sessions || (Array.isArray(sp?.weeks) ? sp.weeks.flatMap((w) => w?.days || []) : null);
+  if (Array.isArray(days)) {
+    let c = 0;
+    for (const d of days) {
+      if (d?.isRest || d?.rest) continue;
+      const ex = d?.exercises || d?.mainWorkouts || d?.main_workouts || [];
+      if (Array.isArray(ex)) c += ex.length;
+    }
+    if (c > 0) return c;
+  }
+  const dpw = Number(item?.daysPerWeek) || 4;
+  return Math.max(8, dpw * 6);
+}
+
+function deriveMuscleTags(item, displayFocus) {
+  const tags = [];
+  const push = (s) => {
+    const t = String(s || '').trim();
+    if (t && !tags.includes(t) && t.length < 28) tags.push(t);
+  };
+
+  const sp = item?.structuredPlan;
+  const days = sp?.days || (Array.isArray(sp?.weeks) ? sp.weeks.flatMap((w) => w?.days || []) : null);
+  if (Array.isArray(days)) {
+    for (const d of days) {
+      push(d?.focus);
+      push(d?.label);
+      push(d?.name);
+      const mus = d?.muscleGroups || d?.muscles || d?.targets;
+      if (Array.isArray(mus)) mus.forEach((m) => push(typeof m === 'string' ? m : m?.name || m?.label));
+    }
+  }
+  const pm = item?.primaryMuscles || item?.muscleGroups || item?.muscles;
+  if (Array.isArray(pm)) pm.forEach((m) => push(typeof m === 'string' ? m : m?.name));
+  else if (typeof pm === 'string') pm.split(/[,/]/).forEach((s) => push(s));
+
+  if (tags.length === 0 && displayFocus) {
+    displayFocus.split(/[,/•]/).forEach((s) => push(s));
+  }
+  if (tags.length === 0) push('Full body');
+  return tags.slice(0, 8);
 }
 
 function normalizePlan(item) {
@@ -211,7 +215,7 @@ function normalizePlan(item) {
 
   const displayName = isManual
     ? (item.title || item.name || item.planName || 'Custom plan')
-    : (item.title || item.name || 'Workout Plan');
+    : (item.title || item.name || item.planTitle || (item.rawPlan || item.planText ? 'Workout plan' : 'Workout Plan'));
   const displayFocus = isManual
     ? String(item.category || item.focus || 'Custom plan').trim()
     : (item.focus || item.goal || item.type || 'Training');
@@ -228,6 +232,9 @@ function normalizePlan(item) {
     daysPerWeek,
     sessionMinutes,
     createdAt:       formatDate(item.generatedAt || item.createdAt),
+    createdUpper:    formatCreatedUpper(item.generatedAt || item.createdAt),
+    exerciseCount:   deriveExerciseCount(item),
+    muscleTags:      deriveMuscleTags(item, displayFocus),
     trainingDays,
     // Firestore bookkeeping (needed for write ops below)
     _source:         item._source,
@@ -240,90 +247,38 @@ function normalizePlan(item) {
 }
 
 // ============================================================================
-// HEADER COMPONENT
+// LIBRARY HERO — matches client library screenshots
 // ============================================================================
-const Header = ({ isDark, onBack }) => {
+function LibraryHeroSummary({ isDark, totalPlans }) {
   const theme = THEME[isDark ? 'dark' : 'light'];
+  const innerBg = isDark ? '#121218' : '#FFFFFF';
 
   return (
-    <View
-      style={[
-        styles.header,
-        {
-          backgroundColor: isDark ? 'rgba(10,10,15,0.97)' : 'rgba(249,250,251,0.97)',
-          borderBottomColor: theme.border,
-        },
-      ]}
+    <LinearGradient
+      colors={WARM_BORDER_GRADIENT}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.libraryHeroBorder}
     >
-      <View style={styles.headerContent}>
-        {/* Back button */}
-        <TouchableOpacity onPress={onBack} hitSlop={12} style={styles.backButton} activeOpacity={0.6}>
-          <Ionicons name="chevron-back" size={22} color={theme.text} />
-        </TouchableOpacity>
-
-        {/* Logo */}
-        <View style={styles.logoSection}>
-          <LinearGradient
-            colors={['#FF6B9D', '#C084FC']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.logoBadge}
-          >
-            <Text style={styles.logoText}>C</Text>
-          </LinearGradient>
-          <Text style={[styles.logoLabel, { color: theme.text }]}>CoachConnect</Text>
-        </View>
-
-        {/* Spacer to balance back button */}
-        <View style={{ width: 40 }} />
+      <View style={[styles.libraryHeroInner, { backgroundColor: innerBg }]}>
+        <Text style={[styles.libraryHeroTitle, { color: theme.text }]}>
+          Your Workout{' '}
+          <Text style={{ fontWeight: '900', color: '#BE185D' }}>Lib</Text>
+          <Text style={{ fontWeight: '900', color: '#C2410C' }}>rary</Text>
+        </Text>
+        <Text style={[styles.libraryHeroKicker, { color: theme.textMuted }]}>SAVED PLANS</Text>
+        <LinearGradient
+          colors={WARM_BORDER_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.libraryHeroAccentLine}
+        />
+        <Text style={[styles.libraryHeroCount, { color: WARM_ACCENT }]}>{totalPlans}</Text>
+        <Text style={[styles.libraryHeroFooter, { color: theme.textSecondary }]}>PLANS CRAFTED WITH COACH CONNECT</Text>
       </View>
-    </View>
+    </LinearGradient>
   );
-};
-
-// ============================================================================
-// FILTER CHIPS
-// ============================================================================
-const FilterChips = ({ value, onChange, counts, isDark }) => {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const filters = [
-    { key: 'all',       label: 'All'       },
-    { key: 'active',    label: 'Active'    },
-    { key: 'completed', label: 'Completed' },
-    { key: 'paused',    label: 'Paused'    },
-  ];
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.filterScroll}
-      contentContainerStyle={styles.filterContent}
-    >
-      {filters.map((f) => {
-        const active = value === f.key;
-        return (
-          <TouchableOpacity
-            key={f.key}
-            onPress={() => onChange(f.key)}
-            activeOpacity={0.6}
-            style={[
-              styles.filterChip,
-              {
-                backgroundColor: active ? '#FF6B9D' : 'transparent',
-                borderColor:     active ? '#FF6B9D' : theme.border,
-              },
-            ]}
-          >
-            <Text style={[styles.filterLabel, { color: active ? '#FFF' : theme.textMuted }]}>
-              {f.label} ({counts[f.key] ?? 0})
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  );
-};
+}
 
 // ============================================================================
 // METRIC CARD
@@ -345,13 +300,11 @@ const MetricCard = ({ icon, iconLib, label, value, isDark }) => {
 // ============================================================================
 const ProgressRing = ({ progress, isDark }) => {
   const theme = THEME[isDark ? 'dark' : 'light'];
+  const pct = Math.round(progress);
   return (
-    <View style={styles.progressRingWrap}>
-      <View style={[styles.progressRingOuter, { borderColor: 'rgba(255,107,157,0.25)' }]}>
-        <View style={[styles.progressRingInner, { borderColor: '#FF6B9D' }]}>
-          <Text style={[styles.progressValue, { color: theme.text }]}>{Math.round(progress)}%</Text>
-          <Text style={[styles.progressLabel, { color: theme.textMuted }]}>Complete</Text>
-        </View>
+    <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 4, borderColor: 'rgba(255,107,157,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ width: 58, height: 58, borderRadius: 29, borderWidth: 3, borderColor: '#FF6B9D', justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,107,157,0.06)' : 'rgba(255,107,157,0.04)' }}>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: theme.text }}>{pct}%</Text>
       </View>
     </View>
   );
@@ -363,38 +316,29 @@ const ProgressRing = ({ progress, isDark }) => {
 const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }) => {
   const theme  = THEME[isDark ? 'dark' : 'light'];
   const colors = FOCUS_COLORS[plan.focusColor] || FOCUS_COLORS.pink;
-  const progress  = plan.totalWeeks > 0 ? (plan.weeksCompleted / plan.totalWeeks) * 100 : 0;
-  const weeksLeft = plan.totalWeeks - plan.weeksCompleted;
+  const progress  = plan.totalWeeks > 0 ? Math.round((plan.weeksCompleted / plan.totalWeeks) * 100) : 0;
 
   return (
     <LinearGradient
-      colors={[colors.start, colors.end]}
+      colors={WARM_BORDER_GRADIENT}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.featuredBorder]}
     >
       <View style={[styles.featuredCard, { backgroundColor: theme.surface }]}>
-        {/* Ambient glow */}
-        <View style={[styles.featuredGlow, { backgroundColor: colors.start }]} />
-
         <View style={styles.featuredContent}>
           {/* Badges row */}
           <View style={styles.featuredBadges}>
             <LinearGradient
-              colors={[colors.start, colors.end]}
+              colors={WARM_CTA_GRADIENT}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              end={{ x: 1, y: 0 }}
               style={styles.focusBadge}
             >
-              <MaterialCommunityIcons name="sparkles" size={11} color="#FFF" />
+              <Ionicons name="sparkles" size={11} color="#FFF" />
               <Text style={styles.focusLabel}>{plan.focus}</Text>
             </LinearGradient>
-
             <StatusBadge status={plan.status} />
-
-            <Text style={[styles.featuredTag, { color: theme.textSecondary }]}>Featured</Text>
-
-            {/* Options button (trainer-only actions) */}
             {onOptions && (
               <TouchableOpacity onPress={onOptions} hitSlop={10} style={{ marginLeft: 'auto' }}>
                 <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
@@ -402,26 +346,38 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
             )}
           </View>
 
-          {/* Title */}
-          <View style={styles.featuredTitleSection}>
-            <Text style={[styles.featuredTitle, { color: theme.text }]} numberOfLines={2}>
-              {plan.name}
-            </Text>
-            <Text style={[styles.featuredSubtitle, { color: theme.textMuted }]}>
-              {plan.createdAt ? `Created ${plan.createdAt} · ` : ''}Week {plan.weeksCompleted} of {plan.totalWeeks}
-            </Text>
+          {/* Title + progress row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+            <View style={{ flex: 1, paddingRight: 14 }}>
+              <Text style={[styles.featuredTitle, { color: theme.text }]} numberOfLines={2}>
+                {plan.name}
+              </Text>
+              <Text style={[styles.featuredSubtitle, { color: theme.textMuted }]}>
+                {plan.createdAt ? `${plan.createdAt} · ` : ''}Week {plan.weeksCompleted} of {plan.totalWeeks}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <ProgressRing progress={progress} isDark={isDark} />
+            </View>
           </View>
 
-          {/* Metrics */}
-          <View style={styles.metricsGrid}>
-            <MetricCard icon="calendar-outline" label="Weeks"       value={plan.totalWeeks}           isDark={isDark} />
-            <MetricCard icon="barbell-outline"  label="Days/wk"     value={plan.daysPerWeek}           isDark={isDark} />
-            <MetricCard icon="time-outline"     label="Per session" value={`${plan.sessionMinutes}m`}  isDark={isDark} />
+          {/* Compact metrics row */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            {[
+              { icon: 'calendar-outline', val: `${plan.totalWeeks} wks` },
+              { icon: 'barbell-outline', val: `${plan.daysPerWeek} days/wk` },
+              { icon: 'time-outline', val: `${plan.sessionMinutes}m/session` },
+            ].map((m) => (
+              <View key={m.icon} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card }}>
+                <Ionicons name={m.icon} size={13} color={theme.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textMuted }}>{m.val}</Text>
+              </View>
+            ))}
           </View>
 
           {/* Week dots */}
-          <View style={styles.weekSection}>
-            <Text style={[styles.weekLabel, { color: theme.textSecondary }]}>THIS WEEK</Text>
+          <View style={{ marginTop: 14 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1, color: theme.textMuted, marginBottom: 8 }}>THIS WEEK</Text>
             <View style={styles.weekDots}>
               {plan.trainingDays.map((isTraining, i) => (
                 <View
@@ -429,8 +385,8 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
                   style={[
                     styles.weekDot,
                     {
-                      backgroundColor: isTraining ? colors.start : 'transparent',
-                      borderColor: isTraining ? colors.start : theme.border,
+                      backgroundColor: isTraining ? '#BE185D' : 'transparent',
+                      borderColor: isTraining ? '#BE185D' : theme.border,
                     },
                   ]}
                 >
@@ -442,12 +398,12 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
             </View>
           </View>
 
-          {/* Action buttons */}
-          <View style={styles.featuredActions}>
+          {/* Single CTA */}
+          <View style={{ marginTop: 16 }}>
             <LinearGradient
-              colors={[colors.start, colors.end]}
+              colors={WARM_CTA_GRADIENT}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              end={{ x: 1, y: 0 }}
               style={styles.primaryButtonGradient}
             >
               <TouchableOpacity style={styles.primaryButton} onPress={onContinue} activeOpacity={0.8}>
@@ -456,23 +412,6 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
                 <Ionicons name="chevron-forward" size={14} color="#FFF" />
               </TouchableOpacity>
             </LinearGradient>
-
-            <TouchableOpacity
-              style={[styles.secondaryButton, { borderColor: theme.border, backgroundColor: theme.card }]}
-              onPress={onViewDetails}
-              activeOpacity={0.6}
-            >
-              <Text style={[styles.secondaryButtonLabel, { color: theme.text }]}>View Details</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Progress ring */}
-        <View style={styles.progressRingSection}>
-          <ProgressRing progress={progress} isDark={isDark} />
-          <View style={[styles.weeksLeftCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.weeksLeftValue, { color: theme.text }]}>{weeksLeft}</Text>
-            <Text style={[styles.weeksLeftLabel, { color: theme.textSecondary }]}>Weeks left</Text>
           </View>
         </View>
       </View>
@@ -499,80 +438,163 @@ const StatusBadge = ({ status }) => {
 };
 
 // ============================================================================
-// PLAN CARD (non-featured)
+// PLAN CARD — history / library list
 // ============================================================================
-const PlanCard = ({ plan, isDark, onPress, onOptions }) => {
-  const theme  = THEME[isDark ? 'dark' : 'light'];
-  const colors = FOCUS_COLORS[plan.focusColor] || FOCUS_COLORS.pink;
+const STAT_PILL_ICONS = ['calendar-outline', 'repeat-outline', 'barbell-outline'];
+
+const HistoryPlanCard = ({ plan, isDark, onPress, onOptions }) => {
+  const theme = THEME[isDark ? 'dark' : 'light'];
+  const muscles = plan.muscleTags || [];
+  const maxShow = 4;
+  const focusLabel = String(plan.focus || 'Training').trim();
+  const focusLower = focusLabel.toLowerCase();
+  const muscleList = muscles.filter((m) => String(m).trim().toLowerCase() !== focusLower);
+  const shown = muscleList.slice(0, maxShow);
+  const extra = Math.max(0, muscleList.length - maxShow);
+  const statLine = [
+    `${plan.totalWeeks} weeks`,
+    `${plan.daysPerWeek} days/wk`,
+    `${plan.exerciseCount ?? '—'} exercises`,
+  ];
 
   return (
-    <LinearGradient
-      colors={[colors.start, colors.end]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.planCardBorder}
+    <View
+      style={[
+        styles.historyCard,
+        {
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: theme.border,
+        },
+      ]}
     >
-      <TouchableOpacity
-        style={[styles.planCard, { backgroundColor: theme.surface }]}
-        onPress={onPress}
-        activeOpacity={0.7}
-      >
-        <View style={styles.planCardHeader}>
-          <LinearGradient
-            colors={[colors.start, colors.end]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.focusBadgeSmall}
-          >
-            <Text style={styles.focusLabelSmall}>{plan.focus}</Text>
-          </LinearGradient>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <StatusBadge status={plan.status} />
-            {onOptions && (
-              <TouchableOpacity onPress={onOptions} hitSlop={10}>
-                <Ionicons name="ellipsis-horizontal" size={16} color={theme.textMuted} />
+        <View style={styles.historyCardTop}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={[styles.historyCardTitle, { color: theme.text }]} numberOfLines={2}>
+              {plan.name}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}>
+            {onOptions ? (
+              <TouchableOpacity onPress={onOptions} hitSlop={10} style={styles.historyCardIconHit}>
+                <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
               </TouchableOpacity>
-            )}
+            ) : null}
+            <TouchableOpacity
+              onPress={onPress}
+              accessibilityLabel="Quick open plan"
+              style={[
+                styles.historyIconBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)',
+                  borderColor: 'rgba(255,107,157,0.45)',
+                },
+              ]}
+            >
+              <Ionicons name="barbell" size={20} color="#FF6B9D" />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={[styles.planCardName, { color: theme.text }]} numberOfLines={1}>
-          {plan.name}
-        </Text>
-        <Text style={[styles.planCardSubtitle, { color: theme.textMuted }]}>
-          {plan.createdAt ? `${plan.createdAt} · ` : ''}Week {plan.weeksCompleted}/{plan.totalWeeks}
+        <Text style={[styles.historyCardCreated, { color: theme.textMuted }]}>
+          CREATED {plan.createdUpper || plan.createdAt || '—'}
         </Text>
 
-        <View style={styles.planCardMetrics}>
-          {[`${plan.totalWeeks}w`, `${plan.daysPerWeek}d/wk`, `${plan.sessionMinutes}m`].map((pill) => (
-            <View key={pill} style={[styles.planCardMetricPill, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.planCardMetricText, { color: theme.textMuted }]}>{pill}</Text>
+        <View style={styles.historyStatRow}>
+          {statLine.map((text, idx) => (
+            <View
+              key={text}
+              style={[
+                styles.historyStatPillInner,
+                {
+                  flex: 1,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.03)',
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(190,24,93,0.15)',
+                },
+              ]}
+            >
+              <Ionicons name={STAT_PILL_ICONS[idx] || 'ellipse-outline'} size={15} color={WARM_ACCENT} />
+              <Text style={[styles.historyStatText, { color: theme.text }]} numberOfLines={1}>
+                {text}
+              </Text>
             </View>
           ))}
         </View>
 
-        <View style={styles.planCardActions}>
-          <TouchableOpacity
-            style={[styles.planCardButton, { backgroundColor: theme.card, borderColor: theme.border }]}
-            onPress={onPress}
-            activeOpacity={0.6}
+        <View
+          style={[
+            styles.historyDivider,
+            { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)' },
+          ]}
+        />
+
+        <View style={styles.historyMuscleRow}>
+          <View
+            style={[
+              styles.historyFocusChipInner,
+              {
+                backgroundColor: isDark ? 'rgba(190,24,93,0.14)' : 'rgba(255,107,157,0.1)',
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(190,24,93,0.35)' : 'rgba(190,24,93,0.22)',
+              },
+            ]}
           >
-            <Text style={[styles.planCardButtonLabel, { color: theme.textMuted }]}>View</Text>
-          </TouchableOpacity>
-          <LinearGradient
-            colors={[colors.start, colors.end]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.planCardButtonGradient}
-          >
-            <TouchableOpacity style={styles.planCardButtonPrimary} onPress={onPress} activeOpacity={0.8}>
-              <Text style={styles.planCardButtonPrimaryLabel}>Continue</Text>
-            </TouchableOpacity>
-          </LinearGradient>
+            <Ionicons name="sparkles" size={14} color={WARM_ACCENT} />
+            <Text style={[styles.historyFocusChipText, { color: theme.text }]} numberOfLines={1}>
+              {focusLabel}
+            </Text>
+          </View>
+          {shown.map((m) => (
+            <View
+              key={m}
+              style={[
+                styles.historyMuscleChipInner,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.03)',
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <View style={[styles.historyMuscleDot, { backgroundColor: WARM_ACCENT }]} />
+              <Text style={[styles.historyMuscleText, { color: isDark ? 'rgba(255,255,255,0.82)' : 'rgba(10,10,15,0.75)' }]} numberOfLines={1}>
+                {m}
+              </Text>
+            </View>
+          ))}
+          {extra > 0 ? (
+            <View
+              style={[
+                styles.historyMoreChip,
+                {
+                  borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(10,10,15,0.12)',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                },
+              ]}
+            >
+              <Text style={[styles.historyMuscleText, { color: theme.text }]}>+{extra}</Text>
+            </View>
+          ) : null}
         </View>
-      </TouchableOpacity>
-    </LinearGradient>
+
+        <LinearGradient
+          colors={WARM_CTA_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.historyOpenBtnGrad}
+        >
+          <TouchableOpacity
+            style={styles.historyOpenBtnTouch}
+            onPress={onPress}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel="Open workout plan"
+          >
+            <Ionicons name="document-text-outline" size={21} color="#FFFFFF" />
+            <Text style={styles.historyOpenBtnLabel}>Open workout plan</Text>
+            <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </LinearGradient>
+    </View>
   );
 };
 
@@ -602,15 +624,15 @@ function PlansLibraryEmptyHero({
     return (
       <View style={[styles.emptyFilterCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
         <LinearGradient
-          colors={['#FF6B9D', '#C084FC']}
+          colors={WARM_CTA_GRADIENT}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 1, y: 0 }}
           style={styles.emptyFilterIcon}
         >
           <Ionicons name="layers-outline" size={26} color="#FFFFFF" />
         </LinearGradient>
         <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>{message || 'Nothing here yet'}</Text>
-        <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>Try another filter or add a new plan.</Text>
+        <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>Try a different search or add a new plan.</Text>
       </View>
     );
   }
@@ -673,9 +695,9 @@ function PlansLibraryEmptyHero({
             </View>
             {showTrainerCustom ? (
               <LinearGradient
-                colors={['#FF6B9D', '#F97316']}
+                colors={WARM_CTA_GRADIENT}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                end={{ x: 1, y: 0 }}
                 style={[styles.emptyHeroCtaGrad, { marginTop: 8 }]}
               >
                 <TouchableOpacity
@@ -693,7 +715,7 @@ function PlansLibraryEmptyHero({
             ) : null}
             {showCta ? (
               <LinearGradient
-                colors={['#FF6B9D', '#C084FC']}
+                colors={WARM_CTA_GRADIENT}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[styles.emptyHeroCtaGrad, { marginTop: showTrainerCustom ? 12 : 8 }]}
@@ -718,13 +740,62 @@ function PlansLibraryEmptyHero({
 }
 
 // ============================================================================
+// TRAINER — compact builder card (bottom of library)
+// ============================================================================
+function TrainerBuilderFooterCard({ isDark, clientName, onGenerateWorkout, onBuildCustom, theme, clientId }) {
+  if (!clientId) return null;
+  const innerBg = isDark ? '#121218' : '#FFFFFF';
+
+  return (
+    <View style={styles.trainerBuilderFooterWrap}>
+      <LinearGradient colors={WARM_BORDER_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.trainerBuilderFooterBorder}>
+        <View style={[styles.trainerBuilderFooterInner, { backgroundColor: innerBg }]}>
+          <View style={styles.trainerBuilderFooterTop}>
+            <View style={[styles.trainerBuilderFooterIcon, { backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)' }]}>
+              <Ionicons name="barbell-outline" size={20} color="#FF6B9D" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.trainerBuilderFooterTitle, { color: theme.text }]}>Workout Plan Builder</Text>
+              <Text style={[styles.trainerBuilderFooterSub, { color: theme.textMuted }]} numberOfLines={1}>
+                Build for {clientName}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.trainerBuilderFooterActions}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => onGenerateWorkout?.({ id: clientId, name: clientName })}
+              style={[styles.trainerBuilderFooterBtn, { backgroundColor: isDark ? 'rgba(255,107,157,0.22)' : 'rgba(255,107,157,0.14)' }]}
+            >
+              <Ionicons name="sparkles-outline" size={15} color="#FF6B9D" />
+              <Text style={[styles.trainerBuilderFooterBtnText, { color: theme.text }]}>AI plan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}
+              style={[styles.trainerBuilderFooterBtn, { backgroundColor: isDark ? 'rgba(249,115,22,0.18)' : 'rgba(249,115,22,0.12)' }]}
+            >
+              <Ionicons name="construct-outline" size={15} color="#F97316" />
+              <Text style={[styles.trainerBuilderFooterBtnText, { color: theme.text }]}>Custom</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+// ============================================================================
 // MAIN SCREEN
 // ============================================================================
 export default function AIWorkoutPlansScreen({
   route,
   navigation,
   client: clientProp,
+  embedInLayout = false,
   onBack,
+  onProfilePress,
+  onSettingsPress,
   onViewPlan,
   onGenerateWorkout,
   onBuildCustom,
@@ -738,51 +809,22 @@ export default function AIWorkoutPlansScreen({
   const clientId   = clientProp?.id   || route?.params?.clientId;
   const clientName = clientProp?.name || route?.params?.clientName || 'Client';
 
-  const [filter, setFilter] = useState('all');
+  const [libraryQuery, setLibraryQuery] = useState('');
   const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId);
-
-  const [templatesModal, setTemplatesModal] = useState(false);
-  const [manualTemplates, setManualTemplates] = useState([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-
-  const loadManualTemplates = useCallback(async () => {
-    if (!trainerId || !db) return;
-    setTemplatesLoading(true);
-    try {
-      const rows = await listManualWorkoutPlansForTrainer(trainerId);
-      setManualTemplates(rows || []);
-    } catch (e) {
-      Alert.alert('Could not load templates', e?.message || 'Unknown error');
-    } finally {
-      setTemplatesLoading(false);
-    }
-  }, [trainerId]);
 
   // Normalize all Firestore docs into UI-friendly shape
   const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);
 
-  // ── Featured: first active plan with progress, else first plan ──────────
-  const featured = useMemo(
-    () => plans.find((p) => p.status === 'active' && p.weeksCompleted > 0) ?? plans[0],
-    [plans],
-  );
-
-  const others = useMemo(
-    () => (featured ? plans.filter((p) => p.id !== featured.id) : plans),
-    [featured, plans],
-  );
-
-  const filtered = useMemo(() => {
-    if (filter === 'all') return others;
-    return others.filter((p) => p.status === filter);
-  }, [filter, others]);
-
-  const counts = useMemo(() => ({
-    all:       others.length,
-    active:    others.filter((p) => p.status === 'active').length,
-    completed: others.filter((p) => p.status === 'completed').length,
-    paused:    others.filter((p) => p.status === 'paused').length,
-  }), [others]);
+  const plansFilteredBySearch = useMemo(() => {
+    const q = libraryQuery.trim().toLowerCase();
+    if (!q) return plans;
+    return plans.filter((p) => {
+      if (String(p.name || '').toLowerCase().includes(q)) return true;
+      if (String(p.focus || '').toLowerCase().includes(q)) return true;
+      if ((p.muscleTags || []).some((t) => String(t).toLowerCase().includes(q))) return true;
+      return false;
+    });
+  }, [plans, libraryQuery]);
 
   // ── Firestore write operations (unchanged logic) ─────────────────────────
   const handleToggleAssigned = useCallback(async (plan) => {
@@ -792,7 +834,7 @@ export default function AIWorkoutPlansScreen({
       const nextAssigned = !raw.assigned;
       if (raw._singleDoc && raw._path) {
         await setDoc(doc(db, ...raw._path), { assigned: nextAssigned }, { merge: true });
-      } else if (raw._source === 'usersSubcollection') {
+      } else if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
         await setDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
       } else {
         await setDoc(doc(db, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
@@ -815,8 +857,15 @@ export default function AIWorkoutPlansScreen({
             const raw = plan._raw;
             if (raw._singleDoc && raw._path) {
               await deleteDoc(doc(db, ...raw._path));
-            } else if (raw._source === 'usersSubcollection') {
-              await deleteDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id));
+            } else if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
+              if (raw._singleDoc && raw._path) {
+                await deleteDoc(doc(db, ...raw._path));
+              }
+              if (plan.id) {
+                try {
+                  await deleteDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id));
+                } catch (_) {}
+              }
             } else {
               await deleteDoc(doc(db, 'workoutPlans', plan.id));
             }
@@ -846,48 +895,27 @@ export default function AIWorkoutPlansScreen({
   const handleView = (plan) => onViewPlan ? onViewPlan(plan._raw) : navigation?.navigate('WorkoutDetail', { planId: plan.id });
 
   const hasPlans = plans.length > 0;
+  const isTrainerView = viewerRole === 'trainer';
+  const ScreenRoot = embedInLayout ? View : SafeAreaView;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
-      <Header isDark={isDark} onBack={handleBack} />
+    <ScreenRoot style={[styles.container, { backgroundColor: theme.bg }]}>
+      {!embedInLayout ? (
+        <CoachConnectHeader
+          title=""
+          skipTopSafeInset
+          onBack={handleBack}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
+        />
+      ) : null}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, embedInLayout && { paddingTop: 4 }]}
         style={{ backgroundColor: theme.bg }}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Page title */}
-        <View style={styles.pageTitleSection}>
-          <Text style={[styles.pageLabel, { color: theme.textSecondary }]}>LIBRARY</Text>
-          <Text style={[styles.pageTitle,  { color: theme.text }]}>
-            {clientName ? `${clientName}'s plans` : 'Your plans'}
-          </Text>
-        </View>
-
-        {viewerRole === 'trainer' && trainerId && clientId ? (
-          <View style={styles.trainerActionsRow}>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}
-              style={[styles.trainerChip, { borderColor: theme.border, backgroundColor: theme.card }]}
-            >
-              <Ionicons name="construct-outline" size={16} color={theme.text} />
-              <Text style={[styles.trainerChipLabel, { color: theme.text }]}>Custom builder</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={() => {
-                setTemplatesModal(true);
-                loadManualTemplates();
-              }}
-              style={[styles.trainerChip, { borderColor: theme.border, backgroundColor: theme.card }]}
-            >
-              <Ionicons name="folder-open-outline" size={16} color={theme.text} />
-              <Text style={[styles.trainerChipLabel, { color: theme.text }]}>My templates</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
         {/* Loading */}
         {loading && (
           <View style={styles.centeredFeedback}>
@@ -915,7 +943,7 @@ export default function AIWorkoutPlansScreen({
                 <Text style={[styles.loadErrorTitle, { color: theme.text }]}>Could not load plans</Text>
                 <Text style={[styles.loadErrorText, { color: theme.textMuted }]}>{error}</Text>
                 <TouchableOpacity onPress={reload} activeOpacity={0.88} style={styles.loadErrorRetry}>
-                  <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
+                  <LinearGradient colors={WARM_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
                     <Text style={styles.retryGradLabel}>Retry</Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -940,117 +968,71 @@ export default function AIWorkoutPlansScreen({
         {/* Plans */}
         {!loading && !error && hasPlans && (
           <>
-            {/* Featured */}
-            {featured && (
-              <View style={styles.featuredSection}>
-                <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>
-                  CURRENTLY TRAINING
-                </Text>
-                <FeaturedPlanCard
-                  plan={featured}
-                  isDark={isDark}
-                  onContinue={() => handleView(featured)}
-                  onViewDetails={() => handleView(featured)}
-                  onOptions={viewerRole === 'trainer' ? () => showPlanOptions(featured) : null}
-                />
-              </View>
-            )}
+            <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
+              <LibraryHeroSummary isDark={isDark} totalPlans={plans.length} />
+            </View>
 
-            {/* Filter + grid */}
-            {others.length > 0 && (
-              <View style={styles.plansSection}>
-                <FilterChips value={filter} onChange={setFilter} counts={counts} isDark={isDark} />
-
-                {filtered.length === 0 ? (
-                  <PlansLibraryEmptyHero
-                    compact
-                    isDark={isDark}
-                    clientName={clientName}
-                    clientId={clientId}
-                    viewerRole={viewerRole}
-                    message={`No ${filter} plans`}
+            <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+              <LinearGradient
+                colors={WARM_BORDER_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.librarySearchBorder}
+              >
+                <View style={[styles.librarySearchInner, { backgroundColor: theme.surface }]}>
+                  <Ionicons name="search-outline" size={22} color={theme.textMuted} />
+                  <TextInput
+                    value={libraryQuery}
+                    onChangeText={setLibraryQuery}
+                    placeholder="Search plans or muscle groups"
+                    placeholderTextColor={theme.textMuted}
+                    style={[styles.librarySearchInput, { color: theme.text }]}
+                    autoCorrect={false}
+                    autoCapitalize="none"
                   />
-                ) : (
-                  <View style={styles.plansList}>
-                    {filtered.map((plan) => (
-                      <PlanCard
-                        key={plan.id}
-                        plan={plan}
-                        isDark={isDark}
-                        onPress={() => handleView(plan)}
-                        onOptions={viewerRole === 'trainer' ? () => showPlanOptions(plan) : null}
-                      />
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
+                </View>
+              </LinearGradient>
+            </View>
+
+            <View style={[styles.plansSection, { marginTop: 6 }]}>
+              {plansFilteredBySearch.length === 0 ? (
+                <PlansLibraryEmptyHero
+                  compact
+                  isDark={isDark}
+                  clientName={clientName}
+                  clientId={clientId}
+                  viewerRole={viewerRole}
+                  message={libraryQuery.trim() ? 'No matching plans' : 'No plans yet'}
+                />
+              ) : (
+                <View style={styles.plansList}>
+                  {plansFilteredBySearch.map((plan) => (
+                    <HistoryPlanCard
+                      key={plan.id}
+                      plan={plan}
+                      isDark={isDark}
+                      onPress={() => handleView(plan)}
+                      onOptions={viewerRole === 'trainer' ? () => showPlanOptions(plan) : null}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
           </>
         )}
-      </ScrollView>
 
-      <Modal visible={templatesModal} animationType="slide" transparent onRequestClose={() => setTemplatesModal(false)}>
-        <View style={styles.templatesModalBackdrop}>
-          <View style={[styles.templatesModalCard, { backgroundColor: theme.surface }]}>
-            <View style={styles.templatesModalHeader}>
-              <Text style={[styles.templatesModalTitle, { color: theme.text }]}>Custom plans</Text>
-              <TouchableOpacity onPress={() => setTemplatesModal(false)} hitSlop={10}>
-                <Ionicons name="close" size={24} color={theme.text} />
-              </TouchableOpacity>
-            </View>
-            {templatesLoading ? (
-              <ActivityIndicator style={{ marginVertical: 24 }} color="#FF6B9D" />
-            ) : (
-              <FlatList
-                data={manualTemplates}
-                keyExtractor={(item) => item.id}
-                style={{ maxHeight: 420 }}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={
-                  <Text style={{ color: theme.textMuted, paddingVertical: 16 }}>No saved custom plans yet.</Text>
-                }
-                renderItem={({ item }) => (
-                  <View style={[styles.templateRow, { borderBottomColor: theme.border }]}>
-                    <TouchableOpacity
-                      style={{ flex: 1 }}
-                      onPress={() => {
-                        onEditManualPlan?.(item.id);
-                        setTemplatesModal(false);
-                      }}
-                    >
-                      <Text style={[styles.templateTitle, { color: theme.text }]}>{item.planName || item.title}</Text>
-                      <Text style={[styles.templateSub, { color: theme.textMuted }]}>
-                        {(item.category || '').trim()}
-                        {item.duration ? ` · ${item.duration}` : ''}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        Alert.alert('Delete plan', 'Remove this template and unassign all linked clients?', [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: async () => {
-                              const r = await deleteManualWorkoutPlan(trainerId, item.id);
-                              if (!r.success) Alert.alert('Error', r.error || 'Could not delete');
-                              else loadManualTemplates();
-                            },
-                          },
-                        ]);
-                      }}
-                      hitSlop={10}
-                    >
-                      <Ionicons name="trash-outline" size={20} color="#FF6B9D" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        {isTrainerView && trainerId && clientId ? (
+          <TrainerBuilderFooterCard
+            isDark={isDark}
+            theme={theme}
+            clientId={clientId}
+            clientName={clientName}
+            onGenerateWorkout={onGenerateWorkout}
+            onBuildCustom={onBuildCustom}
+          />
+        ) : null}
+      </ScrollView>
+    </ScreenRoot>
   );
 }
 
@@ -1059,96 +1041,153 @@ export default function AIWorkoutPlansScreen({
 // ============================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: { paddingBottom: 120 },
 
-  // Header
-  header: {
-    borderBottomWidth: 1,
-    paddingHorizontal: 16,
-    height: 56,
+  trainerBuilderFooterWrap: { paddingHorizontal: 16, marginTop: 20 },
+  trainerBuilderFooterBorder: { borderRadius: 14, padding: 1.5 },
+  trainerBuilderFooterInner: { borderRadius: 12.5, padding: 12, gap: 10 },
+  trainerBuilderFooterTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trainerBuilderFooterIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerContent: {
+  trainerBuilderFooterTitle: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+  trainerBuilderFooterSub: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  trainerBuilderFooterActions: { flexDirection: 'row', gap: 8 },
+  trainerBuilderFooterBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
   },
-  logoSection: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoBadge: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  logoText:  { fontSize: 14, fontWeight: '700', color: '#FFF' },
-  logoLabel: { fontSize: 16, fontWeight: '700' },
+  trainerBuilderFooterBtnText: { fontSize: 12, fontWeight: '800' },
 
-  // Page title
-  pageTitleSection: { paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
-  trainerActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  trainerChip: {
+  libraryHeroBorder: { borderRadius: 20, padding: 2 },
+  libraryHeroInner: { borderRadius: 18, paddingHorizontal: 20, paddingVertical: 22, alignItems: 'center' },
+  libraryHeroTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center', lineHeight: 28 },
+  libraryHeroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 2.2, marginTop: 12 },
+  libraryHeroAccentLine: { width: 56, height: 3, borderRadius: 2, marginTop: 10 },
+  libraryHeroCount: { fontSize: 56, fontWeight: '900', color: '#FF6B9D', marginTop: 14, letterSpacing: -2 },
+  libraryHeroFooter: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginTop: 10, textAlign: 'center' },
+
+  librarySearchBorder: { borderRadius: 16, padding: 2 },
+  librarySearchInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  librarySearchInput: { flex: 1, fontSize: 16, fontWeight: '600', paddingVertical: 0 },
+
+  historyCardBorder: { borderRadius: 16, padding: 1.5, marginBottom: 0 },
+  historyCard: { borderRadius: 15, padding: 16, gap: 12 },
+  historyCardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  historyCardTitle: { fontSize: 19, fontWeight: '800', lineHeight: 24 },
+  historyCardIconHit: { padding: 4 },
+  historyIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyCardCreated: { fontSize: 13, fontWeight: '700', letterSpacing: 0.6 },
+  historyStatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  historyStatPillGrad: { borderRadius: 14, padding: 1.5, flexGrow: 1, flexBasis: 0, minWidth: 0 },
+  historyStatPillInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12.5,
+    borderWidth: 1,
+    flexShrink: 1,
+  },
+  historyStatText: { fontSize: 13, fontWeight: '800', flexShrink: 1 },
+  historyDivider: { height: StyleSheet.hairlineWidth, width: '100%', marginTop: 4, marginBottom: 4 },
+  historyDividerGrad: { height: 2, width: '100%', borderRadius: 1, marginTop: 2, marginBottom: 2 },
+  historyMuscleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  historyFocusChipBorder: { borderRadius: 999, padding: 1.5, maxWidth: '100%' },
+  historyFocusChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+  },
+  historyFocusChipText: { fontSize: 13, fontWeight: '800', flexShrink: 1 },
+  historyMuscleChipGrad: { borderRadius: 999, padding: 1 },
+  historyMuscleChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    maxWidth: 160,
+  },
+  historyMuscleDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#06B6D4',
+  },
+  historyMuscleText: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  historyMoreChip: {
+    paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
   },
-  trainerChipLabel: { fontSize: 13, fontWeight: '700' },
-  templatesModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+  historyOpenBtnGrad: {
+    borderRadius: 14,
+    marginTop: 4,
+    overflow: 'hidden',
+    shadowColor: '#FF6B9D',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  templatesModalCard: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    maxHeight: '78%',
-  },
-  templatesModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  templatesModalTitle: { fontSize: 18, fontWeight: '800' },
-  templateRow: {
+  historyOpenBtnTouch: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
-  templateTitle: { fontSize: 16, fontWeight: '700' },
-  templateSub: { fontSize: 12, marginTop: 2 },
+  historyOpenBtnLabel: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.2 },
+
+  // Page title (legacy — unused in main library flow; kept for reference)
+  pageTitleSection: { paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
   pageLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   pageTitle: { fontSize: 28, fontWeight: '700' },
 
   // Sections
   featuredSection: { paddingHorizontal: 16, marginBottom: 32 },
   plansSection:    { paddingHorizontal: 16 },
-  sectionLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 12 },
-
-  // Filter chips
-  filterScroll:  { marginBottom: 20, marginHorizontal: -16 },
-  filterContent: { paddingHorizontal: 16, gap: 8, flexDirection: 'row' },
-  filterChip:    { borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1 },
-  filterLabel:   { fontSize: 12, fontWeight: '600' },
+  sectionLabel:    { fontSize: 11, fontWeight: '800', letterSpacing: 1.6, marginBottom: 12 },
 
   // Featured card
-  featuredBorder:  { borderRadius: 16, padding: 2, marginBottom: 4 },
-  featuredCard:    { padding: 20, borderRadius: 14, overflow: 'hidden' },
+  featuredBorder:  { borderRadius: 24, padding: 2, marginBottom: 4 },
+  featuredCard:    { padding: 20, borderRadius: 22, overflow: 'hidden' },
   featuredGlow:    { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, opacity: 0.12 },
-  featuredContent: { gap: 16 },
+  featuredContent: {},
   featuredBadges:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   featuredTag:     { fontSize: 10, fontWeight: '600' },
   featuredTitleSection: { gap: 6 },
@@ -1214,7 +1253,7 @@ const styles = StyleSheet.create({
   planCardButtonPrimaryLabel: { fontSize: 12, fontWeight: '700', color: '#FFF' },
 
   // Plans list
-  plansList: { gap: 12, marginTop: 4 },
+  plansList: { gap: 16, marginTop: 8 },
 
   // Empty state
   emptyHeroOuter: { marginTop: 8, marginBottom: 8 },

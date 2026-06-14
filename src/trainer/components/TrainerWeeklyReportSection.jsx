@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../app/config';
-import WeeklyReportHeroCard from '../../client/components/WeeklyReportHeroCard';
+import WeeklyReportHeroCard from './weeklyReport/WeeklyReportHeroCard';
 
 function formatWeekChip(weekStart, weekEnd) {
   const ws = String(weekStart || '').trim();
@@ -61,7 +61,6 @@ export default function TrainerWeeklyReportSection({ clientId, clientName, isDar
     <View style={styles.wrap}>
       <WeeklyReportHeroCard
         variant="compact"
-        compactSurface="inline"
         audience="trainer"
         clientDisplayName={clientName}
         weekRangeLabel={latest ? formatWeekChip(latest.weekStart, latest.weekEnd) : ''}
@@ -69,7 +68,7 @@ export default function TrainerWeeklyReportSection({ clientId, clientName, isDar
         hasReport={reports.length > 0}
         loading={loading}
         onOpenReport={() => {
-          if (!latest || typeof onOpenWeeklyReport !== 'function') return;
+          if (typeof onOpenWeeklyReport !== 'function' || reports.length === 0) return;
           onOpenWeeklyReport(clientId, clientName);
         }}
       />

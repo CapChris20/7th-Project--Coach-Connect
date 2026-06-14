@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Animated,
@@ -11,6 +10,7 @@ import {
   Modal,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared/ui/ThemeContext';
@@ -299,6 +299,7 @@ export default function MealPlanHomeScreen({ onClose, onNavigate, onProfilePress
       <CoachConnectHeader
         title="Nutrition"
         isDark={isDark}
+        skipTopSafeInset
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
       />

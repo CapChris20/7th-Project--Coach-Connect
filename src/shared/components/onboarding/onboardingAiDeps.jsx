@@ -56,7 +56,14 @@ export function getOnboardingUiTokens(isDark) {
  * @param {'inline' | 'footer'} [variant] — `inline` keeps vertical margins for use inside scroll content.
  *   `footer` removes margins for the fixed onboarding bottom bar (avoids overlap with scroll content).
  */
-export function OnboardingPrimaryButton({ disabled = false, onPress, label = 'Continue', t, variant = 'inline' }) {
+export function OnboardingPrimaryButton({
+  disabled = false,
+  onPress,
+  onDisabledPress,
+  label = 'Continue',
+  t,
+  variant = 'inline',
+}) {
   const footer = variant === 'footer';
   const marginY = footer ? 0 : 16;
   const widthPct = footer ? '100%' : '80%';
@@ -72,7 +79,10 @@ export function OnboardingPrimaryButton({ disabled = false, onPress, label = 'Co
 
   if (disabled) {
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={onDisabledPress ? 0.7 : 1}
+        onPress={onDisabledPress}
+        disabled={!onDisabledPress}
         style={{
           alignSelf: 'center',
           width: widthPct,
@@ -87,7 +97,7 @@ export function OnboardingPrimaryButton({ disabled = false, onPress, label = 'Co
         }}
       >
         <Text style={{ fontSize: 16, fontWeight: '700', color: t.disabledText }}>{label}</Text>
-      </View>
+      </TouchableOpacity>
     );
   }
   return (

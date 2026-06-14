@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SCREEN_W } = Dimensions.get('window');
 const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);
 
-const BORDER_LOOP = ['#FF6B9D', '#64D2FF', '#C084FC', '#FF6B9D'];
+const BORDER_LOOP = ['#F06BA8', '#FB923C', '#C084FC', '#F06BA8'];
 
 export default function TrainerRequestIntroModal({
   visible,
@@ -46,6 +46,7 @@ export default function TrainerRequestIntroModal({
   }, [visible, fade, scale]);
 
   const first = String(trainerName || 'your coach').trim().split(/\s+/)[0] || 'your coach';
+  const hasDraft = String(messageDraft || '').trim().length > 0;
 
   const bg = isDark ? '#141419' : '#F5F5F5';
   const textHi = isDark ? '#FFFFFF' : '#0A0A0F';
@@ -112,12 +113,12 @@ export default function TrainerRequestIntroModal({
                       activeOpacity={0.88}
                     >
                       <LinearGradient
-                        colors={['#FF6B9D', '#C084FC']}
+                        colors={['#F06BA8', '#FB923C']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.sendGradient}
                       >
-                        <Text style={styles.sendButtonText}>Send message</Text>
+                        <Text style={styles.sendButtonText}>{hasDraft ? 'Send message' : 'Continue'}</Text>
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>

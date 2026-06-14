@@ -4,14 +4,14 @@
 
 import React from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
-  View,
-  Text,
-  TouchableOpacity,
+  Platform,
   ScrollView,
   StyleSheet,
-  Platform,
-  KeyboardAvoidingView,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';

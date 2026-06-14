@@ -1,30 +1,35 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
-/** Same palette as session meeting cards: cyan → purple → pink */
 const BORDER_GRADIENT = ['#06B6D4', '#C084FC', '#FF6B9D'];
 
-const ACCENTS = {
-  calories: '#FF6B9D',
-  sleep: '#C084FC',
-  water: '#06B6D4',
+const CC = {
+  bg: '#0A0A0F',
+  cardBg: '#141419',
+  textPrimary: '#FFFFFF',
+  textSecondary: 'rgba(255,255,255,0.65)',
+  textTertiary: 'rgba(255,255,255,0.4)',
+  pink: '#FF6B9D',
+  orange: '#F97316',
+  cyan: '#06B6D4',
+  purple: '#C084FC',
+  green: '#10B981',
 };
 
-const innerWash = (isDark) =>
-  isDark
-    ? ['rgba(255,107,157,0.12)', 'rgba(192,132,252,0.08)', 'rgba(6,182,212,0.06)']
-    : ['rgba(255,107,157,0.08)', 'rgba(192,132,252,0.06)', 'rgba(6,182,212,0.05)'];
-
-const glass = (isDark) => ({
-  text: isDark ? '#FFFFFF' : '#0F172A',
-  muted: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(15,23,42,0.55)',
-  dim: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.45)',
-  track: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)',
-});
+const CC_LIGHT = {
+  cardBg: '#FAFAFC',
+  textPrimary: '#0F172A',
+  textSecondary: 'rgba(15,23,42,0.6)',
+  textTertiary: 'rgba(15,23,42,0.42)',
+  track: 'rgba(15,23,42,0.08)',
+};
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export const GradientBorderShell = ({ isDark, children, style }) => (
   <LinearGradient
@@ -48,117 +53,173 @@ export const GradientBorderShell = ({ isDark, children, style }) => (
       style={{
         borderRadius: 20.5,
         overflow: 'hidden',
-        backgroundColor: isDark ? 'rgba(12, 10, 28, 0.96)' : 'rgba(255, 255, 255, 0.97)',
+        backgroundColor: isDark ? '#0E0C16' : '#FFFFFF',
+        borderWidth: isDark ? 0 : 1,
+        borderColor: isDark ? 'transparent' : 'rgba(15,23,42,0.06)',
       }}
     >
-      <LinearGradient
-        colors={innerWash(isDark)}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ padding: 14 }}
-      >
-        {children}
-      </LinearGradient>
+      <View style={{ padding: 14 }}>{children}</View>
     </View>
   </LinearGradient>
 );
 
-const PROGRESS_GRADIENT = ['#FF6B9D', '#C084FC', '#06B6D4'];
+const RING_SIZE = 102;
+const STROKE = 8;
+const R = (RING_SIZE - STROKE) / 2;
+const CX = RING_SIZE / 2;
+const CY = RING_SIZE / 2;
+const CIRC = 2 * Math.PI * R;
 
-const CaloriesHeroCard = ({ isDark, current, goal, progress, onPress }) => {
-  const t = glass(isDark);
+const CaloriesHeroCard = ({ isDark, current, goal, progress, onPress, onPressLogFood }) => {
   const pct = Math.round(clamp01(progress) * 100);
-  const remaining = Math.max(0, Math.round(Number(goal || 0) - Number(current || 0)));
-  const accent = ACCENTS.calories;
-  const iconBg = isDark ? `${accent}22` : `${accent}18`;
-  const iconBorder = isDark ? `${accent}40` : `${accent}35`;
+  const cur = Math.round(Number(current || 0));
+  const g = Math.round(Number(goal || 2000));
+  const remaining = Math.max(0, g - cur);
+  const p = clamp01(progress);
+
+  const c = isDark ? CC : { ...CC, ...CC_LIGHT };
+  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)';
+  const trackStroke = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.12)';
+  const gradId = useRef(`calRing_${Math.random().toString(36).slice(2, 9)}`).current;
+  const innerDiscR = Math.max(R - STROKE * 0.9, 6);
+  const innerFill = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)';
+  const innerStroke = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
+
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    progressAnim.setValue(0);
+    Animated.timing(progressAnim, {
+      toValue: p,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [p, progressAnim]);
+
+  const strokeDashoffset = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [CIRC, 0],
+  });
+
+  const logHandler = typeof onPressLogFood === 'function' ? onPressLogFood : onPress;
 
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress}>
-      <GradientBorderShell isDark={isDark}>
-        <View style={styles.heroHeader}>
-          <View style={[styles.heroIcon, { backgroundColor: iconBg, borderColor: iconBorder }]}>
-            <Ionicons name="flame-outline" size={18} color={accent} />
+    <GradientBorderShell isDark={isDark} style={s.borderShell}>
+      <View style={s.cardRow}>
+          <View style={s.ringCol}>
+            <View style={s.ringWrap}>
+              <Svg width={RING_SIZE} height={RING_SIZE} style={s.ringSvg}>
+                <Defs>
+                  <SvgLinearGradient
+                    id={gradId}
+                    x1="0"
+                    y1="0"
+                    x2={RING_SIZE}
+                    y2={RING_SIZE}
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <Stop offset="0" stopColor={CC.pink} />
+                    <Stop offset="1" stopColor={CC.cyan} />
+                  </SvgLinearGradient>
+                </Defs>
+                <Circle cx={CX} cy={CY} r={innerDiscR} fill={innerFill} stroke={innerStroke} strokeWidth={1} />
+                <Circle
+                  cx={CX}
+                  cy={CY}
+                  r={R}
+                  stroke={trackStroke}
+                  strokeWidth={STROKE}
+                  fill="none"
+                />
+                <AnimatedCircle
+                  cx={CX}
+                  cy={CY}
+                  r={R}
+                  stroke={p > 0 ? `url(#${gradId})` : trackStroke}
+                  strokeWidth={STROKE}
+                  fill="none"
+                  strokeDasharray={CIRC}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  rotation="-90"
+                  origin={`${CX}, ${CY}`}
+                />
+              </Svg>
+              <View style={s.ringCenter} pointerEvents="none">
+                <Text style={[s.ringBig, { color: c.textPrimary }]}>{cur.toLocaleString()}</Text>
+                <Text style={[s.ringGoal, { color: c.textSecondary }]}>
+                  / {g.toLocaleString()}{' '}
+                  <Text style={{ color: c.textTertiary, fontWeight: '600' }}>kcal</Text>
+                </Text>
+              </View>
+            </View>
           </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.heroLabel, { color: t.muted }]}>{'CALORIES'.toUpperCase()}</Text>
-            <Text style={[styles.heroValue, { color: t.text }]} numberOfLines={1}>
-              {Math.round(Number(current || 0))}{' '}
-              <Text style={{ color: t.dim, fontWeight: '900' }}>/ {Math.round(Number(goal || 2000))}</Text>
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.heroPill,
-              {
-                backgroundColor: isDark ? 'rgba(255,107,157,0.14)' : 'rgba(192,132,252,0.12)',
-                borderColor: isDark ? 'rgba(255,107,157,0.28)' : 'rgba(192,132,252,0.22)',
-              },
-            ]}
-          >
-            <Text style={[styles.heroPillText, { color: t.text }]}>{pct}%</Text>
-          </View>
-        </View>
 
-        <View style={[styles.heroTrack, { backgroundColor: t.track }]}>
-          <LinearGradient
-            colors={PROGRESS_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.heroFill, { width: `${Math.max(pct, 0)}%` }]}
-          />
-        </View>
+          <View style={[s.rightCol, { borderLeftColor: hairline }]}>
+            <View style={s.headerRow}>
+              <View style={s.headerTitleWrap}>
+                <Text style={[s.headerTitle, { color: c.textPrimary }]}>Calories</Text>
+                <Text style={[s.headerSubtitle, { color: c.textSecondary }]}>Today's budget</Text>
+              </View>
+              {typeof logHandler === 'function' ? (
+                <TouchableOpacity style={[s.logFoodBtn, s.logFoodBtnFx]} onPress={logHandler} activeOpacity={0.75}>
+                  <Ionicons name="add-circle-outline" size={18} color={CC.pink} />
+                  <Text style={s.logFoodText}>Log food</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
 
-        <View style={styles.heroFooter}>
-          <Text style={[styles.heroFooterText, { color: t.dim }]} numberOfLines={1}>
-            {remaining === 0 ? 'Goal hit' : `${remaining} cal remaining`}
-          </Text>
-          <View style={styles.heroChevron}>
-            <Ionicons name="chevron-forward" size={16} color={t.dim} />
+            <View
+              style={[
+                s.metricsCard,
+                { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
+                isDark ? s.metricsCardEdgeDark : s.metricsCardEdgeLight,
+              ]}
+            >
+              <View style={s.metricCol}>
+                <Text style={[s.metricLabel, { color: c.textTertiary }]}>REMAINING</Text>
+                <Text style={[s.metricValue, { color: c.textPrimary }]}>{remaining.toLocaleString()}</Text>
+                <Text style={[s.metricUnit, { color: c.textSecondary }]}>kcal</Text>
+              </View>
+              <View style={[s.metricDivider, { backgroundColor: hairline }]} />
+              <View style={s.metricCol}>
+                <Text style={[s.metricLabel, { color: c.textTertiary }]}>PROGRESS</Text>
+                <Text style={[s.metricValue, { color: pct > 0 ? CC.pink : c.textPrimary }]}>
+                  {pct}%
+                </Text>
+                <Text style={[s.metricUnit, { color: c.textSecondary }]}>of goal</Text>
+              </View>
+            </View>
+
+            {typeof onPress === 'function' ? (
+              <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={s.nutritionTouch}>
+                <View style={[s.nutritionGrad, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
+                  <View style={s.nutritionRowInner}>
+                    <View style={s.nutritionRowLeft}>
+                      <Ionicons name="nutrition-outline" size={20} color={CC.pink} />
+                      <Text style={[s.nutritionRowTitle, { color: c.textPrimary }]}>Open Nutrition</Text>
+                    </View>
+                    <View style={[s.chevronPill, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
+                      <Ionicons name="chevron-forward" size={18} color={CC.cyan} />
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
-      </GradientBorderShell>
-    </TouchableOpacity>
+    </GradientBorderShell>
   );
 };
 
-/**
- * PremiumStatsSection — Calories / Sleep / Water with session-card gradient borders + glass inner.
- */
-export default function PremiumStatsSection({
-  isDark = true,
-  stats,
-  onPressCalories,
-  onPressSleep,
-  onPressWater,
-}) {
+export default function PremiumStatsSection({ isDark = true, stats, onPressCalories, onPressLogFood }) {
   const calories = stats?.calories || {};
-  const sleep = stats?.sleep || {};
-  const water = stats?.water || {};
 
   const calProgress = useMemo(() => {
     const cur = Number(calories.current ?? 0);
     const goal = Number(calories.goal ?? 2000);
     return goal > 0 ? cur / goal : 0;
   }, [calories.current, calories.goal]);
-
-  const sleepProgress = useMemo(() => {
-    const cur = Number(sleep.current ?? 0);
-    const goal = Number(sleep.goal ?? 8);
-    return goal > 0 ? cur / goal : 0;
-  }, [sleep.current, sleep.goal]);
-
-  const waterProgress = useMemo(() => {
-    const cur = Number(water.current ?? 0);
-    const goal = Number(water.goal ?? 64);
-    return goal > 0 ? cur / goal : 0;
-  }, [water.current, water.goal]);
-
-  const t = glass(isDark);
-  const sleepValue = Number(sleep.current ?? 0) || 0;
-  const waterValue = Math.round(Number(water.current ?? 0) || 0);
-  const sleepPct = Math.round(clamp01(sleepProgress) * 100);
-  const waterPct = Math.round(clamp01(waterProgress) * 100);
 
   return (
     <View style={styles.wrap}>
@@ -172,192 +233,189 @@ export default function PremiumStatsSection({
         goal={Number(calories.goal ?? 2000)}
         progress={calProgress}
         onPress={onPressCalories}
+        onPressLogFood={onPressLogFood}
       />
-
-      <View style={styles.metricsRow}>
-        {/* Sleep card */}
-        <TouchableOpacity activeOpacity={0.9} onPress={onPressSleep} style={{ flex: 1 }}>
-          <View style={styles.metricOuter}>
-            <LinearGradient
-              colors={['#C084FC', '#FF6B9D']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.metricTopBorder}
-            />
-            <View style={[styles.metricBody, { backgroundColor: isDark ? '#13131A' : 'rgba(255,255,255,0.94)' }]}>
-              <View style={styles.metricHeaderRow}>
-                <View
-                  style={[
-                    styles.metricIconCircle,
-                    { backgroundColor: '#C084FC', borderColor: 'rgba(192,132,252,0.7)' },
-                  ]}
-                >
-                  <Ionicons name="moon-outline" size={20} color="#FFFFFF" />
-                </View>
-                <Text style={[styles.metricStatus, { color: t.dim }]}>{`${sleepPct}%`}</Text>
-              </View>
-
-              <View style={styles.metricCenter}>
-                <Text style={[styles.metricNumber, { color: t.text }]}>{sleepValue}</Text>
-                <Text style={[styles.metricUnit, { color: t.muted }]}>hrs</Text>
-
-                <View style={[styles.metricBarTrack, { backgroundColor: t.track }]}>
-                  <LinearGradient
-                    colors={['#C084FC', '#FF6B9D']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.metricBarFill, { width: `${sleepPct}%` }]}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.metricFooter}>
-                <Text style={[styles.metricLabel, { color: t.muted }]}>SLEEP</Text>
-                <Text style={[styles.metricSub, { color: t.dim }]}>last night</Text>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Water card */}
-        <TouchableOpacity activeOpacity={0.9} onPress={onPressWater} style={{ flex: 1 }}>
-          <View style={styles.metricOuter}>
-            <LinearGradient
-              colors={['#64D2FF', '#4A90E2']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.metricTopBorder}
-            />
-            <View style={[styles.metricBody, { backgroundColor: isDark ? '#13131A' : 'rgba(255,255,255,0.94)' }]}>
-              <View style={styles.metricHeaderRow}>
-                <View
-                  style={[
-                    styles.metricIconCircle,
-                    { backgroundColor: '#64D2FF', borderColor: 'rgba(100,210,255,0.75)' },
-                  ]}
-                >
-                  <Ionicons name="water-outline" size={20} color="#FFFFFF" />
-                </View>
-                <Text style={[styles.metricStatus, { color: t.dim }]}>{`${waterPct}%`}</Text>
-              </View>
-
-              <View style={styles.metricCenter}>
-                <Text style={[styles.metricNumber, { color: t.text }]}>{waterValue}</Text>
-                <Text style={[styles.metricUnit, { color: t.muted }]}>oz</Text>
-
-                <View style={[styles.metricBarTrack, { backgroundColor: t.track }]}>
-                  <LinearGradient
-                    colors={['#64D2FF', '#4A90E2']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.metricBarFill, { width: `${waterPct}%` }]}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.metricFooter}>
-                <Text style={[styles.metricLabel, { color: t.muted }]}>WATER</Text>
-                <Text style={[styles.metricSub, { color: t.dim }]}>hydration</Text>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { marginTop: 14 },
-  sectionTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 10 },
-
-  heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heroIcon: { width: 40, height: 40, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  heroLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.4 },
-  heroValue: { marginTop: 4, fontSize: 20, fontWeight: '900' },
-  heroPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
-  heroPillText: { fontSize: 12, fontWeight: '900' },
-  heroTrack: { height: 8, borderRadius: 999, overflow: 'hidden', marginTop: 12 },
-  heroFill: { height: '100%', borderRadius: 999 },
-  heroFooter: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroFooterText: { fontSize: 12, fontWeight: '800' },
-  heroChevron: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-
-  metricsRow: { flexDirection: 'row', gap: 16, marginTop: 14 },
-  metricOuter: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#13131A',
+const s = StyleSheet.create({
+  borderShell: {
+    marginBottom: 0,
   },
-  metricTopBorder: {
-    height: 3,
-    width: '100%',
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
-  metricBody: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    minHeight: 140,
+  ringCol: {
+    width: RING_SIZE,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  rightCol: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 12,
+    marginLeft: 10,
+    borderLeftWidth: StyleSheet.hairlineWidth * 2,
+    justifyContent: 'flex-start',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 8,
   },
-  metricHeaderRow: {
+  logFoodBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 2,
+    borderColor: CC.pink,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexShrink: 0,
+  },
+  logFoodBtnFx: {
+    shadowColor: CC.pink,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  logFoodText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: CC.pink,
+  },
+  ringSvg: {
+    zIndex: 1,
+  },
+  ringWrap: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  ringCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  ringBig: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  ringGoal: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  headerTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  metricsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  metricsCardEdgeDark: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  metricsCardEdgeLight: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,157,0.22)',
+  },
+  metricCol: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+    textAlign: 'center',
+  },
+  metricUnit: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  metricDivider: {
+    width: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    marginHorizontal: 8,
+  },
+  nutritionTouch: {
+    marginTop: 14,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  nutritionGrad: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  nutritionRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    gap: 10,
   },
-  metricIconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  chevronPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  metricStatus: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  metricCenter: {
+  nutritionRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    marginBottom: 8,
+    minWidth: 0,
   },
-  metricNumber: {
-    fontSize: 36,
-    fontWeight: '900',
+  nutritionRowTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  metricUnit: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  metricBarTrack: {
-    marginTop: 10,
-    height: 4,
-    borderRadius: 999,
-    width: '100%',
-    overflow: 'hidden',
-  },
-  metricBarFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  metricFooter: {
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  metricLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  metricSub: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
+});
+
+const styles = StyleSheet.create({
+  wrap: { marginTop: 10 },
+  sectionTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 2, marginBottom: 8 },
 });

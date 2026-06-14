@@ -34,15 +34,50 @@ export async function getCurrentWorkoutPlan(userId) {
   }
 }
 
-/** Write current plan to Firestore. Overwrites existing. */
-export async function setCurrentWorkoutPlan(userId, { rawPlan, generatedAt }) {
+/** Write current plan to Firestore. Overwrites existing; mirrors into workoutPlans for library. */
+export async function setCurrentWorkoutPlan(userId, { rawPlan, generatedAt, structuredPlan, planText, title }) {
   if (!userId || !db || rawPlan == null) return;
+  const text = String(planText || rawPlan);
+  const when = generatedAt || serverTimestamp();
+  const displayTitle =
+    title ||
+    `Workout plan · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   try {
     const ref = doc(db, 'users', userId, 'workoutPlan', 'current');
-    await setDoc(ref, {
-      rawPlan: String(rawPlan),
-      generatedAt: generatedAt || serverTimestamp(),
-    });
+    await setDoc(
+      ref,
+      {
+        rawPlan: String(rawPlan),
+        planText: text,
+        title: displayTitle,
+        name: displayTitle,
+        structuredPlan: structuredPlan || null,
+        generatedAt: when,
+        updatedAt: serverTimestamp(),
+        source: 'generator',
+        status: 'active',
+      },
+      { merge: true },
+    );
+
+    // Stable library doc so trainers + collection queries always see the latest client plan
+    const libraryRef = doc(db, 'users', userId, 'workoutPlans', 'current');
+    await setDoc(
+      libraryRef,
+      {
+        userId,
+        rawPlan: String(rawPlan),
+        planText: text,
+        title: displayTitle,
+        name: displayTitle,
+        structuredPlan: structuredPlan || null,
+        generatedAt: when,
+        updatedAt: serverTimestamp(),
+        source: 'generator',
+        status: 'active',
+      },
+      { merge: true },
+    );
   } catch (e) {
     if (e?.code !== 'permission-denied') console.error('setCurrentWorkoutPlan:', e);
   }
@@ -548,17 +583,34 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
 
   try {
     const displayName = name || `AI Plan – ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+    const structured = planData.structuredPlan || null;
+    const goal = structured?.goal || structured?.focus || '';
+    const weeks = structured?.weeks || structured?.totalWeeks || structured?.durationWeeks || 8;
+    const daysPerWeek = structured?.daysPerWeek || structured?.trainingDays?.length || 3;
+    const sessionMinutes = structured?.sessionMinutes || structured?.sessionLength || 45;
+
     const docData = {
       userId,
       name: displayName,
+      title: displayName,
       planText: planData.planText || '',
-      structuredPlan: planData.structuredPlan || null,
+      rawPlan: planData.planText || '',
+      structuredPlan: structured,
+      goal,
+      focus: goal,
+      totalWeeks: weeks,
+      daysPerWeek,
+      sessionMinutes,
+      status: 'paused',
+      source: 'ai',
       generatedAt: planData.generatedAt || Date.now(),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(db, SAVED_WORKOUT_PLANS_COLLECTION), docData);
+    const colRef = collection(db, 'users', userId, 'workoutPlans');
+    const docRef = await addDoc(colRef, docData);
     return { success: true, id: docRef.id };
   } catch (error) {
     console.error('Error saving workout plan to collection:', error);
@@ -576,12 +628,8 @@ export async function fetchSavedWorkoutPlans(userId, limit = 50) {
   if (!userId || !db) return [];
 
   try {
-    const ref = collection(db, SAVED_WORKOUT_PLANS_COLLECTION);
-    const q = query(
-      ref,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    const ref = collection(db, 'users', userId, 'workoutPlans');
+    const q = query(ref, orderBy('generatedAt', 'desc'));
     const snapshot = await getDocs(q);
     const plans = [];
     snapshot.forEach((d) => {
@@ -590,9 +638,8 @@ export async function fetchSavedWorkoutPlans(userId, limit = 50) {
     return plans.slice(0, limit);
   } catch (e) {
     if (e.code === 'failed-precondition' || (e.message && e.message.includes('index'))) {
-      const ref = collection(db, SAVED_WORKOUT_PLANS_COLLECTION);
-      const q = query(ref, where('userId', '==', userId));
-      const snapshot = await getDocs(q);
+      const ref = collection(db, 'users', userId, 'workoutPlans');
+      const snapshot = await getDocs(ref);
       const plans = [];
       snapshot.forEach((d) => {
         plans.push({ id: d.id, ...d.data() });

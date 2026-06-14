@@ -173,11 +173,15 @@ export default function WorkoutPlanBuilderFieldEditBody({
     case 'fitnessLevel':
       return (
         <View style={styles.editFields}>
-          {['beginner', 'intermediate', 'advanced'].map((level) => (
+          {[
+            { value: 'beginner', label: 'Beginner' },
+            { value: 'intermediate', label: 'Intermediate' },
+            { value: 'advanced', label: 'Advanced' },
+          ].map((level) => (
             <TouchableOpacity
-              key={level}
+              key={level.value}
               onPress={() => {
-                setOnboardingData((prev) => ({ ...prev, fitnessLevel: level }));
+                setOnboardingData((prev) => ({ ...prev, fitnessLevel: level.value }));
                 if (validationErrors.fitnessLevel) {
                   setValidationErrors((prev) => ({ ...prev, fitnessLevel: null }));
                 }
@@ -185,12 +189,13 @@ export default function WorkoutPlanBuilderFieldEditBody({
               style={[
                 styles.optionCard,
                 {
-                  backgroundColor: onboardingData.fitnessLevel === level ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.fitnessLevel === level ? '#FF6B9D' : ui.border,
+                  backgroundColor: onboardingData.fitnessLevel === level.value ? ui.optionSelectedBg : ui.optionBg,
+                  borderColor: onboardingData.fitnessLevel === level.value ? '#BE185D' : ui.border,
                 },
               ]}
             >
-              <Text style={[styles.optionCardText, { color: onSel(onboardingData.fitnessLevel === level) }]}>
+              <Text style={[styles.optionCardText, { color: onSel(onboardingData.fitnessLevel === level.value) }]}>
+                {level.label}
               </Text>
             </TouchableOpacity>
           ))}
@@ -217,11 +222,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.primaryGoal === goal.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.primaryGoal === goal.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.primaryGoal === goal.value ? '#BE185D' : ui.border,
                 },
               ]}
             >
               <Text style={[styles.optionCardText, { color: onSel(onboardingData.primaryGoal === goal.value) }]}>
+                {goal.label}
               </Text>
             </TouchableOpacity>
           ))}
@@ -230,14 +236,22 @@ export default function WorkoutPlanBuilderFieldEditBody({
     case 'equipment':
       return (
         <View style={styles.editFields}>
-          {['gym', 'dumbbells', 'bands', 'pullup_bar', 'bodyweight'].map((equip) => {
-            const isSelected = onboardingData.equipmentAccess?.includes(equip);
+          {[
+            { value: 'gym', label: 'Full gym' },
+            { value: 'dumbbells', label: 'Dumbbells' },
+            { value: 'bands', label: 'Resistance bands' },
+            { value: 'pullup_bar', label: 'Pull-up bar' },
+            { value: 'bodyweight', label: 'Bodyweight only' },
+          ].map((equip) => {
+            const isSelected = onboardingData.equipmentAccess?.includes(equip.value);
             return (
               <TouchableOpacity
-                key={equip}
+                key={equip.value}
                 onPress={() => {
                   const current = onboardingData.equipmentAccess || [];
-                  const updated = isSelected ? current.filter((e) => e !== equip) : [...current, equip];
+                  const updated = isSelected
+                    ? current.filter((e) => e !== equip.value)
+                    : [...current, equip.value];
                   setOnboardingData((prev) => ({ ...prev, equipmentAccess: updated }));
                   if (validationErrors.equipment) {
                     setValidationErrors((prev) => ({ ...prev, equipment: null }));
@@ -247,12 +261,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
                   styles.optionCard,
                   {
                     backgroundColor: isSelected ? ui.optionSelectedBg : ui.optionBg,
-                    borderColor: isSelected ? '#FF6B9D' : ui.border,
+                    borderColor: isSelected ? '#BE185D' : ui.border,
                   },
                 ]}
               >
                 <Text style={[styles.optionCardText, { color: onSel(isSelected) }]}>
-                  {isSelected && ' ✓'}
+                  {isSelected ? `✓ ${equip.label}` : equip.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -275,11 +289,12 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.daysPerWeek === days ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.daysPerWeek === days ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.daysPerWeek === days ? '#BE185D' : ui.border,
                 },
               ]}
             >
               <Text style={[styles.optionCardText, { color: onSel(onboardingData.daysPerWeek === days) }]}>
+                {days} {days === 1 ? 'day' : 'days'} per week
               </Text>
             </TouchableOpacity>
           ))}

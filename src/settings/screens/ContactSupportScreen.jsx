@@ -46,10 +46,7 @@ function GradientCard({ borderColors, style, innerStyle, children }) {
 function openSupportMail() {
   const email = getSupportEmail();
   if (!email) {
-    Alert.alert(
-      'Support',
-      'No support email is configured. Set EXPO_PUBLIC_SUPPORT_EMAIL for your build (see app config).'
-    );
+    Alert.alert('Support', 'Support email is not available right now. Try again later or use Help & FAQ in Settings.');
     return;
   }
   const subject = 'Coach Connect support';
@@ -156,7 +153,7 @@ export default function ContactSupportScreen({ onClose }) {
       backgroundColor: 'rgba(255,255,255,0.03)',
       borderWidth: 0,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: '#FFFFFF', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
     heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
 
     intro: { fontSize: 14, fontWeight: '600', color: t.text2, lineHeight: 22, marginBottom: 16 },
@@ -212,7 +209,7 @@ export default function ContactSupportScreen({ onClose }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <CoachConnectHeader title="Contact support" isDark={isDark} onBack={onClose} />
+      <CoachConnectHeader title="Contact support" skipTopSafeInset onBack={onClose} />
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>

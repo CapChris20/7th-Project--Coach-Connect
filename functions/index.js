@@ -508,7 +508,7 @@ function workoutSnippetFromLog(l) {
   return null;
 }
 
-/** One line per day — matches `WeeklyReportPremium.parseDayNote` (`Day (YYYY-MM-DD): note`). */
+/** One line per day — matches `trainer/components/weeklyReport/WeeklyReportPremium.parseDayNote` (`Day (YYYY-MM-DD): note`). */
 function dayLineForWeeklyReport(dayLabel, dateStr, log) {
   const heading = `${dayLabel} (${dateStr})`;
   if (!log) {
@@ -1194,3 +1194,6 @@ exports.onTrainerSessionCreated = onDocumentCreated(
     }
   }
 );
+
+// Day-14 macro recalibration (6 AM America/Detroit)
+Object.assign(exports, require('./macroRecalibrationFunction'));

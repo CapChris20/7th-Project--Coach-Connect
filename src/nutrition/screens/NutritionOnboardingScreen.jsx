@@ -54,6 +54,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -69,11 +70,9 @@ const T = {
   textVeryMuted: 'rgba(255,255,255,0.4)',
   inputBg: 'rgba(255,255,255,0.06)',
   inputBorder: 'rgba(255,255,255,0.10)',
-  hotPink: '#ec4899',
-  gradientBtn: ['#7c3aed', '#ec4899', '#f97316'],
-  gradientAccent: ['#ec4899', '#f97316'],
-  gradientPurplePink: ['#C084FC', '#FF6B9D'],
-  progressFill: ['#ec4899', '#f97316'],
+  hotPink: '#BE185D',
+  brandCta: ['#BE185D', '#C2410C'],
+  progressFill: ['#BE185D', '#C2410C'],
   progressEmpty: 'rgba(255,255,255,0.1)',
 };
 
@@ -109,79 +108,118 @@ const pb = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────
 
 const GlassCardActive = ({ children, style }) => (
-  <LinearGradient
-    colors={T.gradientAccent}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={[{ borderRadius: 21, padding: 1 }, style]}
+  <View
+    style={[
+      {
+        borderRadius: 20,
+        backgroundColor: T.solidBg,
+        borderWidth: 1,
+        borderColor: 'rgba(190,24,93,0.45)',
+        padding: 16,
+      },
+      style,
+    ]}
   >
-    <View style={{ borderRadius: 20, backgroundColor: T.solidBg, padding: 16 }}>
-      {children}
-    </View>
-  </LinearGradient>
+    {children}
+  </View>
 );
 
 // ─────────────────────────────────────────────────────────────
 // CALORIE GOAL STEP  (was: src/components/CalorieGoalStep.tsx)
 // ─────────────────────────────────────────────────────────────
 
-const CalorieGoalStep = ({ onNext, calories, setCalories }) => {
-  const decrement = () => setCalories(Math.max(calories - 50, 500));
-  const increment = () => setCalories(Math.min(calories + 50, 5000));
-  const cal = Number(calories) || 0;
+const clampCalories = (n) => Math.min(5000, Math.max(500, Math.round(Number(n) || 0)));
+
+const CalorieGoalStep = ({ onNext, calories, setCalories, footerPadBottom }) => {
+  const decrement = () => setCalories(clampCalories(calories - 50));
+  const increment = () => setCalories(clampCalories(calories + 50));
+  const cal = clampCalories(calories);
   const estProtein = Math.round(cal * 0.3 / 4);
   const estCarbs = Math.round(cal * 0.4 / 4);
   const estFat = Math.round(cal * 0.3 / 9);
 
+  const onCalorieTextChange = (text) => {
+    const digits = String(text || '').replace(/\D/g, '');
+    if (!digits) {
+      setCalories(500);
+      return;
+    }
+    setCalories(clampCalories(parseInt(digits, 10)));
+  };
+
   return (
-    <View style={step.container}>
-      <ProgressBar currentStep={1} totalSteps={3} />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
+    >
+      <View style={[step.container, { paddingBottom: footerPadBottom }]}>
+        <ProgressBar currentStep={1} totalSteps={3} />
+        <Text style={step.title}>Set Your Calorie Goal</Text>
 
-      <Text style={step.title}>Set Your Calorie Goal</Text>
+        <View style={[step.heroCard, step.heroCardFlat]}>
+          <Text style={step.heroKicker}>DAILY CALORIE TARGET</Text>
 
-      <View style={step.centerBlock}>
-        <View style={step.counterRow}>
-          <TouchableOpacity onPress={decrement} activeOpacity={0.8} style={step.counterBtn}>
-            <Text style={step.counterBtnText}>−</Text>
-          </TouchableOpacity>
+          <View style={step.counterRow}>
+              <TouchableOpacity onPress={decrement} activeOpacity={0.8} style={step.counterBtn}>
+                <Text style={step.counterBtnText}>−</Text>
+              </TouchableOpacity>
 
-          <View style={step.numberBlock}>
-            <Text style={step.bigNumber}>{calories}</Text>
-            <Text style={step.kcalLabel}>kcal / day</Text>
-          </View>
+              <View style={step.numberBlock}>
+                <TextInput
+                  style={step.bigNumberInput}
+                  value={String(cal)}
+                  onChangeText={onCalorieTextChange}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  selectTextOnFocus
+                  accessibilityLabel="Daily calorie target"
+                />
+                <Text style={step.kcalLabel}>kcal / day</Text>
+              </View>
 
-          <TouchableOpacity onPress={increment} activeOpacity={0.8} style={step.counterBtn}>
-            <Text style={step.counterBtnText}>+</Text>
-          </TouchableOpacity>
+              <TouchableOpacity onPress={increment} activeOpacity={0.8} style={step.counterBtn}>
+                <Text style={step.counterBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => Alert.alert('Coming soon', 'Use +/− or tap the number to set your goal for now.')}
+              activeOpacity={0.7}
+              style={step.calculateLinkWrap}
+            >
+              <Text style={step.linkText}>Calculate for me</Text>
+            </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={() => Alert.alert('Coming soon', 'Use +/− to set your goal manually for now.')}
-          activeOpacity={0.7}
-          style={{ marginTop: 32 }}
-        >
-          <Text style={step.linkText}>Calculate for me</Text>
+        <View style={step.macroPreviewCard}>
+          <Text style={step.estimatedMacrosLabel}>Estimated macros at this calorie target</Text>
+          <View style={step.macroPillRow}>
+            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[step.macroPillText, { color: T.text }]}>P {estProtein}g</Text>
+            </View>
+            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[step.macroPillText, { color: T.text }]}>C {estCarbs}g</Text>
+            </View>
+            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[step.macroPillText, { color: T.text }]}>F {estFat}g</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minHeight: 12 }} />
+
+        <TouchableOpacity onPress={onNext} activeOpacity={0.85}>
+          <LinearGradient
+            colors={T.brandCta}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={step.gradBtn}
+          >
+            <Text style={step.gradBtnText}>Next</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
-
-      <Text style={step.estimatedMacrosLabel}>Estimated macros at this calorie target</Text>
-      <View style={step.macroPreviewRow}>
-        <Text style={step.macroPreviewText}>
-          Protein: {estProtein}g  ·  Carbs: {estCarbs}g  ·  Fat: {estFat}g
-        </Text>
-      </View>
-
-      <TouchableOpacity onPress={onNext} activeOpacity={0.85} style={{ marginTop: 'auto' }}>
-        <LinearGradient
-          colors={T.gradientBtn}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={step.gradBtn}
-        >
-          <Text style={step.gradBtnText}>Next</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -189,7 +227,7 @@ const CalorieGoalStep = ({ onNext, calories, setCalories }) => {
 // MACROS STEP  (was: src/components/MacrosStep.tsx)
 // ─────────────────────────────────────────────────────────────
 
-const MacrosStep = ({ onNext, onBack, macros, setMacros }) => {
+const MacrosStep = ({ onNext, onBack, macros, setMacros, footerPadBottom }) => {
   const [activeField, setActiveField] = useState(null);
 
   const fields = [
@@ -208,7 +246,7 @@ const MacrosStep = ({ onNext, onBack, macros, setMacros }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flex: 1 }}
     >
-      <View style={step.container}>
+      <View style={[step.container, { paddingBottom: footerPadBottom }]}>
         <View style={{ position: 'relative', marginBottom: 32 }}>
           <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
             <Text style={step.linkText}>← Back</Text>
@@ -257,7 +295,7 @@ const MacrosStep = ({ onNext, onBack, macros, setMacros }) => {
 
         <TouchableOpacity onPress={onNext} activeOpacity={0.85} style={{ marginTop: 'auto' }}>
           <LinearGradient
-            colors={T.gradientBtn}
+            colors={T.brandCta}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={step.gradBtn}
@@ -310,7 +348,7 @@ const PRESET_FOODS = [
   { name: 'Ice Cream',      status: 'bad' },
 ];
 
-const FavoriteFoodsStep = ({ onBack, onFinish }) => {
+const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
   const [foods, setFoods] = useState(PRESET_FOODS);
   const [inputValue, setInputValue] = useState('');
 
@@ -323,7 +361,7 @@ const FavoriteFoodsStep = ({ onBack, onFinish }) => {
   };
 
   return (
-    <View style={step.container}>
+    <View style={[step.container, { paddingBottom: footerPadBottom }]}>
       <View style={{ position: 'relative', marginBottom: 32 }}>
         <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
           <Text style={step.linkText}>← Back</Text>
@@ -344,7 +382,7 @@ const FavoriteFoodsStep = ({ onBack, onFinish }) => {
           returnKeyType="done"
         />
         <TouchableOpacity onPress={addFood} activeOpacity={0.85}>
-          <LinearGradient colors={T.gradientAccent} style={favS.addBtn}>
+          <LinearGradient colors={T.brandCta} style={favS.addBtn}>
             <Ionicons name="add" size={18} color="white" />
           </LinearGradient>
         </TouchableOpacity>
@@ -353,19 +391,19 @@ const FavoriteFoodsStep = ({ onBack, onFinish }) => {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         <View style={favS.chipsWrap}>
           {foods.map((food, i) => (
-            <GlassCardActive key={i} style={{ marginBottom: 0 }}>
+            <View key={i} style={[macroS.card, favS.chipCard]}>
               <View style={favS.chip}>
                 <Text style={favS.chipText}>{food.name}</Text>
                 <Text style={{ fontSize: 14 }}>{STATUS_CONFIG[food.status].emoji}</Text>
               </View>
-            </GlassCardActive>
+            </View>
           ))}
         </View>
       </ScrollView>
 
       <TouchableOpacity onPress={onFinish} activeOpacity={0.85} style={{ marginTop: 16 }}>
         <LinearGradient
-          colors={T.gradientBtn}
+          colors={T.brandCta}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={step.gradBtn}
@@ -393,6 +431,7 @@ const favS = StyleSheet.create({
   input: { flex: 1, color: T.text, fontSize: 14 },
   addBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chipCard: { paddingVertical: 12, paddingHorizontal: 14 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chipText: { color: T.text, fontSize: 14, fontWeight: '500' },
 });
@@ -403,26 +442,46 @@ const step = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 40,
+    paddingTop: 24,
   },
   title: {
     color: T.text,
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
-    marginTop: 40,
-    marginBottom: 32,
+    marginTop: 28,
+    marginBottom: 20,
   },
-  centerBlock: {
-    flex: 1,
+  heroRim: {
+    borderRadius: 22,
+    padding: 1,
+    marginBottom: 16,
+  },
+  heroCard: {
+    borderRadius: 21,
+    backgroundColor: T.solidBg,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  heroCardFlat: {
+    borderWidth: 1,
+    borderColor: T.cardBorder,
+    marginBottom: 16,
+  },
+  heroKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: T.textMuted,
+    marginBottom: 16,
   },
   counterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
   },
   counterBtn: {
     width: 52,
@@ -435,13 +494,45 @@ const step = StyleSheet.create({
     justifyContent: 'center',
   },
   counterBtnText: { color: T.text, fontSize: 24, fontWeight: '700', lineHeight: 28 },
-  numberBlock: { alignItems: 'center' },
-  bigNumber: { color: '#FF6B9D', fontSize: 72, fontWeight: '800', lineHeight: 80 },
-  kcalLabel: { color: T.textMuted, fontSize: 13, marginTop: 8, textAlign: 'center' },
+  numberBlock: { flex: 1, alignItems: 'center', minWidth: 0 },
+  bigNumberInput: {
+    color: T.text,
+    fontSize: 56,
+    fontWeight: '800',
+    lineHeight: 62,
+    textAlign: 'center',
+    minWidth: 120,
+    paddingVertical: 0,
+  },
+  kcalLabel: { color: T.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' },
+  calculateLinkWrap: { marginTop: 16 },
   linkText: { color: T.hotPink, fontSize: 14, fontWeight: '500', textDecorationLine: 'underline' },
-  estimatedMacrosLabel: { fontSize: 12, color: T.textVeryMuted, marginBottom: 6 },
-  macroPreviewRow: { marginBottom: 12 },
-  macroPreviewText: { fontSize: 14, color: T.textMuted },
+  macroPreviewCard: {
+    backgroundColor: T.cardBg,
+    borderWidth: 1,
+    borderColor: T.cardBorder,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 8,
+  },
+  estimatedMacrosLabel: {
+    fontSize: 12,
+    color: T.textVeryMuted,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  macroPillRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  macroPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  macroPillText: { fontSize: 13, fontWeight: '700' },
   backBtn: { position: 'absolute', left: 0, zIndex: 10, paddingVertical: 4 },
   gradBtn: {
     borderRadius: 20,
@@ -455,7 +546,13 @@ const step = StyleSheet.create({
 // NUTRITION ONBOARDING SCREEN
 // ─────────────────────────────────────────────────────────────
 
-export const NutritionOnboardingScreen = ({ onComplete }) => {
+/** Matches BottomNavBar minHeight when tab bar overlays this screen. */
+export const NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE = 88;
+
+export const NutritionOnboardingScreen = ({ onComplete, reservedBottomInset = 0 }) => {
+  const insets = useSafeAreaInsets();
+  const footerPadBottom =
+    Math.max(insets.bottom, 12) + Math.max(reservedBottomInset, 0) + 20;
   const [currentStep, setStep] = useState(1);
   const [calories, setCalories] = useState(2000);
   const [macros, setMacros] = useState({ protein: 150, carbs: 200, fat: 65 });
@@ -481,9 +578,19 @@ export const NutritionOnboardingScreen = ({ onComplete }) => {
     <LinearGradient colors={T.bg} style={{ flex: 1 }}>
       {currentStep === 1 && (
         <CalorieGoalStep
-          onNext={() => setStep(2)}
+          onNext={() => {
+            const cal = clampCalories(calories);
+            setCalories(cal);
+            setMacros({
+              protein: Math.round(cal * 0.3 / 4),
+              carbs: Math.round(cal * 0.4 / 4),
+              fat: Math.round(cal * 0.3 / 9),
+            });
+            setStep(2);
+          }}
           calories={calories}
           setCalories={setCalories}
+          footerPadBottom={footerPadBottom}
         />
       )}
       {currentStep === 2 && (
@@ -492,12 +599,14 @@ export const NutritionOnboardingScreen = ({ onComplete }) => {
           onBack={() => setStep(1)}
           macros={macros}
           setMacros={setMacros}
+          footerPadBottom={footerPadBottom}
         />
       )}
       {currentStep === 3 && (
         <FavoriteFoodsStep
           onBack={() => setStep(2)}
           onFinish={handleFinish}
+          footerPadBottom={footerPadBottom}
         />
       )}
     </LinearGradient>

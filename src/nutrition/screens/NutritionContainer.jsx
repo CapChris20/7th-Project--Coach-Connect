@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { auth, db } from '../../app/config';
-import { getDateKey } from '../../app/dateKey';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getClientDateKey } from '../../app/dateKey';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
@@ -16,6 +16,7 @@ import {
   updateFoodLog,
   deleteFoodLog,
   upsertDailyGoals,
+  getTopLoggedFoodNames,
 } from '../services/nutritionService';
 import NutritionOnboardingScreen from './NutritionOnboardingScreen';
 import NutritionScreen from './NutritionScreen';
@@ -38,12 +39,18 @@ export const NutritionContainer = ({
   onWorkoutPress,
   onMessagesPress,
   onNutritionDataChanged,
+  hideBottomNav = false,
+  /** Parent tab bar overlays content (e.g. ClientMainScreen absolute BottomNavBar). */
+  onOnboardingActiveChange,
+  /** Notify parent when nutrition settings modal is open (hide tab bar). */
+  onSettingsOverlayChange,
 } = {}) => {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [goals, setGoals] = useState(null);
   const [logs, setLogs] = useState([]);
   const [showFoodSearch, setShowFoodSearch] = useState(false);
+  const [initialSearchQuery, setInitialSearchQuery] = useState('');
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [activeMealType, setActiveMealType] = useState('breakfast');
@@ -52,18 +59,73 @@ export const NutritionContainer = ({
   const [editQuantityValue, setEditQuantityValue] = useState('');
   const [showNutritionSettings, setShowNutritionSettings] = useState(false);
   const [logError, setLogError] = useState(null);
+  const [topFoodNames, setTopFoodNames] = useState([]);
   const pendingLogs = useRef(new Set());
   const { isDark } = useTheme();
 
-  const today = getDateKey();
+  useEffect(() => {
+    if (typeof onOnboardingActiveChange !== 'function') return undefined;
+    onOnboardingActiveChange(needsOnboarding);
+    return () => onOnboardingActiveChange(false);
+  }, [needsOnboarding, onOnboardingActiveChange]);
+
+  useEffect(() => {
+    if (typeof onSettingsOverlayChange !== 'function') return undefined;
+    onSettingsOverlayChange(showNutritionSettings);
+    return () => onSettingsOverlayChange(false);
+  }, [showNutritionSettings, onSettingsOverlayChange]);
+
+  const today = getClientDateKey();
   const uid = auth.currentUser?.uid;
+
+  useEffect(() => {
+    if (!uid || !db) return undefined;
+
+    const logsRef = collection(db, 'nutrition_logs');
+    const q = query(logsRef, where('user_id', '==', uid), where('date', '==', today));
+
+    const unsub = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const next = [];
+        querySnapshot.forEach((logDoc) => {
+          const data = logDoc.data();
+          next.push({
+            id: logDoc.id,
+            ...data,
+            calories: Number(data.calories) || 0,
+            protein: Number(data.protein) || 0,
+            carbs: Number(data.carbs) || 0,
+            fat: Number(data.fat) || 0,
+          });
+        });
+        next.sort((a, b) => {
+          const aTime = a.created_at?.toDate?.() || new Date(a.created_at || 0);
+          const bTime = b.created_at?.toDate?.() || new Date(b.created_at || 0);
+          return aTime - bTime;
+        });
+        setLogs(next);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Nutrition logs listener:', err);
+      }
+    );
+
+    return () => {
+      try {
+        unsub();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, [uid, today, db]);
 
   useEffect(() => {
     if (!uid) return;
     const loadData = async () => {
       setLoading(true);
       try {
-        const logsData = await getFoodLogsForDate(uid, today);
         let goalDocExists = false;
         if (db) {
           const goalSnap = await getDoc(doc(db, 'nutrition_goals', uid));
@@ -72,13 +134,10 @@ export const NutritionContainer = ({
 
         if (!goalDocExists) {
           setNeedsOnboarding(true);
-          setLogs(logsData);
         } else {
           const goalsData = await getDailyGoals(uid);
           setGoals(goalsData);
-          setLogs(logsData);
         }
-
       } catch (err) {
         console.error('NutritionContainer load error:', err);
       } finally {
@@ -86,7 +145,31 @@ export const NutritionContainer = ({
       }
     };
     loadData();
-  }, [uid, today]);
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid || !db || needsOnboarding) return undefined;
+    const goalRef = doc(db, 'nutrition_goals', uid);
+    return onSnapshot(
+      goalRef,
+      async () => {
+        try {
+          const goalsData = await getDailyGoals(uid);
+          setGoals(goalsData);
+        } catch (err) {
+          if (__DEV__) console.warn('Nutrition goals listener:', err?.message);
+        }
+      },
+      (err) => {
+        if (__DEV__) console.warn('nutrition_goals listener error:', err?.message);
+      }
+    );
+  }, [uid, needsOnboarding]);
+
+  useEffect(() => {
+    if (!uid) return;
+    getTopLoggedFoodNames(uid, 3).then(setTopFoodNames).catch(() => {});
+  }, [uid]);
 
   const handleOnboardingComplete = async ({ calories, macros }) => {
     setNeedsOnboarding(false);
@@ -157,6 +240,13 @@ export const NutritionContainer = ({
 
   const handleLog = (mealType) => {
     setActiveMealType(mealType.toLowerCase());
+    setInitialSearchQuery('');
+    setShowFoodSearch(true);
+  };
+
+  const handlePillSearch = (term) => {
+    setActiveMealType('snacks');
+    setInitialSearchQuery(term);
     setShowFoodSearch(true);
   };
 
@@ -298,6 +388,18 @@ export const NutritionContainer = ({
   };
 
   const screenBg = isDark ? '#0A0A0F' : '#F2F2F7';
+  const bottomNavEl = hideBottomNav ? null : (
+    <BottomNavBar
+      onHomePress={onHomePress}
+      onPlusPress={onPlusPress}
+      onVoicePress={onVoicePress}
+      onNutritionPress={onNutritionPress}
+      onWorkoutPress={onWorkoutPress}
+      onMessagesPress={onMessagesPress}
+      activeTabKey="nutrition"
+    />
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
@@ -311,15 +413,7 @@ export const NutritionContainer = ({
           <ActivityIndicator color="#FF6B9D" size="small" />
         </View>
 
-        <BottomNavBar
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          activeTabKey="nutrition"
-        />
+        {bottomNavEl}
       </SafeAreaView>
     );
   }
@@ -327,24 +421,22 @@ export const NutritionContainer = ({
   if (needsOnboarding) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
-        <View style={{ paddingTop: 8 }}>
-          <CoachConnectHeader
-            title="Nutrition"
-            isDark={isDark}
-            onProfilePress={onProfilePress}
-            onSettingsPress={onSettingsPress}
+        <CoachConnectHeader
+          title="Nutrition"
+          skipTopSafeInset={true}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
+        />
+        <View style={{ flex: 1, minHeight: 0 }}>
+          <NutritionOnboardingScreen
+            onComplete={handleOnboardingComplete}
+            reservedBottomInset={
+              hideBottomNav && typeof onOnboardingActiveChange !== 'function'
+                ? NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE
+                : 0
+            }
           />
         </View>
-        <NutritionOnboardingScreen onComplete={handleOnboardingComplete} />
-        <BottomNavBar
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          activeTabKey="nutrition"
-        />
       </SafeAreaView>
     );
   }
@@ -353,33 +445,25 @@ export const NutritionContainer = ({
     const addFoodBg = isDark ? '#0A0A0F' : '#FFFFFF';
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }}>
-        <View style={{ paddingTop: 8 }}>
-          <CoachConnectHeader
-            title="Add Food"
-            isDark={isDark}
-            onBack={() => setShowFoodSearch(false)}
-            onProfilePress={onProfilePress}
-            onSettingsPress={onSettingsPress}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
+        <CoachConnectHeader
+          title="Add Food"
+          isDark={isDark}
+          skipTopSafeInset
+          onBack={() => setShowFoodSearch(false)}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
+        />
+        <View style={{ flex: 1, minHeight: 0 }}>
           <FoodSearchScreen
             embedded
             mealType={activeMealType}
             onFoodSelected={handleFoodAdded}
-            onClose={() => setShowFoodSearch(false)}
+            onClose={() => { setShowFoodSearch(false); setInitialSearchQuery(''); }}
             userId={uid}
+            initialQuery={initialSearchQuery}
           />
         </View>
-        <BottomNavBar
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          activeTabKey="nutrition"
-        />
+        {bottomNavEl}
       </SafeAreaView>
     );
   }
@@ -397,9 +481,12 @@ export const NutritionContainer = ({
   if (showQuickAdd) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
-        <View style={{ paddingTop: 8 }}>
-          <CoachConnectHeader title="Quick Add" isDark={isDark} onBack={() => setShowQuickAdd(false)} />
-        </View>
+        <CoachConnectHeader
+          title="Quick Add"
+          isDark={isDark}
+          skipTopSafeInset={true}
+          onBack={() => setShowQuickAdd(false)}
+        />
         <QuickAddNutrition
           onLogFood={(entry) => {
             const num = (v) => {
@@ -426,29 +513,47 @@ export const NutritionContainer = ({
             handleFoodAdded(food, activeMealType);
           }}
         />
-        <BottomNavBar
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          activeTabKey="nutrition"
+        {bottomNavEl}
+      </SafeAreaView>
+    );
+  }
+
+  if (showNutritionSettings) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+        <CoachConnectHeader
+          title="Goals"
+          skipTopSafeInset
+          onBack={() => setShowNutritionSettings(false)}
         />
+        <View style={{ flex: 1, minHeight: 0 }}>
+          <NutritionSettingsScreen
+            embedded
+            currentGoals={{
+              calories: goals?.calories ?? 2000,
+              proteinTarget: goals?.proteinTarget ?? 150,
+              carbsTarget: goals?.carbsTarget ?? 200,
+              fatTarget: goals?.fatTarget ?? 65,
+            }}
+            onGoalsUpdated={handleGoalsUpdated}
+            onResetOnboarding={handleResetOnboarding}
+            onClose={() => setShowNutritionSettings(false)}
+          />
+        </View>
+        {bottomNavEl}
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
-      <View style={{ paddingTop: 8 }}>
-        <CoachConnectHeader
-          title="Nutrition"
-          isDark={isDark}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
-      </View>
+      <CoachConnectHeader
+        title="Nutrition"
+        isDark={isDark}
+        skipTopSafeInset={true}
+        onProfilePress={onProfilePress}
+        onSettingsPress={onSettingsPress}
+      />
       <NutritionScreen
         consumed={consumed}
         goal={goal}
@@ -461,25 +566,12 @@ export const NutritionContainer = ({
         onManualSave={handleFoodAdded}
         onRemoveLog={handleRemoveLog}
         onEditLog={handleEditLog}
-        onSearch={() => setShowFoodSearch(true)}
+        onSearch={() => { setInitialSearchQuery(''); setShowFoodSearch(true); }}
+        onPillSearch={handlePillSearch}
         onOpenSettings={() => setShowNutritionSettings(true)}
+        topFoodNames={topFoodNames}
         onQuickAdd={handleOpenQuickAdd}
       />
-      {showNutritionSettings && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: isDark ? '#0A0A0F' : '#F2F2F7' }}>
-          <NutritionSettingsScreen
-            currentGoals={{
-              calories: goals?.calories ?? 2000,
-              proteinTarget: goals?.proteinTarget ?? 150,
-              carbsTarget: goals?.carbsTarget ?? 200,
-              fatTarget: goals?.fatTarget ?? 65,
-            }}
-            onGoalsUpdated={handleGoalsUpdated}
-            onResetOnboarding={handleResetOnboarding}
-            onClose={() => setShowNutritionSettings(false)}
-          />
-        </View>
-      )}
       <EditServingModal
         visible={!!editingLog}
         foodName={editingLog?.food_name ?? ''}
@@ -509,15 +601,7 @@ export const NutritionContainer = ({
         onSave={handleSaveEditAmount}
         isDark={isDark}
       />
-      <BottomNavBar
-        onHomePress={onHomePress}
-        onPlusPress={onPlusPress}
-        onVoicePress={onVoicePress}
-        onNutritionPress={onNutritionPress}
-        onWorkoutPress={onWorkoutPress}
-        onMessagesPress={onMessagesPress}
-        activeTabKey="nutrition"
-      />
+      {bottomNavEl}
     </SafeAreaView>
   );
 };

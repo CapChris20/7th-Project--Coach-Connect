@@ -3,6 +3,7 @@
  * Uses the same candidate bases as messaging so physical devices reach the API.
  */
 import { getApiBaseCandidates } from './baseUrl';
+import { getApiAuthHeaders } from './apiAuthHeaders';
 import { stripNotificationEmoji } from '../notifications/stripNotificationEmoji';
 
 /**
@@ -51,14 +52,21 @@ export async function postRemotePushNotify(p) {
   const bases = getApiBaseCandidates();
   let lastFailure = '';
 
+  let authHeaders = {};
+  try {
+    authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+  } catch (_) {
+    return { ok: false, reason: 'not_signed_in' };
+  }
+  if (!authHeaders.Authorization) {
+    return { ok: false, reason: 'not_signed_in' };
+  }
+
   for (const API_BASE_URL of bases) {
     try {
       const res = await fetch(`${API_BASE_URL}/api/notifications/send`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
+        headers: authHeaders,
         body,
       });
 

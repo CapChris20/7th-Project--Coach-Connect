@@ -31,6 +31,7 @@
         <array>
           <string>coachconnect</string>
           <string>com.chrisshina.coachconnect</string>
+          <string>com.googleusercontent.apps.421005574501-5aogoduc19mlcgk0g259vsque3s8foap</string>
         </array>
       </dict>
     </array>
@@ -50,7 +51,9 @@
     <key>NSCameraUsageDescription</key>
     <string>CoachConnect uses your camera to upload progress photos.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>CoachConnect uses your microphone for voice features.</string>
+    <string>Coach Connect uses the microphone so you can talk to your AI Coach.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Coach Connect uses speech recognition to turn your voice into messages for your AI Coach.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>CoachConnect accesses your photo library to upload progress photos and profile pictures.</string>
     <key>NSUserNotificationsUsageDescription</key>

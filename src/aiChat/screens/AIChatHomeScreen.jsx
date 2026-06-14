@@ -8,33 +8,123 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Pressable,
-  ScrollView,
-  Animated,
-  Platform,
-  Dimensions,
-  Keyboard,
-  Modal,
-  Alert,
-  KeyboardAvoidingView,
-  StyleSheet,
+  View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LottieView from 'lottie-react-native';
+import { showCoachAttachMenu } from '../lib/showCoachAttachMenu';
+import {
+  pickCoachDocuments,
+  pickCoachPhotoFromCamera,
+  pickCoachPhotosFromLibrary,
+} from '../lib/coachAttachmentPickers';
 import { collection, doc, deleteDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../app/config';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useTheme } from '../../shared/ui/ThemeContext';
+import { useCoachSpeech } from '../hooks/useCoachSpeech';
+import { AI_COACH_UI } from '../aiCoachUiTokens';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const ACCENT = '#3B82F6';
+const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
+const BORDER_SUBTLE = ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'];
+const CTA_GRADIENT = AI_COACH_UI.gradient.ctaWarm;
+const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
+const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
+const HERO_INNER = AI_COACH_UI.heroInner;
+const SIDEBAR_WIDTH = Math.min(320, SW * 0.86);
+
+// Category buttons — unified premium style (no neon icon colors).
+const COACH_CATEGORIES = [
+  {
+    id: 'train',
+    label: 'Train',
+    icon: 'fitness-outline',
+    defaultPrompt: 'Dial in my training plan for this week',
+  },
+  {
+    id: 'fuel',
+    label: 'Fuel',
+    icon: 'flame-outline',
+    defaultPrompt: 'Help me line up meals that match my goal',
+  },
+  {
+    id: 'recover',
+    label: 'Recover',
+    icon: 'moon-outline',
+    defaultPrompt: 'Tighten up my recovery so I actually adapt',
+  },
+  {
+    id: 'web',
+    label: 'Search the web',
+    icon: 'search-outline',
+    defaultPrompt: 'Search the web: best evidence-based approach for body recomposition (training + nutrition)',
+  },
+];
+
+function promptForCategory(category, suggestions) {
+  const pool = Array.isArray(suggestions) ? suggestions : [];
+  const match = (re) => pool.find((s) => re.test(String(s || '').toLowerCase()));
+  const asWebQuery = (q) => {
+    const s = String(q || '').trim();
+    if (!s) return category.defaultPrompt;
+    return s.toLowerCase().startsWith('search the web:')
+      ? s
+      : `Search the web: ${s.replace(/\.*\s*$/, '')}`;
+  };
+  if (category.id === 'train') {
+    return match(/workout|hypertrophy|split|squat|lift|progressive|gym|conditioning/) || category.defaultPrompt;
+  }
+  if (category.id === 'fuel') {
+    return match(/protein|eat|macro|meal|vegan|keto|calorie|drink/) || category.defaultPrompt;
+  }
+  if (category.id === 'recover') {
+    return match(/recover|rest|sleep|skipped|back/) || category.defaultPrompt;
+  }
+  if (category.id === 'web') {
+    // Prefer prompts that sound like research/comparisons.
+    return asWebQuery(
+      match(/search|web|research|evidence|study|studies|meta|systematic|compare|vs|best|safe|risk/) ||
+        match(/recomp|skinny|body|goal|macro|calorie|protein|hypertrophy|split|sleep|creatine/) ||
+        pool[0] ||
+        category.defaultPrompt,
+    );
+  }
+  return pool[0] || category.defaultPrompt;
+}
+
+function iconForPrompt(text) {
+  const s = String(text || '').toLowerCase();
+  if (s.includes('workout') || s.includes('hypertrophy') || s.includes('split') || s.includes('squat')) return 'barbell-outline';
+  if (s.includes('protein') || s.includes('eat') || s.includes('macro') || s.includes('meal') || s.includes('vegan') || s.includes('keto')) return 'nutrition-outline';
+  if (s.includes('supplement') || s.includes('creatine')) return 'flask-outline';
+  if (s.includes('recover')) return 'bed-outline';
+  if (s.includes('research') || s.includes('skinny fat') || s.includes('recomp') || s.includes('body')) return 'body-outline';
+  if (s.includes('progressive') || s.includes('overload')) return 'trending-up-outline';
+  if (s.includes('skipped') || s.includes('back')) return 'refresh-outline';
+  if (s.includes('calorie') || s.includes('fat-loss') || s.includes('deficit')) return 'flame-outline';
+  if (s.includes('conditioning') || s.includes('athletic')) return 'flash-outline';
+  if (s.includes('drink') || s.includes('zero-sugar')) return 'water-outline';
+  return 'sparkles-outline';
+}
 
 // ─── Theme tokens ─────────────────────────────────────────────────────────────
 const DARK = {
@@ -46,11 +136,13 @@ const DARK = {
   textSecondary: '#B0B0B0',
   textMuted: 'rgba(255,255,255,0.45)',
   sidebarBg: '#0C0C14',
-  sidebarBorder: 'rgba(255,255,255,0.1)',
+  sidebarBorder: AI_COACH_UI.borderHairline,
   divider: 'rgba(255,255,255,0.05)',
   headerBg: '#000000',
   inputBarBg: 'rgba(0,0,0,0.92)',
-  accent: ACCENT,
+  accent: AI_COACH_UI.cyan,
+  chipBg: AI_COACH_UI.glass,
+  chipBorder: AI_COACH_UI.borderHairline,
 };
 
 const LIGHT = {
@@ -66,20 +158,19 @@ const LIGHT = {
   divider: 'rgba(0,0,0,0.06)',
   headerBg: '#FFFFFF',
   inputBarBg: 'rgba(255,255,255,0.94)',
-  accent: ACCENT,
+  accent: AI_COACH_UI.cyan,
+  chipBg: 'rgba(0,0,0,0.04)',
+  chipBorder: 'rgba(0,0,0,0.08)',
 };
 
-const BASE_SUGGESTIONS = [
-  'Build me a workout for this week',
-  'How much protein do I need?',
-  'What does research say about skinny fat?',
-  'Fix my squat form',
-  'Best supplements for muscle gain',
-  'How do I recover faster?',
-  'Build me a 4-day hypertrophy plan',
-  'What should I eat today?',
-  'Explain progressive overload',
-  'I skipped the gym — help me get back',
+// Fallback phrases only used when we have zero contextual signals.
+const FALLBACK_SUGGESTIONS = [
+  'What is the single highest‑leverage change I can make this week?',
+  'Given my goal, what should training and nutrition look like over the next 7 days?',
+  'Spot the biggest mistake in how I’m currently training or eating.',
+  'If I only have 3 sessions this week, how should I use them?',
+  'Build me a simple plan for today that I can actually follow.',
+  'Help me choose what to do right now: train, eat, recover, or plan.',
 ];
 
 const uniqueTake = (arr, n) => {
@@ -93,44 +184,458 @@ const uniqueTake = (arr, n) => {
   return out;
 };
 
+function normalizeTextSignal(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[\u2019']/g, "'")
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferTopTopicsFromSessions(sessions = []) {
+  const score = new Map();
+  const bump = (k, w = 1) => score.set(k, (score.get(k) || 0) + w);
+
+  for (const s of (sessions || []).slice(0, 18)) {
+    const hay = normalizeTextSignal(
+      [s?.title, s?.lastUserMessage, s?.lastAssistantMessage].filter(Boolean).join(' | ')
+    );
+    if (!hay) continue;
+
+    if (/\bmacro|macros|calorie|deficit|bulk|cut|protein|carb|fat|meal|diet|nutrition\b/.test(hay)) bump('nutrition', 3);
+    if (/\bworkout|split|hypertrophy|lift|squat|bench|deadlift|volume|program|deload|set|rep\b/.test(hay)) bump('training', 3);
+    if (/\bsleep|recover|recovery|rest|soreness|stress|fatigue\b/.test(hay)) bump('recovery', 2);
+    if (/\bplan|schedule|week|routine|habit|time\b/.test(hay)) bump('planning', 2);
+    if (/\binjury|pain|knee|back|shoulder\b/.test(hay)) bump('injury', 2);
+    if (/\bsupplement|creatine|caffeine\b/.test(hay)) bump('supplements', 1);
+  }
+
+  return [...score.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 3);
+}
+
 function buildDynamicSuggestions({ userData, sessions }) {
-  const suggestions = [];
+  const contextual = [];
 
   const goal = String(userData?.primaryGoal || userData?.goal || userData?.fitnessGoal || '').toLowerCase();
   const dietPref = String(userData?.dietPreference || userData?.diet || '').toLowerCase();
+  const topTopics = inferTopTopicsFromSessions(sessions);
+  const recentTitles = (sessions || []).slice(0, 8).map((s) => String(s?.title || '').trim()).filter(Boolean);
+  const titleText = normalizeTextSignal(recentTitles.join(' | '));
 
   if (goal.includes('lose') || goal.includes('fat')) {
-    suggestions.push('Give me a fat-loss plan (workout + macros) for this week');
-    suggestions.push('What calorie deficit should I use without losing muscle?');
+    contextual.push('Based on my current stats, design a fat‑loss week that keeps my lifts moving up.');
+    contextual.push('How aggressive should my calorie deficit be so I lose fat without killing performance?');
   } else if (goal.includes('muscle') || goal.includes('build')) {
-    suggestions.push('Build me a hypertrophy split + weekly progression');
-    suggestions.push('How much protein do I need to gain muscle?');
+    contextual.push('Lay out a progression plan so I’m adding muscle over the next 4–6 weeks.');
+    contextual.push('Given my goal, what should my training split and progression look like this week?');
   } else if (goal.includes('athletic') || goal.includes('performance')) {
-    suggestions.push('Give me an athletic performance plan (strength + conditioning)');
-    suggestions.push('How should I program conditioning without killing my lifts?');
+    contextual.push('Design a strength + conditioning week that actually improves performance, not just crushes me.');
+    contextual.push('How do I add conditioning without wrecking my main lifts?');
   }
 
-  if (dietPref.includes('vegan')) suggestions.push('Give me a vegan high-protein meal plan idea');
-  if (dietPref.includes('keto')) suggestions.push('How do I do keto without tanking my training?');
+  if (dietPref.includes('vegan')) {
+    contextual.push('Build a high‑protein vegan day of eating that fits my training.');
+  }
+  if (dietPref.includes('keto')) {
+    contextual.push('How do I run keto in a way that still supports hard training?');
+  }
 
-  const recentTitles = (sessions || []).slice(0, 6).map((s) => String(s?.title || '').trim()).filter(Boolean);
-  const titleText = recentTitles.join(' | ').toLowerCase();
   if (titleText.includes('recomp') || titleText.includes('skinny fat')) {
-    suggestions.push('What’s the best plan for body recomposition (skinny fat)?');
+    contextual.push('Map out a body‑recomposition plan for me (skinny‑fat problem).');
   }
   if (titleText.includes('macros') || titleText.includes('calories')) {
-    suggestions.push('Recalculate my macros for today based on my goal');
+    contextual.push('Recalculate today’s macros based on my goal, training, and recent check‑ins.');
   }
   if (titleText.includes('creatine')) {
-    suggestions.push('Creatine: dose, timing, and what to expect');
+    contextual.push('Given my training, how should I actually use creatine and what should I expect?');
   }
   if (titleText.includes('zero sugar')) {
-    suggestions.push('Are zero-sugar drinks okay daily? Pros/cons');
+    contextual.push('Where do zero‑sugar drinks fit into my week, and what should I watch out for?');
   }
 
-  const final = uniqueTake([...suggestions, ...BASE_SUGGESTIONS], 4);
-  return final.length === 4 ? final : uniqueTake([...final, ...BASE_SUGGESTIONS], 4);
+  // Topic-driven suggestions (based on what they talk about most).
+  if (topTopics.includes('training')) {
+    contextual.push('Build me a 4‑day training split for the next 2 weeks (with progression).');
+  }
+  if (topTopics.includes('nutrition')) {
+    contextual.push('Turn my calorie target into a simple macro + meal structure I can follow daily.');
+  }
+  if (topTopics.includes('recovery')) {
+    contextual.push('Audit my recovery: sleep, stress, soreness — what’s the #1 fix this week?');
+  }
+  if (topTopics.includes('planning')) {
+    contextual.push('Help me plan my week: when to train, meal prep, and recovery blocks.');
+  }
+  if (topTopics.includes('injury')) {
+    contextual.push('Modify my training around my current aches so I can keep progressing safely.');
+  }
+  if (topTopics.includes('supplements')) {
+    contextual.push('What supplements (if any) actually matter for my goal, and how should I take them?');
+  }
+
+  if (contextual.length === 0) {
+    // No signals yet (brand‑new user) — fall back to a small set of broad, non‑repetitive prompts.
+    return FALLBACK_SUGGESTIONS.slice(0, 6);
+  }
+
+  // Prefer contextual prompts, then top up with generic fallbacks that aren't near‑duplicates.
+  const basePool = [...contextual];
+  for (const fb of FALLBACK_SUGGESTIONS) {
+    if (!basePool.some((s) => String(s).toLowerCase() === String(fb).toLowerCase())) {
+      basePool.push(fb);
+    }
+  }
+  return uniqueTake(basePool, 6);
 }
+
+function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
+  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)';
+  const iconColor = isDark ? '#FF6B9D' : '#BE185D';
+
+  if (compact) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.88}
+        accessibilityLabel="Chat history"
+        accessibilityRole="button"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: hairline,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+        }}
+      >
+        <Ionicons name="time-outline" size={18} color={iconColor} />
+        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0A0A0F' }}>History</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      accessibilityLabel="Chat history"
+      accessibilityRole="button"
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingLeft: 10,
+          paddingRight: 16,
+          paddingVertical: 10,
+          minHeight: 46,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: hairline,
+          backgroundColor: isDark ? '#1a0a2e' : '#FFFFFF',
+          ...(Platform.OS === 'ios' && isDark
+            ? { shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }
+            : null),
+          elevation: isDark ? 3 : 2,
+        }}
+      >
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 11,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDark ? 'rgba(255,107,157,0.20)' : 'rgba(190,24,93,0.12)',
+            }}
+          >
+            <Ionicons name="list-outline" size={20} color={isDark ? '#FF6B9D' : '#BE185D'} />
+          </View>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '800',
+              letterSpacing: 0.15,
+              color: isDark ? '#FFFFFF' : '#0A0A0F',
+            }}
+          >
+            Chat History
+          </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const CoachCategoryOrb = ({ category, isDark, onPress }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const pressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 48, bounciness: 0 }).start();
+  };
+  const pressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 48, bounciness: 6 }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        onPress(category);
+      }}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
+      accessibilityRole="button"
+      accessibilityLabel={`Ask about ${category.label}`}
+      style={{ alignItems: 'center', flex: 1 }}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+        <LinearGradient
+          colors={BORDER_SUBTLE}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{
+            width: 70,
+            height: 70,
+            borderRadius: 24,
+            padding: 1.5,
+            ...(Platform.OS === 'ios' && isDark
+              ? { shadowColor: '#BE185D', shadowOpacity: 0.2, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }
+              : null),
+            elevation: isDark ? 7 : 2,
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              borderRadius: 22.5,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
+              overflow: 'hidden',
+            }}
+          >
+            {isDark ? (
+              <LinearGradient
+                colors={HERO_INNER}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : null}
+
+            <LinearGradient
+              colors={BORDER_SUBTLE}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 16,
+                padding: 1.25,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  borderRadius: 14.75,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.92)',
+                }}
+              >
+                <Ionicons name={category.icon} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+              </View>
+            </LinearGradient>
+          </View>
+        </LinearGradient>
+        <Text
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            fontWeight: '700',
+            color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(10,10,15,0.72)',
+            letterSpacing: 0.2,
+          }}
+        >
+          {category.label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+const SPOTLIGHT_PINK = AI_COACH_UI.pink;
+
+/** Single card that auto-rotates through suggestions with fade/slide. */
+const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
+  const items = (suggestions || []).filter(Boolean).slice(0, 8);
+  const [index, setIndex] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    setIndex(0);
+    fadeAnim.setValue(1);
+    slideAnim.setValue(0);
+  }, [items.join('|')]);
+
+  useEffect(() => {
+    if (items.length <= 1) return undefined;
+    const interval = setInterval(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: -10, duration: 200, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((i) => (i + 1) % items.length);
+        slideAnim.setValue(10);
+        Animated.parallel([
+          Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
+          Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 4 }),
+        ]).start();
+      });
+    }, 4800);
+    return () => clearInterval(interval);
+  }, [items.length, fadeAnim, slideAnim]);
+
+  if (!items.length) return null;
+
+  const text = items[index];
+  const iconName = iconForPrompt(text);
+
+  return (
+    <View style={{ width: '100%', marginTop: 20 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '800',
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
+          marginBottom: 10,
+        }}
+      >
+        Try asking
+      </Text>
+
+      <Pressable
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          onPress(text);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Start chat: ${text}`}
+        style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+      >
+        <LinearGradient
+          colors={BORDER_SUBTLE}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ borderRadius: 18, padding: 1.5 }}
+        >
+          <View
+            style={{
+              borderRadius: 16.5,
+              paddingVertical: 16,
+              paddingHorizontal: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
+              minHeight: 88,
+              overflow: 'hidden',
+            }}
+          >
+            {isDark ? (
+              <LinearGradient
+                colors={HERO_INNER}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : null}
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
+              }}
+            >
+              <Ionicons name={iconName} size={22} color={isDark ? '#FF6B9D' : '#BE185D'} />
+            </View>
+            <Animated.View
+              style={{
+                flex: 1,
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '700',
+                  lineHeight: 21,
+                  color: t.textPrimary,
+                  letterSpacing: -0.2,
+                }}
+                numberOfLines={3}
+              >
+                {text}
+              </Text>
+            </Animated.View>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.05)',
+              }}
+            >
+              <Ionicons name="arrow-forward" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+            </View>
+          </View>
+        </LinearGradient>
+      </Pressable>
+
+      {items.length > 1 ? (
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12, paddingLeft: 2 }}>
+          {items.map((_, i) => (
+            <View
+              key={`dot-${i}`}
+              style={{
+                width: i === index ? 16 : 5,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor:
+                  i === index
+                    ? SPOTLIGHT_PINK
+                    : isDark
+                      ? 'rgba(255,255,255,0.18)'
+                      : 'rgba(0,0,0,0.12)',
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+};
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
@@ -141,11 +646,8 @@ const HeroWelcomeCard = ({
   borderAnim,
 }) => {
   const safeName = String(userName || 'there').trim() || 'there';
-  // Keep interior opaque so border gradient doesn't tint the fill.
-  const cardInnerBg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const borderColors = isDark
-    ? ['#E91E63', '#FF6B9D', '#C084FC', '#FF6B9D']
-    : ['#3B82F6', '#6366F1', '#EC4899', '#3B82F6'];
+  const cardInnerBg = isDark ? AI_COACH_UI.surface : '#FFFFFF';
+  const borderColors = isDark ? CARD_BORDER : ['#BE185D', '#C2410C'];
 
   const borderTranslateX = borderAnim.interpolate({
     inputRange: [0, 1],
@@ -178,11 +680,20 @@ const HeroWelcomeCard = ({
             paddingBottom: 18,
             alignItems: 'center',
             borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+            borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(0,0,0,0.06)',
+            overflow: 'hidden',
           }}
         >
+          {isDark ? (
+            <LinearGradient
+              colors={HERO_INNER}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : null}
           <Text style={{ fontSize: 26, fontWeight: '900', color: t.textPrimary, textAlign: 'center' }}>
-            Good Morning, <Text style={{ color: '#FF6B9D' }}>{safeName}!</Text>
+            Good Morning, <Text style={{ color: AI_COACH_UI.pink }}>{safeName}!</Text>
           </Text>
 
           <View style={{ alignItems: 'center', marginTop: 12 }}>
@@ -196,7 +707,12 @@ const HeroWelcomeCard = ({
             >
               WELCOME TO
             </Text>
-            <View style={{ width: 86, height: 4, borderRadius: 999, backgroundColor: '#C084FC', marginTop: 10 }} />
+            <LinearGradient
+              colors={CTA_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ width: 86, height: 4, borderRadius: 999, marginTop: 10 }}
+            />
           </View>
 
           <Text
@@ -204,7 +720,7 @@ const HeroWelcomeCard = ({
               marginTop: 14,
               fontSize: 44,
               fontWeight: '900',
-              color: '#FF6B9D',
+              color: AI_COACH_UI.pink,
               textAlign: 'center',
               letterSpacing: 0.4,
               lineHeight: 48,
@@ -235,55 +751,6 @@ const HeroWelcomeCard = ({
   );
 };
 
-const SuggestionPill = ({ text, t, onPress, borderAnim, index }) => {
-  const borderColors = ['#3B82F6', '#6366F1', '#EC4899', '#3B82F6'];
-  const pillWidth = Math.max(140, Math.floor((SW - 16 * 2 - 10) / 2));
-  const translateX = borderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-pillWidth, 0],
-  });
-
-  const innerBg = t?.bg === '#000000' ? '#0A0A0F' : '#FFFFFF';
-
-  return (
-    <View style={{ width: '48%', borderRadius: 999, overflow: 'hidden' }}>
-      <TouchableOpacity onPress={() => onPress(text)} activeOpacity={0.85} style={{ borderRadius: 999, overflow: 'hidden' }}>
-        {/* Border line only */}
-        <View style={{ padding: 2, borderRadius: 999, overflow: 'hidden' }}>
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <AnimatedLinearGradient
-              colors={borderColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                width: pillWidth * 2,
-                height: '100%',
-                transform: [{ translateX }],
-              }}
-            />
-          </View>
-          <View
-            style={{
-              minHeight: 56,
-              borderRadius: 999,
-              paddingHorizontal: 16,
-              paddingVertical: 14,
-              backgroundColor: innerBg,
-              borderWidth: 1,
-              borderColor: t?.bg === '#000000' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '500', color: t.textPrimary }} numberOfLines={2}>
-              {text}
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
-};
-
 const toSessionDateLabel = (d) => {
   try {
     const date = d?.toDate?.() instanceof Date ? d.toDate() : d instanceof Date ? d : null;
@@ -294,102 +761,209 @@ const toSessionDateLabel = (d) => {
   }
 };
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, t }) {
-  const slideAnim = useRef(new Animated.Value(300)).current;
+function formatSessionDisplayTitle(title) {
+  let s = String(title || 'Chat')
+    .replace(/\{[\s\S]*?\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) s = 'Chat';
+  if (s.length <= 30) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Chat';
+  const slice = s.slice(0, 30);
+  const lastSpace = slice.lastIndexOf(' ');
+  const cut = (lastSpace > 10 ? slice.slice(0, lastSpace) : slice)
+    .replace(/[-–—]\s*$/, '')
+    .replace(/\s+\d+$/, '')
+    .trim();
+  return cut || 'Chat';
+}
+
+function groupSessionsForSidebar(sessions) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = startOfToday - 6 * 86400000;
+  const groups = [
+    { key: 'today', label: 'Today', items: [] },
+    { key: 'week', label: 'This Week', items: [] },
+    { key: 'earlier', label: 'Earlier', items: [] },
+  ];
+  (sessions || []).forEach((s) => {
+    const ms = s.updatedAtMs || 0;
+    if (ms >= startOfToday) groups[0].items.push(s);
+    else if (ms >= startOfWeek) groups[1].items.push(s);
+    else groups[2].items.push(s);
+  });
+  return groups.filter((g) => g.items.length > 0);
+}
+
+// ─── Sidebar (slides from left) ───────────────────────────────────────────────
+function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isDark, insets }) {
+  const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
   useEffect(() => {
     Animated.timing(slideAnim, {
-      toValue: open ? 0 : 300,
-      duration: 300,
+      toValue: open ? 0 : -SIDEBAR_WIDTH,
+      duration: 280,
       useNativeDriver: true,
     }).start();
   }, [open, slideAnim]);
 
+  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.5)';
+  const titleColor = isDark ? '#FFFFFF' : '#0A0A0F';
+  const metaColor = isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,10,15,0.45)';
+
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={onClose}>
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
-        activeOpacity={1}
-        onPress={onClose}
-      />
-      <Animated.View
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: 300,
-          height: SH,
-          backgroundColor: t.sidebarBg,
-          borderLeftWidth: 1,
-          borderLeftColor: t.sidebarBorder,
-          transform: [{ translateX: slideAnim }],
-          paddingTop: 56,
-        }}
-      >
-        <View
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <Animated.View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 20,
-            paddingBottom: 16,
+            width: SIDEBAR_WIDTH,
+            height: SH,
+            transform: [{ translateX: slideAnim }],
+            zIndex: 2,
           }}
         >
-          <Text style={{ color: t.textPrimary, fontSize: 16, fontWeight: '700' }}>Recent Chats</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={20} color={t.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
-          {sessions.length === 0 ? (
-            <Text style={{ color: t.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 48 }}>
-              No chats yet. Start a conversation below.
-            </Text>
-          ) : (
-            sessions.map((s, i) => (
+          <LinearGradient
+            colors={BORDER_SUBTLE}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ height: 2 }}
+          />
+          <LinearGradient
+            colors={isDark ? HERO_INNER : ['#F8FAFF', '#FFFFFF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={{ flex: 1, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.08)' }}
+          >
+            <View
+              style={{
+                paddingTop: (insets?.top || 0) + 12,
+                paddingHorizontal: 18,
+                paddingBottom: 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <View>
+                <Text style={{ color: labelColor, fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>
+                  AI Coach
+                </Text>
+                <Text style={{ color: titleColor, fontSize: 20, fontWeight: '800', marginTop: 2 }}>Chat History</Text>
+              </View>
               <TouchableOpacity
-                key={s.id}
-                onPress={() => {
-                  onSessionPress(s);
-                  onClose();
+                onPress={onClose}
+                hitSlop={8}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
                 }}
-                activeOpacity={0.7}
               >
-                <View style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.textPrimary, fontSize: 14 }} numberOfLines={1}>
-                      {s.title}
-                    </Text>
-                    <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 2 }}>{s.date}</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      // Prevent opening the chat when deleting
-                      if (e?.stopPropagation) e.stopPropagation();
-                      onDeleteSession?.(s);
-                    }}
-                    activeOpacity={0.7}
-                    hitSlop={8}
-                    style={{
-                      padding: 6,
-                      borderRadius: 10,
-                      backgroundColor: t.chipBg,
-                      borderWidth: 1,
-                      borderColor: t.chipBorder,
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={t.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                {i < sessions.length - 1 && <View style={{ height: 1, backgroundColor: t.divider }} />}
+                <Ionicons name="close" size={20} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
               </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
-      </Animated.View>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 + (insets?.bottom || 0) }}
+              showsVerticalScrollIndicator={false}
+            >
+              {sessions.length === 0 ? (
+                <View
+                  style={{
+                    marginTop: 40,
+                    padding: 20,
+                    borderRadius: 16,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                  }}
+                >
+                  <Ionicons name="time-outline" size={26} color="rgba(255,255,255,0.55)" style={{ marginBottom: 10 }} />
+                  <Text style={{ color: titleColor, fontSize: 15, fontWeight: '700' }}>No history yet</Text>
+                  <Text style={{ color: metaColor, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
+                    Start a conversation below — your history will show up here.
+                  </Text>
+                </View>
+              ) : (
+                groupSessionsForSidebar(sessions).map((group) => (
+                  <View key={group.key} style={{ marginBottom: 18 }}>
+                    <Text
+                      style={{
+                        color: labelColor,
+                        fontSize: 11,
+                        fontWeight: '800',
+                        letterSpacing: 0.9,
+                        textTransform: 'uppercase',
+                        marginBottom: 8,
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      {group.label}
+                    </Text>
+                    {group.items.map((s, i) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => {
+                          onSessionPress(s);
+                          onClose();
+                        }}
+                        activeOpacity={0.82}
+                      >
+                        <View
+                          style={{
+                            paddingVertical: 12,
+                            paddingHorizontal: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                          }}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ color: titleColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                              {formatSessionDisplayTitle(s.title)}
+                            </Text>
+                            <Text style={{ color: metaColor, fontSize: 11, marginTop: 3 }}>{s.date}</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              if (e?.stopPropagation) e.stopPropagation();
+                              onDeleteSession?.(s);
+                            }}
+                            activeOpacity={0.7}
+                            hitSlop={8}
+                            style={{ padding: 4 }}
+                          >
+                            <Ionicons name="trash-outline" size={16} color={metaColor} style={{ opacity: 0.45 }} />
+                          </TouchableOpacity>
+                        </View>
+                        {i < group.items.length - 1 ? (
+                          <View
+                            style={{
+                              height: StyleSheet.hairlineWidth,
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                            }}
+                          />
+                        ) : null}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </LinearGradient>
+        </Animated.View>
+
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+      </View>
     </Modal>
   );
 }
@@ -398,7 +972,6 @@ function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, t }
 export default function AIChatHomeScreen({
   userId,
   onStartChat,
-  onAttachPress,
   onSessionPress,
   onHomePress,
   onPlusPress,
@@ -408,21 +981,22 @@ export default function AIChatHomeScreen({
   onMessagesPress,
   onProfilePress,
   onSettingsPress,
+  onOpenTestSuite,
+  hideBottomNav = false,
 }) {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [userData, setUserData] = useState(null);
-  const [suggestions, setSuggestions] = useState(BASE_SUGGESTIONS.slice(0, 4));
+  // Initialize with safe fallbacks; then we replace with contextual suggestions once userData/sessions load.
+  const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
 
   const t = isDark ? DARK : LIGHT;
   const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
-  // Keep the floating input bar *above* the bottom tab bar (BottomNavBar uses minHeight 80 + safe-area).
-  const NAV_HEIGHT = 80 + (insets.bottom || 0);
-  const NAV_GAP = 12; // extra breathing room so it never blocks tab taps
-
+  const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : 0;
   // ─── Load + transition animations (UI only) ─────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
   const headerOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
@@ -435,15 +1009,12 @@ export default function AIChatHomeScreen({
 
   const pillBorderAnim = useRef(new Animated.Value(0)).current;
 
-  const inputFocused = useRef(new Animated.Value(0)).current; // 0 -> 1
-  const sendPulse = useRef(new Animated.Value(0)).current;    // 0 -> 1
-  const inputBorderAnim = useRef(new Animated.Value(0)).current; // 0 -> 1 (loop)
-  const inputScale = useRef(new Animated.Value(1)).current; // 1 -> 1.02
-  const sendPress = useRef(new Animated.Value(0)).current; // 0 -> 1
-  const micPulse = useRef(new Animated.Value(0)).current; // 0 -> 1
-  const kb = useRef(new Animated.Value(0)).current; // keyboard height
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const [micActive, setMicActive] = useState(false);
+  const inputBorderAnim = useRef(new Animated.Value(0)).current; // hero / pill border loop
+
+  const { listening, toggleListen } = useCoachSpeech({
+    onPartialTranscript: (text) => setInputText(text),
+    onFinalTranscript: (text) => setInputText(text),
+  });
 
   useEffect(() => {
     // Background + header
@@ -476,87 +1047,6 @@ export default function AIChatHomeScreen({
     ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    Animated.timing(inputFocused, { toValue: isInputFocused ? 1 : 0, duration: 200, useNativeDriver: false }).start();
-  }, [isInputFocused, inputFocused]);
-
-  useEffect(() => {
-    let loop;
-    if (isInputFocused) {
-      loop = Animated.loop(Animated.timing(inputBorderAnim, { toValue: 1, duration: 2000, useNativeDriver: false }));
-      loop.start();
-      Animated.spring(inputScale, { toValue: 1.02, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
-    } else {
-      inputBorderAnim.stopAnimation();
-      inputBorderAnim.setValue(0);
-      Animated.spring(inputScale, { toValue: 1, useNativeDriver: false, speed: 18, bounciness: 10 }).start();
-    }
-    return () => loop?.stop?.();
-  }, [isInputFocused, inputBorderAnim, inputScale]);
-
-  useEffect(() => {
-    if (!micActive) {
-      micPulse.stopAnimation();
-      micPulse.setValue(0);
-      return undefined;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(micPulse, { toValue: 1, duration: 500, useNativeDriver: false }),
-        Animated.timing(micPulse, { toValue: 0, duration: 500, useNativeDriver: false }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [micActive, micPulse]);
-
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const onShow = (e) => {
-      const h = e?.endCoordinates?.height ?? 0;
-      Animated.timing(kb, { toValue: h, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
-    };
-    const onHide = () => {
-      Animated.timing(kb, { toValue: 0, duration: Platform.OS === 'ios' ? 250 : 180, useNativeDriver: false }).start();
-    };
-
-    const subShow = Keyboard.addListener(showEvt, onShow);
-    const subHide = Keyboard.addListener(hideEvt, onHide);
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, [kb]);
-
-  useEffect(() => {
-    const hasText = !!inputText.trim();
-    if (!hasText) {
-      sendPulse.stopAnimation();
-      sendPulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sendPulse, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(sendPulse, { toValue: 0, duration: 400, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [inputText, sendPulse]);
-
-  const handleMicPress = () => {
-    setMicActive(true);
-    try {
-      onVoicePress?.();
-    } finally {
-      // Visual pulse only; if you wire real recording state later, replace this timer.
-      setTimeout(() => setMicActive(false), 2200);
-    }
-  };
 
   const handleDeleteSession = async (session) => {
     const sessionId = session?.sessionId || session?.id;
@@ -599,7 +1089,13 @@ export default function AIChatHomeScreen({
             id: d.id,
             sessionId: data.sessionId || d.id,
             title: data.title || 'Chat',
+            lastUserMessage: typeof data.lastUserMessage === 'string' ? data.lastUserMessage : '',
+            lastAssistantMessage: typeof data.lastAssistantMessage === 'string' ? data.lastAssistantMessage : '',
             date: toSessionDateLabel(data.updatedAt) || toSessionDateLabel(data.createdAt) || '',
+            updatedAtMs:
+              data.updatedAt?.toDate?.()?.getTime?.() ||
+              data.createdAt?.toDate?.()?.getTime?.() ||
+              0,
           };
         });
         setSessions(next);
@@ -629,72 +1125,116 @@ export default function AIChatHomeScreen({
     setSuggestions(buildDynamicSuggestions({ userData, sessions }));
   }, [userData, sessions]);
 
-  const handleStartChat = (prefill) => {
-    // UI-only smooth transition: fade out hero/cards quickly, then navigate using existing handler.
+  const handleStartChat = (prefillOrPayload) => {
+    const payload =
+      typeof prefillOrPayload === 'string'
+        ? { prefill: prefillOrPayload }
+        : prefillOrPayload && typeof prefillOrPayload === 'object'
+          ? prefillOrPayload
+          : {};
     Animated.parallel([
       Animated.timing(idleGroupOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
       Animated.timing(idleGroupTranslateY, { toValue: -6, duration: 200, useNativeDriver: true }),
     ]).start(({ finished }) => {
-      if (finished) onStartChat?.({ prefill });
+      if (finished) onStartChat?.(payload);
     });
   };
 
-  const handleSend = () => {
-    if (inputText.trim()) {
-      handleStartChat(inputText.trim());
-      setInputText('');
+  const openChatWithAttachments = async (pickFn) => {
+    const picked = await pickFn();
+    if (picked.length > 0) {
+      setAttachments((prev) => [...prev, ...picked]);
     }
   };
 
-  const glowOpacity = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-  const glowBorderWidth = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [1, 2] });
-  const glowBorderColor = inputFocused.interpolate({ inputRange: [0, 1], outputRange: [t.border, t.accent] });
-  const glowBg = inputFocused.interpolate({
-    inputRange: [0, 1],
-    outputRange: [t.glassBg, isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'],
-  });
+  const handlePhotoLibrary = () => openChatWithAttachments(pickCoachPhotosFromLibrary);
+  const handleCamera = () => openChatWithAttachments(pickCoachPhotoFromCamera);
+  const handleFile = () => openChatWithAttachments(pickCoachDocuments);
+
+  const openAttachMenu = () => {
+    showCoachAttachMenu({
+      onPhotoLibrary: handlePhotoLibrary,
+      onCamera: handleCamera,
+      onFile: handleFile,
+    });
+  };
+
+  const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
+
+  const canSend = inputText.trim().length > 0 || attachments.length > 0;
+
+  const handleSend = () => {
+    const text = inputText.trim();
+    const imageAtts = attachments.filter((a) => a?.type === 'image' || a?.preview);
+    const hasFilesOnly = attachments.some((a) => a?.type === 'file') && imageAtts.length === 0;
+    if (!text && attachments.length === 0) return;
+    if (hasFilesOnly) {
+      Alert.alert(
+        'Photos work best',
+        'The coach can analyze progress photos right now. Attach a photo instead of a document.'
+      );
+      return;
+    }
+    const prefill =
+      text ||
+      (imageAtts.length > 0 ? 'What do you see in this image? Give me coaching feedback.' : '');
+    handleStartChat({
+      prefill,
+      initialAttachments: attachments,
+    });
+    setInputText('');
+    setAttachments([]);
+  };
 
   return (
     <Animated.View style={{ flex: 1, backgroundColor: t.bg, opacity: screenOpacity }}>
       {/* Header (fixed) */}
-      <Animated.View style={{ paddingTop: insets.top, opacity: headerOpacity, zIndex: 30 }}>
+      <Animated.View style={{ opacity: headerOpacity, zIndex: 30 }}>
         <CoachConnectHeader
           title="AI Coach"
           isDark={isDark}
+          headerLeft={
+            <ChatHistoryHeaderButton compact isDark={isDark} onPress={() => setSidebarOpen(true)} />
+          }
           onProfilePress={onProfilePress}
           onSettingsPress={onSettingsPress}
         />
-        {/* Overlay hamburger (theme is changed via Settings) */}
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: 16,
-            right: 16,
-            top: insets.top + 8,
-            height: 56,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setSidebarOpen(true)}
-            activeOpacity={0.7}
-            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+        {onOpenTestSuite ? (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              right: 108,
+              top: insets.top + 14,
+            }}
           >
-            <Ionicons name="menu-outline" size={22} color={t.textPrimary} />
-          </TouchableOpacity>
-          <View style={{ width: 40, height: 40 }} />
-        </View>
+            <TouchableOpacity
+              onPress={onOpenTestSuite}
+              activeOpacity={0.7}
+              accessibilityLabel="Open AI Coach test suite"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              }}
+            >
+              <Ionicons name="flask-outline" size={18} color="#FF6B9D" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </Animated.View>
 
-      {/* Main content container (flex) */}
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <ScrollView
           style={{ flex: 1 }}
-          // leave room for bottom input + nav so content doesn't sit behind it
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 160, paddingHorizontal: 16 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 + shellNavPad, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -742,197 +1282,190 @@ export default function AIChatHomeScreen({
               />
             </Animated.View>
 
-            {/* Suggestions */}
-            <View style={{ width: '100%', marginTop: 16 }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 }}>
-                {(suggestions || []).slice(0, 4).map((s, i) => (
-                  <SuggestionPill
-                    key={s}
-                    text={s}
-                    index={i}
-                    t={t}
-                    onPress={handleStartChat}
-                    borderAnim={pillBorderAnim}
+            {/* Coach starters — category orbs + rotating spotlight (no pill grid) */}
+            <View style={{ width: '100%', marginTop: 8 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  letterSpacing: 1,
+                  textTransform: 'uppercase',
+                  color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
+                  marginBottom: 14,
+                  textAlign: 'center',
+                }}
+              >
+                What do you need?
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+                {COACH_CATEGORIES.map((cat) => (
+                  <CoachCategoryOrb
+                    key={cat.id}
+                    category={cat}
+                    isDark={isDark}
+                    onPress={(category) => handleStartChat(promptForCategory(category, suggestions))}
                   />
                 ))}
               </View>
+              <SpotlightSuggestion
+                suggestions={suggestions}
+                isDark={isDark}
+                t={t}
+                onPress={handleStartChat}
+              />
             </View>
           </Animated.View>
         </ScrollView>
-      </View>
 
-      {/* Fixed input bar (OUTSIDE any KeyboardAvoidingView or ScrollView) */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: NAV_HEIGHT + NAV_GAP, // push above BottomNavBar so it never overlays the nav icons
-          paddingHorizontal: 12,
-          paddingTop: 6,
-          paddingBottom: 6,
-          backgroundColor: 'transparent',
-          opacity: inputOpacity,
-          transform: [{ translateY: Animated.multiply(kb, -1) }], // Only keyboard height, not combined
-          zIndex: 5,
-        }}
-      >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 56 }}>
-            {/* Attach (keep existing functionality) */}
-            <Pressable
-              onPress={() => onAttachPress?.()}
-              style={({ pressed }) => [
-                {
+        <Animated.View
+          style={{
+            opacity: inputOpacity,
+            transform: [{ translateY: inputTranslateY }],
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: t.border,
+            backgroundColor: t.inputBarBg,
+            paddingHorizontal: 16,
+            paddingTop: attachments.length > 0 ? 10 : 8,
+            paddingBottom: 8 + shellNavPad,
+          }}
+        >
+          {attachments.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={{ flexGrow: 0, marginBottom: 10 }}
+              contentContainerStyle={{ gap: 10, alignItems: 'center' }}
+            >
+              {attachments.map((att) => (
+                <View key={att.id} style={{ position: 'relative' }}>
+                  {att.preview ? (
+                    <Image
+                      source={{ uri: att.preview }}
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: t.chipBorder,
+                      }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 12,
+                        backgroundColor: t.chipBg,
+                        borderWidth: 1,
+                        borderColor: t.chipBorder,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="document-outline" size={22} color={t.textSecondary} />
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => removeAttachment(att.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      backgroundColor: t.textSecondary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={13} color={t.bg} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+            <TouchableOpacity
+              onPress={openAttachMenu}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ padding: 4, marginBottom: 4 }}
+            >
+              <Ionicons name="add-circle-outline" size={26} color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight} />
+            </TouchableOpacity>
+            <TextInput
+              style={{
+                flex: 1,
+                minWidth: 0,
+                minHeight: 40,
+                maxHeight: 100,
+                fontSize: 15,
+                color: t.textPrimary,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: t.border,
+              }}
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={handleSend}
+              placeholder="Ask your coach..."
+              placeholderTextColor={t.textMuted}
+              returnKeyType="send"
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              onPress={toggleListen}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 2,
+                backgroundColor: listening
+                  ? (isDark ? AI_COACH_UI.composer.micActiveBg : AI_COACH_UI.composer.micActiveBgLight)
+                  : 'transparent',
+              }}
+              accessibilityLabel={listening ? 'Stop voice input' : 'Start voice input'}
+            >
+              <Ionicons
+                name={listening ? 'mic' : 'mic-outline'}
+                size={22}
+                color={isDark ? AI_COACH_UI.composer.iconMic : AI_COACH_UI.composer.iconMicLight}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={!canSend}
+              activeOpacity={0.85}
+              style={{ marginBottom: 2, opacity: canSend ? 1 : 0.45 }}
+            >
+              <LinearGradient
+                colors={isDark ? COMPOSER_SEND_GRAD : COMPOSER_SEND_GRAD_LIGHT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{
                   width: 44,
                   height: 44,
                   borderRadius: 22,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: pressed ? 'rgba(255,107,157,0.10)' : 'transparent',
-                  borderWidth: 1,
-                  borderColor: '#FF6B9D',
-                },
-              ]}
-            >
-              <Ionicons name="add" size={24} color="#FF6B9D" />
-            </Pressable>
-
-            {/* Input */}
-            <Animated.View style={{ flex: 1, transform: [{ scale: inputScale }] }}>
-              <View style={{ width: '100%', borderRadius: 28, overflow: 'hidden' }}>
-                {/* Gradient border (line only) */}
-                <View style={{ padding: 1.5, borderRadius: 28, overflow: 'hidden' }}>
-                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                    <AnimatedLinearGradient
-                      colors={['#FF6B9D', '#C084FC', '#FF6B9D']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        width: SW * 2,
-                        height: '100%',
-                        transform: [
-                          {
-                            translateX: inputBorderAnim.interpolate({ inputRange: [0, 1], outputRange: [-SW, 0] }),
-                          },
-                        ],
-                        opacity: isInputFocused ? 1 : 0.7,
-                      }}
-                    />
-                  </View>
-
-                  {/* Solid fill + subtle tint (prevents border gradient bleeding into fill) */}
-                  <View
-                    style={{
-                      borderRadius: 26.5,
-                      height: 56,
-                      justifyContent: 'center',
-                      paddingLeft: 18,
-                      paddingRight: 44, // room for mic
-                      overflow: 'hidden',
-                      backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
-                    }}
-                  >
-                    <LinearGradient
-                      colors={
-                        isDark
-                          ? ['rgba(255,107,157,0.08)', 'rgba(192,132,252,0.08)']
-                          : ['rgba(255,107,157,0.06)', 'rgba(192,132,252,0.06)']
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[StyleSheet.absoluteFill, { opacity: 1 }]}
-                    />
-                    <TextInput
-                      value={inputText}
-                      onChangeText={setInputText}
-                      onSubmitEditing={handleSend}
-                      placeholder="Ask your coach..."
-                      placeholderTextColor={isDark ? '#808080' : '#999999'}
-                      style={{
-                        fontSize: 15,
-                        color: isDark ? '#FFFFFF' : '#333333',
-                        fontStyle: inputText ? 'normal' : 'italic',
-                      }}
-                      cursorColor="#FF6B9D"
-                      multiline={false}
-                      onFocus={() => setIsInputFocused(true)}
-                      onBlur={() => setIsInputFocused(false)}
-                      returnKeyType="send"
-                    />
-
-                    {/* Mic inside input */}
-                    <Pressable
-                      onPress={handleMicPress}
-                      style={({ pressed }) => [
-                        {
-                          position: 'absolute',
-                          right: 10,
-                          top: 12,
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transform: [{ scale: pressed ? 0.9 : 1 }],
-                        },
-                      ]}
-                      hitSlop={10}
-                    >
-                      <Animated.View style={{ opacity: micActive ? micPulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) : 1 }}>
-                        <Ionicons name="mic" size={18} color="#FF6B9D" />
-                      </Animated.View>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Animated.View>
-
-            {/* Send */}
-            <Pressable
-              onPress={handleSend}
-              disabled={!inputText.trim()}
-              onPressIn={() => Animated.spring(sendPress, { toValue: 1, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
-              onPressOut={() => Animated.spring(sendPress, { toValue: 0, useNativeDriver: false, speed: 30, bounciness: 0 }).start()}
-              style={{ opacity: inputText.trim() ? 1 : 0.4 }}
-            >
-              <Animated.View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  overflow: 'hidden',
-                  transform: [{ scale: sendPress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] }) }],
-                  shadowColor: '#FF6B9D',
-                  shadowOpacity: sendPress.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.65] }),
-                  shadowRadius: sendPress.interpolate({ inputRange: [0, 1], outputRange: [12, 18] }),
-                  shadowOffset: { width: 0, height: 4 },
-                  elevation: 10,
                 }}
               >
-                <LinearGradient
-                  colors={['#FF6B9D', '#E91E63']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Animated.View
-                    style={{
-                      transform: [
-                        {
-                          scale: inputText.trim()
-                            ? sendPulse.interpolate({ inputRange: [0, 1], outputRange: [1.03, 1.07] })
-                            : 1,
-                        },
-                      ],
-                    }}
-                  >
-                    <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-                  </Animated.View>
-                </LinearGradient>
-              </Animated.View>
-            </Pressable>
+                <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </Animated.View>
+      </KeyboardAvoidingView>
 
       <Sidebar
         open={sidebarOpen}
@@ -940,19 +1473,22 @@ export default function AIChatHomeScreen({
         sessions={sessions}
         onSessionPress={onSessionPress}
         onDeleteSession={handleDeleteSession}
-        t={t}
+        isDark={isDark}
+        insets={insets}
       />
 
-      <BottomNavBar
-        onHomePress={onHomePress || (() => {})}
-        onPlusPress={onPlusPress || (() => {})}
-        onVoicePress={onVoicePress || (() => {})}
-        onNutritionPress={onNutritionPress || (() => {})}
-        onWorkoutPress={onWorkoutPress || (() => {})}
-        onMessagesPress={onMessagesPress || (() => {})}
-        onProfilePress={onProfilePress || (() => {})}
-        activeTabKey="ai"
-      />
+      {!hideBottomNav ? (
+        <BottomNavBar
+          onHomePress={onHomePress || (() => {})}
+          onPlusPress={onPlusPress || (() => {})}
+          onVoicePress={onVoicePress || (() => {})}
+          onNutritionPress={onNutritionPress || (() => {})}
+          onWorkoutPress={onWorkoutPress || (() => {})}
+          onMessagesPress={onMessagesPress || (() => {})}
+          onProfilePress={onProfilePress || (() => {})}
+          activeTabKey="ai"
+        />
+      ) : null}
     </Animated.View>
   );
 }

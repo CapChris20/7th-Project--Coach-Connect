@@ -1,29 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Constants from 'expo-constants';
-import { getApiBaseCandidates } from '../../shared/services/baseUrl';
-
-const YT_SEARCH = 'https://www.googleapis.com/youtube/v3/search';
-const YT_VIDEOS = 'https://www.googleapis.com/youtube/v3/videos';
-
-/**
- * Reads YouTube Data API v3 key from Expo extra or env (supports legacy REACT_NATIVE_ name).
- * Prefer restricting the key in Google Cloud Console to YouTube Data API + app bundle.
- */
-export function getYouTubeApiKey() {
-  const extra =
-    Constants.expoConfig?.extra ||
-    Constants.manifest?.extra ||
-    Constants.manifest2?.extra ||
-    Constants.manifest2?.expoClient?.extra ||
-    {};
-  return String(
-    extra.youtubeApiKey ||
-      process.env.EXPO_PUBLIC_YOUTUBE_API_KEY ||
-      process.env.YOUTUBE_API_KEY ||
-      process.env.REACT_NATIVE_YOUTUBE_API_KEY ||
-      '',
-  ).trim();
-}
+import { getResilientApiBases } from '../../shared/services/baseUrl';
+import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
 
 const cache = new Map();
 const CACHE_MS = 25 * 60 * 1000;
@@ -625,27 +603,12 @@ function mergeYoutubeLists(a, b, max = 50) {
 }
 
 async function fetchYoutubeItemsMerged(qStr, signal) {
-  let usedServer = false;
-  let usedDirect = false;
-
   let m = await fetchYoutubeItemsViaServer(qStr, signal);
-  if (Array.isArray(m) && m.length) usedServer = true;
-
-  // Server results often lack durationSeconds. If we have a key, enrich durations via videos.list.
-  const k0 = getYouTubeApiKey();
-  if (Array.isArray(m) && m.length && k0 && m.some((it) => typeof it?.durationSeconds !== 'number')) {
-    m = await enrichWithDurations(m, k0, signal);
+  let apiSource = Array.isArray(m) && m.length ? 'server' : 'unknown';
+  if (!m?.length) {
+    m = await fetchYoutubeItemsDirect(qStr, signal);
+    if (m?.length) apiSource = 'direct';
   }
-
-  if (!m || m.length === 0) {
-    const k = getYouTubeApiKey();
-    if (k) {
-      m = await fetchYoutubeItemsDirect(qStr, k, signal);
-      if (Array.isArray(m) && m.length) usedDirect = true;
-    }
-  }
-
-  const apiSource = usedServer ? 'server' : usedDirect ? 'direct' : 'unknown';
 
   // Split merged list into Shorts vs long-form using durationSeconds / isShort.
   const shorts = [];
@@ -700,8 +663,50 @@ function onboardingSearchRelevanceKey(data) {
   }
 }
 
+/** Client must not bundle YouTube API keys — server proxy only (see /api/youtube/search). */
+function readYoutubeApiKeyFallback() {
+  return '';
+}
+
+/** Deprecated direct path — always returns null; kept for call-site stability. */
+async function fetchYoutubeItemsDirect(q, signal) {
+  const key = readYoutubeApiKeyFallback();
+  if (!key) return null;
+  try {
+    const u = new URL('https://www.googleapis.com/youtube/v3/search');
+    u.searchParams.set('part', 'snippet');
+    u.searchParams.set('type', 'video');
+    u.searchParams.set('maxResults', '50');
+    u.searchParams.set('order', 'relevance');
+    u.searchParams.set('q', q);
+    u.searchParams.set('key', key);
+    const res = await fetch(u.toString(), { signal, headers: { Accept: 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.error) return null;
+    return (data.items || [])
+      .map((it) => ({
+        videoId: it.id?.videoId,
+        title: it.snippet?.title || '',
+        channel: it.snippet?.channelTitle || '',
+        description: it.snippet?.description || '',
+        publishedAt: it.snippet?.publishedAt || '',
+      }))
+      .filter((it) => it.videoId);
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e;
+    return null;
+  }
+}
+
 async function fetchYoutubeItemsViaServer(q, signal) {
-  const bases = getApiBaseCandidates();
+  const bases = getResilientApiBases();
+  let authHeaders = { Accept: 'application/json' };
+  try {
+    authHeaders = await getApiAuthHeaders();
+  } catch {
+    /* signed-out or token refresh failure — server will 401 */
+  }
+
   for (const base of bases) {
     const baseNorm = String(base || '').replace(/\/+$/, '');
     if (!baseNorm) continue;
@@ -709,9 +714,10 @@ async function fetchYoutubeItemsViaServer(q, signal) {
       const u = new URL('/api/youtube/search', `${baseNorm}/`);
       u.searchParams.set('q', q);
       u.searchParams.set('maxResults', '50');
-      const res = await fetch(u.toString(), { signal, headers: { Accept: 'application/json' } });
+      const res = await fetch(u.toString(), { signal, headers: authHeaders });
       const json = await res.json().catch(() => ({}));
       if (res.status === 501) continue;
+      if (res.status === 401) continue;
       if (!res.ok) continue;
       if (Array.isArray(json.items)) {
         return json.items
@@ -734,79 +740,12 @@ async function fetchYoutubeItemsViaServer(q, signal) {
   return null;
 }
 
-async function fetchYoutubeItemsDirect(q, apiKey, signal) {
-  const params = new URLSearchParams({
-    part: 'snippet',
-    type: 'video',
-    maxResults: '50',
-    order: 'relevance',
-    q,
-    key: apiKey,
-  });
-  const res = await fetch(`${YT_SEARCH}?${params.toString()}`, { signal });
-  const json = await res.json();
-  if (!res.ok) {
-    const msg = json?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  const base = (json.items || [])
-    .map((it) => ({
-      videoId: it.id?.videoId,
-      title: it.snippet?.title || '',
-      channel: it.snippet?.channelTitle || '',
-      description: it.snippet?.description || '',
-      publishedAt: it.snippet?.publishedAt || '',
-    }))
-    .filter((it) => it.videoId);
 
-  return await enrichWithDurations(base, apiKey, signal);
-}
-
-// YouTube ISO 8601 duration (e.g. "PT45S", "PT8M30S") → seconds.
-function parseISODurationToSeconds(iso) {
-  if (!iso || typeof iso !== 'string') return undefined;
-  const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  if (!m) return undefined;
-  const h = parseInt(m[1] || '0', 10);
-  const min = parseInt(m[2] || '0', 10);
-  const s = parseInt(m[3] || '0', 10);
-  const total = h * 3600 + min * 60 + s;
-  return Number.isFinite(total) ? total : undefined;
-}
-
-async function enrichWithDurations(items, apiKey, signal) {
-  const list = Array.isArray(items) ? items : [];
-  if (!list.length || !apiKey) return list;
-
-  const ids = [...new Set(list.map((x) => x.videoId).filter(Boolean))].slice(0, 50);
-  if (!ids.length) return list;
-
-  try {
-    const params = new URLSearchParams({
-      part: 'contentDetails',
-      id: ids.join(','),
-      key: apiKey,
-    });
-    const res = await fetch(`${YT_VIDEOS}?${params.toString()}`, { signal });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) return list;
-
-    const durMap = new Map();
-    for (const it of json.items || []) {
-      const id = it?.id;
-      const dur = parseISODurationToSeconds(it?.contentDetails?.duration);
-      if (id && typeof dur === 'number') durMap.set(id, dur);
-    }
-
-    return list.map((x) => ({
-      ...x,
-      durationSeconds: durMap.get(x.videoId),
-    }));
-  } catch (e) {
-    if (e?.name === 'AbortError') throw e;
-    return list;
-  }
-}
+// ============================================================================
+// Note: Direct YouTube API calls have been removed for security.
+// All YouTube searches now route through the authenticated server endpoint:
+// POST /api/youtube/search
+// ============================================================================
 
 /**
  * Fetches YouTube search results (search.list), caches by query key.
@@ -940,9 +879,9 @@ export function useYouTubeAPI({
             cacheHit: false,
             shortsCount: shortsList.length,
           });
-          if (mapped.length === 0 && !getYouTubeApiKey()) {
+          if (mapped.length === 0) {
             setError(
-              'YouTube: start the API server (`npm run server`) with YOUTUBE_API_KEY or REACT_NATIVE_YOUTUBE_API_KEY in the project root .env, or add EXPO_PUBLIC_YOUTUBE_API_KEY for a direct client call.',
+              'No YouTube videos loaded. Sign in, enable YouTube Data API v3 on your Google key, and run ./scripts/syncCloudRunEnv.sh once (uses REACT_NATIVE_YOUTUBE_API_KEY from .env).',
             );
           } else {
             setError(null);
