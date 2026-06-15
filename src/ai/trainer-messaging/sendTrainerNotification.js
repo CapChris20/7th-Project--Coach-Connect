@@ -28,7 +28,7 @@ import {
   runTransaction,
   deleteField,
 } from 'firebase/firestore';
-import { getDocsWithIndexFallback } from '../../shared/services/firestorePagedQuery';
+import { getDocsWithIndexFallback } from '../../shared/firestore/firestorePagedQuery';
 import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
 import { randomClientRequestTitle } from '../../shared/notifications/pushNotificationText';
 

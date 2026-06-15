@@ -21,9 +21,10 @@ function parseSleepHoursFromMessage(text) {
   if (!/\b(sleep|slept)\b/.test(raw)) return null;
   const patterns = [
     /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
-    /sleep(?:ed)?\s*(?:for\s*)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/,
+    /sleep(?:ed)?\s*(?:for\s*|as\s*)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/,
     /(?:put|add|log)\s+(?:that\s+)?(?:i\s+)?slept\s+(?:for\s*)?(\d+(?:\.\d+)?)/,
     /(?:put|add|log)\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
+    /(?:put|add|log)\s+my\s+sleep\s+as\s+(\d+(?:\.\d+)?)/,
   ];
   for (const re of patterns) {
     const m = raw.match(re);
@@ -38,11 +39,16 @@ const {
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
 } = require('../../src/ai/tools/parseDeleteLogRequest');
-const { guardCoachToolProposal } = require('../../src/ai/tools/validateCoachToolProposal');
+const {
+  guardCoachToolProposal,
+  userWantsExplicitDashboardLog,
+  userExplicitlyRequestsAction,
+} = require('../../src/ai/tools/validateCoachToolProposal');
 
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();
   if (!t.trim()) return false;
+  if (!userExplicitlyRequestsAction(text)) return false;
   if (/\b(delete|remove|clear|undo|unlog|erase)\b/.test(t)) return false;
   if (/\b(dashboard|for me|able to|something for|log something|on there|on my)\b/.test(t)) {
     return false;
@@ -79,7 +85,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // logWater: "I drank X oz", "100oz water", etc.
   const waterMatch = raw.match(/(?:drank|drink|had)\s*(?:about\s*)?(\d+)\s*(?:oz|ounce)/i);
-  if (waterMatch) {
+  if (waterMatch && userWantsExplicitDashboardLog(raw, 'water')) {
     const amount_oz = Number(waterMatch[1]);
     if (amount_oz > 0 && amount_oz < 1000) {
       return {
@@ -92,7 +98,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // logSteps: "I did X steps", "10,000 steps", etc.
   const stepsMatch = raw.match(/(?:did|walked|got|logged)\s*(?:about\s*)?(\d+(?:,\d{3})*)\s*steps/i);
-  if (stepsMatch) {
+  if (stepsMatch && userWantsExplicitDashboardLog(raw, 'steps')) {
     const step_count = Number(stepsMatch[1].replace(/,/g, ''));
     if (step_count >= 0 && step_count < 100000) {
       return {
@@ -105,7 +111,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // rateEnergy: "My energy is X/10", "Energy X", etc.
   const energyMatch = raw.match(/(?:energy|feel)\s*(?:is)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i);
-  if (energyMatch) {
+  if (energyMatch && userWantsExplicitDashboardLog(raw, 'energy')) {
     const rating = Number(energyMatch[1]);
     if (rating >= 1 && rating <= 10) {
       return {
@@ -119,7 +125,10 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   // logMood: "My mood is happy/okay/stressed/tired/anxious"
   const moodKeywords = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
   for (const mood of moodKeywords) {
-    if (new RegExp(`\\b(?:mood|feel|feeling)\\s+(?:is\\s+)?${mood}\\b`, 'i').test(t)) {
+    if (
+      userWantsExplicitDashboardLog(raw, 'mood') &&
+      new RegExp(`\\b(?:mood|feel|feeling)\\s+(?:is\\s+)?${mood}\\b`, 'i').test(t)
+    ) {
       return {
         name: 'logMood',
         params: { mood },
@@ -130,6 +139,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // logRestDay: rest day on dashboard workout card
   if (
+    userWantsExplicitDashboardLog(raw, 'restDay') &&
     /\b(rest day|log rest|mark.*rest|take a rest|skip workout|no workout today|off day)\b/i.test(t)
   ) {
     const dateMatch = raw.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
@@ -142,7 +152,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // rateWorkout: "That workout was X/10", "Workout rating X"
   const workoutMatch = raw.match(/(?:workout|session)\s*(?:was|is|rate[sd]?)\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i);
-  if (workoutMatch) {
+  if (workoutMatch && userWantsExplicitDashboardLog(raw, 'workout')) {
     const rating = Number(workoutMatch[1]);
     if (rating >= 1 && rating <= 10) {
       return {
@@ -154,7 +164,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   }
 
   const sleepHours = parseSleepHoursFromMessage(raw);
-  if (sleepHours != null) {
+  if (sleepHours != null && userWantsExplicitDashboardLog(raw, 'sleep')) {
     return {
       name: 'logSleep',
       params: { hours: sleepHours },
@@ -396,7 +406,7 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
     parsed.push(guarded);
   };
 
-  const { parseCoachToolCalls } = require('../../src/shared/parseCoachToolCalls');
+  const { parseCoachToolCalls } = require('../../src/shared/coach-tools/parseCoachToolCalls');
   for (const c of parseCoachToolCalls(modelText)) {
     add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));
   }

@@ -9,7 +9,7 @@
  * @file-header
  */
 import axios from 'axios';
-import { getApiBase } from '../../shared/services/baseUrl';
+import { getApiBase } from '../../shared/api/baseUrl';
 import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 
 function getBaseUrl() {

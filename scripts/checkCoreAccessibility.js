@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..');
 
 const CORE_FILES = [
   {
-    file: 'src/aiChat/screens/AIChatScreen.jsx',
+    file: 'src/aiChat/chat-thread/AIChatScreen.jsx',
     mustInclude: [
       'Refresh coach context',
       'Message input',
@@ -24,11 +24,11 @@ const CORE_FILES = [
     mustInclude: ['accessibilityLabel="Cancel"', 'accessibilityLabel="Confirm"'],
   },
   {
-    file: 'src/nutrition/screens/FoodSearchScreen.js',
+    file: 'src/nutrition/food-search/FoodSearchScreen.js',
     mustInclude: ['Go back', 'Search foods', 'Clear search'],
   },
   {
-    file: 'src/shared/components/QuickActionCard.jsx',
+    file: 'src/shared/components/home/QuickActionCard.jsx',
     mustInclude: ['accessibilityRole="button"'],
   },
 ];

@@ -9,7 +9,7 @@
  * @file-header
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiBaseCandidates } from '../services/baseUrl';
+import { getApiBaseCandidates } from './baseUrl';
 
 const pendingKeyForUid = (uid) => `pending_onboarding_sync_${uid}`;
 

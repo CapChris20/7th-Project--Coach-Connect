@@ -221,7 +221,7 @@ function testClientKeyExposure() {
   const appConfig = fs.readFileSync(path.join(ROOT, 'app.config.js'), 'utf8');
   const hasYoutubeInConfig = /EXPO_PUBLIC_YOUTUBE_API_KEY/.test(appConfig);
 
-  const workoutJs = fs.readFileSync(path.join(ROOT, 'src/workouts/screens/workout.js'), 'utf8');
+  const workoutJs = fs.readFileSync(path.join(ROOT, 'src/workouts/active-workout/workout.js'), 'utf8');
   const directAnthropic =
     /api\.anthropic\.com/.test(workoutJs) || /['"]x-api-key['"]/.test(workoutJs);
   const usesServerGenerate = /\/api\/workout\/generate/.test(workoutJs);

@@ -1,7 +1,7 @@
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply,
-} = require('../../shared/parseCoachToolCalls');
+} = require('../../shared/coach-tools/parseCoachToolCalls');
 const {
   shouldIncludeWeeklyContextInCoachPrompt,
 } = require('../../ai/context/gatherCoachContextFromUser');

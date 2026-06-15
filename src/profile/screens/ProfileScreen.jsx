@@ -32,18 +32,18 @@ import { auth, db } from '../../app/config';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
-import ProfileCardIcon from '../../shared/components/ProfileCardIcon';
+import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
 import {
   PROFILE_ROW_ICON_SIZE,
   PROFILE_ROW_ICON_WRAP,
   profileCardIconWrapStyle,
-} from '../../shared/workout/profileCardIcons';
+} from '../../shared/workout-profile/profileCardIcons';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { onUserSignOut } from '../../utils/clearDataOnLogout';
-import { syncTrainerMarketplaceDoc } from '../../shared/services/trainerMarketplaceSync';
+import { syncTrainerMarketplaceDoc } from '../../shared/marketplace/trainerMarketplaceSync';
 import {
   Camera,
   Dumbbell,

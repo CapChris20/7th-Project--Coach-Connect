@@ -522,13 +522,13 @@ function dayLineForWeeklyReport(dayLabel, dateStr, log) {
   const steps = parseMetricNumber(log.dashboard_steps);
   if (steps != null) chunks.push(`${Math.round(steps)} steps`);
   const ene = parseMetricNumber(log.dashboard_energy);
-  if (ene != null) chunks.push(`energy ${ene}/5`);
+  if (ene != null) chunks.push(`energy ${ene}/8`);
   const mood = parseMetricNumber(log.dashboard_mood);
-  if (mood != null) chunks.push(`mood ${mood}/10`);
+  if (mood != null) chunks.push(`mood ${mood}/4`);
   const str = parseMetricNumber(log.dashboard_stress);
-  if (str != null) chunks.push(`Stress ${str}/10`);
+  if (str != null) chunks.push(`Stress ${str}/8`);
   const sor = parseMetricNumber(log.dashboard_soreness);
-  if (sor != null) chunks.push(`Soreness ${sor}/10`);
+  if (sor != null) chunks.push(`Soreness ${sor}/8`);
   const wt = parseMetricNumber(log.dashboard_weight);
   if (wt != null) chunks.push(`Weight ${wt} lbs`);
   const wr = parseMetricNumber(log.dashboard_workout_rating);
@@ -592,7 +592,7 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
   }).length;
 
   let summary = `Between ${weekStart} and ${weekEnd}, you logged ${nLogged} of 7 daily check-ins. `;
-  summary += `Week averages: sleep ${avgSleep} h, water ${avgWater} oz, steps ${avgSteps}, energy ${avgEnergy}/5`;
+  summary += `Week averages: sleep ${avgSleep} h, water ${avgWater} oz, steps ${avgSteps}, energy ${avgEnergy}/8`;
   if (avgWeight && avgWeight !== 'N/A') summary += `, weight ${avgWeight} lbs`;
   summary += '. ';
   if (sleepVals.length >= 2) {

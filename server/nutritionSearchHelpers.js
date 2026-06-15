@@ -6,6 +6,7 @@ const {
   itemMatchesQuery,
   isRetailFoodNoise,
   significantQueryTokens,
+  isGroceryIngredientQuery,
 } = require('../src/nutrition/food-search/rankFoodSearchResults');
 
 const EMPTY_SEARCH_HINT =
@@ -27,12 +28,13 @@ function normalizeSearchKey(q) {
  * Generic / grocery → USDA first (includes Branded for packaged foods + Foundation / SR / survey).
  */
 function classifyNutritionSearchMode(queryLower) {
+  if (isGroceryIngredientQuery(queryLower)) return 'generic';
   if (isMenuStyleQuery(queryLower)) return 'branded';
   // Pizza and labeled pizza orders rarely match USDA branded rows well.
   if (/\bpizza\b/.test(queryLower)) return 'branded';
-  // Chain-style menu language
+  // Chain-style menu language (avoid bare "boneless" — matches fresh meat labels)
   if (
-    /\b(nugget|mcnugget|mcnuggets|big mac|quarter pounder|whopper|crazy bread|breadsticks|boneless|combo meal)\b/.test(
+    /\b(nugget|mcnugget|mcnuggets|big mac|quarter pounder|whopper|crazy bread|breadsticks|boneless\s+wing|boneless\s+wings|combo meal)\b/.test(
       queryLower,
     )
   ) {

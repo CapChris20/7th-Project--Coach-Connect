@@ -20,6 +20,8 @@
     "test:food-search:smoke": "node ./scripts/testFoodSearchAccuracy.js --smoke --verbose",
     "test:security": "node ./scripts/testSecurityFixes.js",
     "test:component-imports": "node ./scripts/checkComponentImports.js",
+    "fix:imports": "node ./scripts/fixRelativeImports.js && node ./scripts/fixAllBrokenImports.js --fix && node ./scripts/restoreAssetExtensions.js && node ./scripts/verifyRelativeImports.js",
+    "verify:imports": "node ./scripts/verifyRelativeImports.js",
     "test:a11y-core": "node ./scripts/checkCoreAccessibility.js",
     "test:firestore-indexes": "node ./scripts/verifyFirestoreIndexes.js",
     "test:quality": "npm run test:daily-metrics && npm run test:coach-web-search && npm run test:ai-coach-audit-fixes && npm run test:a11y-core && npm run test:firestore-indexes",
@@ -158,7 +160,7 @@
       "**/*.test.js"
     ],
     "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.js"
+      "<rootDir>/test/jest.setup.js"
     ],
     "transform": {
       "^.+\\.[jt]sx?$": "babel-jest"

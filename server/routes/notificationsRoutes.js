@@ -9,7 +9,54 @@ const {
 } = require('../pushHelpers');
 
 function registerNotificationRoutes(app, deps) {
-  const { verifyFirebaseBearerToken } = deps;
+  const { verifyFirebaseBearerToken, serverTs, isTrainerOfClient } = deps;
+
+  app.post('/api/notifications/create', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      const requesterUid = String(req.firebaseAuth?.uid || '').trim();
+      if (!requesterUid) return res.status(401).json({ error: 'Unauthorized' });
+
+      if (!admin.apps.length) {
+        return res.status(503).json({ error: 'Service unavailable' });
+      }
+
+      const recipientId = String(req.body?.recipientId || '').trim();
+      const clientId = String(req.body?.clientId || requesterUid).trim();
+      const type = String(req.body?.type || 'dashboard_update').trim() || 'dashboard_update';
+      const payload =
+        req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
+
+      if (!recipientId) {
+        return res.status(400).json({ error: 'recipientId is required' });
+      }
+      if (clientId !== requesterUid) {
+        return res.status(403).json({ error: 'Forbidden — clientId must match authenticated user' });
+      }
+
+      const db = admin.firestore();
+      const linked = await isTrainerOfClient(recipientId, clientId);
+      if (!linked) {
+        return res.status(403).json({ error: 'Forbidden — no active trainer link' });
+      }
+
+      const notificationDoc = {
+        type: payload.type || type,
+        label: payload.label || null,
+        clientUid: clientId,
+        trainerUid: recipientId,
+        value: payload.value != null ? payload.value : null,
+        read: false,
+        timestamp: serverTs(),
+        source: 'dashboard_update',
+      };
+
+      const ref = await db.collection('notifications').add(notificationDoc);
+      return res.json({ success: true, id: ref.id });
+    } catch (e) {
+      console.error('POST /api/notifications/create failed:', e?.message || e);
+      return res.status(500).json({ error: 'Failed to create notification' });
+    }
+  });
 
 app.post('/api/notifications/send', verifyFirebaseBearerToken, async (req, res) => {
   try {

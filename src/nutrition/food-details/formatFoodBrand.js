@@ -55,6 +55,39 @@ function inferBrandFromFoodName(foodName) {
   return '';
 }
 
+/** Consumer brands users type in search (Ghost cereal, Quest bar, etc.). */
+const KNOWN_CONSUMER_BRANDS = [
+  'Ghost',
+  'Quest',
+  'RXBar',
+  'RXBAR',
+  'Fairlife',
+  'Chobani',
+  'Optimum Nutrition',
+  'Alani Nu',
+  'Doritos',
+  "Lay's",
+  'Klondike',
+  'Perdue',
+  'Oreo',
+];
+
+function escapeBrandRe(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Detect required consumer brand token in a search query (e.g. Ghost in "ghost cereal"). */
+function findConsumerBrandInQuery(query) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+  for (const brand of KNOWN_CONSUMER_BRANDS) {
+    if (new RegExp(`\\b${escapeBrandRe(brand)}\\b`, 'i').test(q)) {
+      return brand;
+    }
+  }
+  return null;
+}
+
 /** Hide subtitle when it repeats the start of the food name (e.g. Wendy's under Wendy's Frosty). */
 function shouldShowFoodBrandSubtitle(foodName, brand) {
   const b = String(brand || '').trim();
@@ -72,4 +105,6 @@ module.exports = {
   resolveFoodBrandLabel,
   inferBrandFromFoodName,
   shouldShowFoodBrandSubtitle,
+  findConsumerBrandInQuery,
+  KNOWN_CONSUMER_BRANDS,
 };

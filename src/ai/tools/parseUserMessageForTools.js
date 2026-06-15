@@ -12,7 +12,7 @@
  * Lightweight client-side tool inference when the API didn't attach toolCalls
  * but the coach message implies an action (or embeds JSON).
  */
-import { parseCoachToolCalls } from '../../shared/parseCoachToolCalls';
+import { parseCoachToolCalls } from '../../shared/coach-tools/parseCoachToolCalls';
 import { normalizeToolCall } from './executeCoachTool';
 import {
   userWantsDeleteLog,
@@ -160,11 +160,15 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
     }
   }
 
+  // Only infer from the user's message — web-search replies often mention "workout plan"
+  // in passing and must not trigger the open-plan modal.
+  const userLower = user.toLowerCase();
   if (
     user &&
-    ((/\b(open|show|see|view|pull up)\b/i.test(combined) && /\b(workout|plan|program)\b/i.test(combined)) ||
-      /\btoday'?s?\s*(workout|session)\b/i.test(combined) ||
-      /\bwhat('?s| is) (on|in) my (workout|plan|program)\b/i.test(combined))
+    ((/\b(open|show|see|view|pull up)\b/i.test(userLower) &&
+      /\b(workout|plan|program)\b/i.test(userLower)) ||
+      /\btoday'?s?\s*(workout|session)\b/i.test(userLower) ||
+      /\bwhat('?s| is) (on|in) my (workout|plan|program)\b/i.test(userLower))
   ) {
     return normalizeToolCall({
       name: 'openWorkoutPlan',

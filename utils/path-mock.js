@@ -1,15 +1,2 @@
-// Mock path module for React Native
-// This prevents Metro from trying to bundle the real path module
-module.exports = {
-  join: (...args) => args.join('/'),
-  dirname: (p) => p.split('/').slice(0, -1).join('/'),
-};
-
-
-
-
-
-
-
-
-
+// Back-compat shim: Metro cache may still resolve the old utils/ path.
+module.exports = require('../metro/mocks/path-mock.js');

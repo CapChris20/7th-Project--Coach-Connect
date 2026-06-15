@@ -9,7 +9,7 @@
  * @file-header
  */
 import axios from 'axios';
-import { getApiBase } from '../../shared/services/baseUrl';
+import { getApiBase } from '../../shared/api/baseUrl';
 import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 
 // Resolve backend URL for server-side web search

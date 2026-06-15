@@ -28,7 +28,7 @@ jest.mock('../../utils/syncErrorsToServer', () => ({
   initializeErrorSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../ai/services/chatStorageService', () => ({
+jest.mock('../../ai/chat-api/chatStorageService', () => ({
   clearOldSharedChats: jest.fn(() => Promise.resolve()),
 }));
 
@@ -52,7 +52,7 @@ jest.mock('../../shared/api/logErrorToServer', () => ({
 jest.mock('../../auth/AuthScreen', () => () => null);
 jest.mock('../../auth/ForgotPasswordScreen', () => () => null);
 jest.mock('../../auth/OnboardingScreen', () => () => null);
-jest.mock('../../shared/components/AppLoadingScreen', () => () => null);
+jest.mock('../../shared/components/shell/AppLoadingScreen', () => () => null);
 
 jest.mock('../../app/TrainerApp', () => {
   const ReactLocal = require('react');

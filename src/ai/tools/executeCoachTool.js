@@ -22,7 +22,7 @@ import {
   saveDashboardWorkoutLog,
   clearClientDailyMetric,
 } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
-import { getAICoachApiBases } from '../../shared/services/baseUrl';
+import { getAICoachApiBases } from '../../shared/api/baseUrl';
 import { addFoodLog, deleteFoodLogsForDate } from '../../nutrition/daily-log/logFoodToFirestore';
 import { sanitizeDeleteFoodQuery } from './parseDeleteLogRequest';
 

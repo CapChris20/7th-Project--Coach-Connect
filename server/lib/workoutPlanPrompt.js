@@ -2,6 +2,29 @@
  * Workout plan generation prompts (server-side only — keeps Claude key off client).
  */
 
+function buildExerciseExclusionBlock(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const parts = [d.exercisesDislike, d.injuries, d.situationDescription]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+
+  const combined = parts.join(' | ');
+  return `
+EXERCISE EXCLUSIONS — NON-NEGOTIABLE (highest priority; overrides variety and defaults):
+Client banned / avoid list: ${combined}
+
+Enforcement rules:
+- NEVER prescribe any banned movement or a close variant (same pattern, muscle line, or common alias).
+- "No squats except hex/trap bar squat" → ONLY hex bar / trap bar squat for squat pattern. NO goblet squat, Bulgarian split squat, front squat, back squat, leg press, box squat, split squat, etc.
+- "No RDL" / "no deadlifts" / "no single leg deadlift" → NO Romanian deadlift, single-leg RDL/SLDL, stiff-leg deadlift, good morning, kettlebell swing hinge substitutes if deadlift banned.
+- "No walking lunges" → NO walking lunge, deficit lunge, jumping lunge, lunge walk.
+- "No burpees" → NO burpee, dumbbell burpee, sprawl, man maker with burpee.
+- "Renegade row" banned → NO renegade row, plank row, push-up to row combo.
+- Before returning JSON, scan EVERY exercise name against the ban list (partial match counts). Replace any hit with an allowed alternative using their equipment.
+- If unsure whether a name is too similar to a banned move, pick a different exercise.`;
+}
+
 function buildWorkoutSystemPrompt() {
   return `You are an expert strength and conditioning coach. Generate a complete 7-day personalized workout plan.
 
@@ -87,6 +110,7 @@ RULES FOR recoveryActivities:
 
 function buildWorkoutUserPrompt(data) {
   const d = data && typeof data === 'object' ? data : {};
+  const exclusionBlock = buildExerciseExclusionBlock(d);
   return `Create a ${d.daysPerWeek || 5}-day per week personalized workout plan for a client:
 
 CLIENT PROFILE:
@@ -100,11 +124,12 @@ CLIENT PROFILE:
 - Exercises to Avoid: ${(d.exercisesDislike || '').trim() || 'None'}
 - Sleep: ${d.sleepQuality || '7-8 hours'}
 - Stress Level: ${d.currentStressLevel || 'Moderate'}
-
-Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
+${exclusionBlock}
+Generate the complete 7-day JSON plan NOW. Return ONLY JSON. Honor every exclusion above — zero banned movements in the final plan.`;
 }
 
 module.exports = {
   buildWorkoutSystemPrompt,
   buildWorkoutUserPrompt,
+  buildExerciseExclusionBlock,
 };

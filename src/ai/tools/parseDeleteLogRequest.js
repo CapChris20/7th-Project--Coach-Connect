@@ -184,7 +184,7 @@ function coerceMisroutedDeleteTool(toolCall, userText = '', coachText = '', norm
   const deleteIntent = userWantsDeleteLog(userText) || coachTextImpliesDelete(coachText);
 
   if (!toolCall) {
-    if (!deleteIntent) return null;
+    if (!userWantsDeleteLog(userText)) return null;
     return normalizeToolCall({
       name: 'deleteLog',
       params: inferDeleteLogParams(userText, coachText),

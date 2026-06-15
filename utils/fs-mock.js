@@ -1,12 +1,2 @@
-// Mock fs module for React Native
-// This prevents Metro from trying to bundle the real fs module
-module.exports = {};
-
-
-
-
-
-
-
-
-
+// Back-compat shim: Metro cache may still resolve the old utils/ path.
+module.exports = require('../metro/mocks/fs-mock.js');

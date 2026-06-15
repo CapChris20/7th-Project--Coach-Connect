@@ -25,14 +25,90 @@ import {
   serverTimestamp,
   limit as limitFn,
 } from 'firebase/firestore';
-import foodSearchProvider from '../services/foodSearchProvider';
-export { FOOD_SEARCH_OFFLINE_HINT } from '../services/foodSearchProvider';
+import foodSearchProvider from '../food-search/foodSearchProvider';
+export { FOOD_SEARCH_OFFLINE_HINT } from '../food-search/foodSearchProvider';
 import { autoLogErrorSync } from '../../utils/autoLogError';
+import { normalizeFoodForLog, isLiquidFood } from '../food-search/normalizeFoodQuery';
+import { isPer100gSource, resolveServingGrams } from '../food-details/calculateServingSize';
 
 const LOGS_COLLECTION = 'nutrition_logs';
 const GOALS_COLLECTION = 'nutrition_goals';
 const FOOD_CACHE_KEY = 'COACHCONNECT_FOOD_CACHE';
-const MAX_CACHE_ITEMS = 25;
+const MAX_CACHE_ITEMS = 50;
+
+function normalizeHistoryName(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[''`]/g, "'")
+    .replace(/\s+/g, ' ');
+}
+
+/** Stable id for saved / recent foods (works for Quick Add items without barcode id). */
+export function buildFoodHistoryId(food) {
+  const name = normalizeHistoryName(food?.name || food?.food_name);
+  if (!name) return `hist_${Date.now()}`;
+  const slug = name.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+  const src = String(food?.source || 'manual').slice(0, 12);
+  return `hist_${src}_${slug || 'food'}`;
+}
+
+/** Per-serving template for re-logging (Quick Add, search, barcode, coach). */
+export function buildFoodHistoryEntry(food) {
+  const normalized = normalizeFoodForLog(food);
+  const name = String(normalized?.name || normalized?.food_name || '').trim();
+  if (!name) return null;
+
+  const qty = Number(normalized.servingSize) || 1;
+  const perServing = (v, round = true) => {
+    const x = Number(v) || 0;
+    if (!x) return 0;
+    const scaled = qty > 1 ? x / qty : x;
+    return round ? Math.round(scaled * 10) / 10 : scaled;
+  };
+
+  const entry = {
+    id: normalized.id || buildFoodHistoryId(normalized),
+    name,
+    food_name: name,
+    brand: normalized.brand || '',
+    calories: Math.round(perServing(normalized.calories, false)),
+    protein: perServing(normalized.protein),
+    carbs: perServing(normalized.carbs),
+    fat: perServing(normalized.fat),
+    fiber: perServing(normalized.fiber),
+    sugar: perServing(normalized.sugar),
+    sodium: Math.round(perServing(normalized.sodium, false)),
+    potassium: Math.round(perServing(normalized.potassium, false)),
+    servingSize: 1,
+    serving_size: 1,
+    servingGrams: Math.max(1, Math.round((Number(normalized.servingGrams) || 100) / (qty > 1 ? qty : 1))),
+    serving_grams: Math.max(1, Math.round((Number(normalized.servingGrams) || 100) / (qty > 1 ? qty : 1))),
+    servingUnit: normalized.servingUnit || normalized.serving_unit || 'serving',
+    serving_unit: normalized.servingUnit || normalized.serving_unit || 'serving',
+    source: normalized.source || 'manual',
+    dataBasis: normalized.dataBasis === 'label_serving' || isPer100gSource(normalized.source)
+      ? normalized.dataBasis
+      : 'logged_totals',
+    labelServingGrams: normalized.labelServingGrams,
+    fromRecentLog: normalized.dataBasis === 'logged_totals',
+    savedAt: Date.now(),
+  };
+
+  if (entry.dataBasis !== 'logged_totals') {
+    entry.fromRecentLog = false;
+    entry.calories = Math.round(Number(normalized.calories) || 0);
+    entry.protein = Number(normalized.protein) || 0;
+    entry.carbs = Number(normalized.carbs) || 0;
+    entry.fat = Number(normalized.fat) || 0;
+    entry.servingSize = normalized.servingSize ?? 1;
+    entry.serving_size = entry.servingSize;
+    entry.servingGrams = resolveServingGrams(normalized);
+    entry.serving_grams = entry.servingGrams;
+  }
+
+  return entry;
+}
 
 function formatDateKey(date = new Date()) {
   try {
@@ -126,11 +202,11 @@ export async function getFoodLogsForDate(userId, date = new Date()) {
 
     const querySnapshot = await getDocs(q);
     const logs = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
+    querySnapshot.forEach((logDoc) => {
+      const data = logDoc.data();
       // Ensure numeric values are properly converted
       const log = {
-        id: doc.id,
+        id: logDoc.id,
         ...data,
         calories: Number(data.calories) || 0,
         protein: Number(data.protein) || 0,
@@ -295,6 +371,11 @@ export async function addFoodLog(userId, log) {
     });
     const docRef = await addDoc(collection(db, LOGS_COLLECTION), payload);
     if (__DEV__) console.log('✅ Saved successfully with ID:', docRef.id);
+    try {
+      await saveFoodToHistory(food);
+    } catch (historyErr) {
+      if (__DEV__) console.warn('Food history save failed:', historyErr?.message);
+    }
     return { id: docRef.id, ...payload };
   } catch (error) {
     if (__DEV__) console.error('Failed to add food log:', error);
@@ -460,20 +541,29 @@ export function splitLogsByMeal(logs = []) {
   return meals;
 }
 
+export async function saveFoodToHistory(food) {
+  const entry = buildFoodHistoryEntry(food);
+  if (!entry) return;
+  await cacheFoodProduct(entry);
+}
+
 export async function cacheFoodProduct(product) {
   try {
-    if (!product?.id) return;
-    
-    // Use the unified provider's cache
+    if (!product) return;
+    const id = product.id || buildFoodHistoryId(product);
+    const name = String(product.name || product.food_name || '').trim();
+    if (!name) return;
+
     const cachedFoods = await foodSearchProvider.getCachedFoods();
-    const filtered = cachedFoods.filter((item) => item.id !== product.id);
-    filtered.unshift({ ...product, cachedAt: Date.now() });
-    
-    // Keep only the most recent items
+    const filtered = cachedFoods.filter(
+      (item) => item.id !== id && normalizeHistoryName(item.name || item.food_name) !== normalizeHistoryName(name),
+    );
+    filtered.unshift({ ...product, id, name: name || product.name, cachedAt: Date.now(), savedAt: Date.now() });
+
     if (filtered.length > MAX_CACHE_ITEMS) {
       filtered.splice(MAX_CACHE_ITEMS);
     }
-    
+
     await foodSearchProvider.saveCachedFoods(filtered);
   } catch (error) {
     if (__DEV__) console.warn('Failed to cache food product', error.message);
@@ -576,55 +666,125 @@ export async function getPopularFoods(limit = 10) {
   }
 }
 
-export async function getRecentFoods(userId, limit = 10) {
+function logToHistoryEntry(log) {
+  const meta = log.metadata && typeof log.metadata === 'object' ? log.metadata : {};
+  const name = String(meta.name || meta.food_name || log.food_name || 'Food').trim();
+  if (!name) return null;
+
+  if (meta.name || meta.food_name) {
+    return normalizeFoodForLog({
+      ...meta,
+      id: meta.id || buildFoodHistoryId(meta),
+      name,
+      food_name: name,
+      fromRecentLog: meta.dataBasis === 'logged_totals' || meta.fromRecentLog,
+    });
+  }
+
+  const servingUnit = isLiquidFood(meta) ? 'ml' : 'grams';
+  const qty = Number(log.serving_size) || 1;
+  const perServing = (v) => {
+    const x = Number(v) || 0;
+    return qty > 1 ? Math.round((x / qty) * 10) / 10 : x;
+  };
+
+  return normalizeFoodForLog({
+    id: buildFoodHistoryId({ name, source: 'log' }),
+    name,
+    food_name: name,
+    brand: log.brand || '',
+    calories: Math.round(perServing(log.calories)),
+    protein: perServing(log.protein),
+    carbs: perServing(log.carbs),
+    fat: perServing(log.fat),
+    fiber: perServing(log.fiber),
+    sugar: perServing(log.sugar),
+    sodium: Math.round(perServing(log.sodium)),
+    serving_size: 1,
+    servingSize: 1,
+    serving_unit: servingUnit,
+    servingUnit,
+    serving_grams: Math.max(1, Math.round((Number(log.serving_grams) || 100) / qty)),
+    servingGrams: Math.max(1, Math.round((Number(log.serving_grams) || 100) / qty)),
+    source: 'log',
+    dataBasis: 'logged_totals',
+    fromRecentLog: true,
+  });
+}
+
+async function loadRecentLogsFromFirestore(userId, fetchLimit = 80) {
+  const logsRef = collection(db, LOGS_COLLECTION);
   try {
-    if (!userId || !db) return [];
-    const logsRef = collection(db, LOGS_COLLECTION);
-    // No orderBy so we don't require a composite index; we sort in memory
     const q = query(
       logsRef,
       where('user_id', '==', userId),
-      limitFn(50)
+      orderBy('created_at', 'desc'),
+      limitFn(fetchLimit),
     );
     const querySnapshot = await getDocs(q);
     const logs = [];
-    querySnapshot.forEach((doc) => {
-      const d = doc.data();
-      logs.push({ id: doc.id, ...d });
+    querySnapshot.forEach((logDoc) => {
+      logs.push({ id: logDoc.id, ...logDoc.data() });
     });
-    // Sort by created_at descending (newest first)
+    return logs;
+  } catch (indexErr) {
+    if (__DEV__) console.warn('Recent foods orderBy fallback:', indexErr?.message);
+    const q = query(logsRef, where('user_id', '==', userId), limitFn(fetchLimit));
+    const querySnapshot = await getDocs(q);
+    const logs = [];
+    querySnapshot.forEach((logDoc) => {
+      logs.push({ id: logDoc.id, ...logDoc.data() });
+    });
     logs.sort((a, b) => {
-      const aT = a.created_at?.toDate?.()?.getTime() ?? a.created_at?.seconds ?? 0;
-      const bT = b.created_at?.toDate?.()?.getTime() ?? b.created_at?.seconds ?? 0;
+      const aT = a.created_at?.toDate?.()?.getTime() ?? (a.created_at?.seconds || 0) * 1000;
+      const bT = b.created_at?.toDate?.()?.getTime() ?? (b.created_at?.seconds || 0) * 1000;
       return bT - aT;
     });
-    // Build unique recent "food" items from logs (so Recently Logged works without cache)
+    return logs;
+  }
+}
+
+export async function getRecentFoods(userId, limit = 15) {
+  try {
     const seen = new Set();
     const recent = [];
-    for (const log of logs) {
-      const key = `${log.food_name || ''}_${log.calories}_${log.meal_type || ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      recent.push({
-        id: log.metadata?.id || log.id,
-        name: log.food_name || 'Food',
-        food_name: log.food_name || 'Food',
-        brand: log.brand || '',
-        calories: Number(log.calories) || 0,
-        protein: Number(log.protein) || 0,
-        carbs: Number(log.carbs) || 0,
-        fat: Number(log.fat) || 0,
-        serving_size: log.serving_size ?? 1,
-        serving_unit: log.serving_grams ? 'g' : 'serving',
-        source: log.metadata?.source || 'log',
-        ...log.metadata,
-      });
-      if (recent.length >= limit) break;
+
+    const pushUnique = (item) => {
+      if (!item) return;
+      const name = normalizeHistoryName(item.name || item.food_name);
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      recent.push(normalizeFoodForLog(item));
+    };
+
+    if (userId && db) {
+      const logs = await loadRecentLogsFromFirestore(userId, 80);
+      for (const log of logs) {
+        pushUnique(logToHistoryEntry(log));
+        if (recent.length >= limit) break;
+      }
     }
-    return recent;
+
+    if (recent.length < limit) {
+      const cached = await getCachedFoods();
+      for (const item of cached) {
+        pushUnique({
+          ...item,
+          fromRecentLog: item.dataBasis === 'logged_totals' || item.fromRecentLog,
+        });
+        if (recent.length >= limit) break;
+      }
+    }
+
+    return recent.slice(0, limit);
   } catch (error) {
     if (__DEV__) console.error('Error getting recent foods:', error);
-    return [];
+    try {
+      const cached = await getCachedFoods();
+      return cached.slice(0, limit).map((item) => normalizeFoodForLog(item));
+    } catch (_) {
+      return [];
+    }
   }
 }
 

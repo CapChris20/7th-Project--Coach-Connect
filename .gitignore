@@ -20,6 +20,8 @@ web-build/
 *.backup
 src_backup_*/
 backups/
+coverage/
+test-results.txt
 pglite-debug.log
 functions/pglite-debug.log
 

@@ -14,6 +14,7 @@ if (Array.isArray(config.resolver?.assetExts)) {
 
 config.watchFolders = [
   path.resolve(__dirname, 'src'),
+  path.resolve(__dirname, 'metro'),
 ];
 
 // Add polyfills for Node.js modules
@@ -37,8 +38,8 @@ config.resolver = {
     zlib: require.resolve('browserify-zlib'),
     assert: require.resolve('assert'),
     buffer: require.resolve('buffer'),
-    fs: path.resolve(__dirname, 'utils/fs-mock.js'),
-    path: path.resolve(__dirname, 'utils/path-mock.js'),
+    fs: path.resolve(__dirname, 'metro/mocks/fs-mock.js'),
+    path: path.resolve(__dirname, 'metro/mocks/path-mock.js'),
   },
 };
 
@@ -47,14 +48,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === 'fs' || moduleName === 'node:fs') {
     return {
       type: 'sourceFile',
-      filePath: path.resolve(__dirname, 'utils/fs-mock.js'),
+      filePath: path.resolve(__dirname, 'metro/mocks/fs-mock.js'),
     };
   }
 
   if (moduleName === 'path' || moduleName === 'node:path') {
     return {
       type: 'sourceFile',
-      filePath: path.resolve(__dirname, 'utils/path-mock.js'),
+      filePath: path.resolve(__dirname, 'metro/mocks/path-mock.js'),
     };
   }
 

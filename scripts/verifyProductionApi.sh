@@ -59,8 +59,13 @@ if (!youtubeOk) {
 if (workoutStatus === '404') {
   fail('POST /api/workout/generate returned 404 — stale Cloud Run revision is missing workout route');
 }
+if (!h.supportEmailReady) {
+  console.warn('⚠️  supportEmailReady is false — tickets save to Firestore, but email to coachconnect0@gmail.com needs RESEND_API_KEY or SMTP_*.');
+  console.warn('    Add to .env and run ./scripts/syncCloudRunEnv.sh for inbox email delivery.');
+}
 console.log('✅ Production API OK');
 console.log('   deepseek:', h.deepseek, '| perplexity:', h.perplexity, '| serper:', h.serper, '| youtube:', youtubeOk);
 console.log('   aiCoachReady:', h.aiCoachReady, '| firebaseAdmin:', h.firebaseAdmin);
 console.log('   workoutRouteStatus:', workoutStatus || 'unknown');
+console.log('   supportEmailReady:', h.supportEmailReady, '| supportInbox:', h.supportInbox || '(default coachconnect0@gmail.com)');
 " "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS"

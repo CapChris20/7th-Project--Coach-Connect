@@ -32,7 +32,7 @@ function read(relPath) {
 
 // ─── FIX 1 & 2: static imports ───────────────────────────────────────────────
 (function testStaticImports() {
-  const chatScreen = read('src/aiChat/screens/AIChatScreen.jsx');
+  const chatScreen = read('src/aiChat/chat-thread/AIChatScreen.jsx');
   assert(
     'FIX 1: AIChatScreen imports logger',
     /import\s+logger\s+from\s+['"]\.\.\/\.\.\/shared\/services\/logger['"]/.test(chatScreen),

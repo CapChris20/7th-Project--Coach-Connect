@@ -30,12 +30,12 @@ describe('baseUrl helpers', () => {
 
   test('uses explicit env base first', () => {
     mockConstants.expoConfig = { extra: { apiBaseUrl: 'https://api.example.com/' } };
-    const { getApiBase } = require('../../shared/services/baseUrl');
+    const { getApiBase } = require('../../shared/api/baseUrl');
     expect(getApiBase()).toBe('https://api.example.com');
   });
 
   test('includes cloud run fallback in resilient list', () => {
-    const { getResilientApiBases, PRODUCTION_API_BASE_URL } = require('../../shared/services/baseUrl');
+    const { getResilientApiBases, PRODUCTION_API_BASE_URL } = require('../../shared/api/baseUrl');
     expect(getResilientApiBases()).toContain(PRODUCTION_API_BASE_URL);
   });
 });

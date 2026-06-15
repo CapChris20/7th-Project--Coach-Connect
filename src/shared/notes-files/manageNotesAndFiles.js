@@ -91,6 +91,45 @@ function uriToBlob(uri) {
   });
 }
 
+const xlsxExportTimers = new Map();
+
+function base64ToUploadBlob(base64, contentType) {
+  const dataUri = `data:${contentType};base64,${base64}`;
+  return fetch(dataUri).then((response) => response.blob());
+}
+
+/** Upload xlsx via data-uri blob — avoids expo-file-system Base64 write (ERR_ARGUMENT_CAST on SDK 54). */
+async function uploadSpreadsheetXlsx(trainerId, docId, dataRows) {
+  if (!storage) return null;
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(dataRows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  const contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const path = `users/${trainerId}/notes_and_files/spreadsheets/${docId}.xlsx`;
+  const storageRef = ref(storage, path);
+  const blob = await base64ToUploadBlob(base64, contentType);
+  await uploadBytes(storageRef, blob, { contentType });
+  return getDownloadURL(storageRef);
+}
+
+function scheduleSpreadsheetXlsxExport(trainerId, docId, dataRows, docRef) {
+  const key = String(docId);
+  if (xlsxExportTimers.has(key)) clearTimeout(xlsxExportTimers.get(key));
+  const timer = setTimeout(() => {
+    xlsxExportTimers.delete(key);
+    void uploadSpreadsheetXlsx(trainerId, docId, dataRows)
+      .then((storageUrl) => {
+        if (storageUrl) return updateDoc(docRef, { storageUrl });
+        return null;
+      })
+      .catch((e) => {
+        console.warn('saveTrainerSpreadsheet: xlsx export skipped', e?.code || e?.message || e);
+      });
+  }, 2500);
+  xlsxExportTimers.set(key, timer);
+}
+
 /**
  * Upload a file to Storage. clientId = owner of the notes_and_files folder (client's uid).
  * Path: users/{clientId}/notes_and_files/{timestamp}_{safeName}
@@ -366,28 +405,65 @@ export async function resolveTrainerSpreadsheetView(trainerId, documentId) {
   return doc;
 }
 
-/** Push latest title + body excerpt to client notes_and_files stubs for shared trainer documents. */
-async function syncSharedDocumentPreviewStubs(trainerId, documentId, title, rawBody) {
-  const previewSnippet = (typeof rawBody === 'string' ? rawBody : '').replace(/\s+/g, ' ').trim().slice(0, 360);
+function getTrainerDocStubType(docData) {
+  return docData?.type === 'spreadsheet' ? 'spreadsheet' : 'document';
+}
+
+function buildSpreadsheetPreviewSnippet(rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return rows
+    .slice(0, 4)
+    .map((row) =>
+      (Array.isArray(row) ? row : [])
+        .map((cell) => String(cell ?? '').trim())
+        .filter(Boolean)
+        .join(' · '),
+    )
+    .filter(Boolean)
+    .join(' | ')
+    .slice(0, 360);
+}
+
+function buildTrainerDocPreviewSnippet(docData, overrides = {}) {
+  const stubType = getTrainerDocStubType(docData);
+  if (stubType === 'spreadsheet') {
+    const rows = overrides.rows ?? deserializeSpreadsheetRows(docData?.rows);
+    return buildSpreadsheetPreviewSnippet(rows);
+  }
+  const rawBody = typeof overrides.body === 'string' ? overrides.body : docData?.body;
+  return (typeof rawBody === 'string' ? rawBody : '').replace(/\s+/g, ' ').trim().slice(0, 360);
+}
+
+function trainerDocStubQuery(clientNotesRef, documentId, trainerId) {
+  return query(
+    clientNotesRef,
+    where('documentId', '==', String(documentId)),
+    where('trainerId', '==', String(trainerId)),
+  );
+}
+
+/** Push latest title + preview excerpt to client notes_and_files stubs for shared trainer docs/spreadsheets. */
+async function syncSharedTrainerDocStubs(trainerId, documentId, overrides = {}) {
   const docRef = doc(db, 'users', String(trainerId), DOCUMENTS_COLLECTION, String(documentId));
   const snap = await getDoc(docRef);
   if (!snap.exists()) return;
-  const clientIds = snap.data().sharedWith || [];
-  const docTitle = (title != null && title !== '' ? title : snap.data().title) || 'Document';
+  const docData = snap.data();
+  const clientIds = docData.sharedWith || [];
+  if (!clientIds.length) return;
+  const stubType = getTrainerDocStubType(docData);
+  const docTitle =
+    (overrides.title != null && overrides.title !== '' ? overrides.title : docData.title) ||
+    (stubType === 'spreadsheet' ? 'Spreadsheet' : 'Document');
+  const previewSnippet = buildTrainerDocPreviewSnippet(docData, overrides);
   await Promise.all(
     clientIds.map(async (clientId) => {
       const clientUserRef = doc(db, 'users', String(clientId));
       const clientNotesRef = collection(clientUserRef, COLLECTION);
-      const q = query(
-        clientNotesRef,
-        where('type', '==', 'document'),
-        where('documentId', '==', String(documentId)),
-        where('trainerId', '==', String(trainerId)),
-      );
-      const stubSnap = await getDocs(q);
+      const stubSnap = await getDocs(trainerDocStubQuery(clientNotesRef, documentId, trainerId));
       await Promise.all(
         stubSnap.docs.map((d) =>
           updateDoc(d.ref, {
+            type: stubType,
             title: docTitle,
             previewSnippet: previewSnippet || '',
           }),
@@ -395,6 +471,13 @@ async function syncSharedDocumentPreviewStubs(trainerId, documentId, title, rawB
       );
     }),
   );
+}
+
+/** Resolve a trainer spreadsheet stub to its latest Storage URL for read-only viewing. */
+export async function resolveTrainerSpreadsheetUrl(trainerId, documentId) {
+  const docData = await getTrainerDocument(trainerId, documentId);
+  if (!docData || docData.type !== 'spreadsheet') return null;
+  return docData.storageUrl || null;
 }
 
 export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml }) {
@@ -408,7 +491,7 @@ export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml
   if (id) {
     const docRef = doc(db, 'users', String(trainerId), DOCUMENTS_COLLECTION, String(id));
     await updateDoc(docRef, payload);
-    await syncSharedDocumentPreviewStubs(trainerId, id, payload.title, payload.body);
+    await syncSharedTrainerDocStubs(trainerId, id, { title: payload.title, body: payload.body });
     return { id, ...payload };
   }
   payload.createdAt = serverTimestamp();
@@ -420,32 +503,18 @@ export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml
 }
 
 // Save spreadsheet-style trainer document with rows/columns and xlsx export.
-export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, columnCount, rowCount, formats, colWidths, isFavorite, lastSavedAt }) {
-  if (!db || !storage || !trainerId) throw new Error('Firestore/Storage or trainerId not ready');
+export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, columnCount, rowCount, formats, colWidths, isFavorite }) {
+  if (!db || !trainerId) throw new Error('Firestore or trainerId not ready');
 
   const safeTitle = (title || 'Spreadsheet').trim() || 'Spreadsheet';
   const dataRows = Array.isArray(rows) ? rows : [];
   const cols = columnCount || (dataRows[0] ? dataRows[0].length : 0);
   const rCount = rowCount || dataRows.length;
 
-  // Build workbook in memory
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(dataRows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  const ab = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  if (!ab || ab.byteLength < 80) {
-    throw new Error('Spreadsheet export produced an empty workbook');
-  }
-
-  // Upload xlsx to Storage: uploads/{trainerUid}/spreadsheets/{timestamp}_{title}.xlsx
-  const safeName = safeTitle.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const path = `uploads/${trainerId}/spreadsheets/${Date.now()}_${safeName}.xlsx`;
-  const storageRef = ref(storage, path);
-  const fileUint8 = new Uint8Array(ab);
-  await uploadBytes(storageRef, fileUint8, {
-    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const downloadUrl = await getDownloadURL(storageRef);
+  const userDocRef = doc(db, 'users', String(trainerId));
+  const documentsRef = collection(userDocRef, DOCUMENTS_COLLECTION);
+  const docId = id ? String(id) : doc(documentsRef).id;
+  const isNew = !id;
 
   const payload = {
     title: safeTitle,
@@ -456,25 +525,24 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
     ...(formats && typeof formats === 'object' ? { formats } : {}),
     ...(colWidths && typeof colWidths === 'object' ? { colWidths } : {}),
     ...(typeof isFavorite === 'boolean' ? { isFavorite } : {}),
-    ...(lastSavedAt ? { lastSavedAt } : {}),
-    storageUrl: downloadUrl,
     updatedAt: serverTimestamp(),
   };
 
-  const userDocRef = doc(db, 'users', String(trainerId));
-  const documentsRef = collection(userDocRef, DOCUMENTS_COLLECTION);
-  const docId = id ? String(id) : doc(documentsRef).id;
   const docRef = doc(documentsRef, docId);
-  const existingSnap = id ? await getDoc(docRef) : null;
-  const isNew = !existingSnap?.exists();
-
   if (isNew) {
     await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), sharedWith: [] }, { merge: true });
-    return { id: docId, ...payload, createdAt: new Date(), sharedWith: [] };
+  } else {
+    await setDoc(docRef, payload, { merge: true });
+    await syncSharedTrainerDocStubs(trainerId, docId, { title: safeTitle, rows: dataRows });
   }
 
-  await setDoc(docRef, payload, { merge: true });
-  return { id: docId, ...payload };
+  scheduleSpreadsheetXlsxExport(trainerId, docId, dataRows, docRef);
+
+  return {
+    id: docId,
+    ...payload,
+    ...(isNew ? { createdAt: new Date(), sharedWith: [] } : {}),
+  };
 }
 
 /** Set sharedWith array and sync stubs in users/{clientId}/notes_and_files for each client. */
@@ -484,8 +552,8 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) throw new Error('Document not found');
   const docData = docSnap.data();
-  const rawBody = typeof docData.body === 'string' ? docData.body : '';
-  const previewSnippet = rawBody.replace(/\s+/g, ' ').trim().slice(0, 360);
+  const stubType = getTrainerDocStubType(docData);
+  const previewSnippet = buildTrainerDocPreviewSnippet(docData);
   const previousShared = docData.sharedWith || [];
   const added = clientIds.filter((c) => !previousShared.includes(c));
   const removed = previousShared.filter((c) => !clientIds.includes(c));
@@ -494,23 +562,17 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
   for (const clientId of removed) {
     const clientUserRef = doc(db, 'users', String(clientId));
     const clientNotesRef = collection(clientUserRef, COLLECTION);
-    const q = query(
-      clientNotesRef,
-      where('type', '==', 'document'),
-      where('documentId', '==', String(docId)),
-      where('trainerId', '==', String(trainerId))
-    );
-    const stubSnap = await getDocs(q);
+    const stubSnap = await getDocs(trainerDocStubQuery(clientNotesRef, docId, trainerId));
     stubSnap.docs.forEach((d) => deleteDoc(d.ref));
   }
 
   // Add stubs for newly shared clients — include text snapshot for gallery thumbnails (no file URL on stubs).
-  const title = docData.title || 'Document';
+  const title = docData.title || (stubType === 'spreadsheet' ? 'Spreadsheet' : 'Document');
   for (const clientId of added) {
     const clientUserRef = doc(db, 'users', String(clientId));
     const clientNotesRef = collection(clientUserRef, COLLECTION);
     await addDoc(clientNotesRef, {
-      type: 'document',
+      type: stubType,
       documentId: String(docId),
       trainerId: String(trainerId),
       title,
@@ -524,21 +586,16 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
 
   await updateDoc(docRef, { sharedWith: clientIds });
 
-  // Sync title + text snapshot onto every client stub still shared (updates previews when coach edits the doc).
+  // Sync title + preview onto every client stub still shared (updates previews when coach edits the doc).
   await Promise.all(
     clientIds.map(async (clientId) => {
       const clientUserRef = doc(db, 'users', String(clientId));
       const clientNotesRef = collection(clientUserRef, COLLECTION);
-      const q = query(
-        clientNotesRef,
-        where('type', '==', 'document'),
-        where('documentId', '==', String(docId)),
-        where('trainerId', '==', String(trainerId)),
-      );
-      const stubSnap = await getDocs(q);
+      const stubSnap = await getDocs(trainerDocStubQuery(clientNotesRef, docId, trainerId));
       await Promise.all(
         stubSnap.docs.map((d) =>
           updateDoc(d.ref, {
+            type: stubType,
             title,
             previewSnippet: previewSnippet || '',
           }),

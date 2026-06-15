@@ -119,13 +119,22 @@ function formatExerciseLine(ex) {
   return line;
 }
 
+function formatRecoveryActivityLabel(item) {
+  if (item == null) return '';
+  if (typeof item === 'string') return item.trim();
+  if (typeof item === 'object') {
+    return String(item.label || item.name || item.title || item.text || '').trim();
+  }
+  return String(item).trim();
+}
+
 function formatPlanDayBlock(day, index) {
   if (!day || typeof day !== 'object') return '';
   const label = String(day.day || day.label || day.name || `Day ${index + 1}`).trim();
   if (day.rest || day.isRest) {
     const note = day.recoveryNote || day.restGuidance || day.restNote || '';
     const activities = Array.isArray(day.recoveryActivities)
-      ? day.recoveryActivities.filter(Boolean).join(', ')
+      ? day.recoveryActivities.map(formatRecoveryActivityLabel).filter(Boolean).join(', ')
       : '';
     const extra = [note, activities].filter(Boolean).join(' · ');
     return `${label}: Rest${extra ? ` — ${extra}` : ''}`;
@@ -399,12 +408,17 @@ async function fetchOpenWorkoutPlanPayload(db, userId, planId = 'current') {
     todayPreview,
     dayCount: summaryMeta?.dayCount || dayBlocks.length,
     exerciseCount: summaryMeta?.exerciseCount || countDayExercises(dayBlocks),
+    allDaysPreview: dayBlocks
+      .map((day, i) => formatPlanDayBlock(day, i))
+      .filter(Boolean)
+      .join('\n\n'),
   };
 }
 
 module.exports = {
   fetchCoachExtendedContext,
   fetchOpenWorkoutPlanPayload,
+  fetchWorkoutPlanContext,
   extractStructuredPlanSummary,
   summarizeRawPlan,
   resolvePlanDayBlocks,

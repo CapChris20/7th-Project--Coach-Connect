@@ -13,7 +13,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from './workout';
+import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from '../active-workout/workout';
 
 /**
  * UI wrapper for workout plan generation.

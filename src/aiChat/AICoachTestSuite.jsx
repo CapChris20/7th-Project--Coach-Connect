@@ -23,7 +23,7 @@ import { loadCoachContext } from '../ai/context/CoachContextProvider';
 import { resetAiCoachDailyUsage, sendToAI } from '../ai/chat-api/aiCoachServerService';
 import { shouldRouteToPerplexity } from '../ai/perplexityService';
 import { executeCoachTool, TOOL_NAME_ALIASES } from '../ai/tools/executeCoachTool';
-import CoachConnectHeader from '../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 
 const COLORS = {
   bg: '#0A0A0F',

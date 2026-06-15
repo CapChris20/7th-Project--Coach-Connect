@@ -12,7 +12,7 @@
  * Remote push via Express POST /api/notifications/send (Expo path on server).
  * Uses the same candidate bases as messaging so physical devices reach the API.
  */
-import { getApiBaseCandidates } from '../services/baseUrl';
+import { getApiBaseCandidates } from './baseUrl';
 import { getApiAuthHeaders } from './getAuthHeaders';
 import { stripNotificationEmoji } from '../notifications/stripNotificationEmoji';
 

@@ -11,13 +11,15 @@
 import { auth, db } from '../../app/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
-import { getCurrentWorkoutPlan } from '../services/workoutService';
+import { getCurrentWorkoutPlan } from '../active-workout/workoutService';
 import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
-import { getWorkoutGenerationApiBases } from '../../shared/services/baseUrl';
-import { postJsonWithTimeout, logApiAttempt } from '../../shared/services/apiFetch';
+import { getWorkoutGenerationApiBases } from '../../shared/api/baseUrl';
+import { postJsonWithTimeout, logApiAttempt } from '../../shared/api/apiFetch';
 import { formatWorkoutLimitResetLabel } from '../plan-generator/trackWorkoutGenerationUsage';
 
 const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
+
+import { buildWorkoutOnboardingPayload } from './workoutOnboardingPayload';
 
 export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
   const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
@@ -27,7 +29,7 @@ export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
 
   const bases = getWorkoutGenerationApiBases();
   const body = {
-    onboardingData,
+    onboardingData: buildWorkoutOnboardingPayload(onboardingData),
     subjectUserId: subjectUserId || auth.currentUser?.uid,
   };
 

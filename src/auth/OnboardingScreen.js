@@ -43,9 +43,9 @@ import { auth, db } from '../app/config';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiBaseCandidates } from '../shared/services/baseUrl';
+import { getApiBaseCandidates } from '../shared/api/baseUrl';
 import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
-import { useAI } from '../contexts/AIContext';
+import { useAI } from '../shared/contexts/AIContext';
 import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
 import LottieView from 'lottie-react-native';
 import LiquidBackground from '../shared/ui/liquid/LiquidBackground';
@@ -58,20 +58,20 @@ import {
   finalizeHeightFromDraft,
 } from '../shared/utils/convertHeightUnits';
 import { Ionicons } from '@expo/vector-icons';
-import lottieClient1 from '../assets/lottie/personal-info.json';
-import lottieClient2 from '../assets/lottie/fitness-experience.json';
-import lottieClient3 from '../assets/lottie/fitness-goal.json';
-import lottieClient4 from '../assets/Lotties for Anatrox/fitness (1).json';
-import lottieClient5 from '../assets/lottie/training-frequency.json';
-import lottieClient6 from '../assets/lottie/injuries.json';
-import lottieClient7 from '../assets/icons/weightlifting-competition.json';
-import lottieClientDescribeSituation from '../shared/assets/Walking steps.json';
-import lottieTrainer1 from '../assets/lottie/certifications.json';
-import lottieTrainer2 from '../assets/lottie/experience-timeline.json';
-import lottieTrainer3 from '../assets/lottie/specialties.json';
-import lottieTrainer4 from '../assets/lottie/philosophy.json';
-import lottieTrainer5 from '../assets/lottie/rates.json';
-import lottieTrainer6 from '../assets/lottie/invite-code.json';
+import lottieClient1 from '../assets/lottie/personal-info';
+import lottieClient2 from '../assets/lottie/fitness-experience';
+import lottieClient3 from '../assets/lottie/fitness-goal';
+import lottieClient4 from '../assets/Lotties for Anatrox/fitness (1)';
+import lottieClient5 from '../assets/lottie/training-frequency';
+import lottieClient6 from '../assets/lottie/injuries';
+import lottieClient7 from '../assets/icons/weightlifting-competition';
+import lottieClientDescribeSituation from '../shared/assets/Walking steps';
+import lottieTrainer1 from '../assets/lottie/certifications';
+import lottieTrainer2 from '../assets/lottie/experience-timeline';
+import lottieTrainer3 from '../assets/lottie/specialties';
+import lottieTrainer4 from '../assets/lottie/philosophy';
+import lottieTrainer5 from '../assets/lottie/rates';
+import lottieTrainer6 from '../assets/lottie/invite-code';
 import {
   ONBOARDING_CTA_GRADIENT,
   ONBOARDING_BRAND_GRADIENT,

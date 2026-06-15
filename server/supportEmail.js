@@ -6,11 +6,11 @@
  * - SMTP_HOST + SMTP_USER + SMTP_PASS — uses nodemailer (optional SMTP_PORT, SMTP_SECURE, SMTP_FROM)
  *
  * Env:
- * - SUPPORT_INBOX_EMAIL — recipient (default: coachconnect@cc.app)
+ * - SUPPORT_INBOX_EMAIL — recipient (default: coachconnect0@gmail.com)
  * - SUPPORT_EMAIL_FROM — Resend "from" (default: CoachConnect <onboarding@resend.dev> for Resend test)
  */
 
-const DEFAULT_INBOX = 'coachconnect@cc.app';
+const DEFAULT_INBOX = 'coachconnect0@gmail.com';
 
 function escapeHtml(s) {
   return String(s || '')

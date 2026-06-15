@@ -9,13 +9,14 @@
  * @file-header
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Linking, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
-import { getApiBase } from '../../shared/services/baseUrl';
+import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto';
+import { getApiBase } from '../../shared/api/baseUrl';
 import { getAuth } from 'firebase/auth';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,20 +52,12 @@ function GradientCard({ borderColors, style, innerStyle, children }) {
 }
 
 function openBugMail() {
-  const email = getSupportEmail();
-  if (!email) {
-    Alert.alert('Support', 'Support email is not available right now. Try again later or use Help & FAQ in Settings.');
-    return;
-  }
-  const subject = 'Bug report — Coach Connect';
   const body =
     'What I was doing:\n\n' +
     'What went wrong:\n\n' +
     'Device (iPhone / Android):\n\n' +
     'Rough date/time:\n\n';
-  Linking.openURL(
-    `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  );
+  openSupportMailto({ subject: 'Bug report — Coach Connect', body });
 }
 
 export default function BugReportScreen({ onClose }) {
@@ -124,15 +117,16 @@ export default function BugReportScreen({ onClose }) {
     }
 
     setSubmitting(true);
+    const subject = 'Bug report — Coach Connect';
+    const message =
+      `What I expected:\n${exp}\n\n` +
+      `What happened:\n${hap}\n\n` +
+      (st ? `Steps:\n${st}\n\n` : '') +
+      (deviceInfo ? `Device:\n${deviceInfo}\n\n` : '');
+
     try {
       const token = await user.getIdToken(true);
       const base = getApiBase();
-      const subject = 'Bug report — Coach Connect';
-      const message =
-        `What I expected:\n${exp}\n\n` +
-        `What happened:\n${hap}\n\n` +
-        (st ? `Steps:\n${st}\n\n` : '') +
-        (deviceInfo ? `Device:\n${deviceInfo}\n\n` : '');
 
       const res = await fetch(`${base}/api/support/contact`, {
         method: 'POST',
@@ -152,7 +146,7 @@ export default function BugReportScreen({ onClose }) {
       setDeviceInfo('');
       Alert.alert('Sent', 'Thanks — your bug report was sent.');
     } catch (e) {
-      Alert.alert('Couldn’t send', e?.message || 'Please try again.');
+      offerSupportMailtoFallback({ subject, body: message, apiError: e?.message });
     } finally {
       setSubmitting(false);
     }

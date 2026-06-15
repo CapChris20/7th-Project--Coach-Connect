@@ -25,7 +25,7 @@ import {
   orderBy,
   limit,
 } from 'firebase/firestore';
-import { getAICoachApiBases, getResilientApiBases } from '../../shared/services/baseUrl';
+import { getAICoachApiBases, getResilientApiBases } from '../../shared/api/baseUrl';
 import { formatOnboardingDisplay } from '../../shared/utils/formatOnboardingDisplay';
 import { aggregateCoachWeeklyDataClient } from './gatherCoachWeeklyStats';
 

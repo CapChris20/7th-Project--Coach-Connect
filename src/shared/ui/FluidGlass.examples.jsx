@@ -33,7 +33,7 @@ import FluidGlass from './FluidGlass';
  * BEFORE (Original):
  * 
  * <View style={styles.actionCard}>
- *   <Image source={require('./src/assets/icons/dumbbell.png')} style={styles.actionIconImage} />
+ *   <Image source={require('../../assets/icons/dumbbell.png')} style={styles.actionIconImage} />
  *   <View style={{ flex: 1 }}>
  *     <Text style={styles.actionTitle}>Today's Workout</Text>
  *     <Text style={styles.actionSubtitle}>Start training</Text>

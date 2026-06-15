@@ -15,7 +15,7 @@
 
 import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../app/config';
-import { getApiBase } from '../shared/services/baseUrl';
+import { getApiBase } from '../shared/api/baseUrl';
 import { getApiAuthHeaders } from '../shared/api/getAuthHeaders';
 import { isMenuStyleQuery } from '../nutrition/food-search/rankFoodSearchResults';
 

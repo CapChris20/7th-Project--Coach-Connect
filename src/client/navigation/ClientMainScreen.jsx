@@ -28,10 +28,10 @@ import { auth, db } from '../../app/config';
 import { getClientDateKey } from '../../shared/utils/dateKeys';
 import { mergeClientDailyMetrics } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
 import { markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
-import TrainerMessagingScreen from '../../trainer/screens/TrainerMessagingScreen';
-import ConversationsListScreen from '../../trainer/screens/ConversationsListScreen';
-import MyDashboardScreen from '../screens/MyDashboardScreen';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import MessagingScreen from '../messaging/MessagingScreen';
+import ConversationsListScreen from '../messaging/ConversationsListScreen';
+import MyDashboardScreen from '../dashboard/MyDashboardScreen';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import {
@@ -40,27 +40,27 @@ import {
   WellnessStatsRow,
   TrainingAgenda,
   NutritionCard,
-} from '../components/home/clientHomeComponents';
-import FilesNotesHeroCard from '../components/FilesNotesHeroCard';
-import FilesNotesSectionPremium from '../../shared/components/FilesNotesSectionPremium';
-import { SessionMeetingCard } from '../../shared/components/SessionMeetingCard';
-import TrainerSharedFilesModal from '../../shared/components/TrainerSharedFilesModal';
-import AddNotesFilesModal from '../../shared/components/AddNotesFilesModal';
-import PdfViewerModal from '../../shared/components/PdfViewerModal';
-import SpreadsheetViewerModal from '../../shared/components/SpreadsheetViewerModal';
-import DocumentViewerModal from '../../shared/components/DocumentViewerModal';
-import MediaViewerModal from '../../shared/components/MediaViewerModal';
-import EmbedWebViewModal from '../../shared/components/EmbedWebViewModal';
-import RemoveTrainerSheet from '../../shared/components/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../../shared/components/ReviewSubmitSheet';
-import MarketplaceHeroCard from '../components/MarketplaceHeroCard';
-import DashboardHeroCard from '../components/DashboardHeroCard';
-import NutritionContainer from '../../nutrition/screens/NutritionContainer';
-import WorkoutPlanGeneratorScreen from '../../workouts/screens/workout';
+} from '../home/clientHomeComponents';
+import FilesNotesHeroCard from '../../shared/components/notes-files/FilesNotesHeroCard';
+import FilesNotesSectionPremium from '../../shared/components/notes-files/FilesNotesSectionPremium';
+import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
+import TrainerSharedFilesModal from '../files/TrainerSharedFilesModal';
+import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
+import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
+import DocumentViewerModal from '../../shared/components/notes-files/DocumentViewerModal';
+import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';
+import EmbedWebViewModal from '../../shared/components/notes-files/EmbedWebViewModal';
+import RemoveTrainerSheet from '../../shared/components/modals/RemoveTrainerSheet';
+import ReviewSubmitSheet from '../dashboard/ReviewSubmitSheet';
+import MarketplaceHeroCard from '../../shared/components/home/MarketplaceHeroCard';
+import DashboardHeroCard from '../dashboard/DashboardHeroCard';
+import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
+import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
 import AIChatHomeScreen from '../../aiChat/chat-home/AIChatHomeScreen';
-import AIChatScreen from '../../aiChat/screens/AIChatScreen';
+import AIChatScreen from '../../aiChat/chat-thread/AIChatScreen';
 import { useIsFocused } from '@react-navigation/native';
-import { CLIENT_MAIN_TABS } from '../hooks/useClientScreenNavigation';
+import { CLIENT_MAIN_TABS } from './useClientScreenNavigation';
 import { useClientAppShell } from './ClientAppShellContext';
 
 export default function ClientMainScreen() {
@@ -229,7 +229,7 @@ export default function ClientMainScreen() {
       )}
 
       {showTrainerMessaging ? (
-        <TrainerMessagingScreen
+        <MessagingScreen
           embedInLayout
           trainer={selectedTrainer}
           conversation={selectedConversation}

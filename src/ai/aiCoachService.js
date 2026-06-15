@@ -27,7 +27,7 @@ export { recalibrateMacros, shouldRecalibrateMacros, recalibrateIfEligible } fro
 export { sendCoachMessage, sendCoachMessageWithRetry, sendToAI, sendToDeeepSeek } from './chat-api/aiCoachServerService';
 
 export { shouldRouteToPerplexity } from './perplexityService';
-export { shouldInvokeWebSearch, shouldUseWebAuto } from './chat-api/detectWebSearchRequest';
+export { shouldInvokeWebSearch, shouldUseWebAuto, messagesRequestWebSearch, shouldShowWebSearchUI } from './chat-api/detectWebSearchRequest';
 
 export {
   executeCoachTool,

@@ -19,10 +19,22 @@ const axios = require('axios');
 const multer = require('multer');
 const WebSocket = require('ws');
 const { getWeeklyContext } = require('./getWeeklyContext');
-const { webSearch } = require('./lib/serperWebSearch');
-const { shouldInvokeWebSearch, WEB_SEARCH_SYSTEM_APPEND } = require('./lib/coachWebSearch');
+const { serperOrganicSearch } = require('./lib/serperWebSearch');
+const {
+  shouldInvokeWebSearch,
+  WEB_SEARCH_SYSTEM_APPEND,
+  WEB_SOURCE_QUOTE_SYSTEM_APPEND,
+  THREAD_CLARIFY_SYSTEM_APPEND,
+  NO_WEB_SEARCH_HONESTY_APPEND,
+  messagesRequestWebSearch,
+  buildWebSearchQuery,
+  stripWebSearchPrefix,
+  isWebSourceQuoteFollowUp,
+  isWebAnswerFollowUp,
+  findPriorSubstantiveUserQuestion,
+} = require('./lib/coachWebSearch');
 const { shouldIncludeWeeklyContextInCoachPrompt } = require('./lib/coachPersonalDataRouting');
-const { fetchOpenWorkoutPlanPayload } = require('./lib/coachExtendedContext');
+const { fetchOpenWorkoutPlanPayload, fetchWorkoutPlanContext } = require('./lib/coachExtendedContext');
 const { parseBookSessionFields, formatSessionLabel } = require('./lib/bookSessionParse');
 const {
   COACH_VOICE_DIRECTIVE,
@@ -35,7 +47,7 @@ initServerMonitoring();
 const { mergeCoachToolCalls } = require('./lib/inferCoachToolCall');
 const { assertCanSendPushNotification } = require('./lib/pushNotificationAuth');
 const { buildWorkoutSystemPrompt, buildWorkoutUserPrompt } = require('./lib/workoutPlanPrompt');
-const { estimateCost } = require('./config/apiCosts');
+const { estimateCost, isWithinMonthlyLimit } = require('./config/apiCosts');
 const { randomUUID } = require('crypto');
 const {
   COPY: PUSH_COPY,
@@ -63,6 +75,7 @@ const { registerMediaRoutes } = require('./routes/mediaRoutes');
 const { registerUserRoutes, isTrainerOfClient } = require('./routes/userRoutes');
 const { registerSupportRoutes } = require('./routes/supportRoutes');
 const { registerOnboardingRoutes } = require('./routes/onboardingRoutes');
+const { registerTrainerRoutes } = require('./routes/trainerRoutes');
 const { registerWorkoutRoutes } = require('./routes/workoutRoutes');
 const { registerFoodRoutes } = require('./routes/foodRoutes');
 const { registerDevRoutes } = require('./routes/devRoutes');
@@ -107,7 +120,7 @@ function safeJsonParse(s) {
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply: stripToolJsonFromReply,
-} = require('../src/shared/parseCoachToolCalls');
+} = require('../src/shared/coach-tools/parseCoachToolCalls');
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -336,14 +349,14 @@ ${COACH_TOOL_VOICE_NOTE}
 
 Tool routing:
 - Calorie/macro goal changes → adjustMacroTargets with explicit calories
-- "I slept X hours" / "9 hours sleep" → logSleep
-- "I drank X oz of water" / "100 oz water" → logWater
-- "I did X steps" / "10,000 steps today" → logSteps
-- "My energy is X/10" / "Energy level 8" → rateEnergy (1-10 rating)
-- "My mood is..." / "I'm feeling happy/stressed/tired/anxious" → logMood
-- "That workout was X/10" / "Workout rating 9" → rateWorkout (1-10 only — completed workouts, never rest days)
-- "Rest day" / "log rest" / "skip workout today" / "mark today rest" → logRestDay ONLY (updates dashboard workout card). NEVER rateWorkout or updateWorkout for rest days. You HAVE logRestDay — never say you lack a tool for rest days.
-- Food/meals with macros → logNutrition only
+- User explicitly asks to LOG/TRACK sleep → logSleep (not for informational sleep questions)
+- User explicitly asks to LOG/TRACK water → logWater
+- User explicitly asks to LOG/TRACK steps → logSteps
+- User explicitly asks to LOG/TRACK energy → rateEnergy (1-10 rating)
+- User explicitly asks to LOG/TRACK mood → logMood
+- User explicitly rates a completed workout → rateWorkout (1-10 only — never rest days)
+- "Rest day" / "log rest" / "skip workout today" / "mark today rest" → logRestDay ONLY (updates dashboard workout card). NEVER rateWorkout or updateWorkout for rest days.
+- Food/meals with macros → logNutrition only when user wants to log food
 - "Delete/remove/clear food or logs" → deleteLog (logType nutrition + foodName/date). NEVER use logNutrition for deletes.
 - Trainer-related stuff → bookSession, notifyTrainer, updateGoal
 - Workouts → updateWorkout, openWorkoutPlan
@@ -352,13 +365,9 @@ Tool routing:
 - "Delete/remove/clear my [food/sleep/water/steps/energy/mood/workout] log" → deleteLog with matching logType. For food include foodName when specified; omit foodName to remove the most recent entry; deleteAll:true to clear all food for that day. NEVER refuse delete requests.
 
 CRITICAL RULES FOR DASHBOARD METRICS:
-- When user mentions SLEEP → ALWAYS use logSleep. Never say "I can't log sleep".
-- When user mentions STEPS → ALWAYS use logSteps. Never say "I can't track steps".
-- When user mentions WATER → ALWAYS use logWater. Never say "I can't log water".
-- When user mentions ENERGY/FATIGUE → ALWAYS use rateEnergy. Never refuse.
-- When user mentions MOOD/FEELING → ALWAYS use logMood. Never refuse.
-- When user rates a WORKOUT → ALWAYS use rateWorkout. Never refuse.
-Your toolkit covers ALL of these. Do NOT say "I can't track that" or "that's not something I can track" for any dashboard metric.
+- Only propose dashboard log tools (logSleep, logWater, logSteps, rateEnergy, logMood, rateWorkout, logRestDay) when the user explicitly wants to log, track, record, or save that metric.
+- Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?", "How much protein should I eat?").
+- When user explicitly asks to log a dashboard metric → use the matching tool. Never say "I can't log sleep/water/steps".
 
 ${COACH_DATA_INTEGRITY_RULE}`;
 
@@ -602,27 +611,23 @@ ${COACH_TOOL_VOICE_NOTE}
 
 Tool routing:
 - Calorie/macro goal changes → adjustMacroTargets
-- "I slept X hours" → logSleep
-- "I drank X oz" → logWater
-- "I did X steps" → logSteps
-- "My energy is X/10" → rateEnergy
-- "My mood is..." (happy/okay/stressed/tired/anxious) → logMood
-- "Workout was X/10" → rateWorkout (1-10 only)
+- User explicitly asks to LOG/TRACK sleep → logSleep
+- User explicitly asks to LOG/TRACK water → logWater
+- User explicitly asks to LOG/TRACK steps → logSteps
+- User explicitly asks to LOG/TRACK energy → rateEnergy
+- User explicitly asks to LOG/TRACK mood → logMood
+- User explicitly rates a workout → rateWorkout (1-10 only)
 - "Rest day" / "log rest" / "skip workout today" → logRestDay (dashboard workout card). NEVER rateWorkout for rest days.
-- Food/meals → logNutrition only
+- Food/meals → logNutrition only when user wants to log food
 - Trainer/sessions → bookSession, notifyTrainer
 - Workouts/exercises → updateWorkout, openWorkoutPlan
 - "Open my plan" / "today's session" → openWorkoutPlan + answer from WORKOUT PROGRAM below
 - "Delete/remove/clear my log" → deleteLog (logType + optional foodName/date). NEVER refuse deletes.
 
 CRITICAL RULES FOR DASHBOARD METRICS:
-- When user mentions SLEEP → ALWAYS use logSleep. Never say "I can't log sleep".
-- When user mentions STEPS → ALWAYS use logSteps. Never say "I can't track steps".
-- When user mentions WATER → ALWAYS use logWater. Never say "I can't log water".
-- When user mentions ENERGY/FATIGUE → ALWAYS use rateEnergy. Never refuse.
-- When user mentions MOOD/FEELING → ALWAYS use logMood. Never refuse.
-- When user rates a WORKOUT → ALWAYS use rateWorkout. Never refuse.
-Your toolkit covers ALL of these. Do NOT say "I can't track that" or "that's not something I can track" for any dashboard metric.
+- Only propose dashboard log tools when the user explicitly wants to log, track, record, or save that metric.
+- Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?").
+- When user explicitly asks to log a dashboard metric → use the matching tool. Never say you can't log sleep/water/steps.
 
 ${COACH_DATA_INTEGRITY_RULE}
 
@@ -1111,10 +1116,15 @@ async function executeTool(userId, toolCall) {
         };
       }
       const parts = [`Opening **${payload.title}**.`];
-      if (payload.todayPreview) {
-        parts.push(`Today's session:\n${payload.todayPreview}`);
-      } else if (payload.summary) {
-        parts.push(String(payload.summary).slice(0, 1200));
+      const programText =
+        payload.summary ||
+        payload.allDaysPreview ||
+        payload.todayPreview ||
+        '';
+      if (programText) {
+        parts.push(
+          `Saved program (cite ONLY these exercises — never invent others):\n${String(programText).slice(0, 22000)}`,
+        );
       }
       return {
         success: true,
@@ -1333,6 +1343,17 @@ async function logAPIUsage(apiName, userId, inputTokens, outputTokens, status) {
     });
   } catch (e) {
     console.warn('logAPIUsage failed:', e?.message || e);
+  }
+}
+
+async function checkMonthlyApiBudget(apiName) {
+  if (!admin.apps.length) return true;
+  try {
+    const db = admin.firestore();
+    return await isWithinMonthlyLimit(apiName, db);
+  } catch (e) {
+    console.warn('checkMonthlyApiBudget failed:', e?.message || e);
+    return true;
   }
 }
 
@@ -1616,32 +1637,120 @@ function isFitnessNutritionQuery(text) {
 const normalizeCoachMessages = (messages) => {
   if (!Array.isArray(messages)) return [];
   return messages
-    .map((m) => ({
-      role: m?.role === 'assistant' || m?.role === 'system' ? m.role : 'user',
-      content: typeof m?.content === 'string' ? m.content : '',
-    }))
+    .map((m) => {
+      const role =
+        m?.role === 'assistant' || m?.role === 'ai' || m?.role === 'system'
+          ? m.role === 'system'
+            ? 'system'
+            : 'assistant'
+          : 'user';
+      const content =
+        typeof m?.content === 'string'
+          ? m.content
+          : typeof m?.text === 'string'
+            ? m.text
+            : '';
+      const out = { role, content };
+      if (role === 'assistant' && Array.isArray(m.webSources) && m.webSources.length > 0) {
+        out.webSources = m.webSources
+          .filter((s) => s && (s.url || s.title))
+          .slice(0, 12)
+          .map((s) => ({
+            title: String(s.title || '').trim(),
+            url: String(s.url || s.link || '').trim(),
+            snippet: String(s.snippet || '').trim(),
+          }));
+      }
+      if (role === 'assistant' && m.searchedWeb === true) out.searchedWeb = true;
+      return out;
+    })
     .filter((m) => m.content.trim().length > 0)
     .slice(-40);
 };
 
-async function getSerperWebContext(userText) {
-  const items = await webSearch(userText);
-  if (!items || items.length === 0) return null;
-  return items.join('\n');
+function coachMessagesForLlm(messages) {
+  return (Array.isArray(messages) ? messages : []).map((m) => ({
+    role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+  }));
+}
+
+function normalizeWebSources(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    let url = '';
+    let title = '';
+    let snippet = '';
+    if (typeof item === 'string') {
+      url = item.trim();
+      try {
+        title = new URL(url).hostname.replace(/^www\./i, '');
+      } catch (_) {
+        title = url;
+      }
+    } else if (item && typeof item === 'object') {
+      url = String(item.url || item.link || '').trim();
+      title = String(item.title || '').trim();
+      snippet = String(item.snippet || '').trim();
+      if (!title && url) {
+        try {
+          title = new URL(url).hostname.replace(/^www\./i, '');
+        } catch (_) {
+          title = url;
+        }
+      }
+    }
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push({
+      id: `src_${out.length}`,
+      title: title || url,
+      url,
+      snippet: snippet.slice(0, 280),
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function extractPerplexityWebSources(data) {
+  const fromResults = Array.isArray(data?.search_results)
+    ? data.search_results.map((r) => ({
+        title: r?.title,
+        url: r?.url,
+        snippet: r?.snippet || '',
+      }))
+    : [];
+  if (fromResults.length) return normalizeWebSources(fromResults);
+  return normalizeWebSources(Array.isArray(data?.citations) ? data.citations : []);
+}
+
+async function fetchSerperCoachSearch(query) {
+  const items = await serperOrganicSearch(String(query || '').trim(), 6);
+  if (!items.length) return { context: null, sources: [] };
+  const context = items.map((r) => `- ${r.title} — ${r.link}\n${r.snippet || ''}`).join('\n');
+  return {
+    context,
+    sources: normalizeWebSources(items.map((r) => ({ title: r.title, url: r.link, snippet: r.snippet }))),
+  };
 }
 
 /** DeepSeek has no native browsing — prepend Serper snippets so it can answer with current web facts. */
 async function augmentCoachPromptWithWebSearch(basePrompt, userText) {
-  const webContext = await getSerperWebContext(userText);
-  if (!webContext) return { prompt: basePrompt, searchedWeb: false, webProvider: null };
+  const { context, sources } = await fetchSerperCoachSearch(userText);
+  if (!context) return { prompt: basePrompt, searchedWeb: false, webProvider: null, webSources: [] };
   return {
     prompt: `${basePrompt}
 
 WEB SEARCH RESULTS (Serper — use for current facts; mention source names in plain sentences when citing):
-${webContext}
-END WEB RESULTS`,
+${context}
+END WEB SEARCH RESULTS`,
     searchedWeb: true,
     webProvider: 'serper',
+    webSources: sources,
   };
 }
 
@@ -1787,13 +1896,33 @@ async function callClaudeCoach({
   throw lastErr || new Error('Claude: all models failed');
 }
 
-async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
+function buildPerplexityWebMessages(messages, searchQuery) {
+  const cleanQuery = stripWebSearchPrefix(searchQuery) || String(searchQuery || '').trim();
+  if (!cleanQuery) {
+    return Array.isArray(messages) ? messages.slice(-4) : [];
+  }
+  return [{ role: 'user', content: cleanQuery }];
+}
+
+const PERPLEXITY_WEB_SYSTEM = `${COACH_VOICE_DIRECTIVE}
+
+WEB SEARCH MODE:
+You have live internet access. Search the web and answer using current sources.
+Mention source names naturally when citing specific claims.
+Lead with the takeaway — direct coach voice, no bullet lists.`;
+
+async function callPerplexityCoach({ apiKey, systemPrompt, messages, searchQuery = '' }) {
   const url = 'https://api.perplexity.ai/chat/completions';
+  const perplexityMessages = buildPerplexityWebMessages(messages, searchQuery);
   const payload = {
     model: process.env.PERPLEXITY_MODEL || 'sonar',
-    messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
-    temperature: 0.7,
-    max_tokens: 700,
+    messages: [
+      { role: 'system', content: searchQuery ? PERPLEXITY_WEB_SYSTEM : systemPrompt },
+      ...perplexityMessages,
+    ],
+    temperature: 0.5,
+    max_tokens: 900,
+    return_citations: true,
   };
 
   const resp = await axios.post(url, payload, {
@@ -1801,7 +1930,7 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    timeout: 20000,
+    timeout: 45000,
     validateStatus: () => true,
   });
 
@@ -1815,7 +1944,7 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages }) {
 
   const text = resp?.data?.choices?.[0]?.message?.content?.trim?.() || '';
   if (!text) throw new Error('Perplexity returned empty response');
-  return text;
+  return { text, webSources: extractPerplexityWebSources(resp?.data || {}) };
 }
 
 const WEEKLY_FETCH_FAILURE_NOTE =
@@ -1842,12 +1971,18 @@ async function buildCoachPromptForUser(
   let weeklyContext = null;
   let usedWeeklyContext = false;
 
-  if (!targetUid || !includeWeekly) {
-    return { systemPrompt, weeklyContext, usedWeeklyContext };
+  let workoutPlanCtx = null;
+  if (targetUid && admin.apps.length) {
+    try {
+      workoutPlanCtx = await fetchWorkoutPlanContext(admin.firestore(), targetUid);
+    } catch (e) {
+      logger.warn('buildCoachPromptForUser: workout plan fetch failed', e?.message || e);
+    }
   }
 
-  try {
-    const weekly = await getWeeklyContext(targetUid);
+  if (targetUid && includeWeekly) {
+    try {
+      const weekly = await getWeeklyContext(targetUid);
     const wc = weekly || {};
     logger.info('buildCoachPromptForUser weekly context keys:', {
       streakData: wc?.streakData,
@@ -1932,6 +2067,12 @@ async function buildCoachPromptForUser(
     );
     systemPrompt = buildCoachSystemPrompt(userProfile, { generalMode: false });
     systemPrompt += WEEKLY_FETCH_FAILURE_NOTE;
+    if (workoutPlanCtx) {
+      systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
+    }
+  }
+  } else if (workoutPlanCtx) {
+    systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
   }
 
   return { systemPrompt, weeklyContext, usedWeeklyContext };
@@ -1948,15 +2089,18 @@ async function runCoachWebSearch({
   perplexityKey,
   deepSeekKey,
 }) {
-  const query = String(searchQuery || '').trim();
-  const webSystemPrompt = systemPrompt + WEB_SEARCH_SYSTEM_APPEND;
+  const query = stripWebSearchPrefix(String(searchQuery || '').trim()) || String(searchQuery || '').trim();
+  const sourceQuoteMode = isWebSourceQuoteFollowUp(lastUserMsg);
+  const webSystemPrompt =
+    systemPrompt + WEB_SEARCH_SYSTEM_APPEND + (sourceQuoteMode ? WEB_SOURCE_QUOTE_SYSTEM_APPEND : '');
 
   if (perplexityKey) {
     try {
-      const text = await callPerplexityCoach({
+      const { text, webSources } = await callPerplexityCoach({
         apiKey: perplexityKey,
         systemPrompt: webSystemPrompt,
         messages,
+        searchQuery: query,
       });
       const toolCalls = resolveCoachToolCalls(text, lastUserMsg, weeklyContext);
       const reply = stripToolJsonFromReply(text);
@@ -1970,6 +2114,7 @@ async function runCoachWebSearch({
         searchedWeb: true,
         webProvider: 'perplexity',
         route: 'web-search',
+        webSources,
       };
     } catch (e) {
       console.warn('[web-search] Perplexity failed:', e?.message || e);
@@ -1978,6 +2123,11 @@ async function runCoachWebSearch({
 
   if (deepSeekKey && process.env.SERPER_API_KEY) {
     const augmented = await augmentCoachPromptWithWebSearch(webSystemPrompt, query);
+    if (!augmented.searchedWeb) {
+      const err = new Error('Web search returned no results for that query.');
+      err.status = 503;
+      throw err;
+    }
     const response = await callDeepSeek({
       apiKey: deepSeekKey,
       systemPrompt: augmented.prompt,
@@ -1995,6 +2145,7 @@ async function runCoachWebSearch({
       searchedWeb: augmented.searchedWeb,
       webProvider: augmented.webProvider,
       route: 'web-search',
+      webSources: augmented.webSources || [],
     };
   }
 
@@ -2043,16 +2194,58 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
     }
   }
 
-  const { systemPrompt, weeklyContext, usedWeeklyContext } = await buildCoachPromptForUser(
+  const deepSeekKey = resolveDeepSeekKey();
+  const perplexityKey = resolvePerplexityKey();
+  const answerFollowUp = isWebAnswerFollowUp(lastUserMsg, normalized);
+  const invokeWeb =
+    !hasImages &&
+    !answerFollowUp &&
+    (webMode === 'on' ||
+      (webMode !== 'off' &&
+        (shouldInvokeWebSearch(webMode, lastUserMsg) || messagesRequestWebSearch(normalized, lastUserMsg))));
+  const webSearchQuery = buildWebSearchQuery(normalized, lastUserMsg);
+
+  const promptOptions = {
+    ...(options || {}),
+    includePersonalData: invokeWeb ? false : options?.includePersonalData,
+  };
+  let { systemPrompt, weeklyContext, usedWeeklyContext } = await buildCoachPromptForUser(
     targetUid,
     userProfile,
     lastUserMsg,
-    options || {}
+    promptOptions,
   );
 
-  const deepSeekKey = resolveDeepSeekKey();
-  const perplexityKey = resolvePerplexityKey();
-  const invokeWeb = !hasImages && shouldInvokeWebSearch(webMode, lastUserMsg);
+  const lastAssistantForFollowUp = [...normalized].reverse().find((m) => m && m.role === 'assistant');
+  const priorSourcesForFollowUp = Array.isArray(lastAssistantForFollowUp?.webSources)
+    ? lastAssistantForFollowUp.webSources
+    : [];
+
+  if (answerFollowUp) {
+    const lastAssistant = lastAssistantForFollowUp;
+    const priorReply = String(lastAssistant?.content || '').trim();
+    const priorQuestion = findPriorSubstantiveUserQuestion(normalized, lastUserMsg);
+    const priorSources = priorSourcesForFollowUp;
+
+    if (priorQuestion) {
+      systemPrompt += `\n\nORIGINAL USER QUESTION (stay on THIS topic only — do not change subject):\n${priorQuestion.slice(0, 800)}`;
+    }
+    if (priorReply) {
+      systemPrompt += `\n\nYOUR IMMEDIATE PRIOR REPLY (elaborate on THIS only — same topic, same sources):\n${priorReply.slice(0, 3500)}`;
+    }
+    if (priorSources.length > 0) {
+      const srcBlock = priorSources
+        .map((s, i) => `${i + 1}. ${s.title || 'Source'} — ${s.url}\n${s.snippet || ''}`)
+        .join('\n');
+      systemPrompt += `\n\nSOURCES FROM YOUR PRIOR WEB SEARCH (use ONLY these — quote snippets when asked what sources said):\n${srcBlock}`;
+    }
+    systemPrompt += THREAD_CLARIFY_SYSTEM_APPEND;
+    if (isWebSourceQuoteFollowUp(lastUserMsg)) {
+      systemPrompt += WEB_SOURCE_QUOTE_SYSTEM_APPEND;
+    }
+  } else if (!invokeWeb) {
+    systemPrompt += NO_WEB_SEARCH_HONESTY_APPEND;
+  }
 
   const coachMeta = {
     usedWeeklyContext,
@@ -2099,8 +2292,8 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
     try {
       const result = await runCoachWebSearch({
         systemPrompt,
-        messages: normalized,
-        searchQuery: searchQueryOverride || lastUserMsg,
+        messages: coachMessagesForLlm(normalized),
+        searchQuery: searchQueryOverride || webSearchQuery,
         lastUserMsg,
         weeklyContext,
         targetUid,
@@ -2109,7 +2302,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
       });
       return res.json({ ...result, ...coachMeta, ms: Date.now() - started });
     } catch (e) {
-      if (forceWebSearch) {
+      if (forceWebSearch || webMode === 'on') {
         return res.status(e.status || 503).json({
           error: e.message || 'Web search failed',
           route: 'web-search',
@@ -2117,6 +2310,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
         });
       }
       console.warn('Web search failed; falling back to standard coach:', e?.message || e);
+      systemPrompt += NO_WEB_SEARCH_HONESTY_APPEND;
     }
   }
 
@@ -2125,7 +2319,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
       const response = await callDeepSeek({
         apiKey: deepSeekKey,
         systemPrompt,
-        messages: normalized,
+        messages: coachMessagesForLlm(normalized),
       });
       const toolCalls = resolveCoachToolCalls(response.text, lastUserMsg, weeklyContext);
       const reply = stripToolJsonFromReply(response.text);
@@ -2174,7 +2368,9 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
         source: 'deepseek',
         searchedWeb: false,
         webProvider: null,
-        route: 'chat',
+        route: answerFollowUp ? 'thread-follow-up' : 'chat',
+        answerFollowUp: answerFollowUp === true,
+        webSources: answerFollowUp && priorSourcesForFollowUp.length ? priorSourcesForFollowUp : [],
         ...coachMeta,
         ms: Date.now() - started,
       });
@@ -2249,6 +2445,7 @@ const routeDeps = {
   isTrainerOfClient,
   parseToolCalls,
   detectFatigue,
+  checkMonthlyApiBudget,
 };
 
 registerNotificationRoutes(app, routeDeps);
@@ -2256,6 +2453,7 @@ registerMediaRoutes(app, routeDeps);
 registerUserRoutes(app, routeDeps);
 registerSupportRoutes(app, routeDeps);
 registerOnboardingRoutes(app, routeDeps);
+registerTrainerRoutes(app, routeDeps);
 registerWorkoutRoutes(app, routeDeps);
 registerFoodRoutes(app, routeDeps);
 registerDevRoutes(app, routeDeps);
@@ -2646,6 +2844,11 @@ registerApiHealthRoute(app, () => {
     serper,
     usda: !!process.env.USDA_API_KEY,
     youtube: !!(process.env.YOUTUBE_API_KEY || process.env.REACT_NATIVE_YOUTUBE_API_KEY),
+    supportEmailReady: !!(
+      process.env.RESEND_API_KEY ||
+      (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+    ),
+    supportInbox: (process.env.SUPPORT_INBOX_EMAIL || 'coachconnect0@gmail.com').trim(),
     aiCoachReady: deepseek && firebaseAdmin,
     webSearchReady: (perplexity || (deepseek && serper)) && firebaseAdmin,
     webSearchRoute: '/api/ai-coach/web-search',
@@ -2696,7 +2899,7 @@ listenWithPortCheck()
     !!process.env.RESEND_API_KEY ||
     !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
   console.log(
-    `📧 Support inbox email: ${supportEmailReady ? '✅ RESEND_API_KEY or SMTP_* set' : '❌ Not configured — Contact Support in the app will fail until you set RESEND_API_KEY or SMTP_*'}`
+    `📧 Support inbox email: ${supportEmailReady ? '✅ RESEND_API_KEY or SMTP_* set' : '⚠️  No email provider — tickets save to Firestore; add RESEND_API_KEY or SMTP_* for coachconnect0@gmail.com delivery'}`
   );
 
   const { networkInterfaces } = require('os');

@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { onboardingIconRegistry as generatedRegistry } from './onboardingIconRegistry.generated.js';
+import { onboardingIconRegistry as generatedRegistry } from './onboardingIconRegistry.generated';
 
 // Manual aliases so app domain keys don't have to match filename keys.
 const aliases = {

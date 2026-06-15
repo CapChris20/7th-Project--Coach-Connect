@@ -17,8 +17,8 @@ import {
   getFoodLogsForDate,
   calculateMacroTotals,
 } from '../daily-log/logFoodToFirestore';
-import MacroBar from '../components/MacroBar';
-import Loader from '../../Loader';
+import MacroBar from '../daily-log/MacroBar';
+import Loader from '../../shared/components/shell/AppLoadingScreen';
 import { autoLogErrorSync } from '../../utils/autoLogError';
 
 const macroColors = {

@@ -28,7 +28,7 @@ const {
   stripEmojis,
   stripMarkdown,
   buildPdfHtml,
-} = require('../../workouts/services/workoutPlanPdfService');
+} = require('../../workouts/plan-viewer/workoutPlanPdfService');
 
 describe('workoutPlanPdfService parsing', () => {
   test('parses simple day/exercise plan text', () => {

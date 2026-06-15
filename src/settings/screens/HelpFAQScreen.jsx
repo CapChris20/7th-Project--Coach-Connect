@@ -13,7 +13,7 @@ import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, Lay
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';

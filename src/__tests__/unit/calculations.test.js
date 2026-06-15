@@ -1,7 +1,7 @@
 /**
  * @file calculations.test.js
  *
- * Tests for src/shared/fitness/calculations.js
+ * Tests for src/shared/fitness-calculations/calculations.js
  *
  * Covers:
  *  - calculateBMR: Mifflin-St Jeor equation for male and female
@@ -17,7 +17,7 @@ import {
   calculateTDEE,
   calculateMacros,
   estimateBodyFat,
-} from '../../shared/fitness/calculations';
+} from '../../shared/fitness-calculations/calculations';
 
 describe('calculateBMR', () => {
   test('male 80kg 180cm 30yo → 1814 kcal', () => {

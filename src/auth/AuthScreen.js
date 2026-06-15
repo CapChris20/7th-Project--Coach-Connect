@@ -47,7 +47,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import LiquidBackground from '../shared/ui/liquid/LiquidBackground';
 import LiquidBackgroundLight from '../shared/ui/liquid/LiquidBackgroundLight';
 import LiquidGlassCard from '../shared/ui/liquid/LiquidGlassCard';
-import ErrorModal from '../components/ErrorModal';
+import ErrorModal from '../shared/components/modals/ErrorModal';
 import LiquidGradientButton from '../shared/ui/liquid/LiquidGradientButton';
 import { Liquid } from '../shared/ui/liquid/liquidTokens';
 import { Ionicons } from '@expo/vector-icons';

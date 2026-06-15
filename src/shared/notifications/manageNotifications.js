@@ -10,9 +10,14 @@
  */
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Linking, Platform } from 'react-native';
 import { deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
+
+export function pendingPushTokenStorageKey(uid) {
+  return `pending_push_token_${uid}`;
+}
 
 let isConfigured = false;
 let notificationResponseSubscription = null;
@@ -161,9 +166,15 @@ export async function getExpoPushTokenAsync() {
 /**
  * Persist Expo + native tokens. Keeps legacy `pushToken` mirroring Expo for older readers.
  * @param {string} uid
- * @param {{ skipIfDisabled?: boolean }} [options] skipIfDisabled defaults true — respects `notificationsEnabled: false`
+ * @param {{ skipIfDisabled?: boolean, pendingExpoToken?: string } | string} [optionsOrPendingToken]
+ *   skipIfDisabled defaults true — respects `notificationsEnabled: false`.
+ *   Pass a string to flush a previously cached Expo token from AsyncStorage.
  */
-export async function persistPushTokensForUid(uid, options = {}) {
+export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
+  const options =
+    typeof optionsOrPendingToken === 'string'
+      ? { pendingExpoToken: optionsOrPendingToken }
+      : optionsOrPendingToken;
   const skipIfDisabled = options.skipIfDisabled !== false;
   if (!uid || !db) return;
 
@@ -176,22 +187,35 @@ export async function persistPushTokensForUid(uid, options = {}) {
     }
   }
 
+  const userRef = doc(db, 'users', uid);
+  let expoPushToken = null;
+
   try {
-    const expoPushToken = await getExpoPushTokenAsync();
+    expoPushToken = options.pendingExpoToken || (await getExpoPushTokenAsync());
     const fcmToken = await getNativeDevicePushTokenAsync();
+    const now = new Date().toISOString();
 
     const payload = {
       expoPushToken,
       pushToken: expoPushToken,
+      pushTokenUpdatedAt: now,
       ...(fcmToken ? { fcmToken } : {}),
     };
 
-    await setDoc(doc(db, 'users', uid), payload, { merge: true });
+    await setDoc(userRef, payload, { merge: true });
+    await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid)).catch(() => {});
     if (__DEV__) {
       console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
     }
-  } catch (e) {
-    if (__DEV__) console.warn('[push] persistPushTokensForUid failed:', e?.message || e);
+  } catch (error) {
+    console.warn('Push token save failed, retrying on next launch:', error?.message || error);
+    if (expoPushToken) {
+      try {
+        await AsyncStorage.setItem(pendingPushTokenStorageKey(uid), expoPushToken);
+      } catch (_) {
+        /* non-fatal */
+      }
+    }
   }
 }
 

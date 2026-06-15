@@ -59,6 +59,28 @@ else
   echo "⚠️  No YOUTUBE_API_KEY or REACT_NATIVE_YOUTUBE_API_KEY in .env — exercise library videos will not load on Cloud Run."
 fi
 
+# Support + password-reset email (Contact Support, Report a Bug, forgot-password).
+# Option A — Resend: RESEND_API_KEY=re_...  (+ verified SUPPORT_EMAIL_FROM domain for production)
+# Option B — Gmail SMTP: SMTP_HOST=smtp.gmail.com SMTP_USER=coachconnect0@gmail.com SMTP_PASS=<app password>
+SUPPORT_INBOX="${SUPPORT_INBOX_EMAIL:-coachconnect0@gmail.com}"
+VARS+=",SUPPORT_INBOX_EMAIL=${SUPPORT_INBOX}"
+
+if [ -n "${RESEND_API_KEY:-}" ]; then
+  VARS+=",RESEND_API_KEY=${RESEND_API_KEY}"
+  [ -n "${SUPPORT_EMAIL_FROM:-}" ] && VARS+=",SUPPORT_EMAIL_FROM=${SUPPORT_EMAIL_FROM}"
+  [ -n "${PASSWORD_RESET_EMAIL_FROM:-}" ] && VARS+=",PASSWORD_RESET_EMAIL_FROM=${PASSWORD_RESET_EMAIL_FROM}"
+  echo "ℹ️  RESEND_API_KEY will sync — in-app Contact Support / Report a Bug will email ${SUPPORT_INBOX}."
+elif [ -n "${SMTP_HOST:-}" ] && [ -n "${SMTP_USER:-}" ] && [ -n "${SMTP_PASS:-}" ]; then
+  VARS+=",SMTP_HOST=${SMTP_HOST},SMTP_USER=${SMTP_USER},SMTP_PASS=${SMTP_PASS}"
+  [ -n "${SMTP_PORT:-}" ] && VARS+=",SMTP_PORT=${SMTP_PORT}"
+  [ -n "${SMTP_SECURE:-}" ] && VARS+=",SMTP_SECURE=${SMTP_SECURE}"
+  [ -n "${SMTP_FROM:-}" ] && VARS+=",SMTP_FROM=${SMTP_FROM}"
+  echo "ℹ️  SMTP_* will sync — in-app Contact Support / Report a Bug will email ${SUPPORT_INBOX}."
+else
+  echo "⚠️  No RESEND_API_KEY or SMTP_* in .env — support tickets still save to Firestore; inbox email needs a provider."
+  echo "    Add RESEND_API_KEY=re_... or Gmail SMTP (see server/supportEmail.js) then re-run this script."
+fi
+
 echo "Updating Cloud Run env vars (not including FIREBASE_SERVICE_ACCOUNT — set that in Console as JSON)..."
 gcloud config set project "$PROJECT_ID" 2>/dev/null
 gcloud run services update "$SERVICE_NAME" \

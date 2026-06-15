@@ -24,13 +24,13 @@ import ForgotPasswordScreen from '../auth/ForgotPasswordScreen';
 import OnboardingScreen from '../auth/OnboardingScreen';
 import TrainerApp from './TrainerApp';
 import ClientApp from './ClientApp';
-import AppLoadingScreen from '../shared/components/AppLoadingScreen';
+import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import { auth, db } from './config';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeErrorSync } from '../utils/syncErrorsToServer';
-import { clearOldSharedChats } from '../ai/services/chatStorageService';
+import { clearOldSharedChats } from '../ai/chat-api/chatStorageService';
 import { clearAllUserData } from '../utils/clearDataOnLogout';
 import { flushPendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
 import { clearPushTokensForUid } from '../shared/notifications/manageNotifications';
@@ -85,6 +85,7 @@ export default function AuthGate() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [userRole, setUserRole] = useState(null);
@@ -275,9 +276,16 @@ export default function AuthGate() {
     if (showForgotPassword) {
       return (
         <ForgotPasswordScreen
+          initialEmail={forgotPasswordEmail}
           navigation={{
-            navigate: () => setShowForgotPassword(false),
-            goBack: () => setShowForgotPassword(false),
+            navigate: () => {
+              setShowForgotPassword(false);
+              setForgotPasswordEmail('');
+            },
+            goBack: () => {
+              setShowForgotPassword(false);
+              setForgotPasswordEmail('');
+            },
           }}
         />
       );
@@ -321,7 +329,10 @@ export default function AuthGate() {
             /* onAuthStateChanged will reconcile */
           }
         }}
-        onForgotPasswordPress={() => setShowForgotPassword(true)}
+        onForgotPasswordPress={(prefillEmail) => {
+          setForgotPasswordEmail(String(prefillEmail || '').trim());
+          setShowForgotPassword(true);
+        }}
       />
     );
   }

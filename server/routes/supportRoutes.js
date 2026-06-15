@@ -29,33 +29,61 @@ function registerSupportRoutes(app, deps) {
       return res.status(400).json({ error: 'Message is required (max 8000 characters).' });
     }
 
-    const { text, html } = buildBodies({ message, userUid: uid, userEmail });
-    const emailSubject = `[CoachConnect] ${subject}`;
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Support is temporarily unavailable. Please try again later.' });
+    }
 
-    await sendSupportInquiryEmail({
-      subject: emailSubject,
-      text,
-      html,
-      replyTo: userEmail,
-    });
+    const ticketType = /bug/i.test(subject) ? 'bug' : 'support';
+    let ticketId = null;
+    try {
+      const doc = await admin.firestore().collection('supportTickets').add({
+        type: ticketType,
+        subject,
+        message,
+        userId: uid,
+        email: userEmail,
+        createdAt: serverTs(),
+        delivery: 'pending',
+      });
+      ticketId = doc.id;
+    } catch (logErr) {
+      console.error('supportTickets Firestore write failed:', logErr?.message || logErr);
+      return res.status(500).json({ error: 'Failed to save your message. Please try again.' });
+    }
 
-    if (admin.apps.length) {
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const { text, html } = buildBodies({ message, userUid: uid, userEmail });
+      const emailSubject = `[CoachConnect] ${subject}`;
+      await sendSupportInquiryEmail({
+        subject: emailSubject,
+        text,
+        html,
+        replyTo: userEmail,
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      emailError = emailErr?.message || String(emailErr);
+      console.warn('Support email not sent (ticket saved):', emailError);
+    }
+
+    if (ticketId) {
       try {
-        await admin.firestore().collection('supportTickets').add({
-          type: 'support',
-          subject,
-          message,
-          userId: uid,
-          email: userEmail,
-          createdAt: serverTs(),
-          delivery: 'email',
+        await admin.firestore().collection('supportTickets').doc(ticketId).update({
+          delivery: emailSent ? 'email' : 'firestore',
+          ...(emailError ? { emailError: emailError.slice(0, 500) } : {}),
         });
-      } catch (logErr) {
-        console.warn('supportTickets Firestore log failed (email was sent):', logErr?.message || logErr);
+      } catch (updateErr) {
+        console.warn('supportTickets delivery update failed:', updateErr?.message || updateErr);
       }
     }
 
-    return res.json({ ok: true });
+    return res.json({
+      ok: true,
+      delivery: emailSent ? 'email' : 'firestore',
+      ticketId,
+    });
   } catch (e) {
     console.error('POST /api/support/contact failed:', e?.message || e);
     return res.status(500).json({ error: e?.message || 'Failed to send support message.' });

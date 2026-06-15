@@ -24,8 +24,8 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
-import GradientGeminiNavIcon from '../shared/components/GradientGeminiNavIcon';
-import { useAI } from '../contexts/AIContext';
+import GradientGeminiNavIcon from '../shared/components/icons/GradientGeminiNavIcon';
+import { useAI } from '../shared/contexts/AIContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BRAND_NAV_ICON_GRADIENT,

@@ -17,23 +17,23 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import TrainerMessagingScreen from '../screens/TrainerMessagingScreen';
-import ConversationsListScreen from '../screens/ConversationsListScreen';
-import ClientRequestsScreen from '../screens/ClientRequestsScreen';
-import ClientsListScreen from '../screens/TrainerClientsListScreen';
-import DashboardContent from '../screens/TrainerDashboardContent';
-import PhotoGalleryScreen from '../screens/PhotoGalleryScreen';
-import AIWorkoutPlansScreen from '../screens/AIWorkoutPlansScreen';
-import WorkoutPlanGeneratorScreen from '../../workouts/screens/workout';
-import AddNotesFilesModal from '../../shared/components/AddNotesFilesModal';
-import PdfViewerModal from '../../shared/components/PdfViewerModal';
-import SpreadsheetEditorModal from '../components/documents/SpreadsheetEditorModal';
-import DocumentEditorModal from '../components/documents/DocumentEditorModal';
-import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../components/dashboard/trainerDashboardUi';
+import TrainerMessagingScreen from '../messaging/TrainerMessagingScreen';
+import ConversationsListScreen from '../messaging/ConversationsListScreen';
+import ClientRequestsScreen from '../client-requests/ClientRequestsScreen';
+import ClientsListScreen from '../clients-list/TrainerClientsListScreen';
+import DashboardContent from '../dashboard/TrainerDashboardContent';
+import PhotoGalleryScreen from '../photo-gallery/PhotoGalleryScreen';
+import AIWorkoutPlansScreen from '../workout-plans/AIWorkoutPlansScreen';
+import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
+import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
+import SpreadsheetEditorModal from '../documents/SpreadsheetEditorModal';
+import DocumentEditorModal from '../documents/DocumentEditorModal';
+import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../dashboard/trainerDashboardUi';
 import { useTrainerAppShell } from './TrainerAppShellContext';
 
 export default function TrainerMainScreen() {

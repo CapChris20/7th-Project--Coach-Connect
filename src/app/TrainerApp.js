@@ -19,7 +19,7 @@ import React, { useState, useMemo, useCallback, createContext, useContext, useEf
 import { NavigationContainer } from '@react-navigation/native';
 import TrainerRootNavigator from '../trainer/navigation/TrainerRootNavigator';
 import { TrainerAppShellProvider } from '../trainer/navigation/TrainerAppShellContext';
-import { useTrainerScreenNavigation } from '../trainer/hooks/useTrainerScreenNavigation';
+import { useTrainerScreenNavigation } from '../trainer/navigation/useTrainerScreenNavigation';
 import { rootNavigationRef } from '../navigation/navigationRef';
 import { trainerLinking } from '../navigation/linking';
 import {
@@ -52,8 +52,8 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { ArrowRight, ChevronDown, Download, FileSpreadsheet, FileText, Folder, MessageSquare, Trash2 } from 'lucide-react-native';
 import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import LottieView from 'lottie-react-native';
-import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
-import HoldToConfirmModal from '../shared/components/HoldToConfirmModal';
+import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
+import HoldToConfirmModal from '../shared/components/modals/HoldToConfirmModal';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Path, Polyline } from 'react-native-svg';
 import {
@@ -70,32 +70,33 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import CoachConnectHeader from "../shared/components/CoachConnectHeader";
+import CoachConnectHeader from "../shared/components/shell/CoachConnectHeader";
 import BottomNavBar from "../navigation/BottomNavBar";
 import { AppNavigationProvider } from "../navigation/AppNavigationContext";
-import TrainerSearchScreen from '../marketplace/screens/TrainerSearchScreen';
-import TrainerMessagingScreen from "../trainer/screens/TrainerMessagingScreen";
-import ConversationsListScreen from "../trainer/screens/ConversationsListScreen";
-import VoiceAIHomeScreen from "../aiChat/screens/VoiceAIHomeScreen";
-import AIChatScreen from "../aiChat/screens/AIChatScreen";
-import NutritionContainer from "../nutrition/screens/NutritionContainer";
+import TrainerSearchScreen from '../trainer/marketplace/TrainerSearchScreen';
+import TrainerMessagingScreen from "../trainer/messaging/TrainerMessagingScreen";
+import ConversationsListScreen from "../trainer/messaging/ConversationsListScreen";
+import VoiceAIHomeScreen from "../aiChat/voice/VoiceAIHomeScreen";
+import AIChatScreen from "../aiChat/chat-thread/AIChatScreen";
+import NutritionContainer from "../nutrition/daily-log/NutritionContainer";
 import ProfileScreen from '../profile/screens/ProfileScreen';
-import SettingsScreen from "../client/screens/SettingsScreen";
+import SettingsScreen from "../settings/screens/SettingsScreen";
 import HelpFAQScreen from "../settings/screens/HelpFAQScreen";
 import TermsOfServiceScreen from "../settings/screens/TermsOfServiceScreen";
 import PrivacyPolicyScreen from "../settings/screens/PrivacyPolicyScreen";
 import ContactSupportScreen from "../settings/screens/ContactSupportScreen";
 import BugReportScreen from "../settings/screens/BugReportScreen";
-import WorkoutPlanGeneratorScreen from "../workouts/screens/workout";
-import ClientRequestsScreen from "../trainer/screens/ClientRequestsScreen";
-import SessionSchedulingScreen from "../trainer/screens/SessionSchedulingScreen";
-import SessionFormScreen from "../trainer/screens/SessionFormScreen";
-import { useTrainerClients } from "../trainer/hooks/useTrainerClients";
+import WorkoutPlanGeneratorScreen from "../workouts/active-workout/workout";
+import ClientRequestsScreen from "../trainer/client-requests/ClientRequestsScreen";
+import SessionSchedulingScreen from "../trainer/sessions/SessionSchedulingScreen";
+import SessionFormScreen from "../trainer/sessions/SessionFormScreen";
+import { useTrainerClients } from "../trainer/clients-list/useTrainerClients";
 import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer/crm/formatClientName";
-import { useTrainerPendingRequests } from "../trainer/hooks/useTrainerPendingRequests";
+import { useTrainerPendingRequests } from "../trainer/client-requests/useTrainerPendingRequests";
 import {
   configureNotifications,
   persistPushTokensForUid,
+  pendingPushTokenStorageKey,
   setNotificationTapHandler,
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
@@ -110,45 +111,45 @@ import { getOrCreateConversation } from "../ai/trainer-messaging/sendTrainerNoti
 import { getDateKey } from "../shared/utils/dateKeys";
 import { getLocalDateKey } from "../shared/utils/getLocalDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { subscribeToUnreadCount } from "../ai/services/conversationService";
+import { subscribeToUnreadCount } from "../ai/chat-api/conversationService";
 import { markAllMessagesReadForUser } from "../ai/services/markAllMessagesRead";
 import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../shared/notes-files/manageNotesAndFiles";
 import { clearAllUserData } from "../utils/clearDataOnLogout";
-import AddNotesFilesModal from "../shared/components/AddNotesFilesModal";
-import MediaViewerModal from "../shared/components/MediaViewerModal";
-import EmbedWebViewModal from "../shared/components/EmbedWebViewModal";
+import AddNotesFilesModal from "../shared/components/notes-files/AddNotesFilesModal";
+import MediaViewerModal from "../shared/components/notes-files/MediaViewerModal";
+import EmbedWebViewModal from "../shared/components/notes-files/EmbedWebViewModal";
 import {
   isImageFile as isNotesImageFile,
   isVideoFile as isNotesVideoFile,
   isPdfFile as isNotesPdfFile,
   getEmbedViewerUri,
 } from "../shared/utils/getFileViewType";
-import PdfViewerModal from "../shared/components/PdfViewerModal";
-import SpreadsheetViewerModal from "../shared/components/SpreadsheetViewerModal";
-import DocumentEditorModal from "../trainer/components/documents/DocumentEditorModal";
-import QuickActionCard from '../shared/components/QuickActionCard';
-import ShareDocumentModal from "../trainer/components/documents/ShareDocumentModal";
-import SpreadsheetEditorModal from "../trainer/components/documents/SpreadsheetEditorModal";
+import PdfViewerModal from "../shared/components/notes-files/PdfViewerModal";
+import SpreadsheetViewerModal from "../shared/components/notes-files/SpreadsheetViewerModal";
+import DocumentEditorModal from "../trainer/documents/DocumentEditorModal";
+import QuickActionCard from '../shared/components/home/QuickActionCard';
+import ShareDocumentModal from "../trainer/documents/ShareDocumentModal";
+import SpreadsheetEditorModal from "../trainer/documents/SpreadsheetEditorModal";
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
-import RemoveTrainerSheet from "../shared/components/RemoveTrainerSheet";
+import RemoveTrainerSheet from "../shared/components/modals/RemoveTrainerSheet";
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/daily-log/logFoodToFirestore";
-import PhotoGalleryScreen from "../trainer/screens/PhotoGalleryScreen";
-import AIWorkoutPlansScreen from "../trainer/screens/AIWorkoutPlansScreen";
-import ManualWorkoutPlanBuilderScreen from "../trainer/screens/ManualWorkoutPlanBuilderScreen";
-import GradientChatBubblesIcon from "../shared/components/GradientChatBubblesIcon";
-import FileGalleryGrid from "../shared/components/FileGalleryGrid";
-import TrainerWeeklyReportSection from "../trainer/components/TrainerWeeklyReportSection";
-import TrainerWeeklyReportScreen from "../trainer/screens/TrainerWeeklyReportScreen";
-import FilesNotesHeroCard from "../client/components/FilesNotesHeroCard";
-import FilesNotesSectionPremium from "../shared/components/FilesNotesSectionPremium";
-import ProgressTab from '../trainer/screens/TrainerProgressTab';
-import NutritionTab from '../trainer/screens/TrainerNutritionTab';
-import CalendarTab from '../trainer/screens/TrainerCalendarTab';
-import ClientDetailScreen from '../trainer/screens/TrainerClientDetailScreen';
-import ClientsListScreen from '../trainer/screens/TrainerClientsListScreen';
-import DashboardContent from '../trainer/screens/TrainerDashboardContent';
+import PhotoGalleryScreen from "../trainer/photo-gallery/PhotoGalleryScreen";
+import AIWorkoutPlansScreen from "../trainer/workout-plans/AIWorkoutPlansScreen";
+import ManualWorkoutPlanBuilderScreen from "../trainer/workout-plans/ManualWorkoutPlanBuilderScreen";
+import GradientChatBubblesIcon from "../shared/components/icons/GradientChatBubblesIcon";
+import FileGalleryGrid from "../shared/components/notes-files/FileGalleryGrid";
+import TrainerWeeklyReportSection from "../trainer/weekly-report/TrainerWeeklyReportSection";
+import TrainerWeeklyReportScreen from "../trainer/weekly-report/TrainerWeeklyReportScreen";
+import FilesNotesHeroCard from "../shared/components/notes-files/FilesNotesHeroCard";
+import FilesNotesSectionPremium from "../shared/components/notes-files/FilesNotesSectionPremium";
+import ProgressTab from '../trainer/progress-tab/TrainerProgressTab';
+import NutritionTab from '../trainer/nutrition-tab/TrainerNutritionTab';
+import CalendarTab from '../trainer/calendar-tab/TrainerCalendarTab';
+import ClientDetailScreen from '../trainer/client-detail/TrainerClientDetailScreen';
+import ClientsListScreen from '../trainer/clients-list/TrainerClientsListScreen';
+import DashboardContent from '../trainer/dashboard/TrainerDashboardContent';
 import {
   TrainerStylesProvider,
   useTrainerTheme,
@@ -161,8 +162,8 @@ import {
   TrainerNotesFilesHeroAndWorkspace,
   TabPills,
   TABS,
-} from '../trainer/components/dashboard/trainerDashboardUi';
-import { isBenignTrainerClientFirestoreError } from '../trainer/lib/trainerFirestoreErrors';
+} from '../trainer/dashboard/trainerDashboardUi';
+import { isBenignTrainerClientFirestoreError } from '../trainer/crm/trainerFirestoreErrors';
 import {
   fetchTrainerClientDoc,
   fetchTrainerClientRoster,
@@ -174,7 +175,7 @@ import {
   tasksCollectionRef,
   notesCollectionRef,
   trainerClientDocRef,
-} from '../trainer/lib/trainerClientFirestorePaths';
+} from '../trainer/crm/trainerClientFirestorePaths';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLIENT CRM SERVICE (merged from trainer/clients-list/loadTrainerClientRoster.js for review)
@@ -1051,9 +1052,33 @@ function TrainerAppContent({ user }) {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (!user?.uid) return undefined;
-    persistPushTokensForUid(user.uid, { skipIfDisabled: true });
-    return subscribePushTokenRefreshOnResume(user.uid, () => true);
+    if (!user?.uid || !db) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists() || cancelled) return;
+
+        const pendingToken = await AsyncStorage.getItem(pendingPushTokenStorageKey(user.uid));
+        if (pendingToken) {
+          await persistPushTokensForUid(user.uid, pendingToken);
+          await AsyncStorage.removeItem(pendingPushTokenStorageKey(user.uid));
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[push] pending token flush failed:', e?.message || e);
+      }
+
+      if (!cancelled) {
+        persistPushTokensForUid(user.uid, { skipIfDisabled: true }).catch(() => {});
+      }
+    })();
+
+    const unsubResume = subscribePushTokenRefreshOnResume(user.uid, () => true);
+    return () => {
+      cancelled = true;
+      unsubResume();
+    };
   }, [user?.uid]);
 
   const trainerNotifTapRef = useRef(() => {});

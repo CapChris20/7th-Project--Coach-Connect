@@ -215,29 +215,42 @@ function toolAlignsWithUserMessage(guarded, userText) {
   return re.test(t);
 }
 
+const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put)\b/i;
+
+const DASHBOARD_METRIC_PATTERNS = {
+  sleep: /\b(sleep|slept|hours?|hrs?)\b/i,
+  water: /\b(water|oz|ounce|hydrat|drank)\b/i,
+  steps: /\b(steps?|step count)\b/i,
+  energy: /\b(energy|fatigue)\b/i,
+  mood: /\b(mood|feel|feeling)\b/i,
+  workout: /\b(workout|trained|lifting|session)\b/i,
+  restDay: /\b(rest day|rest)\b/i,
+};
+
 function userExplicitlyRequestsAction(userText) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t) return false;
   return (
-    /\b(log|track|record|add)\b/.test(t) ||
+    EXPLICIT_LOG_RE.test(t) ||
     /\b(set|change|update)\s+my\b/.test(t) ||
     /\blog\s+it\b/.test(t)
   );
+}
+
+function userWantsExplicitDashboardLog(userText, metric) {
+  const raw = String(userText || '').trim();
+  if (!raw) return false;
+  if (!EXPLICIT_LOG_RE.test(raw) && !/\blog\s+it\b/i.test(raw)) return false;
+  const pattern = DASHBOARD_METRIC_PATTERNS[metric];
+  return pattern ? pattern.test(raw) : false;
 }
 
 function isInformationalUserMessage(userText) {
   const raw = String(userText || '').trim();
   if (!raw) return false;
   if (/\?$/.test(raw)) return true;
+  if (/\b(too much|too little|too many|good for me|should i)\b/i.test(raw)) return true;
   return /^(what|how|is|are|should|can|could|would|why|when|where)\b/i.test(raw);
-}
-
-function matchesImplicitFoodLogPhrase(userText) {
-  const t = String(userText || '').toLowerCase();
-  return (
-    /\b(i had|ate|just ate|had for)\b/.test(t) &&
-    /\b(eggs|chicken|rice|breakfast|lunch|dinner|snack|meal)\b/.test(t)
-  );
 }
 
 /**
@@ -251,10 +264,6 @@ function isValidCoachToolProposal(rawCall, userText) {
 
   if (userExplicitlyRequestsAction(userText)) {
     return toolAlignsWithUserMessage(guarded, userText);
-  }
-
-  if (matchesImplicitFoodLogPhrase(userText)) {
-    return guarded.name === 'logNutrition';
   }
 
   return false;
@@ -281,4 +290,7 @@ module.exports = {
   guardCoachToolProposals,
   isValidCoachToolProposal,
   filterValidCoachToolProposals,
+  userWantsExplicitDashboardLog,
+  userExplicitlyRequestsAction,
+  isInformationalUserMessage,
 };

@@ -1,239 +1,241 @@
-Timestamp: 2026-06-15T06:21:35.835Z
+Timestamp: 2026-06-15T20:07:07.201Z
 Command: jest --runInBand
 Exit code: 0
 npm warn Unknown env config "devdir". This will stop working in the next major version of npm.
-PASS src/__tests__/unit/onboardingGate.test.js
+PASS src/__tests__/integration/dashboardSave.test.js
+PASS src/__tests__/unit/aiCoachCapabilities.test.js
 PASS src/__tests__/unit/dateAndRollover.test.js
+PASS src/__tests__/unit/authGate.test.js
+PASS src/__tests__/unit/workoutPlanParsing.test.js
 PASS src/__tests__/unit/calculations.test.js
   ● Console
 
     console.log
       Calculating BMR for: { weight: 80, height: 180, age: 30, gender: 'male' }
 
-      at log (src/shared/fitness/calculations.js:16:13)
+      at log (src/shared/fitness-calculations/calculations.js:16:13)
 
     console.log
       BMR calculated: 1780
 
-      at log (src/shared/fitness/calculations.js:25:13)
+      at log (src/shared/fitness-calculations/calculations.js:25:13)
 
     console.log
       Calculating BMR for: { weight: 60, height: 165, age: 25, gender: 'female' }
 
-      at log (src/shared/fitness/calculations.js:16:13)
+      at log (src/shared/fitness-calculations/calculations.js:16:13)
 
     console.log
       BMR calculated: 1345.25
 
-      at log (src/shared/fitness/calculations.js:25:13)
+      at log (src/shared/fitness-calculations/calculations.js:25:13)
 
     console.log
       Calculating BMR for: { weight: 80, height: 180, age: 30, gender: 'male' }
 
-      at log (src/shared/fitness/calculations.js:16:13)
+      at log (src/shared/fitness-calculations/calculations.js:16:13)
 
     console.log
       BMR calculated: 1780
 
-      at log (src/shared/fitness/calculations.js:25:13)
+      at log (src/shared/fitness-calculations/calculations.js:25:13)
 
     console.log
       Calculating BMR for: { weight: 80, height: 180, age: 30, gender: 'male' }
 
-      at log (src/shared/fitness/calculations.js:16:13)
+      at log (src/shared/fitness-calculations/calculations.js:16:13)
 
     console.log
       BMR calculated: 1780
 
-      at log (src/shared/fitness/calculations.js:25:13)
+      at log (src/shared/fitness-calculations/calculations.js:25:13)
 
     console.log
       Calculating BMR for: { weight: 80, height: 180, age: 30, gender: 'male' }
 
-      at log (src/shared/fitness/calculations.js:16:13)
+      at log (src/shared/fitness-calculations/calculations.js:16:13)
 
     console.log
       BMR calculated: 1780
 
-      at log (src/shared/fitness/calculations.js:25:13)
+      at log (src/shared/fitness-calculations/calculations.js:25:13)
 
     console.log
       Calculating TDEE with activity level: sedentary
 
-      at log (src/shared/fitness/calculations.js:36:13)
+      at log (src/shared/fitness-calculations/calculations.js:36:13)
 
     console.log
       TDEE calculated: 2136
 
-      at log (src/shared/fitness/calculations.js:49:13)
+      at log (src/shared/fitness-calculations/calculations.js:49:13)
 
     console.log
       Calculating TDEE with activity level: moderate
 
-      at log (src/shared/fitness/calculations.js:36:13)
+      at log (src/shared/fitness-calculations/calculations.js:36:13)
 
     console.log
       TDEE calculated: 2759
 
-      at log (src/shared/fitness/calculations.js:49:13)
+      at log (src/shared/fitness-calculations/calculations.js:49:13)
 
     console.log
       Calculating TDEE with activity level: very_active
 
-      at log (src/shared/fitness/calculations.js:36:13)
+      at log (src/shared/fitness-calculations/calculations.js:36:13)
 
     console.log
       TDEE calculated: 3382
 
-      at log (src/shared/fitness/calculations.js:49:13)
+      at log (src/shared/fitness-calculations/calculations.js:49:13)
 
     console.log
       Calculating TDEE with activity level: unknown
 
-      at log (src/shared/fitness/calculations.js:36:13)
+      at log (src/shared/fitness-calculations/calculations.js:36:13)
 
     console.log
       TDEE calculated: 2136
 
-      at log (src/shared/fitness/calculations.js:49:13)
+      at log (src/shared/fitness-calculations/calculations.js:49:13)
 
     console.log
       Calculating BMI for: { weight: 80, height: 180 }
 
-      at log (src/shared/fitness/calculations.js:114:13)
+      at log (src/shared/fitness-calculations/calculations.js:114:13)
 
     console.log
       BMI calculated: 24.691358024691358
 
-      at log (src/shared/fitness/calculations.js:119:13)
+      at log (src/shared/fitness-calculations/calculations.js:119:13)
 
     console.log
       Calculating macros for calories: 2000 goal: weight_loss
 
-      at log (src/shared/fitness/calculations.js:60:13)
+      at log (src/shared/fitness-calculations/calculations.js:60:13)
 
     console.log
       Macros calculated: { protein: 176, carbs: 198, fat: 56 }
 
-      at log (src/shared/fitness/calculations.js:79:13)
+      at log (src/shared/fitness-calculations/calculations.js:79:13)
 
     console.log
       Calculating macros for calories: 2500 goal: muscle_gain
 
-      at log (src/shared/fitness/calculations.js:60:13)
+      at log (src/shared/fitness-calculations/calculations.js:60:13)
 
     console.log
       Macros calculated: { protein: 200, carbs: 270, fat: 69 }
 
-      at log (src/shared/fitness/calculations.js:79:13)
+      at log (src/shared/fitness-calculations/calculations.js:79:13)
 
     console.log
       Calculating macros for calories: 2500 goal: maintenance
 
-      at log (src/shared/fitness/calculations.js:60:13)
+      at log (src/shared/fitness-calculations/calculations.js:60:13)
 
     console.log
       Macros calculated: { protein: 160, carbs: 310, fat: 69 }
 
-      at log (src/shared/fitness/calculations.js:79:13)
+      at log (src/shared/fitness-calculations/calculations.js:79:13)
 
     console.log
       Calculating macros for calories: 2000 goal: maintenance
 
-      at log (src/shared/fitness/calculations.js:60:13)
+      at log (src/shared/fitness-calculations/calculations.js:60:13)
 
     console.log
       Macros calculated: { protein: 140, carbs: 234, fat: 56 }
 
-      at log (src/shared/fitness/calculations.js:79:13)
+      at log (src/shared/fitness-calculations/calculations.js:79:13)
 
     console.log
       Estimating body fat for: { gender: null, age: 30, bmi: 24 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 19.499999999999996
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
     console.log
       Estimating body fat for: { gender: null, age: 30, bmi: 24 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 19.499999999999996
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
     console.log
       Estimating body fat for: { gender: 'male', age: 30, bmi: 1 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 3
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
     console.log
       Estimating body fat for: { gender: 'female', age: 80, bmi: 60 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 50
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
     console.log
       Estimating body fat for: { gender: 'male', age: 30, bmi: 24 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 19.499999999999996
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
     console.log
       Estimating body fat for: { gender: 'female', age: 30, bmi: 24 }
 
-      at log (src/shared/fitness/calculations.js:90:13)
+      at log (src/shared/fitness-calculations/calculations.js:90:13)
 
     console.log
       Body fat estimated: 30.299999999999997
 
-      at log (src/shared/fitness/calculations.js:102:13)
+      at log (src/shared/fitness-calculations/calculations.js:102:13)
 
-PASS src/__tests__/unit/coachWebSourceCards.test.js
-PASS src/__tests__/unit/coachToolProposalGuards.test.js
-PASS src/__tests__/unit/authGate.test.js
 PASS src/__tests__/unit/baseUrl.test.js
-PASS src/__tests__/unit/parseCoachToolCalls.test.js
-PASS src/__tests__/unit/workoutPlanParsing.test.js
-PASS src/__tests__/unit/foodNormalizeBarcode.test.js
-PASS src/__tests__/integration/aiCoachFlow.test.js
-PASS src/__tests__/unit/foodNormalize.test.js
 PASS src/__tests__/unit/coachCategoryPrompts.test.js
 PASS src/__tests__/unit/notesAndFiles.test.js
-PASS src/__tests__/integration/dashboardSave.test.js
-PASS src/__tests__/unit/marketplaceFilters.test.js
-PASS src/__tests__/integration/foodSearchLog.test.js
+PASS src/__tests__/unit/coachToolProposalGuards.test.js
 PASS src/__tests__/unit/saveCoachMessagesFirestore.test.js
-PASS src/__tests__/unit/dailyMetrics.test.js
-PASS src/__tests__/unit/coachPersonalDataRouting.test.js
-PASS src/__tests__/unit/bookSessionParse.test.js
-PASS src/__tests__/integration/clientHomeBootstrap.test.js
-PASS src/__tests__/unit/supportConfig.test.js
 PASS src/__tests__/unit/trainerClientDisplayName.test.js
+PASS src/__tests__/unit/dailyMetrics.test.js
 PASS src/__tests__/unit/coachSourcePreview.test.js
+PASS src/__tests__/integration/aiCoachFlow.test.js
+PASS src/__tests__/unit/parseCoachToolCalls.test.js
+PASS src/__tests__/unit/onboardingGate.test.js
+PASS src/__tests__/unit/coachWebSourceCards.test.js
+PASS src/__tests__/unit/marketplaceFilters.test.js
 PASS src/__tests__/unit/workoutDayLabels.test.js
+PASS src/__tests__/unit/dailyMetricsParse.test.js
 PASS src/__tests__/unit/servingMath.test.js
+PASS src/__tests__/unit/coachPersonalDataRouting.test.js
+PASS src/__tests__/unit/supportConfig.test.js
+PASS src/__tests__/integration/foodSearchLog.test.js
+PASS src/__tests__/unit/foodNormalizeBarcode.test.js
+PASS src/__tests__/integration/clientHomeBootstrap.test.js
+PASS src/__tests__/unit/foodNormalize.test.js
+PASS src/__tests__/unit/bookSessionParse.test.js
 
-Test Suites: 27 passed, 27 total
-Tests:       140 passed, 140 total
+Test Suites: 29 passed, 29 total
+Tests:       1 skipped, 203 passed, 204 total
 Snapshots:   0 total
-Time:        0.942 s, estimated 1 s
+Time:        2.237 s, estimated 3 s
 Ran all test suites.

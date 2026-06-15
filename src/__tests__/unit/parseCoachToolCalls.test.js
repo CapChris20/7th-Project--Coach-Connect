@@ -1,9 +1,9 @@
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply,
-} = require('../../shared/parseCoachToolCalls.js');
+} = require('../../shared/coach-tools/parseCoachToolCalls');
 
-const { normalizeToolParams } = require('../../ai/tools/cleanupToolParams.js');
+const { normalizeToolParams } = require('../../ai/tools/cleanupToolParams');
 
 describe('parseCoachToolCalls', () => {
   it('parses valid JSON at end of reply', () => {

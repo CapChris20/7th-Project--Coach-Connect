@@ -11,7 +11,7 @@
 import { useMemo } from 'react';
 import { useTheme } from '../../../shared/ui/ThemeContext';
 
-import { colors as lovableColors } from '../../../theme/colors';
+import { colors as lovableColors } from '../../../shared/ui/lovableColors';
 
 export const ACCENT = lovableColors.primary;
 export const PURPLE = lovableColors.secondary;

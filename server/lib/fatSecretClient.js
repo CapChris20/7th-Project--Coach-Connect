@@ -1,8 +1,10 @@
 /**
- * FatSecret Platform API — barcode + branded food lookup.
- * Requires FATSECRET_CLIENT_ID and FATSECRET_CLIENT_SECRET in env (Cloud Run only).
+ * FatSecret Platform API — barcode + text search + branded food lookup.
+ * Env: FATSECRET_CLIENT_ID + FATSECRET_CLIENT_SECRET (OAuth 2.0 or OAuth 1.0 Consumer Key/Secret)
  */
 const axios = require('axios');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { fatSecretOAuth1Get } = require('./fatSecretOAuth1');
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -82,6 +84,103 @@ function normalizeFatSecretFood(food, barcode) {
   };
 }
 
+function trimEnv(name) {
+  const v = process.env[name];
+  return v ? String(v).trim().replace(/^["']|["']$/g, '') : '';
+}
+
+function getFatSecretCredentials() {
+  const key =
+    trimEnv('FATSECRET_CLIENT_ID')
+    || trimEnv('FATSECRET_CONSUMER_KEY');
+  const secret =
+    trimEnv('FATSECRET_CLIENT_SECRET')
+    || trimEnv('FATSECRET_CONSUMER_SECRET');
+  return { key, secret };
+}
+
+function fatSecretConfigured() {
+  const { key, secret } = getFatSecretCredentials();
+  return !!(key && secret);
+}
+
+function parseFatSecretFoodDescription(desc) {
+  const t = String(desc || '');
+  const perMatch = t.match(/Per\s+(.+?)\s*[-–|]/i);
+  return {
+    calories: parseFatSecretNumber(t.match(/Calories:\s*(\d+(?:\.\d+)?)/i)?.[1]),
+    fat: parseFatSecretNumber(t.match(/Fat:\s*(\d+(?:\.\d+)?)\s*g/i)?.[1]),
+    carbs: parseFatSecretNumber(t.match(/Carb(?:ohydrate)?s?:\s*(\d+(?:\.\d+)?)\s*g/i)?.[1]),
+    protein: parseFatSecretNumber(t.match(/Protein:\s*(\d+(?:\.\d+)?)\s*g/i)?.[1]),
+    servingLabel: perMatch?.[1]?.trim() || null,
+  };
+}
+
+function mapFatSecretSearchHitToRow(food) {
+  if (!food?.food_name) return null;
+  const parsed = parseFatSecretFoodDescription(food.food_description);
+  if (parsed.calories <= 0 && !parsed.protein && !parsed.carbs && !parsed.fat) return null;
+
+  const name = String(food.food_name).trim();
+  const brand = food.brand_name
+    ? resolveFoodBrandLabel(name, food.brand_name)
+    : null;
+  const servingLabel = parsed.servingLabel || 'serving';
+  const servingGrams = /100\s*g/i.test(servingLabel) ? 100 : null;
+
+  return {
+    id: `fs_${food.food_id}`,
+    food_name: name,
+    name,
+    brand_name: brand,
+    brand,
+    nf_calories: parsed.calories,
+    nf_protein: parsed.protein,
+    nf_total_carbohydrate: parsed.carbs,
+    nf_total_fat: parsed.fat,
+    calories: parsed.calories,
+    protein: parsed.protein,
+    carbs: parsed.carbs,
+    fat: parsed.fat,
+    serving_qty: 1,
+    serving_unit: servingLabel,
+    serving_label: servingLabel,
+    servingGrams,
+    source: 'fatsecret',
+    fatsecretFoodId: String(food.food_id),
+    food_type: food.food_type || null,
+  };
+}
+
+/** Text search — OAuth 1.0 foods.search (branded grocery + US restaurant menus). */
+async function searchFoodsFatSecret(query, limit = 20) {
+  if (!fatSecretConfigured()) return [];
+
+  const { key, secret } = getFatSecretCredentials();
+  const q = String(query || '').trim();
+  if (!q) return [];
+
+  try {
+    const data = await fatSecretOAuth1Get(
+      {
+        method: 'foods.search',
+        search_expression: q,
+        format: 'json',
+        max_results: Math.min(Math.max(limit, 1), 50),
+        page_number: 0,
+      },
+      key,
+      secret,
+    );
+    const raw = data?.foods?.food;
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map(mapFatSecretSearchHitToRow).filter(Boolean);
+  } catch (e) {
+    console.warn('[FatSecret] foods.search failed:', e.message);
+    return [];
+  }
+}
+
 async function lookupBarcodeFatSecret(barcode) {
   const token = await getAccessToken();
   if (!token || !String(barcode || '').trim()) return null;
@@ -123,6 +222,10 @@ async function lookupBarcodeFatSecret(barcode) {
 
 module.exports = {
   getAccessToken,
+  getFatSecretCredentials,
+  fatSecretConfigured,
+  searchFoodsFatSecret,
+  mapFatSecretSearchHitToRow,
   lookupBarcodeFatSecret,
   normalizeFatSecretFood,
 };

@@ -151,6 +151,139 @@ function mergePromptPool(base, contextual) {
   return out;
 }
 
+function goalLabel(userData) {
+  const raw =
+    userData?.primaryGoal ||
+    userData?.goal ||
+    (Array.isArray(userData?.goals) ? userData.goals[0] : '') ||
+    '';
+  return String(raw).replace(/_/g, ' ').trim();
+}
+
+function isTrainer(userData) {
+  return String(userData?.role || '').toLowerCase() === 'trainer';
+}
+
+function buildRichCoachContext({ userData, sessions, dailyMetrics, nutritionToday } = {}) {
+  const goal = goalLabel(userData);
+  const fitnessLevel = userData?.fitnessLevel || userData?.trainingLevel;
+  const daysPerWeek = userData?.daysPerWeek;
+  const calorieTarget = Number(userData?.calorieTarget || userData?.dailyCalories || userData?.targetCalories);
+  const proteinTarget = Number(userData?.proteinTarget || userData?.targetProtein);
+  const topics = [];
+
+  for (const s of (sessions || []).slice(0, 12)) {
+    const blob = `${s.lastUserMessage || ''} ${s.title || ''}`.toLowerCase();
+    if (/protein|macro|meal|eat|calorie|food/.test(blob)) topics.push('nutrition');
+    if (/sleep|recover|rest|sore/.test(blob)) topics.push('recovery');
+    if (/squat|bench|deadlift|workout|lift|train/.test(blob)) topics.push('training');
+    if (/injur|pain|knee|shoulder/.test(blob)) topics.push('injury');
+  }
+
+  return {
+    goal,
+    fitnessLevel,
+    daysPerWeek,
+    calorieTarget: Number.isFinite(calorieTarget) ? calorieTarget : null,
+    proteinTarget: Number.isFinite(proteinTarget) ? proteinTarget : null,
+    equipment: userData?.equipment || userData?.availableEquipment,
+    injuries: userData?.injuries || userData?.injuryNotes,
+    dailyMetrics: dailyMetrics || null,
+    nutritionToday: nutritionToday || null,
+    topics: [...new Set(topics)],
+    trainer: isTrainer(userData),
+  };
+}
+
+function buildPersonalizedPromptPool(ctx) {
+  const out = [];
+  const { goal, fitnessLevel, daysPerWeek, calorieTarget, proteinTarget, dailyMetrics, nutritionToday, topics, trainer } =
+    ctx;
+
+  if (trainer) {
+    out.push('Which clients should I check in on today based on their recent logs?');
+    out.push('Help me spot clients who have not logged food or workouts this week.');
+  }
+
+  if (goal) {
+    out.push(`My goal is ${goal} — help me set calories, protein, and a training split that fits.`);
+    out.push(`Given my ${goal} goal, what should I prioritize this week?`);
+  }
+
+  if (fitnessLevel) {
+    out.push(`I'm at a ${fitnessLevel} level — adjust my training volume for this week.`);
+  }
+
+  if (daysPerWeek) {
+    out.push(`I can train ${daysPerWeek} days a week — build me a realistic plan.`);
+  }
+
+  if (ctx.equipment) {
+    out.push(`With my equipment (${ctx.equipment}), what workout should I run next?`);
+  }
+
+  if (ctx.injuries) {
+    out.push(`I have ${ctx.injuries} — what exercises should I avoid or modify?`);
+  }
+
+  const sleepHours = Number(dailyMetrics?.sleepHours);
+  if (Number.isFinite(sleepHours) && sleepHours > 0 && sleepHours < 6.5) {
+    out.push(`I only logged ${sleepHours} hours of sleep — how should I adjust training today?`);
+  } else if (!sleepHours && goal) {
+    out.push(`Help me improve sleep so my ${goal} progress does not stall.`);
+  }
+
+  const water = Number(dailyMetrics?.waterIntake);
+  if (Number.isFinite(water) && water > 0 && water < 48) {
+    out.push(`I'm only at ${water}oz water today — help me catch up without overdoing it.`);
+  } else if (!water) {
+    out.push('I have not logged water today — what should I aim for based on my goals?');
+  }
+
+  const cals = Number(nutritionToday?.calories);
+  const protein = Number(nutritionToday?.protein);
+  if (Number.isFinite(cals) && Number.isFinite(calorieTarget) && calorieTarget > 0) {
+    const remaining = Math.round(calorieTarget - cals);
+    out.push(
+      remaining > 0
+        ? `I've eaten ${Math.round(cals)} cal today — help me use my remaining ${remaining} cal wisely.`
+        : `I'm at ${Math.round(cals)} cal today — am I still on track for ${goal || 'my goal'}?`,
+    );
+  } else if (Number.isFinite(calorieTarget) && calorieTarget > 0) {
+    out.push(`I have not logged food today — help me plan meals toward my ${calorieTarget} cal target.`);
+  }
+
+  if (Number.isFinite(protein) && Number.isFinite(proteinTarget) && proteinTarget > 0 && protein < proteinTarget * 0.6) {
+    out.push(`I'm only at ${Math.round(protein)}g protein — help me close the gap to ${proteinTarget}g.`);
+  }
+
+  if (dailyMetrics?.todayWorkout?.name) {
+    out.push(`Review my ${dailyMetrics.todayWorkout.name} workout and suggest what to do tomorrow.`);
+  } else if (topics.includes('training')) {
+    out.push('Based on our recent training chats, what should I focus on in my next session?');
+  }
+
+  if (topics.includes('nutrition')) {
+    out.push('Based on what I have been eating lately, what is the one nutrition tweak to make?');
+  }
+
+  if (topics.includes('recovery')) {
+    out.push('Based on my recent recovery and sleep, should I push hard or deload this week?');
+  }
+
+  return [...new Set(out.filter(Boolean))];
+}
+
+function rotatePool(pool, hourSlot, daySeed, limit = 8) {
+  const list = [...new Set((pool || []).filter(Boolean))];
+  if (!list.length) return [];
+  const rotated = [];
+  for (let i = 0; i < list.length; i += 1) {
+    rotated.push(list[(hourSlot + daySeed + i) % list.length]);
+  }
+  return rotated.slice(0, limit);
+}
+
 function buildContextualTrainPrompts(ctx) {
   const out = [];
   if (ctx.topics?.includes('hypertrophy')) out.push('How should I adjust volume if hypertrophy is my main goal?');
@@ -208,31 +341,30 @@ export function pickCategoryPrompt(categoryId, { userData, sessions, now = Date.
   return pickFromPool(pool, hourSlot + offset, categoryId);
 }
 
-export function buildHourlySpotlightSuggestions({ userData, sessions, now = Date.now() } = {}) {
+export function buildHourlySpotlightSuggestions({
+  userData,
+  sessions,
+  dailyMetrics,
+  nutritionToday,
+  now = Date.now(),
+} = {}) {
   const hourSlot = getCoachHourSlot(now);
   const daySeed = getDaySeed(now);
-  const categories = ['train', 'fuel', 'recover', 'web'];
-  const picks = categories.map((cat, i) => {
-    const offset = CATEGORY_OFFSET[cat] || 0;
-    const idx = (hourSlot + offset + daySeed + i) % 100;
-    const pool = mergePromptPool(
-      cat === 'train' ? TRAIN_PROMPTS : cat === 'fuel' ? FUEL_PROMPTS : cat === 'recover' ? RECOVER_PROMPTS : WEB_PROMPTS,
-      [],
-    );
-    return pool[idx % pool.length];
-  });
-  const contextual = [
+  const ctx = buildRichCoachContext({ userData, sessions, dailyMetrics, nutritionToday });
+  const personalized = buildPersonalizedPromptPool(ctx);
+
+  if (personalized.length >= 4) {
+    return rotatePool(personalized, hourSlot, daySeed, 8);
+  }
+
+  const fallback = [
+    ...personalized,
     pickCategoryPrompt('train', { userData, sessions, now }),
     pickCategoryPrompt('fuel', { userData, sessions, now }),
     pickCategoryPrompt('recover', { userData, sessions, now }),
     pickCategoryPrompt('web', { userData, sessions, now }),
   ];
-  const merged = mergePromptPool(picks, contextual);
-  const rotated = [];
-  for (let i = 0; i < merged.length; i += 1) {
-    rotated.push(merged[(hourSlot + daySeed + i) % merged.length]);
-  }
-  return [...new Set(rotated)].slice(0, 8);
+  return rotatePool(fallback, hourSlot, daySeed, 8);
 }
 
 export function buildHourlyCanHelpWith({ now = Date.now() } = {}) {

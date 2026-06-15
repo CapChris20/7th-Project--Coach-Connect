@@ -1,0 +1,35 @@
+# Cursor chat exports — May 31 to June 14 (before 1 AM)
+
+**13 conversations** exported to this folder. Open `index.html` in a browser for a clickable table.
+
+| Date | Chat | Your msgs | File |
+|------|------|-----------|------|
+| 2026-06-01 01:43:21 | I need a full audit of every service, API, and infrastructure cost in this codebase. Do... | 180 | [2026-06-01__a2116213__i-need-a-full-audit-of-every-service-api.md](./2026-06-01__a2116213__i-need-a-full-audit-of-every-service-api.md) |
+| 2026-06-01 02:38:21 | [screenshots attached] can u had a black or white border for thid card based theme toggle | 2 | [2026-06-01__81d5e120__screenshots-attached-can-u-had-a-black-o.md](./2026-06-01__81d5e120__screenshots-attached-can-u-had-a-black-o.md) |
+| 2026-06-02 05:50:49 | Can you go on the web and check if I see a system on our app that matches exactly what ... | 5 | [2026-06-02__bb3d5a73__can-you-go-on-the-web-and-check-if-i-see.md](./2026-06-02__bb3d5a73__can-you-go-on-the-web-and-check-if-i-see.md) |
+| 2026-06-07 18:27:09 | Okay, I wanna test out the spreadsheet editor. Can you give me something to make a spre... | 134 | [2026-06-07__43d4e4ad__okay-i-wanna-test-out-the-spreadsheet-ed.md](./2026-06-07__43d4e4ad__okay-i-wanna-test-out-the-spreadsheet-ed.md) |
+| 2026-06-08 01:41:21 | @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfoli... | 10 | [2026-06-08__22de0722__users-captainchris20-cursor-projects-use.md](./2026-06-08__22de0722__users-captainchris20-cursor-projects-use.md) |
+| 2026-06-08 02:52:38 | [screenshots attached] Okay, another thing I'm dealing with: why, when I put 5 out of 8... | 1 | [2026-06-08__2ec46bca__screenshots-attached-okay-another-thing-.md](./2026-06-08__2ec46bca__screenshots-attached-okay-another-thing-.md) |
+| 2026-06-08 04:38:58 | Hey Cursor, let me ask you this too: For the settings pages that require you to send a ... | 5 | [2026-06-08__9405e11c__hey-cursor-let-me-ask-you-this-too-for-t.md](./2026-06-08__9405e11c__hey-cursor-let-me-ask-you-this-too-for-t.md) |
+| 2026-06-11 04:10:59 | [screenshots attached] ok so i want to be able to see all the nutrition fact for food o... | 194 | [2026-06-11__8047eeaa__screenshots-attached-ok-so-i-want-to-be-.md](./2026-06-11__8047eeaa__screenshots-attached-ok-so-i-want-to-be-.md) |
+| 2026-06-12 03:51:59 | Analyze the CoachConnect codebase for code quality issues WITHOUT making changes. Focus... | 15 | [2026-06-12__842532aa__analyze-the-coachconnect-codebase-for-co.md](./2026-06-12__842532aa__analyze-the-coachconnect-codebase-for-co.md) |
+| 2026-06-12 03:59:57 | @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfoli... | 1 | [2026-06-12__2a168f9b__users-captainchris20-cursor-projects-use.md](./2026-06-12__2a168f9b__users-captainchris20-cursor-projects-use.md) |
+| 2026-06-12 07:47:10 | Write Jest unit tests for the coach tool proposal guards. File to create: src/__tests__... | 22 | [2026-06-12__d427da4a__write-jest-unit-tests-for-the-coach-tool.md](./2026-06-12__d427da4a__write-jest-unit-tests-for-the-coach-tool.md) |
+| 2026-06-14 04:23:25 | Audit the CoachConnect codebase for untested features and functionality. Do not write a... | 71 | [2026-06-14__c2bb292e__audit-the-coachconnect-codebase-for-unte.md](./2026-06-14__c2bb292e__audit-the-coachconnect-codebase-for-unte.md) |
+| 2026-06-14 04:25:35 | Set up k6 load tests for the CoachConnect server. Read the server routes completely bef... | 15 | [2026-06-14__a560aff3__set-up-k6-load-tests-for-the-coachconnec.md](./2026-06-14__a560aff3__set-up-k6-load-tests-for-the-coachconnec.md) |
+
+## Raw transcript paths
+
+- `a2116213-660f-473b-8fb4-c4df99a1c468` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a2116213-660f-473b-8fb4-c4df99a1c468/a2116213-660f-473b-8fb4-c4df99a1c468.jsonl`
+- `81d5e120-5135-4149-9dda-ebbd83abeedb` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/81d5e120-5135-4149-9dda-ebbd83abeedb/81d5e120-5135-4149-9dda-ebbd83abeedb.jsonl`
+- `bb3d5a73-d88d-46cf-8a31-7188bcafa0b3` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/bb3d5a73-d88d-46cf-8a31-7188bcafa0b3/bb3d5a73-d88d-46cf-8a31-7188bcafa0b3.jsonl`
+- `43d4e4ad-5153-4c58-8820-4f5b0fe99d34` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/43d4e4ad-5153-4c58-8820-4f5b0fe99d34/43d4e4ad-5153-4c58-8820-4f5b0fe99d34.jsonl`
+- `22de0722-96e2-4524-80eb-7a0fe3ebbe27` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/22de0722-96e2-4524-80eb-7a0fe3ebbe27/22de0722-96e2-4524-80eb-7a0fe3ebbe27.jsonl`
+- `2ec46bca-f736-4b8a-9528-5081f5559c21` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/2ec46bca-f736-4b8a-9528-5081f5559c21/2ec46bca-f736-4b8a-9528-5081f5559c21.jsonl`
+- `9405e11c-511e-4946-aa21-46b28b8bb7ed` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/9405e11c-511e-4946-aa21-46b28b8bb7ed/9405e11c-511e-4946-aa21-46b28b8bb7ed.jsonl`
+- `8047eeaa-aefd-44f5-a51a-18e895120b9c` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/8047eeaa-aefd-44f5-a51a-18e895120b9c/8047eeaa-aefd-44f5-a51a-18e895120b9c.jsonl`
+- `842532aa-1255-463a-9642-330973281de7` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/842532aa-1255-463a-9642-330973281de7/842532aa-1255-463a-9642-330973281de7.jsonl`
+- `2a168f9b-b583-4584-ad67-a3fdfca8bec7` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/2a168f9b-b583-4584-ad67-a3fdfca8bec7/2a168f9b-b583-4584-ad67-a3fdfca8bec7.jsonl`
+- `d427da4a-27c8-4c2f-9c22-bd7495ad4c4b` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b.jsonl`
+- `c2bb292e-64d7-4a0e-98a5-67ccff9e3269` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/c2bb292e-64d7-4a0e-98a5-67ccff9e3269/c2bb292e-64d7-4a0e-98a5-67ccff9e3269.jsonl`
+- `a560aff3-4487-498f-9334-4f19c84b6fc0` → `/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a560aff3-4487-498f-9334-4f19c84b6fc0/a560aff3-4487-498f-9334-4f19c84b6fc0.jsonl`

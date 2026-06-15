@@ -107,7 +107,7 @@ function safeJsonParse(s) {
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply: stripToolJsonFromReply,
-} = require('../src/shared/parseCoachToolCalls');
+} = require('../src/shared/coach-tools/parseCoachToolCalls');
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();

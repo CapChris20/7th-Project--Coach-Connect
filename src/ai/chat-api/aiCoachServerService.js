@@ -13,17 +13,22 @@
  * Do NOT put DEEPSEEK_API_KEY in the React Native bundle; keys stay in server .env / Cloud Run.
  */
 import { auth } from '../../app/config';
-import { getAICoachApiBases } from '../../shared/services/baseUrl';
+import { getAICoachApiBases } from '../../shared/api/baseUrl';
 import { buildContextSystemBlock } from '../context/CoachContextProvider';
 import { normalizeToolCall } from '../tools/executeCoachTool';
 import {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply,
-} from '../../shared/parseCoachToolCalls';
+} from '../../shared/coach-tools/parseCoachToolCalls';
 import { shouldIncludeWeeklyContextInCoachPrompt } from '../context/gatherCoachContextFromUser';
 import { prepareCoachAttachmentsForApi } from '../../aiChat/lib/prepareCoachAttachments';
+import {
+  messagesRequestWebSearch,
+  shouldInvokeWebSearch,
+} from './detectWebSearchRequest';
 
 const TIMEOUT_MS = 20000;
+const TIMEOUT_MS_WEB = 45000;
 const TIMEOUT_MS_VISION = 50000;
 
 /** Clear today's AI Coach usage counter (dev / test suite). */
@@ -190,10 +195,25 @@ export async function sendCoachMessage({
         : {}),
     };
 
-    const history = (messages || []).map((m) => ({
-      role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user',
-      content: typeof m.text === 'string' ? m.text : m.content || '',
-    }));
+    const history = (messages || [])
+      .map((m) => {
+        const role = m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user';
+        const content = typeof m.text === 'string' ? m.text : m.content || '';
+        const out = { role, content };
+        if (role === 'assistant' && Array.isArray(m.webSources) && m.webSources.length > 0) {
+          out.webSources = m.webSources
+            .filter((s) => s && (s.url || s.title))
+            .slice(0, 12)
+            .map((s) => ({
+              title: String(s.title || '').trim(),
+              url: String(s.url || s.link || '').trim(),
+              snippet: String(s.snippet || '').trim(),
+            }));
+        }
+        if (role === 'assistant' && m.searchedWeb === true) out.searchedWeb = true;
+        return out;
+      })
+      .filter((m) => m.content?.trim());
 
     const trimmedMessage = String(userMessage || '').trim();
     const imageAttachments = await prepareCoachAttachmentsForApi(attachments);
@@ -215,23 +235,41 @@ export async function sendCoachMessage({
       trimmedMessage ||
       (hasImages ? 'Please analyze the attached photo(s) and give coaching feedback.' : '');
 
+    const historyForApi = [...history.filter((m) => m.content?.trim())];
+    const lastHist = historyForApi[historyForApi.length - 1];
+    if (
+      !lastHist ||
+      lastHist.role !== 'user' ||
+      String(lastHist.content || '').trim() !== String(effectiveMessage || '').trim()
+    ) {
+      historyForApi.push({ role: 'user', content: effectiveMessage });
+    }
+
+    const wantsWeb =
+      !hasImages &&
+      (web === 'on' ||
+        shouldInvokeWebSearch(trimmedMessage || effectiveMessage, web, historyForApi) ||
+        messagesRequestWebSearch(historyForApi, trimmedMessage || effectiveMessage));
+
     const data = await postAICoach(
       {
         userId,
         userProfile: enrichedProfile,
         options: {
-          web: hasImages ? 'off' : web,
+          web: hasImages ? 'off' : wantsWeb ? 'on' : web,
           clientContext: coachContext,
           testSuite: __DEV__,
-          includePersonalData: shouldIncludeWeeklyContextInCoachPrompt(trimmedMessage || effectiveMessage),
+          includePersonalData: wantsWeb
+            ? false
+            : shouldIncludeWeeklyContextInCoachPrompt(trimmedMessage || effectiveMessage),
         },
         attachments: hasImages ? imageAttachments : undefined,
-        messages: [
-          ...history.filter((m) => m.content?.trim()),
-          { role: 'user', content: effectiveMessage },
-        ],
+        messages: historyForApi,
       },
-      { testSuite: __DEV__, timeoutMs: hasImages ? TIMEOUT_MS_VISION : TIMEOUT_MS },
+      {
+        testSuite: __DEV__,
+        timeoutMs: hasImages ? TIMEOUT_MS_VISION : wantsWeb ? TIMEOUT_MS_WEB : TIMEOUT_MS,
+      },
     );
 
     const replyRaw = (data && data.reply) || '';
@@ -254,6 +292,7 @@ export async function sendCoachMessage({
       searchedWeb: data.searchedWeb === true,
       webProvider: data.webProvider || null,
       route: data.route || null,
+      webSources: Array.isArray(data.webSources) ? data.webSources : [],
     };
   } catch (error) {
     let errMsg = 'Unknown error';

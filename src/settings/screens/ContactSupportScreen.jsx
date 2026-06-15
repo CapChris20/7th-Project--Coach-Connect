@@ -9,13 +9,14 @@
  * @file-header
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Linking, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
-import { getApiBase } from '../../shared/services/baseUrl';
+import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto';
+import { getApiBase } from '../../shared/api/baseUrl';
 import { getAuth } from 'firebase/auth';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,13 +55,7 @@ function GradientCard({ borderColors, style, innerStyle, children }) {
 }
 
 function openSupportMail() {
-  const email = getSupportEmail();
-  if (!email) {
-    Alert.alert('Support', 'Support email is not available right now. Try again later or use Help & FAQ in Settings.');
-    return;
-  }
-  const subject = 'Coach Connect support';
-  Linking.openURL(`mailto:${email}?subject=${encodeURIComponent(subject)}`);
+  openSupportMailto({ subject: 'Coach Connect support' });
 }
 
 export default function ContactSupportScreen({ onClose }) {
@@ -136,7 +131,11 @@ export default function ContactSupportScreen({ onClose }) {
       setMessage('');
       Alert.alert('Sent', 'Thanks — we received your message.');
     } catch (e) {
-      Alert.alert('Couldn’t send', e?.message || 'Please try again.');
+      offerSupportMailtoFallback({
+        subject: s,
+        body: m,
+        apiError: e?.message || 'Please try again.',
+      });
     } finally {
       setSubmitting(false);
     }

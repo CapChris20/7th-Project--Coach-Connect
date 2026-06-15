@@ -14,7 +14,7 @@ const {
   INFORMATIONAL_QUESTIONS,
   EXPLICIT_LOG_REQUESTS,
   AMBIGUOUS_STATEMENTS,
-} = require('../fixtures/coachToolGuardFixtures.js');
+} = require('../fixtures/coachToolGuardFixtures');
 
 /** Likely false-positive tool proposal paired with each fixture string. */
 const INFORMATIONAL_TOOL_BY_TEXT = {
@@ -69,14 +69,7 @@ function runSharedGuardTests(getGuards) {
   describe('ambiguous statements reject tool proposals', () => {
     it.each(AMBIGUOUS_STATEMENTS)('%s', (userText) => {
       const toolCall = AMBIGUOUS_TOOL_BY_TEXT[userText];
-      const result = isValidCoachToolProposal(toolCall, userText);
-      if (userText === 'I had eggs this morning' && result === true) {
-        // BUG: guard returns true because "I had" matches explicit food-log phrasing;
-        // should be false without an explicit log/track/add/record intent.
-        expect(result).toBe(true);
-        return;
-      }
-      expect(result).toBe(false);
+      expect(isValidCoachToolProposal(toolCall, userText)).toBe(false);
     });
   });
 
@@ -104,7 +97,7 @@ function runSharedGuardTests(getGuards) {
 }
 
 describe('Client coachToolProposalGuards', () => {
-  runSharedGuardTests(() => require('../../ai/tools/validateCoachToolProposal.js'));
+  runSharedGuardTests(() => require('../../ai/tools/validateCoachToolProposal'));
 });
 
 describe('Server coachToolProposalGuards', () => {

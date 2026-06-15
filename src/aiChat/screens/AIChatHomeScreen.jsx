@@ -2,7 +2,7 @@
  * AIChatHomeScreen.jsx — React Native
  * Converted from Lovable export (lovable-export-d5e2ed71)
  *
- * Place at: src/aiChat/screens/AIChatHomeScreen.jsx
+ * Place at: src/aiChat/chat-home/AIChatHomeScreen.jsx
  * Replaces: VoiceAIHomeScreen.jsx
  */
 
@@ -38,16 +38,25 @@ import {
 import { collection, doc, deleteDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../app/config';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
-import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
+import { useCoachComposerKeyboard } from '../chat-thread/useCoachComposerKeyboard';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 import {
   buildHourlyCanHelpWith,
   buildHourlySpotlightSuggestions,
   getCoachHourSlot,
 } from '../chat-thread/coachQuickPrompts';
+import {
+  HOME_STAT_SLEEP_GRADIENT,
+  HOME_STAT_SORENESS_GRADIENT,
+  HOME_STAT_WATER_GRADIENT,
+  HOME_STAT_WORKOUT_GRADIENT,
+} from '../../shared/ui/homeStatGradients';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
+import { calculateMacroTotals, getFoodLogsForDate } from '../../nutrition/daily-log/logFoodToFirestore';
+import { parseDailyMetricsFromSnapshots } from '../../shared/daily-metrics/dailyMetricsParse.cjs';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
@@ -65,32 +74,32 @@ const COACH_ACTIONS = [
     label: 'Log',
     icon: 'add',
     starter: 'Can you log data for me?',
-    rim: ['#FBBF24', '#F97316'],
-    labelGrad: ['#FBBF24', '#F97316'],
+    rim: HOME_STAT_WORKOUT_GRADIENT,
+    labelGrad: HOME_STAT_WORKOUT_GRADIENT,
   },
   {
     id: 'web',
     label: 'Web',
     icon: 'globe-outline',
     starter: 'Can you search the web for me?',
-    rim: ['#22D3EE', '#3B82F6'],
-    labelGrad: ['#22D3EE', '#3B82F6'],
+    rim: HOME_STAT_WATER_GRADIENT,
+    labelGrad: HOME_STAT_WATER_GRADIENT,
   },
   {
     id: 'data',
     label: 'My Data',
     icon: 'stats-chart-outline',
     starter: 'Can you show me my data and context?',
-    rim: ['#A78BFA', '#C084FC'],
-    labelGrad: ['#C084FC', '#E9D5FF'],
+    rim: HOME_STAT_SLEEP_GRADIENT,
+    labelGrad: HOME_STAT_SLEEP_GRADIENT,
   },
   {
     id: 'photo',
     label: 'Photo',
     icon: 'image-outline',
     starter: 'Can you analyze a photo for me?',
-    rim: ['#FF6B9D', '#F97316'],
-    labelGrad: ['#FF6B9D', '#F97316'],
+    rim: HOME_STAT_SORENESS_GRADIENT,
+    labelGrad: HOME_STAT_SORENESS_GRADIENT,
   },
 ];
 
@@ -113,19 +122,19 @@ function iconForPrompt(text) {
 
 function rimForPrompt(text) {
   const s = String(text || '').toLowerCase();
-  if (s.includes('nutrition') || s.includes('habit') || s.includes('protein') || s.includes('meal') || s.includes('macro') || s.includes('eat')) {
-    return ['#FF6B9D', '#F97316'];
+  if (s.includes('nutrition') || s.includes('habit') || s.includes('protein') || s.includes('meal') || s.includes('macro') || s.includes('eat') || s.includes('cal')) {
+    return HOME_STAT_SORENESS_GRADIENT;
   }
   if (s.includes('workout') || s.includes('split') || s.includes('training') || s.includes('full-body') || s.includes('schedule')) {
-    return ['#FBBF24', '#F97316'];
+    return HOME_STAT_WORKOUT_GRADIENT;
   }
   if (s.includes('recover') || s.includes('sleep') || s.includes('rest')) {
-    return ['#A78BFA', '#C084FC'];
+    return HOME_STAT_SLEEP_GRADIENT;
   }
   if (s.includes('search') || s.includes('web') || s.includes('research')) {
-    return ['#22D3EE', '#3B82F6'];
+    return HOME_STAT_WATER_GRADIENT;
   }
-  return ['#FF6B9D', '#C084FC'];
+  return HOME_STAT_SORENESS_GRADIENT;
 }
 
 // ─── Theme tokens ─────────────────────────────────────────────────────────────
@@ -497,52 +506,50 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
             }}
             style={{ width: CAN_HELP_CARD_WIDTH }}
           >
-            <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ borderRadius: 18, padding: 1.5 }}
-            >
             <View
               style={{
-                borderRadius: 16.5,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
+                backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
+              }}
+            >
+              <LinearGradient
+                colors={item.rim || ['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{ height: 1.5, width: '100%', opacity: 0.85 }}
+              />
+            <View
+              style={{
                 paddingVertical: 16,
                 paddingHorizontal: 16,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 14,
-                backgroundColor: isDark ? 'rgba(22,9,33,0.94)' : 'rgba(248,243,255,0.96)',
                 minHeight: 88,
-                overflow: 'hidden',
               }}
             >
-              {isDark ? (
-                <LinearGradient
-                  colors={['rgba(120,40,180,0.18)', 'rgba(180,60,20,0.10)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-              ) : (
-                <LinearGradient
-                  colors={['rgba(192,132,252,0.08)', 'rgba(249,115,22,0.06)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-              )}
+              <LinearGradient
+                colors={item.rim || ['#FF6B9D', '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ borderRadius: 14, padding: 1.5 }}
+              >
               <View
                 style={{
                   width: 44,
                   height: 44,
-                  borderRadius: 14,
+                  borderRadius: 12.5,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.04)',
                 }}
               >
-                <Ionicons name={item.icon} size={22} color={item.accent || AI_COACH_UI.pink} />
+                <Ionicons name={item.icon} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
               </View>
+              </LinearGradient>
               <View style={{ flex: 1 }}>
                 <Text
                   style={{ fontSize: 15, fontWeight: '800', color: t.textPrimary, marginBottom: 4 }}
@@ -555,7 +562,7 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
                 </Text>
               </View>
             </View>
-            </LinearGradient>
+            </View>
           </Pressable>
         )}
       />
@@ -647,35 +654,31 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
         accessibilityLabel={`Start chat: ${text}`}
         style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
       >
-        <LinearGradient
-          colors={['rgba(255,107,157,0.55)', 'rgba(192,132,252,0.45)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ borderRadius: 18, padding: 1.5 }}
+        <View
+          style={{
+            borderRadius: 16,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
+            backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
+          }}
         >
+          <LinearGradient
+            colors={iconRim}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ height: 1.5, width: '100%', opacity: 0.85 }}
+          />
           <View
             style={{
-              borderRadius: 16.5,
               paddingVertical: 16,
               paddingHorizontal: 16,
               flexDirection: 'row',
               alignItems: 'center',
               gap: 14,
-              backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
-              borderWidth: 1,
-              borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
               minHeight: 88,
-              overflow: 'hidden',
             }}
           >
-            {isDark ? (
-              <LinearGradient
-                colors={HERO_INNER}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-            ) : null}
             <LinearGradient
               colors={iconRim}
               start={{ x: 0, y: 0 }}
@@ -730,7 +733,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
               <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
             </LinearGradient>
           </View>
-        </LinearGradient>
+        </View>
       </Pressable>
 
       {items.length > 1 ? (
@@ -1122,18 +1125,23 @@ export default function AIChatHomeScreen({
   const [attachments, setAttachments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [userData, setUserData] = useState(null);
+  const [dailyMetrics, setDailyMetrics] = useState(null);
+  const [nutritionToday, setNutritionToday] = useState(null);
   const [hourSlot, setHourSlot] = useState(getCoachHourSlot());
 
   const canHelpItems = buildHourlyCanHelpWith({ now: hourSlot * 60 * 60 * 1000 });
   const suggestions = buildHourlySpotlightSuggestions({
     userData,
     sessions,
+    dailyMetrics,
+    nutritionToday,
     now: hourSlot * 60 * 60 * 1000,
   });
 
   const t = isDark ? DARK : LIGHT;
   const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
-  const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : 0;
+  const { keyboardVisible, composerBottomPad, listBottomPad, keyboardVerticalOffset } =
+    useCoachComposerKeyboard({ hideBottomNav });
   // ─── Load + transition animations (UI only) ─────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
   const headerOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
@@ -1259,6 +1267,77 @@ export default function AIChatHomeScreen({
   }, [userId]);
 
   useEffect(() => {
+    if (!db || !userId) {
+      setDailyMetrics(null);
+      return undefined;
+    }
+    const todayKey = getClientDateKey();
+    let trackingSnap = { exists: () => false, data: () => ({}) };
+    let logsSnap = { exists: () => false, data: () => ({}) };
+
+    const apply = () => {
+      setDailyMetrics(parseDailyMetricsFromSnapshots(logsSnap, trackingSnap));
+    };
+
+    const unsubTrack = onSnapshot(
+      doc(db, 'users', userId, 'daily_tracking', todayKey),
+      (snap) => {
+        trackingSnap = snap;
+        apply();
+      },
+      () => {
+        trackingSnap = { exists: () => false, data: () => ({}) };
+        apply();
+      },
+    );
+
+    const unsubLogs = onSnapshot(
+      doc(db, 'users', userId, 'dailyLogs', todayKey),
+      (snap) => {
+        logsSnap = snap;
+        apply();
+      },
+      () => {
+        logsSnap = { exists: () => false, data: () => ({}) };
+        apply();
+      },
+    );
+
+    return () => {
+      unsubTrack();
+      unsubLogs();
+    };
+  }, [userId, hourSlot]);
+
+  useEffect(() => {
+    if (!userId) {
+      setNutritionToday(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const todayKey = getClientDateKey();
+    (async () => {
+      try {
+        const logs = await getFoodLogsForDate(userId, todayKey);
+        const totals = calculateMacroTotals(logs);
+        if (!cancelled) {
+          setNutritionToday({
+            calories: totals.calories,
+            protein: totals.protein,
+            carbs: totals.carbs,
+            fat: totals.fat,
+          });
+        }
+      } catch (_) {
+        if (!cancelled) setNutritionToday(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, hourSlot]);
+
+  useEffect(() => {
     const tick = setInterval(() => {
       const next = getCoachHourSlot();
       setHourSlot((prev) => (prev !== next ? next : prev));
@@ -1379,13 +1458,14 @@ export default function AIChatHomeScreen({
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 + shellNavPad, paddingHorizontal: 16 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: listBottomPad, paddingHorizontal: 16 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
           {/* Centered hero content */}
           <Animated.View
@@ -1440,7 +1520,18 @@ export default function AIChatHomeScreen({
                 onPress={handleStartChat}
               />
 
-              <View style={{ width: '100%', marginTop: 24 }}>
+              <View
+                style={{
+                  width: '100%',
+                  marginTop: 24,
+                  borderRadius: 18,
+                  paddingVertical: 16,
+                  paddingHorizontal: 8,
+                  backgroundColor: t.glassBg,
+                  borderWidth: 1,
+                  borderColor: t.border,
+                }}
+              >
                 <Text
                   style={{
                     fontSize: 11,
@@ -1484,7 +1575,7 @@ export default function AIChatHomeScreen({
             backgroundColor: t.inputBarBg,
             paddingHorizontal: 16,
             paddingTop: attachments.length > 0 ? 10 : 8,
-            paddingBottom: 8 + shellNavPad,
+            paddingBottom: composerBottomPad,
           }}
         >
           {attachments.length > 0 ? (
@@ -1635,7 +1726,7 @@ export default function AIChatHomeScreen({
         insets={insets}
       />
 
-      {!hideBottomNav ? (
+      {!hideBottomNav && !keyboardVisible ? (
         <BottomNavBar
           onHomePress={onHomePress || (() => {})}
           onPlusPress={onPlusPress || (() => {})}

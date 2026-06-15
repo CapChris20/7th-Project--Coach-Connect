@@ -50,7 +50,13 @@ const MENU_STYLE_PATTERN =
   /\b(pizza|burger|sandwich|wrap|bowl|salad|taco|burrito|wing|wings|nugget|nuggets|combo|meal|latte|mocha|frappuccino|sub\b|hoagie|calzone|pasta|entree|appetizer|deep\s*dish|corner|slice|cheeseburger|hamburger|quesadilla|nachos|fries|chicken\s+fingers)\b/i;
 
 const GROCERY_INGREDIENT_PATTERN =
-  /\b(chicken breast|ground beef|brown rice|white rice|olive oil|greek yogurt|almond milk|protein powder|raw\s+chicken|boneless\s+skinless)\b/i;
+  /\b(chicken breast|boneless\s+skinless|skinless\s+boneless|ground beef|ground turkey|pork chop|salmon fillet|tilapia|shrimp|turkey breast|brown rice|white rice|olive oil|greek yogurt|almond milk|protein powder|raw\s+chicken)\b/i;
+
+/** Fresh grocery / butcher counter items — not chain menu items. */
+function isGroceryIngredientQuery(query) {
+  const q = normalizeQueryText(query);
+  return !!q && GROCERY_INGREDIENT_PATTERN.test(q);
+}
 
 function normalizeQueryText(s) {
   return String(s || '')
@@ -129,6 +135,7 @@ module.exports = {
   normalizeQueryText,
   significantQueryTokens,
   isMenuStyleQuery,
+  isGroceryIngredientQuery,
   itemMatchesQuery,
   countTokenHits,
   isRetailFoodNoise,

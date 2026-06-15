@@ -9,8 +9,6 @@ RUN cd server && npm install --omit=dev
 COPY server/ ./server/
 COPY src/shared/ ./src/shared/
 COPY src/ai/tools/ ./src/ai/tools/
-COPY src/nutrition/services/ ./src/nutrition/services/
-COPY src/nutrition/utils/ ./src/nutrition/utils/
 COPY src/nutrition/food-search/ ./src/nutrition/food-search/
 COPY src/nutrition/food-details/ ./src/nutrition/food-details/
 COPY config/pushNotificationCopy.json ./config/pushNotificationCopy.json

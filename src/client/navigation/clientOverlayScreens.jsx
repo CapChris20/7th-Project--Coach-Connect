@@ -12,21 +12,21 @@ import React from 'react';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useClientAppShell } from './ClientAppShellContext';
 import ProfileScreen from '../../profile/screens/ProfileScreen';
-import SettingsScreen from '../screens/SettingsScreen';
+import SettingsScreen from '../../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../../settings/screens/HelpFAQScreen';
 import TermsOfServiceScreen from '../../settings/screens/TermsOfServiceScreen';
 import PrivacyPolicyScreen from '../../settings/screens/PrivacyPolicyScreen';
 import ContactSupportScreen from '../../settings/screens/ContactSupportScreen';
 import BugReportScreen from '../../settings/screens/BugReportScreen';
-import NutritionContainer from '../../nutrition/screens/NutritionContainer';
-import AddNotesFilesModal from '../../shared/components/AddNotesFilesModal';
-import TrainerSearchScreen, { TrainerProfileSheet } from '../../marketplace/screens/TrainerSearchScreen';
-import TrainerWeeklyReportScreen from '../../trainer/screens/TrainerWeeklyReportScreen';
-import PhotoGalleryScreen from '../../trainer/screens/PhotoGalleryScreen';
-import AIWorkoutPlansScreen from '../../trainer/screens/AIWorkoutPlansScreen';
-import WorkoutPlanGeneratorScreen from '../../workouts/screens/workout';
+import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
+import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import TrainerSearchScreen, { TrainerProfileSheet } from '../marketplace/TrainerSearchScreen';
+import WeeklyReportScreen from '../weekly-report/WeeklyReportScreen';
+import PhotoGalleryScreen from '../photo-gallery/PhotoGalleryScreen';
+import AIWorkoutPlansScreen from '../workout-plans/AIWorkoutPlansScreen';
+import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
 import AIChatHomeScreen from '../../aiChat/chat-home/AIChatHomeScreen';
-import AIChatScreen from '../../aiChat/screens/AIChatScreen';
+import AIChatScreen from '../../aiChat/chat-thread/AIChatScreen';
 import AICoachTestSuite from '../../aiChat/AICoachTestSuite';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
@@ -195,7 +195,7 @@ export function ClientWeeklyReportScreen() {
   if (!s.user?.uid) return null;
   return withNav(
     <>
-      <TrainerWeeklyReportScreen
+      <WeeklyReportScreen
         clientId={s.user.uid}
         clientName={s.userData?.firstName || s.user?.displayName || 'You'}
         isClientSelfView

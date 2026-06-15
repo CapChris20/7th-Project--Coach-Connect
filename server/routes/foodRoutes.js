@@ -18,8 +18,9 @@ const {
   isRetailFoodNoise,
   significantQueryTokens,
   searchResultsDocId,
+  rankSerperFoodResultRows,
 } = require('../nutritionSearchHelpers');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { resolveFoodBrandLabel, findConsumerBrandInQuery } = require('../../src/nutrition/food-details/formatFoodBrand');
 const {
   cleanSerperFoodTitle,
   displayNameForSerperRow,
@@ -28,12 +29,30 @@ const {
   dedupeFoodRows,
   formatUserQueryAsFoodName,
 } = require('../../src/nutrition/food-search/formatFoodSearchTitle');
-const { lookupBarcodeFatSecret } = require('../lib/fatSecretClient');
+const { lookupBarcodeFatSecret, fatSecretConfigured, searchFoodsFatSecret } = require('../lib/fatSecretClient');
 const { guardBarcodeResult } = require('../lib/barcodeMerge');
+const { variableWeightBarcodeHint } = require('../lib/variableWeightBarcode');
 
 const SERPER_ORGANIC_MAX = 10;
 
-const FOOD_SEARCH_PIPELINE_VERSION = 28;
+const FOOD_SEARCH_PIPELINE_VERSION = 38;
+
+const OPEN_FOOD_FACTS_USER_AGENT =
+  'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+function roundSearchMacro(v, decimals = 0) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
 
 function sanitizeSearchResultRows(rows, userQuery = '') {
   return (Array.isArray(rows) ? rows : []).map((it) => {
@@ -43,12 +62,24 @@ function sanitizeSearchResultRows(rows, userQuery = '') {
         ? cleanSerperFoodTitle(rawName, userQuery)
         : rawName;
     const brand = resolveFoodBrandLabel(foodName, it.brand_name || it.brand || '');
+    const cal = roundSearchMacro(it.nf_calories ?? it.calories, 0);
+    const protein = roundSearchMacro(it.nf_protein ?? it.protein, 1);
+    const carbs = roundSearchMacro(it.nf_total_carbohydrate ?? it.carbs, 1);
+    const fat = roundSearchMacro(it.nf_total_fat ?? it.fat, 1);
     return {
       ...it,
       food_name: foodName || it.food_name,
       name: String(it.name || foodName || '').trim() || foodName,
       brand_name: brand,
       brand,
+      nf_calories: cal,
+      nf_protein: protein,
+      nf_total_carbohydrate: carbs,
+      nf_total_fat: fat,
+      calories: cal,
+      protein,
+      carbs,
+      fat,
     };
   });
 }
@@ -56,7 +87,7 @@ const foodCache = new Map();
 const FOOD_CACHE_TTL = 24 * 60 * 60 * 1000;
 
 function registerFoodRoutes(app, deps) {
-  const { verifyFirebaseBearerToken } = deps;
+  const { verifyFirebaseBearerToken, checkMonthlyApiBudget } = deps;
 
 const searchFoodWithSerper = async (rawQuery) => {
   const apiKey = process.env.SERPER_API_KEY;
@@ -543,8 +574,17 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     console.warn('[Food Search] Firestore cache read failed:', fcReadErr.message);
   }
 
+  let serperAllowed = !!process.env.SERPER_API_KEY;
+  if (process.env.SERPER_API_KEY && admin.apps.length && checkMonthlyApiBudget) {
+    serperAllowed = await checkMonthlyApiBudget('serper');
+    if (!serperAllowed) {
+      console.warn('[Food Search] Serper monthly cap reached — USDA/FatSecret/OFF only');
+    }
+  }
+
   let results = null;
   let source = '';
+  let searchHint = null;
   
   // --- Matching & ranking (query tokens — no hardcoded restaurant name list) ---
   const PACKAGED_BEVERAGE_BRANDS = ['coca cola', 'coca-cola', 'coke', 'pepsi', 'sprite', 'dr pepper'];
@@ -625,6 +665,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   };
 
   const queryTokens = significantQueryTokens(query);
+  const requiredConsumerBrand = findConsumerBrandInQuery(query);
 
   /** "apple jacks cereal" → "apple jacks" so phrase match beats random apple+cereal baby foods */
   const queryCorePhrase = queryLower
@@ -700,6 +741,9 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       else score -= 52;
       const foundBrand = findBrandInText(text);
       if (foundBrand && brandKey(foundBrand) !== brandKey(requestedBrand)) score -= 60;
+    } else if (requiredConsumerBrand) {
+      if (brandMatchesItem(text, requiredConsumerBrand)) score += 50;
+      else score -= 65;
     }
 
     // Size / variant matching (20oz, large, deep dish, etc.)
@@ -726,7 +770,16 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   };
 
   const rankResults = (arr) => {
-    const list = Array.isArray(arr) ? arr.slice() : [];
+    const list = (Array.isArray(arr) ? arr.slice() : []).filter((it) => {
+      const macros = {
+        calories: it?.nf_calories ?? it?.calories,
+        protein: it?.nf_protein ?? it?.protein,
+        carbs: it?.nf_total_carbohydrate ?? it?.carbs,
+        fat: it?.nf_total_fat ?? it?.fat,
+      };
+      if (!macros.calories && !macros.protein && !macros.carbs && !macros.fat) return true;
+      return isPlausibleNutritionRow(macros);
+    });
     return list
       .map((it) => ({ it, _score: scoreItem(it) }))
       .sort((a, b) => b._score - a._score)
@@ -738,7 +791,9 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     if (!ranked.length) return false;
     const topText = itemText(ranked[0]);
     if (menuStyleQuery) return itemMatchesQuery(topText, query) && !isRetailFoodNoise(topText);
+    if (requiredConsumerBrand) return brandMatchesItem(topText, requiredConsumerBrand);
     if (requestedBrand) return brandMatchesItem(topText, requestedBrand);
+    if (queryTokens.length >= 2) return itemMatchesQuery(topText, query);
     return true;
   };
 
@@ -772,7 +827,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
 
   /** Serper web results merged into `results` / `source`. */
   async function mergeSerperFoodSearch(logLabel) {
-    if (!process.env.SERPER_API_KEY) return;
+    if (!process.env.SERPER_API_KEY || !serperAllowed) return;
     try {
       console.log(logLabel);
       let parsed = [];
@@ -970,6 +1025,27 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     }
   }
 
+  async function loadFatSecretSearch() {
+    if (!fatSecretConfigured()) return;
+    try {
+      console.log('[Food Search] FatSecret foods.search:', query);
+      const rows = await searchFoodsFatSecret(query, limit);
+      if (!rows.length) return;
+      const ranked = rankResults(rows);
+      if (hasGoodMatch(ranked)) {
+        results = ranked;
+        source = 'fatsecret';
+        console.log('[Food Search] FatSecret match:', results.length);
+      } else if (!results?.length) {
+        results = ranked.slice(0, limit);
+        source = 'fatsecret-weak';
+        console.log('[Food Search] FatSecret weak match:', results.length);
+      }
+    } catch (e) {
+      console.warn('[Food Search] FatSecret search failed:', e.message);
+    }
+  }
+
   async function loadOpenFoodFacts() {
     if (menuStyleQuery) {
       console.log('[Food Search] 🥫 OFF skipped for menu-style query (Serper/USDA first)');
@@ -979,7 +1055,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       console.log('[Food Search] 🥫 Open Food Facts:', query);
       const r = await fetchWithTimeout(
         `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=24`,
-        {},
+        { headers: { 'User-Agent': OPEN_FOOD_FACTS_USER_AGENT, Accept: 'application/json' } },
         10000,
       );
       console.log('[Food Search] 🥫 Open Food Facts status:', r.status);
@@ -1024,13 +1100,19 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     }
   }
 
-  // ─── Tier order: grocery → USDA → OFF → Serper | menu-style → Serper → USDA
+  // ─── Tier order: grocery → USDA → FatSecret → OFF → Serper | menu → FatSecret → Serper → USDA
   if (searchMode === 'generic') {
+    if (requiredConsumerBrand) {
+      if (needsFill()) await loadFatSecretSearch();
+      if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (consumer brand query)');
+    }
     if (needsFill()) await loadUsdaFoundationFirst();
+    if (needsFill()) await loadFatSecretSearch();
     if (needsFill()) await loadOpenFoodFacts();
     if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (after USDA + OFF)');
     if (needsFill()) await loadUsdaBroad();
   } else if (searchMode === 'branded') {
+    if (needsFill()) await loadFatSecretSearch();
     if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (menu-style first)');
     if (needsFill()) await loadUsdaBroad();
     if (needsFill()) await loadUsdaFoundationFirst();
@@ -1042,28 +1124,45 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   }
 
   const needSerperFinal =
+    serperAllowed &&
     process.env.SERPER_API_KEY &&
     (!results?.length ||
+      (requiredConsumerBrand &&
+        results.length > 0 &&
+        !brandMatchesItem(itemText(results[0]), requiredConsumerBrand)) ||
       (menuStyleQuery &&
         results.length > 0 &&
         !itemMatchesQuery(itemText(results[0]), query)) ||
       (requestedBrand &&
         results.length > 0 &&
-        !brandMatchesItem(itemText(results[0]), requestedBrand)));
+        !brandMatchesItem(itemText(results[0]), requestedBrand)) ||
+      (queryTokens.length >= 2 &&
+        results.length > 0 &&
+        !itemMatchesQuery(itemText(results[0]), query)));
 
   if (needSerperFinal) {
     await mergeSerperFoodSearch('[Food Search] Serper final pass (brand / empty fix)');
   }
 
   if (!results || results.length === 0) {
-    if (usdaResults && usdaResults.length > 0) {
-      console.log('[Food Search] Fallback: USDA results');
-      results = usdaResults;
-      source = 'usda-fallback';
-    } else if (offResults && offResults.length > 0) {
-      console.log('[Food Search] Fallback: OFF results');
-      results = offResults;
-      source = 'openfoodfacts-fallback';
+    if (!menuStyleQuery) {
+      if (usdaResults && usdaResults.length > 0) {
+        let fallback = usdaResults;
+        if (requiredConsumerBrand) {
+          fallback = usdaResults.filter((it) => brandMatchesItem(itemText(it), requiredConsumerBrand));
+        }
+        if (fallback.length > 0) {
+          console.log('[Food Search] Fallback: USDA results');
+          results = fallback;
+          source = 'usda-fallback';
+        }
+      } else if (offResults && offResults.length > 0) {
+        console.log('[Food Search] Fallback: OFF results');
+        results = offResults;
+        source = 'openfoodfacts-fallback';
+      }
+    } else {
+      console.log('[Food Search] Menu-style query — skipping USDA/OFF fallback');
     }
   }
 
@@ -1075,6 +1174,22 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       hint: EMPTY_SEARCH_HINT,
       query,
     });
+  }
+
+  if (requiredConsumerBrand && Array.isArray(results) && results.length) {
+    const strict = results.filter((it) => {
+      const text = itemText(it);
+      if (isRetailFoodNoise(text)) return false;
+      return brandMatchesItem(text, requiredConsumerBrand);
+    });
+    if (strict.length > 0) {
+      results = rankResults(strict);
+      console.log('[Food Search] Brand/token filter:', strict.length, 'rows for', query);
+    } else {
+      results = [];
+      searchHint = `No ${requiredConsumerBrand} products matched. Try scanning the barcode or a shorter product name.`;
+      console.log('[Food Search] No rows matched required brand — returning empty for', query);
+    }
   }
 
   if (menuStyleQuery && Array.isArray(results) && results.length) {
@@ -1109,6 +1224,10 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   }
   const out = dedupeFoodRows(sanitizeSearchResultRows(sliced, query)).slice(0, limit);
 
+  if (!serperAllowed && out.length === 0 && (menuStyleQuery || requiredConsumerBrand)) {
+    searchHint = searchHint || 'Live menu web search is temporarily limited. Try again later or use a shorter item name.';
+  }
+
   foodCache.set(cacheKey, { data: out, timestamp: Date.now() });
 
   try {
@@ -1135,7 +1254,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     console.warn('[Food Search] Firestore cache write failed:', fwErr.message);
   }
 
-  return res.json({ results: out, source });
+  return res.json({ results: out, source, hint: searchHint || undefined });
 });
 
 // Barcode pipeline: ① USDA ② FatSecret ③ Open Food Facts ④ Serper
@@ -1197,6 +1316,17 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
     }
 
     result = guardBarcodeResult(result);
+
+    if (!result) {
+      const clean = String(barcode || '').trim();
+      const vwHint = variableWeightBarcodeHint(clean);
+      if (vwHint) {
+        console.log('[Barcode] Variable-weight scale label (no GTIN match):', clean, 'PLU:', vwHint.itemPlu);
+        setCache(cacheKey, vwHint);
+        return res.json(vwHint);
+      }
+    }
+
     setCache(cacheKey, result);
     return res.json(result);
   } catch (error) {

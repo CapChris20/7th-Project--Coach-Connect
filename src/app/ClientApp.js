@@ -69,15 +69,15 @@ import {
 import { httpsCallable } from 'firebase/functions';
 
 import { auth, db, functions } from './config';
-import { calculateBMR, calculateTDEE } from '../shared/fitness/calculations';
+import { calculateBMR, calculateTDEE } from '../shared/fitness-calculations/calculations';
 import { getClientDateKey } from '../shared/utils/dateKeys';
 import { getLocalDateKey } from '../shared/utils/getLocalDay';
 import {
   mergeClientDailyMetrics,
   parseDailyMetricsFromSnapshots,
 } from '../shared/daily-metrics/saveDailyMetricsToFirestore';
-import { useClientHomeDailyMetrics } from '../shared/hooks/useClientHomeDailyMetrics';
-import styles from '../client/components/home/clientAppStyles';
+import { useClientHomeDailyMetrics } from '../client/home/useClientHomeDailyMetrics';
+import styles from '../client/home/clientAppStyles';
 import {
   getPremiumTheme,
   TopStatsRow,
@@ -89,20 +89,40 @@ import {
   NotesFiles,
   calculateCalorieGoal,
   calculateStreak,
-} from '../client/components/home/clientHomeComponents';
-import { useClientHomeBootstrap } from '../client/hooks/useClientHomeBootstrap';
-import { useClientHomeNutrition } from '../client/hooks/useClientHomeNutrition';
-import { useClientScreenNavigation } from '../client/hooks/useClientScreenNavigation';
+} from '../client/home/clientHomeComponents';
+import { useClientHomeBootstrap } from '../client/home/useClientHomeBootstrap';
+import { useClientScreenNavigation } from '../client/navigation/useClientScreenNavigation';
+
+function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals }) {
+  const refetchNutritionData = useCallback(async () => {
+    if (!user?.uid || !db) return;
+    try {
+      const todayKey = getLocalDateKey();
+      const nutritionLogs = await getFoodLogsForDate(user.uid, todayKey);
+      const totals = calculateMacroTotals(nutritionLogs);
+      setCaloriesConsumed(totals.calories || 0);
+      setMacroTotals({
+        protein: totals.protein || 0,
+        carbs: totals.carbs || 0,
+        fats: totals.fat || 0,
+      });
+    } catch (e) {
+      console.error('Refetch nutrition:', e);
+    }
+  }, [user?.uid, db, setCaloriesConsumed, setMacroTotals]);
+
+  return refetchNutritionData;
+}
 
 
-import { subscribeToUnreadCount } from '../ai/services/conversationService';
+import { subscribeToUnreadCount } from '../ai/chat-api/conversationService';
 import { getOrCreateConversation, sendClientRequest } from '../ai/trainer-messaging/sendTrainerNotification';
 import AIChatHomeScreen from '../aiChat/chat-home/AIChatHomeScreen';
-import AIChatScreen from '../aiChat/screens/AIChatScreen';
+import AIChatScreen from '../aiChat/chat-thread/AIChatScreen';
 const AICoachTestSuite = __DEV__ ? require('../aiChat/AICoachTestSuite').default : null;
-import TrainerSearchScreen, { TrainerProfileSheet } from '../marketplace/screens/TrainerSearchScreen';
-import MyDashboardScreen from '../client/screens/MyDashboardScreen';
-import SettingsScreen from '../client/screens/SettingsScreen';
+import TrainerSearchScreen, { TrainerProfileSheet } from '../client/marketplace/TrainerSearchScreen';
+import MyDashboardScreen from '../client/dashboard/MyDashboardScreen';
+import SettingsScreen from '../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../settings/screens/HelpFAQScreen';
 import TermsOfServiceScreen from '../settings/screens/TermsOfServiceScreen';
 import PrivacyPolicyScreen from '../settings/screens/PrivacyPolicyScreen';
@@ -117,33 +137,34 @@ import { ClientAppShellProvider } from '../client/navigation/ClientAppShellConte
 import ClientRootNavigator from '../client/navigation/ClientRootNavigator';
 import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
-import MealPlanHomeScreen from '../nutrition/screens/MealPlanHomeScreen';
-import NutritionContainer from '../nutrition/screens/NutritionContainer';
+import MealPlanHomeScreen from '../client/meal-plan/MealPlanHomeScreen';
+import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
 import ProfileScreen from '../profile/screens/ProfileScreen';
-import AddNotesFilesModal from '../shared/components/AddNotesFilesModal';
-import AppLoadingScreen from '../shared/components/AppLoadingScreen';
-import CoachConnectHeader from '../shared/components/CoachConnectHeader';
-import DailyQuoteCard, { DailyQuotePill } from '../shared/components/DailyQuoteCard';
-import DocumentViewerModal from '../shared/components/DocumentViewerModal';
-import EmbedWebViewModal from '../shared/components/EmbedWebViewModal';
-import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components/FileGalleryGrid';
-import MediaViewerModal from '../shared/components/MediaViewerModal';
-import PdfViewerModal from '../shared/components/PdfViewerModal';
-import RemoveTrainerSheet from '../shared/components/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../shared/components/ReviewSubmitSheet';
-import { SessionMeetingCard } from '../shared/components/SessionMeetingCard';
-import SpreadsheetViewerModal from '../shared/components/SpreadsheetViewerModal';
-import TrainerSharedFilesModal from '../shared/components/TrainerSharedFilesModal';
-import ClientFilesScreen from '../client/screens/ClientFilesScreen';
-import MarketplaceHeroCard from '../client/components/MarketplaceHeroCard';
-import DashboardHeroCard from '../client/components/DashboardHeroCard';
-import FilesNotesHeroCard from '../client/components/FilesNotesHeroCard';
-import { MyFilesSection } from '../client/components/files/MyFilesSection';
-import { TrainerSharedSection } from '../client/components/files/TrainerSharedSection';
-import { NotesFromTrainerSection } from '../client/components/files/NotesFromTrainerSection';
-import FilesNotesSectionPremium from '../shared/components/FilesNotesSectionPremium';
+import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
+import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
+import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
+import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
+import DocumentViewerModal from '../shared/components/notes-files/DocumentViewerModal';
+import EmbedWebViewModal from '../shared/components/notes-files/EmbedWebViewModal';
+import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components/notes-files/FileGalleryGrid';
+import MediaViewerModal from '../shared/components/notes-files/MediaViewerModal';
+import PdfViewerModal from '../shared/components/notes-files/PdfViewerModal';
+import RemoveTrainerSheet from '../shared/components/modals/RemoveTrainerSheet';
+import ReviewSubmitSheet from '../client/dashboard/ReviewSubmitSheet';
+import { SessionMeetingCard } from '../shared/components/home/SessionMeetingCard';
+import SpreadsheetViewerModal from '../shared/components/notes-files/SpreadsheetViewerModal';
+import TrainerSharedFilesModal from '../client/files/TrainerSharedFilesModal';
+import ClientFilesScreen from '../client/files/ClientFilesScreen';
+import MarketplaceHeroCard from '../shared/components/home/MarketplaceHeroCard';
+import DashboardHeroCard from '../client/dashboard/DashboardHeroCard';
+import FilesNotesHeroCard from '../shared/components/notes-files/FilesNotesHeroCard';
+import { MyFilesSection } from '../client/files/MyFilesSection';
+import { TrainerSharedSection } from '../client/files/TrainerSharedSection';
+import { NotesFromTrainerSection } from '../client/files/NotesFromTrainerSection';
+import FilesNotesSectionPremium from '../shared/components/notes-files/FilesNotesSectionPremium';
 import {
   persistPushTokensForUid,
+  pendingPushTokenStorageKey,
   setNotificationTapHandler,
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
@@ -158,13 +179,13 @@ import {
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
 } from '../shared/utils/getFileViewType';
-import ConversationsListScreen from '../trainer/screens/ConversationsListScreen';
-import PhotoGalleryScreen from '../trainer/screens/PhotoGalleryScreen';
-import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
-import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
-import TrainerWeeklyReportScreen from '../trainer/screens/TrainerWeeklyReportScreen';
-import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/services/workoutService';
-import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
+import ConversationsListScreen from '../client/messaging/ConversationsListScreen';
+import PhotoGalleryScreen from '../client/photo-gallery/PhotoGalleryScreen';
+import MessagingScreen from '../client/messaging/MessagingScreen';
+import AIWorkoutPlansScreen from '../client/workout-plans/AIWorkoutPlansScreen';
+import WeeklyReportScreen from '../client/weekly-report/WeeklyReportScreen';
+import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/active-workout/workoutService';
+import WorkoutPlanGeneratorScreen from '../workouts/active-workout/workout';
 import { clearAllUserData } from '../utils/clearDataOnLogout';
 
 const CARD_GAP = 16;
@@ -192,7 +213,6 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [trainerData, setTrainerData] = useState(null);
   const [trainerLinkError, setTrainerLinkError] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  const [showNotesFiles, setShowNotesFiles] = useState(false);
   const [notesAndFiles, setNotesAndFiles] = useState([]);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null, rows: null });
@@ -279,6 +299,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     setShowTrainerSharedFilesModal,
     showClientFilesScreen,
     setShowClientFilesScreen,
+    showNotesFiles,
+    setShowNotesFiles,
+    nutritionTabFocusNonce,
+    workoutTabFocusNonce,
     selectedTrainer,
     setSelectedTrainer,
     profileTrainer,
@@ -597,10 +621,33 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   // The dashboard is now always visible, so the wellness row is kept in sync via direct metric updates.
 
   useEffect(() => {
-    if (!user?.uid) return undefined;
-    persistPushTokensForUid(user.uid, { skipIfDisabled: true });
+    if (!user?.uid || !db) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists() || cancelled) return;
+
+        const pendingToken = await AsyncStorage.getItem(pendingPushTokenStorageKey(user.uid));
+        if (pendingToken) {
+          await persistPushTokensForUid(user.uid, pendingToken);
+          await AsyncStorage.removeItem(pendingPushTokenStorageKey(user.uid));
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[push] pending token flush failed:', e?.message || e);
+      }
+
+      if (!cancelled) {
+        persistPushTokensForUid(user.uid, { skipIfDisabled: true }).catch(() => {});
+      }
+    })();
+
     const unsubResume = subscribePushTokenRefreshOnResume(user.uid, () => true);
-    return unsubResume;
+    return () => {
+      cancelled = true;
+      unsubResume();
+    };
   }, [user?.uid]);
 
   const clientNotifTapRef = useRef(async () => {});
@@ -1230,6 +1277,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     refetchNutritionData,
     mainTab,
     mainTabActiveKey,
+    nutritionTabFocusNonce,
+    workoutTabFocusNonce,
     onNavigate,
     setOnboardingData,
     showTrainerMessaging,
