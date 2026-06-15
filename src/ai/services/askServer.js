@@ -1,6 +1,16 @@
+/**
+ * ask Server
+ *
+ * Purpose: Data/service layer: ask Server. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: askServer
+ *
+ * @file-header
+ */
 import axios from 'axios';
 import { getApiBase } from '../../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
+import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 
 function getBaseUrl() {
   return getApiBase();

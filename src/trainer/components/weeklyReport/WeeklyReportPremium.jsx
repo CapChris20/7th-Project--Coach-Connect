@@ -1,3 +1,13 @@
+/**
+ * Weekly Report Premium
+ *
+ * Purpose: Weekly Report Premium — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: getWRTheme, formatDateRange, parseDayNote, parseStructuredDayNote, WRPremiumCard, WRHeroShell, WeeklyReportScrollBody, WeeklyReportDetailModal
+ *
+ * @file-header
+ */
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import {
   View,

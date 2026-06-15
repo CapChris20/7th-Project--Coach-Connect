@@ -1,4 +1,14 @@
 /**
+ * client Profile Firestore
+ *
+ * Purpose: Data/service layer: client Profile Firestore. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: buildClientRegistryDoc, stripEmptyForFirestore
+ *
+ * @file-header
+ */
+/**
  * Canonical Firestore registry: clients/{uid} — one doc per account with role "client".
  * Mirrors trainers/{uid} for marketplace/discovery. Populated on signup, onboarding, and server sync.
  */

@@ -1,3 +1,13 @@
+/**
+ * AIContext
+ *
+ * Purpose: AIContext — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/contexts
+ * Key exports: getAiToggleMeterHint, AIProvider, useAI, AI_MODEL_DISCLAIMER_TITLE, AI_MODEL_DISCLAIMER_BODY
+ *
+ * @file-header
+ */
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';

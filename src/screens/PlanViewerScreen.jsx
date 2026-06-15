@@ -1,3 +1,13 @@
+/**
+ * Plan Viewer Screen
+ *
+ * Purpose: UI screen or component: Plan Viewer Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/screens
+ * Key exports: PlanViewerScreen
+ *
+ * @file-header
+ */
 import React, { useMemo, useState, useCallback } from "react";
 import {
   View,

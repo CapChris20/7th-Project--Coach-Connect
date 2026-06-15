@@ -1,3 +1,13 @@
+/**
+ * Barcode Scanner Screen
+ *
+ * Purpose: UI screen or component: Barcode Scanner Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: BarcodeScannerScreen
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -11,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import foodSearchProvider from '../services/foodSearchProvider';
-import { cacheFoodProduct } from '../services/nutritionService';
+import { cacheFoodProduct } from '../daily-log/logFoodToFirestore';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 

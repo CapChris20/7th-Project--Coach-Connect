@@ -1,3 +1,13 @@
+/**
+ * trainer Overlay Screens
+ *
+ * Purpose: UI screen or component: trainer Overlay Screens. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerProfileScreen, TrainerSettingsScreen, TrainerHelpFAQScreen, TrainerTermsScreen, TrainerPrivacyScreen, TrainerContactSupportScreen, TrainerBugReportScreen, TrainerNutritionScreen
+ *
+ * @file-header
+ */
 import React from 'react';
 import { Alert } from 'react-native';
 import { useRoute } from '@react-navigation/native';

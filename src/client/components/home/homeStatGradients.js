@@ -1,3 +1,13 @@
+/**
+ * home Stat Gradients
+ *
+ * Purpose: home Stat Gradients — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: HOME_STAT_WORKOUT_GRADIENT, HOME_STAT_WATER_GRADIENT, HOME_STAT_SLEEP_GRADIENT, HOME_STAT_SORENESS_GRADIENT, HOME_STAT_ENERGY_GRADIENT, HOME_STAT_STRESS_GRADIENT, HOME_STAT_MOOD_GRADIENT, StatGradientText
+ *
+ * @file-header
+ */
 import React from 'react';
 import { Text, View } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';

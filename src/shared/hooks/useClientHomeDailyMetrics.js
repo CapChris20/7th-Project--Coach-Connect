@@ -1,3 +1,13 @@
+/**
+ * use Client Home Daily Metrics
+ *
+ * Purpose: React hook: use Client Home Daily Metrics. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: useClientHomeDailyMetrics
+ *
+ * @file-header
+ */
 import { useCallback, useEffect, useRef } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../app/config';
@@ -6,11 +16,11 @@ import {
   archiveDailyDashboardDay,
   retryPendingDailyDashboardArchive,
   tickDailyDashboardDayRollover,
-} from '../services/dailyDashboardDayRollover';
+} from '../daily-metrics/rolloverDayAtMidnight';
 import {
   fetchLegacyDailyTrackingSnap,
   parseDailyMetricsFromSnapshots,
-} from '../services/dailyMetricsService';
+} from '../daily-metrics/saveDailyMetricsToFirestore';
 
 /**
  * Home-screen daily metrics: midnight rollover, archive, live Firestore sync.

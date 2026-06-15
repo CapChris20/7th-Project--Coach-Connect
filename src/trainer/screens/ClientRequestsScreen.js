@@ -1,3 +1,13 @@
+/**
+ * Client Requests Screen
+ *
+ * Purpose: UI screen or component: Client Requests Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: ClientRequestsScreen
+ *
+ * @file-header
+ */
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -16,7 +26,7 @@ import { auth } from '../../app/config';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useTrainerPendingRequests } from '../hooks/useTrainerPendingRequests';
 import TrainerMarketplaceModal from '../components/TrainerMarketplaceModal';
-import { clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
+import { clientRequestTypeLabel } from '../../ai/trainer-messaging/sendTrainerNotification';
 
 const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 

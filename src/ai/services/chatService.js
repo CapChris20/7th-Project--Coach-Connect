@@ -1,9 +1,19 @@
+/**
+ * chat Service
+ *
+ * Purpose: Data/service layer: chat Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: sanitizeInput, sendChatMessage, generateWorkoutResponse
+ *
+ * @file-header
+ */
 // Chat service for CoachConnect Coach
 // Handles chat conversations with input sanitization and OpenAI integration
 // Supports both text and image messages (OpenAI Vision API)
 import { generateResponse } from './openaiClient';
-import { prepareImageForOpenAI } from './imageService';
-import logger from '../../shared/services/logger';
+import { prepareImageForOpenAI } from '../vision/imageStorageService';
+import logger from '../../shared/api/logErrorToServer';
 
 /**
  * Sanitize user input: remove special symbols (#, *, $, etc.) for clean GPT queries

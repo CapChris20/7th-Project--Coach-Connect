@@ -1,3 +1,13 @@
+/**
+ * Edit Modal Form RN
+ *
+ * Purpose: UI screen or component: Edit Modal Form RN. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: EditModalForm
+ *
+ * @file-header
+ */
 import React from 'react';
 import {
   KeyboardAvoidingView,

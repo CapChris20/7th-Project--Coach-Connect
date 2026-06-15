@@ -1,3 +1,13 @@
+/**
+ * Trainer Client Detail Screen
+ *
+ * Purpose: UI screen or component: Trainer Client Detail Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 /** Trainer — single-client detail (sessions + notes/files) */
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
@@ -22,7 +32,7 @@ import {
   getTrainerDocuments,
   filterTrainerDocumentsForClient,
   getNotesAndFiles,
-} from '../../shared/services/notesAndFilesService';
+} from '../../shared/notes-files/manageNotesAndFiles';
 import PdfViewerModal from '../../shared/components/PdfViewerModal';
 import SpreadsheetViewerModal from '../../shared/components/SpreadsheetViewerModal';
 import DocumentEditorModal from '../components/documents/DocumentEditorModal';

@@ -1,3 +1,13 @@
+/**
+ * Api Key Input
+ *
+ * Purpose: Data/service layer: Api Key Input. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: ApiKeyInput
+ *
+ * @file-header
+ */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../shared/ui/ThemeContext';

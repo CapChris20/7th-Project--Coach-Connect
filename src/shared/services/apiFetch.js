@@ -1,7 +1,17 @@
 /**
+ * api Fetch
+ *
+ * Purpose: Data/service layer: api Fetch. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: fetchWithTimeout, postJsonWithTimeout, logApiAttempt
+ *
+ * @file-header
+ */
+/**
  * Shared fetch helpers for Coach Connect API calls.
  */
-import logger from './logger';
+import logger from '../api/logErrorToServer';
 
 export async function fetchWithTimeout(url, init = {}, timeoutMs = 60000) {
   const controller = new AbortController();

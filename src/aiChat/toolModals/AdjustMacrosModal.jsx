@@ -1,5 +1,15 @@
+/**
+ * Adjust Macros Modal
+ *
+ * Purpose: UI screen or component: Adjust Macros Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AdjustMacrosModal
+ *
+ * @file-header
+ */
 import React, { useState, useEffect } from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './toolModalShared';
+import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../app/config';
 

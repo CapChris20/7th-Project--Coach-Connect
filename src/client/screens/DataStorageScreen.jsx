@@ -1,3 +1,13 @@
+/**
+ * Data Storage Screen
+ *
+ * Purpose: UI screen or component: Data Storage Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: DataStorageScreen
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

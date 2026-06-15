@@ -1,3 +1,13 @@
+/**
+ * Attach Action Sheet
+ *
+ * Purpose: UI screen or component: Attach Action Sheet. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AttachActionSheet
+ *
+ * @file-header
+ */
 import React from 'react';
 import { InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';

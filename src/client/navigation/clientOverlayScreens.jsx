@@ -1,3 +1,13 @@
+/**
+ * client Overlay Screens
+ *
+ * Purpose: UI screen or component: client Overlay Screens. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: ClientProfileScreen, ClientSettingsScreen, ClientHelpFAQScreen, ClientTermsScreen, ClientPrivacyScreen, ClientContactSupportScreen, ClientBugReportScreen, ClientNutritionScreen
+ *
+ * @file-header
+ */
 import React from 'react';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useClientAppShell } from './ClientAppShellContext';
@@ -15,7 +25,7 @@ import TrainerWeeklyReportScreen from '../../trainer/screens/TrainerWeeklyReport
 import PhotoGalleryScreen from '../../trainer/screens/PhotoGalleryScreen';
 import AIWorkoutPlansScreen from '../../trainer/screens/AIWorkoutPlansScreen';
 import WorkoutPlanGeneratorScreen from '../../workouts/screens/workout';
-import AIChatHomeScreen from '../../aiChat/screens/AIChatHomeScreen';
+import AIChatHomeScreen from '../../aiChat/chat-home/AIChatHomeScreen';
 import AIChatScreen from '../../aiChat/screens/AIChatScreen';
 import AICoachTestSuite from '../../aiChat/AICoachTestSuite';
 import { doc, getDoc } from 'firebase/firestore';

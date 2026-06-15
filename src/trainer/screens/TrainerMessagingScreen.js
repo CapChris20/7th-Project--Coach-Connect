@@ -1,4 +1,14 @@
 /**
+ * Trainer Messaging Screen
+ *
+ * Purpose: UI screen or component: Trainer Messaging Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerMessagingScreen
+ *
+ * @file-header
+ */
+/**
  * Trainer Messaging (Chat) Screen — new glass UI, existing Firebase and send flow.
  * Real-time via subscribeToMessages; send via trainerMessaging.sendMessage.
  */
@@ -40,9 +50,9 @@ import {
   pulseConversationTyping,
   clearMyConversationTyping,
   TYPING_UI_STALE_MS,
-} from '../../ai/services/trainerMessaging';
+} from '../../ai/trainer-messaging/sendTrainerNotification';
 import { auth, db, storage } from '../../app/config';
-import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMService';
+import { getTrainerClients, createOrUpdateClient } from '../clients-list/loadTrainerClientRoster';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

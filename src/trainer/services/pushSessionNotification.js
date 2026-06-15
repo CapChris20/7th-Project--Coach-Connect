@@ -1,15 +1,25 @@
 /**
+ * push Session Notification
+ *
+ * Purpose: Data/service layer: push Session Notification. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: sendSessionScheduledPushToClient
+ *
+ * @file-header
+ */
+/**
  * Send a session-scheduled push to the client from the trainer app.
  * Does not require the Node server or Cloud Functions (reads client pushToken from users/{clientId}).
  */
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
 import { getApiBase } from '../../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
+import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 import {
   randomSessionScheduledTitle,
   randomSessionScheduledDetailBody,
-} from '../../shared/notifications/pushCopy';
+} from '../../shared/notifications/pushNotificationText';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 

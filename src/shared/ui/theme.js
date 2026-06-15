@@ -1,3 +1,13 @@
+/**
+ * theme
+ *
+ * Purpose: theme — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: lightColors, darkColors, typography, spacing, borderRadius, fontSize, fontWeight, shadows
+ *
+ * @file-header
+ */
 // Theme configuration for React Native styling with Light and Dark mode support
 
 // Light mode colors (Modern Neutral theme)

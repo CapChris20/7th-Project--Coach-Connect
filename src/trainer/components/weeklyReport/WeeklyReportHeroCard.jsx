@@ -1,3 +1,13 @@
+/**
+ * Weekly Report Hero Card
+ *
+ * Purpose: UI screen or component: Weekly Report Hero Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: WeeklyReportHeroCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

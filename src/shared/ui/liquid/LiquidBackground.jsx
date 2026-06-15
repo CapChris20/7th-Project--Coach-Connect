@@ -1,3 +1,13 @@
+/**
+ * Liquid Background
+ *
+ * Purpose: Liquid Background — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: LiquidBackground
+ *
+ * @file-header
+ */
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';

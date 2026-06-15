@@ -1,4 +1,14 @@
 /**
+ * Fluid Glass examples
+ *
+ * Purpose: Fluid Glass examples — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: WorkoutCardExample, ModalExample, NutritionCardExample
+ *
+ * @file-header
+ */
+/**
  * FluidGlass Usage Examples
  * 
  * This file shows how to convert existing UI components to use FluidGlass

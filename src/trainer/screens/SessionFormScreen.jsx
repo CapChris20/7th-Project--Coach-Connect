@@ -1,3 +1,13 @@
+/**
+ * Session Form Screen
+ *
+ * Purpose: UI screen or component: Session Form Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: SessionFormScreen
+ *
+ * @file-header
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,

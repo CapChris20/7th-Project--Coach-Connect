@@ -257,7 +257,7 @@ Other service modules **are** referenced (e.g. `trainerMessaging`, `nutritionSer
 | `src/app/RoleMigrationScreen.js` | `../utils/migrateUserRoles` | Import is **commented**; file **missing**. Screen still references undefined `migrationResult` — **bug**. |
 | `src/app/config.js` | `../supabase/supabase-js` | Path likely outside `src/` or optional; verify at runtime. |
 
-Imports like `../../utils/errorSyncService` from `AuthGate.js` resolve to **repo root** `utils/errorSyncService.js` (exists) — not “broken” for Metro.
+Imports like `../../utils/syncErrorsToServer` from `AuthGate.js` resolve to **repo root** `utils/syncErrorsToServer.js` (exists) — not “broken” for Metro.
 
 ---
 

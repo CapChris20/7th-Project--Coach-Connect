@@ -1,9 +1,19 @@
 /**
+ * resolve Linked Trainer Clients
+ *
+ * Purpose: resolve Linked Trainer Clients — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: resolveLinkedTrainerClients
+ *
+ * @file-header
+ */
+/**
  * Filter CRM rows to active clients linked on users/{id}.trainerId and resolve display names.
  */
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app/config';
-import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from './trainerClientDisplayName';
+import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from '../crm/formatClientName';
 
 function isCrmRowInactive(c) {
   if (!c || c.archived === true) return true;

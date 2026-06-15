@@ -1,3 +1,13 @@
+/**
+ * Embed Web View Modal
+ *
+ * Purpose: UI screen or component: Embed Web View Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: EmbedWebViewModal
+ *
+ * @file-header
+ */
 import React, { useState, useEffect } from 'react';
 import {
   Modal,

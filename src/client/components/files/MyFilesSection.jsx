@@ -1,3 +1,13 @@
+/**
+ * My Files Section
+ *
+ * Purpose: UI screen or component: My Files Section. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: MyFilesSection
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -5,8 +15,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FileCard } from './FileCard';
-import { addFile, addSpreadsheetFile } from '../../../shared/services/notesAndFilesService';
-import { getFileTypeFromItem } from '../../../shared/utils/fileFormatting';
+import { addFile, addSpreadsheetFile } from '../../../shared/notes-files/manageNotesAndFiles';
+import { getFileTypeFromItem } from '../../../shared/utils/formatFileSize';
 
 const TABS = [
   { id: 'all', label: 'All Files', icon: 'list' },

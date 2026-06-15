@@ -3,7 +3,7 @@
  * Used by the server only (Serper + fetch + OpenAI). Client has its own helper that uses cache + this API.
  */
 
-const { isMenuStyleQuery } = require('../../src/nutrition/services/foodSearchQueryMatch');
+const { isMenuStyleQuery } = require('../../src/nutrition/food-search/rankFoodSearchResults');
 
 /**
  * True when the query looks like a restaurant menu item (generic heuristics, no brand list).

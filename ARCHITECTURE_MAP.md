@@ -514,7 +514,7 @@ Connect feature screens to these **shared hubs** in a “spoke” diagram:
 | Hub ID | File | Used by |
 |--------|------|---------|
 | `HUB_CONFIG` | `src/app/config.js` | auth, db, storage, functions exports |
-| `HUB_DAILY` | `src/shared/services/dailyMetricsService.js` | Dashboard, home, AI tools |
+| `HUB_DAILY` | `src/shared/daily-metrics/saveDailyMetricsToFirestore.js` | Dashboard, home, AI tools |
 | `HUB_API_URL` | `src/shared/services/baseUrl.js` | All API callers (retry bases) |
 | `HUB_API_AUTH` | `src/shared/services/apiAuthHeaders.js` | Bearer token for API |
 | `HUB_NOTIF` | `src/shared/services/notificationsService.js` | Push token persist |
@@ -652,7 +652,7 @@ Ask Claude to produce **separate diagrams** from this doc:
 | Nutrition | `UI_NUTRITION` | `src/nutrition/screens/NutritionContainer.jsx` |
 | Workouts | `UI_WORKOUT` | `src/workouts/screens/workout.js` |
 | AI coach | `SCR_AI_CHAT` | `src/aiChat/screens/AIChatScreen.jsx` |
-| AI API client | `SVC_DEEPSEEK` | `src/ai/deepseekService.js` |
+| AI API client | `SVC_DEEPSEEK` | `src/ai/chat-api/aiCoachServerService.js` |
 | Trainer roster | `UI_TRAINER_CLIENTS_LIST` | `src/trainer/screens/TrainerClientsListScreen.jsx` |
 | Firestore paths | — | `docs/FIRESTORE_PATHS.md` |
 | API server | `N_SERVER` | `server/index.js` |
@@ -712,7 +712,7 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 
 #### `server/routes/foodRoutes.js` (1281 lines)
 - **Role:** HTTP route, Firestore, API
-- **imports →** `src/nutrition/utils/nutritionNormalization.js`, `server/utils/restaurantNutrition.js`, `server/lib/serperWebSearch.js`, `server/nutritionSearchHelpers.js`, `src/nutrition/utils/foodBrandDisplay.js`, `src/nutrition/utils/foodSearchTitle.js`, `src/nutrition/utils/restaurantSerperQuality.js`
+- **imports →** `src/nutrition/utils/nutritionNormalization.js`, `server/utils/restaurantNutrition.js`, `server/lib/serperWebSearch.js`, `server/nutritionSearchHelpers.js`, `src/nutrition/food-details/formatFoodBrand.js`, `src/nutrition/food-search/formatFoodSearchTitle.js`, `src/nutrition/utils/restaurantSerperQuality.js`
 - **used by ←** (1) `server/index.js`
 
 #### `server/routes/onboardingRoutes.js` (246 lines)
@@ -725,44 +725,44 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 - **imports →** `server/lib/workoutGenerationLimit.js`
 - **used by ←** (1) `server/index.js`
 
-#### `src/ai/deepseekService.js` (355 lines)
+#### `src/ai/chat-api/aiCoachServerService.js` (355 lines)
 - **Role:** API
-- **imports →** `src/app/config.js`, `src/shared/services/baseUrl.js`, `src/ai/contextAggregation.js`, `src/ai/toolExecutor.js`, `src/shared/parseCoachToolCalls.js`, `src/ai/coachPersonalDataRouting.js`
+- **imports →** `src/app/config.js`, `src/shared/services/baseUrl.js`, `src/ai/context/CoachContextProvider.js`, `src/ai/tools/executeCoachTool.js`, `src/shared/parseCoachToolCalls.js`, `src/ai/context/gatherCoachContextFromUser.js`
 - **used by ←** (2) `src/aiChat/AICoachTestSuite.jsx`, `src/aiChat/screens/AIChatScreen.jsx`
 
-#### `src/ai/toolExecutor.js` (625 lines)
+#### `src/ai/tools/executeCoachTool.js` (625 lines)
 - **Role:** Firestore, API
-- **imports →** `src/app/config.js`, `src/app/dateKey.js`, `src/shared/services/dailyMetricsService.js`, `src/shared/services/baseUrl.js`, `src/nutrition/services/nutritionService.js`
-- **used by ←** (5) `src/ai/deepseekService.js`, `src/ai/inferCoachToolCallClient.js`, `src/aiChat/AICoachTestSuite.jsx`, `src/aiChat/components/ToolConfirmationModal.jsx`, `src/aiChat/screens/AIChatScreen.jsx`
+- **imports →** `src/app/config.js`, `src/app/dateKey.js`, `src/shared/daily-metrics/saveDailyMetricsToFirestore.js`, `src/shared/services/baseUrl.js`, `src/nutrition/daily-log/logFoodToFirestore.js`
+- **used by ←** (5) `src/ai/chat-api/aiCoachServerService.js`, `src/ai/tools/parseUserMessageForTools.js`, `src/aiChat/AICoachTestSuite.jsx`, `src/aiChat/components/ToolConfirmationModal.jsx`, `src/aiChat/screens/AIChatScreen.jsx`
 
 #### `src/aiChat/screens/AIChatScreen.jsx` (1778 lines)
 - **Role:** screen, Firestore
-- **imports →** `src/shared/services/logger.js`, `src/app/config.js`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/bottomNavMetrics.js`, `src/shared/ui/ThemeContext.js`, `src/ai/contextAggregation.js`, `src/ai/deepseekService.js`, `src/aiChat/components/ToolConfirmationModal.jsx`, `src/ai/toolExecutor.js`, `src/ai/inferCoachToolCallClient.js`, `src/aiChat/hooks/useCoachSpeech.js`, `src/ai/webSearchRouting.js`, `src/shared/accessibility/a11yProps.js`, `src/aiChat/aiCoachUiTokens.js`, `src/aiChat/components/AICoachGlassCard.jsx`, `src/shared/parseCoachToolCalls.js`
+- **imports →** `src/shared/services/logger.js`, `src/app/config.js`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/bottomNavMetrics.js`, `src/shared/ui/ThemeContext.js`, `src/ai/context/CoachContextProvider.js`, `src/ai/chat-api/aiCoachServerService.js`, `src/aiChat/components/ToolConfirmationModal.jsx`, `src/ai/tools/executeCoachTool.js`, `src/ai/tools/parseUserMessageForTools.js`, `src/aiChat/hooks/useCoachSpeech.js`, `src/ai/webSearchRouting.js`, `src/shared/accessibility/a11yProps.js`, `src/aiChat/aiCoachUiTokens.js`, `src/aiChat/components/AICoachGlassCard.jsx`, `src/shared/parseCoachToolCalls.js`
 - **used by ←** (5) `src/app/ClientApp.js`, `src/app/TrainerApp.js`, `src/client/navigation/ClientMainScreen.jsx`, `src/client/navigation/clientOverlayScreens.jsx`, `src/trainer/navigation/trainerOverlayScreens.jsx`
 
 #### `src/app/AuthGate.js` (631 lines)
 - **Role:** Firestore, API
-- **imports →** `src/auth/AuthScreen.js`, `src/auth/ForgotPasswordScreen.js`, `src/auth/OnboardingScreen.js`, `src/app/TrainerApp.js`, `src/app/ClientApp.js`, `src/shared/components/AppLoadingScreen.js`, `src/app/config.js`, `src/ai/services/chatStorageService.js`, `src/utils/dataCacheCleanup.js`, `src/shared/services/onboardingSync.js`, `src/shared/services/notificationsService.js`, `src/shared/services/logger.js`
+- **imports →** `src/auth/AuthScreen.js`, `src/auth/ForgotPasswordScreen.js`, `src/auth/OnboardingScreen.js`, `src/app/TrainerApp.js`, `src/app/ClientApp.js`, `src/shared/components/AppLoadingScreen.js`, `src/app/config.js`, `src/ai/services/chatStorageService.js`, `src/utils/clearDataOnLogout.js`, `src/shared/services/onboardingSync.js`, `src/shared/services/notificationsService.js`, `src/shared/services/logger.js`
 - **used by ←** (1) `App.js`
 
 #### `src/app/ClientApp.js` (1402 lines)
 - **Role:** Firestore
-- **imports →** `src/shared/ui/BlurBackdropPlate.jsx`, `src/app/config.js`, `src/app/calculations.js`, `src/app/dateKey.js`, `src/shared/utils/localDay.js`, `src/shared/services/dailyMetricsService.js`, `src/shared/hooks/useClientHomeDailyMetrics.js`, `src/client/components/home/clientAppStyles.js`, `src/client/components/home/clientHomeComponents.jsx`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/hooks/useClientHomeNutrition.js`, `src/client/hooks/useClientScreenNavigation.js`, `src/ai/services/conversationService.js`, `src/ai/services/trainerMessaging.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/aiChat/AICoachTestSuite.jsx`, `src/marketplace/screens/TrainerSearchScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/client/screens/SettingsScreen.js`, `src/settings/screens/HelpFAQScreen.jsx`, `src/settings/screens/TermsOfServiceScreen.jsx`, `src/settings/screens/PrivacyPolicyScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`, `src/settings/screens/BugReportScreen.jsx`, `src/navigation/AppNavigationContext.js`, `src/navigation/navigationRef.js`, `src/navigation/routes.js`, `src/navigation/linking.js`, `src/client/navigation/ClientAppShellContext.jsx`, `src/client/navigation/ClientRootNavigator.jsx`, `src/navigation/BottomNavBar.js`, `src/nutrition/services/nutritionService.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/screens/NutritionContainer.jsx`, `src/profile/screens/ProfileScreen.jsx`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/AppLoadingScreen.js`, `src/shared/components/CoachConnectHeader.js`, `src/shared/components/DailyQuoteCard.js`, `src/shared/components/DocumentViewerModal.js`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/components/FileGalleryGrid.jsx`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/shared/components/SessionMeetingCard.jsx`, `src/shared/components/SpreadsheetViewerModal.js`, `src/shared/components/TrainerSharedFilesModal.jsx`, `src/client/screens/ClientFilesScreen.jsx`, `src/client/components/MarketplaceHeroCard.jsx`, `src/client/components/DashboardHeroCard.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/client/components/files/MyFilesSection.jsx`, `src/client/components/files/TrainerSharedSection.jsx`, `src/client/components/files/NotesFromTrainerSection.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/shared/services/notificationsService.js`, `src/shared/services/pushNotifyApi.js`, `src/shared/services/notesAndFilesService.js`, `src/shared/ui/ThemeContext.js`, `src/shared/utils/trainerProfileMedia.js`, `src/shared/utils/notesFileView.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/workouts/services/workoutService.js`, `src/workouts/screens/workout.js`, `src/utils/dataCacheCleanup.js`
+- **imports →** `src/shared/ui/BlurBackdropPlate.jsx`, `src/app/config.js`, `src/app/calculations.js`, `src/app/dateKey.js`, `src/shared/utils/getLocalDay.js`, `src/shared/daily-metrics/saveDailyMetricsToFirestore.js`, `src/shared/hooks/useClientHomeDailyMetrics.js`, `src/client/components/home/clientAppStyles.js`, `src/client/components/home/clientHomeComponents.jsx`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/hooks/useClientHomeNutrition.js`, `src/client/hooks/useClientScreenNavigation.js`, `src/ai/services/conversationService.js`, `src/ai/services/trainerMessaging.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/aiChat/AICoachTestSuite.jsx`, `src/marketplace/screens/TrainerSearchScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/client/screens/SettingsScreen.js`, `src/settings/screens/HelpFAQScreen.jsx`, `src/settings/screens/TermsOfServiceScreen.jsx`, `src/settings/screens/PrivacyPolicyScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`, `src/settings/screens/BugReportScreen.jsx`, `src/navigation/AppNavigationContext.js`, `src/navigation/navigationRef.js`, `src/navigation/routes.js`, `src/navigation/linking.js`, `src/client/navigation/ClientAppShellContext.jsx`, `src/client/navigation/ClientRootNavigator.jsx`, `src/navigation/BottomNavBar.js`, `src/nutrition/daily-log/logFoodToFirestore.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/screens/NutritionContainer.jsx`, `src/profile/screens/ProfileScreen.jsx`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/AppLoadingScreen.js`, `src/shared/components/CoachConnectHeader.js`, `src/shared/components/DailyQuoteCard.js`, `src/shared/components/DocumentViewerModal.js`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/components/FileGalleryGrid.jsx`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/shared/components/SessionMeetingCard.jsx`, `src/shared/components/SpreadsheetViewerModal.js`, `src/shared/components/TrainerSharedFilesModal.jsx`, `src/client/screens/ClientFilesScreen.jsx`, `src/client/components/MarketplaceHeroCard.jsx`, `src/client/components/DashboardHeroCard.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/client/components/files/MyFilesSection.jsx`, `src/client/components/files/TrainerSharedSection.jsx`, `src/client/components/files/NotesFromTrainerSection.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/shared/services/notificationsService.js`, `src/shared/services/pushNotifyApi.js`, `src/shared/services/notesAndFilesService.js`, `src/shared/ui/ThemeContext.js`, `src/shared/utils/trainerProfileMedia.js`, `src/shared/utils/notesFileView.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/workouts/services/workoutService.js`, `src/workouts/screens/workout.js`, `src/utils/clearDataOnLogout.js`
 - **used by ←** (1) `src/app/AuthGate.js`
 
 #### `src/app/TrainerApp.js` (1316 lines)
 - **Role:** Firestore
-- **imports →** `src/trainer/navigation/TrainerRootNavigator.jsx`, `src/trainer/navigation/TrainerAppShellContext.jsx`, `src/trainer/hooks/useTrainerScreenNavigation.js`, `src/navigation/navigationRef.js`, `src/navigation/linking.js`, `src/shared/ui/BlurBackdropPlate.jsx`, `src/shared/components/DailyQuoteCard.js`, `src/shared/components/HoldToConfirmModal.jsx`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/AppNavigationContext.js`, `src/marketplace/screens/TrainerSearchScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/aiChat/screens/VoiceAIHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/nutrition/screens/NutritionContainer.jsx`, `src/profile/screens/ProfileScreen.jsx`, `src/client/screens/SettingsScreen.js`, `src/settings/screens/HelpFAQScreen.jsx`, `src/settings/screens/TermsOfServiceScreen.jsx`, `src/settings/screens/PrivacyPolicyScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`, `src/settings/screens/BugReportScreen.jsx`, `src/workouts/screens/workout.js`, `src/trainer/screens/ClientRequestsScreen.js`, `src/trainer/screens/SessionSchedulingScreen.jsx`, `src/trainer/screens/SessionFormScreen.jsx`, `src/trainer/hooks/useTrainerClients.js`, `src/trainer/lib/trainerClientDisplayName.js`, `src/trainer/hooks/useTrainerPendingRequests.js`, `src/shared/services/notificationsService.js`, `src/shared/ui/ThemeContext.js`, `src/app/config.js`, `src/shared/services/latestLoggedWeight.js`, `src/utils/autoLogError.js`, `src/ai/services/trainerMessaging.js`, `src/app/dateKey.js`, `src/shared/utils/localDay.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/shared/services/notesAndFilesService.js`, `src/utils/dataCacheCleanup.js`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/utils/notesFileView.js`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/SpreadsheetViewerModal.js`, `src/trainer/components/documents/DocumentEditorModal.js`, `src/shared/components/QuickActionCard.jsx`, `src/trainer/components/documents/ShareDocumentModal.js`, `src/trainer/components/documents/SpreadsheetEditorModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/nutrition/services/nutritionService.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/ManualWorkoutPlanBuilderScreen.jsx`, `src/shared/components/GradientChatBubblesIcon.jsx`, `src/shared/components/FileGalleryGrid.jsx`, `src/trainer/components/TrainerWeeklyReportSection.jsx`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/trainer/screens/TrainerProgressTab.jsx`, `src/trainer/screens/TrainerNutritionTab.jsx`, `src/trainer/screens/TrainerCalendarTab.jsx`, `src/trainer/screens/TrainerClientDetailScreen.jsx`, `src/trainer/screens/TrainerClientsListScreen.jsx`, `src/trainer/screens/TrainerDashboardContent.jsx`, `src/trainer/components/dashboard/trainerDashboardUi.jsx`, `src/trainer/lib/trainerFirestoreErrors.js`, `src/trainer/lib/trainerClientFirestorePaths.js`
+- **imports →** `src/trainer/navigation/TrainerRootNavigator.jsx`, `src/trainer/navigation/TrainerAppShellContext.jsx`, `src/trainer/hooks/useTrainerScreenNavigation.js`, `src/navigation/navigationRef.js`, `src/navigation/linking.js`, `src/shared/ui/BlurBackdropPlate.jsx`, `src/shared/components/DailyQuoteCard.js`, `src/shared/components/HoldToConfirmModal.jsx`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/AppNavigationContext.js`, `src/marketplace/screens/TrainerSearchScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/aiChat/screens/VoiceAIHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/nutrition/screens/NutritionContainer.jsx`, `src/profile/screens/ProfileScreen.jsx`, `src/client/screens/SettingsScreen.js`, `src/settings/screens/HelpFAQScreen.jsx`, `src/settings/screens/TermsOfServiceScreen.jsx`, `src/settings/screens/PrivacyPolicyScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`, `src/settings/screens/BugReportScreen.jsx`, `src/workouts/screens/workout.js`, `src/trainer/screens/ClientRequestsScreen.js`, `src/trainer/screens/SessionSchedulingScreen.jsx`, `src/trainer/screens/SessionFormScreen.jsx`, `src/trainer/hooks/useTrainerClients.js`, `src/trainer/crm/formatClientName.js`, `src/trainer/hooks/useTrainerPendingRequests.js`, `src/shared/services/notificationsService.js`, `src/shared/ui/ThemeContext.js`, `src/app/config.js`, `src/shared/services/latestLoggedWeight.js`, `src/utils/autoLogError.js`, `src/ai/services/trainerMessaging.js`, `src/app/dateKey.js`, `src/shared/utils/getLocalDay.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/shared/services/notesAndFilesService.js`, `src/utils/clearDataOnLogout.js`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/utils/notesFileView.js`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/SpreadsheetViewerModal.js`, `src/trainer/components/documents/DocumentEditorModal.js`, `src/shared/components/QuickActionCard.jsx`, `src/trainer/components/documents/ShareDocumentModal.js`, `src/trainer/components/documents/SpreadsheetEditorModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/nutrition/daily-log/logFoodToFirestore.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/ManualWorkoutPlanBuilderScreen.jsx`, `src/shared/components/GradientChatBubblesIcon.jsx`, `src/shared/components/FileGalleryGrid.jsx`, `src/trainer/components/TrainerWeeklyReportSection.jsx`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/trainer/screens/TrainerProgressTab.jsx`, `src/trainer/screens/TrainerNutritionTab.jsx`, `src/trainer/screens/TrainerCalendarTab.jsx`, `src/trainer/screens/TrainerClientDetailScreen.jsx`, `src/trainer/screens/TrainerClientsListScreen.jsx`, `src/trainer/screens/TrainerDashboardContent.jsx`, `src/trainer/components/dashboard/trainerDashboardUi.jsx`, `src/trainer/lib/trainerFirestoreErrors.js`, `src/trainer/lib/trainerClientFirestorePaths.js`
 - **used by ←** (2) `src/app/AuthGate.js`, `src/trainer/services/clientCRMService.js`
 
 #### `src/app/config.js` (157 lines)
 - **Role:** Firestore, hub×72
 - **imports →** _none_
-- **used by ←** (72) `src/ai/coachWeeklyDataClient.js`, `src/ai/contextAggregation.js`, `src/ai/deepseekService.js`, `src/ai/macroRecalibration.js`, `src/ai/services/chatStorageService.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/ai/services/trainerMessaging.js`, `src/ai/toolExecutor.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`
+- **used by ←** (72) `src/ai/context/gatherCoachWeeklyStats.js`, `src/ai/context/CoachContextProvider.js`, `src/ai/chat-api/aiCoachServerService.js`, `src/ai/macro-recalibration/recalculateMacrosFromCoach.js`, `src/ai/services/chatStorageService.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/ai/services/trainerMessaging.js`, `src/ai/tools/executeCoachTool.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`
 
 #### `src/client/navigation/ClientMainScreen.jsx` (689 lines)
 - **Role:** nav, Firestore
-- **imports →** `src/app/config.js`, `src/app/dateKey.js`, `src/shared/services/dailyMetricsService.js`, `src/shared/services/notesAndFilesService.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/AppNavigationContext.js`, `src/client/components/home/clientHomeComponents.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/shared/components/SessionMeetingCard.jsx`, `src/shared/components/TrainerSharedFilesModal.jsx`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/SpreadsheetViewerModal.js`, `src/shared/components/DocumentViewerModal.js`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/client/components/MarketplaceHeroCard.jsx`, `src/client/components/DashboardHeroCard.jsx`, `src/nutrition/screens/NutritionContainer.jsx`, `src/workouts/screens/workout.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/client/hooks/useClientScreenNavigation.js`, `src/client/navigation/ClientAppShellContext.jsx`
+- **imports →** `src/app/config.js`, `src/app/dateKey.js`, `src/shared/daily-metrics/saveDailyMetricsToFirestore.js`, `src/shared/services/notesAndFilesService.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/shared/components/CoachConnectHeader.js`, `src/navigation/BottomNavBar.js`, `src/navigation/AppNavigationContext.js`, `src/client/components/home/clientHomeComponents.jsx`, `src/client/components/FilesNotesHeroCard.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx`, `src/shared/components/SessionMeetingCard.jsx`, `src/shared/components/TrainerSharedFilesModal.jsx`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/PdfViewerModal.js`, `src/shared/components/SpreadsheetViewerModal.js`, `src/shared/components/DocumentViewerModal.js`, `src/shared/components/MediaViewerModal.jsx`, `src/shared/components/EmbedWebViewModal.jsx`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/client/components/MarketplaceHeroCard.jsx`, `src/client/components/DashboardHeroCard.jsx`, `src/nutrition/screens/NutritionContainer.jsx`, `src/workouts/screens/workout.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/client/hooks/useClientScreenNavigation.js`, `src/client/navigation/ClientAppShellContext.jsx`
 - **used by ←** (1) `src/client/navigation/ClientRootNavigator.jsx`
 
 #### `src/navigation/BottomNavBar.js` (577 lines)
@@ -772,13 +772,13 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 
 #### `src/nutrition/services/foodSearchProvider.js` (601 lines)
 - **Role:** service, API
-- **imports →** `src/shared/services/baseUrl.js`, `src/shared/services/apiAuthHeaders.js`, `src/shared/services/logger.js`, `src/nutrition/services/foodSearchQueryMatch.js`, `src/nutrition/utils/nutritionNormalization.js`
-- **used by ←** (2) `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/services/nutritionService.js`
+- **imports →** `src/shared/services/baseUrl.js`, `src/shared/services/apiAuthHeaders.js`, `src/shared/services/logger.js`, `src/nutrition/food-search/rankFoodSearchResults.js`, `src/nutrition/utils/nutritionNormalization.js`
+- **used by ←** (2) `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/daily-log/logFoodToFirestore.js`
 
-#### `src/nutrition/services/nutritionService.js` (589 lines)
+#### `src/nutrition/daily-log/logFoodToFirestore.js` (589 lines)
 - **Role:** service, Firestore, hub×12
 - **imports →** `src/app/config.js`, `src/nutrition/services/foodSearchProvider.js`, `src/utils/autoLogError.js`
-- **used by ←** (12) `src/ai/macroRecalibration.js`, `src/ai/toolExecutor.js`, `src/app/ClientApp.js`, `src/app/TrainerApp.js`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/hooks/useClientHomeNutrition.js`, `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/screens/FoodSearchScreen.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`
+- **used by ←** (12) `src/ai/macro-recalibration/recalculateMacrosFromCoach.js`, `src/ai/tools/executeCoachTool.js`, `src/app/ClientApp.js`, `src/app/TrainerApp.js`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/hooks/useClientHomeNutrition.js`, `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/screens/FoodSearchScreen.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`
 
 #### `src/shared/components/CoachConnectHeader.js` (210 lines)
 - **Role:** component, hub×30
@@ -788,17 +788,17 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 #### `src/shared/parseCoachToolCalls.js` (193 lines)
 - **Role:** util
 - **imports →** _none_
-- **used by ←** (5) `server/index.js`, `server/lib/inferCoachToolCall.js`, `src/ai/deepseekService.js`, `src/ai/inferCoachToolCallClient.js`, `src/aiChat/screens/AIChatScreen.jsx`
+- **used by ←** (5) `server/index.js`, `server/lib/inferCoachToolCall.js`, `src/ai/chat-api/aiCoachServerService.js`, `src/ai/tools/parseUserMessageForTools.js`, `src/aiChat/screens/AIChatScreen.jsx`
 
 #### `src/shared/services/baseUrl.js` (266 lines)
 - **Role:** service, API, hub×16
 - **imports →** _none_
-- **used by ←** (16) `src/ai/contextAggregation.js`, `src/ai/deepseekService.js`, `src/ai/services/askServer.js`, `src/ai/services/openaiClient.js`, `src/ai/services/webSearch.js`, `src/ai/toolExecutor.js`, `src/auth/OnboardingScreen.js`, `src/nutrition/services/foodSearchProvider.js`, `src/settings/screens/BugReportScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`
+- **used by ←** (16) `src/ai/context/CoachContextProvider.js`, `src/ai/chat-api/aiCoachServerService.js`, `src/ai/services/askServer.js`, `src/ai/services/openaiClient.js`, `src/ai/services/webSearch.js`, `src/ai/tools/executeCoachTool.js`, `src/auth/OnboardingScreen.js`, `src/nutrition/services/foodSearchProvider.js`, `src/settings/screens/BugReportScreen.jsx`, `src/settings/screens/ContactSupportScreen.jsx`
 
-#### `src/shared/services/dailyMetricsService.js` (90 lines)
+#### `src/shared/daily-metrics/saveDailyMetricsToFirestore.js` (90 lines)
 - **Role:** service, Firestore
-- **imports →** `src/app/config.js`, `src/shared/utils/localDay.js`, `src/shared/services/dailyMetricsParse.cjs`
-- **used by ←** (6) `src/ai/toolExecutor.js`, `src/app/ClientApp.js`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/navigation/ClientMainScreen.jsx`, `src/client/screens/MyDashboardScreen.jsx`, `src/shared/hooks/useClientHomeDailyMetrics.js`
+- **imports →** `src/app/config.js`, `src/shared/utils/getLocalDay.js`, `src/shared/services/dailyMetricsParse.cjs`
+- **used by ←** (6) `src/ai/tools/executeCoachTool.js`, `src/app/ClientApp.js`, `src/client/hooks/useClientHomeBootstrap.js`, `src/client/navigation/ClientMainScreen.jsx`, `src/client/screens/MyDashboardScreen.jsx`, `src/shared/hooks/useClientHomeDailyMetrics.js`
 
 #### `src/shared/services/notesAndFilesService.js` (512 lines)
 - **Role:** service, Firestore, hub×14
@@ -1057,17 +1057,17 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 |------|-----|-----------------|--------|------|
 | `src/ai/aiCoachService.js` | ⚪ | — | 0 | util |
 
-### `src/ai/coachPersonalDataRouting.js/` (1)
+### `src/ai/context/gatherCoachContextFromUser.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/coachPersonalDataRouting.js` | ⚪ | — | 1 | util |
+| `src/ai/context/gatherCoachContextFromUser.js` | ⚪ | — | 1 | util |
 
-### `src/ai/coachWeeklyDataClient.js/` (1)
+### `src/ai/context/gatherCoachWeeklyStats.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/coachWeeklyDataClient.js` | ⚪ | `app/config.js` | 1 | Firestore |
+| `src/ai/context/gatherCoachWeeklyStats.js` | ⚪ | `app/config.js` | 1 | Firestore |
 
 ### `src/ai/components/` (2)
 
@@ -1076,29 +1076,29 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 | `ApiKeyInput.js` | 🟡 | `ui/ThemeContext.js` `services/apiKeyService.js` | 0 | component |
 | `useChat.js` | 🟡 | `services/chatService.js` `services/apiKeyService.js` `services/chatStorageService.js` | 0 | component |
 
-### `src/ai/contextAggregation.js/` (1)
+### `src/ai/context/CoachContextProvider.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/contextAggregation.js` | 🟠 | `app/config.js` `services/baseUrl.js` `utils/formatOnboardingDisplay.js` `ai/coachWeeklyDataClient.js` | 3 | Firestore, API |
+| `src/ai/context/CoachContextProvider.js` | 🟠 | `app/config.js` `services/baseUrl.js` `utils/formatOnboardingDisplay.js` `ai/context/gatherCoachWeeklyStats.js` | 3 | Firestore, API |
 
-### `src/ai/deepseekService.js/` (1)
-
-| File | ⭐ | Imports (local) | Used by | Tags |
-|------|-----|-----------------|--------|------|
-| `src/ai/deepseekService.js` | 🔴 | `app/config.js` `services/baseUrl.js` `ai/contextAggregation.js` `ai/toolExecutor.js` +2 | 2 | API |
-
-### `src/ai/inferCoachToolCallClient.js/` (1)
+### `src/ai/chat-api/aiCoachServerService.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/inferCoachToolCallClient.js` | ⚪ | `shared/parseCoachToolCalls.js` `ai/toolExecutor.js` | 1 | util |
+| `src/ai/chat-api/aiCoachServerService.js` | 🔴 | `app/config.js` `services/baseUrl.js` `ai/context/CoachContextProvider.js` `ai/tools/executeCoachTool.js` +2 | 2 | API |
 
-### `src/ai/macroRecalibration.js/` (1)
+### `src/ai/tools/parseUserMessageForTools.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/macroRecalibration.js` | ⚪ | `app/config.js` `services/nutritionService.js` | 0 | Firestore |
+| `src/ai/tools/parseUserMessageForTools.js` | ⚪ | `shared/parseCoachToolCalls.js` `ai/tools/executeCoachTool.js` | 1 | util |
+
+### `src/ai/macro-recalibration/recalculateMacrosFromCoach.js/` (1)
+
+| File | ⭐ | Imports (local) | Used by | Tags |
+|------|-----|-----------------|--------|------|
+| `src/ai/macro-recalibration/recalculateMacrosFromCoach.js` | ⚪ | `app/config.js` `services/nutritionService.js` | 0 | Firestore |
 
 ### `src/ai/perplexityService.js/` (1)
 
@@ -1121,11 +1121,11 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 | `trainerMessaging.js` | 🟠 | `app/config.js` `services/firestorePagedQuery.js` `services/pushNotifyApi.js` `notifications/pushCopy.js` | 9 | service, Firestore, hub×9 |
 | `webSearch.js` | 🟡 | `services/baseUrl.js` `services/apiAuthHeaders.js` | 0 | service, API |
 
-### `src/ai/toolExecutor.js/` (1)
+### `src/ai/tools/executeCoachTool.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/ai/toolExecutor.js` | 🔴 | `app/config.js` `app/dateKey.js` `services/dailyMetricsService.js` `services/baseUrl.js` +1 | 5 | Firestore, API |
+| `src/ai/tools/executeCoachTool.js` | 🔴 | `app/config.js` `app/dateKey.js` `services/dailyMetricsService.js` `services/baseUrl.js` +1 | 5 | Firestore, API |
 
 ### `src/ai/webSearchRouting.js/` (1)
 
@@ -1137,7 +1137,7 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/aiChat/AICoachTestSuite.jsx` | ⚪ | `ai/contextAggregation.js` `ai/deepseekService.js` `ai/perplexityService.js` `ai/toolExecutor.js` +1 | 2 | util |
+| `src/aiChat/AICoachTestSuite.jsx` | ⚪ | `ai/context/CoachContextProvider.js` `ai/chat-api/aiCoachServerService.js` `ai/perplexityService.js` `ai/tools/executeCoachTool.js` +1 | 2 | util |
 
 ### `src/aiChat/aiCoachUiTokens.js/` (1)
 
@@ -1762,11 +1762,11 @@ For day-to-day navigation, prefer **sections 1–14** above; use `Cmd+F` on node
 |------|-----|-----------------|--------|------|
 | `src/utils/autoLogError.js` | ⚪ | `services/monitoring.js` | 4 | util |
 
-### `src/utils/dataCacheCleanup.js/` (1)
+### `src/utils/clearDataOnLogout.js/` (1)
 
 | File | ⭐ | Imports (local) | Used by | Tags |
 |------|-----|-----------------|--------|------|
-| `src/utils/dataCacheCleanup.js` | ⚪ | — | 4 | util |
+| `src/utils/clearDataOnLogout.js` | ⚪ | — | 4 | util |
 
 ### `src/utils/migrateTrainers.js/` (1)
 
@@ -1885,17 +1885,17 @@ server/lib/coachWeeklyData.js → server/lib/logger.js
 server/lib/dailyMetricsServer.js → src/shared/services/dailyMetricsParse.cjs
 server/lib/inferCoachToolCall.js → src/shared/parseCoachToolCalls.js
 server/lib/monitoring.js → server/lib/logger.js
-server/nutritionSearchHelpers.js → src/nutrition/services/foodSearchQueryMatch.js
+server/nutritionSearchHelpers.js → src/nutrition/food-search/rankFoodSearchResults.js
 server/nutritionSearchHelpers.js → src/nutrition/utils/restaurantSerperQuality.js
-server/nutritionSearchHelpers.js → src/nutrition/utils/foodSearchTitle.js
+server/nutritionSearchHelpers.js → src/nutrition/food-search/formatFoodSearchTitle.js
 server/pushHelpers.js → server/stripNotificationEmoji.js
 server/routes/devRoutes.js → server/config/apiCosts.js
 server/routes/foodRoutes.js → src/nutrition/utils/nutritionNormalization.js
 server/routes/foodRoutes.js → server/utils/restaurantNutrition.js
 server/routes/foodRoutes.js → server/lib/serperWebSearch.js
 server/routes/foodRoutes.js → server/nutritionSearchHelpers.js
-server/routes/foodRoutes.js → src/nutrition/utils/foodBrandDisplay.js
-server/routes/foodRoutes.js → src/nutrition/utils/foodSearchTitle.js
+server/routes/foodRoutes.js → src/nutrition/food-details/formatFoodBrand.js
+server/routes/foodRoutes.js → src/nutrition/food-search/formatFoodSearchTitle.js
 server/routes/foodRoutes.js → src/nutrition/utils/restaurantSerperQuality.js
 server/routes/notificationsRoutes.js → server/lib/pushNotificationAuth.js
 server/routes/notificationsRoutes.js → server/pushHelpers.js
@@ -1903,27 +1903,27 @@ server/routes/supportRoutes.js → server/supportEmail.js
 server/routes/userRoutes.js → server/getWeeklyContext.js
 server/routes/userRoutes.js → server/lib/macroRecalibration.js
 server/routes/workoutRoutes.js → server/lib/workoutGenerationLimit.js
-server/utils/restaurantNutrition.js → src/nutrition/services/foodSearchQueryMatch.js
-src/ai/coachWeeklyDataClient.js → src/app/config.js
+server/utils/restaurantNutrition.js → src/nutrition/food-search/rankFoodSearchResults.js
+src/ai/context/gatherCoachWeeklyStats.js → src/app/config.js
 src/ai/components/ApiKeyInput.js → src/shared/ui/ThemeContext.js
 src/ai/components/ApiKeyInput.js → src/ai/services/apiKeyService.js
 src/ai/components/useChat.js → src/ai/services/chatService.js
 src/ai/components/useChat.js → src/ai/services/apiKeyService.js
 src/ai/components/useChat.js → src/ai/services/chatStorageService.js
-src/ai/contextAggregation.js → src/app/config.js
-src/ai/contextAggregation.js → src/shared/services/baseUrl.js
-src/ai/contextAggregation.js → src/shared/utils/formatOnboardingDisplay.js
-src/ai/contextAggregation.js → src/ai/coachWeeklyDataClient.js
-src/ai/deepseekService.js → src/app/config.js
-src/ai/deepseekService.js → src/shared/services/baseUrl.js
-src/ai/deepseekService.js → src/ai/contextAggregation.js
-src/ai/deepseekService.js → src/ai/toolExecutor.js
-src/ai/deepseekService.js → src/shared/parseCoachToolCalls.js
-src/ai/deepseekService.js → src/ai/coachPersonalDataRouting.js
-src/ai/inferCoachToolCallClient.js → src/shared/parseCoachToolCalls.js
-src/ai/inferCoachToolCallClient.js → src/ai/toolExecutor.js
-src/ai/macroRecalibration.js → src/app/config.js
-src/ai/macroRecalibration.js → src/nutrition/services/nutritionService.js
+src/ai/context/CoachContextProvider.js → src/app/config.js
+src/ai/context/CoachContextProvider.js → src/shared/services/baseUrl.js
+src/ai/context/CoachContextProvider.js → src/shared/utils/formatOnboardingDisplay.js
+src/ai/context/CoachContextProvider.js → src/ai/context/gatherCoachWeeklyStats.js
+src/ai/chat-api/aiCoachServerService.js → src/app/config.js
+src/ai/chat-api/aiCoachServerService.js → src/shared/services/baseUrl.js
+src/ai/chat-api/aiCoachServerService.js → src/ai/context/CoachContextProvider.js
+src/ai/chat-api/aiCoachServerService.js → src/ai/tools/executeCoachTool.js
+src/ai/chat-api/aiCoachServerService.js → src/shared/parseCoachToolCalls.js
+src/ai/chat-api/aiCoachServerService.js → src/ai/context/gatherCoachContextFromUser.js
+src/ai/tools/parseUserMessageForTools.js → src/shared/parseCoachToolCalls.js
+src/ai/tools/parseUserMessageForTools.js → src/ai/tools/executeCoachTool.js
+src/ai/macro-recalibration/recalculateMacrosFromCoach.js → src/app/config.js
+src/ai/macro-recalibration/recalculateMacrosFromCoach.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/ai/services/askServer.js → src/shared/services/baseUrl.js
 src/ai/services/askServer.js → src/shared/services/apiAuthHeaders.js
 src/ai/services/chatService.js → src/ai/services/openaiClient.js
@@ -1942,16 +1942,16 @@ src/ai/services/trainerMessaging.js → src/shared/services/pushNotifyApi.js
 src/ai/services/trainerMessaging.js → src/shared/notifications/pushCopy.js
 src/ai/services/webSearch.js → src/shared/services/baseUrl.js
 src/ai/services/webSearch.js → src/shared/services/apiAuthHeaders.js
-src/ai/toolExecutor.js → src/app/config.js
-src/ai/toolExecutor.js → src/app/dateKey.js
-src/ai/toolExecutor.js → src/shared/services/dailyMetricsService.js
-src/ai/toolExecutor.js → src/shared/services/baseUrl.js
-src/ai/toolExecutor.js → src/nutrition/services/nutritionService.js
+src/ai/tools/executeCoachTool.js → src/app/config.js
+src/ai/tools/executeCoachTool.js → src/app/dateKey.js
+src/ai/tools/executeCoachTool.js → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
+src/ai/tools/executeCoachTool.js → src/shared/services/baseUrl.js
+src/ai/tools/executeCoachTool.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/ai/webSearchRouting.js → src/ai/perplexityService.js
-src/aiChat/AICoachTestSuite.jsx → src/ai/contextAggregation.js
-src/aiChat/AICoachTestSuite.jsx → src/ai/deepseekService.js
+src/aiChat/AICoachTestSuite.jsx → src/ai/context/CoachContextProvider.js
+src/aiChat/AICoachTestSuite.jsx → src/ai/chat-api/aiCoachServerService.js
 src/aiChat/AICoachTestSuite.jsx → src/ai/perplexityService.js
-src/aiChat/AICoachTestSuite.jsx → src/ai/toolExecutor.js
+src/aiChat/AICoachTestSuite.jsx → src/ai/tools/executeCoachTool.js
 src/aiChat/AICoachTestSuite.jsx → src/shared/components/CoachConnectHeader.js
 src/aiChat/components/AICoachGlassCard.jsx → src/aiChat/aiCoachUiTokens.js
 src/aiChat/components/ContextChips.jsx → src/aiChat/aiCoachUiTokens.js
@@ -1970,7 +1970,7 @@ src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/toolModals/LogMoo
 src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/toolModals/RateWorkoutModal.jsx
 src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/toolModals/OpenWorkoutPlanModal.jsx
 src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/toolModals/LogRestDayModal.jsx
-src/aiChat/components/ToolConfirmationModal.jsx → src/ai/toolExecutor.js
+src/aiChat/components/ToolConfirmationModal.jsx → src/ai/tools/executeCoachTool.js
 src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/toolModals/toolModalShared.js
 src/aiChat/components/ToolConfirmationModal.jsx → src/aiChat/aiCoachUiTokens.js
 src/aiChat/screens/AIChatHomeScreen.jsx → src/aiChat/components/AttachActionSheet.jsx
@@ -1988,11 +1988,11 @@ src/aiChat/screens/AIChatScreen.jsx → src/shared/components/CoachConnectHeader
 src/aiChat/screens/AIChatScreen.jsx → src/navigation/BottomNavBar.js
 src/aiChat/screens/AIChatScreen.jsx → src/navigation/bottomNavMetrics.js
 src/aiChat/screens/AIChatScreen.jsx → src/shared/ui/ThemeContext.js
-src/aiChat/screens/AIChatScreen.jsx → src/ai/contextAggregation.js
-src/aiChat/screens/AIChatScreen.jsx → src/ai/deepseekService.js
+src/aiChat/screens/AIChatScreen.jsx → src/ai/context/CoachContextProvider.js
+src/aiChat/screens/AIChatScreen.jsx → src/ai/chat-api/aiCoachServerService.js
 src/aiChat/screens/AIChatScreen.jsx → src/aiChat/components/ToolConfirmationModal.jsx
-src/aiChat/screens/AIChatScreen.jsx → src/ai/toolExecutor.js
-src/aiChat/screens/AIChatScreen.jsx → src/ai/inferCoachToolCallClient.js
+src/aiChat/screens/AIChatScreen.jsx → src/ai/tools/executeCoachTool.js
+src/aiChat/screens/AIChatScreen.jsx → src/ai/tools/parseUserMessageForTools.js
 src/aiChat/screens/AIChatScreen.jsx → src/aiChat/hooks/useCoachSpeech.js
 src/aiChat/screens/AIChatScreen.jsx → src/ai/webSearchRouting.js
 src/aiChat/screens/AIChatScreen.jsx → src/shared/accessibility/a11yProps.js
@@ -2028,7 +2028,7 @@ src/app/AuthGate.js → src/app/ClientApp.js
 src/app/AuthGate.js → src/shared/components/AppLoadingScreen.js
 src/app/AuthGate.js → src/app/config.js
 src/app/AuthGate.js → src/ai/services/chatStorageService.js
-src/app/AuthGate.js → src/utils/dataCacheCleanup.js
+src/app/AuthGate.js → src/utils/clearDataOnLogout.js
 src/app/AuthGate.js → src/shared/services/onboardingSync.js
 src/app/AuthGate.js → src/shared/services/notificationsService.js
 src/app/AuthGate.js → src/shared/services/logger.js
@@ -2036,8 +2036,8 @@ src/app/ClientApp.js → src/shared/ui/BlurBackdropPlate.jsx
 src/app/ClientApp.js → src/app/config.js
 src/app/ClientApp.js → src/app/calculations.js
 src/app/ClientApp.js → src/app/dateKey.js
-src/app/ClientApp.js → src/shared/utils/localDay.js
-src/app/ClientApp.js → src/shared/services/dailyMetricsService.js
+src/app/ClientApp.js → src/shared/utils/getLocalDay.js
+src/app/ClientApp.js → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
 src/app/ClientApp.js → src/shared/hooks/useClientHomeDailyMetrics.js
 src/app/ClientApp.js → src/client/components/home/clientAppStyles.js
 src/app/ClientApp.js → src/client/components/home/clientHomeComponents.jsx
@@ -2064,7 +2064,7 @@ src/app/ClientApp.js → src/navigation/linking.js
 src/app/ClientApp.js → src/client/navigation/ClientAppShellContext.jsx
 src/app/ClientApp.js → src/client/navigation/ClientRootNavigator.jsx
 src/app/ClientApp.js → src/navigation/BottomNavBar.js
-src/app/ClientApp.js → src/nutrition/services/nutritionService.js
+src/app/ClientApp.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/app/ClientApp.js → src/nutrition/screens/MealPlanHomeScreen.js
 src/app/ClientApp.js → src/nutrition/screens/NutritionContainer.jsx
 src/app/ClientApp.js → src/profile/screens/ProfileScreen.jsx
@@ -2103,7 +2103,7 @@ src/app/ClientApp.js → src/trainer/screens/AIWorkoutPlansScreen.js
 src/app/ClientApp.js → src/trainer/screens/TrainerWeeklyReportScreen.jsx
 src/app/ClientApp.js → src/workouts/services/workoutService.js
 src/app/ClientApp.js → src/workouts/screens/workout.js
-src/app/ClientApp.js → src/utils/dataCacheCleanup.js
+src/app/ClientApp.js → src/utils/clearDataOnLogout.js
 src/app/RoleMigrationScreen.js → src/shared/ui/ThemeContext.js
 src/app/TrainerApp.js → src/trainer/navigation/TrainerRootNavigator.jsx
 src/app/TrainerApp.js → src/trainer/navigation/TrainerAppShellContext.jsx
@@ -2134,7 +2134,7 @@ src/app/TrainerApp.js → src/trainer/screens/ClientRequestsScreen.js
 src/app/TrainerApp.js → src/trainer/screens/SessionSchedulingScreen.jsx
 src/app/TrainerApp.js → src/trainer/screens/SessionFormScreen.jsx
 src/app/TrainerApp.js → src/trainer/hooks/useTrainerClients.js
-src/app/TrainerApp.js → src/trainer/lib/trainerClientDisplayName.js
+src/app/TrainerApp.js → src/trainer/crm/formatClientName.js
 src/app/TrainerApp.js → src/trainer/hooks/useTrainerPendingRequests.js
 src/app/TrainerApp.js → src/shared/services/notificationsService.js
 src/app/TrainerApp.js → src/shared/ui/ThemeContext.js
@@ -2143,11 +2143,11 @@ src/app/TrainerApp.js → src/shared/services/latestLoggedWeight.js
 src/app/TrainerApp.js → src/utils/autoLogError.js
 src/app/TrainerApp.js → src/ai/services/trainerMessaging.js
 src/app/TrainerApp.js → src/app/dateKey.js
-src/app/TrainerApp.js → src/shared/utils/localDay.js
+src/app/TrainerApp.js → src/shared/utils/getLocalDay.js
 src/app/TrainerApp.js → src/ai/services/conversationService.js
 src/app/TrainerApp.js → src/ai/services/markAllMessagesRead.js
 src/app/TrainerApp.js → src/shared/services/notesAndFilesService.js
-src/app/TrainerApp.js → src/utils/dataCacheCleanup.js
+src/app/TrainerApp.js → src/utils/clearDataOnLogout.js
 src/app/TrainerApp.js → src/shared/components/AddNotesFilesModal.js
 src/app/TrainerApp.js → src/shared/components/MediaViewerModal.jsx
 src/app/TrainerApp.js → src/shared/components/EmbedWebViewModal.jsx
@@ -2159,7 +2159,7 @@ src/app/TrainerApp.js → src/shared/components/QuickActionCard.jsx
 src/app/TrainerApp.js → src/trainer/components/documents/ShareDocumentModal.js
 src/app/TrainerApp.js → src/trainer/components/documents/SpreadsheetEditorModal.js
 src/app/TrainerApp.js → src/shared/components/RemoveTrainerSheet.js
-src/app/TrainerApp.js → src/nutrition/services/nutritionService.js
+src/app/TrainerApp.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/app/TrainerApp.js → src/trainer/screens/PhotoGalleryScreen.js
 src/app/TrainerApp.js → src/trainer/screens/AIWorkoutPlansScreen.js
 src/app/TrainerApp.js → src/trainer/screens/ManualWorkoutPlanBuilderScreen.jsx
@@ -2178,7 +2178,7 @@ src/app/TrainerApp.js → src/trainer/screens/TrainerDashboardContent.jsx
 src/app/TrainerApp.js → src/trainer/components/dashboard/trainerDashboardUi.jsx
 src/app/TrainerApp.js → src/trainer/lib/trainerFirestoreErrors.js
 src/app/TrainerApp.js → src/trainer/lib/trainerClientFirestorePaths.js
-src/app/dateKey.js → src/shared/utils/localDay.js
+src/app/dateKey.js → src/shared/utils/getLocalDay.js
 src/auth/AuthScreen.js → src/shared/ui/ThemeContext.js
 src/auth/AuthScreen.js → src/app/config.js
 src/auth/AuthScreen.js → src/ai/services/imageService.js
@@ -2215,18 +2215,18 @@ src/client/components/home/clientHomeComponents.jsx → src/shared/components/Da
 src/client/components/home/clientHomeComponents.jsx → src/shared/components/AuroraHeroBanner.jsx
 src/client/components/home/clientHomeComponents.jsx → src/app/calculations.js
 src/client/components/home/clientHomeComponents.jsx → src/client/components/home/clientAppStyles.js
-src/client/hooks/useClientHomeBootstrap.js → src/shared/utils/localDay.js
-src/client/hooks/useClientHomeBootstrap.js → src/shared/services/dailyMetricsService.js
-src/client/hooks/useClientHomeBootstrap.js → src/nutrition/services/nutritionService.js
+src/client/hooks/useClientHomeBootstrap.js → src/shared/utils/getLocalDay.js
+src/client/hooks/useClientHomeBootstrap.js → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
+src/client/hooks/useClientHomeBootstrap.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/client/hooks/useClientHomeBootstrap.js → src/workouts/services/workoutService.js
 src/client/hooks/useClientHomeBootstrap.js → src/client/components/home/clientHomeComponents.jsx
-src/client/hooks/useClientHomeNutrition.js → src/shared/utils/localDay.js
-src/client/hooks/useClientHomeNutrition.js → src/nutrition/services/nutritionService.js
+src/client/hooks/useClientHomeNutrition.js → src/shared/utils/getLocalDay.js
+src/client/hooks/useClientHomeNutrition.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/client/hooks/useClientScreenNavigation.js → src/navigation/routes.js
 src/client/hooks/useClientScreenNavigation.js → src/navigation/navigationRef.js
 src/client/navigation/ClientMainScreen.jsx → src/app/config.js
 src/client/navigation/ClientMainScreen.jsx → src/app/dateKey.js
-src/client/navigation/ClientMainScreen.jsx → src/shared/services/dailyMetricsService.js
+src/client/navigation/ClientMainScreen.jsx → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
 src/client/navigation/ClientMainScreen.jsx → src/shared/services/notesAndFilesService.js
 src/client/navigation/ClientMainScreen.jsx → src/trainer/screens/TrainerMessagingScreen.js
 src/client/navigation/ClientMainScreen.jsx → src/trainer/screens/ConversationsListScreen.js
@@ -2293,10 +2293,10 @@ src/client/screens/DataStorageScreen.jsx → src/shared/ui/ThemeContext.js
 src/client/screens/GoalsTargetsScreen.jsx → src/shared/ui/ThemeContext.js
 src/client/screens/MyDashboardScreen.jsx → src/app/config.js
 src/client/screens/MyDashboardScreen.jsx → src/shared/services/pushNotifyApi.js
-src/client/screens/MyDashboardScreen.jsx → src/shared/utils/localDay.js
+src/client/screens/MyDashboardScreen.jsx → src/shared/utils/getLocalDay.js
 src/client/screens/MyDashboardScreen.jsx → src/shared/hooks/useLocalTodayDateKey.js
 src/client/screens/MyDashboardScreen.jsx → src/shared/services/dailyDashboardDayRollover.js
-src/client/screens/MyDashboardScreen.jsx → src/shared/services/dailyMetricsService.js
+src/client/screens/MyDashboardScreen.jsx → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
 src/client/screens/MyDashboardScreen.jsx → src/shared/ui/ThemeContext.js
 src/client/screens/MyDashboardScreen.jsx → src/shared/components/SessionMeetingCard.jsx
 src/client/screens/MyDashboardScreen.jsx → src/client/components/PremiumTrainerCard.jsx
@@ -2373,23 +2373,23 @@ src/nutrition/components/MealCard.js → src/nutrition/components/FoodItem.js
 src/nutrition/components/MealCard.js → src/shared/ui/FluidGlass.jsx
 src/nutrition/screens/BarcodeScannerScreen.js → src/shared/ui/ThemeContext.js
 src/nutrition/screens/BarcodeScannerScreen.js → src/nutrition/services/foodSearchProvider.js
-src/nutrition/screens/BarcodeScannerScreen.js → src/nutrition/services/nutritionService.js
-src/nutrition/screens/FoodSearchScreen.js → src/nutrition/services/nutritionService.js
-src/nutrition/screens/FoodSearchScreen.js → src/nutrition/utils/foodBrandDisplay.js
-src/nutrition/screens/FoodSearchScreen.js → src/nutrition/utils/foodSearchTitle.js
+src/nutrition/screens/BarcodeScannerScreen.js → src/nutrition/daily-log/logFoodToFirestore.js
+src/nutrition/screens/FoodSearchScreen.js → src/nutrition/daily-log/logFoodToFirestore.js
+src/nutrition/screens/FoodSearchScreen.js → src/nutrition/food-details/formatFoodBrand.js
+src/nutrition/screens/FoodSearchScreen.js → src/nutrition/food-search/formatFoodSearchTitle.js
 src/nutrition/screens/FoodSearchScreen.js → src/shared/components/BrandGradientStrokeText.jsx
 src/nutrition/screens/FoodSearchScreen.js → src/nutrition/components/FoodSearchAccuracyHeroCard.jsx
 src/nutrition/screens/FoodSearchScreen.js → src/app/config.js
 src/nutrition/screens/FoodSearchScreen.js → src/shared/ui/ThemeContext.js
 src/nutrition/screens/MacroTrackerScreen.js → src/shared/ui/ThemeContext.js
 src/nutrition/screens/MacroTrackerScreen.js → src/app/config.js
-src/nutrition/screens/MacroTrackerScreen.js → src/nutrition/services/nutritionService.js
+src/nutrition/screens/MacroTrackerScreen.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/nutrition/screens/MacroTrackerScreen.js → src/nutrition/components/MacroBar.js
 src/nutrition/screens/MacroTrackerScreen.js → src/Loader.js
 src/nutrition/screens/MacroTrackerScreen.js → src/utils/autoLogError.js
 src/nutrition/screens/MealPlanHomeScreen.js → src/shared/ui/ThemeContext.js
 src/nutrition/screens/MealPlanHomeScreen.js → src/app/config.js
-src/nutrition/screens/MealPlanHomeScreen.js → src/nutrition/services/nutritionService.js
+src/nutrition/screens/MealPlanHomeScreen.js → src/nutrition/daily-log/logFoodToFirestore.js
 src/nutrition/screens/MealPlanHomeScreen.js → src/nutrition/screens/FoodSearchScreen.js
 src/nutrition/screens/MealPlanHomeScreen.js → src/utils/autoLogError.js
 src/nutrition/screens/MealPlanHomeScreen.js → src/Loader.js
@@ -2405,7 +2405,7 @@ src/nutrition/screens/NutritionContainer.jsx → src/app/dateKey.js
 src/nutrition/screens/NutritionContainer.jsx → src/shared/ui/ThemeContext.js
 src/nutrition/screens/NutritionContainer.jsx → src/shared/components/CoachConnectHeader.js
 src/nutrition/screens/NutritionContainer.jsx → src/navigation/BottomNavBar.js
-src/nutrition/screens/NutritionContainer.jsx → src/nutrition/services/nutritionService.js
+src/nutrition/screens/NutritionContainer.jsx → src/nutrition/daily-log/logFoodToFirestore.js
 src/nutrition/screens/NutritionContainer.jsx → src/nutrition/screens/NutritionOnboardingScreen.jsx
 src/nutrition/screens/NutritionContainer.jsx → src/nutrition/screens/NutritionScreen.jsx
 src/nutrition/screens/NutritionContainer.jsx → src/nutrition/screens/QuickAddNutrition.jsx
@@ -2420,14 +2420,14 @@ src/nutrition/screens/QuickAddScreen.jsx → src/shared/ui/ThemeContext.js
 src/nutrition/services/foodSearchProvider.js → src/shared/services/baseUrl.js
 src/nutrition/services/foodSearchProvider.js → src/shared/services/apiAuthHeaders.js
 src/nutrition/services/foodSearchProvider.js → src/shared/services/logger.js
-src/nutrition/services/foodSearchProvider.js → src/nutrition/services/foodSearchQueryMatch.js
+src/nutrition/services/foodSearchProvider.js → src/nutrition/food-search/rankFoodSearchResults.js
 src/nutrition/services/foodSearchProvider.js → src/nutrition/utils/nutritionNormalization.js
-src/nutrition/services/nutritionService.js → src/app/config.js
-src/nutrition/services/nutritionService.js → src/nutrition/services/foodSearchProvider.js
-src/nutrition/services/nutritionService.js → src/utils/autoLogError.js
-src/nutrition/utils/foodSearchTitle.js → src/nutrition/services/foodSearchQueryMatch.js
-src/nutrition/utils/foodSearchTitle.js → src/nutrition/utils/restaurantSerperQuality.js
-src/nutrition/utils/restaurantSerperQuality.js → src/nutrition/services/foodSearchQueryMatch.js
+src/nutrition/daily-log/logFoodToFirestore.js → src/app/config.js
+src/nutrition/daily-log/logFoodToFirestore.js → src/nutrition/services/foodSearchProvider.js
+src/nutrition/daily-log/logFoodToFirestore.js → src/utils/autoLogError.js
+src/nutrition/food-search/formatFoodSearchTitle.js → src/nutrition/food-search/rankFoodSearchResults.js
+src/nutrition/food-search/formatFoodSearchTitle.js → src/nutrition/utils/restaurantSerperQuality.js
+src/nutrition/utils/restaurantSerperQuality.js → src/nutrition/food-search/rankFoodSearchResults.js
 src/profile/screens/ProfileScreen.jsx → src/app/config.js
 src/profile/screens/ProfileScreen.jsx → src/shared/components/CoachConnectHeader.js
 src/profile/screens/ProfileScreen.jsx → src/navigation/BottomNavBar.js
@@ -2435,7 +2435,7 @@ src/profile/screens/ProfileScreen.jsx → src/navigation/bottomNavMetrics.js
 src/profile/screens/ProfileScreen.jsx → src/shared/components/ProfileCardIcon.jsx
 src/profile/screens/ProfileScreen.jsx → src/shared/workout/profileCardIcons.js
 src/profile/screens/ProfileScreen.jsx → src/shared/ui/ThemeContext.js
-src/profile/screens/ProfileScreen.jsx → src/utils/dataCacheCleanup.js
+src/profile/screens/ProfileScreen.jsx → src/utils/clearDataOnLogout.js
 src/profile/screens/ProfileScreen.jsx → src/shared/services/trainerMarketplaceSync.js
 src/profile/screens/ProfileScreen.jsx → src/shared/utils/formatOnboardingDisplay.js
 src/screens/settings/ForgotPassword.js → src/app/config.js
@@ -2498,17 +2498,17 @@ src/shared/hooks/useChat.js → src/ai/services/chatStorageService.js
 src/shared/hooks/useClientHomeDailyMetrics.js → src/app/config.js
 src/shared/hooks/useClientHomeDailyMetrics.js → src/shared/hooks/useLocalTodayDateKey.js
 src/shared/hooks/useClientHomeDailyMetrics.js → src/shared/services/dailyDashboardDayRollover.js
-src/shared/hooks/useClientHomeDailyMetrics.js → src/shared/services/dailyMetricsService.js
-src/shared/hooks/useLocalTodayDateKey.js → src/shared/utils/localDay.js
+src/shared/hooks/useClientHomeDailyMetrics.js → src/shared/daily-metrics/saveDailyMetricsToFirestore.js
+src/shared/hooks/useLocalTodayDateKey.js → src/shared/utils/getLocalDay.js
 src/shared/services/apiAuthHeaders.js → src/app/config.js
 src/shared/services/apiFetch.js → src/shared/services/logger.js
 src/shared/services/clientRegistryFirestore.js → src/app/config.js
 src/shared/services/clientRegistryFirestore.js → src/shared/services/clientProfileFirestore.js
 src/shared/services/dailyDashboardDayRollover.js → src/app/config.js
-src/shared/services/dailyDashboardDayRollover.js → src/shared/utils/localDay.js
-src/shared/services/dailyMetricsService.js → src/app/config.js
-src/shared/services/dailyMetricsService.js → src/shared/utils/localDay.js
-src/shared/services/dailyMetricsService.js → src/shared/services/dailyMetricsParse.cjs
+src/shared/services/dailyDashboardDayRollover.js → src/shared/utils/getLocalDay.js
+src/shared/daily-metrics/saveDailyMetricsToFirestore.js → src/app/config.js
+src/shared/daily-metrics/saveDailyMetricsToFirestore.js → src/shared/utils/getLocalDay.js
+src/shared/daily-metrics/saveDailyMetricsToFirestore.js → src/shared/services/dailyMetricsParse.cjs
 src/shared/services/firestorePagedQuery.js → src/shared/services/logger.js
 src/shared/services/latestLoggedWeight.js → src/app/config.js
 src/shared/services/logger.js → src/shared/services/monitoring.js
@@ -2579,7 +2579,7 @@ src/trainer/hooks/useTrainerPendingRequests.js → src/trainer/services/trainerP
 src/trainer/hooks/useTrainerScreenNavigation.js → src/navigation/routes.js
 src/trainer/hooks/useTrainerScreenNavigation.js → src/navigation/navigationRef.js
 src/trainer/lib/resolveLinkedTrainerClients.js → src/app/config.js
-src/trainer/lib/resolveLinkedTrainerClients.js → src/trainer/lib/trainerClientDisplayName.js
+src/trainer/lib/resolveLinkedTrainerClients.js → src/trainer/crm/formatClientName.js
 src/trainer/lib/trainerClientFirestorePaths.js → src/app/config.js
 src/trainer/lib/trainerClientFirestorePaths.js → src/shared/services/firestorePagedQuery.js
 src/trainer/navigation/TrainerMainScreen.jsx → src/shared/components/CoachConnectHeader.js
@@ -2676,9 +2676,9 @@ src/trainer/screens/TrainerClientsListScreen.jsx → src/navigation/BottomNavBar
 src/trainer/screens/TrainerClientsListScreen.jsx → src/trainer/components/dashboard/trainerDashboardUi.jsx
 src/trainer/screens/TrainerDashboardContent.jsx → src/app/config.js
 src/trainer/screens/TrainerDashboardContent.jsx → src/app/dateKey.js
-src/trainer/screens/TrainerDashboardContent.jsx → src/shared/utils/localDay.js
+src/trainer/screens/TrainerDashboardContent.jsx → src/shared/utils/getLocalDay.js
 src/trainer/screens/TrainerDashboardContent.jsx → src/shared/services/latestLoggedWeight.js
-src/trainer/screens/TrainerDashboardContent.jsx → src/nutrition/services/nutritionService.js
+src/trainer/screens/TrainerDashboardContent.jsx → src/nutrition/daily-log/logFoodToFirestore.js
 src/trainer/screens/TrainerDashboardContent.jsx → src/shared/services/notesAndFilesService.js
 src/trainer/screens/TrainerDashboardContent.jsx → src/shared/components/HoldToConfirmModal.jsx
 src/trainer/screens/TrainerDashboardContent.jsx → src/shared/components/SpreadsheetViewerModal.js
@@ -2718,7 +2718,7 @@ src/utils/migrateTrainers.js → src/app/config.js
 src/utils/restaurantNutrition.js → src/app/config.js
 src/utils/restaurantNutrition.js → src/shared/services/baseUrl.js
 src/utils/restaurantNutrition.js → src/shared/services/apiAuthHeaders.js
-src/utils/restaurantNutrition.js → src/nutrition/services/foodSearchQueryMatch.js
+src/utils/restaurantNutrition.js → src/nutrition/food-search/rankFoodSearchResults.js
 src/workouts/components/WorkoutExerciseLibraryTab.jsx → src/workouts/hooks/useYouTubeAPI.js
 src/workouts/components/WorkoutExerciseLibraryTab.jsx → src/workouts/components/VideoPlayerModal.jsx
 src/workouts/components/WorkoutExerciseLibraryTab.jsx → src/workouts/components/ExerciseSection.js

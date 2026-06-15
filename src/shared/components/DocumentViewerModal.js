@@ -1,4 +1,14 @@
 /**
+ * Document Viewer Modal
+ *
+ * Purpose: UI screen or component: Document Viewer Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: DocumentViewerModal
+ *
+ * @file-header
+ */
+/**
  * DocumentViewerModal — read-only full-screen modal for trainer text/rich-text documents.
  *
  * Used when a client (or trainer) taps a document in Files. Loads content from Firestore
@@ -31,7 +41,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview'; // renders rich HTML body when present
-import { getTrainerDocument } from '../services/notesAndFilesService';
+import { getTrainerDocument } from '../notes-files/manageNotesAndFiles';
 
 export default function DocumentViewerModal({
   visible,

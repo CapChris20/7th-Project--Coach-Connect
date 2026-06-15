@@ -1,4 +1,14 @@
 /**
+ * restaurant Nutrition
+ *
+ * Purpose: restaurant Nutrition — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/utils
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
+/**
  * Restaurant nutrition: detect restaurant queries, build search query, and run
  * full pipeline (Firestore cache + server extraction). Returns structured macros only.
  */
@@ -6,8 +16,8 @@
 import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../app/config';
 import { getApiBase } from '../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../shared/services/apiAuthHeaders';
-import { isMenuStyleQuery } from '../nutrition/services/foodSearchQueryMatch';
+import { getApiAuthHeaders } from '../shared/api/getAuthHeaders';
+import { isMenuStyleQuery } from '../nutrition/food-search/rankFoodSearchResults';
 
 /**
  * True when the query looks like a restaurant menu item (generic heuristics, no brand list).

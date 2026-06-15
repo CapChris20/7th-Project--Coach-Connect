@@ -1,3 +1,13 @@
+/**
+ * Pdf Viewer Modal
+ *
+ * Purpose: UI screen or component: Pdf Viewer Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: PdfViewerModal
+ *
+ * @file-header
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';

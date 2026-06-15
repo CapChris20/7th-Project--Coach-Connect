@@ -124,7 +124,7 @@
 - [`src/nutrition/screens/QuickAddNutrition.jsx`](#file-src-nutrition-screens-quickaddnutrition-jsx)
 - [`src/nutrition/screens/QuickAddScreen.jsx`](#file-src-nutrition-screens-quickaddscreen-jsx)
 - [`src/nutrition/services/foodSearchProvider.js`](#file-src-nutrition-services-foodsearchprovider-js)
-- [`src/nutrition/services/nutritionService.js`](#file-src-nutrition-services-nutritionservice-js)
+- [`src/nutrition/daily-log/logFoodToFirestore.js`](#file-src-nutrition-services-nutritionservice-js)
 - [`src/nutrition/utils/nutritionNormalization.js`](#file-src-nutrition-utils-nutritionnormalization-js)
 - [`src/profile/screens/ProfileScreen.jsx`](#file-src-profile-screens-profilescreen-jsx)
 - [`src/screens/PlanViewerScreen.jsx`](#file-src-screens-planviewerscreen-jsx)
@@ -207,7 +207,7 @@
 - [`src/shared/ui/theme.js`](#file-src-shared-ui-theme-js)
 - [`src/shared/ui/ThemeContext.js`](#file-src-shared-ui-themecontext-js)
 - [`src/shared/utils/fileFormatting.js`](#file-src-shared-utils-fileformatting-js)
-- [`src/shared/utils/localDay.js`](#file-src-shared-utils-localday-js)
+- [`src/shared/utils/getLocalDay.js`](#file-src-shared-utils-localday-js)
 - [`src/shared/utils/notesFileView.js`](#file-src-shared-utils-notesfileview-js)
 - [`src/shared/utils/trainerProfileMedia.js`](#file-src-shared-utils-trainerprofilemedia-js)
 - [`src/shared/utils/workoutDayLabels.js`](#file-src-shared-utils-workoutdaylabels-js)
@@ -233,7 +233,7 @@
 - [`src/trainer/data/manualExerciseLibrarySeed.js`](#file-src-trainer-data-manualexerciselibraryseed-js)
 - [`src/trainer/hooks/useTrainerClients.js`](#file-src-trainer-hooks-usetrainerclients-js)
 - [`src/trainer/hooks/useTrainerPendingRequests.js`](#file-src-trainer-hooks-usetrainerpendingrequests-js)
-- [`src/trainer/lib/trainerClientDisplayName.js`](#file-src-trainer-lib-trainerclientdisplayname-js)
+- [`src/trainer/crm/formatClientName.js`](#file-src-trainer-lib-trainerclientdisplayname-js)
 - [`src/trainer/screens/AIWorkoutPlansScreen.js`](#file-src-trainer-screens-aiworkoutplansscreen-js)
 - [`src/trainer/screens/ClientDetailScreen.js`](#file-src-trainer-screens-clientdetailscreen-js)
 - [`src/trainer/screens/ClientRequestsScreen.js`](#file-src-trainer-screens-clientrequestsscreen-js)
@@ -252,7 +252,7 @@
 - [`src/trainer/services/scheduleService.js`](#file-src-trainer-services-scheduleservice-js)
 - [`src/trainer/services/trainerPendingRequestsService.js`](#file-src-trainer-services-trainerpendingrequestsservice-js)
 - [`src/utils/autoLogError.js`](#file-src-utils-autologerror-js)
-- [`src/utils/dataCacheCleanup.js`](#file-src-utils-datacachecleanup-js)
+- [`src/utils/clearDataOnLogout.js`](#file-src-utils-datacachecleanup-js)
 - [`src/utils/migrateTrainers.js`](#file-src-utils-migratetrainers-js)
 - [`src/utils/restaurantNutrition.js`](#file-src-utils-restaurantnutrition-js)
 - [`src/utils/xlsx.js`](#file-src-utils-xlsx-js)
@@ -990,7 +990,7 @@
 | 2. **What it does** | AuthGate - Handles authentication state and routes to appropriate app  Responsibilities: - Shows splash screen initially - Handles auth flow (login, signup, for… |
 | 3. **Main components/functions** | `default:AuthGate` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
-| 5. **Dependencies** | Relative: `../auth/AuthScreen`, `../auth/ForgotPasswordScreen`, `../auth/OnboardingScreen`, `./TrainerApp`, `./ClientApp`, `../shared/components/AppLoadingScreen`, `./config`, `../../utils/errorSyncService`, `../ai/services/apiKeyService`, `../ai/services/chatStorageService`, `../utils/dataCacheCleanup`, `../shared/services/onboardingSync`, `../shared/services/notificationsService`; packages/other: — |
+| 5. **Dependencies** | Relative: `../auth/AuthScreen`, `../auth/ForgotPasswordScreen`, `../auth/OnboardingScreen`, `./TrainerApp`, `./ClientApp`, `../shared/components/AppLoadingScreen`, `./config`, `../../utils/syncErrorsToServer`, `../ai/services/apiKeyService`, `../ai/services/chatStorageService`, `../utils/clearDataOnLogout`, `../shared/services/onboardingSync`, `../shared/services/notificationsService`; packages/other: — |
 | 6. **Where used (`src/` importers)** | — |
 | 7. **Firebase/API** | Firebase (Auth, Firestore, or related SDK calls). |
 
@@ -1027,7 +1027,7 @@
 | 3. **Main components/functions** | `default:supabase` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
 | 5. **Dependencies** | Relative: `../supabase/supabase-js`; packages/other: — |
-| 6. **Where used (`src/` importers)** | `src/ai/screens/TrainerProfileScreen.jsx`, `src/ai/screens/TrainerSearchScreen.js`, `src/ai/services/chatStorageService.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/ai/services/trainerMessaging.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/app/AuthGate.js`, `src/app/ClientApp.js`, `src/app/TrainerApp.js`, `src/auth/AuthScreen.js`, `src/auth/OnboardingScreen.js`, `src/client/screens/DashboardScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/client/screens/ProfileScreen.js`, `src/client/screens/SettingsScreen.js`, `src/contexts/AIContext.js`, `src/hooks/use-sessions.js`, `src/nutrition/screens/FoodSearchScreen.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/screens/NutritionContainer.jsx`, `src/nutrition/services/nutritionService.js`, `src/profile/screens/ProfileScreen.jsx`, `src/screens/settings/ForgotPassword.js`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/shared/services/notesAndFilesService.js`, `src/shared/services/notificationsService.js`, `src/shared/services/storage.js`, `src/trainer/components/MessagesView.jsx`, `src/trainer/components/NutritionView.jsx`, `src/trainer/components/ProgressView.jsx`, `src/trainer/components/TrainerMarketplaceModal.js`, `src/trainer/components/TrainerWeeklyReportSection.jsx`, `src/trainer/hooks/useTrainerClients.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/ClientRequestsScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/trainer/services/manualWorkoutPlanService.js`, `src/trainer/services/pushSessionNotification.js`, `src/trainer/services/scheduleService.js`, `src/trainer/services/trainerPendingRequestsService.js`, `src/utils/migrateTrainers.js`, `src/utils/restaurantNutrition.js`, `src/workouts/components/WorkoutPlanPdfViewerModal.js`, `src/workouts/screens/ActiveWorkoutScreen.jsx`, `src/workouts/screens/WorkoutHistoryScreen.jsx`, `src/workouts/screens/workout.js`, `src/workouts/services/workoutPlanPdfService.js`, `src/workouts/services/workoutService.js` |
+| 6. **Where used (`src/` importers)** | `src/ai/screens/TrainerProfileScreen.jsx`, `src/ai/screens/TrainerSearchScreen.js`, `src/ai/services/chatStorageService.js`, `src/ai/services/conversationService.js`, `src/ai/services/markAllMessagesRead.js`, `src/ai/services/trainerMessaging.js`, `src/aiChat/screens/AIChatHomeScreen.jsx`, `src/aiChat/screens/AIChatScreen.jsx`, `src/app/AuthGate.js`, `src/app/ClientApp.js`, `src/app/TrainerApp.js`, `src/auth/AuthScreen.js`, `src/auth/OnboardingScreen.js`, `src/client/screens/DashboardScreen.js`, `src/client/screens/MyDashboardScreen.jsx`, `src/client/screens/ProfileScreen.js`, `src/client/screens/SettingsScreen.js`, `src/contexts/AIContext.js`, `src/hooks/use-sessions.js`, `src/nutrition/screens/FoodSearchScreen.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/screens/NutritionContainer.jsx`, `src/nutrition/daily-log/logFoodToFirestore.js`, `src/profile/screens/ProfileScreen.jsx`, `src/screens/settings/ForgotPassword.js`, `src/shared/components/AddNotesFilesModal.js`, `src/shared/components/RemoveTrainerSheet.js`, `src/shared/components/ReviewSubmitSheet.js`, `src/shared/services/notesAndFilesService.js`, `src/shared/services/notificationsService.js`, `src/shared/services/storage.js`, `src/trainer/components/MessagesView.jsx`, `src/trainer/components/NutritionView.jsx`, `src/trainer/components/ProgressView.jsx`, `src/trainer/components/TrainerMarketplaceModal.js`, `src/trainer/components/TrainerWeeklyReportSection.jsx`, `src/trainer/hooks/useTrainerClients.js`, `src/trainer/screens/AIWorkoutPlansScreen.js`, `src/trainer/screens/ClientRequestsScreen.js`, `src/trainer/screens/ConversationsListScreen.js`, `src/trainer/screens/PhotoGalleryScreen.js`, `src/trainer/screens/TrainerMessagingScreen.js`, `src/trainer/screens/TrainerWeeklyReportScreen.jsx`, `src/trainer/services/manualWorkoutPlanService.js`, `src/trainer/services/pushSessionNotification.js`, `src/trainer/services/scheduleService.js`, `src/trainer/services/trainerPendingRequestsService.js`, `src/utils/migrateTrainers.js`, `src/utils/restaurantNutrition.js`, `src/workouts/components/WorkoutPlanPdfViewerModal.js`, `src/workouts/screens/ActiveWorkoutScreen.jsx`, `src/workouts/screens/WorkoutHistoryScreen.jsx`, `src/workouts/screens/workout.js`, `src/workouts/services/workoutPlanPdfService.js`, `src/workouts/services/workoutService.js` |
 | 7. **Firebase/API** | Firebase/Firestore and HTTP or external API usage. |
 
 ### <span id="file-src-app-datekey-js"></span>`src/app/dateKey.js`
@@ -1278,7 +1278,7 @@
 | 2. **What it does** | Helper function to calculate calorie goal |
 | 3. **Main components/functions** | `default:DashboardScreen` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
-| 5. **Dependencies** | Relative: `../../shared/ui/theme`, `../../app/config`, `../../nutrition/services/nutritionService`, `../../workouts/services/workoutService`, `../../app/calculations`; packages/other: — |
+| 5. **Dependencies** | Relative: `../../shared/ui/theme`, `../../app/config`, `../../nutrition/daily-log/logFoodToFirestore`, `../../workouts/services/workoutService`, `../../app/calculations`; packages/other: — |
 | 6. **Where used (`src/` importers)** | — |
 | 7. **Firebase/API** | Firebase (Auth, Firestore, or related SDK calls). |
 
@@ -1314,7 +1314,7 @@
 | 2. **What it does** | Hide trainer bios that look like keyboard mash / test strings (e |
 | 3. **Main components/functions** | `default:MyDashboardScreen`, `MyDashboardScreen` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
-| 5. **Dependencies** | Relative: `../../app/config`, `../../shared/services/pushNotifyApi`, `../../shared/utils/localDay`, `../../shared/ui/ThemeContext`, `../../shared/components/SessionMeetingCard`, `../components/PremiumWelcomeCard`, `../components/PremiumTrainerCard`, `../components/WeeklyReportHeroCard`, `../components/PremiumStatsSection`, `../../shared/utils/workoutDayLabels`; packages/other: — |
+| 5. **Dependencies** | Relative: `../../app/config`, `../../shared/services/pushNotifyApi`, `../../shared/utils/getLocalDay`, `../../shared/ui/ThemeContext`, `../../shared/components/SessionMeetingCard`, `../components/PremiumWelcomeCard`, `../components/PremiumTrainerCard`, `../components/WeeklyReportHeroCard`, `../components/PremiumStatsSection`, `../../shared/utils/workoutDayLabels`; packages/other: — |
 | 6. **Where used (`src/` importers)** | `src/app/ClientApp.js` |
 | 7. **Firebase/API** | Firebase (Auth, Firestore, or related SDK calls). |
 
@@ -1759,14 +1759,14 @@
 | 3. **Main components/functions** | `default:new`, `FOOD_SEARCH_OFFLINE_HINT` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
 | 5. **Dependencies** | Relative: `../../shared/services/baseUrl`; packages/other: — |
-| 6. **Where used (`src/` importers)** | `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/services/nutritionService.js` |
+| 6. **Where used (`src/` importers)** | `src/nutrition/screens/BarcodeScannerScreen.js`, `src/nutrition/daily-log/logFoodToFirestore.js` |
 | 7. **Firebase/API** | Firebase/Firestore and HTTP or external API usage. |
 
-### <span id="file-src-nutrition-services-nutritionservice-js"></span>`src/nutrition/services/nutritionService.js`
+### <span id="file-src-nutrition-services-nutritionservice-js"></span>`src/nutrition/daily-log/logFoodToFirestore.js`
 
 | # | Detail |
 |---|--------|
-| 1. **Path** | `src/nutrition/services/nutritionService.js` |
+| 1. **Path** | `src/nutrition/daily-log/logFoodToFirestore.js` |
 | 2. **What it does** | Auto-log the error |
 | 3. **Main components/functions** | `getDailyGoals`, `upsertDailyGoals`, `getFoodLogsForDate`, `addFoodLog`, `updateFoodLog`, `deleteFoodLog`, `calculateMacroTotals`, `splitLogsByMeal` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
@@ -1794,7 +1794,7 @@
 | 2. **What it does** | Height in Firestore may be a number (inches), string, or legacy object shape… |
 | 3. **Main components/functions** | `default:ProfileScreen`, `ProfileScreen` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
-| 5. **Dependencies** | Relative: `../../app/config`, `../../shared/components/CoachConnectHeader`, `../../navigation/BottomNavBar`, `../../shared/ui/ThemeContext`, `../../utils/dataCacheCleanup`; packages/other: — |
+| 5. **Dependencies** | Relative: `../../app/config`, `../../shared/components/CoachConnectHeader`, `../../navigation/BottomNavBar`, `../../shared/ui/ThemeContext`, `../../utils/clearDataOnLogout`; packages/other: — |
 | 6. **Where used (`src/` importers)** | `src/app/ClientApp.js`, `src/app/TrainerApp.js` |
 | 7. **Firebase/API** | Firebase/Firestore and HTTP or external API usage. |
 
@@ -2758,11 +2758,11 @@
 | 6. **Where used (`src/` importers)** | `src/client/components/files/FileCard.jsx`, `src/client/components/files/MyFilesSection.jsx`, `src/client/components/files/NotesFromTrainerSection.jsx`, `src/client/components/files/TrainerSharedSection.jsx`, `src/client/screens/ClientFilesScreen.jsx`, `src/shared/components/FileGalleryGrid.jsx`, `src/shared/components/FilesNotesSectionPremium.jsx` |
 | 7. **Firebase/API** | None detected by static scan (may still use globals). |
 
-### <span id="file-src-shared-utils-localday-js"></span>`src/shared/utils/localDay.js`
+### <span id="file-src-shared-utils-localday-js"></span>`src/shared/utils/getLocalDay.js`
 
 | # | Detail |
 |---|--------|
-| 1. **Path** | `src/shared/utils/localDay.js` |
+| 1. **Path** | `src/shared/utils/getLocalDay.js` |
 | 2. **What it does** | Local-day helpers (device timezone) |
 | 3. **Main components/functions** | `getLocalDateKey`, `msUntilLocalMidnight`, `nextLocalMidnight` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
@@ -2922,7 +2922,7 @@
 | 2. **What it does** | Fetch today's nutrition logs |
 | 3. **Main components/functions** | `default:NutritionView` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
-| 5. **Dependencies** | Relative: `../../app/config`, `../../nutrition/services/nutritionService`, `../../app/calculations`; packages/other: — |
+| 5. **Dependencies** | Relative: `../../app/config`, `../../nutrition/daily-log/logFoodToFirestore`, `../../app/calculations`; packages/other: — |
 | 6. **Where used (`src/` importers)** | — |
 | 7. **Firebase/API** | Firebase (Auth, Firestore, or related SDK calls). |
 
@@ -3070,11 +3070,11 @@
 | 6. **Where used (`src/` importers)** | `src/app/TrainerApp.js`, `src/trainer/screens/ClientRequestsScreen.js` |
 | 7. **Firebase/API** | None detected by static scan (may still use globals). |
 
-### <span id="file-src-trainer-lib-trainerclientdisplayname-js"></span>`src/trainer/lib/trainerClientDisplayName.js`
+### <span id="file-src-trainer-lib-trainerclientdisplayname-js"></span>`src/trainer/crm/formatClientName.js`
 
 | # | Detail |
 |---|--------|
-| 1. **Path** | `src/trainer/lib/trainerClientDisplayName.js` |
+| 1. **Path** | `src/trainer/crm/formatClientName.js` |
 | 2. **What it does** | Trainer roster: CRM `trainer_clients/… |
 | 3. **Main components/functions** | `isGenericClientDisplayName`, `resolveTrainerClientDisplayName` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
@@ -3295,14 +3295,14 @@
 | 3. **Main components/functions** | `autoLogErrorSync`, `autoLogError` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |
 | 5. **Dependencies** | Relative: —; packages/other: — |
-| 6. **Where used (`src/` importers)** | `src/app/TrainerApp.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/services/nutritionService.js` |
+| 6. **Where used (`src/` importers)** | `src/app/TrainerApp.js`, `src/nutrition/screens/MacroTrackerScreen.js`, `src/nutrition/screens/MealPlanHomeScreen.js`, `src/nutrition/daily-log/logFoodToFirestore.js` |
 | 7. **Firebase/API** | None detected by static scan (may still use globals). |
 
-### <span id="file-src-utils-datacachecleanup-js"></span>`src/utils/dataCacheCleanup.js`
+### <span id="file-src-utils-datacachecleanup-js"></span>`src/utils/clearDataOnLogout.js`
 
 | # | Detail |
 |---|--------|
-| 1. **Path** | `src/utils/dataCacheCleanup.js` |
+| 1. **Path** | `src/utils/clearDataOnLogout.js` |
 | 2. **What it does** | Fix data leakage by clearing all cached data when user switches |
 | 3. **Main components/functions** | `clearAllUserData`, `clearUserSpecificData`, `onUserSignOut`, `onUserSwitch` |
 | 4. **Key state/logic** | Local React state, effects, handlers, and/or pure helpers defined in this file (open in IDE for full detail). |

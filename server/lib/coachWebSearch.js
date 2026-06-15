@@ -1,5 +1,5 @@
 /**
- * AI Coach web-search routing (server). Keep in sync with src/ai/webSearchRouting.js.
+ * AI Coach web-search routing (server). Keep in sync with src/ai/chat-api/detectWebSearchRequest.js.
  */
 
 /** Explicit user intent to search the internet — not "this week" / normal coaching questions. */

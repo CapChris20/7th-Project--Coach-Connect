@@ -36,10 +36,10 @@
 
 ### Modified Files (5)
 - `server/index.js` - System prompts + 5 tool handlers
-- `src/ai/toolExecutor.js` - 5 client fallbacks
+- `src/ai/tools/executeCoachTool.js` - 5 client fallbacks
 - `server/lib/inferCoachToolCall.js` - Tool inference patterns
 - `firestore.rules` - 7 new collection rules
-- `src/ai/deepseekService.js` - Error handling robustness
+- `src/ai/chat-api/aiCoachServerService.js` - Error handling robustness
 
 ---
 

@@ -1,4 +1,14 @@
 /**
+ * AIChat Screen
+ *
+ * Purpose: UI screen or component: AIChat Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AIChatScreen
+ *
+ * @file-header
+ */
+/**
  * AIChatScreen.jsx — React Native
  * Converted from Lovable export (lovable-export-d5e2ed71)
  *
@@ -27,35 +37,42 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LottieView from 'lottie-react-native';
-import { showCoachAttachMenu } from '../lib/showCoachAttachMenu';
+import { showCoachAttachMenu } from '../chat-thread/openAttachmentMenu';
 import {
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
-} from '../lib/coachAttachmentPickers';
+} from '../chat-thread/pickAttachmentType';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import logger from '../../shared/services/logger';
+import { serverTimestamp } from 'firebase/firestore';
+import logger from '../../shared/api/logErrorToServer';
 import { db } from '../../app/config';
-import { auth } from '../../app/config';
+import {
+  loadAiChatMessages,
+  persistAiChatSession,
+  restoreChatMessagesFromSaved,
+} from '../persistence/saveCoachMessagesToFirestore';
+import { useCoachComposerInput } from '../hooks/useCoachComposerInput';
+import CoachPasteSheet from '../components/CoachPasteSheet';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import Markdown, { openUrl } from 'react-native-markdown-display';
-import { loadCoachContextEnhanced } from '../../ai/contextAggregation';
-import { sendCoachMessageWithRetry } from '../../ai/deepseekService';
+import { loadCoachContextEnhanced } from '../../ai/context/CoachContextProvider';
+import { sendCoachMessageWithRetry } from '../../ai/chat-api/aiCoachServerService';
 import ToolConfirmationModal from '../components/ToolConfirmationModal';
-import { executeCoachTool, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai/toolExecutor';
-import { inferToolCallFromCoachMessage } from '../../ai/inferCoachToolCallClient';
-import { useCoachSpeech } from '../hooks/useCoachSpeech';
-import { shouldShowWebSearchUI } from '../../ai/webSearchRouting';
+import { executeCoachTool, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai/tools/executeCoachTool';
+import { inferToolCallFromCoachMessage } from '../../ai/tools/parseUserMessageForTools';
+import { useCoachSpeech } from '../voice/useVoiceToCoach';
+import { shouldShowWebSearchUI } from '../../ai/chat-api/detectWebSearchRequest';
 import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../shared/accessibility/a11yProps';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 import AICoachGlassCard from '../components/AICoachGlassCard';
 import { stripCoachToolJsonFromReply, parseCoachToolCalls } from '../../shared/parseCoachToolCalls';
-import { coerceMisroutedDeleteTool } from '../../ai/coachDeleteLogRouting';
+import { coerceMisroutedDeleteTool } from '../../ai/tools/parseDeleteLogRequest';
+import { guardCoachToolProposal } from '../../ai/tools/validateCoachToolProposal';
 
 const USER_BUBBLE_GRAD = AI_COACH_UI.gradient.userBubble;
 const ACTION_GRAD = AI_COACH_UI.gradient.ctaWarm;
@@ -109,15 +126,15 @@ function resolveIncomingCoachTool(coachResponse, userText = '') {
   const user = String(userText || '').trim();
   const rawTool = coachResponse?.toolCall || parseCoachToolCalls(rawReply)[0] || null;
   const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
-  if (coerced) return coerced;
+  if (coerced) return guardCoachToolProposal(coerced);
   const displayReply = stripCoachToolJsonFromReply(rawReply) || rawReply;
-  return inferToolCallFromCoachMessage(displayReply, userText);
+  return guardCoachToolProposal(inferToolCallFromCoachMessage(displayReply, userText));
 }
 
 function resolveMessageToolCall(message, userMessage = '') {
   if (!message || message.toolConfirmed || message.isToolResult) return null;
-  if (message.toolCall) return normalizeToolCall(message.toolCall);
-  return inferToolCallFromCoachMessage(message.text, userMessage);
+  if (message.toolCall) return guardCoachToolProposal(normalizeToolCall(message.toolCall));
+  return guardCoachToolProposal(inferToolCallFromCoachMessage(message.text, userMessage));
 }
 
 function coachActionPromptVisible(message, userMessage = '') {
@@ -1033,7 +1050,18 @@ export default function AIChatScreen({
   const mountAttachmentsRef = useRef(Array.isArray(initialAttachments) ? initialAttachments : []);
 
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const composer = useCoachComposerInput('');
+  const {
+    value: input,
+    onChangeText: setInput,
+    clear: clearComposer,
+    commitText,
+    applySpeechTranscript,
+    openPasteSheet,
+    closePasteSheet,
+    pasteSheetVisible,
+    inputRef: composerInputRef,
+  } = composer;
   const [typing, setTyping] = useState(false);
   const [searchingWeb, setSearchingWeb] = useState(false);
   const [coachWaitPhase, setCoachWaitPhase] = useState('thinking');
@@ -1059,8 +1087,8 @@ export default function AIChatScreen({
   const canSend = input.trim().length > 0 || attachments.length > 0;
 
   const coachSpeech = useCoachSpeech({
-    onPartialTranscript: (text) => setInput(text),
-    onFinalTranscript: (text) => setInput(text),
+    onPartialTranscript: applySpeechTranscript,
+    onFinalTranscript: applySpeechTranscript,
   });
   const { listening, toggleListen } = coachSpeech;
 
@@ -1086,6 +1114,22 @@ export default function AIChatScreen({
     if (typing || toolExecuting) scrollToBottom();
   }, [typing, toolExecuting, coachWaitPhase, searchingWeb]);
 
+  const persistSession = async (msgs, extraMeta = {}) => {
+    if (!db || !userId) return;
+    const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
+    const lastAi = [...msgs].reverse().find((m) => m.role === 'ai');
+    await persistAiChatSession(userId, sessionId, {
+      messages: msgs,
+      meta: {
+        sessionId,
+        title: extraMeta.title || deriveChatTitle(lastUser?.text || ''),
+        lastUserMessage: lastUser?.text || '',
+        lastAssistantMessage: lastAi?.text || '',
+        ...extraMeta,
+      },
+    });
+  };
+
   const scrollToBottom = () => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
   };
@@ -1105,7 +1149,7 @@ export default function AIChatScreen({
   };
 
   const openToolModal = (toolCall, messageId = null) => {
-    const normalized = normalizeToolCall(toolCall);
+    const normalized = guardCoachToolProposal(normalizeToolCall(toolCall));
     if (!normalized) {
       Alert.alert('Action unavailable', 'This coach action could not be loaded. Try asking again.');
       return;
@@ -1132,10 +1176,15 @@ export default function AIChatScreen({
     }
     if (toolExecuting) return;
 
-    const merged = {
+    const mergedRaw = {
       ...baseTool,
       params: { ...(baseTool.params || {}), ...(confirmedParams || {}) },
     };
+    const merged = guardCoachToolProposal(mergedRaw);
+    if (!merged) {
+      Alert.alert('Action unavailable', 'This coach action could not be validated. Try asking again.');
+      return;
+    }
 
     console.log('[DEBUG] Tool confirm:', { toolName: merged.name, params: merged.params });
 
@@ -1182,14 +1231,7 @@ export default function AIChatScreen({
         });
         const next = result.success ? marked : [...marked, resultMsg];
         if (db && userId) {
-          setDoc(
-            doc(db, 'users', userId, 'aiChats', sessionId),
-            {
-              updatedAt: serverTimestamp(),
-              messages: next.map(serializeChatMessage).filter(Boolean),
-            },
-            { merge: true }
-          ).catch(() => {});
+          persistSession(next).catch(() => {});
         }
         return next;
       });
@@ -1258,31 +1300,15 @@ export default function AIChatScreen({
         return;
       }
       try {
-        const snap = await getDoc(doc(db, 'users', userId, 'aiChats', initialSessionId));
-        if (!snap.exists()) {
-          if (!cancelled) setLoadedSession(true);
-          return;
-        }
-        const data = snap.data() || {};
-        const saved = Array.isArray(data.messages) ? data.messages : [];
-        const restored = saved
-          .filter((m) => m && typeof m === 'object')
-          .map((m, idx) => {
-            const text = typeof m.content === 'string' ? m.content : '';
-            const parsedTool =
-              m.toolCall ||
-              parseCoachToolCalls(text)[0] ||
-              null;
+        const saved = await loadAiChatMessages(userId, initialSessionId);
+        const restored = restoreChatMessagesFromSaved(saved)
+          .map((m) => {
+            if (m.role !== 'ai') return m;
+            const parsedTool = m.toolCall || parseCoachToolCalls(m.text)[0] || null;
             return {
-              id: `msg_restored_${idx}`,
-              role: m.role === 'ai' ? 'ai' : 'user',
-              text: m.role === 'ai' ? stripCoachToolJsonFromReply(text) || text : text,
-              time: typeof m.time === 'string' ? m.time : now(),
-              source: m.source || null,
-              attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
-              toolCall: parsedTool ? normalizeToolCall(parsedTool) : null,
-              toolConfirmed: m.toolConfirmed === true,
-              isToolResult: m.isToolResult === true,
+              ...m,
+              text: stripCoachToolJsonFromReply(m.text) || m.text,
+              toolCall: parsedTool ? guardCoachToolProposal(normalizeToolCall(parsedTool)) : null,
             };
           })
           .filter((m) => m.text.trim().length > 0 || (Array.isArray(m.attachments) && m.attachments.length > 0));
@@ -1336,7 +1362,7 @@ export default function AIChatScreen({
 
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
-    setInput('');
+    clearComposer();
     setAttachments([]);
     setTyping(true);
     setSearchingWeb(plannedWeb);
@@ -1353,18 +1379,7 @@ export default function AIChatScreen({
       // Save immediately so the conversation shows in history even if AI/network fails.
       if (db && userId) {
         const isFirstMessage = messages.length === 0;
-        const title = deriveChatTitle(text);
-        await setDoc(
-          doc(db, 'users', userId, 'aiChats', sessionId),
-          {
-            sessionId,
-            title,
-            ...(isFirstMessage ? { createdAt: serverTimestamp() } : {}),
-            updatedAt: serverTimestamp(),
-            messages: updatedMessages.map(serializeChatMessage).filter(Boolean),
-          },
-          { merge: true }
-        );
+        await persistSession(updatedMessages, isFirstMessage ? { createdAt: serverTimestamp() } : {});
       }
 
       const coachResponse = await sendCoachMessageWithRetry({
@@ -1406,16 +1421,7 @@ export default function AIChatScreen({
       }
 
       if (db && userId) {
-        await setDoc(
-          doc(db, 'users', userId, 'aiChats', sessionId),
-          {
-            sessionId,
-            title: deriveChatTitle(finalMessages.find((m) => m.role === 'user')?.text || ''),
-            updatedAt: serverTimestamp(),
-            messages: finalMessages.map(serializeChatMessage).filter(Boolean),
-          },
-          { merge: true }
-        );
+        await persistSession(finalMessages);
       }
     } catch (err) {
       console.error('AI coach error:', err);
@@ -1672,6 +1678,7 @@ export default function AIChatScreen({
               />
             </TouchableOpacity>
             <TextInput
+              ref={composerInputRef}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -1688,6 +1695,7 @@ export default function AIChatScreen({
               }}
               value={input}
               onChangeText={setInput}
+              onLongPress={openPasteSheet}
               placeholder="Ask your coach..."
               placeholderTextColor={t.textMuted}
               accessibilityLabel="Message input"
@@ -1744,6 +1752,14 @@ export default function AIChatScreen({
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <CoachPasteSheet
+        visible={pasteSheetVisible}
+        onClose={closePasteSheet}
+        onConfirm={commitText}
+        t={t}
+        isDark={isDark}
+      />
 
       <ToolConfirmationModal
         visible={toolModalVisible}

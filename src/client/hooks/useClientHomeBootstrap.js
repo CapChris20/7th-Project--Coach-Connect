@@ -1,8 +1,18 @@
+/**
+ * use Client Home Bootstrap
+ *
+ * Purpose: React hook: use Client Home Bootstrap. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: useClientHomeBootstrap
+ *
+ * @file-header
+ */
 import { useEffect, useRef } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { getLocalDateKey } from '../../shared/utils/localDay';
-import { parseDailyMetricsFromSnapshots } from '../../shared/services/dailyMetricsService';
-import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../../nutrition/services/nutritionService';
+import { getLocalDateKey } from '../../shared/utils/getLocalDay';
+import { parseDailyMetricsFromSnapshots } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
+import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../../nutrition/daily-log/logFoodToFirestore';
 import { fetchWorkoutHistory, getActiveWorkout } from '../../workouts/services/workoutService';
 import { calculateStreak } from '../components/home/clientHomeComponents';
 

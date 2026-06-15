@@ -1,3 +1,13 @@
+/**
+ * Trainer Weekly Report Section
+ *
+ * Purpose: UI screen or component: Trainer Weekly Report Section. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerWeeklyReportSection
+ *
+ * @file-header
+ */
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { collection, getDocs } from 'firebase/firestore';

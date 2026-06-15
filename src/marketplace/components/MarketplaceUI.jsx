@@ -1,3 +1,13 @@
+/**
+ * Marketplace UI
+ *
+ * Purpose: Marketplace UI — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: GradientText, HeroAurora, Pill, PrimaryButton, SecondaryButton, FilterGradientButton, SectionLabel, VerifiedBadge
+ *
+ * @file-header
+ */
 import React from 'react';
 import {
   Platform,

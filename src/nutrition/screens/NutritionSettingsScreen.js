@@ -1,4 +1,14 @@
 /**
+ * Nutrition Settings Screen
+ *
+ * Purpose: UI screen or component: Nutrition Settings Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: NutritionSettingsScreen
+ *
+ * @file-header
+ */
+/**
  * Nutrition goals editor — full redesign (May 2026).
  * Pink / orange palette, custom macro PNGs, no gradient-rim cards.
  */

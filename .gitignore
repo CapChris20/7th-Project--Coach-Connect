@@ -33,3 +33,7 @@ functions/pglite-debug.log
 serviceAccount*.json
 **/*firebase-adminsdk*.json
 
+# Load test artifacts
+load-tests/results/
+load-tests/node_modules/
+

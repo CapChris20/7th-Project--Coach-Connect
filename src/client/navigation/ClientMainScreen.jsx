@@ -1,3 +1,13 @@
+/**
+ * Client Main Screen
+ *
+ * Purpose: UI screen or component: Client Main Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: ClientMainScreen
+ *
+ * @file-header
+ */
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,8 +26,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../app/config';
 import { getClientDateKey } from '../../app/dateKey';
-import { mergeClientDailyMetrics } from '../../shared/services/dailyMetricsService';
-import { markNotesAndFilesItemRead } from '../../shared/services/notesAndFilesService';
+import { mergeClientDailyMetrics } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
+import { markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
 import TrainerMessagingScreen from '../../trainer/screens/TrainerMessagingScreen';
 import ConversationsListScreen from '../../trainer/screens/ConversationsListScreen';
 import MyDashboardScreen from '../screens/MyDashboardScreen';
@@ -47,7 +57,7 @@ import MarketplaceHeroCard from '../components/MarketplaceHeroCard';
 import DashboardHeroCard from '../components/DashboardHeroCard';
 import NutritionContainer from '../../nutrition/screens/NutritionContainer';
 import WorkoutPlanGeneratorScreen from '../../workouts/screens/workout';
-import AIChatHomeScreen from '../../aiChat/screens/AIChatHomeScreen';
+import AIChatHomeScreen from '../../aiChat/chat-home/AIChatHomeScreen';
 import AIChatScreen from '../../aiChat/screens/AIChatScreen';
 import { useIsFocused } from '@react-navigation/native';
 import { CLIENT_MAIN_TABS } from '../hooks/useClientScreenNavigation';

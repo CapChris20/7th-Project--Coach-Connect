@@ -1,3 +1,13 @@
+/**
+ * Daily Quote Card
+ *
+ * Purpose: UI screen or component: Daily Quote Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: DailyQuotePill, DailyQuoteCard
+ *
+ * @file-header
+ */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';

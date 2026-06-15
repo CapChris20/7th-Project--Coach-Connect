@@ -1,3 +1,13 @@
+/**
+ * Bottom Nav Bar
+ *
+ * Purpose: Bottom Nav Bar — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/navigation
+ * Key exports: BottomNavBar
+ *
+ * @file-header
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,

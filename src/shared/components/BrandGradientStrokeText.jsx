@@ -1,3 +1,13 @@
+/**
+ * Brand Gradient Stroke Text
+ *
+ * Purpose: Brand Gradient Stroke Text — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: BRAND_GRADIENT, BrandGradientStrokeText
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Text as SvgText, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';

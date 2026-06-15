@@ -1,3 +1,13 @@
+/**
+ * manual Workout Plan Service
+ *
+ * Purpose: Data/service layer: manual Workout Plan Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: newLocalId, parseDurationWeeks, buildStructuredWorkoutPlanFromManualDraft, buildTrainerPlanFirestorePayload, buildClientAssignedPlanDoc, createManualWorkoutPlan, updateManualWorkoutPlan, getManualWorkoutPlan
+ *
+ * @file-header
+ */
 import {
   collection,
   deleteDoc,

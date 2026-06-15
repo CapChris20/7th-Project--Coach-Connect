@@ -33,12 +33,12 @@
 
 **Core Implementation (4 files):**
 - ✅ `server/index.js` - System prompts + 5 new tool handlers
-- ✅ `src/ai/toolExecutor.js` - 5 client fallbacks + tool wiring
+- ✅ `src/ai/tools/executeCoachTool.js` - 5 client fallbacks + tool wiring
 - ✅ `server/lib/inferCoachToolCall.js` - Pattern matching for 5 tools
 - ✅ `firestore.rules` - 7 new collection rules
 
 **Error Handling (1 file):**
-- ✅ `src/ai/deepseekService.js` - Robust error handling
+- ✅ `src/ai/chat-api/aiCoachServerService.js` - Robust error handling
 
 **Documentation (2 files):**
 - ✅ `TESTING_DASHBOARD_TOOLS.md` - Full test suite with 10 tests

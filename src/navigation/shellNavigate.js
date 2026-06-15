@@ -1,3 +1,13 @@
+/**
+ * shell Navigate
+ *
+ * Purpose: shell Navigate — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/navigation
+ * Key exports: buildNavigateFromShell, useShellNavigate
+ *
+ * @file-header
+ */
 import { useContext, useMemo } from 'react';
 import { ClientAppShellContext } from '../client/navigation/ClientAppShellContext';
 import { TrainerAppShellContext } from '../trainer/navigation/TrainerAppShellContext';

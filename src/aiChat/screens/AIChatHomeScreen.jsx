@@ -1,4 +1,14 @@
 /**
+ * AIChat Home Screen
+ *
+ * Purpose: UI screen or component: AIChat Home Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AIChatHomeScreen
+ *
+ * @file-header
+ */
+/**
  * AIChatHomeScreen.jsx — React Native
  * Converted from Lovable export (lovable-export-d5e2ed71)
  *
@@ -11,6 +21,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -24,24 +35,32 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import LottieView from 'lottie-react-native';
-import { showCoachAttachMenu } from '../lib/showCoachAttachMenu';
+import { showCoachAttachMenu } from '../chat-thread/openAttachmentMenu';
 import {
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
-} from '../lib/coachAttachmentPickers';
-import { collection, doc, deleteDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+} from '../chat-thread/pickAttachmentType';
+import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../app/config';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import { useCoachSpeech } from '../hooks/useCoachSpeech';
+import { useCoachSpeech } from '../voice/useVoiceToCoach';
+import { useCoachComposerInput } from '../hooks/useCoachComposerInput';
+import CoachPasteSheet from '../components/CoachPasteSheet';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
+import { deleteAiChatSession } from '../persistence/saveCoachMessagesToFirestore';
+import {
+  buildHourlyCanHelpWith,
+  buildHourlySpotlightSuggestions,
+  getCoachHourSlot,
+} from '../chat-thread/coachQuickPrompts';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
@@ -52,64 +71,41 @@ const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 const HERO_INNER = AI_COACH_UI.heroInner;
 const SIDEBAR_WIDTH = Math.min(320, SW * 0.86);
 
-// Category buttons — unified premium style (no neon icon colors).
-const COACH_CATEGORIES = [
+// Action shortcuts — generic openers (Log / Web / My Data / Photo).
+const COACH_ACTIONS = [
   {
-    id: 'train',
-    label: 'Train',
-    icon: 'fitness-outline',
-    defaultPrompt: 'Dial in my training plan for this week',
-  },
-  {
-    id: 'fuel',
-    label: 'Fuel',
-    icon: 'flame-outline',
-    defaultPrompt: 'Help me line up meals that match my goal',
-  },
-  {
-    id: 'recover',
-    label: 'Recover',
-    icon: 'moon-outline',
-    defaultPrompt: 'Tighten up my recovery so I actually adapt',
+    id: 'log',
+    label: 'Log',
+    icon: 'add-circle-outline',
+    starter: 'Can you log data for me?',
+    rim: ['#FF6B9D', '#C084FC'],
+    labelGrad: ['#FF6B9D', '#C084FC'],
   },
   {
     id: 'web',
-    label: 'Search the web',
-    icon: 'search-outline',
-    defaultPrompt: 'Search the web: best evidence-based approach for body recomposition (training + nutrition)',
+    label: 'Web',
+    icon: 'globe-outline',
+    starter: 'Can you search the web for me?',
+    rim: ['#06B6D4', '#3B82F6'],
+    labelGrad: ['#22D3EE', '#3B82F6'],
+  },
+  {
+    id: 'data',
+    label: 'My Data',
+    icon: 'stats-chart-outline',
+    starter: 'Can you show me my data and context?',
+    rim: ['#A78BFA', '#C084FC'],
+    labelGrad: ['#C084FC', '#E9D5FF'],
+  },
+  {
+    id: 'photo',
+    label: 'Photo',
+    icon: 'image-outline',
+    starter: 'Can you analyze a photo for me?',
+    rim: ['#F97316', '#FBBF24'],
+    labelGrad: ['#F97316', '#FBBF24'],
   },
 ];
-
-function promptForCategory(category, suggestions) {
-  const pool = Array.isArray(suggestions) ? suggestions : [];
-  const match = (re) => pool.find((s) => re.test(String(s || '').toLowerCase()));
-  const asWebQuery = (q) => {
-    const s = String(q || '').trim();
-    if (!s) return category.defaultPrompt;
-    return s.toLowerCase().startsWith('search the web:')
-      ? s
-      : `Search the web: ${s.replace(/\.*\s*$/, '')}`;
-  };
-  if (category.id === 'train') {
-    return match(/workout|hypertrophy|split|squat|lift|progressive|gym|conditioning/) || category.defaultPrompt;
-  }
-  if (category.id === 'fuel') {
-    return match(/protein|eat|macro|meal|vegan|keto|calorie|drink/) || category.defaultPrompt;
-  }
-  if (category.id === 'recover') {
-    return match(/recover|rest|sleep|skipped|back/) || category.defaultPrompt;
-  }
-  if (category.id === 'web') {
-    // Prefer prompts that sound like research/comparisons.
-    return asWebQuery(
-      match(/search|web|research|evidence|study|studies|meta|systematic|compare|vs|best|safe|risk/) ||
-        match(/recomp|skinny|body|goal|macro|calorie|protein|hypertrophy|split|sleep|creatine/) ||
-        pool[0] ||
-        category.defaultPrompt,
-    );
-  }
-  return pool[0] || category.defaultPrompt;
-}
 
 function iconForPrompt(text) {
   const s = String(text || '').toLowerCase();
@@ -373,8 +369,26 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
   );
 }
 
-const CoachCategoryOrb = ({ category, isDark, onPress }) => {
+function GradientActionLabel({ colors, children, style, fallbackColor }) {
+  if (!colors?.length || colors.length < 2) {
+    return <Text style={[style, { color: fallbackColor }]}>{children}</Text>;
+  }
+  return (
+    <MaskedView
+      maskElement={
+        <Text style={[style, { backgroundColor: 'transparent' }]}>{children}</Text>
+      }
+    >
+      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+        <Text style={[style, { opacity: 0 }]}>{children}</Text>
+      </LinearGradient>
+    </MaskedView>
+  );
+}
+
+const CoachActionOrb = ({ action, isDark, onPress }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const rim = action.rim || BORDER_SUBTLE;
 
   const pressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 48, bounciness: 0 }).start();
@@ -387,26 +401,26 @@ const CoachCategoryOrb = ({ category, isDark, onPress }) => {
     <Pressable
       onPress={() => {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        onPress(category);
+        onPress(action);
       }}
       onPressIn={pressIn}
       onPressOut={pressOut}
       accessibilityRole="button"
-      accessibilityLabel={`Ask about ${category.label}`}
+      accessibilityLabel={action.label}
       style={{ alignItems: 'center', flex: 1 }}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
         <LinearGradient
-          colors={BORDER_SUBTLE}
+          colors={rim}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
             width: 70,
             height: 70,
             borderRadius: 24,
             padding: 1.5,
             ...(Platform.OS === 'ios' && isDark
-              ? { shadowColor: '#BE185D', shadowOpacity: 0.2, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }
+              ? { shadowColor: rim[0], shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }
               : null),
             elevation: isDark ? 7 : 2,
           }}
@@ -431,45 +445,150 @@ const CoachCategoryOrb = ({ category, isDark, onPress }) => {
                 style={StyleSheet.absoluteFillObject}
               />
             ) : null}
-
-            <LinearGradient
-              colors={BORDER_SUBTLE}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 16,
-                padding: 1.25,
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  borderRadius: 14.75,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.92)',
-                }}
-              >
-                <Ionicons name={category.icon} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-              </View>
-            </LinearGradient>
+            <Ionicons name={action.icon} size={24} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
           </View>
         </LinearGradient>
-        <Text
+        <GradientActionLabel
+          colors={isDark ? action.labelGrad : null}
+          fallbackColor={isDark ? 'rgba(255,255,255,0.78)' : 'rgba(10,10,15,0.72)'}
           style={{
             marginTop: 8,
             fontSize: 12,
             fontWeight: '700',
-            color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(10,10,15,0.72)',
             letterSpacing: 0.2,
           }}
         >
-          {category.label}
-        </Text>
+          {action.label}
+        </GradientActionLabel>
       </Animated.View>
     </Pressable>
+  );
+};
+
+const CAN_HELP_CARD_WIDTH = SW - 32;
+
+const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
+  const list = (items || []).filter(Boolean);
+  const [index, setIndex] = useState(0);
+  const listRef = useRef(null);
+
+  if (!list.length) return null;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems?.[0]?.index != null) setIndex(viewableItems[0].index);
+  }).current;
+
+  return (
+    <View style={{ width: '100%', marginTop: 4 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '800',
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
+          marginBottom: 10,
+        }}
+      >
+        Can help with
+      </Text>
+      <FlatList
+        ref={listRef}
+        data={list}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
+        snapToInterval={CAN_HELP_CARD_WIDTH}
+        decelerationRate="fast"
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              onPress(item.prompt || item.title);
+            }}
+            style={{ width: CAN_HELP_CARD_WIDTH }}
+          >
+            <LinearGradient
+              colors={item.rim || BORDER_SUBTLE}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ borderRadius: 18, padding: 1.5 }}
+            >
+              <View
+                style={{
+                  borderRadius: 16.5,
+                  paddingVertical: 16,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
+                  minHeight: 88,
+                  overflow: 'hidden',
+                }}
+              >
+                {isDark ? (
+                  <LinearGradient
+                    colors={HERO_INNER}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                ) : null}
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
+                  }}
+                >
+                  <Ionicons name={item.icon} size={22} color={item.accent || AI_COACH_UI.pink} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{ fontSize: 15, fontWeight: '800', color: t.textPrimary, marginBottom: 4 }}
+                    numberOfLines={2}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: t.textMuted }} numberOfLines={2}>
+                    {item.subtitle}
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </Pressable>
+        )}
+      />
+      {list.length > 1 ? (
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12, paddingLeft: 2 }}>
+          {list.map((_, i) => (
+            <View
+              key={`can-dot-${i}`}
+              style={{
+                width: i === index ? 16 : 5,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor:
+                  i === index
+                    ? AI_COACH_UI.pink
+                    : isDark
+                      ? 'rgba(255,255,255,0.18)'
+                      : 'rgba(0,0,0,0.12)',
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 };
 
@@ -597,18 +716,20 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 {text}
               </Text>
             </Animated.View>
-            <View
+            <LinearGradient
+              colors={['#FF6B9D', '#DB2777']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.05)',
               }}
             >
-              <Ionicons name="arrow-forward" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-            </View>
+              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+            </LinearGradient>
           </View>
         </LinearGradient>
       </Pressable>
@@ -624,7 +745,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 borderRadius: 999,
                 backgroundColor:
                   i === index
-                    ? SPOTLIGHT_PINK
+                    ? AI_COACH_UI.pink
                     : isDark
                       ? 'rgba(255,255,255,0.18)'
                       : 'rgba(0,0,0,0.12)',
@@ -987,65 +1108,67 @@ export default function AIChatHomeScreen({
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [userData, setUserData] = useState(null);
-  // Initialize with safe fallbacks; then we replace with contextual suggestions once userData/sessions load.
-  const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
+  const [hourSlot, setHourSlot] = useState(getCoachHourSlot());
+
+  const composer = useCoachComposerInput('');
+  const {
+    value: inputText,
+    onChangeText: setInputText,
+    clear: clearComposer,
+    commitText,
+    applySpeechTranscript,
+    openPasteSheet,
+    closePasteSheet,
+    pasteSheetVisible,
+    inputRef: composerInputRef,
+  } = composer;
+
+  const canHelpItems = buildHourlyCanHelpWith({ now: hourSlot * 60 * 60 * 1000 });
+  const suggestions = buildHourlySpotlightSuggestions({
+    userData,
+    sessions,
+    now: hourSlot * 60 * 60 * 1000,
+  });
 
   const t = isDark ? DARK : LIGHT;
   const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
   const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : 0;
   // ─── Load + transition animations (UI only) ─────────────────────────────────
-  const screenOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
-  const headerOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
-  const lottieOpacity = useRef(new Animated.Value(0)).current;          // 100ms -> 500ms
-  const lottieScale = useRef(new Animated.Value(0.9)).current;          // 100ms -> 500ms (bouncy)
-  const inputOpacity = useRef(new Animated.Value(0)).current;           // 800ms -> 300ms
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+  const inputOpacity = useRef(new Animated.Value(0)).current;
   const inputTranslateY = useRef(new Animated.Value(10)).current;
-  const idleGroupOpacity = useRef(new Animated.Value(1)).current;       // fades out when starting chat
+  const idleGroupOpacity = useRef(new Animated.Value(1)).current;
   const idleGroupTranslateY = useRef(new Animated.Value(0)).current;
 
-  const pillBorderAnim = useRef(new Animated.Value(0)).current;
-
-  const inputBorderAnim = useRef(new Animated.Value(0)).current; // hero / pill border loop
-
   const { listening, toggleListen } = useCoachSpeech({
-    onPartialTranscript: (text) => setInputText(text),
-    onFinalTranscript: (text) => setInputText(text),
+    onPartialTranscript: applySpeechTranscript,
+    onFinalTranscript: applySpeechTranscript,
   });
 
   useEffect(() => {
-    // Background + header
     Animated.timing(screenOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
     Animated.timing(headerOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
 
-    // Lottie
     Animated.sequence([
-      Animated.delay(100),
+      Animated.delay(400),
       Animated.parallel([
-        Animated.timing(lottieOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.spring(lottieScale, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 14 }),
-      ]),
-    ]).start();
-
-    // Subtle animated gradient border loop
-    Animated.loop(
-      Animated.timing(pillBorderAnim, { toValue: 1, duration: 7000, useNativeDriver: true })
-    ).start();
-
-    // Input (800ms)
-    Animated.sequence([
-      Animated.delay(800),
-      Animated.parallel([
-        // Must stay JS-driven because we combine opacity with keyboard height transform on same view
         Animated.timing(inputOpacity, { toValue: 1, duration: 300, useNativeDriver: false }),
-        // Must stay JS-driven because we combine it with keyboard height.
         Animated.timing(inputTranslateY, { toValue: 0, duration: 300, useNativeDriver: false }),
       ]),
     ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const next = getCoachHourSlot();
+      setHourSlot((prev) => (prev !== next ? next : prev));
+    }, 60000);
+    return () => clearInterval(tick);
   }, []);
 
   const handleDeleteSession = async (session) => {
@@ -1059,7 +1182,7 @@ export default function AIChatHomeScreen({
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteDoc(doc(db, 'users', userId, 'aiChats', sessionId));
+            await deleteAiChatSession(userId, sessionId);
           } catch (e) {
             console.error('Failed to delete ai chat:', e);
           }
@@ -1121,10 +1244,6 @@ export default function AIChatHomeScreen({
     return () => unsub();
   }, [userId]);
 
-  useEffect(() => {
-    setSuggestions(buildDynamicSuggestions({ userData, sessions }));
-  }, [userData, sessions]);
-
   const handleStartChat = (prefillOrPayload) => {
     const payload =
       typeof prefillOrPayload === 'string'
@@ -1159,6 +1278,14 @@ export default function AIChatHomeScreen({
     });
   };
 
+  const handleActionPress = (action) => {
+    if (action.id === 'photo') {
+      handleCamera();
+      return;
+    }
+    handleStartChat(action.starter);
+  };
+
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   const canSend = inputText.trim().length > 0 || attachments.length > 0;
@@ -1182,7 +1309,7 @@ export default function AIChatHomeScreen({
       prefill,
       initialAttachments: attachments,
     });
-    setInputText('');
+    clearComposer();
     setAttachments([]);
   };
 
@@ -1250,60 +1377,44 @@ export default function AIChatHomeScreen({
               transform: [{ translateY: idleGroupTranslateY }],
             }}
           >
-            <HeroWelcomeCard
-              t={t}
+            <View style={{ width: '100%', alignItems: 'flex-start', marginBottom: 4 }}>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: t.textPrimary, letterSpacing: -0.4 }}>
+                {(() => {
+                  const h = new Date().getHours();
+                  const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+                  return `${greet}, `;
+                })()}
+                <Text style={{ color: AI_COACH_UI.pink }}>{userName}!</Text>
+              </Text>
+            </View>
+
+            <CanHelpWithCarousel
+              items={canHelpItems}
               isDark={isDark}
-              userName={userName}
-              borderAnim={pillBorderAnim}
+              t={t}
+              onPress={handleStartChat}
             />
 
-            {/* Bigger Lottie OUTSIDE the card (so card isn't huge) */}
-            <Animated.View
-              style={{
-                width: '100%',
-                height: Math.min(420, Math.floor(SH * 0.62)),
-                marginTop: 10,
-                opacity: lottieOpacity,
-                transform: [{ scale: lottieScale }],
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: '#000',
-                shadowOpacity: isDark ? 0.22 : 0,
-                shadowRadius: isDark ? 18 : 0,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: isDark ? 10 : 0,
-              }}
-            >
-              <LottieView
-                source={require('../../assets/Lotties for Anatrox/Cloud robotics abstract.json')}
-                autoPlay
-                loop
-                style={{ width: '100%', height: '100%' }}
-              />
-            </Animated.View>
-
-            {/* Coach starters — category orbs + rotating spotlight (no pill grid) */}
-            <View style={{ width: '100%', marginTop: 8 }}>
+            <View style={{ width: '100%', marginTop: 24 }}>
               <Text
                 style={{
                   fontSize: 11,
-                  fontWeight: '700',
-                  letterSpacing: 1,
+                  fontWeight: '800',
+                  letterSpacing: 1.1,
                   textTransform: 'uppercase',
                   color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
                   marginBottom: 14,
-                  textAlign: 'center',
                 }}
               >
                 What do you need?
               </Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-                {COACH_CATEGORIES.map((cat) => (
-                  <CoachCategoryOrb
-                    key={cat.id}
-                    category={cat}
+                {COACH_ACTIONS.map((action) => (
+                  <CoachActionOrb
+                    key={action.id}
+                    action={action}
                     isDark={isDark}
-                    onPress={(category) => handleStartChat(promptForCategory(category, suggestions))}
+                    onPress={handleActionPress}
                   />
                 ))}
               </View>
@@ -1398,6 +1509,7 @@ export default function AIChatHomeScreen({
               <Ionicons name="add-circle-outline" size={26} color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight} />
             </TouchableOpacity>
             <TextInput
+              ref={composerInputRef}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -1415,6 +1527,7 @@ export default function AIChatHomeScreen({
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSend}
+              onLongPress={openPasteSheet}
               placeholder="Ask your coach..."
               placeholderTextColor={t.textMuted}
               returnKeyType="send"
@@ -1466,6 +1579,14 @@ export default function AIChatHomeScreen({
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
+
+      <CoachPasteSheet
+        visible={pasteSheetVisible}
+        onClose={closePasteSheet}
+        onConfirm={commitText}
+        t={t}
+        isDark={isDark}
+      />
 
       <Sidebar
         open={sidebarOpen}

@@ -1,4 +1,14 @@
 /**
+ * App Loading Screen
+ *
+ * Purpose: UI screen or component: App Loading Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: AppLoadingScreen
+ *
+ * @file-header
+ */
+/**
  * AppLoadingScreen — shared full-screen loading for the entire app (client and trainer).
  * Shows Lottie animation + "Loading your data..." (or custom message).
  * Used by AuthGate (while checking auth/onboarding) and ClientApp/TrainerApp (while loading data).

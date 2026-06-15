@@ -1,3 +1,13 @@
+/**
+ * permissions
+ *
+ * Purpose: permissions — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: requestCameraPermission, requestMicrophonePermission, requestPhotoLibraryPermission, checkAllPermissions, requestAllPermissions, arePermissionsGranted
+ *
+ * @file-header
+ */
 import { Camera } from 'expo-camera';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';

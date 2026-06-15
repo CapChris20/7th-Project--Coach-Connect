@@ -12,8 +12,8 @@ import {
 import { ThemeProvider } from './src/shared/ui/ThemeContext';
 import AuthGate from './src/app/AuthGate';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { configureNotifications } from './src/shared/services/notificationsService';
-import { initMonitoring } from './src/shared/services/monitoring';
+import { configureNotifications } from './src/shared/notifications/manageNotifications';
+import { initMonitoring } from './src/shared/api/monitorAppHealth';
 import { AIProvider } from './src/contexts/AIContext';
 
 initMonitoring();

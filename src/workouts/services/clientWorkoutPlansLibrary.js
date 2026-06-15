@@ -1,4 +1,14 @@
 /**
+ * client Workout Plans Library
+ *
+ * Purpose: Data/service layer: client Workout Plans Library. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: fetchClientWorkoutPlansForLibrary
+ *
+ * @file-header
+ */
+/**
  * Loads all workout plans visible in the AI Workout Library for a client
  * (subcollection, current doc, legacy global + savedWorkoutPlans).
  */

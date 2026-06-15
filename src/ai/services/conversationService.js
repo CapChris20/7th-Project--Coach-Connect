@@ -1,3 +1,13 @@
+/**
+ * conversation Service
+ *
+ * Purpose: Data/service layer: conversation Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: fetchMoreConversations, subscribeToConversations, subscribeToUnreadCount, subscribeToUnreadByConversation, CONVERSATIONS_PAGE_SIZE
+ *
+ * @file-header
+ */
 // Real-time conversation subscription service
 // Provides live updates for conversation lists across trainer and client apps
 
@@ -12,7 +22,7 @@ import {
   onSnapshot,
   getDocs,
 } from 'firebase/firestore';
-import { getUserData } from './trainerMessaging';
+import { getUserData } from '../trainer-messaging/sendTrainerNotification';
 import { getDocsWithIndexFallback, sortDocsByMillis } from '../../shared/services/firestorePagedQuery';
 
 export const CONVERSATIONS_PAGE_SIZE = 40;

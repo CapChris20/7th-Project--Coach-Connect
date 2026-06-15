@@ -1,4 +1,14 @@
 /**
+ * a11y Props
+ *
+ * Purpose: a11y Props — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: a11yButton, a11yTextField, a11yHeader, MIN_TOUCH_HIT_SLOP
+ *
+ * @file-header
+ */
+/**
  * Shared accessibility props for Coach Connect core flows.
  * Use on Pressable / TouchableOpacity / TextInput so VoiceOver/TalkBack get clear names.
  */

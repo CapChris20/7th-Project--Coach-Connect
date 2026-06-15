@@ -1,10 +1,20 @@
 /**
+ * trainer Pending Requests Service
+ *
+ * Purpose: Data/service layer: trainer Pending Requests Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: getTrainerPendingRequests
+ *
+ * @file-header
+ */
+/**
  * Service to fetch pending client requests for a trainer.
  * Client requests are stored in top-level messages with conversationId, senderId, status: 'pending'.
  */
 import { db } from '../../app/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
+import { clientRequestTypeLabel } from '../../ai/trainer-messaging/sendTrainerNotification';
 
 /**
  * Fetch all pending client requests for a trainer.

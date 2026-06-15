@@ -37,7 +37,8 @@ const {
   coachTextImpliesDelete,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
-} = require('../../src/ai/coachDeleteLogRouting');
+} = require('../../src/ai/tools/parseDeleteLogRequest');
+const { guardCoachToolProposal } = require('../../src/ai/tools/validateCoachToolProposal');
 
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();
@@ -387,11 +388,12 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
   const seen = new Set();
   const add = (call) => {
     const remapped = remapRestDayToolCall(call);
-    if (!remapped?.name) return;
-    const key = `${remapped.name}:${JSON.stringify(remapped.params || {})}`;
+    const guarded = guardCoachToolProposal(remapped);
+    if (!guarded?.name) return;
+    const key = `${guarded.name}:${JSON.stringify(guarded.params || {})}`;
     if (seen.has(key)) return;
     seen.add(key);
-    parsed.push(remapped);
+    parsed.push(guarded);
   };
 
   const { parseCoachToolCalls } = require('../../src/shared/parseCoachToolCalls');
@@ -400,7 +402,7 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
   }
 
   if (!parsed.length) {
-    const inferred = inferCoachToolCall(userMessage, weeklyContext);
+    const inferred = guardCoachToolProposal(inferCoachToolCall(userMessage, weeklyContext));
     if (inferred) add(inferred);
   }
 

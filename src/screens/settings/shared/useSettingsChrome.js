@@ -1,3 +1,13 @@
+/**
+ * use Settings Chrome
+ *
+ * Purpose: UI screen or component: use Settings Chrome. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/screens
+ * Key exports: useSettingsChrome, ACCENT, PURPLE
+ *
+ * @file-header
+ */
 import { useMemo } from 'react';
 import { useTheme } from '../../../shared/ui/ThemeContext';
 

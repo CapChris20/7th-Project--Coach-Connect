@@ -1,3 +1,13 @@
+/**
+ * config
+ *
+ * Purpose: config — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore, initializeFirestore, enableNetwork } from 'firebase/firestore';

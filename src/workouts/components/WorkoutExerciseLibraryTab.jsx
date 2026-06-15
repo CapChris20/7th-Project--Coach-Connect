@@ -1,3 +1,13 @@
+/**
+ * Workout Exercise Library Tab
+ *
+ * Purpose: Workout Exercise Library Tab — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: WorkoutExerciseLibraryTab
+ *
+ * @file-header
+ */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,

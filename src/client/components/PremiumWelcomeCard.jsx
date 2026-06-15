@@ -1,3 +1,13 @@
+/**
+ * Premium Welcome Card
+ *
+ * Purpose: UI screen or component: Premium Welcome Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: PremiumWelcomeCard
+ *
+ * @file-header
+ */
 import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

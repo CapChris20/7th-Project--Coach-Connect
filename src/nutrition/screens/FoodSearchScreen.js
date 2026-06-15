@@ -1,4 +1,14 @@
 /**
+ * Food Search Screen
+ *
+ * Purpose: UI screen or component: Food Search Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
+/**
  * COACHCONNECT — Food Search Screen (Full Rewrite)
  *
  * Search priority:
@@ -28,11 +38,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { searchFoods, getRecentFoods, getFoodSearchHint } from '../services/nutritionService';
-import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../utils/foodBrandDisplay';
-import { cleanSerperFoodTitle, isPlausibleNutritionRow } from '../utils/foodSearchTitle';
+import { searchFoods, getRecentFoods, getFoodSearchHint } from '../daily-log/logFoodToFirestore';
+import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../food-details/formatFoodBrand';
+import { cleanSerperFoodTitle, isPlausibleNutritionRow } from '../food-search/formatFoodSearchTitle';
 import BrandGradientStrokeText from '../../shared/components/BrandGradientStrokeText';
-import FoodSearchAccuracyHeroCard from '../components/FoodSearchAccuracyHeroCard';
+import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
 import { auth } from '../../app/config';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

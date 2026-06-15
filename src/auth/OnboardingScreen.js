@@ -1,4 +1,14 @@
 /**
+ * Onboarding Screen
+ *
+ * Purpose: UI screen or component: Onboarding Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/auth
+ * Key exports: OnboardingProgressBar, SelectionCard, OnboardingTextArea, OnboardingSectionLabel, OnboardingInputRow, OnboardingDayPicker, OnboardingOptionChips, OnboardingMultiSelectPills
+ *
+ * @file-header
+ */
+/**
  * OnboardingScreen - Combined onboarding flow for clients and trainers
  * 
  * Handles all 6 onboarding steps for both client and trainer roles
@@ -34,7 +44,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseCandidates } from '../shared/services/baseUrl';
-import { queuePendingOnboardingSync } from '../shared/services/onboardingSync';
+import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
 import { useAI } from '../contexts/AIContext';
 import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
 import LottieView from 'lottie-react-native';
@@ -46,7 +56,7 @@ import {
   parseHeightInputText,
   isHeightComplete,
   finalizeHeightFromDraft,
-} from '../shared/utils/heightFeetInches';
+} from '../shared/utils/convertHeightUnits';
 import { Ionicons } from '@expo/vector-icons';
 import lottieClient1 from '../assets/lottie/personal-info.json';
 import lottieClient2 from '../assets/lottie/fitness-experience.json';
@@ -1861,10 +1871,10 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
         triggerShake();
       }
     } catch (error) {
-      // Non-blocking: if server is down/unreachable, don't trap the user in onboarding.
-      console.warn('Trainer code validation failed; proceeding without linking:', error?.message || error);
-      setCodeValid(true);
-      setCodeError(null);
+      console.warn('Trainer code validation failed:', error?.message || error);
+      setCodeValid(false);
+      setCodeError('Could not verify code. Check your connection and try again.');
+      triggerShake();
     } finally {
       setValidatingCode(false);
     }

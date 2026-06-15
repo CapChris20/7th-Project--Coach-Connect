@@ -1,3 +1,13 @@
+/**
+ * Video Player Modal
+ *
+ * Purpose: UI screen or component: Video Player Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: YouTubeIframeExercisePlayer, VideoPlayerModal
+ *
+ * @file-header
+ */
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,

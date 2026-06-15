@@ -1,3 +1,13 @@
+/**
+ * Coach Connect Header
+ *
+ * Purpose: Coach Connect Header — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: CoachConnectHeader
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image as RNImage } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

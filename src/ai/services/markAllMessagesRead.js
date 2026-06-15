@@ -1,3 +1,13 @@
+/**
+ * mark All Messages Read
+ *
+ * Purpose: Data/service layer: mark All Messages Read. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: markAllMessagesReadForUser
+ *
+ * @file-header
+ */
 // Utility to mark all messages as read for a user
 // Run this once to clean up any old unread messages
 

@@ -1,5 +1,15 @@
+/**
+ * Generate Deload Modal
+ *
+ * Purpose: UI screen or component: Generate Deload Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: GenerateDeloadModal
+ *
+ * @file-header
+ */
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './toolModalShared';
+import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 
 export default function GenerateDeloadModal({ params, reasoning, onConfirm, onCancel, loading }) {
   return (

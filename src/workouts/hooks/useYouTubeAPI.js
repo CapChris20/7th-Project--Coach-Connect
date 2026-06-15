@@ -1,7 +1,17 @@
+/**
+ * use You Tube API
+ *
+ * Purpose: Data/service layer: use You Tube API. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: getExerciseLibraryJourneyHint, useYouTubeAPI
+ *
+ * @file-header
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Constants from 'expo-constants';
 import { getResilientApiBases } from '../../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
+import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 
 const cache = new Map();
 const CACHE_MS = 25 * 60 * 1000;

@@ -1,3 +1,13 @@
+/**
+ * Trainer Progress Tab
+ *
+ * Purpose: UI screen or component: Trainer Progress Tab. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 /** Trainer dashboard — Progress tab */
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions, Platform, StyleSheet } from 'react-native';

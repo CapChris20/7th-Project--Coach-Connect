@@ -1,3 +1,13 @@
+/**
+ * Trainer Weekly Report Screen
+ *
+ * Purpose: UI screen or component: Trainer Weekly Report Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: formatChipRange, TrainerWeeklyReportScreen
+ *
+ * @file-header
+ */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,

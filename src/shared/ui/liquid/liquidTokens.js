@@ -1,3 +1,13 @@
+/**
+ * liquid Tokens
+ *
+ * Purpose: liquid Tokens — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: Liquid
+ *
+ * @file-header
+ */
 import { Platform } from 'react-native';
 
 export const Liquid = {

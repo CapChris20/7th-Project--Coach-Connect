@@ -1,3 +1,13 @@
+/**
+ * Photo Gallery Screen
+ *
+ * Purpose: UI screen or component: Photo Gallery Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: PhotoGalleryScreen
+ *
+ * @file-header
+ */
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   ActionSheetIOS,

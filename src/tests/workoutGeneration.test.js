@@ -1,3 +1,13 @@
+/**
+ * workout Generation test
+ *
+ * Purpose: Tests for workout Generation test.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/tests
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 const fs = require("fs");
 
 // Load .env for local runs

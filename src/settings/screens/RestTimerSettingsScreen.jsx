@@ -1,3 +1,13 @@
+/**
+ * Rest Timer Settings Screen
+ *
+ * Purpose: UI screen or component: Rest Timer Settings Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/settings
+ * Key exports: RestTimerSettingsScreen
+ *
+ * @file-header
+ */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

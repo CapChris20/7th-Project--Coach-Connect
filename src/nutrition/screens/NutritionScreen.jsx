@@ -1,5 +1,13 @@
-
-
+/**
+ * Nutrition Screen
+ *
+ * Purpose: UI screen or component: Nutrition Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: NutritionScreen
+ *
+ * @file-header
+ */
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,12 +17,15 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
 import { useTheme } from '../../shared/ui/ThemeContext';
 
+import NutritionDayPicker from '../components/NutritionDayPicker';
+import { NUT_CALORIES_GRADIENT as THEME_CAL_GRAD, NUT_MACRO_GRADIENTS } from '../nutritionTheme';
+
 // Nutrition Today gradients (macro donuts + calorie ring when logging)
-const NUT_CALORIES_GRADIENT = ['#BE185D', '#C2410C'];
-const NUT_MACRO_GRADIENTS = {
-  protein: ['#BE185D', '#C2410C'],
-  carbs: ['#BE185D', '#C2410C'],
-  fat: ['#BE185D', '#C2410C'],
+const NUT_CALORIES_GRADIENT = THEME_CAL_GRAD;
+const NUT_MACRO_GRADIENTS_LOCAL = {
+  protein: NUT_MACRO_GRADIENTS.protein,
+  carbs: NUT_MACRO_GRADIENTS.carbs,
+  fat: NUT_MACRO_GRADIENTS.fat,
 };
 
 const NUT_NEUTRAL_TRACK = {
@@ -316,6 +327,7 @@ const FoodItemRow = ({
   log,
   onRemove,
   onEdit,
+  onOpenFacts,
   colors = C,
   isDark = true,
 }) => {
@@ -367,7 +379,11 @@ const FoodItemRow = ({
   ];
 
   return (
-    <View style={[foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+    <Pressable
+      onPress={() => onOpenFacts?.(log)}
+      disabled={!onOpenFacts}
+      style={({ pressed }) => [foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder, opacity: pressed && onOpenFacts ? 0.92 : 1 }]}
+    >
       <View style={foodRow.body}>
         <View style={foodRow.topHeader}>
           <View style={[foodRow.iconBox, { backgroundColor: colors.inputBg, borderColor: colors.cardBorderSubtle }]}>
@@ -431,7 +447,7 @@ const FoodItemRow = ({
           </TouchableOpacity>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -541,7 +557,7 @@ const foodRow = StyleSheet.create({
   },
 });
 
-const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
+const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, onOpenFoodFacts, colors = C, isDark }) => {
   const mealS = useMemo(() => createMealS(colors), [colors]);
   const emptyStyles = useMemo(() => createEmptyStyles(colors), [colors]);
   const foods = meal?.foods ?? [];
@@ -642,6 +658,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 log={food}
                 onRemove={onRemoveLog}
                 onEdit={onEditLog}
+                onOpenFacts={onOpenFoodFacts}
                 colors={colors}
                 isDark={isDark}
               />
@@ -1061,6 +1078,11 @@ export const NutritionScreen = ({
   onPillSearch,
   onOpenSettings,
   onQuickAdd = () => {},
+  viewDate,
+  onSelectViewDate,
+  datesWithLogs = [],
+  onOpenDailyFacts,
+  onOpenFoodFacts,
   topFoodNames = [],
 }) => {
   const { isDark } = useTheme();
@@ -1123,6 +1145,36 @@ export const NutritionScreen = ({
           {/* Theme toggle removed — controlled via Settings */}
         </View>
 
+        {onSelectViewDate ? (
+          <NutritionDayPicker
+            selectedDate={viewDate}
+            onSelectDate={onSelectViewDate}
+            isDark={isDark}
+            datesWithLogs={datesWithLogs}
+          />
+        ) : null}
+
+        {onOpenDailyFacts ? (
+          <TouchableOpacity
+            onPress={onOpenDailyFacts}
+            activeOpacity={0.85}
+            style={{ marginBottom: 12 }}
+          >
+            <LinearGradient
+              colors={NUT_CALORIES_GRADIENT}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+            >
+              <Ionicons name="nutrition-outline" size={20} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14, flex: 1 }}>
+                Daily Nutrition Facts
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : null}
+
         {/* Calorie ring — center hero */}
         <View
           style={[
@@ -1162,7 +1214,7 @@ export const NutritionScreen = ({
             const macroKey = String(m.label || '').toLowerCase();
             const macroEmpty = val <= 0 && pctFill <= 0;
             const trackColor = isDark ? NUT_NEUTRAL_TRACK.dark : NUT_NEUTRAL_TRACK.light;
-            const gradColors = NUT_MACRO_GRADIENTS[macroKey] ?? NUT_CALORIES_GRADIENT;
+            const gradColors = NUT_MACRO_GRADIENTS_LOCAL[macroKey] ?? NUT_CALORIES_GRADIENT;
             return (
               <View
                 key={m.label}
@@ -1224,6 +1276,7 @@ export const NutritionScreen = ({
             onQuickAdd={handleOpenQuickAdd}
             onRemoveLog={onRemoveLog}
             onEditLog={onEditLog}
+            onOpenFoodFacts={onOpenFoodFacts}
             colors={colors}
             isDark={isDark}
           />

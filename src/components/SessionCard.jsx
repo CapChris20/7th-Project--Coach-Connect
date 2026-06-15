@@ -1,3 +1,13 @@
+/**
+ * Session Card
+ *
+ * Purpose: UI screen or component: Session Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/components
+ * Key exports: SessionCard
+ *
+ * @file-header
+ */
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

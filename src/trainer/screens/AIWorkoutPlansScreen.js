@@ -1,3 +1,13 @@
+/**
+ * AIWorkout Plans Screen
+ *
+ * Purpose: UI screen or component: AIWorkout Plans Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: AIWorkoutPlansScreen
+ *
+ * @file-header
+ */
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View,

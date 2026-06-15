@@ -1,4 +1,14 @@
 /**
+ * Conversations List Screen
+ *
+ * Purpose: UI screen or component: Conversations List Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: ConversationsListScreen
+ *
+ * @file-header
+ */
+/**
  * Conversations List Screen — new glass UI, existing Firebase and navigation.
  * Real-time via subscribeToConversations; account isolation via participants + trainer clients filter.
  */
@@ -26,8 +36,8 @@ import {
   subscribeToUnreadByConversation,
   fetchMoreConversations,
 } from '../../ai/services/conversationService';
-import { getTrainerClients, createOrUpdateClient } from '../services/clientCRMService';
-import { getOrCreateConversation, markMessagesAsRead } from '../../ai/services/trainerMessaging';
+import { getTrainerClients, createOrUpdateClient } from '../clients-list/loadTrainerClientRoster';
+import { getOrCreateConversation, markMessagesAsRead } from '../../ai/trainer-messaging/sendTrainerNotification';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import GradientChatBubblesIcon from '../../shared/components/GradientChatBubblesIcon';

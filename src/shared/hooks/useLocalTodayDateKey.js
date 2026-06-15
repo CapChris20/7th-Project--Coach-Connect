@@ -1,5 +1,15 @@
+/**
+ * use Local Today Date Key
+ *
+ * Purpose: React hook: use Local Today Date Key. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: useLocalTodayDateKey
+ *
+ * @file-header
+ */
 import { useEffect, useState } from 'react';
-import { getLocalDateKey, msUntilLocalMidnight } from '../utils/localDay';
+import { getLocalDateKey, msUntilLocalMidnight } from '../utils/getLocalDay';
 
 /**
  * YYYY-MM-DD for "today" in the device timezone. Updates at local midnight

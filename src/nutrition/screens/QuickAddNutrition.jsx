@@ -1,3 +1,13 @@
+/**
+ * Quick Add Nutrition
+ *
+ * Purpose: UI screen or component: Quick Add Nutrition. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: QuickAddNutrition
+ *
+ * @file-header
+ */
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

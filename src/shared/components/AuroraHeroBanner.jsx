@@ -1,3 +1,13 @@
+/**
+ * Aurora Hero Banner
+ *
+ * Purpose: UI screen or component: Aurora Hero Banner. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: getAuroraHeroGreeting, TODAY_CARD_TOP_STRIPE, AURORA_HERO_BORDER, AuroraHeroBanner
+ *
+ * @file-header
+ */
 import React, { useEffect, useState } from 'react';
 import {
   Platform,

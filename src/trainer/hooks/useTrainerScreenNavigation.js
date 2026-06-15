@@ -1,3 +1,13 @@
+/**
+ * use Trainer Screen Navigation
+ *
+ * Purpose: UI screen or component: use Trainer Screen Navigation. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: useTrainerScreenNavigation
+ *
+ * @file-header
+ */
 import { useCallback, useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
 import { TRAINER_ROUTES } from '../../navigation/routes';

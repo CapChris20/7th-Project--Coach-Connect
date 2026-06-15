@@ -1,3 +1,13 @@
+/**
+ * Wheel Picker
+ *
+ * Purpose: Wheel Picker — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/components
+ * Key exports: WheelPicker
+ *
+ * @file-header
+ */
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,

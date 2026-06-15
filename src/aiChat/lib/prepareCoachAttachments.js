@@ -1,4 +1,14 @@
 /**
+ * prepare Coach Attachments
+ *
+ * Purpose: prepare Coach Attachments — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: prepareCoachAttachmentsForApi
+ *
+ * @file-header
+ */
+/**
  * Convert local coach chat attachments into API-safe image payloads (base64 data URLs).
  */
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';

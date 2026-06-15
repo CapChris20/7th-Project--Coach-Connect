@@ -1,3 +1,13 @@
+/**
+ * marketplace Filters
+ *
+ * Purpose: marketplace Filters — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: getGlass, specPillGradient, getTheme, trainerFirstName, gradColor, gradGradient, getTrainerPrice, normalizeTrainer
+ *
+ * @file-header
+ */
 /** Marketplace filter shape, theme tokens, and filter logic (reference UI spec; Firebase as source). */
 
 export const SORT_OPTIONS = ['Newest', 'Price: Low', 'Price: High'];

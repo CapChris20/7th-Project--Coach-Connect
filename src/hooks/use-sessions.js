@@ -1,3 +1,13 @@
+/**
+ * use sessions
+ *
+ * Purpose: use sessions — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/hooks
+ * Key exports: useSessions
+ *
+ * @file-header
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   addDoc,
@@ -15,11 +25,11 @@ import {
 import { auth, db } from '../app/config';
 import { useTrainerClients } from '../trainer/hooks/useTrainerClients';
 import { sendSessionScheduledPushToClient } from '../trainer/services/pushSessionNotification';
-import { postRemotePushNotify } from '../shared/services/pushNotifyApi';
+import { postRemotePushNotify } from '../shared/api/sendPushNotification';
 import {
   randomSessionUpdateClientBody,
   randomSessionCancelledClientBody,
-} from '../shared/notifications/pushCopy';
+} from '../shared/notifications/pushNotificationText';
 
 async function trainerDisplayName(trainerUid) {
   try {

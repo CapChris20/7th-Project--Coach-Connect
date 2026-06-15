@@ -1,3 +1,13 @@
+/**
+ * Trainer Request Confirm Modal
+ *
+ * Purpose: UI screen or component: Trainer Request Confirm Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: TrainerRequestConfirmModal
+ *
+ * @file-header
+ */
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -15,7 +25,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { trainerPhotoUri } from '../../shared/utils/trainerProfileMedia';
+import { trainerPhotoUri } from '../../shared/utils/getTrainerProfileMedia';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);

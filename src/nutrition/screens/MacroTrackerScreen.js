@@ -1,3 +1,13 @@
+/**
+ * Macro Tracker Screen
+ *
+ * Purpose: UI screen or component: Macro Tracker Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: MacroTrackerScreen
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../shared/ui/ThemeContext';
@@ -6,7 +16,7 @@ import {
   getDailyGoals,
   getFoodLogsForDate,
   calculateMacroTotals,
-} from '../services/nutritionService';
+} from '../daily-log/logFoodToFirestore';
 import MacroBar from '../components/MacroBar';
 import Loader from '../../Loader';
 import { autoLogErrorSync } from '../../utils/autoLogError';

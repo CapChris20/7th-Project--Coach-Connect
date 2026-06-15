@@ -1,3 +1,13 @@
+/**
+ * Filter Modal
+ *
+ * Purpose: UI screen or component: Filter Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: FilterModal
+ *
+ * @file-header
+ */
 import React, { useState, useEffect } from 'react';
 import {
   Modal,

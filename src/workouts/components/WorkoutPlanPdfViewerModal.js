@@ -1,4 +1,14 @@
 /**
+ * Workout Plan Pdf Viewer Modal
+ *
+ * Purpose: UI screen or component: Workout Plan Pdf Viewer Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: WorkoutPlanPdfViewerModal
+ *
+ * @file-header
+ */
+/**
  * In-app PDF viewer for generated workout plan.
  * Shows PDF (from local uri or remote url), bottom bar: Save to Files, Share, Send to Trainer.
  */
@@ -19,7 +29,7 @@ import {
 import { WebView } from 'react-native-webview';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
-import { addFile } from '../../shared/services/notesAndFilesService';
+import { addFile } from '../../shared/notes-files/manageNotesAndFiles';
 import { auth } from '../../app/config';
 
 export default function WorkoutPlanPdfViewerModal({

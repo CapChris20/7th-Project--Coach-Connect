@@ -1,3 +1,13 @@
+/**
+ * Food Item
+ *
+ * Purpose: Food Item — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: FoodItem
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useTheme } from '../../shared/ui/ThemeContext';

@@ -1,3 +1,13 @@
+/**
+ * Edit Serving Modal
+ *
+ * Purpose: UI screen or component: Edit Serving Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: EditServingModal
+ *
+ * @file-header
+ */
 import React from 'react';
 import {
   View,

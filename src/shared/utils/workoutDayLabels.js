@@ -1,4 +1,14 @@
 /**
+ * workout Day Labels
+ *
+ * Purpose: workout Day Labels — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: isAllowedClientWorkoutDayLabel, normalizeWorkoutDayLabel, WORKOUT_DAY_EXAMPLES_SHORT
+ *
+ * @file-header
+ */
+/**
  * Allowed labels for "today's workout" / workout day on the client dashboard.
  * Normalized matching is case-insensitive; extra spaces are collapsed.
  */

@@ -1,3 +1,13 @@
+/**
+ * navigation Ref
+ *
+ * Purpose: navigation Ref — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/navigation
+ * Key exports: rootNavigate, rootGoBack, rootResetTo, rootNavigationRef
+ *
+ * @file-header
+ */
 import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 
 export const rootNavigationRef = createNavigationContainerRef();

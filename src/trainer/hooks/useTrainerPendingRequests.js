@@ -1,3 +1,13 @@
+/**
+ * use Trainer Pending Requests
+ *
+ * Purpose: React hook: use Trainer Pending Requests. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: useTrainerPendingRequests
+ *
+ * @file-header
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { getTrainerPendingRequests } from '../services/trainerPendingRequestsService';
 

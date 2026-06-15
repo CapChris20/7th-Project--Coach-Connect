@@ -1,4 +1,14 @@
 /**
+ * onboarding Ai Deps
+ *
+ * Purpose: onboarding Ai Deps — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: getOnboardingUiTokens, OnboardingPrimaryButton, ONBOARDING_CTA_GRADIENT, ONBOARDING_BRAND_GRADIENT, TRAINER_ONBOARDING_GRADIENT, ONBOARDING_ACCENT, ONBOARDING_ACCENT_SOFT
+ *
+ * @file-header
+ */
+/**
  * Shared onboarding tokens + primary CTA only.
  * Used by AIOptInStep (avoids circular import with OnboardingScreen.js).
  */

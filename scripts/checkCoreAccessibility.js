@@ -20,7 +20,7 @@ const CORE_FILES = [
     ],
   },
   {
-    file: 'src/aiChat/toolModals/toolModalShared.js',
+    file: 'src/aiChat/tool-modals/toolModalHelpers.js',
     mustInclude: ['accessibilityLabel="Cancel"', 'accessibilityLabel="Confirm"'],
   },
   {

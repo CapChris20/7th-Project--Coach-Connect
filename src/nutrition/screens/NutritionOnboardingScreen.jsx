@@ -1,4 +1,14 @@
 /**
+ * Nutrition Onboarding Screen
+ *
+ * Purpose: UI screen or component: Nutrition Onboarding Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE, NutritionOnboardingScreen
+ *
+ * @file-header
+ */
+/**
  * ANATROX — Nutrition Onboarding Screen
  * Converted from Lovable web export (Nutrition_Onboarding.zip) to React Native / Expo
  * Single file — all components inlined, no navbar, no CoachConnect header

@@ -1,3 +1,13 @@
+/**
+ * Marketplace Glass
+ *
+ * Purpose: Marketplace Glass — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: MarketplaceGlass
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

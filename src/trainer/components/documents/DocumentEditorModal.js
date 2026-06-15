@@ -1,4 +1,14 @@
 /**
+ * Document Editor Modal
+ *
+ * Purpose: UI screen or component: Document Editor Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: DocumentEditorModal
+ *
+ * @file-header
+ */
+/**
  * Trainer document editor — create or edit a document. Save to users/{trainerId}/documents.
  */
 
@@ -24,7 +34,7 @@ import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { deleteDoc, doc } from 'firebase/firestore';
-import { saveTrainerDocument, getTrainerDocument } from '../../../shared/services/notesAndFilesService';
+import { saveTrainerDocument, getTrainerDocument } from '../../../shared/notes-files/manageNotesAndFiles';
 import { db } from '../../../app/config';
 import ShareDocumentModal from './ShareDocumentModal';
 import CoachConnectHeader from '../../../shared/components/CoachConnectHeader';

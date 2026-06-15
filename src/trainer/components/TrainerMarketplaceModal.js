@@ -1,9 +1,19 @@
+/**
+ * Trainer Marketplace Modal
+ *
+ * Purpose: UI screen or component: Trainer Marketplace Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Animated, Pressable } from 'react-native';
 import { doc, collection, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app/config';
-import { syncClientDataFromUsers } from '../services/clientCRMService';
-import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai/services/trainerMessaging';
+import { syncClientDataFromUsers } from '../clients-list/loadTrainerClientRoster';
+import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai/trainer-messaging/sendTrainerNotification';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared/ui/ThemeContext';
 

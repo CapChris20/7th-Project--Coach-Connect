@@ -1,8 +1,18 @@
+/**
+ * Files Notes Section Premium
+ *
+ * Purpose: UI screen or component: Files Notes Section Premium. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: FilesNotesSectionPremium
+ *
+ * @file-header
+ */
 import React, { useMemo } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../utils/fileFormatting';
+import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../utils/formatFileSize';
 
 /** Coach / docs — dark cyan → dark gold */
 const GRAD_COACH = ['#0891B2', '#B45309'];

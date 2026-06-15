@@ -1,4 +1,14 @@
 /**
+ * brand Gradients
+ *
+ * Purpose: brand Gradients — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: BRAND_NAV_ICON_GRADIENT, BRAND_NAV_ICON_GRADIENT_LOCATIONS, BRAND_ICON_GRADIENT_START, BRAND_ICON_GRADIENT_END
+ *
+ * @file-header
+ */
+/**
  * Brand gradient aligned with cg logo (pink → purple → indigo), top → bottom.
  */
 export const BRAND_NAV_ICON_GRADIENT = ['#E94EAD', '#A348D0', '#6B3AD9'];

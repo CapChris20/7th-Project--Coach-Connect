@@ -1,3 +1,13 @@
+/**
+ * Workout Plan Generator Screen UI
+ *
+ * Purpose: UI screen or component: Workout Plan Generator Screen UI. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: WorkoutPlanGeneratorScreenUI
+ *
+ * @file-header
+ */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

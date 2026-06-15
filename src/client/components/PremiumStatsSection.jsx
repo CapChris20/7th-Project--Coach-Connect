@@ -1,3 +1,13 @@
+/**
+ * Premium Stats Section
+ *
+ * Purpose: UI screen or component: Premium Stats Section. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: GradientBorderShell, PremiumStatsSection
+ *
+ * @file-header
+ */
 import React, { useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

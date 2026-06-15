@@ -1,4 +1,14 @@
 /**
+ * food Search Provider
+ *
+ * Purpose: Data/service layer: food Search Provider. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: FOOD_SEARCH_OFFLINE_HINT
+ *
+ * @file-header
+ */
+/**
  * Food Search Provider
  * Single source of truth for all food search operations
  * Integrates with server endpoints for secure API calls
@@ -6,15 +16,15 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getResilientApiBases } from '../../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
-import logger from '../../shared/services/logger';
+import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
+import logger from '../../shared/api/logErrorToServer';
 const {
   isMenuStyleQuery,
   itemMatchesQuery,
   isRetailFoodNoise,
-} = require('./foodSearchQueryMatch');
+} = require('../food-search/rankFoodSearchResults');
 
-const { normalizeOpenFoodFactsProduct } = require('../utils/nutritionNormalization');
+const { normalizeOpenFoodFactsProduct } = require('../food-details/normalizeNutritionData');
 
 /** Open Food Facts requires an identifiable User-Agent (otherwise HTML/blocks → JSON parse errors). */
 const OPEN_FOOD_FACTS_USER_AGENT =
@@ -585,6 +595,26 @@ class FoodSearchProvider {
       await AsyncStorage.setItem('COACHCONNECT_FOOD_CACHE', JSON.stringify(foods));
     } catch (error) {
       logger.error('Error saving cached foods', error);
+    }
+  }
+
+  /**
+   * Extended nutrition label lookup for facts screen enrichment.
+   */
+  async fetchNutritionDetails(queryText) {
+    const q = String(queryText || '').trim();
+    if (!q) return null;
+    try {
+      const base = getServerUrl();
+      if (!base) return null;
+      const headers = await getApiAuthHeaders();
+      const url = `${base}/api/food/nutrition-details?q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { headers });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (error) {
+      logger.debug('fetchNutritionDetails failed', error?.message);
+      return null;
     }
   }
 

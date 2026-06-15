@@ -1,3 +1,13 @@
+/**
+ * Month Calendar
+ *
+ * Purpose: Month Calendar — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/components
+ * Key exports: MonthCalendar
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';

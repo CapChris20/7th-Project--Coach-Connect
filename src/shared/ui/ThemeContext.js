@@ -1,3 +1,13 @@
+/**
+ * Theme Context
+ *
+ * Purpose: Theme Context — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: ThemeProvider, useTheme
+ *
+ * @file-header
+ */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';

@@ -1,3 +1,13 @@
+/**
+ * Client App Shell Context
+ *
+ * Purpose: Client App Shell Context — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: ClientAppShellProvider, useClientAppShell, ClientAppShellContext
+ *
+ * @file-header
+ */
 import React, { createContext, useContext } from 'react';
 
 export const ClientAppShellContext = createContext(null);

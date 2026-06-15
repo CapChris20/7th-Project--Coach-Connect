@@ -1,6 +1,16 @@
+/**
+ * web Search
+ *
+ * Purpose: Data/service layer: web Search. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: searchWeb, getWebContext
+ *
+ * @file-header
+ */
 import axios from 'axios';
 import { getApiBase } from '../../shared/services/baseUrl';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
+import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
 
 // Resolve backend URL for server-side web search
 function getBaseUrl() {

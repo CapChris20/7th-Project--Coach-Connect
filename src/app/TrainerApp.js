@@ -1,4 +1,14 @@
 /**
+ * Trainer App
+ *
+ * Purpose: Trainer App — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: getClient, createOrUpdateClient, syncClientDataFromUsers, removeClient, getTrainerClients, updateClient, addProgress, getProgressHistory
+ *
+ * @file-header
+ */
+/**
  * TrainerApp.jsx
  * Trainer CRM dashboard with full conditional rendering.
  * When client has data → Lovable-style populated UI.
@@ -81,7 +91,7 @@ import ClientRequestsScreen from "../trainer/screens/ClientRequestsScreen";
 import SessionSchedulingScreen from "../trainer/screens/SessionSchedulingScreen";
 import SessionFormScreen from "../trainer/screens/SessionFormScreen";
 import { useTrainerClients } from "../trainer/hooks/useTrainerClients";
-import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer/lib/trainerClientDisplayName";
+import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer/crm/formatClientName";
 import { useTrainerPendingRequests } from "../trainer/hooks/useTrainerPendingRequests";
 import {
   configureNotifications,
@@ -89,21 +99,21 @@ import {
   setNotificationTapHandler,
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
-} from "../shared/services/notificationsService";
+} from "../shared/notifications/manageNotifications";
 import { useTheme as useGlobalTheme } from "../shared/ui/ThemeContext";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions } from "../app/config";
-import { fetchLatestLoggedWeight } from '../shared/services/latestLoggedWeight';
+import { fetchLatestLoggedWeight } from '../shared/daily-metrics/getLatestWeight';
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { autoLogErrorSync } from "../utils/autoLogError";
-import { getOrCreateConversation } from "../ai/services/trainerMessaging";
+import { getOrCreateConversation } from "../ai/trainer-messaging/sendTrainerNotification";
 import { getDateKey } from "../app/dateKey";
-import { getLocalDateKey } from "../shared/utils/localDay";
+import { getLocalDateKey } from "../shared/utils/getLocalDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { subscribeToUnreadCount } from "../ai/services/conversationService";
 import { markAllMessagesReadForUser } from "../ai/services/markAllMessagesRead";
-import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../shared/services/notesAndFilesService";
-import { clearAllUserData } from "../utils/dataCacheCleanup";
+import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../shared/notes-files/manageNotesAndFiles";
+import { clearAllUserData } from "../utils/clearDataOnLogout";
 import AddNotesFilesModal from "../shared/components/AddNotesFilesModal";
 import MediaViewerModal from "../shared/components/MediaViewerModal";
 import EmbedWebViewModal from "../shared/components/EmbedWebViewModal";
@@ -112,7 +122,7 @@ import {
   isVideoFile as isNotesVideoFile,
   isPdfFile as isNotesPdfFile,
   getEmbedViewerUri,
-} from "../shared/utils/notesFileView";
+} from "../shared/utils/getFileViewType";
 import PdfViewerModal from "../shared/components/PdfViewerModal";
 import SpreadsheetViewerModal from "../shared/components/SpreadsheetViewerModal";
 import DocumentEditorModal from "../trainer/components/documents/DocumentEditorModal";
@@ -123,7 +133,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
 import RemoveTrainerSheet from "../shared/components/RemoveTrainerSheet";
-import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/services/nutritionService";
+import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/daily-log/logFoodToFirestore";
 import PhotoGalleryScreen from "../trainer/screens/PhotoGalleryScreen";
 import AIWorkoutPlansScreen from "../trainer/screens/AIWorkoutPlansScreen";
 import ManualWorkoutPlanBuilderScreen from "../trainer/screens/ManualWorkoutPlanBuilderScreen";
@@ -167,7 +177,7 @@ import {
 } from '../trainer/lib/trainerClientFirestorePaths';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CLIENT CRM SERVICE (merged from trainer/services/clientCRMService.js for review)
+// CLIENT CRM SERVICE (merged from trainer/clients-list/loadTrainerClientRoster.js for review)
 // Screens/hooks still import from clientCRMService.js → re-exports these bindings.
 // ═══════════════════════════════════════════════════════════════════════════════
 

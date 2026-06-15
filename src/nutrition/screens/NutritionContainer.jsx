@@ -1,3 +1,13 @@
+/**
+ * Nutrition Container
+ *
+ * Purpose: UI screen or component: Nutrition Container. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: NutritionContainer
+ *
+ * @file-header
+ */
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { auth, db } from '../../app/config';
@@ -10,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getDailyGoals,
   getFoodLogsForDate,
+  getDatesWithFoodLogs,
   calculateMacroTotals,
   splitLogsByMeal,
   addFoodLog,
@@ -17,9 +28,10 @@ import {
   deleteFoodLog,
   upsertDailyGoals,
   getTopLoggedFoodNames,
-} from '../services/nutritionService';
+} from '../daily-log/logFoodToFirestore';
 import NutritionOnboardingScreen from './NutritionOnboardingScreen';
 import NutritionScreen from './NutritionScreen';
+import NutritionFactsScreen from './NutritionFactsScreen';
 import QuickAddNutrition from './QuickAddNutrition';
 import FoodSearchScreen from './FoodSearchScreen';
 import BarcodeScannerScreen from './BarcodeScannerScreen';
@@ -60,6 +72,10 @@ export const NutritionContainer = ({
   const [showNutritionSettings, setShowNutritionSettings] = useState(false);
   const [logError, setLogError] = useState(null);
   const [topFoodNames, setTopFoodNames] = useState([]);
+  const [viewDate, setViewDate] = useState(getClientDateKey());
+  const [datesWithLogs, setDatesWithLogs] = useState([]);
+  const [showDailyFacts, setShowDailyFacts] = useState(false);
+  const [factsLog, setFactsLog] = useState(null);
   const pendingLogs = useRef(new Set());
   const { isDark } = useTheme();
 
@@ -82,7 +98,7 @@ export const NutritionContainer = ({
     if (!uid || !db) return undefined;
 
     const logsRef = collection(db, 'nutrition_logs');
-    const q = query(logsRef, where('user_id', '==', uid), where('date', '==', today));
+    const q = query(logsRef, where('user_id', '==', uid), where('date', '==', viewDate));
 
     const unsub = onSnapshot(
       q,
@@ -119,7 +135,12 @@ export const NutritionContainer = ({
         /* ignore */
       }
     };
-  }, [uid, today, db]);
+  }, [uid, viewDate, db]);
+
+  useEffect(() => {
+    if (!uid) return;
+    getDatesWithFoodLogs(uid).then(setDatesWithLogs).catch(() => setDatesWithLogs([]));
+  }, [uid, logs.length]);
 
   useEffect(() => {
     if (!uid) return;
@@ -518,6 +539,30 @@ export const NutritionContainer = ({
     );
   }
 
+  if (showDailyFacts || factsLog) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+        <CoachConnectHeader
+          title={factsLog ? 'Nutrition Facts' : 'Daily Nutrition'}
+          isDark={isDark}
+          skipTopSafeInset
+          onBack={() => {
+            setShowDailyFacts(false);
+            setFactsLog(null);
+          }}
+        />
+        <NutritionFactsScreen
+          log={factsLog}
+          logs={factsLog ? undefined : logs}
+          goals={goals}
+          foodCount={logs.length}
+          reserveShellBottomNav={hideBottomNav}
+        />
+        {bottomNavEl}
+      </SafeAreaView>
+    );
+  }
+
   if (showNutritionSettings) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
@@ -569,6 +614,11 @@ export const NutritionContainer = ({
         onSearch={() => { setInitialSearchQuery(''); setShowFoodSearch(true); }}
         onPillSearch={handlePillSearch}
         onOpenSettings={() => setShowNutritionSettings(true)}
+        viewDate={viewDate}
+        onSelectViewDate={setViewDate}
+        datesWithLogs={datesWithLogs}
+        onOpenDailyFacts={() => setShowDailyFacts(true)}
+        onOpenFoodFacts={(log) => setFactsLog(log)}
         topFoodNames={topFoodNames}
         onQuickAdd={handleOpenQuickAdd}
       />

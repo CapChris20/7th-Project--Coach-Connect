@@ -1,4 +1,14 @@
 /**
+ * Share Document Modal
+ *
+ * Purpose: UI screen or component: Share Document Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: ShareDocumentModal
+ *
+ * @file-header
+ */
+/**
  * Share trainer document with clients. Toggles per client; saves sharedWith to Firestore.
  */
 
@@ -17,8 +27,8 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getTrainerClients } from '../../services/clientCRMService';
-import { setDocumentSharedWith } from '../../../shared/services/notesAndFilesService';
+import { getTrainerClients } from '../../clients-list/loadTrainerClientRoster';
+import { setDocumentSharedWith } from '../../../shared/notes-files/manageNotesAndFiles';
 
 export default function ShareDocumentModal({
   visible,

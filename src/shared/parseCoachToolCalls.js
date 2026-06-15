@@ -1,4 +1,14 @@
 /**
+ * parse Coach Tool Calls
+ *
+ * Purpose: parse Coach Tool Calls — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: parseCoachToolCalls, stripCoachToolJsonFromReply, COACH_TOOL_NAMES
+ *
+ * @file-header
+ */
+/**
  * Parse AI Coach tool JSON from model replies (shared by server + Expo client).
  */
 

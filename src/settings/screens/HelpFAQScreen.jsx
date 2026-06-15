@@ -1,3 +1,13 @@
+/**
+ * Help FAQScreen
+ *
+ * Purpose: UI screen or component: Help FAQScreen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/settings
+ * Key exports: HelpFAQScreen
+ *
+ * @file-header
+ */
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

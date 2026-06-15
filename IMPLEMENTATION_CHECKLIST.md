@@ -50,7 +50,7 @@
 - Writes to workout_ratings collection
 - Returns success message
 
-### 3. Client Fallbacks (src/ai/toolExecutor.js)
+### 3. Client Fallbacks (src/ai/tools/executeCoachTool.js)
 
 ✅ **executeLogWaterClient (line ~280-300)**
 - Client SDK fallback if server unreachable

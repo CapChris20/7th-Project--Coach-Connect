@@ -1,3 +1,13 @@
+/**
+ * Workout Card
+ *
+ * Purpose: UI screen or component: Workout Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: WorkoutCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 

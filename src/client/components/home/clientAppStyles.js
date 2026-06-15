@@ -1,3 +1,13 @@
+/**
+ * client App Styles
+ *
+ * Purpose: client App Styles — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: CARD_GAP, SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP
+ *
+ * @file-header
+ */
 import { StyleSheet, Dimensions, Platform } from 'react-native';
 
 export const CARD_GAP = 16;
@@ -1057,6 +1067,7 @@ const clientAppStyles = StyleSheet.create({
   },
   nutritionGradientBorder: {
     borderRadius: 16,
+    padding: 2,
     overflow: 'hidden',
   },
   nutritionCard: {

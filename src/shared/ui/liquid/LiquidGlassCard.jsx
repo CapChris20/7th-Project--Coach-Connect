@@ -1,3 +1,13 @@
+/**
+ * Liquid Glass Card
+ *
+ * Purpose: UI screen or component: Liquid Glass Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: LiquidGlassCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import BlurBackdropPlate from '../BlurBackdropPlate';

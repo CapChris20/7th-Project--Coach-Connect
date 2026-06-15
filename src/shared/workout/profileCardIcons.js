@@ -1,3 +1,13 @@
+/**
+ * profile Card Icons
+ *
+ * Purpose: UI screen or component: profile Card Icons. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: PROFILE_CARD_ICON_SIZE, PROFILE_CARD_ICON_WRAP, PROFILE_ROW_ICON_SIZE, PROFILE_ROW_ICON_WRAP, PROFILE_CARD_ICON_ASSETS, PROFILE_FIELD_ICON_ID, resolveProfileCardIconSource, profileCardIconWrapStyle
+ *
+ * @file-header
+ */
 import { getOnboardingIconSource } from '../assets/onboardingIconRegistry';
 
 /** Shared profile-card PNG sizing (ClientApp + TrainerApp workout screens). */

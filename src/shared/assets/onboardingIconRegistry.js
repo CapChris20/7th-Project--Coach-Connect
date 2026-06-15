@@ -1,3 +1,13 @@
+/**
+ * onboarding Icon Registry
+ *
+ * Purpose: onboarding Icon Registry — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: normalizeOnboardingIconKey, onboardingIconRegistry, getOnboardingIconSource
+ *
+ * @file-header
+ */
 import { onboardingIconRegistry as generatedRegistry } from './onboardingIconRegistry.generated.js';
 
 // Manual aliases so app domain keys don't have to match filename keys.

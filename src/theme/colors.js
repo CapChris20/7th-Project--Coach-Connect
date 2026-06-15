@@ -1,3 +1,13 @@
+/**
+ * colors
+ *
+ * Purpose: colors — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/theme
+ * Key exports: colors, shadows, gradients
+ *
+ * @file-header
+ */
 export const colors = {
   background: '#0A0A0F',
   primary: '#FF6B9D',

@@ -7,7 +7,7 @@
  * Why: Weekly context = extra Firestore reads + a longer prompt.
  * Only load when the message is clearly about *this user's* logs.
  *
- * Keep patterns in sync with: src/ai/coachPersonalDataRouting.js
+ * Keep patterns in sync with: src/ai/context/gatherCoachContextFromUser.js
  *
  * --- Regex cheat sheet ---
  * / ... /     → regular expression

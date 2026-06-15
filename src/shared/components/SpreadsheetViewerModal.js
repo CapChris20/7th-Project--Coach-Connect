@@ -1,4 +1,14 @@
 /**
+ * Spreadsheet Viewer Modal
+ *
+ * Purpose: UI screen or component: Spreadsheet Viewer Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: SpreadsheetViewerModal
+ *
+ * @file-header
+ */
+/**
  * SpreadsheetViewerModal — read-only viewer for uploaded .csv / .xlsx files.
  *
  * NOTE: This is NOT SpreadsheetEditorModal (trainer edit UI lives at

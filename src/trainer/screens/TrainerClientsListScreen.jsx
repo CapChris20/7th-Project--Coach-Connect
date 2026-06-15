@@ -1,3 +1,13 @@
+/**
+ * Trainer Clients List Screen
+ *
+ * Purpose: UI screen or component: Trainer Clients List Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 /** Trainer — full client roster list */
 import React, { useState, useCallback, useRef } from 'react';
 import {

@@ -188,7 +188,7 @@ Last updated: ${readableUpdateTime}
       const baseUrl = getBaseUrl();
       (async () => {
         try {
-          const { getApiAuthHeaders } = require('../src/shared/services/apiAuthHeaders');
+          const { getApiAuthHeaders } = require('../src/shared/api/getAuthHeaders');
           const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
           if (!headers.Authorization) return;
           await fetch(`${baseUrl}/api/log-error`, {
@@ -202,7 +202,7 @@ Last updated: ${readableUpdateTime}
       })().catch(() => {
         // Server not available, queue for later sync
         try {
-          const errorSyncModule = require('./errorSyncService');
+          const errorSyncModule = require('./syncErrorsToServer');
           if (errorSyncModule && errorSyncModule.queueErrorForSync) {
             errorSyncModule.queueErrorForSync(errorData).catch(() => {});
           }

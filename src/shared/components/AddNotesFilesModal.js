@@ -1,4 +1,14 @@
 /**
+ * Add Notes Files Modal
+ *
+ * Purpose: UI screen or component: Add Notes Files Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: AddNotesFilesModal
+ *
+ * @file-header
+ */
+/**
  * Modal triggered by the bottom nav plus button.
  * Add: Photo, Video, Note, PDF/Doc. Saves to Firestore + Storage and mirrors to trainer CRM.
  */
@@ -22,7 +32,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { auth } from '../../app/config';
-import { addNote, addFile, addSpreadsheetFile } from '../services/notesAndFilesService';
+import { addNote, addFile, addSpreadsheetFile } from '../notes-files/manageNotesAndFiles';
 
 const OPTIONS = [
   { key: 'photo', label: 'Photo', icon: 'image-outline', gradient: ['#06B6D4', '#8B5CF6'] },

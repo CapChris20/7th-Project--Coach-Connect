@@ -246,7 +246,7 @@ Requirements use: **Must** (P0), **Should** (P1), **Could** (P2).
 | SET-01 | Theme (light/dark) | Must | Shipped |
 | SET-02 | Notification preferences + workout reminders | Should | Shipped |
 | SET-03 | Privacy Policy, Terms, Help FAQ, Contact Support, Bug Report | Must | Shipped |
-| SET-04 | Support email displayed (default `coachconnect@gmail.com`) | Must | Shipped |
+| SET-04 | Support email displayed (default `coachconnect0@gmail.com`) | Must | Shipped |
 | SET-05 | Expo push token registration | Should | Shipped |
 
 ### 5.12 Monetization (planned)

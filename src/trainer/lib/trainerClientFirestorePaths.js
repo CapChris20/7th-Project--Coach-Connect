@@ -1,4 +1,14 @@
 /**
+ * trainer Client Firestore Paths
+ *
+ * Purpose: Data/service layer: trainer Client Firestore Paths. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: trainerClientDocRef, legacyClientDocRef, trainerClientSubcollectionRef, legacyClientSubcollectionRef, fetchTrainerClientDoc, fetchTrainerClientRosterPage, fetchTrainerClientRoster, fetchTrainerClientSubcollectionDocs
+ *
+ * @file-header
+ */
+/**
  * Canonical trainer ↔ client Firestore paths.
  * Reads: trainer_clients/{trainerId}/clients/{clientId} first, legacy clients/{clientId} fallback.
  * Writes: canonical path only (legacy mirror only where explicitly documented in CRM create).

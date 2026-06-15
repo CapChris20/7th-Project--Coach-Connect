@@ -63,6 +63,26 @@ app.post('/api/ask', verifyFirebaseBearerToken, async (req, res) => {
 });
 
 app.post('/api/workout/generate', verifyFirebaseBearerToken, async (req, res) => {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    String(req.headers['x-load-test'] || '') === '1'
+  ) {
+    return res.json({
+      text: `# Mock Workout Plan
+
+Day 1: Push
+1. Bench Press - 4 x 8, 90s rest
+2. Incline Dumbbell Press - 3 x 10, 75s rest
+
+Day 2: Pull
+1. Pull Ups - 4 x 6, 90s rest
+2. Barbell Row - 3 x 8, 90s rest`,
+      source: 'load-test-mock',
+      ms: 0,
+      usage: null,
+    });
+  }
+
   const started = Date.now();
   try {
     const { onboardingData, subjectUserId } = req.body || {};

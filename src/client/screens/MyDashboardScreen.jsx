@@ -1,3 +1,13 @@
+/**
+ * My Dashboard Screen
+ *
+ * Purpose: UI screen or component: My Dashboard Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: MyDashboardScreen
+ *
+ * @file-header
+ */
 //
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -31,19 +41,19 @@ import {
   limit,
 } from 'firebase/firestore';
 import { auth, db } from '../../app/config';
-import { postRemotePushNotify } from '../../shared/services/pushNotifyApi';
-import { getLocalDateKey, msUntilLocalMidnight } from '../../shared/utils/localDay';
+import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
+import { getLocalDateKey, msUntilLocalMidnight } from '../../shared/utils/getLocalDay';
 import { useLocalTodayDateKey } from '../../shared/hooks/useLocalTodayDateKey';
 import {
   retryPendingDailyDashboardArchive,
   tickDailyDashboardDayRollover,
-} from '../../shared/services/dailyDashboardDayRollover';
+} from '../../shared/daily-metrics/rolloverDayAtMidnight';
 import {
   saveDashboardMetricField,
   saveDashboardWorkoutLog,
   buildWorkoutLogHydration,
   fetchLegacyDailyTrackingSnap,
-} from '../../shared/services/dailyMetricsService';
+} from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionMeetingCard } from '../../shared/components/SessionMeetingCard';

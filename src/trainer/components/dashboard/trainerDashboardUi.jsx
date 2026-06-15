@@ -1,3 +1,13 @@
+/**
+ * trainer Dashboard Ui
+ *
+ * Purpose: trainer Dashboard Ui — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -27,13 +37,13 @@ import FilesNotesSectionPremium from '../../../shared/components/FilesNotesSecti
 import AddNotesFilesModal from '../../../shared/components/AddNotesFilesModal';
 import MediaViewerModal from '../../../shared/components/MediaViewerModal';
 import EmbedWebViewModal from '../../../shared/components/EmbedWebViewModal';
-import { deleteNotesAndFilesItem } from '../../../shared/services/notesAndFilesService';
+import { deleteNotesAndFilesItem } from '../../../shared/notes-files/manageNotesAndFiles';
 import {
   isImageFile as isNotesImageFile,
   isVideoFile as isNotesVideoFile,
   isPdfFile as isNotesPdfFile,
   getEmbedViewerUri,
-} from '../../../shared/utils/notesFileView';
+} from '../../../shared/utils/getFileViewType';
 import { Dimensions } from 'react-native';
 import { useTheme as useGlobalTheme } from '../../../shared/ui/ThemeContext';
 

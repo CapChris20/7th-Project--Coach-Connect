@@ -1,3 +1,13 @@
+/**
+ * Change Password Screen
+ *
+ * Purpose: UI screen or component: Change Password Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/settings
+ * Key exports: ChangePasswordScreen
+ *
+ * @file-header
+ */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

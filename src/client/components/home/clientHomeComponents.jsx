@@ -1,3 +1,13 @@
+/**
+ * client Home Components
+ *
+ * Purpose: client Home Components — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -526,10 +536,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {formatScore(energyLevel, 5) || energyLevel}
+                      {formatScore(energyLevel, 8) || energyLevel}
                     </LightModeOutlineText>
                     <StatGradientText style={wellnessNumber} colors={HOME_STAT_ENERGY_GRADIENT}>
-                      {formatScore(energyLevel, 5) || energyLevel}
+                      {formatScore(energyLevel, 8) || energyLevel}
                     </StatGradientText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -784,15 +794,14 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   return (
     <View style={styles.agendaContainer}>
       <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Training Agenda Today</Text>
-      <View
+      <LinearGradient
+        colors={AGENDA_BORDER_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={[
           styles.agendaGradientBorder,
           isEmpty && styles.agendaGradientBorderPremiumEmpty,
-          {
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
-            padding: 0,
-          },
+          { padding: 2 },
         ]}
       >
         <Animated.View
@@ -978,7 +987,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
             </View>
           </LinearGradient>
         </Animated.View>
-      </View>
+      </LinearGradient>
     </View>
   );
 };
@@ -1125,16 +1134,13 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   return (
     <View style={styles.nutritionContainer}>
       <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Nutrition Today</Text>
-      <View
-        style={[
-          styles.nutritionGradientBorder,
-          {
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
-            padding: 0,
-          },
-        ]}
-      >
+      <View style={styles.nutritionGradientBorder}>
+        <LinearGradient
+          colors={['#A78BFA', '#E879C8', '#F0ABFC']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={[styles.nutritionCard, !isDark && styles.nutritionCardLight]}>
         {!hasLoggedNutrition ? (
           <View

@@ -1,4 +1,14 @@
 /**
+ * ai Coach Ui Tokens
+ *
+ * Purpose: ai Coach Ui Tokens — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AI_COACH_UI, AI_COACH_LIGHT
+ *
+ * @file-header
+ */
+/**
  * AI Coach UI tokens — aligned with design-system.md (premium dark neon glass).
  * Use only inside src/aiChat/*
  */

@@ -1,3 +1,13 @@
+/**
+ * workout Service
+ *
+ * Purpose: Data/service layer: workout Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: getCurrentWorkoutPlan, setCurrentWorkoutPlan, createWorkoutTemplate, fetchWorkoutTemplates, getWorkoutTemplate, startWorkout, getActiveWorkout, subscribeToActiveWorkout
+ *
+ * @file-header
+ */
 import { db } from '../../app/config';
 import {
   collection,

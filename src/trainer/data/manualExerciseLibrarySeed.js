@@ -1,4 +1,14 @@
 /**
+ * manual Exercise Library Seed
+ *
+ * Purpose: manual Exercise Library Seed — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: searchManualExerciseLibrary, MANUAL_EXERCISE_LIBRARY
+ *
+ * @file-header
+ */
+/**
  * Offline exercise library for the manual workout plan builder (search + autocomplete).
  * IDs are stable strings for Firestore references; trainers may still save custom names.
  */

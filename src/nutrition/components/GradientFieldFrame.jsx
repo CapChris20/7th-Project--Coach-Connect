@@ -1,3 +1,13 @@
+/**
+ * Gradient Field Frame
+ *
+ * Purpose: Gradient Field Frame — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: GradientFieldFrame
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

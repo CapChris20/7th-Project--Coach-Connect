@@ -1,8 +1,18 @@
 /**
+ * auto Log Error
+ *
+ * Purpose: auto Log Error — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/utils
+ * Key exports: autoLogErrorSync, autoLogError
+ *
+ * @file-header
+ */
+/**
  * Lightweight error logger used across the app.
  * Forwards to monitoring (Sentry when configured).
  */
-import { captureException } from '../shared/services/monitoring';
+import { captureException } from '../shared/api/monitorAppHealth';
 
 export function autoLogErrorSync(error, context) {
   try {

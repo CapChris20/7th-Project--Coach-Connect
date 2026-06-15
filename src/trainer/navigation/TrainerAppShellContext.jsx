@@ -1,3 +1,13 @@
+/**
+ * Trainer App Shell Context
+ *
+ * Purpose: Trainer App Shell Context — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerAppShellProvider, useTrainerAppShell, TrainerAppShellContext
+ *
+ * @file-header
+ */
 import React, { createContext, useContext } from 'react';
 
 export const TrainerAppShellContext = createContext(null);

@@ -1,3 +1,13 @@
+/**
+ * Files Notes Hero Card
+ *
+ * Purpose: UI screen or component: Files Notes Hero Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: FilesNotesHeroCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

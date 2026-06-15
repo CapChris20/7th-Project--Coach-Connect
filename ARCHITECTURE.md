@@ -35,7 +35,7 @@ flowchart LR
 | App shells | `src/app/ClientApp.js`, `TrainerApp.js` | Auth role UI, shell context, React Navigation root |
 | Client home | `src/client/` | Dashboard, hooks, navigation overlays |
 | Trainer CRM | `src/trainer/` | Roster, client detail, navigation overlays |
-| Daily metrics | `src/shared/services/dailyMetricsService.js` | Canonical writes to `users/{uid}/dailyLogs/{date}` |
+| Daily metrics | `src/shared/daily-metrics/saveDailyMetricsToFirestore.js` | Canonical writes to `users/{uid}/dailyLogs/{date}` |
 | AI coach | `src/ai/`, `server/routes/aiCoachRoutes.js` | Tools, web search, bearer-auth API |
 | Food API | `server/routes/foodRoutes.js` | Search, barcode, restaurant nutrition |
 | Navigation | `src/navigation/` | Route names, `navigationRef`, linking stubs |

@@ -1,4 +1,14 @@
 /**
+ * File Gallery Grid
+ *
+ * Purpose: File Gallery Grid — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: FileGalleryGrid
+ *
+ * @file-header
+ */
+/**
  * Shared file gallery UI — gradient-bordered cards in a 2-column grid.
  * Previews: stored thumbnailUrl (upload), Google embedded viewer for PDFs/docs/sheets, expo-av Video for video without thumb.
  */
@@ -15,7 +25,7 @@ import {
   File as FileIcon,
   Image as ImageIcon,
 } from 'lucide-react-native';
-import { getFriendlyFileTitle } from '../utils/fileFormatting';
+import { getFriendlyFileTitle } from '../utils/formatFileSize';
 
 const PALETTES = ['cyan', 'pink', 'purple', 'orange'];
 

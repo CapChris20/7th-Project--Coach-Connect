@@ -1,3 +1,13 @@
+/**
+ * ios18Theme
+ *
+ * Purpose: ios18Theme — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 // iOS 18 Design Language Theme
 // Provides iOS 18-specific design tokens for PremiumTrainerDashboard
 

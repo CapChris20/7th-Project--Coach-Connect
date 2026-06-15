@@ -1,3 +1,13 @@
+/**
+ * Profile Screen
+ *
+ * Purpose: UI screen or component: Profile Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/profile
+ * Key exports: ProfileScreen
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -32,7 +42,7 @@ import {
   profileCardIconWrapStyle,
 } from '../../shared/workout/profileCardIcons';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import { onUserSignOut } from '../../utils/dataCacheCleanup';
+import { onUserSignOut } from '../../utils/clearDataOnLogout';
 import { syncTrainerMarketplaceDoc } from '../../shared/services/trainerMarketplaceSync';
 import {
   Camera,

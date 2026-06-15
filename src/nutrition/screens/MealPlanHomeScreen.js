@@ -1,3 +1,13 @@
+/**
+ * Meal Plan Home Screen
+ *
+ * Purpose: UI screen or component: Meal Plan Home Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/nutrition
+ * Key exports: MealPlanHomeScreen
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -20,7 +30,7 @@ import {
   getFoodLogsForDate,
   addFoodLog,
   deleteFoodLog,
-} from '../services/nutritionService';
+} from '../daily-log/logFoodToFirestore';
 import FoodSearchScreen from './FoodSearchScreen';
 import { autoLogErrorSync } from '../../utils/autoLogError';
 import Loader from '../../Loader';

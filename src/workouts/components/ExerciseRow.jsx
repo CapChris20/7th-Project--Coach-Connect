@@ -1,4 +1,14 @@
 /**
+ * Exercise Row
+ *
+ * Purpose: Exercise Row — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: ExerciseRow
+ *
+ * @file-header
+ */
+/**
  * ExerciseRow Component
  * 
  * Displays a single exercise with inline editing for sets, reps, rest, and notes.

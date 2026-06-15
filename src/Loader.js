@@ -1,3 +1,13 @@
+/**
+ * Loader
+ *
+ * Purpose: Loader — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/Loader.js
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React from 'react';
 import { StyleSheet, View, Animated } from 'react-native';
 

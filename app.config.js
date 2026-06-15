@@ -93,7 +93,7 @@ module.exports = {
         process.env.EXPO_PUBLIC_API_BASE_URL ||
         'https://coachconnect-api-421005574501.us-central1.run.app',
       /** Optional: shown for Contact support / Report a bug in Settings. */
-      supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'coachconnect@gmail.com').trim(),
+      supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'coachconnect0@gmail.com').trim(),
     },
   },
 };

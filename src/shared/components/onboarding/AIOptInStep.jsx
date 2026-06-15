@@ -1,3 +1,13 @@
+/**
+ * AIOpt In Step
+ *
+ * Purpose: AIOpt In Step — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: AIOptInStep
+ *
+ * @file-header
+ */
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';

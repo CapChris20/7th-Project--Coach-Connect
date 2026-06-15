@@ -1,3 +1,13 @@
+/**
+ * Editor Header Actions
+ *
+ * Purpose: Editor Header Actions — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: EditorTitleField, EditorHeaderActionBar, EditorActionButton, EditorIconButton, EDITOR_NAME_PLACEHOLDER, DEFAULT_SAVE_TITLE_DOCUMENT, DEFAULT_SAVE_TITLE_SPREADSHEET
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';

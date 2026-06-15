@@ -1,4 +1,14 @@
 /**
+ * client Registry Firestore
+ *
+ * Purpose: Data/service layer: client Registry Firestore. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: fetchClientRegistryProfile
+ *
+ * @file-header
+ */
+/**
  * Client registry: canonical clients/{uid}, profile truth in users/{uid}.
  */
 

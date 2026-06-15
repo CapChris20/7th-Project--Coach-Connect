@@ -1,3 +1,13 @@
+/**
+ * Trainer Main Screen
+ *
+ * Purpose: UI screen or component: Trainer Main Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerMainScreen
+ *
+ * @file-header
+ */
 import React from 'react';
 import {
   Alert,

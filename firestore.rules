@@ -533,18 +533,22 @@ service cloud.firestore {
     match /workouts/{trainerUid}/clients/{clientUid}/workouts/{workoutId} {
       // Read: Trainer or client can read workouts
       allow read: if (
+        request.auth != null && (
         request.auth.uid == trainerUid ||
         request.auth.uid == clientUid
+        )
       );
       
       // List: Trainer or client can list workouts
       allow list: if (
+        request.auth != null && (
         request.auth.uid == trainerUid ||
         request.auth.uid == clientUid
+        )
       );
       
       // Create, Update, Delete: Only trainer can manage workouts
-      allow create, update, delete: if request.auth.uid == trainerUid;
+      allow create, update, delete: if request.auth != null && request.auth.uid == trainerUid;
     }
     
     // Notifications - FIXED

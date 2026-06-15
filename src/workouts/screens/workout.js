@@ -1,4 +1,14 @@
 /**
+ * workout
+ *
+ * Purpose: UI screen or component: workout. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: WorkoutPlanGeneratorScreen
+ *
+ * @file-header
+ */
+/**
  * Workout Plan Generator Screen
  * Review onboarding data, allow edits, and generate personalized workout plan using DeepSeek API
  */
@@ -46,14 +56,11 @@ import {
 import {
   filterProfileCardSections,
   getProfileCardSectionLabels,
-} from '../../shared/workout/profileCardVisibility';
+} from '../../shared/workout-profile/shouldShowProfileCard';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from '../services/workoutService';
 import Markdown from 'react-native-markdown-display';
 import { useAI } from '../../contexts/AIContext';
-import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai/services/trainerMessaging';
-import { getApiAuthHeaders } from '../../shared/services/apiAuthHeaders';
-import { getWorkoutGenerationApiBases, PRODUCTION_API_BASE_URL } from '../../shared/services/baseUrl';
-import { postJsonWithTimeout, logApiAttempt } from '../../shared/services/apiFetch';
+import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai/trainer-messaging/sendTrainerNotification';
 import {
   stripMarkdown,
   stripEmojis,
@@ -62,183 +69,35 @@ import WorkoutPlanPdfViewerModal from '../components/WorkoutPlanPdfViewerModal';
 import PlanViewerScreen from '../../screens/PlanViewerScreen';
 import WorkoutExerciseLibraryTab from '../components/WorkoutExerciseLibraryTab';
 import { EditModalForm } from '../components/EditModalForm_RN';
+import {
+  PLAN_LIMIT_TOTAL,
+  nextMonthResetDate,
+  nextMonthResetsAtIso,
+  formatWorkoutLimitResetLabel,
+  resolveWorkoutGenerationUsage,
+} from '../plan-generator/trackWorkoutGenerationUsage';
+import {
+  requestWorkoutPlanFromApi,
+  loadOnboardingAndPlanArtifacts,
+  generateWorkoutPlanWithClaude,
+} from '../plan-generator/requestWorkoutPlan';
+
+export {
+  PLAN_LIMIT_TOTAL,
+  nextMonthResetDate,
+  nextMonthResetsAtIso,
+  formatWorkoutLimitResetLabel,
+  resolveWorkoutGenerationUsage,
+  loadWorkoutGenerationUsage,
+} from '../plan-generator/trackWorkoutGenerationUsage';
+export {
+  requestWorkoutPlanFromApi,
+  loadOnboardingAndPlanArtifacts,
+  generateWorkoutPlanWithClaude,
+} from '../plan-generator/requestWorkoutPlan';
 
 /** Survives screen unmount so ClientApp / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
-
-const PLAN_LIMIT_TOTAL = 3;
-const planLimitMonthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-const nextMonthResetDate = () => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-};
-const nextMonthResetsAtIso = (d = new Date()) => {
-  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
-};
-
-function formatWorkoutLimitResetLabel(resetsAt) {
-  const raw = String(resetsAt || nextMonthResetsAtIso()).trim();
-  const d = new Date(`${raw.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
-
-function buildDefaultWorkoutUsage(used = 0) {
-  return {
-    generations_used: used,
-    generations_limit: PLAN_LIMIT_TOTAL,
-    resets_at: nextMonthResetsAtIso(),
-  };
-}
-
-function planGeneratedThisMonth(generatedAt) {
-  if (generatedAt == null) return false;
-  const ts = Number(generatedAt);
-  if (!Number.isFinite(ts) || ts <= 0) return false;
-  return planLimitMonthKey(new Date(ts)) === planLimitMonthKey();
-}
-
-/** Prefer server/Firestore counts; infer 1 when a plan exists this month but usage was never recorded. */
-function mergeWorkoutGenerationUsage({
-  apiUsage = null,
-  firestoreUsage = null,
-  justGenerated = false,
-  generatedPlan = null,
-} = {}) {
-  const base = firestoreUsage || buildDefaultWorkoutUsage(0);
-  const limit = Number(apiUsage?.generations_limit) || Number(base.generations_limit) || PLAN_LIMIT_TOTAL;
-  const resets_at = apiUsage?.resets_at || base.resets_at || nextMonthResetsAtIso();
-  let used = Math.max(Number(apiUsage?.generations_used) || 0, Number(base.generations_used) || 0);
-  if (used <= 0 && (justGenerated || planGeneratedThisMonth(generatedPlan?.generatedAt))) {
-    used = 1;
-  }
-  return {
-    generations_used: Math.min(Math.max(used, 0), limit),
-    generations_limit: limit,
-    resets_at,
-  };
-}
-
-export async function resolveWorkoutGenerationUsage(uid, opts = {}) {
-  const firestoreUsage = uid ? await loadWorkoutGenerationUsage(uid) : buildDefaultWorkoutUsage(0);
-  return mergeWorkoutGenerationUsage({ firestoreUsage, ...opts });
-}
-
-export async function loadWorkoutGenerationUsage(uid) {
-  if (!uid || !db) return buildDefaultWorkoutUsage(0);
-  try {
-    const snap = await getDoc(doc(db, 'users', uid, 'usage', 'workout_generations'));
-    const month = planLimitMonthKey();
-    if (!snap.exists()) return buildDefaultWorkoutUsage(0);
-    const data = snap.data() || {};
-    const used = data.month === month ? Number(data.count) || 0 : 0;
-    return buildDefaultWorkoutUsage(used);
-  } catch (_) {
-    return buildDefaultWorkoutUsage(0);
-  }
-}
-
-const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
-
-export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
-  const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
-  if (!headers.Authorization) {
-    throw new Error('Sign in to generate a workout plan.');
-  }
-
-  const bases = getWorkoutGenerationApiBases();
-  const body = {
-    onboardingData,
-    subjectUserId: subjectUserId || auth.currentUser?.uid,
-  };
-
-  if (__DEV__) {
-    console.log('[workout] generate plan — trying API bases:', bases.slice(0, 6).join(' → '));
-  }
-
-  let lastErr = null;
-  for (const base of bases) {
-    const url = `${String(base).replace(/\/$/, '')}/api/workout/generate`;
-    try {
-      const res = await postJsonWithTimeout(url, body, headers, WORKOUT_PLAN_FETCH_TIMEOUT_MS);
-      const payload = await res.json().catch(() => ({}));
-      if (res.status === 429 && payload?.error === 'monthly_limit_reached') {
-        const err = new Error(
-          payload.message ||
-            `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(payload.resets_at)}.`,
-        );
-        err.code = 'monthly_limit_reached';
-        err.limitPayload = payload;
-        throw err;
-      }
-      if (!res.ok) {
-        const err = new Error(payload?.message || payload?.error || `Request failed (${res.status})`);
-        err.httpStatus = res.status;
-        err.fromHttpResponse = true;
-        throw err;
-      }
-      if (!payload?.text) {
-        throw new Error('Empty response from workout generator');
-      }
-      if (__DEV__) {
-        console.log('[workout] generate plan OK via', base);
-      }
-      return {
-        text: String(payload.text),
-        usage: payload.usage ?? null,
-      };
-    } catch (e) {
-      logApiAttempt('workout/generate', url, e);
-      if (e?.code === 'monthly_limit_reached') throw e;
-      if (e?.code === 'timeout') throw e;
-      // Server answered (e.g. missing API key) — don't mask with localhost "Network request failed"
-      if (e?.fromHttpResponse) throw e;
-      lastErr = e;
-    }
-  }
-
-  const tried = bases.slice(0, 6).join(', ');
-  const msg = String(lastErr?.message || '');
-  const hint = msg.includes('timed out')
-    ? 'The server took too long. Try again on Wi‑Fi.'
-    : msg.includes('AI provider unavailable')
-      ? 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh'
-      : `Could not reach the workout API. Check internet, then reload with: npm start (dev build).`;
-  throw lastErr || new Error(`${hint}${tried ? ` Tried: ${tried}` : ''}`);
-}
-
-export async function loadOnboardingAndPlanArtifacts({ userId, propPlan } = {}) {
-  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
-  if (!subjectUid) {
-    throw new Error('User not found');
-  }
-  let onboardingData = null;
-  if (db) {
-    const userSnap = await getDoc(doc(db, 'users', subjectUid));
-    if (userSnap.exists()) onboardingData = userSnap.data();
-  }
-  if (!onboardingData) {
-    const cached = await AsyncStorage.getItem(`onboarding_data_${subjectUid}`);
-    if (cached) onboardingData = JSON.parse(cached);
-  }
-  let plan = propPlan || null;
-  if (!plan) {
-    plan = await getCurrentWorkoutPlan(subjectUid);
-  }
-  return { onboardingData, plan };
-}
-
-export async function generateWorkoutPlanWithClaude({ onboardingData, userId }) {
-  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
-  const { text, usage } = await requestWorkoutPlanFromApi(onboardingData, subjectUid);
-  return {
-    planText: text,
-    generatedAt: Date.now(),
-    userData: onboardingData,
-    usage,
-  };
-}
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 

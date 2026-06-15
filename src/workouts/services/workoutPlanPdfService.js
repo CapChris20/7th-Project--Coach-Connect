@@ -1,4 +1,14 @@
 /**
+ * workout Plan Pdf Service
+ *
+ * Purpose: Data/service layer: workout Plan Pdf Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: parsePlanForPdf, stripEmojis, stripMarkdown, buildPdfHtml, generatePdfFile, uploadPdfToStorage, savePlanToFirestore, getWorkoutPlans
+ *
+ * @file-header
+ */
+/**
  * Workout plan PDF: parse plan text, generate PDF (expo-print), save to Storage + Firestore.
  * Only used AFTER the plan is generated; does not change AI or prompts.
  */

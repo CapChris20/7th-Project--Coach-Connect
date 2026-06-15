@@ -1056,8 +1056,26 @@ exports.removeTrainerClientLink = onCall(async (request) => {
   if (!trainerId || !clientId) {
     throw new HttpsError('invalid-argument', 'trainerId and clientId are required.');
   }
-  // Note: auth check intentionally relaxed for now to unblock development.
-  // In production, consider re-enabling request.auth validation.
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
+  }
+  const callerUid = request.auth.uid;
+  const callerIsTrainer = callerUid === trainerId;
+  const callerIsClient = callerUid === clientId;
+  if (!callerIsTrainer && !callerIsClient) {
+    throw new HttpsError('permission-denied', 'Only linked trainer or client may remove this relationship.');
+  }
+  if (removedBy === 'trainer' && !callerIsTrainer) {
+    throw new HttpsError('permission-denied', 'Only the trainer can set removedBy=trainer.');
+  }
+  if (removedBy === 'client' && !callerIsClient) {
+    throw new HttpsError('permission-denied', 'Only the client can set removedBy=client.');
+  }
+  const effectiveRemovedBy = removedBy === 'trainer' || removedBy === 'client'
+    ? removedBy
+    : callerIsTrainer
+      ? 'trainer'
+      : 'client';
 
   const batch = db.batch();
   const now = admin.firestore.FieldValue.serverTimestamp();
@@ -1071,7 +1089,7 @@ exports.removeTrainerClientLink = onCall(async (request) => {
       reasons: Array.isArray(reasons) ? reasons : [],
       otherText: otherText || null,
       removedAt: now,
-      removedBy: removedBy === 'trainer' || removedBy === 'client' ? removedBy : 'unknown',
+      removedBy: effectiveRemovedBy,
     });
 
     // Remove from trainer_clients subcollection

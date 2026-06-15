@@ -1,3 +1,13 @@
+/**
+ * Settings Screen
+ *
+ * Purpose: UI screen or component: Settings Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: SettingsScreen
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,

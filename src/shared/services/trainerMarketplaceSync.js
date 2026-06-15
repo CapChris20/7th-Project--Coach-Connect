@@ -1,4 +1,14 @@
 /**
+ * trainer Marketplace Sync
+ *
+ * Purpose: Data/service layer: trainer Marketplace Sync. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: buildTrainerMarketplaceDoc, syncTrainerMarketplaceDoc
+ *
+ * @file-header
+ */
+/**
  * Keeps trainers/{uid} (marketplace / Find Trainers) in sync with users/{uid} (profile + onboarding).
  * Clients read trainers/* — not users/* — so profile edits must mirror here.
  */

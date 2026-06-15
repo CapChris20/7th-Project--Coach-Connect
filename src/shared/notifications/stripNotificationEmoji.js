@@ -1,4 +1,14 @@
 /**
+ * strip Notification Emoji
+ *
+ * Purpose: strip Notification Emoji — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: stripNotificationEmoji
+ *
+ * @file-header
+ */
+/**
  * Remove emoji / pictographs from push notification title and body (client).
  * Keep logic aligned with server/stripNotificationEmoji.js.
  */

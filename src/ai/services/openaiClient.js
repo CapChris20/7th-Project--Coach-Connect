@@ -1,3 +1,13 @@
+/**
+ * openai Client
+ *
+ * Purpose: Data/service layer: openai Client. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: generateResponse
+ *
+ * @file-header
+ */
 // This module handles AI responses by routing through the authenticated server.
 // Direct OpenAI SDK calls are not allowed on the client for security.
 // All AI requests must go through the server endpoint: POST /api/ask

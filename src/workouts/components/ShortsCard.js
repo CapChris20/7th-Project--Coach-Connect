@@ -1,3 +1,13 @@
+/**
+ * Shorts Card
+ *
+ * Purpose: UI screen or component: Shorts Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/workouts
+ * Key exports: ShortsCard
+ *
+ * @file-header
+ */
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,

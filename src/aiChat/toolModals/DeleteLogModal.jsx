@@ -1,5 +1,15 @@
+/**
+ * Delete Log Modal
+ *
+ * Purpose: UI screen or component: Delete Log Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: DeleteLogModal
+ *
+ * @file-header
+ */
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './toolModalShared';
+import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 
 const LOG_TYPE_LABELS = {
   nutrition: 'Food / nutrition entry',

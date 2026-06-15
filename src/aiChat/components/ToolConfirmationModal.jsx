@@ -1,3 +1,13 @@
+/**
+ * Tool Confirmation Modal
+ *
+ * Purpose: UI screen or component: Tool Confirmation Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: ToolConfirmationModal
+ *
+ * @file-header
+ */
 import React from 'react';
 import { Modal, View, StyleSheet, Pressable, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,8 +26,8 @@ import RateWorkoutModal from '../toolModals/RateWorkoutModal';
 import OpenWorkoutPlanModal from '../toolModals/OpenWorkoutPlanModal';
 import LogRestDayModal from '../toolModals/LogRestDayModal';
 import DeleteLogModal from '../toolModals/DeleteLogModal';
-import { normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai/toolExecutor';
-import { ToolModalBody, ConfirmCancelRow } from '../toolModals/toolModalShared';
+import { normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai/tools/executeCoachTool';
+import { ToolModalBody, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 
 export default function ToolConfirmationModal({

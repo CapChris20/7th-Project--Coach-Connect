@@ -1,3 +1,13 @@
+/**
+ * Trainer Card
+ *
+ * Purpose: UI screen or component: Trainer Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: TrainerCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, Pressable, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,7 +20,7 @@ import {
   MP_FONT,
 } from '../utils/marketplaceFilters';
 import { GlassCard, PrimaryButton, SecondaryButton, VerifiedBadge, GradientText } from './MarketplaceUI';
-import { trainerPhotoUri } from '../../shared/utils/trainerProfileMedia';
+import { trainerPhotoUri } from '../../shared/utils/getTrainerProfileMedia';
 
 function modeIcon(mode) {
   const m = String(mode || '').toLowerCase();

@@ -2,7 +2,7 @@
 const path = require('path');
 const admin = require('firebase-admin');
 const axios = require('axios');
-const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/utils/nutritionNormalization');
+const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/normalizeNutritionData');
 const { buildRestaurantSearchQuery } = require('../utils/restaurantNutrition');
 const { serperOrganicSearch } = require('../lib/serperWebSearch');
 const {
@@ -19,7 +19,7 @@ const {
   significantQueryTokens,
   searchResultsDocId,
 } = require('../nutritionSearchHelpers');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/utils/foodBrandDisplay');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
 const {
   cleanSerperFoodTitle,
   displayNameForSerperRow,
@@ -27,8 +27,8 @@ const {
   isPlausibleNutritionRow,
   dedupeFoodRows,
   formatUserQueryAsFoodName,
-} = require('../../src/nutrition/utils/foodSearchTitle');
-const { rankSerperFoodResultRows } = require('../../src/nutrition/utils/restaurantSerperQuality');
+} = require('../../src/nutrition/food-search/formatFoodSearchTitle');
+const { rankSerperFoodResultRows } = require('../../src/nutrition/food-search/validateRestaurantResult');
 
 const SERPER_ORGANIC_MAX = 10;
 

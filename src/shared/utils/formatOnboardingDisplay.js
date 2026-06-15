@@ -1,4 +1,14 @@
 /**
+ * format Onboarding Display
+ *
+ * Purpose: format Onboarding Display — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: humanizeOnboardingToken, formatOnboardingDisplay, formatEquipmentFromProfile, formatDaysPerWeek
+ *
+ * @file-header
+ */
+/**
  * Human-readable labels for onboarding tokens stored in Firestore (snake_case ids).
  */
 

@@ -1,3 +1,13 @@
+/**
+ * onboarding Icon Registry generated
+ *
+ * Purpose: onboarding Icon Registry generated — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: onboardingIconRegistry
+ *
+ * @file-header
+ */
 // AUTO-GENERATED (but checked in). Source icons live in `src/assets/onboarding-consolidated/`.
 // If you add/remove icons, re-run: `npm run gen:onboarding-icons`
 //

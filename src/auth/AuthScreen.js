@@ -1,4 +1,14 @@
 /**
+ * Auth Screen
+ *
+ * Purpose: UI screen or component: Auth Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/auth
+ * Key exports: AuthScreen
+ *
+ * @file-header
+ */
+/**
  * AuthScreen - Combined authentication screen
  *
  * Combines WelcomeScreen, RoleSelectionScreen, SignupScreen, and LoginScreen
@@ -29,8 +39,8 @@ import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../app/config';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { pickImage } from '../ai/services/imageService';
-import { uploadProfileImage } from '../shared/services/storage';
+import { pickImage } from '../ai/vision/imageStorageService';
+import { uploadProfileImage } from '../shared/firestore/storageHelpers';
 import LottieView from 'lottie-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';

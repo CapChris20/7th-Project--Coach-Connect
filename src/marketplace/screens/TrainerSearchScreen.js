@@ -1,9 +1,19 @@
+/**
+ * Trainer Search Screen
+ *
+ * Purpose: UI screen or component: Trainer Search Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db, storage } from '../../app/config';
-import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared/utils/trainerProfileMedia';
+import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared/utils/getTrainerProfileMedia';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import TrainerRequestConfirmModal from '../components/TrainerRequestConfirmModal';

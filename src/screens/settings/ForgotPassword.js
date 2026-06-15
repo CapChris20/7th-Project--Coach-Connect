@@ -1,3 +1,13 @@
+/**
+ * Forgot Password
+ *
+ * Purpose: UI screen or component: Forgot Password. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/screens
+ * Key exports: ForgotPasswordScreen
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,

@@ -1,8 +1,18 @@
 /**
+ * firestore Paged Query
+ *
+ * Purpose: Data/service layer: firestore Paged Query. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: isFirestoreIndexError, getDocsWithIndexFallback, capQuery, sortDocsByMillis
+ *
+ * @file-header
+ */
+/**
  * Firestore query helpers — indexed query with safe fallback before indexes finish building.
  */
 import { getDocs, limit as fsLimit } from 'firebase/firestore';
-import logger from './logger';
+import logger from '../api/logErrorToServer';
 
 export function isFirestoreIndexError(err) {
   const code = String(err?.code || '');

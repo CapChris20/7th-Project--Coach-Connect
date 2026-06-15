@@ -1,3 +1,13 @@
+/**
+ * calculations
+ *
+ * Purpose: calculations — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: calculateBMR, calculateTDEE, calculateMacros, estimateBodyFat, calculateBMI, calculateWeightGoal
+ *
+ * @file-header
+ */
 // BMR calculation using Mifflin-St Jeor equation
 export const calculateBMR = (weight, height, age, gender) => {
   try {

@@ -1,3 +1,13 @@
+/**
+ * chat Storage Service
+ *
+ * Purpose: Data/service layer: chat Storage Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: getAllChats, getChatById, saveChat, createNewChat, deleteChat, updateChatMessages, getCurrentChatId, setCurrentChatId
+ *
+ * @file-header
+ */
 // Chat Storage Service
 // Handles saving and loading multiple chat conversations from AsyncStorage
 // NOW USER-SPECIFIC - each user has their own isolated chats!

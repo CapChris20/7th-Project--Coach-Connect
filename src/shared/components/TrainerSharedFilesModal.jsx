@@ -1,4 +1,14 @@
 /**
+ * Trainer Shared Files Modal
+ *
+ * Purpose: UI screen or component: Trainer Shared Files Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: TrainerSharedFilesModal
+ *
+ * @file-header
+ */
+/**
  * Full-screen list of trainer-shared files (same grid chrome as home preview).
  */
 

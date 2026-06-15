@@ -1,3 +1,13 @@
+/**
+ * Privacy Policy Screen
+ *
+ * Purpose: UI screen or component: Privacy Policy Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/settings
+ * Key exports: PrivacyPolicyScreen
+ *
+ * @file-header
+ */
 import React, { useRef } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

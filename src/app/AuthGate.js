@@ -1,4 +1,14 @@
 /**
+ * Auth Gate
+ *
+ * Purpose: Auth Gate — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: AuthGate
+ *
+ * @file-header
+ */
+/**
  * AuthGate - Handles authentication state and routes to appropriate app
  * 
  * Responsibilities:
@@ -19,52 +29,18 @@ import { auth, db } from './config';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { initializeErrorSync } from '../../utils/errorSyncService';
+import { initializeErrorSync } from '../utils/syncErrorsToServer';
 import { clearOldSharedChats } from '../ai/services/chatStorageService';
-import { clearAllUserData } from '../utils/dataCacheCleanup';
-import { flushPendingOnboardingSync } from '../shared/services/onboardingSync';
-import { clearPushTokensForUid } from '../shared/services/notificationsService';
-import logger from '../shared/services/logger';
-
-const getProfileCacheKey = (uid) => `auth_profile_${uid}`;
-
-/** Single source for routing + onboarding; avoids null/undefined flashing the wrong shell. */
-function normalizeAppRole(role) {
-  return String(role || '').toLowerCase().trim() === 'trainer' ? 'trainer' : 'client';
-}
-
-/** Only force onboarding when explicitly incomplete — missing field = legacy users who already use the app. */
-function profileNeedsOnboarding(profile) {
-  if (!profile || typeof profile !== 'object') return false;
-  if (profile.onboardingCompletedAt) return false;
-  const v = profile.onboardingCompleted;
-  if (v === true || v === 'true' || v === 1) return false;
-  if (v === false || v === 'false' || v === 0) return true;
-  if (
-    profile.authProvider === 'google' &&
-    !profile.onboardingCompletedAt &&
-    profile.createdAt
-  ) {
-    const createdMs = new Date(profile.createdAt).getTime();
-    const recent =
-      Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
-    if (recent) return true;
-  }
-  return false;
-}
-
-/** Firestore may not exist yet when auth fires right after first Google/email sign-up. */
-function isLikelyNewFirebaseUser(firebaseUser) {
-  if (!firebaseUser?.metadata) return false;
-  try {
-    const created = new Date(firebaseUser.metadata.creationTime).getTime();
-    const lastSignIn = new Date(firebaseUser.metadata.lastSignInTime).getTime();
-    if (!Number.isFinite(created) || !Number.isFinite(lastSignIn)) return false;
-    return Math.abs(lastSignIn - created) < 3 * 60 * 1000;
-  } catch {
-    return false;
-  }
-}
+import { clearAllUserData } from '../utils/clearDataOnLogout';
+import { flushPendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
+import { clearPushTokensForUid } from '../shared/notifications/manageNotifications';
+import {
+  getProfileCacheKey,
+  isLikelyNewFirebaseUser,
+  normalizeAppRole,
+  profileNeedsOnboarding,
+} from '../auth/authGateHelpers';
+export { normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser };
 
 /**
  * Firestore can lag behind local completion (API/offline). Prefer AsyncStorage if it proves onboarding finished.
@@ -274,199 +250,6 @@ export default function AuthGate() {
         setAuthLoading(false);
         setOnboardingChecked(true);
         return;
-
-        // Server fallback path.
-        try {
-          const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-          const fallbackBaseUrls = [
-            'http://localhost:4002',
-            'http://127.0.0.1:4002',
-            'http://localhost:4001',
-            'http://127.0.0.1:4001',
-          ];
-
-          if (!apiBaseUrl) throw new Error('Missing EXPO_PUBLIC_API_BASE_URL');
-
-          const tryFetchMe = async (baseUrl) => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-            const fetchWithFreshToken = async () => {
-              await firebaseUser.reload();
-              const idToken = await firebaseUser.getIdToken(true);
-              if (!idToken || typeof idToken !== 'string') {
-                throw new Error('Missing/invalid Firebase ID token');
-              }
-
-              // Guard against mixed Firebase projects in local env/config.
-              try {
-                const expectedAud = String(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '').trim();
-                const tokenPayloadRaw = idToken.split('.')[1] || '';
-                if (typeof global?.atob !== 'function') {
-                  throw new Error('atob unavailable');
-                }
-                const tokenPayloadJson = global.atob(tokenPayloadRaw.replace(/-/g, '+').replace(/_/g, '/'));
-                const tokenPayload = JSON.parse(tokenPayloadJson);
-                const tokenAud = String(tokenPayload?.aud || '').trim();
-                if (expectedAud && tokenAud && tokenAud !== expectedAud) {
-                  const err = new Error(`Firebase project mismatch: token aud=${tokenAud}, expected=${expectedAud}`);
-                  err.code = 'auth/project-mismatch';
-                  throw err;
-                }
-              } catch (tokenErr) {
-                // Bubble mismatch errors; ignore decode errors and let server verify token.
-                if (tokenErr?.code === 'auth/project-mismatch') throw tokenErr;
-              }
-
-              return fetch(`${baseUrl}/api/me`, {
-                method: 'GET',
-                headers: {
-                  Authorization: `Bearer ${idToken}`,
-                  Accept: 'application/json',
-                },
-                signal: controller.signal,
-              });
-            };
-
-            try {
-              let resp = await fetchWithFreshToken();
-
-              if (!resp.ok) {
-                const text = await resp.text().catch(() => '');
-                // If token verification fails (401), we'll fall back to Firestore below.
-                const err = new Error(`Server /api/me failed (${resp.status}) ${text}`.trim());
-                err.status = resp.status;
-                throw err;
-              }
-
-              const payload = await resp.json();
-              return payload?.user || payload || {};
-            } finally {
-              clearTimeout(timeoutId);
-            }
-          };
-
-          let data = null;
-          try {
-            data = await tryFetchMe(apiBaseUrl);
-          } catch (e) {
-            // Don't waste time trying other bases when the token itself is being rejected.
-            if (e?.status === 401) throw e;
-
-            // If we couldn't connect to the provided IP, retry with localhost addresses (iOS simulator).
-            const firstMsg = e?.message || '';
-            console.warn('Server /api/me fetch failed; trying localhost fallback:', firstMsg);
-
-            for (const base of fallbackBaseUrls) {
-              try {
-                data = await tryFetchMe(base);
-                break;
-              } catch (_) {
-                // continue trying other bases
-              }
-            }
-
-            if (!data) throw e;
-          }
-
-          logger.debug('/api/me response', {
-            role: data?.role || null,
-            onboardingCompleted: !!data?.onboardingCompleted,
-          });
-
-          try {
-            await AsyncStorage.setItem(getProfileCacheKey(firebaseUser.uid), JSON.stringify(data || {}));
-          } catch (_) {
-            // Non-blocking cache write
-          }
-
-          setUserData(data);
-          setUserRole(data?.role || null);
-          setShowOnboarding(profileNeedsOnboarding(data));
-        } catch (serverError) {
-          console.warn('Server /api/me failed (falling back to Firestore role):', {
-            message: serverError?.message,
-            code: serverError?.code,
-          });
-
-          // If the Firebase token audience doesn't match the backend's Firebase project
-          // (e.g. user still has a persisted session from a different project),
-          // force a sign-out so the next login creates an ID token for the correct project.
-          const serverErrMsg = String(serverError?.message || '').toLowerCase();
-          const isAudienceMismatch =
-            (serverErrMsg.includes('incorrect') && serverErrMsg.includes('aud')) ||
-            (serverErrMsg.includes('audience') && serverErrMsg.includes('expected') && serverErrMsg.includes('but got')) ||
-            serverErrMsg.includes('project mismatch');
-          if (isAudienceMismatch) {
-            // Non-blocking: continue with local/Firestore fallback flow.
-            console.warn('Firebase audience mismatch detected; continuing with Firestore-first flow.');
-          }
-
-          // Hard offline fallback: use locally cached onboarding profile first.
-          try {
-            const uid = firebaseUser?.uid;
-            if (uid) {
-              const candidates = [
-                await AsyncStorage.getItem(getProfileCacheKey(uid)),
-                await AsyncStorage.getItem(`onboarding_data_${uid}`),
-              ];
-
-              for (const cachedRaw of candidates) {
-                if (!cachedRaw) continue;
-                const cached = JSON.parse(cachedRaw);
-                const cachedRole = cached?.role || null;
-                if (!cachedRole) continue;
-                const profile = { uid, ...(cached || {}) };
-                setUserData(profile);
-                setUserRole(cachedRole);
-                setShowOnboarding(profileNeedsOnboarding(profile));
-                return;
-              }
-            }
-          } catch (cacheError) {
-            console.warn('AsyncStorage role fallback failed:', cacheError?.message || cacheError);
-          }
-
-          // Server token verification is failing; fall back to Firestore so onboarding still works.
-          try {
-            if (!db) throw new Error('Firestore db not initialized');
-            const uid = firebaseUser?.uid;
-            if (!uid) throw new Error('Missing uid for Firestore fallback');
-
-            // Firestore sometimes briefly reports "client is offline" in Expo Go.
-            // Retry once to avoid unnecessarily dropping into role selection.
-            let snap = null;
-            let data = null;
-            for (let attempt = 0; attempt < 2; attempt++) {
-              snap = await getDoc(doc(db, 'users', uid));
-              data = snap.exists() ? snap.data() : null;
-              break;
-            }
-            const profile = { uid, ...(data || {}) };
-
-            try {
-              await AsyncStorage.setItem(getProfileCacheKey(uid), JSON.stringify(profile));
-            } catch (_) {
-              // Non-blocking cache write
-            }
-
-            setUserData(profile);
-            setUserRole(profile?.role || null);
-            setShowOnboarding(profileNeedsOnboarding(profile));
-          } catch (fallbackError) {
-            console.error('Firestore fallback for /api/me role failed:', {
-              message: fallbackError?.message,
-              code: fallbackError?.code,
-            });
-
-            // If everything is down, preserve app flow instead of forcing role selection.
-            // Default to client flow unless/until a real role is fetched.
-            const uid = firebaseUser?.uid || null;
-            setUserData((prev) => prev || (uid ? { uid, role: 'client', onboardingCompleted: true } : null));
-            setUserRole((prev) => prev || 'client');
-            setShowOnboarding(false);
-          }
-        }
       } else {
         setUserRole(null);
         setShowOnboarding(false);

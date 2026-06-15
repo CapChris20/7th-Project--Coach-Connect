@@ -1,4 +1,14 @@
 /**
+ * schedule Service
+ *
+ * Purpose: Data/service layer: schedule Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: getScheduleDocId, getScheduleBlocks, subscribeScheduleBlocks, addScheduleBlock, updateScheduleBlock, deleteScheduleBlock
+ *
+ * @file-header
+ */
+/**
  * Session schedule — trainer_clients/{trainerId}_{clientId}/schedule/{blockId}
  * Trainer: full CRUD. Client: read-only for their own schedule.
  */

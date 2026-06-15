@@ -1,3 +1,13 @@
+/**
+ * Trainer Dashboard Content
+ *
+ * Purpose: UI screen or component: Trainer Dashboard Content. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 /** Trainer home dashboard (client roster + tabs) */
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
@@ -19,14 +29,14 @@ import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, 
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app/config';
 import { getDateKey } from '../../app/dateKey';
-import { getLocalDateKey } from '../../shared/utils/localDay';
-import { fetchLatestLoggedWeight } from '../../shared/services/latestLoggedWeight';
-import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/services/nutritionService';
+import { getLocalDateKey } from '../../shared/utils/getLocalDay';
+import { fetchLatestLoggedWeight } from '../../shared/daily-metrics/getLatestWeight';
+import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';
 import {
   filterTrainerDocumentsForClient,
   getTrainerDocuments,
   getNotesAndFiles,
-} from '../../shared/services/notesAndFilesService';
+} from '../../shared/notes-files/manageNotesAndFiles';
 import HoldToConfirmModal from '../../shared/components/HoldToConfirmModal';
 import SpreadsheetViewerModal from '../../shared/components/SpreadsheetViewerModal';
 import ShareDocumentModal from '../components/documents/ShareDocumentModal';

@@ -1,7 +1,17 @@
+/**
+ * Notes From Trainer Section
+ *
+ * Purpose: UI screen or component: Notes From Trainer Section. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: NotesFromTrainerSection
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { formatDateShort } from '../../../shared/utils/fileFormatting';
+import { formatDateShort } from '../../../shared/utils/formatFileSize';
 
 export function NotesFromTrainerSection({ items, onMarkRead }) {
   const [selected, setSelected] = useState(null);

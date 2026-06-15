@@ -1,8 +1,18 @@
+/**
+ * Trainer Shared Section
+ *
+ * Purpose: UI screen or component: Trainer Shared Section. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: TrainerSharedSection
+ *
+ * @file-header
+ */
 import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { FileCard } from './FileCard';
-import { getFileTypeFromItem } from '../../../shared/utils/fileFormatting';
+import { getFileTypeFromItem } from '../../../shared/utils/formatFileSize';
 
 const CATEGORIES = [
   { id: 'documents', label: 'Documents', color: '#3B82F6', match: (t) => t === 'document' },

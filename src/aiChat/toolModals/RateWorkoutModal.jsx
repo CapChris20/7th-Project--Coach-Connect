@@ -1,5 +1,15 @@
+/**
+ * Rate Workout Modal
+ *
+ * Purpose: UI screen or component: Rate Workout Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: RateWorkoutModal
+ *
+ * @file-header
+ */
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './toolModalShared';
+import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 
 export default function RateWorkoutModal({ params, reasoning, onConfirm, onCancel, loading }) {
   const rating = params?.rating ?? '—';

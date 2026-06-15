@@ -1,3 +1,13 @@
+/**
+ * Hold To Confirm Modal
+ *
+ * Purpose: UI screen or component: Hold To Confirm Modal. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: HoldToConfirmModal
+ *
+ * @file-header
+ */
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,

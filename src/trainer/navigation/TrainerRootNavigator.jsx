@@ -1,3 +1,13 @@
+/**
+ * Trainer Root Navigator
+ *
+ * Purpose: Trainer Root Navigator — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: TrainerRootNavigator
+ *
+ * @file-header
+ */
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TRAINER_ROUTES } from '../../navigation/routes';

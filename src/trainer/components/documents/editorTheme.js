@@ -1,3 +1,13 @@
+/**
+ * editor Theme
+ *
+ * Purpose: editor Theme — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/trainer
+ * Key exports: getEditorTheme, formatEditorSavedAgo, FONT_SIZES, EDITOR_TEXT_COLORS, EDITOR_HIGHLIGHT_COLORS
+ *
+ * @file-header
+ */
 import { lightColors, darkColors } from '../../../shared/ui/theme';
 import { EDITOR_ACCENT_GRADIENT, EDITOR_ACCENT_START, EDITOR_ACCENT_END } from './editorGradients';
 

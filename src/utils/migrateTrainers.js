@@ -1,3 +1,13 @@
+/**
+ * migrate Trainers
+ *
+ * Purpose: migrate Trainers — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/utils
+ * Key exports: migrateTrainersToSeparateCollection, getTrainerCounts, runTrainerMigration
+ *
+ * @file-header
+ */
 // Trainer Migration Utility
 // Migrates existing trainers from users collection to trainers collection
 

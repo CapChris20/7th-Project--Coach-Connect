@@ -1,8 +1,18 @@
+/**
+ * Premium Trainer Card
+ *
+ * Purpose: UI screen or component: Premium Trainer Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: PremiumTrainerCard
+ *
+ * @file-header
+ */
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { trainerPhotoUri } from '../../shared/utils/trainerProfileMedia';
+import { trainerPhotoUri } from '../../shared/utils/getTrainerProfileMedia';
 
 const ACCENTS = {
   pink: '#FF6B9D',

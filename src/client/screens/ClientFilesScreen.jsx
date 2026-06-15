@@ -1,16 +1,26 @@
+/**
+ * Client Files Screen
+ *
+ * Purpose: UI screen or component: Client Files Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: ClientFilesScreen
+ *
+ * @file-header
+ */
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Image, Linking, Platform, SafeAreaView, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, ChevronRight, Download, FileSpreadsheet, FileText, MessageSquare } from 'lucide-react-native';
-import { deleteNotesAndFilesItem, markNotesAndFilesItemRead } from '../../shared/services/notesAndFilesService';
+import { deleteNotesAndFilesItem, markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
 import {
   getEmbedViewerUri,
   isImageFile as isNotesImageFile,
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
-} from '../../shared/utils/notesFileView';
-import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../shared/utils/fileFormatting';
+} from '../../shared/utils/getFileViewType';
+import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../shared/utils/formatFileSize';
 import PdfViewerModal from '../../shared/components/PdfViewerModal';
 import SpreadsheetViewerModal from '../../shared/components/SpreadsheetViewerModal';
 import DocumentViewerModal from '../../shared/components/DocumentViewerModal';

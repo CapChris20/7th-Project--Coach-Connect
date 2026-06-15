@@ -1,3 +1,13 @@
+/**
+ * use Chat
+ *
+ * Purpose: React hook: use Chat. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: useChat
+ *
+ * @file-header
+ */
 // Chat Hook for managing chat state and interactions
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getClaudeResponse, getOpenAIResponse } from '../services/chatService';

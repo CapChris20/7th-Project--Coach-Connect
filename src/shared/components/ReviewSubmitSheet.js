@@ -1,4 +1,14 @@
 /**
+ * Review Submit Sheet
+ *
+ * Purpose: UI screen or component: Review Submit Sheet. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: ReviewSubmitSheet
+ *
+ * @file-header
+ */
+/**
  * Bottom sheet for submitting or editing a trainer review.
  */
 

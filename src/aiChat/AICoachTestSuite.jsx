@@ -1,3 +1,13 @@
+/**
+ * AICoach Test Suite
+ *
+ * Purpose: Tests for AICoach Test Suite.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/aiChat
+ * Key exports: AICoachTestSuite
+ *
+ * @file-header
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ActivityIndicator,
@@ -9,10 +19,10 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadCoachContext } from '../ai/contextAggregation';
-import { resetAiCoachDailyUsage, sendToAI } from '../ai/deepseekService';
+import { loadCoachContext } from '../ai/context/CoachContextProvider';
+import { resetAiCoachDailyUsage, sendToAI } from '../ai/chat-api/aiCoachServerService';
 import { shouldRouteToPerplexity } from '../ai/perplexityService';
-import { executeCoachTool, TOOL_NAME_ALIASES } from '../ai/toolExecutor';
+import { executeCoachTool, TOOL_NAME_ALIASES } from '../ai/tools/executeCoachTool';
 import CoachConnectHeader from '../shared/components/CoachConnectHeader';
 
 const COLORS = {

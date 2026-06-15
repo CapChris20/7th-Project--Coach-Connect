@@ -1,3 +1,13 @@
+/**
+ * Client Root Navigator
+ *
+ * Purpose: Client Root Navigator — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: ClientRootNavigator
+ *
+ * @file-header
+ */
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { CLIENT_ROUTES } from '../../navigation/routes';

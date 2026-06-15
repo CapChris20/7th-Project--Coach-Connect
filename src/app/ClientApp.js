@@ -1,4 +1,14 @@
 /**
+ * Client App
+ *
+ * Purpose: Client App — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/app
+ * Key exports: ClientApp
+ *
+ * @file-header
+ */
+/**
  * ClientApp - Client-specific application interface with integrated home screen
  * 
  * Responsibilities:
@@ -61,11 +71,11 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from './config';
 import { calculateBMR, calculateTDEE } from './calculations';
 import { getClientDateKey } from './dateKey';
-import { getLocalDateKey } from '../shared/utils/localDay';
+import { getLocalDateKey } from '../shared/utils/getLocalDay';
 import {
   mergeClientDailyMetrics,
   parseDailyMetricsFromSnapshots,
-} from '../shared/services/dailyMetricsService';
+} from '../shared/daily-metrics/saveDailyMetricsToFirestore';
 import { useClientHomeDailyMetrics } from '../shared/hooks/useClientHomeDailyMetrics';
 import styles from '../client/components/home/clientAppStyles';
 import {
@@ -86,8 +96,8 @@ import { useClientScreenNavigation } from '../client/hooks/useClientScreenNaviga
 
 
 import { subscribeToUnreadCount } from '../ai/services/conversationService';
-import { getOrCreateConversation, sendClientRequest } from '../ai/services/trainerMessaging';
-import AIChatHomeScreen from '../aiChat/screens/AIChatHomeScreen';
+import { getOrCreateConversation, sendClientRequest } from '../ai/trainer-messaging/sendTrainerNotification';
+import AIChatHomeScreen from '../aiChat/chat-home/AIChatHomeScreen';
 import AIChatScreen from '../aiChat/screens/AIChatScreen';
 import AICoachTestSuite from '../aiChat/AICoachTestSuite';
 import TrainerSearchScreen, { TrainerProfileSheet } from '../marketplace/screens/TrainerSearchScreen';
@@ -106,7 +116,7 @@ import { clientLinking } from '../navigation/linking';
 import { ClientAppShellProvider } from '../client/navigation/ClientAppShellContext';
 import ClientRootNavigator from '../client/navigation/ClientRootNavigator';
 import BottomNavBar from '../navigation/BottomNavBar';
-import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/services/nutritionService';
+import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
 import MealPlanHomeScreen from '../nutrition/screens/MealPlanHomeScreen';
 import NutritionContainer from '../nutrition/screens/NutritionContainer';
 import ProfileScreen from '../profile/screens/ProfileScreen';
@@ -137,17 +147,17 @@ import {
   setNotificationTapHandler,
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
-} from '../shared/services/notificationsService';
-import { postRemotePushNotify } from '../shared/services/pushNotifyApi';
-import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead } from '../shared/services/notesAndFilesService';
+} from '../shared/notifications/manageNotifications';
+import { postRemotePushNotify } from '../shared/api/sendPushNotification';
+import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead } from '../shared/notes-files/manageNotesAndFiles';
 import { useTheme } from '../shared/ui/ThemeContext';
-import { trainerPhotoUri } from '../shared/utils/trainerProfileMedia';
+import { trainerPhotoUri } from '../shared/utils/getTrainerProfileMedia';
 import {
   getEmbedViewerUri,
   isImageFile as isNotesImageFile,
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
-} from '../shared/utils/notesFileView';
+} from '../shared/utils/getFileViewType';
 import ConversationsListScreen from '../trainer/screens/ConversationsListScreen';
 import PhotoGalleryScreen from '../trainer/screens/PhotoGalleryScreen';
 import TrainerMessagingScreen from '../trainer/screens/TrainerMessagingScreen';
@@ -155,7 +165,7 @@ import AIWorkoutPlansScreen from '../trainer/screens/AIWorkoutPlansScreen';
 import TrainerWeeklyReportScreen from '../trainer/screens/TrainerWeeklyReportScreen';
 import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/services/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/screens/workout';
-import { clearAllUserData } from '../utils/dataCacheCleanup';
+import { clearAllUserData } from '../utils/clearDataOnLogout';
 
 const CARD_GAP = 16;
 /** Kept for any layout/style references; prefer useWindowDimensions() inside components for live width. */

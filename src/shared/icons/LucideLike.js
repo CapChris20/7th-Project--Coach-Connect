@@ -1,3 +1,13 @@
+/**
+ * Lucide Like
+ *
+ * Purpose: Lucide Like — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: Home, Flame, Target, Activity, User, Trophy, Sparkles, Calendar
+ *
+ * @file-header
+ */
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
 

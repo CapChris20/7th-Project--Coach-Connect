@@ -1,3 +1,13 @@
+/**
+ * Fluid Glass
+ *
+ * Purpose: Fluid Glass — Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: (see file)
+ *
+ * @file-header
+ */
 import React, { useMemo, memo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

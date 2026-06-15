@@ -13,9 +13,9 @@ This is NOT a greenfield rewrite. Make **incremental, testable PR-sized changes*
 
 1. **Firebase project ID** is `anatrox-auth`. Never bulk-rename `anatrox` → `coachconnect` in `.env`, `firebaseConfig`, `app.config.js`, or plist/json tied to the live project.
 2. **Do not** migrate to a new Firebase project.
-3. **Client “today”** = device local date via `getClientDateKey()` / `getLocalDateKey()` in `src/app/dateKey.js` and `src/shared/utils/localDay.js`.
+3. **Client “today”** = device local date via `getClientDateKey()` / `getLocalDateKey()` in `src/app/dateKey.js` and `src/shared/utils/getLocalDay.js`.
 4. **Trainer weekly / server default day boundary** = `getDateKey()` (America/New_York) where already used for trainer jobs.
-5. **Canonical daily metrics write path**: `src/shared/services/dailyMetricsService.js` → `users/{uid}/dailyLogs/{date}`; mirror to `daily_tracking` only inside that service (or `server/lib/dailyMetricsServer.js` on server). **No new dual-write call sites.**
+5. **Canonical daily metrics write path**: `src/shared/daily-metrics/saveDailyMetricsToFirestore.js` → `users/{uid}/dailyLogs/{date}`; mirror to `daily_tracking` only inside that service (or `server/lib/dailyMetricsServer.js` on server). **No new dual-write call sites.**
 6. **Only create git commits when the user explicitly asks.**
 
 ## Already done (do not redo)
@@ -170,7 +170,7 @@ registerFoodRoutes(app, { verifyFirebaseBearerToken, db, ...deps });
 
 ## How to work
 
-1. Start by reading: `src/shared/services/dailyMetricsService.js`, `src/shared/hooks/useClientHomeDailyMetrics.js`, `server/index.js` (first 150 lines + route grep), `App.js`, `ClientApp.js`, `TrainerApp.js`.
+1. Start by reading: `src/shared/daily-metrics/saveDailyMetricsToFirestore.js`, `src/shared/hooks/useClientHomeDailyMetrics.js`, `server/index.js` (first 150 lines + route grep), `App.js`, `ClientApp.js`, `TrainerApp.js`.
 2. Execute **Phase 1 completely**, then Phase 2, etc. Report after each phase: files changed, tests run, line counts before/after.
 3. Prefer **small commits** only when user asks.
 4. If a task requires destructive Firestore migration, **stop and ask the user**.

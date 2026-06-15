@@ -42,7 +42,7 @@ function read(relPath) {
     chatScreen.includes('logger.debug(') && !chatScreen.includes('logger is not defined'),
   );
 
-  const toolExecutor = read('src/ai/toolExecutor.js');
+  const toolExecutor = read('src/ai/tools/executeCoachTool.js');
   assert(
     'FIX 2: toolExecutor imports getDoc',
     /import\s*\{[^}]*\bgetDoc\b[^}]*\}\s*from\s*['"]firebase\/firestore['"]/.test(toolExecutor),
@@ -95,7 +95,7 @@ function read(relPath) {
     /buildCoachPromptForUser\(\s*targetUid,\s*userProfile,\s*lastUserMsg,\s*options/.test(indexSrc),
   );
 
-  const clientRouting = require(path.join(ROOT, 'src/ai/coachPersonalDataRouting.js'));
+  const clientRouting = require(path.join(ROOT, 'src/ai/context/gatherCoachContextFromUser.js'));
   const serverRouting = require(path.join(ROOT, 'server/lib/coachPersonalDataRouting.js'));
   assert(
     'FIX 3: client sends personal data for "what did I log today"',

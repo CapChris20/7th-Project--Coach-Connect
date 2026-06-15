@@ -1,3 +1,13 @@
+/**
+ * Find Trainer Screen
+ *
+ * Purpose: UI screen or component: Find Trainer Screen. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/marketplace
+ * Key exports: FindTrainerScreen
+ *
+ * @file-header
+ */
 import React from 'react';
 import {
   View,

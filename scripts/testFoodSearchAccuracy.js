@@ -42,7 +42,7 @@ const {
   rankSerperFoodResultRows,
   scoreOrganicNutritionHit,
   macroCalorieConsistencyScore,
-} = require('../src/nutrition/utils/restaurantSerperQuality');
+} = require('../src/nutrition/food-search/validateRestaurantResult');
 
 /** Original smoke / regression subset */
 const SMOKE_CASE_IDS = [

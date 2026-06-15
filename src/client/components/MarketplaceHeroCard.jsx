@@ -1,3 +1,13 @@
+/**
+ * Marketplace Hero Card
+ *
+ * Purpose: UI screen or component: Marketplace Hero Card. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: MarketplaceHeroCard
+ *
+ * @file-header
+ */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

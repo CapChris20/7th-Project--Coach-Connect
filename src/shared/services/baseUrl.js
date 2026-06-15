@@ -1,3 +1,13 @@
+/**
+ * base Url
+ *
+ * Purpose: Data/service layer: base Url. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/shared
+ * Key exports: getWorkoutGenerationApiBases, getResilientApiBases, getAICoachApiBases, PRODUCTION_API_BASE_URL, getApiBase, getApiBaseCandidates
+ *
+ * @file-header
+ */
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 

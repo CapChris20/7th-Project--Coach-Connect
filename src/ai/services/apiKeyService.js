@@ -1,3 +1,13 @@
+/**
+ * api Key Service
+ *
+ * Purpose: Data/service layer: api Key Service. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/ai
+ * Key exports: configureOpenAI, getOpenAIKey, loadApiKey, saveApiKey, getCurrentApiKey, hasApiKey
+ *
+ * @file-header
+ */
 // API Key service - extracted to avoid require cycles
 // Single in-memory key; set via configureOpenAI at runtime
 

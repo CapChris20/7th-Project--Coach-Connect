@@ -1,3 +1,13 @@
+/**
+ * use Client Screen Navigation
+ *
+ * Purpose: UI screen or component: use Client Screen Navigation. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/client
+ * Key exports: useClientScreenNavigation, CLIENT_MAIN_TABS
+ *
+ * @file-header
+ */
 import { useCallback, useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
 import { CLIENT_ROUTES } from '../../navigation/routes';

@@ -35,7 +35,13 @@ function registerAICoachRoutes(app, deps) {
         tool: String(toolCall?.name || 'unknown'),
       });
 
-      const result = await executeTool(targetUid, toolCall);
+      const { guardCoachToolProposal } = require('../lib/coachToolProposalGuards');
+      const guarded = guardCoachToolProposal(toolCall);
+      if (!guarded) {
+        return res.status(400).json({ success: false, message: 'Invalid or unsupported tool proposal' });
+      }
+
+      const result = await executeTool(targetUid, guarded);
       return res.json(result);
     } catch (e) {
       return res.status(500).json({
