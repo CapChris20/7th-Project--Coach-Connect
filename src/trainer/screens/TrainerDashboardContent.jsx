@@ -28,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app/config';
-import { getDateKey } from '../../app/dateKey';
+import { getDateKey } from '../../shared/utils/dateKeys';
 import { getLocalDateKey } from '../../shared/utils/getLocalDay';
 import { fetchLatestLoggedWeight } from '../../shared/daily-metrics/getLatestWeight';
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';

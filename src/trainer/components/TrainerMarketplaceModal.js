@@ -10,8 +10,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Animated, Pressable } from 'react-native';
-import { doc, collection, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../app/config';
+import { doc, getDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../app/config';
 import { syncClientDataFromUsers } from '../clients-list/loadTrainerClientRoster';
 import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai/trainer-messaging/sendTrainerNotification';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -130,56 +131,17 @@ const TrainerMarketplaceModal = ({
         return;
       }
 
-      // New connection — link trainer ↔ client
-      const batch = writeBatch(db);
-
-      // 1a. Add to trainer_client_links (flat collection - easy to see in Firebase Console)
-      const linkId = `${trainerUid}_${req.clientUid}`;
-      batch.set(doc(db, 'trainer_client_links', linkId), {
-        trainerId: trainerUid,
-        clientId: req.clientUid,
-        name: req.clientName,
-        joinedAt: serverTimestamp(),
-        status: 'active',
-        goals: req.clientGoals || 'Not specified',
-        experience: req.clientExperienceLevel || 'Beginner',
-        equipment: req.clientEquipment || 'None',
-        limitations: req.clientLimitations || 'None',
-      });
-
-      // 1b. Add to trainer_clients subcollection (for compatibility)
-      batch.set(doc(db, `trainer_clients/${trainerUid}/clients/${req.clientUid}`), {
-        clientId: req.clientUid,
-        trainerId: trainerUid,
-        name: req.clientName,
-        linkedAt: serverTimestamp(),
-        status: 'active',
-        active: true,
-        goals: req.clientGoals || 'Not specified',
-        experience: req.clientExperienceLevel || 'Beginner',
-        equipment: req.clientEquipment || 'None',
-        limitations: req.clientLimitations || 'None',
-      }, { merge: true });
-
-      // 1c. Write reverse relationship on the client user doc
-      batch.set(doc(db, 'users', req.clientUid), {
-        trainerId: trainerUid,
-      }, { merge: true });
-
-      // 2. Log onboarding event (welcome message sent after batch via Path A)
-      batch.set(doc(collection(db, 'events')), {
-        type: 'client_onboarded',
-        trainerUid,
+      // New connection — delegate all 3-surface CRM writes to Admin SDK callable
+      const acceptClientRequest = httpsCallable(functions, 'acceptClientRequest');
+      await acceptClientRequest({
+        messageId: req.messageId,
         clientUid: req.clientUid,
-        timestamp: serverTimestamp(),
-      });
-
-      await batch.commit();
-
-      // Update original message status (Path A - top-level messages)
-      await updateMessageStatus(req.messageId, {
-        status: 'accepted',
-        responseTimestamp: serverTimestamp(),
+        trainerUid,
+        clientName: req.clientName,
+        clientGoals: req.clientGoals,
+        clientExperienceLevel: req.clientExperienceLevel,
+        clientEquipment: req.clientEquipment,
+        clientLimitations: req.clientLimitations,
       });
 
       // Create conversation and send welcome message (Path A)

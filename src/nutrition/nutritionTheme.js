@@ -10,8 +10,8 @@
  */
 import { BRAND_NAV_ICON_GRADIENT } from '../shared/ui/brandGradients';
 
-export const NUT_CALORIES_GRADIENT = ['#BE185D', '#C2410C'];
-export const NUT_ACTION_GRADIENT = ['#FF6B9D', '#F97316'];
+export const NUT_CALORIES_GRADIENT = ['#6D28D9', '#C2410C'];
+export const NUT_ACTION_GRADIENT = ['#6D28D9', '#C2410C'];
 
 export const NUT_MACRO_GRADIENTS = {
   protein: ['#FF6B9D', '#DB2777'],

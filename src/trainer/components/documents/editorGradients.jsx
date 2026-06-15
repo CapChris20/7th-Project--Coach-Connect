@@ -14,8 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Ionicons } from '@expo/vector-icons';
 
-/** Cyan → orange — same family as home mood / today cards (no single purple/pink fill). */
-export const EDITOR_ACCENT_GRADIENT = ['#06B6D4', '#F97316'];
+/** Pink → purple — matches nav icons and dashboard card gradients. */
+export const EDITOR_ACCENT_GRADIENT = ['#FF6B9D', '#C084FC'];
 export const EDITOR_ACCENT_START = { x: 0, y: 0 };
 export const EDITOR_ACCENT_END = { x: 1, y: 0 };
 

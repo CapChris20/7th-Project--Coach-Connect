@@ -41,7 +41,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
-import { calculateBMR, calculateTDEE } from '../../../app/calculations';
+import { calculateBMR, calculateTDEE } from '../../../shared/fitness/calculations';
 import styles, { SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP, CARD_GAP } from './clientAppStyles';
 
 const LOTTIE_SORENESS_EMPTY = require('../../../assets/sad reaction.json');
@@ -489,11 +489,14 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
   const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
   const formatScore = (v, max) => {
     if (v == null || v === '') return null;
-    const n = Number(v);
-    if (!Number.isFinite(n)) return String(v);
-    const clamped = Math.max(0, Math.min(max, n));
-    if (!max || max <= 0) return null;
-    const pct = Math.round((clamped / max) * 100);
+    const raw = String(v).trim();
+    if (raw.includes('%')) return raw;
+    const slash = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+    const n = slash ? Number(slash[1]) : Number(raw);
+    const scaleMax = slash ? Number(slash[2]) : max;
+    if (!Number.isFinite(n) || !Number.isFinite(scaleMax) || scaleMax <= 0) return raw;
+    const clamped = Math.max(0, Math.min(scaleMax, n));
+    const pct = Math.round((clamped / scaleMax) * 100);
     return `${pct}%`;
   };
 
@@ -564,10 +567,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {formatScore(stressLevel, 5) || stressLevel}
+                      {formatScore(stressLevel, 8) || stressLevel}
                     </LightModeOutlineText>
                     <StatGradientText style={wellnessNumber} colors={HOME_STAT_STRESS_GRADIENT}>
-                      {formatScore(stressLevel, 5) || stressLevel}
+                      {formatScore(stressLevel, 8) || stressLevel}
                     </StatGradientText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -632,13 +635,17 @@ const NewCalendar = ({ theme }) => {
 
   return (
     <View style={styles.calendarContainer}>
-      <LinearGradient
-        colors={['#FF6B9D', '#F97316']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradientCardBorder}
+      <View
+        style={[
+          styles.weekCalendar,
+          !isDark && styles.lightCard,
+          {
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderRadius: 16,
+          },
+        ]}
       >
-        <View style={[styles.weekCalendar, !isDark && styles.lightCard]}>
           <View style={styles.weekHeader}>
             <Text style={[styles.weekHeaderText, !isDark && styles.lightText]}>This Week</Text>
           </View>
@@ -672,7 +679,6 @@ const NewCalendar = ({ theme }) => {
             })}
           </View>
         </View>
-      </LinearGradient>
     </View>
   );
 };
@@ -794,14 +800,16 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   return (
     <View style={styles.agendaContainer}>
       <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Training Agenda Today</Text>
-      <LinearGradient
-        colors={AGENDA_BORDER_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <View
         style={[
           styles.agendaGradientBorder,
           isEmpty && styles.agendaGradientBorderPremiumEmpty,
-          { padding: 2 },
+          {
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderRadius: 18,
+            padding: 0,
+          },
         ]}
       >
         <Animated.View
@@ -987,7 +995,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
             </View>
           </LinearGradient>
         </Animated.View>
-      </LinearGradient>
+      </View>
     </View>
   );
 };
@@ -1134,13 +1142,17 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   return (
     <View style={styles.nutritionContainer}>
       <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Nutrition Today</Text>
-      <View style={styles.nutritionGradientBorder}>
-        <LinearGradient
-          colors={['#A78BFA', '#E879C8', '#F0ABFC']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
+      <View
+        style={[
+          styles.nutritionGradientBorder,
+          {
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderRadius: 18,
+            overflow: 'hidden',
+          },
+        ]}
+      >
         <View style={[styles.nutritionCard, !isDark && styles.nutritionCardLight]}>
         {!hasLoggedNutrition ? (
           <View

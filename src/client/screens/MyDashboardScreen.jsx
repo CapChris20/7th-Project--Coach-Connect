@@ -40,7 +40,8 @@ import {
   updateDoc,
   limit,
 } from 'firebase/firestore';
-import { auth, db } from '../../app/config';
+import { auth, db, functions } from '../../app/config';
+import { httpsCallable } from 'firebase/functions';
 import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
 import { getLocalDateKey, msUntilLocalMidnight } from '../../shared/utils/getLocalDay';
 import { useLocalTodayDateKey } from '../../shared/hooks/useLocalTodayDateKey';
@@ -329,14 +330,16 @@ const useCardState = (storageKey, onAfterSave) => {
         const userData = userSnap.exists() ? userSnap.data() : {};
         const trainerId = userData.trainerId || userData.trainer_id || null;
         if (trainerId) {
-          await addDoc(collection(db, 'notifications'), {
-            type: storageKey,
-            label: STORAGE_KEY_LABELS[storageKey] || storageKey,
-            clientUid: currentUser.uid,
+          httpsCallable(functions, 'createNotification')({
+            recipientUid: trainerId,
             trainerUid: trainerId,
-            value,
-            timestamp: serverTimestamp(),
-            read: false,
+            clientUid: currentUser.uid,
+            type: storageKey,
+            title: STORAGE_KEY_LABELS[storageKey] || storageKey,
+            body: '',
+            data: { value },
+          }).catch((e) => {
+            if (__DEV__) console.warn('[notifications] createNotification failed:', e?.message);
           });
         }
       } catch (e) {
@@ -565,14 +568,16 @@ const useWorkoutLog = (onAfterSave) => {
       const userData = userSnap.exists() ? userSnap.data() : {};
       const trainerId = userData.trainerId || userData.trainer_id || null;
       if (trainerId) {
-        await addDoc(collection(db, 'notifications'), {
-          type: 'dashboard_workouts',
-          label: 'Workouts Today',
-          clientUid: uid,
+        httpsCallable(functions, 'createNotification')({
+          recipientUid: trainerId,
           trainerUid: trainerId,
-          value: combined,
-          timestamp: serverTimestamp(),
-          read: false,
+          clientUid: uid,
+          type: 'dashboard_workouts',
+          title: 'Workouts Today',
+          body: '',
+          data: { value: combined },
+        }).catch((e) => {
+          if (__DEV__) console.warn('[notifications] createNotification failed:', e?.message);
         });
       }
       setShowNotified(true);

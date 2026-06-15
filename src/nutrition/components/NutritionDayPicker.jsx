@@ -12,7 +12,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { getClientDateKey } from '../../app/dateKey';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
 import { NUT_ACTION_GRADIENT } from '../nutritionTheme';
 
 function addDays(dateKey, delta) {

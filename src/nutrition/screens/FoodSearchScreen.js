@@ -28,6 +28,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -43,6 +44,7 @@ import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../food-deta
 import { cleanSerperFoodTitle, isPlausibleNutritionRow } from '../food-search/formatFoodSearchTitle';
 import BrandGradientStrokeText from '../../shared/components/BrandGradientStrokeText';
 import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
+import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
 import { auth } from '../../app/config';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -368,40 +370,9 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
 
             <Text style={[empty.subtitle, { color: subColor }]}>
               {isNoResults
-                ? hint || 'Try a shorter name, a brand, or one of these popular foods.'
-                : 'Search packaged foods, restaurants, and groceries — or tap a suggestion below.'}
+                ? hint || 'Try a shorter name or a brand.'
+                : 'Search packaged foods, restaurants, and groceries.'}
             </Text>
-
-            <View style={empty.chipGrid}>
-              {QUICK_PICKS.map((item) => {
-                const accent = accentColor(item.accentKey);
-                return (
-                  <Pressable
-                    key={item.label}
-                    onPress={() => onSuggestionPress(item.label)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Search ${item.label}`}
-                    style={({ pressed }) => [empty.chipPressable, pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] }]}
-                  >
-                    <LinearGradient
-                      colors={c.borderGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ borderRadius: 14, padding: 1 }}
-                    >
-                      <View style={[empty.chipInner, { backgroundColor: chipBg }]}>
-                        <View style={[empty.chipIcon, { backgroundColor: `${accent}22` }]}>
-                          <Ionicons name={item.icon} size={16} color={accent} />
-                        </View>
-                        <Text style={[empty.chipLabel, { color: titleFill }]} numberOfLines={1}>
-                          {item.label}
-                        </Text>
-                      </View>
-                    </LinearGradient>
-                  </Pressable>
-                );
-              })}
-            </View>
 
             {!isNoResults ? (
               <View style={[empty.tipRow, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
@@ -557,7 +528,22 @@ const FoodSearchScreen = ({
   const [emptyHint, setEmptyHint] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [recentHistoryExpanded, setRecentHistoryExpanded] = useState(false);
+  const [pendingFood, setPendingFood] = useState(null);
   const uid = userId || auth.currentUser?.uid;
+
+  const confirmTheme = useMemo(
+    () => ({
+      screenBg: colors.bg,
+      cardBg: colors.cardBg,
+      cardBorder: colors.cardBorder,
+      text: colors.text,
+      textMuted: colors.textMuted,
+      inputBg: colors.inputBg,
+      orange: colors.orange,
+      secondaryAction: colors.textMuted,
+    }),
+    [colors],
+  );
 
   useEffect(() => {
     if (!uid) return;
@@ -631,8 +617,13 @@ const FoodSearchScreen = ({
     return () => clearTimeout(timer);
   }, [query, handleSearch]);
 
-  const handleAddFood = async (food) => {
-    if (logFood) await logFood(food, mealType);
+  const handleAddFood = (food) => {
+    setPendingFood(food);
+  };
+
+  const handleConfirmFood = async (confirmedFood) => {
+    setPendingFood(null);
+    if (logFood && confirmedFood) await logFood(confirmedFood, mealType);
   };
 
   const onThemePress = () => {
@@ -804,6 +795,7 @@ const FoodSearchScreen = ({
   };
 
   return (
+    <>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -850,6 +842,15 @@ const FoodSearchScreen = ({
         />
       </KeyboardAvoidingView>
     </View>
+    <Modal visible={!!pendingFood} animationType="slide" presentationStyle="pageSheet">
+      <FoodConfirmSheet
+        food={pendingFood}
+        theme={confirmTheme}
+        onConfirm={handleConfirmFood}
+        onCancel={() => setPendingFood(null)}
+      />
+    </Modal>
+    </>
   );
 };
 

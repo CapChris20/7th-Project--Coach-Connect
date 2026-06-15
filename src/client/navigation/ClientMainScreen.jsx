@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../app/config';
-import { getClientDateKey } from '../../app/dateKey';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
 import { mergeClientDailyMetrics } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
 import { markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
 import TrainerMessagingScreen from '../../trainer/screens/TrainerMessagingScreen';
@@ -628,9 +628,10 @@ export default function ClientMainScreen() {
       <SpreadsheetViewerModal
         visible={spreadsheetViewer.visible}
         url={spreadsheetViewer.url}
+        rows={spreadsheetViewer.rows}
         name={spreadsheetViewer.name}
         isDark={isDark}
-        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null })}
+        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null, rows: null })}
       />
       <DocumentViewerModal
         visible={documentViewer.visible}

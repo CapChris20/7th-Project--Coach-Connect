@@ -55,7 +55,7 @@ export const AI_COACH_UI = {
     /** @deprecated rainbow — do not use for coach card borders */
     ctaCool: ['#C084FC', '#FF6B9D'],
     borderCyanPink: ['#06B6D4', '#FF6B9D'],
-    userBubble: ['#C084FC', '#FF6B9D'],
+    userBubble: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.06)'],
     borderPinkPurple: ['#FF6B9D', '#C084FC'],
     heroBorder: ['#BE185D', '#C2410C', '#BE185D'],
     categoryOrb: ['#BE185D', '#C2410C'],

@@ -1089,9 +1089,6 @@ export const NutritionScreen = ({
   const colors = useMemo(() => getColors(isDark), [isDark]);
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
-  const quickPills = topFoodNames.length > 0
-    ? topFoodNames.slice(0, 3)
-    : ['Chicken Breast', 'Rice', 'Eggs'];
   const solidCardBg = isDark ? '#0A0A0F' : '#FFFFFF';
   const isEmpty = consumed <= 0;
   const remainingKcal = Math.max(Math.round(goal - consumed), 0);
@@ -1128,19 +1125,6 @@ export const NutritionScreen = ({
                 <Ionicons name="options-outline" size={22} color={colors.text} />
               </TouchableOpacity>
             ) : null}
-          </View>
-          <View style={screen.suggRow}>
-            {quickPills.map((t) => (
-              <TouchableOpacity
-                key={t}
-                activeOpacity={0.7}
-                onPress={() => onPillSearch?.(t)}
-                style={[screen.suggChip, { backgroundColor: colors.chipBg, borderColor: colors.cardBorder }]}
-              >
-                <Ionicons name="search-outline" size={11} color={colors.textMuted} style={{ marginRight: 4 }} />
-                <Text style={[screen.suggText, { color: colors.textMuted }]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
           </View>
           {/* Theme toggle removed — controlled via Settings */}
         </View>

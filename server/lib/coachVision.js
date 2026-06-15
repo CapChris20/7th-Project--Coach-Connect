@@ -1,13 +1,14 @@
 /**
- * AI Coach vision — DeepSeek stack only.
+ * AI Coach vision — OpenAI sees the image, DeepSeek writes coach voice.
  *
  * api.deepseek.com (deepseek-chat / v4-flash) is TEXT-ONLY — it rejects image_url.
- * Progress photos use DeepSeek-VL2, then optional polish via your DEEPSEEK_API_KEY.
  *
- * Setup (pick one):
- *   1. REPLICATE_API_TOKEN — hosted deepseek-ai/deepseek-vl2 (~$0.004/photo)
+ * Preferred setup:
+ *   OPENAI_API_KEY + DEEPSEEK_API_KEY
+ *
+ * Legacy fallback setup:
+ *   1. REPLICATE_API_TOKEN — hosted deepseek-ai/deepseek-vl2
  *   2. DEEPSEEK_VISION_BASE_URL — OpenAI-compatible host for deepseek-ai/deepseek-vl2
- *      (e.g. SiliconFlow). Use DEEPSEEK_VISION_API_KEY or DEEPSEEK_API_KEY on that host.
  */
 const axios = require('axios');
 const logger = require('./logger');
@@ -34,6 +35,14 @@ function resolveDeepSeekVisionBaseUrl() {
 
 function resolveDeepSeekVisionApiKey() {
   return process.env.DEEPSEEK_VISION_API_KEY || process.env.DEEPSEEK_API_KEY || null;
+}
+
+function resolveOpenAIKey() {
+  return process.env.OPENAI_API_KEY || null;
+}
+
+function resolveOpenAIVisionModel() {
+  return process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
 }
 
 function resolveReplicateToken() {
@@ -198,6 +207,47 @@ async function callDeepSeekVLViaOpenAICompat({ baseUrl, apiKey, systemPrompt, me
   return { text: String(text), source: 'deepseek-vl', model };
 }
 
+async function callOpenAIVisionForAnalysis({ apiKey, userText, imageDataUrls }) {
+  const model = resolveOpenAIVisionModel();
+  const prompt = buildVLAnalysisPrompt(userText);
+  const imageUrl = imageDataUrls?.[0];
+  if (!imageUrl) throw new Error('No image for OpenAI vision');
+
+  const url = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
+  const payload = {
+    model,
+    max_tokens: 1024,
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+        ],
+      },
+    ],
+  };
+
+  const resp = await axios.post(url, payload, {
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    timeout: 120000,
+    validateStatus: () => true,
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const msg =
+      resp?.data?.error?.message ||
+      resp?.data?.message ||
+      (typeof resp?.data === 'string' ? resp.data.slice(0, 300) : null);
+    throw new Error(`OpenAI vision HTTP ${resp.status}${msg ? `: ${msg}` : ''}`);
+  }
+
+  const text = resp?.data?.choices?.[0]?.message?.content;
+  if (!text || !String(text).trim()) throw new Error('OpenAI vision returned empty response');
+  return { text: String(text), source: 'openai-vision', model };
+}
+
 async function callDeepSeekVLViaReplicate({ token, userText, imageDataUrls }) {
   const prompt = buildVLAnalysisPrompt(userText);
   const version = await resolveReplicateDeepSeekVL2Version(token);
@@ -257,7 +307,7 @@ async function polishVisionWithDeepSeekCoach({ apiKey, systemPrompt, messages, v
 }
 
 /**
- * Run a vision turn — DeepSeek-VL2 for eyes, DeepSeek chat for coach voice.
+ * Run a vision turn — OpenAI for eyes, DeepSeek for coach voice.
  */
 async function runCoachVisionTurn({
   systemPrompt,
@@ -279,11 +329,42 @@ async function runCoachVisionTurn({
   const visionApiKey = resolveDeepSeekVisionApiKey();
   const replicateToken = resolveReplicateToken();
   const deepSeekKey = resolveDeepSeekKey();
+  const openAIKey = resolveOpenAIKey();
 
   let lastErr = null;
   const prompt = `${systemPrompt}${VISION_SYSTEM_ADDENDUM}`;
 
-  // Replicate DeepSeek-VL2 (recommended) — uses DEEPSEEK_API_KEY for coach polish.
+  // Preferred: OpenAI vision for image understanding, then DeepSeek coach polish.
+  if (openAIKey && deepSeekKey) {
+    try {
+      const vl = await callOpenAIVisionForAnalysis({
+        apiKey: openAIKey,
+        userText,
+        imageDataUrls,
+      });
+      const polished = await polishVisionWithDeepSeekCoach({
+        apiKey: deepSeekKey,
+        systemPrompt,
+        messages,
+        visualAnalysis: vl.text,
+      });
+      if (logAPIUsage) {
+        const inputTokens = Math.ceil((prompt.length + vl.text.length) / 4) + 850 * images.length;
+        const outputTokens = Math.ceil(String(polished.text).length / 4);
+        await logAPIUsage('deepseek', targetUid || null, inputTokens, outputTokens, 'vision');
+      }
+      return { ...polished, source: 'openai-vision', model: vl.model };
+    } catch (e) {
+      logger.warn('OpenAI vision failed:', e?.message || e);
+      throw new Error(
+        e?.message?.includes('HTTP')
+          ? `Photo analysis failed (${e.message}). Check OPENAI_API_KEY on Cloud Run.`
+          : e?.message || 'Photo analysis failed. Try again in a moment.'
+      );
+    }
+  }
+
+  // Legacy fallback: Replicate DeepSeek-VL2 + DeepSeek coach polish.
   if (replicateToken && deepSeekKey) {
     try {
       const vl = await callDeepSeekVLViaReplicate({
@@ -330,8 +411,8 @@ async function runCoachVisionTurn({
     }
   }
 
-  const hint = !replicateToken && !visionBaseUrl
-    ? 'DeepSeek chat (api.deepseek.com) is text-only. For progress photos add REPLICATE_API_TOKEN (DeepSeek-VL2 on Replicate) or set DEEPSEEK_VISION_BASE_URL to an OpenAI-compatible DeepSeek-VL host.'
+  const hint = !openAIKey && !replicateToken && !visionBaseUrl
+    ? 'DeepSeek chat (api.deepseek.com) is text-only. For progress photos add OPENAI_API_KEY (recommended), REPLICATE_API_TOKEN (legacy), or set DEEPSEEK_VISION_BASE_URL.'
     : !deepSeekKey
       ? 'DEEPSEEK_API_KEY is required to polish photo analysis into coach replies.'
       : lastErr?.message || 'DeepSeek vision request failed';
@@ -340,9 +421,11 @@ async function runCoachVisionTurn({
 }
 
 function isCoachVisionConfigured() {
+  const deepSeekKey = resolveDeepSeekKey();
   return Boolean(
+    (resolveOpenAIKey() && deepSeekKey) ||
     (resolveDeepSeekVisionBaseUrl() && resolveDeepSeekVisionApiKey()) ||
-      (resolveReplicateToken() && resolveDeepSeekKey())
+      (resolveReplicateToken() && deepSeekKey)
   );
 }
 

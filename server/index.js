@@ -117,6 +117,11 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 }
 
 const app = express();
+// Cloud Run sits behind Google's proxy; trust one hop so express-rate-limit
+// can read X-Forwarded-For without throwing validation errors on startup.
+if (process.env.K_SERVICE) {
+  app.set('trust proxy', 1);
+}
 
 // CORS — restrict to known origins (dev + prod)
 const allowedOrigins = [
@@ -149,6 +154,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Rate limiting
 // ─────────────────────────────────────────────
 function isAiCoachTestRequest(req) {
+  if (process.env.NODE_ENV === 'production') return false;
   const header =
     req?.headers?.['x-ai-coach-test-suite'] ||
     req?.headers?.['X-AI-Coach-Test-Suite'] ||
@@ -1330,11 +1336,11 @@ async function logAPIUsage(apiName, userId, inputTokens, outputTokens, status) {
   }
 }
 
-async function enforceDailyMessageLimit(userId, limit = 10) {
+async function enforceDailyMessageLimit(userId, limit = 30) {
   if (!isAiCoachLimitsEnforced()) {
-    return { allowed: true, remaining: null };
+    return { allowed: true, remaining: null, limit: null, resetsAt: null };
   }
-  if (!admin.apps.length) return { allowed: true, remaining: null };
+  if (!admin.apps.length) return { allowed: true, remaining: null, limit: null, resetsAt: null };
   const db = admin.firestore();
   const date = isoDateKey();
   const ref = db.collection('users').doc(userId).collection('usage').doc(`aiCoach_${date}`);
@@ -1343,10 +1349,30 @@ async function enforceDailyMessageLimit(userId, limit = 10) {
     const cur = snap.exists ? snap.data() || {} : {};
     const count = Number(cur.count || 0);
     if (count >= limit) return { allowed: false, remaining: 0 };
-    tx.set(ref, { count: count + 1, date, updatedAt: serverTs() }, { merge: true });
+    tx.set(ref, { count: count + 1, date, limit, updatedAt: serverTs() }, { merge: true });
     return { allowed: true, remaining: Math.max(0, limit - (count + 1)) };
   });
-  return result;
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  return {
+    ...result,
+    limit,
+    resetsAt: tomorrow.toISOString(),
+  };
+}
+
+function resolveAiCoachDailyLimit(userProfile = {}) {
+  const tier = String(
+    userProfile?.subscriptionTier ||
+      userProfile?.planTier ||
+      userProfile?.tier ||
+      userProfile?.subscription ||
+      'free',
+  ).toLowerCase();
+  if (tier.includes('premium') || tier.includes('pro') || tier.includes('coach')) return 100;
+  if (tier.includes('plus') || tier.includes('standard') || tier.includes('basic')) return 50;
+  return 30;
 }
 
 // ─────────────────────────────────────────────
@@ -1998,14 +2024,23 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
     return res.status(400).json({ error: 'messages is required' });
   }
 
-  const webMode = forceWebSearch || hasImages ? 'off' : options?.web || 'auto';
+  const webMode = hasImages ? 'off' : forceWebSearch ? 'on' : options?.web || 'auto';
   const lastUserMsg = [...normalized].reverse().find((m) => m.role === 'user')?.content || '';
   if (String(lastUserMsg).length > 2000) {
     return res.status(400).json({ error: 'Message too long (max 2000 chars)' });
   }
 
-  if (targetUid && admin.apps.length) {
-    await clearAiCoachDailyUsage(targetUid);
+  if (!isAiCoachTestOrDev(req)) {
+    const dailyLimit = resolveAiCoachDailyLimit(userProfile || {});
+    const usage = await enforceDailyMessageLimit(targetUid, dailyLimit);
+    if (!usage.allowed) {
+      return res.status(429).json({
+        error: 'Daily AI Coach message limit reached.',
+        limit: usage.limit,
+        remaining: 0,
+        resetsAt: usage.resetsAt,
+      });
+    }
   }
 
   const { systemPrompt, weeklyContext, usedWeeklyContext } = await buildCoachPromptForUser(

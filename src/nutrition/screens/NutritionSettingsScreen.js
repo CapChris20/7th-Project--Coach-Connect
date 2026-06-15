@@ -36,7 +36,8 @@ const PINK_SOFT = '#FF6B9D';
 const ORANGE = '#C2410C';
 const ORANGE_SOFT = '#F97316';
 const CYAN = '#06B6D4';
-const CTA_GRAD = [PINK, ORANGE];
+const BRAND_GRAD = ['#6D28D9', '#C2410C'];
+const CTA_GRAD = BRAND_GRAD;
 
 const MACRO_LANES = [
   {
@@ -209,8 +210,14 @@ export default function NutritionSettingsScreen({
             Tap values to edit. Use +/− for calories.
           </Text>
 
-          <View style={[s.calPanel, { backgroundColor: palette.panel, borderColor: palette.panelBorder }]}>
-            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.calStripe} />
+          <LinearGradient
+            colors={BRAND_GRAD}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ borderRadius: 18, padding: 1.5, marginBottom: 20 }}
+          >
+          <View style={[s.calPanel, { backgroundColor: palette.panel, borderColor: 'transparent', marginBottom: 0 }]}>
+            <LinearGradient colors={BRAND_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.calStripe} />
             <Text style={[s.calLabel, { color: palette.textMuted }]}>CALORIES PER DAY</Text>
 
             <View style={s.calRow}>
@@ -253,6 +260,7 @@ export default function NutritionSettingsScreen({
               <Text style={{ color: CYAN }}>{estMacros.fat}g F</Text>
             </Text>
           </View>
+          </LinearGradient>
 
           <Text style={[s.sectionTitle, { color: palette.textMuted }]}>Macro targets</Text>
 

@@ -14,11 +14,12 @@ import { EditorGradientDot } from './editorGradients';
 
 export default function EditorStatusPill({ status, theme }) {
   const map = {
+    idle: { label: 'Draft', color: theme.textMuted, gradient: false },
     saved: { label: 'Saved', color: theme.success, gradient: false },
     saving: { label: 'Saving…', color: theme.warning, gradient: false },
     unsaved: { label: 'Unsaved', color: null, gradient: true },
   };
-  const { label, color, gradient } = map[status] || map.saved;
+  const { label, color, gradient } = map[status] || map.idle;
   return (
     <View style={styles.pill}>
       {gradient ? (

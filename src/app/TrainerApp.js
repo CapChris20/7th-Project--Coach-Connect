@@ -107,7 +107,7 @@ import { fetchLatestLoggedWeight } from '../shared/daily-metrics/getLatestWeight
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { autoLogErrorSync } from "../utils/autoLogError";
 import { getOrCreateConversation } from "../ai/trainer-messaging/sendTrainerNotification";
-import { getDateKey } from "../app/dateKey";
+import { getDateKey } from "../shared/utils/dateKeys";
 import { getLocalDateKey } from "../shared/utils/getLocalDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { subscribeToUnreadCount } from "../ai/services/conversationService";

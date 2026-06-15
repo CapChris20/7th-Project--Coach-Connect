@@ -1998,7 +1998,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
     return res.status(400).json({ error: 'messages is required' });
   }
 
-  const webMode = forceWebSearch || hasImages ? 'off' : options?.web || 'auto';
+  const webMode = hasImages ? 'off' : forceWebSearch ? 'on' : options?.web || 'auto';
   const lastUserMsg = [...normalized].reverse().find((m) => m.role === 'user')?.content || '';
   if (String(lastUserMsg).length > 2000) {
     return res.status(400).json({ error: 'Message too long (max 2000 chars)' });

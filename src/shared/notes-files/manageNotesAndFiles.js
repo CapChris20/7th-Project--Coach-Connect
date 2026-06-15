@@ -38,6 +38,19 @@ import { randomNotesSharedBody } from '../notifications/pushNotificationText';
 const COLLECTION = 'notes_and_files';
 const DOCUMENTS_COLLECTION = 'documents';
 
+import {
+  deserializeSpreadsheetRows,
+  serializeSpreadsheetRows,
+  spreadsheetRowsHaveContent,
+} from './spreadsheetRows';
+
+export { serializeSpreadsheetRows, spreadsheetRowsHaveContent };
+
+function normalizeTrainerSpreadsheetDoc(doc) {
+  if (!doc || doc.type !== 'spreadsheet') return doc;
+  return { ...doc, rows: deserializeSpreadsheetRows(doc.rows) };
+}
+
 async function notifyNotesSharedPush(clientId, addedBy) {
   try {
     if (addedBy === 'trainer') {
@@ -307,7 +320,7 @@ export async function getTrainerDocuments(trainerId) {
       const x = d.data();
       const createdAt = x.createdAt?.toDate?.() || new Date();
       const updatedAt = x.updatedAt?.toDate?.() || createdAt;
-      return { id: d.id, ...x, createdAt, updatedAt };
+      return normalizeTrainerSpreadsheetDoc({ id: d.id, ...x, createdAt, updatedAt });
     });
     list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     return list;
@@ -334,11 +347,23 @@ export async function getTrainerDocument(trainerId, docId) {
     const d = await getDoc(docRef);
     if (!d.exists()) return null;
     const x = d.data();
-    return { id: d.id, ...x, createdAt: x.createdAt?.toDate?.(), updatedAt: x.updatedAt?.toDate?.() };
+    return normalizeTrainerSpreadsheetDoc({
+      id: d.id,
+      ...x,
+      createdAt: x.createdAt?.toDate?.(),
+      updatedAt: x.updatedAt?.toDate?.(),
+    });
   } catch (e) {
     console.warn('getTrainerDocument error:', e?.message || e);
     return null;
   }
+}
+
+/** Load coach-built spreadsheet for viewing — prefers Firestore row grid over Storage URL. */
+export async function resolveTrainerSpreadsheetView(trainerId, documentId) {
+  const doc = await getTrainerDocument(trainerId, documentId);
+  if (!doc || doc.type !== 'spreadsheet') return null;
+  return doc;
 }
 
 /** Push latest title + body excerpt to client notes_and_files stubs for shared trainer documents. */
@@ -408,6 +433,9 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
   const ws = XLSX.utils.aoa_to_sheet(dataRows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   const ab = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  if (!ab || ab.byteLength < 80) {
+    throw new Error('Spreadsheet export produced an empty workbook');
+  }
 
   // Upload xlsx to Storage: uploads/{trainerUid}/spreadsheets/{timestamp}_{title}.xlsx
   const safeName = safeTitle.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -422,7 +450,7 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
   const payload = {
     title: safeTitle,
     type: 'spreadsheet',
-    rows: dataRows,
+    rows: serializeSpreadsheetRows(dataRows),
     columnCount: cols,
     rowCount: rCount,
     ...(formats && typeof formats === 'object' ? { formats } : {}),
@@ -435,16 +463,18 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
 
   const userDocRef = doc(db, 'users', String(trainerId));
   const documentsRef = collection(userDocRef, DOCUMENTS_COLLECTION);
+  const docId = id ? String(id) : doc(documentsRef).id;
+  const docRef = doc(documentsRef, docId);
+  const existingSnap = id ? await getDoc(docRef) : null;
+  const isNew = !existingSnap?.exists();
 
-  if (id) {
-    const docRef = doc(documentsRef, String(id));
-    await setDoc(docRef, payload, { merge: true });
-    return { id, ...payload };
+  if (isNew) {
+    await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), sharedWith: [] }, { merge: true });
+    return { id: docId, ...payload, createdAt: new Date(), sharedWith: [] };
   }
 
-  const newRef = doc(documentsRef);
-  await setDoc(newRef, { ...payload, createdAt: serverTimestamp(), sharedWith: [] }, { merge: true });
-  return { id: newRef.id, ...payload, createdAt: new Date(), sharedWith: [] };
+  await setDoc(docRef, payload, { merge: true });
+  return { id: docId, ...payload };
 }
 
 /** Set sharedWith array and sync stubs in users/{clientId}/notes_and_files for each client. */

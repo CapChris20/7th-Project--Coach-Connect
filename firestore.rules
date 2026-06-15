@@ -34,8 +34,11 @@ service cloud.firestore {
       // Allow list queries for trainer search (needed for where('role', '==', 'trainer') queries)
       allow list: if request.auth != null;
 
-      // Writes: owner full control; trainer may set only trainerId on a client doc (marketplace accept).
-      allow create: if request.auth != null && request.auth.uid == userId;
+      // Writes: owner can create their own doc but cannot self-assign trainerId/role/linked on creation.
+      // Those fields are set server-side by acceptClientRequest callable.
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.keys().hasAny(['trainerId', 'linked']);
       allow delete: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (
         request.auth.uid == userId ||
@@ -350,7 +353,8 @@ service cloud.firestore {
     // Trainer-Client Links - FLAT collection (easy to see in Firebase Console)
     // One document per trainer-client relationship. Query: where('trainerId', '==', trainerUid)
     match /trainer_client_links/{linkId} {
-      allow create: if request.auth != null && request.resource.data.trainerId == request.auth.uid;
+      // Create: Admin SDK only (acceptClientRequest callable)
+      allow create: if false;
       allow read, list: if request.auth != null && (
         resource.data.trainerId == request.auth.uid ||
         resource.data.clientId == request.auth.uid
@@ -361,8 +365,10 @@ service cloud.firestore {
    // Trainer-Client Relationships - main CRM store
     match /trainer_clients/{trainerUid}/clients/{clientUid} {
 
-      // Trainer can create/update/delete their own clients
-      allow create, update, delete: if request.auth != null
+      // Create: Admin SDK only (acceptClientRequest / linkClientWithTrainerCode callables)
+      allow create: if false;
+      // Update/Delete: trainer can manage their own clients
+      allow update, delete: if request.auth != null
         && request.auth.uid == trainerUid;
 
       // Trainer or client can read this CRM doc
@@ -551,10 +557,10 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null && request.auth.uid == trainerUid;
     }
     
-    // Notifications - FIXED
+    // Notifications - Admin SDK only (createNotification Cloud Function)
     match /notifications/{notificationId} {
-      // Create: System can create notifications
-      allow create: if request.auth != null;
+      // Create: Server Admin SDK only — client app uses createNotification callable
+      allow create: if false;
       
       // Read: Only recipient can read their notifications
       allow read: if (

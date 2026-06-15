@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { auth, db } from '../../app/config';
-import { getClientDateKey } from '../../app/dateKey';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';

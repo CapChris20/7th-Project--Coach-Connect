@@ -1213,5 +1213,148 @@ exports.onTrainerSessionCreated = onDocumentCreated(
   }
 );
 
+/**
+ * Callable: Accept a client connection request.
+ *
+ * Writes all 3 CRM surfaces atomically via Admin SDK so client-side rules don't block it.
+ * Body: { messageId, clientUid, trainerUid, clientName, clientGoals, clientExperienceLevel,
+ *         clientEquipment, clientLimitations }
+ */
+exports.acceptClientRequest = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+
+  const {
+    messageId,
+    clientUid,
+    trainerUid,
+    clientName,
+    clientGoals = 'Not specified',
+    clientExperienceLevel = 'Beginner',
+    clientEquipment = 'None',
+    clientLimitations = 'None',
+  } = request.data || {};
+
+  if (request.auth.uid !== trainerUid) {
+    throw new HttpsError('permission-denied', 'Only the trainer can accept requests.');
+  }
+  if (!clientUid || !trainerUid || !messageId) {
+    throw new HttpsError('invalid-argument', 'messageId, clientUid, and trainerUid are required.');
+  }
+
+  const [trainerDoc, clientDoc] = await Promise.all([
+    db.collection('users').doc(trainerUid).get(),
+    db.collection('users').doc(clientUid).get(),
+  ]);
+
+  if (!trainerDoc.exists || trainerDoc.data()?.role !== 'trainer') {
+    throw new HttpsError('invalid-argument', 'Caller is not a trainer.');
+  }
+  if (!clientDoc.exists || clientDoc.data()?.role !== 'client') {
+    throw new HttpsError('invalid-argument', 'Target is not a client.');
+  }
+
+  const alreadyLinked = (
+    await db.collection('trainer_clients').doc(trainerUid).collection('clients').doc(clientUid).get()
+  ).exists;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  if (!alreadyLinked) {
+    const batch = db.batch();
+    const linkId = `${trainerUid}_${clientUid}`;
+    const sharedPayload = {
+      clientId: clientUid,
+      trainerId: trainerUid,
+      name: clientName || 'Client',
+      joinedAt: now,
+      linkedAt: now,
+      status: 'active',
+      active: true,
+      goals: clientGoals,
+      experience: clientExperienceLevel,
+      equipment: clientEquipment,
+      limitations: clientLimitations,
+    };
+
+    batch.set(db.collection('trainer_client_links').doc(linkId), sharedPayload, { merge: true });
+    batch.set(
+      db.collection('trainer_clients').doc(trainerUid).collection('clients').doc(clientUid),
+      sharedPayload,
+      { merge: true }
+    );
+    batch.set(db.collection('users').doc(clientUid), { trainerId: trainerUid }, { merge: true });
+    batch.set(db.collection('events').doc(), {
+      type: 'client_onboarded',
+      trainerUid,
+      clientUid,
+      timestamp: now,
+    });
+
+    await batch.commit();
+  }
+
+  await db.collection('messages').doc(messageId).update({
+    status: 'accepted',
+    responseTimestamp: now,
+  });
+
+  return { success: true, alreadyLinked };
+});
+
+/**
+ * Callable: Create a notification document via Admin SDK.
+ *
+ * Verifies active CRM link before writing to prevent notification spam.
+ * Body: { recipientUid, trainerUid, clientUid, type, title, body, data? }
+ */
+exports.createNotification = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+
+  const {
+    recipientUid,
+    trainerUid,
+    clientUid,
+    type,
+    title,
+    body: notifBody,
+    data = {},
+  } = request.data || {};
+
+  if (!recipientUid || !type) {
+    throw new HttpsError('invalid-argument', 'recipientUid and type are required.');
+  }
+
+  const callerUid = request.auth.uid;
+  if (callerUid !== trainerUid && callerUid !== clientUid) {
+    throw new HttpsError('permission-denied', 'Caller must be one of the parties in the notification.');
+  }
+
+  if (trainerUid && clientUid) {
+    const linked = await db
+      .collection('trainer_clients')
+      .doc(trainerUid)
+      .collection('clients')
+      .doc(clientUid)
+      .get();
+    if (!linked.exists) {
+      throw new HttpsError('permission-denied', 'No active trainer-client link.');
+    }
+  }
+
+  const ref = await db.collection('notifications').add({
+    recipientUid,
+    trainerUid: trainerUid || null,
+    clientUid: clientUid || null,
+    type,
+    title: title || '',
+    body: notifBody || '',
+    data,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { success: true, notificationId: ref.id };
+});
+
 // Day-14 macro recalibration (6 AM America/Detroit)
 Object.assign(exports, require('./macroRecalibrationFunction'));

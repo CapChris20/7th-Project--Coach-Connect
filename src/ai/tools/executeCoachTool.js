@@ -13,7 +13,7 @@
  */
 import { auth, db } from '../../app/config';
 import { collection, addDoc, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { getClientDateKey } from '../../app/dateKey';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
 import {
   mergeClientDailyMetrics,
   saveDashboardMetricField,

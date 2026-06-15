@@ -87,24 +87,7 @@ const SCREEN_PAD = 16;
 const GRID_GUTTER = 16;
 const TWO_COL_ITEM = (width - SCREEN_PAD * 2 - GRID_GUTTER) / 2;
 
-/** Firestore rejects `undefined` anywhere in nested objects — strip before writes. */
-function stripUndefinedForFirestore(input) {
-  if (input === undefined) return undefined;
-  if (input === null || typeof input !== 'object') return input;
-  if (Array.isArray(input)) {
-    return input
-      .map((item) => stripUndefinedForFirestore(item))
-      .filter((item) => item !== undefined);
-  }
-  const out = {};
-  for (const [key, val] of Object.entries(input)) {
-    if (val === undefined) continue;
-    const next = stripUndefinedForFirestore(val);
-    if (next === undefined) continue;
-    out[key] = next;
-  }
-  return out;
-}
+import { stripUndefinedForFirestore } from '../shared/utils/firestoreSanitize';
 
 // --- Onboarding UI primitives (rest of components live in this file; tokens + primary CTA in onboardingAiDeps.jsx) ---
 

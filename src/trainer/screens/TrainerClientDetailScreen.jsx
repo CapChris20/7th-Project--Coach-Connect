@@ -27,7 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../app/config';
-import { getDateKey } from '../../app/dateKey';
+import { getDateKey } from '../../shared/utils/dateKeys';
 import {
   getTrainerDocuments,
   filterTrainerDocumentsForClient,

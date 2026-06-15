@@ -437,7 +437,7 @@ function buildHeroSnapshot(report) {
     { key: 'steps', label: 'Steps', icon: 'footsteps-outline', accent: WR_STAT_BAR.steps },
     { key: 'energy', label: 'Energy', icon: 'flash-outline', accent: WR_STAT_BAR.energy },
   ]
-    .map((m) => ({ ...m, value: formatHeroMetricValue(m.key, report) }))
+    .map((m) => ({ ...m, value: formatHeroMetricValue(m.key, report), pct: metricProgressPct(m.key, report) }))
     .filter((m) => m.value);
 
   const weight = formatHeroMetricValue('weight', report);
@@ -458,28 +458,48 @@ function buildHeroSnapshot(report) {
 function HeroMetricsList({ items }) {
   const t = useWRTheme();
   if (!items.length) return null;
+  const barTrack = t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
   return (
-    <View style={[styles.heroMetricsCard, { backgroundColor: t.badge, borderColor: t.border }]}>
-      {items.map((m, i) => (
-        <View key={m.key}>
-          {i > 0 ? <View style={[styles.heroMetricDivider, { backgroundColor: t.border }]} /> : null}
-          <View style={styles.heroMetricRow}>
-            <WRMetricIcon metricKey={m.key} size={36} imageSize={20} />
-            <Text style={[styles.heroMetricLabel, { color: t.textSecondary }]}>{m.label}</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      {items.map((m) => {
+        const pctNum = typeof m.pct === 'number' ? Math.min(Math.max(m.pct, 0), 1) : 0;
+        const pctStr = `${Math.round(pctNum * 100)}%`;
+        return (
+          <View
+            key={m.key}
+            style={{
+              flex: 1,
+              minWidth: '44%',
+              backgroundColor: t.badge,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: t.border,
+              padding: 14,
+              gap: 6,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <WRMetricIcon metricKey={m.key} size={32} imageSize={18} />
+              <Text style={{ color: t.textLabel, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' }}>
+                {pctStr}
+              </Text>
+            </View>
             <BrandGradientStrokeText
               fillColor={t.textPrimary}
-              fontSize={17}
-              fontWeight="800"
-              letterSpacing={-0.2}
+              fontSize={22}
+              fontWeight="900"
+              letterSpacing={-0.5}
               numberOfLines={1}
-              textAnchor="end"
-              style={styles.heroMetricValue}
             >
               {m.value}
             </BrandGradientStrokeText>
+            <Text style={{ color: t.textSecondary, fontSize: 12, fontWeight: '600' }}>{m.label}</Text>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: barTrack, overflow: 'hidden', marginTop: 2 }}>
+              <View style={{ height: '100%', width: `${Math.round(pctNum * 100)}%`, borderRadius: 2, backgroundColor: m.accent || t.pink }} />
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -1080,13 +1100,23 @@ function DayCard({ index, dayLine }) {
 
           {!open && !empty && pills.length > 0 ? <DayPreviewStrip pills={pills} /> : null}
           {!open && empty ? (
-            <Text style={[styles.dayEmptyHint, { color: t.textLabel }]}>No check-in logged</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <Ionicons name="moon-outline" size={16} color={t.textLabel} />
+              <Text style={[styles.dayEmptyHint, { color: t.textSecondary, marginTop: 0 }]}>
+                No check-in logged — tap to add notes when you check in.
+              </Text>
+            </View>
           ) : null}
 
           {open ? (
             <View style={styles.dayExpanded}>
               {empty ? (
-                <Text style={[styles.bodySecondary, { color: t.textSecondary }]}>No check-in for this day.</Text>
+                <View style={{ alignItems: 'center', paddingVertical: 12, gap: 8 }}>
+                  <Ionicons name="calendar-outline" size={28} color={t.textLabel} />
+                  <Text style={[styles.bodySecondary, { color: t.textSecondary, textAlign: 'center' }]}>
+                    No check-in for this day yet.
+                  </Text>
+                </View>
               ) : (
                 <DayDetailBody note={parsed.note} recovery={recovery} />
               )}

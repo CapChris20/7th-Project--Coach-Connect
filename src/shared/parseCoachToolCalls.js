@@ -211,6 +211,9 @@ function stripCoachToolJsonFromReply(text) {
     out = out.slice(0, namedTail.index).trimEnd();
   }
 
+  // Strip numeric citation brackets like [2][3] from web-search replies
+  out = out.replace(/\s*\[\d+\](?:\[\d+\])*/g, '').trim();
+
   return out.replace(/\n{3,}/g, '\n\n').trim();
 }
 

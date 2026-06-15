@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { EditorGradientBorder, EditorGradientIcon } from './editorGradients';
 
 /** Shown in UI only — never saved as the file title. */
-export const EDITOR_NAME_PLACEHOLDER = 'Add a name…';
+export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
 /** Firestore fallback when the user leaves the name blank. */
 export const DEFAULT_SAVE_TITLE_DOCUMENT = 'Document';
 export const DEFAULT_SAVE_TITLE_SPREADSHEET = 'Spreadsheet';

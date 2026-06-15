@@ -53,6 +53,13 @@ export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
       if (!res.ok) {
         const err = new Error(payload?.message || payload?.error || `Request failed (${res.status})`);
         err.httpStatus = res.status;
+        // Stale Cloud Run revision or server down — try next base (e.g. local npm run server).
+        const retryable = [404, 502, 503, 504].includes(res.status);
+        if (retryable) {
+          logApiAttempt('workout/generate', url, err);
+          lastErr = err;
+          continue;
+        }
         err.fromHttpResponse = true;
         throw err;
       }
@@ -79,9 +86,11 @@ export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
   const msg = String(lastErr?.message || '');
   const hint = msg.includes('timed out')
     ? 'The server took too long. Try again on Wi-Fi.'
-    : msg.includes('AI provider unavailable')
-      ? 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh'
-      : 'Could not reach the workout API. Check internet, then reload with: npm start (dev build).';
+    : msg.includes('404') || lastErr?.httpStatus === 404
+      ? 'Workout API missing on Cloud Run (stale deploy). Run: npm run server — or redeploy with ./server/deploy.sh'
+      : msg.includes('AI provider unavailable')
+        ? 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh'
+        : 'Could not reach the workout API. Check internet, then reload with: npm start (dev build).';
   throw lastErr || new Error(`${hint}${tried ? ` Tried: ${tried}` : ''}`);
 }
 

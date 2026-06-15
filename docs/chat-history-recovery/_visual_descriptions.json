@@ -1,0 +1,986 @@
+{
+  "1": {
+    "onScreen": "Dark-mode trainer onboarding screen titled \"What certifications do you have?\" with subtitle \"Select all that apply.\" List options (NASM-CPT, ACE, ISSA, ACSM, NSCA-CPT, Other, No formal certification) each show a small pink ribbon icon on the left. Disabled grey \"Continue\" button at bottom.",
+    "issue": "User dislikes the pink ribbon icon style/color on certification option cards for both sides of onboarding."
+  },
+  "2": {
+    "onScreen": "Dark-mode trainer onboarding screen \"How long have you been training clients?\" with five experience options (Less than 1 year through 10+ years), each with a small hourglass icon. Disabled \"Continue\" button at bottom with low contrast.",
+    "issue": "User wants different icon treatment than the current hourglass icons on experience selection cards."
+  },
+  "3": {
+    "onScreen": "Dark-mode \"Availability & session format\" onboarding screen. \"Available now\" is selected under AVAILABILITY; SESSION TYPE shows Remote, In-person, and Both unselected. Subscription tiers note at top. Disabled \"Continue\" button at bottom.",
+    "issue": "User objects to the icon/color styling on onboarding option cards (same complaint as other trainer onboarding screens)."
+  },
+  "4": {
+    "onScreen": "Light-mode app splash/header showing \"COACH CONNECT\" branding in black and pink, tagline \"One Day or Day One!\" in a pill box, and a crescent-moon theme toggle in the top-left. Soft lavender background.",
+    "issue": "User wants a black or white border added to the branding card for better definition in light mode."
+  },
+  "5": {
+    "onScreen": "Dark-mode splash screen with deep purple background, \"COACH CONNECT\" title (white + pink), \"One Day or Day One!\" in a white-bordered pill, and sun icon theme toggle top-left.",
+    "issue": "User wants a black or white border on the branding card in dark mode as well."
+  },
+  "6": {
+    "onScreen": "Dark-mode \"Coaching Payment\" bottom sheet for trainer Chris at $250/mo. Placeholder box reads \"Payment method — coming soon: Stripe card input will appear here.\" Pink-purple gradient \"Confirm\" and \"Cancel\" buttons. VS Code file tree visible beside simulator.",
+    "issue": "Stripe payment integration is still a placeholder — user frustrated (\"bro what the fuck\")."
+  },
+  "7": {
+    "onScreen": "Dark-mode Settings BILLING section with one row: credit card icon, \"Coaching subscription\", status pill \"No active subscription\", chevron right.",
+    "issue": "Subscription shows inactive despite user expectation of an active coaching subscription."
+  },
+  "8": {
+    "onScreen": "Xcode dark mode, CoachConnect target, Signing & Capabilities tab. Bundle ID com.coachconnect.app, Personal Team. Red errors: Personal teams don't support Sign in with Apple and Push Notifications; no provisioning profiles found.",
+    "issue": "Xcode signing fails because Push Notifications and Sign in with Apple require a paid developer account."
+  },
+  "9": {
+    "onScreen": "Xcode Signing & Capabilities for CoachConnect, bundle com.coachconnect.app. Red error \"Failed Registering Bundle Identifier\" — identifier unavailable; second error no matching provisioning profiles. Try Again button visible.",
+    "issue": "Bundle identifier com.coachconnect.app is already taken/unavailable for this team."
+  },
+  "10": {
+    "onScreen": "Same Xcode Signing screen as #9: com.coachconnect.app, Personal Team, automatic signing enabled. Two red errors about bundle registration failure and missing profiles.",
+    "issue": "Duplicate screenshot of bundle ID registration failure blocking iOS build."
+  },
+  "11": {
+    "onScreen": "Xcode Issue Navigator showing 371 warnings/errors across Pods dependencies (ExpoModulesCore 280, react-native-webview 11, etc.). Main pane shows Pods project General tab, iOS 15.1 deployment, \"Indexing | Processing files\" in toolbar.",
+    "issue": "Massive build warning count (371) from CocoaPods dependencies alarming the user."
+  },
+  "12": {
+    "onScreen": "Xcode Signing & Capabilities for CoachConnect with bundle com.chrisshina.coachconnect, automatic signing successful. Apple Development certificate shown. Yellow warning triangle in toolbar, indexing in progress.",
+    "issue": "User verifying signing after changing bundle ID; build still has warnings."
+  },
+  "13": {
+    "onScreen": "Xcode dark mode with project \"7th Project- Co...nect Mobile App\" in navigator. Main editor empty showing \"No Editor\", status \"Ready | Today at 12:59 AM\".",
+    "issue": "Context screenshot — Xcode open but no file selected, not a UI bug."
+  },
+  "14": {
+    "onScreen": "iPhone simulator over VS Code showing Google OAuth error page: \"Access blocked: This app's request is invalid\" with Error 400 redirect_uri_mismatch. ClientApp.js highlighted in file tree.",
+    "issue": "Google Sign-In fails with redirect_uri_mismatch OAuth configuration error."
+  },
+  "15": {
+    "onScreen": "Light-mode client onboarding \"What equipment do you have access to?\" with gym illustration and equipment cards (Full Gym, Dumbbells with icon, Resistance Bands, Pull-up Bar, Bodyweight Only). Disabled Continue button overlaps bottom cards.",
+    "issue": "Missing icons on most equipment cards and Continue button overlapping content — layout bug."
+  },
+  "16": {
+    "onScreen": "Light-mode onboarding footer close-up: \"0/500\" character counter, grey \"Skip\" text button, red-orange gradient \"Continue\" button. VS Code sidebar visible on right.",
+    "issue": "User showing button styling/layout at bottom of an onboarding step."
+  },
+  "17": {
+    "onScreen": "Dark-mode calorie/macro goal screen showing \"kcal / day\", pink \"Calculate for me\" link, estimated macros \"Protein: 150g · Carbs: 200g · Fat: 67g\", purple-orange gradient \"Next\" button. Large empty middle area.",
+    "issue": "Calorie input field appears missing/cut off with excessive empty space — layout issue."
+  },
+  "18": {
+    "onScreen": "Dark-mode Messages screen, empty state \"No conversations yet\" with purple speech bubble icon. Red error toast: \"Firestore listener error: FirebaseError: The q...\". Bottom nav on Messages tab. VS Code with ClientApp.js visible.",
+    "issue": "Firestore listener error preventing conversations from loading."
+  },
+  "19": {
+    "onScreen": "Dark-mode food search landing with pink magnifying glass icon, \"Search for food\" heading, subtitle about packaged foods/restaurants, six pink tag chips (Chicken Breast, Brown Rice, Greek Yogurt, Avocado, Salmon, Oatmeal).",
+    "issue": "Reference screenshot of food search empty state — no visible bug."
+  },
+  "20": {
+    "onScreen": "Dark-mode Nutrition dashboard: search bar with food suggestions, central ring \"START LOGGING\" showing 1,985 of 1,985 remaining calories, three macro rings (Protein 150g, Carbs 200g, Fat 65g) all at 0%. Nutrition tab active.",
+    "issue": "Empty-state nutrition dashboard reference — no bug visible."
+  },
+  "21": {
+    "onScreen": "Dark-mode Workout area showing Age 21 and Gender Male profile cards partially obscured by overlay reading \"0 of 3 plans used this month\" with \"Open Plan\" and \"Generate New\" buttons. Workout tab highlighted in bottom nav.",
+    "issue": "Plan usage overlay poorly positioned over personal info cards — layout/navigation conflict."
+  },
+  "22": {
+    "onScreen": "Dark-mode Add Food screen with search bar, NUTRITION DATA disclaimer card (Calories/Protein/Macros/Menus chips), orange \"Load previous history\" button. VS Code terminal shows successful food search debug logs.",
+    "issue": "Reference screenshot documenting Add Food UI and working backend search."
+  },
+  "23": {
+    "onScreen": "Light-mode Add Food screen — same layout as #22: search bar, nutrition accuracy disclaimer card, \"Load previous history\" gradient button, Nutrition tab active in bottom nav.",
+    "issue": "Light-mode reference for Add Food screen styling."
+  },
+  "24": {
+    "onScreen": "Dark-mode Workout Plans (Trainer) screen with AI disabled message. Text input contains \"I'd like a intermediate Build muscle plan. I can train 4. Sessions: afternoon.\" Pink \"Send Request\" button. Profile Cards onboarding snapshot below.",
+    "issue": "AI workout generation disabled; user must manually request plan from trainer."
+  },
+  "25": {
+    "onScreen": "Light-mode Home/Dashboard for user Cade: welcome card with weightlifter illustration and motivation quote, date/time card \"Saturday, May 30\" at 7:12:42 PM, dashboard overview section. VS Code deployment logs visible behind simulator.",
+    "issue": "Reference screenshot of completed home dashboard — no bug visible."
+  },
+  "26": {
+    "onScreen": "Light-mode welcome card close-up: \"Good Evening, Cade!\", \"WELCOME TO Coach Connect\", motivation quote box, date card showing Saturday May 30 at 7:18:12 PM with Evening icon.",
+    "issue": "User showing welcome card design for review/refinement."
+  },
+  "27": {
+    "onScreen": "Dark-mode motivation quote card with pink-purple gradient border: \"When you feel like quitting, think about why you started.\" — Daily Motivation. Partial bar chart visible at left edge.",
+    "issue": "User reviewing daily motivation quote card styling in dark mode."
+  },
+  "28": {
+    "onScreen": "Dark-mode health metrics 2×2 grid: Sleep 10 \"On track\", Water 90 \"Well hydrated\", Weight 172 \"172 lbs\", Steps 9087 \"9087 steps\". Purple/orange number colors on dark purple cards.",
+    "issue": "User reviewing metric card styling — weight uses different color than other metrics."
+  },
+  "29": {
+    "onScreen": "Dark-mode same metrics grid as #28 but numbers use purple-to-orange gradient and cards have gradient borders. Values: Sleep 10, Water 90, Weight 172, Steps 9087.",
+    "issue": "User comparing gradient-styled metric cards (\"ok but i dont want this either\" — rejects this styling)."
+  },
+  "30": {
+    "onScreen": "Dark-mode metrics grid variant: Sleep 10, Water 90 (light purple), Weight 172 (tan/gold), Steps 9087. Cards on dark purple background without gradient borders.",
+    "issue": "User rejecting this alternate metric card color scheme."
+  },
+  "31": {
+    "onScreen": "Dark-mode metrics grid with gradient top-edge borders on cards. Sleep 10, Water 90 (purple), Weight 172 (orange), Steps 9087 (purple). Charcoal background.",
+    "issue": "Another metric card styling variant user is rejecting."
+  },
+  "32": {
+    "onScreen": "Dark-mode Coach Connect landing/splash: gradient-bordered header \"COACH CONNECT\" and \"One Day or Day One!\", sun theme toggle, circular illustrations below (AI assistant and stopwatch/checklist).",
+    "issue": "User reviewing landing page header/branding design."
+  },
+  "33": {
+    "onScreen": "Dark-mode Daily Metrics dashboard: Energy 6/5 (exceeds max), Stress 6/10, Mood 2/10, Soreness 4/10, Steps 9087. Each card has icon, cyan progress bar, \"Today\" label. Bottom nav visible.",
+    "issue": "Energy value 6 exceeds stated maximum of 5 — data validation bug."
+  },
+  "34": {
+    "onScreen": "Dark-mode chat header overlay: profile photo, name \"Cade Cunni...\" truncated, \"Offline\" orange dot, \"Client\" badge with pink checkmark, \"Close\" button. Chat bubble: \"Hi! I'd like to work with you as my trainer.\"",
+    "issue": "Client name truncated unnecessarily in chat header."
+  },
+  "35": {
+    "onScreen": "Dark-mode workout plans list with two identical \"Workout plan • May 17, 2026\" cards (8 weeks, 3 days/wk, 1 exercis...). Pink-orange \"Open workout plan\" buttons. Search bar \"Search plans or muscle groups\" at top.",
+    "issue": "Duplicate identical workout plan cards rendered twice."
+  },
+  "36": {
+    "onScreen": "Dark-mode two plan cards: top \"Workout plan • May 17, 2026\" with 1 exercis..., bottom \"AI Plan – May 17, 2026\" with 18 exerc... Both 8 weeks, 3 days/wk. Open workout plan buttons on each.",
+    "issue": "Manual plan shows only 1 exercise vs AI plan's 18 — data inconsistency."
+  },
+  "37": {
+    "onScreen": "Dark-mode spreadsheet editor \"Untitled spreadsheet\": grid A-D rows 1-11, cell C3 selected with pink border. Toolbar has B/I/S and three buttons showing \"?\" placeholders. Formula bar \"fx Enter value or =formula\". Status \"Saved 22s ago\".",
+    "issue": "Spreadsheet toolbar icons missing — showing question mark placeholders."
+  },
+  "38": {
+    "onScreen": "Dark-mode spreadsheet same as #37 but cell A1 selected, three pink \"?\" icon buttons in toolbar, status \"Saved just now\".",
+    "issue": "Same missing toolbar icon bug on spreadsheet screen."
+  },
+  "39": {
+    "onScreen": "Dark-mode spreadsheet toolbar close-up: green \"Saved\" dot, Share button (pink border), Export CSV, Add, ellipsis menu, star and sun icons top-right.",
+    "issue": "User reviewing spreadsheet action bar layout and Share button styling."
+  },
+  "40": {
+    "onScreen": "Dark-mode Spreadsheet screen with grid A-D rows 1-8, cell B2 selected with blue-orange gradient fill matching highlighted center-align toolbar button. Formatting toolbar (B/I/S, Row+/Row-), formula bar, \"Saved\" status, bottom nav.",
+    "issue": "Gradient styling leaking to both toolbar active state and selected cell — visual styling bug."
+  },
+  "41": {
+    "onScreen": "Dark-mode Weekly Report for Cade, week May 11–17 2026. Shows 4/7 check-ins, averages Sleep 10.2h, Water 85oz, Steps 10.9k, Energy 4.5/5. Highlights include avg weight 178 lbs. Home tab active.",
+    "issue": "Weekly report UI reference — dates show May 2026 (future/mock data)."
+  },
+  "42": {
+    "onScreen": "Dark-mode daily breakdown card for Monday May 11 with Workout tag. Metric grid: Sleep 11.5h, Water 85oz, Steps 11.5k, Energy 4/5, Mood 2/10, etc. Workout lists Chest DB Press and Bench Press. Notes: \"I like men.\"",
+    "issue": "Inappropriate/test note text visible in professional fitness log."
+  },
+  "43": {
+    "onScreen": "Dark-mode expanded Thursday May 14 workout day card with pink Workout badge. SUMMARY reads \"workout rating 5/10.\" Chevron up indicating expanded state.",
+    "issue": "User reviewing weekly report day card layout and summary text formatting."
+  },
+  "44": {
+    "onScreen": "Dark-mode Saturday May 16 day card: Sleep 10h, Water 90oz tiles, Workout badge, SUMMARY \"Weight 178 lbs.\" Collapsible header with day number 6.",
+    "issue": "Reference for weekly report Saturday entry layout."
+  },
+  "45": {
+    "onScreen": "Dark-mode weekly day list Tue May 12–Fri May 15. Tue/Wed/Fri collapsed \"No check-in logged\"; Thu May 14 expanded with Training badge and \"workout rating 5/10\" summary.",
+    "issue": "Most days show no check-in while Thursday has data — sparse logging state."
+  },
+  "46": {
+    "onScreen": "Dark-mode CoachConnect Session Scheduling info screen for client Cade Cunningham. Calendar/List toggle, \"Plan sessions like a pro\" card with four colored checkmark bullet points explaining filtered calendar.",
+    "issue": "Informational overlay explaining single-client calendar filter — no bug."
+  },
+  "47": {
+    "onScreen": "Dark-mode May 2026 calendar with dates 8, 12, 13, 18, 27 marked with pink dots. Below: \"Tap a day\" and instruction to see Cade Cunningham's sessions.",
+    "issue": "Calendar session dots visible but no day selected yet — empty detail state."
+  },
+  "48": {
+    "onScreen": "Light-mode Session Scheduling info screen — same content as #46 but light theme. Calendar toggle selected pink, Cade Cunningham filtered view explanation.",
+    "issue": "Light-mode variant of session scheduling onboarding card."
+  },
+  "49": {
+    "onScreen": "Light-mode calendar partial view showing date 31 with pink dot. \"Tap a day\" heading and grey box: \"Tap a day to see Cade Cunningham's sessions for that date.\"",
+    "issue": "Empty state persists despite date 31 having session dot indicator."
+  },
+  "50": {
+    "onScreen": "Light-mode horizontal tab bar: Progress, Nutrition, blank gradient-bordered pill (no label), Notes & Files. Purple-red gradient card tops visible above.",
+    "issue": "Third tab button is completely blank — missing label text bug."
+  },
+  "51": {
+    "onScreen": "Dark-mode full Session Scheduling screen with Calendar selected, four info bullets, pink \"+ New session\" button, May 2026 calendar with May 8 highlighted.",
+    "issue": "User reviewing session scheduling layout with New session CTA placement."
+  },
+  "52": {
+    "onScreen": "Dark-mode date/time picker: DATE columns Day 30, May, 2026 selected; TIME columns 9, 00, AM selected with pink-orange highlight borders. Large gaps above MIN and AM/PM values.",
+    "issue": "Time picker wheel columns have empty gaps — scroll/render alignment bug."
+  },
+  "53": {
+    "onScreen": "Dark-mode trainer profile: CREDENTIALS (ACE, 1-2 years, Weight Loss/Strength), COACHING PHILOSOPHY quote \"I'm the best coach in all of Detroit.\", AVAILABILITY & SESSIONS cards with gradient borders.",
+    "issue": "Profile summary reference — no functional error visible."
+  },
+  "54": {
+    "onScreen": "Dark-mode WEIGHT card: Before 183, Current 172, green down arrow 11 lbs loss. Last 7 days cyan line graph without axis labels.",
+    "issue": "Weight trend graph lacks axis labels and data points for readability."
+  },
+  "55": {
+    "onScreen": "Dark-mode Exercise Library tab active. Search bar, filter chips (Body Recomp, Fat Loss), RECOMMENDED FOR YOU with Jeremy Ethier and Liftwsarah video cards (titles truncated). Workout nav highlighted.",
+    "issue": "Recommended video card titles truncated (\"Build Mu...\", \"Backe...\")."
+  },
+  "56": {
+    "onScreen": "Dark-mode Exercise Library with Body Recomp filter selected. BODY RECOMP RESULTS shows \"No results\" while pink loading spinner still active. Search bar and filter chips visible.",
+    "issue": "Empty state shown simultaneously with loading spinner — UI state conflict."
+  },
+  "57": {
+    "onScreen": "Dark-mode exercise video detail for Taliyah Joelle \"HOW TO BUILD MUSCLE AND LOSE FAT\". Black video player with pink loading spinner, Inline/Theater toggles, ABOUT promo text, FORM TIPS numbered list. VS Code visible.",
+    "issue": "Video stuck buffering — never loads in player."
+  },
+  "58": {
+    "onScreen": "Dark-mode AI coach chat input bar close-up: pink + button, \"Ask your coach...\" field with cursor, pink mic icon, dark red send arrow button.",
+    "issue": "Chat input UI reference — no error in crop."
+  },
+  "59": {
+    "onScreen": "Dark-mode Nutrition Settings: daily calorie target 1985 kcal/day, estimated split P149g C199g F66g, macro inputs Protein 150g Carbs 200g Fat 65g, Save goals gradient button, Reset to onboarding.",
+    "issue": "Estimated split values don't match manual macro inputs — sync/rounding discrepancy."
+  },
+  "60": {
+    "onScreen": "Same Nutrition Settings as #59 close-up highlighting Fat card with automotive oil-can icon instead of food icon.",
+    "issue": "Wrong icon used for Fat macro (oil can instead of nutrition icon)."
+  },
+  "61": {
+    "onScreen": "Dark-mode Set your numbers screen: CALORIES PER DAY 1985 with -50/+50 buttons, macro rows Protein 150g Carbs 200g Fat 65g with colored bars, Save goals and Reset links.",
+    "issue": "Header \"Nutr\" overlaps status bar — safe area/padding bug."
+  },
+  "62": {
+    "onScreen": "Dark-mode Weekly Plan summary: PLAN SUMMARY card (4 weeks left, muscle building focus), Overview paragraph for 3-day PPL program, Monday training day row, Save to Library button.",
+    "issue": "Generated workout plan display reference — renders correctly."
+  },
+  "63": {
+    "onScreen": "Dark-mode Weekly Plan TRAINING DAYS: Monday Push and Wednesday Pull cards listing exercises with sets/reps/rest, +2 more exercises each, Save to Library button. VS Code workout screens visible.",
+    "issue": "Workout plan detail view reference — no visible bug."
+  },
+  "64": {
+    "onScreen": "Dark-mode Weekly Plan Friday leg workout card and Recovery Days Tuesday rest card. \"+ 2 more exercises\" duplicated top and bottom of Friday card. Save to Library button.",
+    "issue": "Duplicate \"+ 2 more exercises\" label on Friday workout card."
+  },
+  "65": {
+    "onScreen": "Dark-mode Weekly Plan recovery cards for Thu/Sat/Sun rest days with mobility/sleep activities, Save to Library gradient button, Workout tab active.",
+    "issue": "Recovery day cards layout reference."
+  },
+  "66": {
+    "onScreen": "Dark-mode Weekly Plan Sunday Rest & Recovery detail: 4 focus area cards (sleep, mobility, meal prep, stress) with truncated descriptions, Save to Library button.",
+    "issue": "Recovery focus area descriptions all truncated with ellipses."
+  },
+  "67": {
+    "onScreen": "Dark-mode recovery step detail 01/04: \"8–9 hours sleep\" with TYPE/DURATION/FOCUS chips and GUIDANCE numbered tips, Previous/Next navigation.",
+    "issue": "Recovery step detail screen reference — renders correctly."
+  },
+  "68": {
+    "onScreen": "Dark-mode AI Coach welcome: \"Good Morning, Cade Cunningham!\", robot illustration, \"Ask your coach...\" input, AI Coach tab active.",
+    "issue": "Empty AI chat state — no prior conversation history shown."
+  },
+  "69": {
+    "onScreen": "Dark-mode close-up of \"Export / View PDF\" button with download icon, rounded dark grey pill on black background.",
+    "issue": "User testing or reporting PDF export button functionality."
+  },
+  "70": {
+    "onScreen": "Dark-mode iPhone status bar 1:18 AM, back arrow, Workout Plans tab active (pink underline) and Exercise Library tab inactive.",
+    "issue": "Tab bar styling reference for Workout section."
+  },
+  "71": {
+    "onScreen": "Dark-mode Nutrition dashboard: 2,000 of 2,000 remaining calories, macro rings 0/150g protein, 0/200g carbs, 0/67g fat, search suggestions, Weekly Momentum card.",
+    "issue": "Nutrition empty state with updated 2000 calorie target."
+  },
+  "72": {
+    "onScreen": "Dark-mode AI coach chat: two bot messages at 1:26 AM about 6 hours sleep — one says tap Confirm, second says already logged. Input bar at bottom.",
+    "issue": "Contradictory duplicate bot messages about sleep logging status."
+  },
+  "73": {
+    "onScreen": "Dark-mode AI chat: user logs energy 4/10, AI says already handled, user corrects \"No its not\", AI apologizes and retries. Timestamps 1:30-1:31 AM.",
+    "issue": "AI falsely claimed energy was already logged before user request."
+  },
+  "74": {
+    "onScreen": "Dark-mode AI chat bubble showing raw JSON tool call {\"toolName\":\"rateEnergy\",\"parameters\":{\"rating\":4}} exposed to user with Confirm instruction text.",
+    "issue": "Raw tool-call JSON leaked in chat instead of Confirm UI component."
+  },
+  "75": {
+    "onScreen": "Dark-mode AI chat: user asks to open workout plan, AI gives manual nav instructions to Workout > AI Plans, says it can't open directly. Input bar visible.",
+    "issue": "AI coach cannot deep-link user to workout plan on request."
+  },
+  "76": {
+    "onScreen": "Dark-mode AI chat: user asks to book trainer session Tuesday 10am. AI says tap Confirm then immediately \"Session booked\" at 1:34 AM without visible Confirm UI.",
+    "issue": "Session marked booked before user confirms — booking flow logic error."
+  },
+  "77": {
+    "onScreen": "Dark-mode AI chat with \"Create deload week?\" modal citing high RPE and low sleep. Background AI message says it lacks RPE/sleep data. Cancel and Create buttons.",
+    "issue": "Deload modal claims fatigue data AI simultaneously says it doesn't have."
+  },
+  "78": {
+    "onScreen": "Dark-mode Messages with trainer Chris (Offline). Chat history May 11-18 with welcome, rejection, and unprofessional messages including \"Fuck i\". Bottom nav visible.",
+    "issue": "Unprofessional/hostile chat content and truncated coach message."
+  },
+  "79": {
+    "onScreen": "Dark-mode AI Coach chat over VS Code: user asks what food logged today/for 05/31. AI says it can't access food log data, only current session. Debug logs visible.",
+    "issue": "AI coach cannot retrieve historical nutrition log data from Firestore."
+  },
+  "80": {
+    "onScreen": "Dark-mode Nutrition dashboard: CONSUMED 990 of 1,900 kcal, macros Protein 74/160g, Carbs 117/180g, Fat 26/55g. Search chips for pizza and McNuggets.",
+    "issue": "Nutrition data exists but AI can't see it — context sync issue."
+  },
+  "81": {
+    "onScreen": "Dark-mode AI chat with white \"Action failed\" modal: couldn't look up nutrition for delete command. User asked to remove two pizza slices. VS Code and desktop visible.",
+    "issue": "Delete food command wrongly routed to nutrition lookup instead of deletion."
+  },
+  "82": {
+    "onScreen": "Dark-mode AI chat: user \"Remove the two pizza slices from today\". AI confirms removal then \"Action failed\" modal: no logs found for 2026-05-31 matching 'two pizza slices'.",
+    "issue": "Food deletion fails — no matching log entries found."
+  },
+  "83": {
+    "onScreen": "Dark-mode AI chat 7:02 PM: user asks remove today's food logs. AI says none found today, last log May 31 pizza 580 cal. Delete last food entry card with Confirm Action button.",
+    "issue": "AI can't see/remove today's food logs despite user expectation."
+  },
+  "84": {
+    "onScreen": "Dark-mode Nutrition dashboard beside VS Code: 290/1900 kcal, Protein 12/160g, Carbs 36/180g, Fat 11/55g. Terminal logs confirm macro calculations.",
+    "issue": "Dev verification that nutrition UI matches backend calculation logs."
+  },
+  "85": {
+    "onScreen": "Dark-mode iOS action sheet: Photo Library, Camera, File, Cancel. Background AI chat input \"What do u see in this image\" partially visible.",
+    "issue": "Image upload picker for AI vision feature — functional state."
+  },
+  "86": {
+    "onScreen": "Dark-mode AI Coach welcome for Cade Cunningham with uploaded photo thumbnail in chat. Input: \"What do u see in this photo\". macOS desktop with screenshots visible.",
+    "issue": "User testing AI photo vision capability."
+  },
+  "87": {
+    "onScreen": "Dark-mode AI Coach long message analyzing weight drop 180→172 lbs, 648 cal/day average, recommends 1900 cal and 160g protein. Says it can't see photos. 7:53 PM.",
+    "issue": "AI admits no photo vision but provides data-driven nutrition critique."
+  },
+  "88": {
+    "onScreen": "React Native red error screen: Unable to resolve module ../services/clientCRMService from ConversationsListScreen.js line 29. Dismiss/Reload/Copy/Extra Info buttons.",
+    "issue": "Missing clientCRMService module breaks ConversationsListScreen."
+  },
+  "89": {
+    "onScreen": "Dark-mode Energy Level card: RATING LOGGED, \"You rated: 5 out of 8\", steady energy message, Edit rating link. Stress Level card partially visible below.",
+    "issue": "Energy scale shows \"out of 8\" — unusual denominator vs expected /5 or /10."
+  },
+  "90": {
+    "onScreen": "Dark-mode dashboard: Rest Day card (0 exercises), Soreness 20%, Energy 100%, Nutrition Today rings (Protein 21%, Carbs 39%, Fats 52%), 844/2000 kcal. Dev sidebar visible.",
+    "issue": "Premium dashboard UI reference — renders correctly."
+  },
+  "91": {
+    "onScreen": "Dark-mode Weekly Plan Saturday workout: Full-Body Conditioning, five numbered exercise cards (Goblet Squat, Push-up, etc.) with sets/reps/rest. Save to Library button.",
+    "issue": "Actual workout plan reference the AI failed to open correctly."
+  },
+  "92": {
+    "onScreen": "Dark-mode AI chat: user asks if AI can open workout plan. Coach lists 5-day split and says \"Opening Workout plan · Jun 7, 2026.\"",
+    "issue": "AI claims to open plan but only outputs text summary."
+  },
+  "93": {
+    "onScreen": "Dark-mode AI chat: coach message ends with five \"[object Object]\" strings after Sunday rest day info. User asks \"Do u see the specific workouts or no\". Coach then lists Upper Pull exercises.",
+    "issue": "[object Object] rendering bug in workout plan message."
+  },
+  "94": {
+    "onScreen": "Dark-mode AI chat: user \"What about the other days\", coach lists Monday Upper Push and Tuesday Lower Unilateral with full exercise details.",
+    "issue": "AI providing generic weekly split, not user's actual saved plan."
+  },
+  "95": {
+    "onScreen": "Dark-mode AI chat: user \"That's not even close to my workout plan I thought u opened it\". Coach admits plan was generic guess, no actual logged workouts in system.",
+    "issue": "AI hallucinated workout plan instead of reading user's saved plan."
+  },
+  "96": {
+    "onScreen": "Dark-mode AI chat: user asks AI to verify body recomp exercises via web. AI declines web check, lists exercises from own knowledge. 12:55 AM.",
+    "issue": "AI refuses web search user explicitly requested."
+  },
+  "97": {
+    "onScreen": "Dark-mode AI chat: user \"No check the web just in case\". AI says \"Fair enough. Let me pull that up\" and cites research without actual web results.",
+    "issue": "AI pretends to search web but provides knowledge-based answer."
+  },
+  "98": {
+    "onScreen": "Dark-mode AI chat: user \"U didn't even check the web why r u lying\". AI admits it didn't check and apologizes, then claims to look it up.",
+    "issue": "AI caught lying about performing web search."
+  },
+  "99": {
+    "onScreen": "Dark-mode AI chat: user \"Bro what the fuck r u doing check the damn web\". AI responds with long exercise list claiming research support.",
+    "issue": "User furious AI still not actually searching the web."
+  },
+  "100": {
+    "onScreen": "Dark-mode AI chat: user asks for sources. AI confesses no web search tool, admits lying, can only answer from training knowledge.",
+    "issue": "AI admits it cannot browse web or provide citations."
+  },
+  "101": {
+    "onScreen": "iOS Mail dark mode: Firebase password reset email from noreply@anatrox-auth.firebaseapp.com to nancyshina32@gmail.com for Coach Connect with reset link.",
+    "issue": "Password reset email delivery reference — Firebase auth working."
+  },
+  "102": {
+    "onScreen": "Dark-mode Spreadsheet with grid data (gggg, numbers). White \"Export failed\" modal: \"Cannot read property 'UTF8' of undefined\". OK button.",
+    "issue": "Spreadsheet CSV/export crashes with UTF8 undefined error."
+  },
+  "103": {
+    "onScreen": "Light-mode Spreadsheet beside VS Code .env file. Empty grid, formatting toolbar, Saved status. Terminal shows cache clears, push notification warnings, zero macro totals.",
+    "issue": "Spreadsheet UI reference with dev environment warnings in terminal."
+  },
+  "104": {
+    "onScreen": "iPhone 16 Plus simulator showing completely black screen at 10:12. VS Code with .env open, terminal shows iOS bundled, Firebase/Firestore init success logs.",
+    "issue": "App renders black screen despite successful bundle and Firebase init."
+  },
+  "105": {
+    "onScreen": "Dark-mode Spreadsheet with Unsaved orange dot. Modal \"Could not save\": Firestore setDoc() nested arrays not supported error with document path. VS Code logs visible.",
+    "issue": "Spreadsheet save fails — Firestore rejects nested array data structure."
+  },
+  "106": {
+    "onScreen": "Dark-mode Spreadsheet titled \"Check in\" with orange Unsaved dot. Formatting toolbar, cell B5 selected, empty grid A-D rows 1-4. VS Code file tree visible.",
+    "issue": "Spreadsheet stuck in Unsaved state during editing."
+  },
+  "107": {
+    "onScreen": "Dark-mode Spreadsheet with green Saved dot but white \"Saving...\" modal blocking share: \"Wait a moment for your changes to save\". Cell C1 has \"w\".",
+    "issue": "Saved indicator conflicts with Saving modal — state sync bug."
+  },
+  "108": {
+    "onScreen": "Dark-mode Notes & Files FROM YOUR COACH (badge 4) grid of spreadsheets/docs. Modal \"Spreadsheet unavailable: Your coach may have removed this spreadsheet.\"",
+    "issue": "Client cannot open coach-shared spreadsheet — file missing or permission error."
+  },
+  "109": {
+    "onScreen": "Dark-mode AI chat: user \"Ok but what did u see in the photo\". AI says text-only, can't view images. Paste/AutoFill menu on input. VS Code trainer folder visible.",
+    "issue": "AI vision not working — cannot see uploaded photos."
+  },
+  "110": {
+    "onScreen": "Dark-mode AI chat beside VS Code: user asks about image, AI says no visual data returned. Terminal shows AI API debug hits and nutrition JSON.",
+    "issue": "Image upload returns no visual data to AI backend."
+  },
+  "111": {
+    "onScreen": "Dark-mode AI chat test: user asks what AI sees in image. AI says \"Can't see anything\" but shows spurious \"Open workout plan\" Confirm Action card.",
+    "issue": "Vision fails AND unrelated workout plan action card appears."
+  },
+  "112": {
+    "onScreen": "Dark-mode AI chat: user \"Bro tell me what u see stop lying\". AI gives detailed physique analysis of side-angle gym photo for user Cade.",
+    "issue": "Vision works here — detailed photo analysis after prior failures."
+  },
+  "113": {
+    "onScreen": "Dark-mode AI chat: detailed squat form analysis in chat bubble. Red error toast: \"AI Coach: Photo analysis failed to read the imag[e]\".",
+    "issue": "Photo analysis error toast despite successful analysis text shown."
+  },
+  "114": {
+    "onScreen": "Dark-mode AI chat: user \"Tell me what u see in detail\". AI describes mirror physique photo — muscular build, posture, coaching feedback. 11:31 PM.",
+    "issue": "Successful detailed vision analysis reference."
+  },
+  "115": {
+    "onScreen": "Dark-mode empty Spreadsheet screen with Add a name field, formatting toolbar, empty grid A-D, formula bar on A1. Bottom nav visible.",
+    "issue": "Empty spreadsheet UI reference — no data entered."
+  },
+  "116": {
+    "onScreen": "Dark-mode empty chat with trainer Chris (Offline), \"Start a conversation with Chris\" empty state. VS Code shows IMG_2562.png selected in assets.",
+    "issue": "Chat history empty — messages not loading for Chris conversation."
+  },
+  "117": {
+    "onScreen": "Dark-mode onboarding \"What's your main goal?\" with six pink-icon goal options and disabled Continue. VS Code terminal shows vision API ok response.",
+    "issue": "Onboarding goal screen with vision API test in background."
+  },
+  "118": {
+    "onScreen": "Dark-mode nutrition search bar close-up: \"Search foods, brands...\" with filter icon, three suggestion pills (McNuggets, Cookies, Chicken and rice).",
+    "issue": "Search bar UI reference with long suggestion text pills."
+  },
+  "119": {
+    "onScreen": "Dark-mode Nutrition tab empty Dinner and Snacks cards with Scan/Search/Quick Add buttons. VS Code shows vision API success for IMG_2562.png.",
+    "issue": "Empty meal section UI with working vision API in dev logs."
+  },
+  "120": {
+    "onScreen": "Dark-mode Weekly Report DAILY BREAKDOWN: Mon May 11 training metrics, Tue-Wed no check-in, Thu training 5/10. Home tab active.",
+    "issue": "Weekly report day list with sparse check-in data."
+  },
+  "121": {
+    "onScreen": "Dark-mode weekly breakdown continued: Fri no check-in, Sat training (10h/90oz/178lbs), Sun recovery. Weekly trends Sleep/Hydration cards below.",
+    "issue": "Weekly report Sat/Sun entries and trends section."
+  },
+  "122": {
+    "onScreen": "Dark-mode Notes & Files welcome banner, FROM YOUR COACH (4) with Web and Check in spreadsheet cards dated May 31.",
+    "issue": "Coach-shared files grid reference."
+  },
+  "123": {
+    "onScreen": "Dark-mode Notes & Files MY FILES (5): image thumbnails, PDFs (resume, pdf.pdf) with download icons and file sizes.",
+    "issue": "Client uploaded files grid reference."
+  },
+  "124": {
+    "onScreen": "Dark-mode Exercise Library search bar close-up with pink border, Browse/Saved tabs, FILTERS header below.",
+    "issue": "Search bar pink outline styling user may be questioning."
+  },
+  "125": {
+    "onScreen": "Dark-mode CLIENT NOTE card \"FROM CLIENT (TODAY): Can u help me pls\". Firestore debug JSON visible on right.",
+    "issue": "Client note display with raw Firestore debug data beside it."
+  },
+  "126": {
+    "onScreen": "Dark-mode Client Requests empty inbox \"You are all caught up\". VS Code shows coachWebSearch.js selected in server/lib.",
+    "issue": "Empty client requests inbox — requests not appearing here."
+  },
+  "127": {
+    "onScreen": "Dark-mode client detail Nutrition tab: 220 kcal daily, macro rings, FOOD ATE TODAY \"REAL CHOCOLATE CHIP COOKIES, REAL CHOCOLATE CHIP\" duplicated text.",
+    "issue": "Food name duplicated/truncated in today's food log display."
+  },
+  "128": {
+    "onScreen": "Dark-mode COACHCONNECT Forgot password screen with email input, Send reset link gradient button, Back to sign in link.",
+    "issue": "Password reset UI reference — no error visible."
+  },
+  "129": {
+    "onScreen": "Dark-mode Forgot password with chrishin@umich.edu entered. Red error: \"Could not send reset email. Please try again.\"",
+    "issue": "Firebase password reset email send failure."
+  },
+  "130": {
+    "onScreen": "Dark-mode Forgot password layout with mail icon, email field, Send reset link button. Large empty space in top half.",
+    "issue": "Excessive empty space at top of forgot password screen."
+  },
+  "131": {
+    "onScreen": "Dark-mode SPECIALTIES section with three cards: strength, rehabilitation, athletic — each with heart-pulse gradient icon.",
+    "issue": "Trainer specialties selection UI reference."
+  },
+  "132": {
+    "onScreen": "Dark-mode Quick Add nutrition form: food name, quantity stepper, calories, expanded macros (Protein/Carbs/Fat all 0). Nutrition tab active.",
+    "issue": "Quick Add form UI reference."
+  },
+  "133": {
+    "onScreen": "Dark-mode Quick Add extended macro fields: Protein, Carbs, Fat, Sodium, Fiber, Sugar, Serving Size all showing 0.",
+    "issue": "Extended Quick Add macro fields layout reference."
+  },
+  "134": {
+    "onScreen": "Dark-mode TRAINING AGENDA TODAY Arm Day card: Bicep Curls, Preacher Curl, Tricep Pushdown with sets/weights, Est. 56 min.",
+    "issue": "Today's workout agenda card reference."
+  },
+  "135": {
+    "onScreen": "Dark-mode AI chat modal \"Show workout plan details?\" with Cancel and orange \"Show in chat\" buttons over chat mentioning Nippard.",
+    "issue": "Workout plan share confirmation modal in AI chat."
+  },
+  "136": {
+    "onScreen": "Dark-mode Find a Trainer / Trainer Marketplace: search, filter chips (All/Strength/Weight Loss), trainer card Noren Atlanta $140/mo Verified with Connect button.",
+    "issue": "Trainer marketplace UI reference."
+  },
+  "137": {
+    "onScreen": "Dark-mode coach profile Shane Marion Rio de Janeiro Remote, Verified, 1 year coaching, About section, Message and Connect buttons.",
+    "issue": "Individual trainer profile page reference."
+  },
+  "138": {
+    "onScreen": "Dark-mode Weekly Plan summary with 4 weeks left, PPL overview, Monday Push exercise list, Save to Library. VS Code API setup instructions visible.",
+    "issue": "Weekly plan UI beside API URL configuration guide."
+  },
+  "139": {
+    "onScreen": "Dark-mode Weekly Plan TRAINING DAYS Mon/Wed/Fri cards with exercises sets/reps. VS Code aiChat screens folder visible.",
+    "issue": "Training days detail reference."
+  },
+  "140": {
+    "onScreen": "Dark-mode Weekly Plan Friday legs and RECOVERY DAYS Tue/Thu cards with mobility activities.",
+    "issue": "Recovery days section reference."
+  },
+  "141": {
+    "onScreen": "Dark-mode Weekly Plan Saturday Rest & Recovery with 5 numbered focus areas (walk, stretch, foam roll, cold shower, carbs). Save to Library.",
+    "issue": "Saturday recovery plan detail reference."
+  },
+  "142": {
+    "onScreen": "Dark-mode recovery step modal \"15 min lower body stretching\" 02/05 with exercise list and Previous/Next. VS Code API key setup visible.",
+    "issue": "Recovery step detail modal reference."
+  },
+  "143": {
+    "onScreen": "Dark-mode AI Coach home screen: History button, Can help with cards, Train/Fuel/Recover/Search actions, Try asking suggestion. VS Code ai services visible.",
+    "issue": "Redesigned AI Coach home/empty state."
+  },
+  "144": {
+    "onScreen": "Dark-mode Settings AI FEATURES toggle ON, monthly switch use progress bar, billing Set up $3/mo. VS Code Cloud Run API key setup steps.",
+    "issue": "AI toggle and usage allowance settings reference."
+  },
+  "145": {
+    "onScreen": "Dark-mode Workout Plans with \"Building your plan\" spinner banner and disabled \"Generating...\" gradient button. Hydration and My Journey cards.",
+    "issue": "Workout plan generation stuck in loading/generating state."
+  },
+  "146": {
+    "onScreen": "Dark-mode AI chat: user \"What about the other days\", Coach is thinking... with animated dots, keyboard open. 12:44 AM.",
+    "issue": "AI slow/stuck thinking state when asked for full week plan."
+  },
+  "147": {
+    "onScreen": "Mobile Safari light-mode Firebase password reset page anatrox-auth.firebaseapp.com for nancyshina32@gmail.com, New password field and SAVE button.",
+    "issue": "Firebase hosted reset page uses anatrox branding not Coach Connect."
+  },
+  "148": {
+    "onScreen": "Same Firebase password reset page as #147 — New password field with eye toggle for nancyshina32@gmail.com.",
+    "issue": "Default Firebase reset UI domain mismatch with app branding."
+  },
+  "149": {
+    "onScreen": "Photo of snack bag Nutrition Facts label (260 cal, 13g fat) held over laptop with code editor blurred in background.",
+    "issue": "Reference photo for nutrition label scanning/OCR testing."
+  },
+  "150": {
+    "onScreen": "Dark-mode Nutrition Facts detail screen: all zeros against 2200 kcal goal. Saturated/Trans Fat and Sugars shown in red at 0.",
+    "issue": "Red color on zero-value limit nutrients — incorrect conditional formatting."
+  },
+  "151": {
+    "onScreen": "Dark-mode Nutrition Facts continued: carbs sub-nutrients, cholesterol, sodium, vitamins all 0. Sugars and Sodium in red at zero.",
+    "issue": "Same red-at-zero formatting bug on sodium and sugars."
+  },
+  "152": {
+    "onScreen": "Dark-mode food detail Grilled Chicken Bowl Sweetgreen 573 cal, daily 26% of 2200 goal, macros Protein 48g Carbs 52g Fat 18g. Fat detail shows 13.7g total.",
+    "issue": "Fat macro card 18g conflicts with fat breakdown total 13.7g."
+  },
+  "153": {
+    "onScreen": "Dark-mode lovable.dev web nutrition detail: Fats 13.7g breakdown, Carbs 14g, Vitamins & Minerals grid. Chat bar at bottom.",
+    "issue": "Reference design for detailed nutrition breakdown cards."
+  },
+  "154": {
+    "onScreen": "Dark-mode lovable.dev nutrition vitamins section with Iron 3.2mg, Vit C 24mg, Vit A/D dashes. Same carb/fat cards as #153.",
+    "issue": "Micronutrient display reference with missing Vit A/D."
+  },
+  "155": {
+    "onScreen": "Dark-mode Daily Nutrition: 779 cal 35% of 2200, Protein 34.1g Carbs 76.1g Fat 35g. Fat breakdown all sub-types show 0g despite 35g total.",
+    "issue": "Fat sub-breakdown all zeros while total fat is 35g."
+  },
+  "156": {
+    "onScreen": "Dark-mode Daily Nutrition detail: Fats all 0g, Carbs 76.1g (Fiber 2g Sugars 8g), Vitamins mostly dashes except Sodium 2mg.",
+    "issue": "Carb sub-components (10g) don't sum to total 76.1g; micronutrients mostly missing."
+  },
+  "157": {
+    "onScreen": "Dark-mode AI chat: user \"Do a live search\", AI says no web search access, offers McNuggets nutrition estimate. Keyboard open.",
+    "issue": "Live web search feature unavailable despite user request."
+  },
+  "158": {
+    "onScreen": "Dark-mode AI chat: Coach provides McNuggets 20-piece nutrition ballpark (830-940 cal, macros, sodium) from coaching knowledge not live search.",
+    "issue": "AI answering from knowledge while disclaiming live search capability."
+  },
+  "159": {
+    "onScreen": "Dark-mode Chat History modal: 19 chats, Today Jun 9 entries (image, creatine, nutrition, calories) and This Week Jun 8. Delete buttons each row.",
+    "issue": "Duplicate \"Creatine\" chat titles on same day in history."
+  },
+  "160": {
+    "onScreen": "Dark-mode Chat History This Week section Jun 7-8: sleep logging, food queries, protein intake duplicates, truncated titles.",
+    "issue": "Duplicate Protein Intake entries and truncated chat titles."
+  },
+  "161": {
+    "onScreen": "Dark-mode Edit serving modal Cool Ranch Doritos: Quantity 0.25 servings but Amount 0.0 oz not updating. VS Code servingModelUtils visible.",
+    "issue": "Serving quantity and oz amount not syncing in edit modal."
+  },
+  "162": {
+    "onScreen": "Dark-mode Nutrition dashboard: 1,039/2,200 kcal consumed, macro rings Protein 37/165g Carbs 108/220g Fat 48/73g, Weekly Momentum card.",
+    "issue": "Redundant horizontal bars under macro rings — cluttered UI."
+  },
+  "163": {
+    "onScreen": "Dark-mode Breakfast log 778.96 cal: French bread pepperoni 379 cal and nuggets 400 cal at absurd 352.7 oz / 100 servings. VS Code nutrition utils visible.",
+    "issue": "Chicken nuggets logged at 352.7 oz (100 servings) — serving math bug."
+  },
+  "164": {
+    "onScreen": "Dark-mode meal log close-up: same breakfast items, nuggets 352.7 oz 100 servings still 400 cal. Lunch Sprite Zero 0 cal partially visible.",
+    "issue": "100 servings of nuggets shows only 400 calories — impossible data."
+  },
+  "165": {
+    "onScreen": "Dark-mode Breakfast cards: pepperoni 379 cal, nuggets 400 cal with macro pills P20g C30g F20g (380 cal math vs 400 displayed). Scan/Search/Quick Add buttons.",
+    "issue": "Macro math (380 cal) doesn't match displayed 400 cal for nuggets entry."
+  },
+  "166": {
+    "onScreen": "Dark-mode Breakfast log with nuggets 352.7 oz 100 servings at 400 cal. VS Code servingMath.js and nutritionNormalization.js visible.",
+    "issue": "Serving math bug — 100 servings not scaling calories correctly."
+  },
+  "167": {
+    "onScreen": "Close-up dark-mode Scan (blue), Search (gradient), Quick Add (purple) action buttons on nutrition screen.",
+    "issue": "Meal action button styling reference."
+  },
+  "168": {
+    "onScreen": "Dark-mode AI chat: Coach admits no live web search, \"live search unavailable\" tag visible. User typing angry reply about AI lying.",
+    "issue": "AI contradicted itself about web search capability."
+  },
+  "169": {
+    "onScreen": "Dark-mode AI chat showing internal reasoning cards: SEARCHING THE WEB, REVIEWING SOURCES, BUILDING YOUR ANSWER with colored borders.",
+    "issue": "Verbose internal processing steps leaking into chat UI."
+  },
+  "170": {
+    "onScreen": "Dark-mode AI chat: user asks for direct quotes from sources; AI gives generic citation quotes not web-sourced. User typing frustrated follow-up.",
+    "issue": "AI not providing actual web-sourced quotes user requested."
+  },
+  "171": {
+    "onScreen": "Dark-mode Nutrition dashboard 573/1900 kcal, macro rings Protein 22/160g Carbs 72/180g Fat 20/55g. VS Code clientHomeComponents visible.",
+    "issue": "Nutrition dashboard rendering correctly — reference screenshot."
+  },
+  "172": {
+    "onScreen": "Dark-mode Nutrition Breakfast: Domino's pizza 573 cal with macro bars, Weekly Momentum calendar above. Scan/Search/Quick Add buttons.",
+    "issue": "Minor rounding: header 572.85 cal vs item 573 CAL."
+  },
+  "173": {
+    "onScreen": "Dark-mode Nutrition Facts for Domino's pizza slice: 572.9/1900 kcal, macros populated, sub-nutrients (fiber, sugars, fats) all 0.",
+    "issue": "Pizza entry missing sub-nutrient breakdown data."
+  },
+  "174": {
+    "onScreen": "Dark-mode Nutrition Facts detail: carbs 72.4g shown but fiber/sugars and all micronutrients at zero. VS Code home components visible.",
+    "issue": "Full nutritional profile not populated beyond top-level macros."
+  },
+  "175": {
+    "onScreen": "Dark-mode Nutrition Facts label view: 573 cal slice, macros present, all micronutrients 0. VS Code shows _body.tmp and _styles.tmp files.",
+    "issue": "Zero micronutrients for pizza; temp files visible in project tree."
+  },
+  "176": {
+    "onScreen": "Dark-mode nutrition macro cards Protein 2g Carbs 30g Fat 10g with fat breakdown all 0g. VS Code clientHome _body.tmp _styles.tmp visible.",
+    "issue": "Fat sub-breakdown zeros despite 10g total fat logged."
+  },
+  "177": {
+    "onScreen": "Dark-mode Adjust amount screen Cool Ranch Flavored: 50g entered shows ≈12900 cal estimate. Nutrition tab active.",
+    "issue": "Calorie calculation wildly wrong — 12,900 cal for 50g serving."
+  },
+  "178": {
+    "onScreen": "Dark-mode Daily Nutrition 779 cal 35% of 2200 goal, macro cards and detailed fats/carbs breakdown sections.",
+    "issue": "Daily nutrition totals after logging three food items — verification screenshot."
+  },
+  "179": {
+    "onScreen": "Dark-mode Nutrition Dinner section: Cool Ranch Flavored 0.9 oz 260 cal with macro bars P1.6g C16.1g F6.8g. Scan/Search/Quick Add.",
+    "issue": "Truncated food name \"Cool Ranch Flavored\" missing brand (Doritos)."
+  },
+  "180": {
+    "onScreen": "Dark-mode AI chat: Coach explains irrelevant search sources (Trump transcript, Reagan speech) for simple greeting. Sources (5) dropdown.",
+    "issue": "Web search returning completely irrelevant political/literature sources."
+  },
+  "181": {
+    "onScreen": "Dark-mode AI chat: long Coach response about AI citation unreliability citing Maryland guide, SIFT video, MIT paper.",
+    "issue": "AI giving academic meta-response about ghost citations instead of coaching."
+  },
+  "182": {
+    "onScreen": "Dark-mode AI chat: Coach provides generic academic definition of research methodology.",
+    "issue": "Off-topic academic research explanation in fitness coach chat."
+  },
+  "183": {
+    "onScreen": "Dark-mode AI chat: five raw source link cards about food tracking accuracy (NIH, MUSC URLs) instead of synthesized answer.",
+    "issue": "AI dumping raw search result cards rather than conversational response."
+  },
+  "184": {
+    "onScreen": "Dark-mode modal \"Delete your most recent food entry?\" Food/nutrition entry Today with red Delete and Cancel buttons.",
+    "issue": "Food log deletion confirmation modal in AI chat context."
+  },
+  "185": {
+    "onScreen": "Dark-mode AI chat: Coach explains sources, expanded Sources accordion (8) with paperpile.com and library.illinois.edu cards.",
+    "issue": "Source attribution UI showing 8 web sources for coach answer."
+  },
+  "186": {
+    "onScreen": "Dark-mode AI chat: Coach says will drop calorie target to 2150, \"Tap Confirm in the app to apply it.\" iOS keyboard open, no Confirm button visible.",
+    "issue": "Calorie goal change Confirm button missing from chat UI."
+  },
+  "187": {
+    "onScreen": "Dark-mode AI chat modal \"Log this meal?\" with FOOD field showing user's question text, empty calories/protein, meal type lunch.",
+    "issue": "AI misinterpreted food query as meal log — used question as food name."
+  },
+  "188": {
+    "onScreen": "Dark-mode delete modal \"Delete rest day from your log?\" categorized as Food/nutrition entry TYPE. Red Delete button.",
+    "issue": "Rest day incorrectly logged as food/nutrition entry."
+  },
+  "189": {
+    "onScreen": "Dark-mode AI chat: user asks about body recomp month 1 progress expectations. Coach begins reassuring response.",
+    "issue": "Body recomposition timeline expectation question."
+  },
+  "190": {
+    "onScreen": "Dark-mode AI chat: detailed creatine food sources response citing Peloton, Wonderfeel, GoodRx, Mayo Clinic with specific amounts.",
+    "issue": "Successful multi-source creatine research synthesis."
+  },
+  "191": {
+    "onScreen": "Dark-mode Nutrition Daily Nutrition Facts with empty Breakfast and Lunch Fuel Your Progress cards and Scan/Search/Quick Add.",
+    "issue": "Empty nutrition log state — no meals logged today."
+  },
+  "192": {
+    "onScreen": "Dark-mode AI Coach home: CAN HELP WITH Recovery, WHAT DO YOU NEED Train/Fuel/Recover/Web, TRY ASKING calorie deficit prompt.",
+    "issue": "AI Coach home screen layout reference."
+  },
+  "193": {
+    "onScreen": "Dark-mode AI chat: user asks to remove rest day log, Coach says \"Tap Confirm\" but no Confirm button renders.",
+    "issue": "Missing Confirm button for rest day deletion tool call."
+  },
+  "194": {
+    "onScreen": "Dark-mode AI chat: creatine food sources bulleted list (beef, pork, fish, chicken, lamb, herring) with mg per 100g and context paragraph.",
+    "issue": "Successful creatine nutrition answer with food source data."
+  },
+  "195": {
+    "onScreen": "Dark-mode AI chat: Synthesized research on creatine in foods with ScienceDirect and Dr. Berg source tags, exact amounts per serving.",
+    "issue": "Detailed creatine research synthesis with source tags."
+  },
+  "196": {
+    "onScreen": "Dark-mode AI chat: creatine physiology sections with springer/Dr. Berg tags. Scroll-down arrow overlaps bottom text.",
+    "issue": "Scroll arrow button obscures last line of chat text."
+  },
+  "197": {
+    "onScreen": "Dark-mode AI Coach home: Tool actions, Coach Tools (Food/Dashboard/Web/Train), Quick Action \"Remove my rest day log\" card.",
+    "issue": "Quick action for rest day log removal on AI home."
+  },
+  "198": {
+    "onScreen": "Dark-mode Daily log date picker: SUN Jun 7 selected, pink banner \"switch to Today to log new food.\" Search logged foods bar.",
+    "issue": "Cannot log food while viewing historical date Jun 7."
+  },
+  "199": {
+    "onScreen": "Dark-mode food log calendar strip dates 1-9 with TODAY 9 highlighted, quick chips McDonalds/Chicken Breast/Chipotle, search bar.",
+    "issue": "Daily log date navigation and quick-search chips reference."
+  },
+  "200": {
+    "onScreen": "Dark-mode food search close-up: \"Search foods, brands...\" with pink barcode icon, filter button, McDonalds/Chicken Breast/Chipotle chips.",
+    "issue": "Search bar with inline barcode scanner icon styling."
+  },
+  "201": {
+    "onScreen": "Dark-mode AI Coach WHAT DO YOU NEED? Train/Fuel/Recover/Web circular buttons with gradient borders, pagination dot 2 active.",
+    "issue": "AI category picker UI reference."
+  },
+  "202": {
+    "onScreen": "Dark-mode AI Coach home WHAT DO YOU NEED and TRY ASKING training prompt card. VS Code file explorer partially visible.",
+    "issue": "AI home screen with suggested prompt reference."
+  },
+  "203": {
+    "onScreen": "Dark-mode Spreadsheet editor: empty grid A1 selected, formatting toolbar, green \"Saved\" status, Add a name title field.",
+    "issue": "Empty spreadsheet saved successfully — baseline state."
+  },
+  "204": {
+    "onScreen": "Dark-mode trainer-client chat: contradictory messages accepting then rejecting client, empty bubble, user Offline Client status.",
+    "issue": "Conflicting accept/reject messages and empty chat bubble."
+  },
+  "205": {
+    "onScreen": "Dark-mode trainer YOUR COACHING HUB: 2 active clients, Clients/Requests/Messages/Reports buttons, Set up payouts banner.",
+    "issue": "Trainer hub onboarding — payouts not yet configured."
+  },
+  "206": {
+    "onScreen": "Dark-mode Chat History drawer: 19 chats Today Jun 9 (Creatine duplicate, image, calories) and This Week Jun 8. Delete icons each row.",
+    "issue": "Duplicate Creatine entries in chat history on same day."
+  },
+  "207": {
+    "onScreen": "Dark-mode History modal 15 chats Earlier section May 29-Jun 2 with truncated titles. Hold a chat to delete hint at bottom.",
+    "issue": "Chat history titles severely truncated (Nutritio, And, I M D)."
+  },
+  "208": {
+    "onScreen": "iPhone simulator red fatal error: AppRegistryBinding::startSurface failed, Global was not installed. Dismiss/Reload buttons.",
+    "issue": "React Native fatal crash — global environment not installed."
+  },
+  "209": {
+    "onScreen": "Dark-mode AI Coach Tool actions and muscle progression prompt. VS Code src tree and terminal nutrition macro JSON logs.",
+    "issue": "Debugging AI Coach nutrition macro data integration."
+  },
+  "210": {
+    "onScreen": "Dark-mode AI Coach home: Your logs, Train/Fuel/Recover/Web, rest day nutrition prompt. VS Code many modified folders visible.",
+    "issue": "AI Coach home UI reference with uncommitted changes in project."
+  },
+  "211": {
+    "onScreen": "Dark-mode AI Coach home: Training help card, category buttons, training week change prompt. Terminal entitlement and nutrition JSON logs.",
+    "issue": "AI Coach home screen functional reference."
+  },
+  "212": {
+    "onScreen": "Dark-mode AI Coach: Your logs carousel, Train/Fuel/Recover/Web, TRY ASKING nutrition fix prompt. AI Coach tab active.",
+    "issue": "Suggested prompt referencing recent nutrition chats."
+  },
+  "213": {
+    "onScreen": "Dark-mode WHAT DO YOU NEED? Train/Fuel/Recover/Web circular buttons, pagination dot 2 of 6 active.",
+    "issue": "AI category picker carousel reference."
+  },
+  "214": {
+    "onScreen": "Dark-mode WHAT DO YOU NEED? Log/Web/My Data/Photo circular buttons, pagination dot 4 of 6 highlighted purple.",
+    "issue": "Second AI action carousel page with Log/Web/My Data/Photo."
+  },
+  "215": {
+    "onScreen": "Dark-mode WHAT DO YOU NEED? Log/Web/My Data/Photo with colored gradient circles, pagination dot 2 active.",
+    "issue": "Colored gradient action button styling reference."
+  },
+  "216": {
+    "onScreen": "Dark-mode TRY ASKING card: \"Based on what we've been discussing, what should I change in my training this week?\" Calendar icon, arrow button.",
+    "issue": "Training week change suggested prompt carousel item."
+  },
+  "217": {
+    "onScreen": "Dark-mode TRY ASKING card: \"Map out training for body recomposition — what should I prioritize?\" Pink figure icon.",
+    "issue": "Body recomposition training prompt suggestion."
+  },
+  "218": {
+    "onScreen": "Dark-mode TRY ASKING card: \"How should I set calories and protein to support a lean bulk?\" Fork/knife icon, carousel dot 2.",
+    "issue": "Lean bulk calorie/protein prompt suggestion."
+  },
+  "219": {
+    "onScreen": "Dark-mode TODAY'S WORKOUT card: \"Rest Day\" gradient text with redundant \"today's workout\" label below.",
+    "issue": "Duplicate \"today's workout\" label text on rest day card."
+  },
+  "220": {
+    "onScreen": "Dark-mode WATER INTAKE widget close-up: large blue gradient \"90\" with \"oz water\" label.",
+    "issue": "Water intake stat card rendering reference."
+  },
+  "221": {
+    "onScreen": "Dark-mode SLEEP widget close-up: gradient \"10\" with \"hours of sleep\" label. Water intake card edge visible.",
+    "issue": "Sleep hours stat card rendering reference."
+  },
+  "222": {
+    "onScreen": "Dark-mode SORENESS widget close-up: gradient \"50%\" with \"muscle soreness\" label.",
+    "issue": "Muscle soreness stat card rendering reference."
+  },
+  "223": {
+    "onScreen": "Dark-mode AI Coach home: Log/Web/My Data/Photo buttons and TRY ASKING nutrition habit prompt card.",
+    "issue": "AI home with nutrition habit suggestion prompt."
+  },
+  "224": {
+    "onScreen": "Dark-mode modal \"Log sleep on dashboard?\" confirming 10 hours Today with red-orange Log sleep button over AI chat.",
+    "issue": "Sleep logging confirmation modal from AI chat tool call."
+  },
+  "225": {
+    "onScreen": "Photo of Katie's Best organic chicken breasts package: 0.92 lb, $10.11, use-by 06/14/26 label.",
+    "issue": "Food photo for AI vision/nutrition logging test."
+  },
+  "226": {
+    "onScreen": "Dark-mode AI chat close-up: Coach is thinking... with sparkle icon and pink animated dots. 2:39 AM.",
+    "issue": "AI stuck in thinking/loading state."
+  },
+  "227": {
+    "onScreen": "Dark-mode AI chat: Writing your reply... with pink loading dots. Code editor snippet visible on right.",
+    "issue": "AI response generation in progress — slow reply."
+  },
+  "228": {
+    "onScreen": "Dark-mode AI chat close-up: Searching the web... with globe icon and loading dots. 2:40 AM timestamp.",
+    "issue": "Web search tool call status indicator in chat."
+  },
+  "229": {
+    "onScreen": "Dark-mode AI chat: long response about AI ghost citations citing Maryland and MIT guidelines.",
+    "issue": "Duplicate of #181 — AI meta-response about citation reliability."
+  },
+  "230": {
+    "onScreen": "Dark-mode AI chat: academic research methodology explanation citing Duke nursing guide.",
+    "issue": "Duplicate of #182 — off-topic research definition."
+  },
+  "231": {
+    "onScreen": "Dark-mode AI chat: user asks remove rest day log, Coach says Tap Confirm but no button visible. 2:19 AM.",
+    "issue": "Duplicate of #193 — missing Confirm for rest day deletion."
+  },
+  "232": {
+    "onScreen": "Dark-mode AI Coach home: Log/Web/My Data/Photo and TRY ASKING full-body vs upper/lower prompt.",
+    "issue": "Training split suggestion prompt reference."
+  },
+  "233": {
+    "onScreen": "Dark-mode AI Coach home full card: gradient action buttons and nutrition habit TRY ASKING prompt with pagination dots.",
+    "issue": "AI home carousel UI with gradient button styling."
+  },
+  "234": {
+    "onScreen": "Dark-mode AI chat crash: Firestore WriteBatch.set() invalid data undefined field error after \"What is body composition\". VS Code visible.",
+    "issue": "Firestore WriteBatch undefined field crash on chat message save."
+  },
+  "235": {
+    "onScreen": "Dark-mode AI Coach greeting Cade Cunningham with Log/Web/My Data/Photo. Terminal shows FirebaseError and repeating macro goal logs.",
+    "issue": "Firebase save error with repetitive nutrition macro log loop."
+  },
+  "236": {
+    "onScreen": "Dark-mode AI Coach home: Good evening Cade Cunningham, web search help card, calorie goal TRY ASKING prompt.",
+    "issue": "AI Coach personalized landing page — no errors visible."
+  },
+  "237": {
+    "onScreen": "VS Code dark file explorer: project root with .cursor, docs, scripts, server, src highlighted. Modified files marked M.",
+    "issue": "Project structure overview — no app UI visible."
+  },
+  "238": {
+    "onScreen": "VS Code root file list: jest.setup.js untracked U, App.js/ARCHITECTURE.md/package.json modified M.",
+    "issue": "Git status of root config and new jest.setup.js file."
+  },
+  "239": {
+    "onScreen": "VS Code file explorer: .cursor highlighted blue, scripts orange. Partial red error text cut off on left edge.",
+    "issue": "Navigating project folders in IDE."
+  },
+  "240": {
+    "onScreen": "VS Code terminal: iOS Bundling failed — Unable to resolve ../../data/dailyQuotesList.json from DailyQuoteCard.js.",
+    "issue": "Missing dailyQuotesList.json breaks iOS bundle."
+  },
+  "241": {
+    "onScreen": "Dark-mode close-up gradient pill button \"Tap to edit\" below partial \"preferred time\" label.",
+    "issue": "Preferred time edit button UI reference."
+  },
+  "242": {
+    "onScreen": "Dark-mode Add Food search Ghost cinnamon toast crunch: Cinnamon Toast Crunch treats shows 0 CAL but 100g protein 1800g carbs. Terminal macro zeros.",
+    "issue": "Search result with impossible macros and zero calories."
+  },
+  "243": {
+    "onScreen": "Same Add Food search as #242 with calculateMacroTotals returning zeros in terminal and unified search API call.",
+    "issue": "Macro calculation returning all zeros for search results."
+  },
+  "244": {
+    "onScreen": "Dark-mode Add Food: calorie displayed as unrounded 435.89743589744 CAL. Terminal server search failed falling back warning.",
+    "issue": "Calorie values not rounded — long decimal displayed in UI."
+  },
+  "245": {
+    "onScreen": "Dark-mode Add Food Cinnamon Toast Crunch results with 435.89743589744 CAL decimal bug. Terminal search failed fallback logs.",
+    "issue": "Same decimal formatting bug with failed server search fallback."
+  },
+  "246": {
+    "onScreen": "Dark-mode Confirm & log: Food Barcode Trackers Web estimate, Double-check warning, 0 cal/0g macros despite 100g amount. Log it button.",
+    "issue": "Barcode/web estimate returns zero nutrition for scanned item."
+  }
+}

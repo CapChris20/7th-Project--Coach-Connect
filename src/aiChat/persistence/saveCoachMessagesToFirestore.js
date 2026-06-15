@@ -22,25 +22,64 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../app/config';
+import { stripUndefinedForFirestore } from '../../shared/utils/firestoreSanitize';
 
 const sessionRef = (userId, sessionId) => doc(db, 'users', userId, 'aiChats', sessionId);
 const messagesCol = (userId, sessionId) => collection(db, 'users', userId, 'aiChats', sessionId, 'messages');
 
+/** Firestore rejects `undefined` anywhere in a write payload. */
+const omitUndefined = stripUndefinedForFirestore;
+
+function sanitizeAttachments(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length) return undefined;
+  const cleaned = attachments
+    .map((att) => {
+      if (!att || typeof att !== 'object') return null;
+      return omitUndefined({
+        id: att.id,
+        name: att.name,
+        type: att.type,
+        preview: att.preview || att.uri,
+        mimeType: att.mimeType,
+      });
+    })
+    .filter(Boolean);
+  return cleaned.length ? cleaned : undefined;
+}
+
 function serializeMessage(msg) {
   if (!msg || typeof msg !== 'object') return null;
   const role = msg.role === 'assistant' || msg.role === 'ai' ? 'assistant' : 'user';
-  return {
+  const webSources = Array.isArray(msg.webSources)
+    ? msg.webSources
+    : Array.isArray(msg.sources)
+      ? msg.sources
+      : undefined;
+  return omitUndefined({
     id: msg.id || `m_${Date.now()}`,
     role,
     text: String(msg.text || msg.content || ''),
     createdAt: msg.createdAt || Date.now(),
-    attachments: Array.isArray(msg.attachments) ? msg.attachments : undefined,
-    source: msg.source || undefined,
-    toolCall: msg.toolCall || undefined,
+    attachments: sanitizeAttachments(msg.attachments),
+    source: msg.source ?? undefined,
+    toolCall: msg.toolCall ? omitUndefined(msg.toolCall) : undefined,
     toolConfirmed: msg.toolConfirmed === true ? true : undefined,
     isToolResult: msg.isToolResult === true ? true : undefined,
+    isError: msg.isError === true ? true : undefined,
+    searchedWeb: msg.searchedWeb === true ? true : undefined,
+    webProvider: msg.webProvider || undefined,
+    route: msg.route || undefined,
+    webSources: webSources
+      ? webSources.map((s) =>
+          omitUndefined({
+            url: s?.url || s?.link,
+            title: s?.title || s?.name,
+            image: s?.image || s?.thumbnail || s?.ogImage,
+          }),
+        )
+      : undefined,
     time: msg.time || undefined,
-  };
+  });
 }
 
 export async function loadAiChatMessages(userId, sessionId) {
@@ -81,13 +120,13 @@ export async function persistAiChatSession(userId, sessionId, { messages = [], m
   const batch = writeBatch(db);
   batch.set(
     sessionRef(userId, sessionId),
-    {
+    omitUndefined({
       sessionId,
       ...meta,
       messages: serialized,
       updatedAt: serverTimestamp(),
       createdAt: meta.createdAt || serverTimestamp(),
-    },
+    }),
     { merge: true },
   );
   await batch.commit();
@@ -99,20 +138,20 @@ export async function upsertAiChatMessage(userId, sessionId, message, meta = {})
   if (!serialized) return;
   await setDoc(
     sessionRef(userId, sessionId),
-    {
+    omitUndefined({
       sessionId,
       ...meta,
       updatedAt: serverTimestamp(),
       lastUserMessage: serialized.role === 'user' ? serialized.text : meta.lastUserMessage,
       lastAssistantMessage:
         serialized.role === 'assistant' ? serialized.text : meta.lastAssistantMessage,
-    },
+    }),
     { merge: true },
   );
-  await setDoc(doc(messagesCol(userId, sessionId), serialized.id), {
+  await setDoc(doc(messagesCol(userId, sessionId), serialized.id), omitUndefined({
     ...serialized,
     updatedAt: serverTimestamp(),
-  });
+  }));
 }
 
 export async function deleteAiChatSession(userId, sessionId) {

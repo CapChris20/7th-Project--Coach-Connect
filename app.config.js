@@ -94,6 +94,10 @@ module.exports = {
         'https://coachconnect-api-421005574501.us-central1.run.app',
       /** Optional: shown for Contact support / Report a bug in Settings. */
       supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'coachconnect0@gmail.com').trim(),
+      /** Google OAuth — set in .env / EAS secrets (never commit values). */
+      googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      googleAndroidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     },
   },
 };

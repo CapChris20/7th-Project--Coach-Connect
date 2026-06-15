@@ -43,7 +43,7 @@ export function getEditorTheme(isDark) {
     accentEnd: EDITOR_ACCENT_END,
     /** Spinner / WebView caret fallback only — UI accents use gradients. */
     accent: EDITOR_ACCENT_GRADIENT[0],
-    formula: '#06B6D4',
+    formula: '#C084FC',
     bg: isDark ? c.background : c.gray[50],
     canvasBg: isDark ? '#0A0A0F' : c.gray[50],
     pageBg: isDark ? '#141418' : c.surface,
@@ -58,7 +58,7 @@ export function getEditorTheme(isDark) {
     textOnAccent: '#FFFFFF',
     success: c.success,
     warning: c.warning,
-    selectionFill: isDark ? 'rgba(6,182,212,0.07)' : 'rgba(249,115,22,0.06)',
+    selectionFill: isDark ? 'rgba(255,107,157,0.08)' : 'rgba(255,107,157,0.05)',
     inputBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
     divider: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
     pageShadow: isDark

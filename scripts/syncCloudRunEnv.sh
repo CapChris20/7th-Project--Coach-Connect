@@ -26,6 +26,7 @@ fi
 
 VARS="NODE_ENV=production"
 [ -n "${DEEPSEEK_API_KEY:-}" ] && VARS+=",DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}"
+[ -n "${OPENAI_API_KEY:-}" ] && VARS+=",OPENAI_API_KEY=${OPENAI_API_KEY}"
 [ -n "${REPLICATE_API_TOKEN:-}" ] && VARS+=",REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}"
 [ -n "${PERPLEXITY_API_KEY:-}" ] && VARS+=",PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}"
 [ -n "${SERPER_API_KEY:-}" ] && VARS+=",SERPER_API_KEY=${SERPER_API_KEY}"
@@ -42,10 +43,12 @@ else
   echo "⚠️  No ANTHROPIC_API_KEY (or EXPO_PUBLIC_CLAUDE_API_KEY) in .env — workout plan generation will return 503 on Cloud Run."
 fi
 
-if [ -n "${REPLICATE_API_TOKEN:-}" ]; then
-  echo "ℹ️  REPLICATE_API_TOKEN will sync — AI Coach progress photos enabled on Cloud Run."
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  echo "ℹ️  OPENAI_API_KEY will sync — AI Coach photos use gpt-4o-mini vision."
+elif [ -n "${REPLICATE_API_TOKEN:-}" ]; then
+  echo "ℹ️  REPLICATE_API_TOKEN will sync — AI Coach photos use legacy DeepSeek-VL2 fallback."
 else
-  echo "⚠️  No REPLICATE_API_TOKEN in .env — AI Coach photo analysis will not work on Cloud Run."
+  echo "⚠️  No OPENAI_API_KEY or REPLICATE_API_TOKEN in .env — AI Coach photo analysis will not work on Cloud Run."
 fi
 
 YOUTUBE_KEY="${YOUTUBE_API_KEY:-${REACT_NATIVE_YOUTUBE_API_KEY:-}}"

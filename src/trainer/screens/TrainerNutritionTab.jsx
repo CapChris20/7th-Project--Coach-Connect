@@ -50,6 +50,8 @@ import {
   GRADIENT_NUTRITION_CARBS,
   GRADIENT_NUTRITION_FAT,
   GRADIENT_CALENDAR,
+  PINK,
+  ORANGE,
 } from '../components/dashboard/trainerDashboardUi';
 
 
@@ -91,17 +93,17 @@ const NutritionTab = ({ isDark, clientData }) => {
       value: clientData.nutrition.protein,
       goal: clientData.nutrition.proteinGoal || 200,
       label: "Protein",
-      color: GRADIENT_NUTRITION_PROTEIN,
-      unit: "g"
+      color: GRADIENT_NUTRITION_PROTEIN[0],
+      unit: "g",
     });
   }
   if (clientData?.nutrition?.carbs > 0) {
     allNutrients.push({
       value: clientData.nutrition.carbs,
       goal: clientData.nutrition.carbsGoal || 300,
-      label: "Carbs", 
-      color: GRADIENT_NUTRITION_CARBS,
-      unit: "g"
+      label: "Carbs",
+      color: GRADIENT_NUTRITION_CARBS[0],
+      unit: "g",
     });
   }
   if (clientData?.nutrition?.fat > 0) {
@@ -109,79 +111,85 @@ const NutritionTab = ({ isDark, clientData }) => {
       value: clientData.nutrition.fat,
       goal: clientData.nutrition.fatGoal || 80,
       label: "Fat",
-      color: GRADIENT_NUTRITION_FAT,
-      unit: "g"
+      color: GRADIENT_NUTRITION_FAT[0],
+      unit: "g",
     });
   }
-  
-  // Additional nutrients with default goals
   if (clientData?.nutrition?.fiber > 0) {
     allNutrients.push({
       value: clientData.nutrition.fiber,
-      goal: 25, // Daily fiber goal
+      goal: 25,
       label: "Fiber",
-      color: '#22C55E', // Green
-      unit: "g"
+      color: '#22C55E',
+      unit: "g",
     });
   }
   if (clientData?.nutrition?.sugar > 0) {
     allNutrients.push({
       value: clientData.nutrition.sugar,
-      goal: 50, // Daily sugar limit
+      goal: 50,
       label: "Sugar",
-      color: '#F97316', // Orange
-      unit: "g"
+      color: '#D4621A',
+      unit: "g",
     });
   }
   if (clientData?.nutrition?.sodium > 0) {
     allNutrients.push({
       value: clientData.nutrition.sodium,
-      goal: 2300, // Daily sodium limit (mg)
+      goal: 2300,
       label: "Sodium",
-      color: '#06B6D4', // Cyan
-      unit: "mg"
+      color: '#4DB8E8',
+      unit: "mg",
     });
   }
   if (clientData?.nutrition?.potassium > 0) {
     allNutrients.push({
       value: clientData.nutrition.potassium,
-      goal: 3500, // Daily potassium goal (mg)
+      goal: 3500,
       label: "Potassium",
-      color: '#C084FC', // Purple
-      unit: "mg"
+      color: '#A970E8',
+      unit: "mg",
     });
   }
+
+  const caloriesGoal = clientData?.nutrition?.caloriesGoal || 2000;
+  const caloriePct = Math.min(Math.round(((clientData.nutrition.calories || 0) / caloriesGoal) * 100), 100);
 
   return (
     <View style={{ gap: 12 }}>
 
       {/* Calories Hero */}
-      <GlassCard isDark={isDark} style={{ padding: 20, alignItems: 'center' }}>
-        <Text style={{ color: mutedColor, fontSize: 12, marginBottom: 4 }}>Daily Calories</Text>
-        <GradientText colors={[PINK, ORANGE]} style={{ fontSize: 40, fontWeight: '800' }}>
-          {(clientData.nutrition.calories || 0).toLocaleString()}
-        </GradientText>
-        <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2 }}>kcal</Text>
+      <GlassCard isDark={isDark} style={{ padding: 18 }}>
+        <Text style={{ color: mutedColor, fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10 }}>Daily Calories</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 10 }}>
+          <GradientText colors={[PINK, ORANGE]} style={{ fontSize: 36, fontWeight: '900', lineHeight: 40 }}>
+            {(clientData.nutrition.calories || 0).toLocaleString()}
+          </GradientText>
+          <Text style={{ color: mutedColor, fontSize: 13, fontWeight: '600', marginBottom: 4 }}>kcal</Text>
+          {caloriesGoal > 0 && (
+            <Text style={{ color: mutedColor, fontSize: 12, marginBottom: 4, marginLeft: 4 }}>/ {caloriesGoal.toLocaleString()} goal</Text>
+          )}
+        </View>
+        <View style={{ height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+          <View style={{ height: '100%', width: `${caloriePct}%`, borderRadius: 2, backgroundColor: PINK }} />
+        </View>
       </GlassCard>
 
-      {/* All Nutrients as Arc Progress */}
+      {/* Macros & Nutrients as Arc Progress */}
       {allNutrients.length > 0 && (
-        <View style={{ alignItems: 'center' }}>
-          <View style={{ 
-            flexDirection: 'row', 
-            flexWrap: 'wrap', 
-            justifyContent: 'space-around',
-            alignItems: 'flex-start',
-            gap: 12,
-            width: '100%',
-            paddingHorizontal: 4
+        <GlassCard isDark={isDark} style={{ padding: 16 }}>
+          <Text style={{ color: mutedColor, fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 12 }}>Macros & Nutrients</Text>
+          <View style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 10,
+            justifyContent: 'flex-start',
           }}>
-            {allNutrients.map((nutrient, i) => (
-              <View key={nutrient.label} style={{ 
-                width: SCREEN_WIDTH < 380 ? '28%' : '30%', 
-                minWidth: SCREEN_WIDTH < 380 ? 85 : 95,
+            {allNutrients.map((nutrient) => (
+              <View key={nutrient.label} style={{
+                width: SCREEN_WIDTH < 380 ? '28%' : '30%',
+                minWidth: 90,
                 maxWidth: 110,
-                alignItems: 'center'
               }}>
                 <ArcProgress
                   value={nutrient.value}
@@ -194,20 +202,20 @@ const NutritionTab = ({ isDark, clientData }) => {
               </View>
             ))}
           </View>
-        </View>
+        </GlassCard>
       )}
 
       {/* Micros */}
       {hasMicros && (
         <GlassCard isDark={isDark} style={{ padding: 16 }}>
-          <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 }}>
-            MICRONUTRIENTS
+          <Text style={{ color: mutedColor, fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 12 }}>
+            Micronutrients
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ gap: 8 }}>
             {(clientData?.nutrition?.micros || []).map((m, i) => (
-              <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', width: '47%' }}>
+              <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ color: mutedColor, fontSize: 13 }}>{m.name}</Text>
-                <Text style={{ color: textColor, fontSize: 13, fontWeight: '600' }}>{m.value}</Text>
+                <Text style={{ color: textColor, fontSize: 13, fontWeight: '700' }}>{m.value}</Text>
               </View>
             ))}
           </View>
@@ -217,12 +225,12 @@ const NutritionTab = ({ isDark, clientData }) => {
       {/* Foods Today */}
       {hasFoods && (
         <GlassCard isDark={isDark} style={{ padding: 16 }}>
-          <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 }}>
-            FOOD ATE TODAY
+          <Text style={{ color: mutedColor, fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 12 }}>
+            Foods Logged Today
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {(clientData?.nutrition?.foods || []).map((food, i) => (
-              <View key={i} style={{ backgroundColor: chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+              <View key={i} style={{ backgroundColor: chipBg, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
                 <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>{food}</Text>
               </View>
             ))}

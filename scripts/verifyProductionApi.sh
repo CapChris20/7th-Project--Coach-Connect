@@ -32,10 +32,12 @@ RAW="$(curl -sf --max-time 25 "$HEALTH_URL" 2>/dev/null)" || {
 }
 
 YOUTUBE_RAW="$(curl -sf --max-time 25 "$YOUTUBE_HEALTH_URL" 2>/dev/null)" || YOUTUBE_RAW='{}'
+WORKOUT_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/workout/generate" -H "Content-Type: application/json" -d '{}' || true)"
 
 node -e "
 const raw = process.argv[1];
 const youtubeRaw = process.argv[2];
+const workoutStatus = String(process.argv[3] || '');
 let h;
 let y = {};
 try { h = JSON.parse(raw); } catch (e) {
@@ -54,7 +56,11 @@ const youtubeOk = h.youtube === true || y.youtube === true;
 if (!youtubeOk) {
   fail('youtube is false — add YOUTUBE_API_KEY (or REACT_NATIVE_YOUTUBE_API_KEY) to .env and run ./scripts/syncCloudRunEnv.sh');
 }
+if (workoutStatus === '404') {
+  fail('POST /api/workout/generate returned 404 — stale Cloud Run revision is missing workout route');
+}
 console.log('✅ Production API OK');
 console.log('   deepseek:', h.deepseek, '| perplexity:', h.perplexity, '| serper:', h.serper, '| youtube:', youtubeOk);
 console.log('   aiCoachReady:', h.aiCoachReady, '| firebaseAdmin:', h.firebaseAdmin);
-" "$RAW" "$YOUTUBE_RAW"
+console.log('   workoutRouteStatus:', workoutStatus || 'unknown');
+" "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS"

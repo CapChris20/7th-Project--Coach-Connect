@@ -127,16 +127,38 @@ async function fetchSpreadsheetData(url, filename) {
   return data;
 }
 
-export default function SpreadsheetViewerModal({ visible, url, name, isDark = true, onClose }) {
+export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsProp = null, isDark = true, onClose }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const normalizeRows = (raw) => {
+    const list = Array.isArray(raw) && raw.length ? raw : [];
+    const maxCols = Math.max(0, ...list.map((r) => (Array.isArray(r) ? r.length : 1)));
+    return list.map((r) => {
+      const arr = Array.isArray(r) ? [...r] : [r];
+      while (arr.length < maxCols) arr.push('');
+      return arr.slice(0, maxCols);
+    });
+  };
+
   useEffect(() => {
-    if (!visible || !url) {
+    if (!visible) {
       setRows([]);
       setError(null);
       setLoading(true);
+      return;
+    }
+
+    const inlineRows = normalizeRows(rowsProp);
+    const hasInlineRows = inlineRows.some((row) =>
+      row.some((cell) => String(cell ?? '').trim() !== ''),
+    );
+
+    if (!url) {
+      setRows(hasInlineRows ? inlineRows : []);
+      setError(hasInlineRows ? null : 'Could not load spreadsheet');
+      setLoading(false);
       return;
     }
 
@@ -147,28 +169,36 @@ export default function SpreadsheetViewerModal({ visible, url, name, isDark = tr
     fetchSpreadsheetData(url, name)
       .then((data) => {
         if (!cancelled) {
-          const raw = Array.isArray(data) && data.length ? data : [];
-          // Pad short rows so every row has the same column count
-          const maxCols = Math.max(0, ...raw.map((r) => (Array.isArray(r) ? r.length : 1)));
-          const normalized = raw.map((r) => {
-            const arr = Array.isArray(r) ? [...r] : [r];
-            while (arr.length < maxCols) arr.push('');
-            return arr.slice(0, maxCols);
-          });
+          let raw = Array.isArray(data) && data.length ? data : [];
+          if (
+            !raw.length &&
+            hasInlineRows
+          ) {
+            raw = rowsProp;
+          }
+          const normalized = normalizeRows(raw);
+          if (!normalized.length) {
+            setError('Could not load spreadsheet');
+          }
           setRows(normalized);
           setLoading(false);
         }
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(e?.message || 'Could not load spreadsheet');
-          setRows([]);
+          if (hasInlineRows) {
+            setRows(inlineRows);
+            setError(null);
+          } else {
+            setError(e?.message || 'Could not load spreadsheet');
+            setRows([]);
+          }
           setLoading(false);
         }
       });
 
     return () => { cancelled = true; };
-  }, [visible, url, name]);
+  }, [visible, url, name, rowsProp]);
 
   const bg = isDark ? '#0A0A0A' : '#F9FAFB';
   const textColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)';

@@ -96,12 +96,6 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <LinearGradient
-        colors={isDark ? ['#BE185D', '#EA580C'] : ['#BE185D', '#FB923C']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.cardRim}
-      >
         <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
         {/* Header */}
         <View style={styles.header}>
@@ -189,48 +183,12 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
         {/* Macros Grid */}
         {showMacros && (
           <View style={styles.macrosGrid}>
-            <MacroField
-              label="Protein (g)"
-              value={macros.protein}
-              onChange={(v) => updateMacro('protein', v)}
-              dot="#E8799A"
-              t={t}
-            />
-            <MacroField
-              label="Carbs (g)"
-              value={macros.carbs}
-              onChange={(v) => updateMacro('carbs', v)}
-              dot="#FB923C"
-              t={t}
-            />
-            <MacroField
-              label="Fat (g)"
-              value={macros.fat}
-              onChange={(v) => updateMacro('fat', v)}
-              dot="#A78BFA"
-              t={t}
-            />
-            <MacroField
-              label="Sodium (mg)"
-              value={macros.sodium}
-              onChange={(v) => updateMacro('sodium', v)}
-              dot="#94A3B8"
-              t={t}
-            />
-            <MacroField
-              label="Fiber (g)"
-              value={macros.fiber}
-              onChange={(v) => updateMacro('fiber', v)}
-              dot="#E8799A"
-              t={t}
-            />
-            <MacroField
-              label="Sugar (g)"
-              value={macros.sugar}
-              onChange={(v) => updateMacro('sugar', v)}
-              dot="#FB923C"
-              t={t}
-            />
+          <MacroField label="Protein (g)" value={macros.protein} onChange={(v) => updateMacro('protein', v)} t={t} />
+          <MacroField label="Carbs (g)" value={macros.carbs} onChange={(v) => updateMacro('carbs', v)} t={t} />
+          <MacroField label="Fat (g)" value={macros.fat} onChange={(v) => updateMacro('fat', v)} t={t} />
+          <MacroField label="Sodium (mg)" value={macros.sodium} onChange={(v) => updateMacro('sodium', v)} t={t} />
+          <MacroField label="Fiber (g)" value={macros.fiber} onChange={(v) => updateMacro('fiber', v)} t={t} />
+          <MacroField label="Sugar (g)" value={macros.sugar} onChange={(v) => updateMacro('sugar', v)} t={t} />
 
             {/* Serving Size */}
             <View style={styles.inputGroup}>
@@ -274,7 +232,6 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions 
           </TouchableOpacity>
         </LinearGradient>
         </View>
-      </LinearGradient>
     </ScrollView>
   );
 }
@@ -299,13 +256,10 @@ function FieldInput({ t, style, ...rest }) {
   );
 }
 
-function MacroField({ label, value, onChange, dot, t }) {
+function MacroField({ label, value, onChange, t }) {
   return (
     <View style={styles.macroField}>
-      <View style={styles.macroLabel}>
-        <View style={[styles.macroDot, { backgroundColor: dot }]} />
-        <Text style={[styles.macroLabelText, { color: t.textMuted }]}>{label}</Text>
-      </View>
+      <Text style={[styles.macroLabelText, { color: t.textMuted }]}>{label}</Text>
       <FieldInput t={t} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
     </View>
   );
@@ -319,15 +273,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 24,
   },
-  cardRim: {
-    borderRadius: 28,
-    padding: 1,
-    marginBottom: 8,
-  },
   card: {
-    borderRadius: 27,
-    padding: 24,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
@@ -407,28 +357,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   macrosGrid: {
-    gap: 12,
+    gap: 10,
     marginBottom: 20,
   },
   macroField: {
-    gap: 6,
-  },
-  macroLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  macroDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    gap: 4,
   },
   macroLabelText: {
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+    marginBottom: 4,
   },
   logButton: {
     borderRadius: 16,

@@ -56,13 +56,7 @@ const normalizeTime = (t) => {
   return s;
 };
 
-const stripUndefined = (obj) => {
-  const next = {};
-  for (const [k, v] of Object.entries(obj || {})) {
-    if (v !== undefined) next[k] = v;
-  }
-  return next;
-};
+import { stripUndefinedForFirestore as stripUndefined } from '../shared/utils/firestoreSanitize';
 
 /**
  * useSessions — Trainer-wide session scheduling (across all clients).

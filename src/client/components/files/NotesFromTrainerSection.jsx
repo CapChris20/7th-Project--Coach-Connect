@@ -12,8 +12,10 @@ import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { formatDateShort } from '../../../shared/utils/formatFileSize';
+import { useTheme } from '../../../shared/ui/ThemeContext';
 
 export function NotesFromTrainerSection({ items, onMarkRead }) {
+  const { colors, isDark } = useTheme();
   const [selected, setSelected] = useState(null);
 
   const notes = useMemo(() => {
@@ -42,7 +44,7 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
   return (
     <View style={{ marginBottom: 26 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 2, color: '#fff' }}>
+        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 2, color: colors.textSecondary }}>
           NOTES FROM TRAINER
         </Text>
         {unreadCount > 0 && (
@@ -60,12 +62,12 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
             paddingVertical: 18,
             paddingHorizontal: 14,
             borderRadius: 14,
-            backgroundColor: 'rgba(255,255,255,0.03)',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(10,10,15,0.04)',
             borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.08)',
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)',
           }}
         >
-          <Text style={{ color: 'rgba(255,255,255,0.62)', fontWeight: '700', fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
+          <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
             No notes yet. Check back for updates from your coach.
           </Text>
         </View>

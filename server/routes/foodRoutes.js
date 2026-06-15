@@ -28,7 +28,8 @@ const {
   dedupeFoodRows,
   formatUserQueryAsFoodName,
 } = require('../../src/nutrition/food-search/formatFoodSearchTitle');
-const { rankSerperFoodResultRows } = require('../../src/nutrition/food-search/validateRestaurantResult');
+const { lookupBarcodeFatSecret } = require('../lib/fatSecretClient');
+const { guardBarcodeResult } = require('../lib/barcodeMerge');
 
 const SERPER_ORGANIC_MAX = 10;
 
@@ -1137,7 +1138,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   return res.json({ results: out, source });
 });
 
-// Barcode pipeline (fixed order): ① USDA Branded-only GTIN match ② Open Food Facts product API ③ Serper web
+// Barcode pipeline: ① USDA ② FatSecret ③ Open Food Facts ④ Serper
 app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
   try {
     const { barcode } = req.body;
@@ -1160,7 +1161,17 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
       if (result) console.log('Barcode from USDA:', result.name, 'fdcId:', result.id);
     }
 
-    // 2. Open Food Facts with portion normalization
+    // 2. FatSecret branded barcode
+    if (!result) {
+      try {
+        result = await lookupBarcodeFatSecret(barcode.trim());
+        if (result) console.log('Barcode from FatSecret:', result.name);
+      } catch (fsErr) {
+        console.warn('FatSecret barcode lookup failed:', fsErr.message);
+      }
+    }
+
+    // 3. Open Food Facts with portion normalization
     if (!result) {
       try {
         const openFoodFactsUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
@@ -1175,7 +1186,7 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
       }
     }
 
-    // 3. Serper web search for barcode + nutrition
+    // 4. Serper web search for barcode + nutrition
     if (!result && process.env.SERPER_API_KEY) {
       try {
         result = await lookupBarcodeWithSerper(barcode);
@@ -1185,6 +1196,7 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
       }
     }
 
+    result = guardBarcodeResult(result);
     setCache(cacheKey, result);
     return res.json(result);
   } catch (error) {

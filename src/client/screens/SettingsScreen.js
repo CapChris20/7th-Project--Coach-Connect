@@ -501,22 +501,7 @@ export default function SettingsScreen({
           </SettingsRow>
         </View>
 
-        {!isTrainer ? (
-          <>
-            <SectionHeader title="BILLING" colors={colors} />
-            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <SettingsRow
-                label="Coaching subscription"
-                onPress={() => go('coachingPayment')}
-                colors={colors}
-                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
-              >
-                <PaymentStatusChip label={clientBillingLabel} tone={clientBillingTone} colors={colors} isDark={isDark} />
-                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-              </SettingsRow>
-            </View>
-          </>
-        ) : null}
+        {/* Coaching subscription moved to trainer profile card on client dashboard */}
 
         <SectionHeader title="AI FEATURES" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -623,7 +608,7 @@ export default function SettingsScreen({
             style={[styles.row, { justifyContent: 'space-between' }]}
             disabled={!user}
           >
-            <Text style={[styles.rowLabel, { color: '#F97316', fontWeight: '700' }]}>Delete Account</Text>
+            <Text style={[styles.rowLabel, { color: '#EF4444', fontWeight: '700' }]}>Delete Account</Text>
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
         </View>

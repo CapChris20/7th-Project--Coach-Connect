@@ -15,6 +15,11 @@ describe('ai coach flow integration', () => {
     expect(text).toBe('Great, I can do that.');
   });
 
+  test('strips numeric citation brackets from web replies', () => {
+    const reply = 'Protein helps recovery.[2][3]';
+    expect(stripCoachToolJsonFromReply(reply)).toBe('Protein helps recovery.');
+  });
+
   test('routes personal-history prompts to weekly context path', () => {
     expect(shouldIncludeWeeklyContextInCoachPrompt('How am I doing this week?')).toBe(true);
   });

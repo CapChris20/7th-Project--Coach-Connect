@@ -227,6 +227,11 @@ export default function SpreadsheetEditorModal({
   const titleInputRef = useRef(null);
   const saveTimer = useRef(null);
   const lastSavedTimer = useRef(null);
+  const rowsRef = useRef([]);
+  const editingRef = useRef(null);
+  const draftRef = useRef('');
+  const canAutoSaveRef = useRef(false);
+  const userEditedRef = useRef(false);
 
   const [themeMode, setThemeMode] = useState(isDark ? 'dark' : 'light');
   const isSheetDark = themeMode === 'dark';
@@ -253,6 +258,18 @@ export default function SpreadsheetEditorModal({
 
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  useEffect(() => {
+    editingRef.current = editing;
+  }, [editing]);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     if (!visible) return;
@@ -286,6 +303,8 @@ export default function SpreadsheetEditorModal({
   }, [rows, formats, colWidths]);
 
   const setCell = useCallback((r, c, value) => {
+    userEditedRef.current = true;
+    canAutoSaveRef.current = true;
     pushHistory();
     setRows((prev) =>
       prev.map((row, rr) => (rr !== r ? row : row.map((cell, cc) => (cc === c ? String(value ?? '') : cell)))),
@@ -383,20 +402,45 @@ export default function SpreadsheetEditorModal({
     setStatus('unsaved');
   }, [pushHistory]);
 
+  const applyPendingCellEdit = useCallback(() => {
+    const edit = editingRef.current;
+    if (!edit) return false;
+    const value = String(draftRef.current ?? '');
+    const current = String(rowsRef.current[edit.row]?.[edit.col] ?? '');
+    if (value === current) {
+      editingRef.current = null;
+      setEditing(null);
+      return false;
+    }
+    userEditedRef.current = true;
+    canAutoSaveRef.current = true;
+    const nextRows = rowsRef.current.map((row, rr) =>
+      rr !== edit.row ? row : row.map((cell, cc) => (cc !== edit.col ? cell : value)),
+    );
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+    editingRef.current = null;
+    setEditing(null);
+    setStatus('unsaved');
+    return true;
+  }, []);
+
   const queueSave = useCallback(() => {
-    if (!trainerId) return;
+    if (!trainerId || !canAutoSaveRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       if (!mounted.current) return;
+      applyPendingCellEdit();
+      const rowsToSave = rowsRef.current;
       setStatus('saving');
       try {
         const trimmedTitle = saveTitle(title);
         const res = await saveTrainerSpreadsheet(trainerId, {
           id: docId || undefined,
           title: trimmedTitle,
-          rows,
-          columnCount: colCount,
-          rowCount,
+          rows: rowsToSave,
+          columnCount: rowsToSave[0]?.length || colCount,
+          rowCount: rowsToSave.length || rowCount,
           formats,
           colWidths,
           isFavorite: favorite,
@@ -411,10 +455,11 @@ export default function SpreadsheetEditorModal({
         if (mounted.current) setStatus('unsaved');
       }
     }, 1200);
-  }, [trainerId, title, docId, rows, colCount, rowCount, formats, colWidths, favorite, onSaved]);
+  }, [trainerId, title, docId, colCount, rowCount, formats, colWidths, favorite, onSaved, applyPendingCellEdit]);
 
   useEffect(() => {
     if (!visible) return;
+    if (!canAutoSaveRef.current) return;
     if (status === 'saving' || status === 'saved') return;
     queueSave();
   }, [rows, formats, colWidths, title, favorite]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -428,8 +473,10 @@ export default function SpreadsheetEditorModal({
 
   useEffect(() => {
     if (!visible) return;
+    userEditedRef.current = false;
+    canAutoSaveRef.current = false;
     setDocId(documentId || null);
-    setStatus('saved');
+    setStatus(documentId ? 'saved' : 'idle');
     setFavorite(false);
     setFormats(makeEmptyFormats());
     setColWidths({});
@@ -447,24 +494,33 @@ export default function SpreadsheetEditorModal({
           setTitle(docData.title && docData.title !== DEFAULT_SAVE_TITLE_SPREADSHEET ? docData.title : '');
           setFavorite(!!docData.isFavorite);
           const docRows = Array.isArray(docData.rows) && docData.rows.length ? docData.rows : makeEmptyRows();
-          setRows(docRows.map((r) => (Array.isArray(r) ? r.map((x) => (x == null ? '' : String(x))) : [])));
+          const normalizedRows = docRows.map((r) => (Array.isArray(r) ? r.map((x) => (x == null ? '' : String(x))) : []));
+          rowsRef.current = normalizedRows;
+          setRows(normalizedRows);
           setFormats(docData.formats && typeof docData.formats === 'object' ? docData.formats : makeEmptyFormats());
           setColWidths(docData.colWidths && typeof docData.colWidths === 'object' ? docData.colWidths : {});
           setStatus('saved');
           setLastSaved(now());
+          canAutoSaveRef.current = true;
         })
         .catch(() => {})
         .finally(() => mounted.current && setLoading(false));
     } else if (initialRows?.length) {
+      const normalizedRows = initialRows.map((r) => (Array.isArray(r) ? r.map((x) => (x == null ? '' : String(x))) : []));
+      rowsRef.current = normalizedRows;
       setTitle(initialTitle || '');
-      setRows(initialRows.map((r) => (Array.isArray(r) ? r.map((x) => (x == null ? '' : String(x))) : [])));
-      setStatus('saved');
+      setRows(normalizedRows);
+      setStatus(documentId ? 'saved' : 'idle');
       setLastSaved(now());
+      canAutoSaveRef.current = !!documentId;
     } else {
+      const emptyRows = makeEmptyRows();
+      rowsRef.current = emptyRows;
       setTitle(initialTitle || '');
-      setRows(makeEmptyRows());
-      setStatus('saved');
+      setRows(emptyRows);
+      setStatus('idle');
       setLastSaved(now());
+      canAutoSaveRef.current = false;
     }
   }, [visible, documentId, trainerId, initialRows, initialTitle]);
 
@@ -515,10 +571,8 @@ export default function SpreadsheetEditorModal({
   }, [status, onClose]);
 
   const commitEdit = useCallback(() => {
-    if (!editing) return;
-    setCell(editing.row, editing.col, draft);
-    setEditing(null);
-  }, [editing, draft, setCell]);
+    applyPendingCellEdit();
+  }, [applyPendingCellEdit]);
 
   const handleCellPress = useCallback(
     (r, c, raw) => {
@@ -711,7 +765,12 @@ export default function SpreadsheetEditorModal({
             <EditorTitleField
               inputRef={titleInputRef}
               value={title}
-              onChangeText={(t) => { setTitle(t); setStatus('unsaved'); }}
+              onChangeText={(t) => {
+                userEditedRef.current = true;
+                canAutoSaveRef.current = true;
+                setTitle(t);
+                setStatus('unsaved');
+              }}
               onFocus={() => setTitleFocused(true)}
               onBlur={() => setTitleFocused(false)}
               focused={titleFocused}
@@ -973,7 +1032,8 @@ export default function SpreadsheetEditorModal({
                                         ...(sel
                                           ? {
                                               borderWidth: 2,
-                                              borderColor: EDITOR_ACCENT_GRADIENT[0],
+                                              borderColor: '#FF6B9D',
+                                              backgroundColor: 'rgba(255,107,157,0.10)',
                                               zIndex: 2,
                                             }
                                           : { borderRightWidth: 1, borderBottomWidth: 1 }),

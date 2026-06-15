@@ -11,7 +11,7 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { AppState, Linking, Platform } from 'react-native';
-import { deleteField, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../app/config';
 
 let isConfigured = false;
@@ -186,7 +186,7 @@ export async function persistPushTokensForUid(uid, options = {}) {
       ...(fcmToken ? { fcmToken } : {}),
     };
 
-    await updateDoc(doc(db, 'users', uid), payload);
+    await setDoc(doc(db, 'users', uid), payload, { merge: true });
     if (__DEV__) {
       console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
     }

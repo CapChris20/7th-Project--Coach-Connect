@@ -1,14 +1,4 @@
 /**
- * AIChat Home Screen
- *
- * Purpose: UI screen or component: AIChat Home Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/aiChat
- * Key exports: AIChatHomeScreen
- *
- * @file-header
- */
-/**
  * AIChatHomeScreen.jsx — React Native
  * Converted from Lovable export (lovable-export-d5e2ed71)
  *
@@ -35,27 +25,24 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LottieView from 'lottie-react-native';
 import { showCoachAttachMenu } from '../chat-thread/openAttachmentMenu';
 import {
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
 } from '../chat-thread/pickAttachmentType';
-import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, deleteDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../app/config';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import { useTheme } from '../../shared/ui/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
-import { useCoachComposerInput } from '../hooks/useCoachComposerInput';
-import CoachPasteSheet from '../components/CoachPasteSheet';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
-import { deleteAiChatSession } from '../persistence/saveCoachMessagesToFirestore';
 import {
   buildHourlyCanHelpWith,
   buildHourlySpotlightSuggestions,
@@ -76,17 +63,17 @@ const COACH_ACTIONS = [
   {
     id: 'log',
     label: 'Log',
-    icon: 'add-circle-outline',
+    icon: 'add',
     starter: 'Can you log data for me?',
-    rim: ['#FF6B9D', '#C084FC'],
-    labelGrad: ['#FF6B9D', '#C084FC'],
+    rim: ['#FBBF24', '#F97316'],
+    labelGrad: ['#FBBF24', '#F97316'],
   },
   {
     id: 'web',
     label: 'Web',
     icon: 'globe-outline',
     starter: 'Can you search the web for me?',
-    rim: ['#06B6D4', '#3B82F6'],
+    rim: ['#22D3EE', '#3B82F6'],
     labelGrad: ['#22D3EE', '#3B82F6'],
   },
   {
@@ -102,13 +89,15 @@ const COACH_ACTIONS = [
     label: 'Photo',
     icon: 'image-outline',
     starter: 'Can you analyze a photo for me?',
-    rim: ['#F97316', '#FBBF24'],
-    labelGrad: ['#F97316', '#FBBF24'],
+    rim: ['#FF6B9D', '#F97316'],
+    labelGrad: ['#FF6B9D', '#F97316'],
   },
 ];
 
 function iconForPrompt(text) {
   const s = String(text || '').toLowerCase();
+  if (s.includes('nutrition') || s.includes('habit')) return 'restaurant-outline';
+  if (s.includes('full-body') || s.includes('upper/lower') || s.includes('schedule')) return 'body-outline';
   if (s.includes('workout') || s.includes('hypertrophy') || s.includes('split') || s.includes('squat')) return 'barbell-outline';
   if (s.includes('protein') || s.includes('eat') || s.includes('macro') || s.includes('meal') || s.includes('vegan') || s.includes('keto')) return 'nutrition-outline';
   if (s.includes('supplement') || s.includes('creatine')) return 'flask-outline';
@@ -120,6 +109,23 @@ function iconForPrompt(text) {
   if (s.includes('conditioning') || s.includes('athletic')) return 'flash-outline';
   if (s.includes('drink') || s.includes('zero-sugar')) return 'water-outline';
   return 'sparkles-outline';
+}
+
+function rimForPrompt(text) {
+  const s = String(text || '').toLowerCase();
+  if (s.includes('nutrition') || s.includes('habit') || s.includes('protein') || s.includes('meal') || s.includes('macro') || s.includes('eat')) {
+    return ['#FF6B9D', '#F97316'];
+  }
+  if (s.includes('workout') || s.includes('split') || s.includes('training') || s.includes('full-body') || s.includes('schedule')) {
+    return ['#FBBF24', '#F97316'];
+  }
+  if (s.includes('recover') || s.includes('sleep') || s.includes('rest')) {
+    return ['#A78BFA', '#C084FC'];
+  }
+  if (s.includes('search') || s.includes('web') || s.includes('research')) {
+    return ['#22D3EE', '#3B82F6'];
+  }
+  return ['#FF6B9D', '#C084FC'];
 }
 
 // ─── Theme tokens ─────────────────────────────────────────────────────────────
@@ -369,23 +375,6 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
   );
 }
 
-function GradientActionLabel({ colors, children, style, fallbackColor }) {
-  if (!colors?.length || colors.length < 2) {
-    return <Text style={[style, { color: fallbackColor }]}>{children}</Text>;
-  }
-  return (
-    <MaskedView
-      maskElement={
-        <Text style={[style, { backgroundColor: 'transparent' }]}>{children}</Text>
-      }
-    >
-      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-        <Text style={[style, { opacity: 0 }]}>{children}</Text>
-      </LinearGradient>
-    </MaskedView>
-  );
-}
-
 const CoachActionOrb = ({ action, isDark, onPress }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const rim = action.rim || BORDER_SUBTLE;
@@ -417,8 +406,8 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
           style={{
             width: 70,
             height: 70,
-            borderRadius: 24,
-            padding: 1.5,
+            borderRadius: 35,
+            padding: 2,
             ...(Platform.OS === 'ios' && isDark
               ? { shadowColor: rim[0], shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }
               : null),
@@ -428,7 +417,7 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
           <View
             style={{
               flex: 1,
-              borderRadius: 22.5,
+              borderRadius: 33,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
@@ -448,18 +437,17 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
             <Ionicons name={action.icon} size={24} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
           </View>
         </LinearGradient>
-        <GradientActionLabel
-          colors={isDark ? action.labelGrad : null}
-          fallbackColor={isDark ? 'rgba(255,255,255,0.78)' : 'rgba(10,10,15,0.72)'}
+        <Text
           style={{
             marginTop: 8,
             fontSize: 12,
             fontWeight: '700',
             letterSpacing: 0.2,
+            color: isDark ? '#FFFFFF' : 'rgba(10,10,15,0.72)',
           }}
         >
           {action.label}
-        </GradientActionLabel>
+        </Text>
       </Animated.View>
     </Pressable>
   );
@@ -470,7 +458,6 @@ const CAN_HELP_CARD_WIDTH = SW - 32;
 const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
   const list = (items || []).filter(Boolean);
   const [index, setIndex] = useState(0);
-  const listRef = useRef(null);
 
   if (!list.length) return null;
 
@@ -493,7 +480,6 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
         Can help with
       </Text>
       <FlatList
-        ref={listRef}
         data={list}
         horizontal
         pagingEnabled
@@ -512,58 +498,63 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
             style={{ width: CAN_HELP_CARD_WIDTH }}
           >
             <LinearGradient
-              colors={item.rim || BORDER_SUBTLE}
+              colors={['#FF6B9D', '#C084FC']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={{ borderRadius: 18, padding: 1.5 }}
             >
+            <View
+              style={{
+                borderRadius: 16.5,
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                backgroundColor: isDark ? 'rgba(22,9,33,0.94)' : 'rgba(248,243,255,0.96)',
+                minHeight: 88,
+                overflow: 'hidden',
+              }}
+            >
+              {isDark ? (
+                <LinearGradient
+                  colors={['rgba(120,40,180,0.18)', 'rgba(180,60,20,0.10)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              ) : (
+                <LinearGradient
+                  colors={['rgba(192,132,252,0.08)', 'rgba(249,115,22,0.06)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              )}
               <View
                 style={{
-                  borderRadius: 16.5,
-                  paddingVertical: 16,
-                  paddingHorizontal: 16,
-                  flexDirection: 'row',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 14,
                   alignItems: 'center',
-                  gap: 14,
-                  backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
-                  minHeight: 88,
-                  overflow: 'hidden',
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
                 }}
               >
-                {isDark ? (
-                  <LinearGradient
-                    colors={HERO_INNER}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                ) : null}
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
-                  }}
-                >
-                  <Ionicons name={item.icon} size={22} color={item.accent || AI_COACH_UI.pink} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{ fontSize: 15, fontWeight: '800', color: t.textPrimary, marginBottom: 4 }}
-                    numberOfLines={2}
-                  >
-                    {item.title}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: t.textMuted }} numberOfLines={2}>
-                    {item.subtitle}
-                  </Text>
-                </View>
+                <Ionicons name={item.icon} size={22} color={item.accent || AI_COACH_UI.pink} />
               </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ fontSize: 15, fontWeight: '800', color: t.textPrimary, marginBottom: 4 }}
+                  numberOfLines={2}
+                >
+                  {item.title}
+                </Text>
+                <Text style={{ fontSize: 13, color: t.textMuted }} numberOfLines={2}>
+                  {item.subtitle}
+                </Text>
+              </View>
+            </View>
             </LinearGradient>
           </Pressable>
         )}
@@ -630,6 +621,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
 
   const text = items[index];
   const iconName = iconForPrompt(text);
+  const iconRim = rimForPrompt(text);
 
   return (
     <View style={{ width: '100%', marginTop: 20 }}>
@@ -656,7 +648,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
         style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
       >
         <LinearGradient
-          colors={BORDER_SUBTLE}
+          colors={['rgba(255,107,157,0.55)', 'rgba(192,132,252,0.45)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{ borderRadius: 18, padding: 1.5 }}
@@ -684,18 +676,25 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 style={StyleSheet.absoluteFillObject}
               />
             ) : null}
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
-              }}
+            <LinearGradient
+              colors={iconRim}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ borderRadius: 14, padding: 1.5 }}
             >
-              <Ionicons name={iconName} size={22} color={isDark ? '#FF6B9D' : '#BE185D'} />
-            </View>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12.5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.04)',
+                }}
+              >
+                <Ionicons name={iconName} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+              </View>
+            </LinearGradient>
             <Animated.View
               style={{
                 flex: 1,
@@ -745,7 +744,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 borderRadius: 999,
                 backgroundColor:
                   i === index
-                    ? AI_COACH_UI.pink
+                    ? SPOTLIGHT_PINK
                     : isDark
                       ? 'rgba(255,255,255,0.18)'
                       : 'rgba(0,0,0,0.12)',
@@ -888,8 +887,8 @@ function formatSessionDisplayTitle(title) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!s) s = 'Chat';
-  if (s.length <= 30) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Chat';
-  const slice = s.slice(0, 30);
+  if (s.length <= 48) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Chat';
+  const slice = s.slice(0, 48);
   const lastSpace = slice.lastIndexOf(' ');
   const cut = (lastSpace > 10 ? slice.slice(0, lastSpace) : slice)
     .replace(/[-–—]\s*$/, '')
@@ -928,19 +927,41 @@ function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isD
     }).start();
   }, [open, slideAnim]);
 
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.5)';
-  const titleColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const metaColor = isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,10,15,0.45)';
+  const t = isDark ? DARK : LIGHT;
+  const labelColor = t.textMuted;
+  const titleColor = t.textPrimary;
+  const metaColor = isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.45)';
+  const panelBg = isDark ? DARK.sidebarBg : '#F5F5F7';
+
+  if (!open) return null;
 
   return (
-    <Modal visible={open} transparent animationType="none" onRequestClose={onClose}>
-      <View style={{ flex: 1, flexDirection: 'row' }}>
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
+        <TouchableOpacity
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.62)' }]}
+          activeOpacity={1}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close chat history"
+        />
         <Animated.View
           style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
             width: SIDEBAR_WIDTH,
-            height: SH,
             transform: [{ translateX: slideAnim }],
+            backgroundColor: panelBg,
+            borderRightWidth: 1,
+            borderRightColor: t.sidebarBorder || t.border,
             zIndex: 2,
+            elevation: 24,
+            shadowColor: '#000',
+            shadowOpacity: 0.35,
+            shadowRadius: 16,
+            shadowOffset: { width: 4, height: 0 },
           }}
         >
           <LinearGradient
@@ -949,12 +970,7 @@ function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isD
             end={{ x: 1, y: 0 }}
             style={{ height: 2 }}
           />
-          <LinearGradient
-            colors={isDark ? HERO_INNER : ['#F8FAFF', '#FFFFFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={{ flex: 1, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.08)' }}
-          >
+          <View style={{ flex: 1 }}>
             <View
               style={{
                 paddingTop: (insets?.top || 0) + 12,
@@ -1045,7 +1061,7 @@ function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isD
                           }}
                         >
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ color: titleColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                            <Text style={{ color: titleColor, fontSize: 14, fontWeight: '600' }} numberOfLines={2} ellipsizeMode="tail">
                               {formatSessionDisplayTitle(s.title)}
                             </Text>
                             <Text style={{ color: metaColor, fontSize: 11, marginTop: 3 }}>{s.date}</Text>
@@ -1076,14 +1092,8 @@ function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isD
                 ))
               )}
             </ScrollView>
-          </LinearGradient>
+          </View>
         </Animated.View>
-
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
-          activeOpacity={1}
-          onPress={onClose}
-        />
       </View>
     </Modal>
   );
@@ -1108,23 +1118,11 @@ export default function AIChatHomeScreen({
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [userData, setUserData] = useState(null);
   const [hourSlot, setHourSlot] = useState(getCoachHourSlot());
-
-  const composer = useCoachComposerInput('');
-  const {
-    value: inputText,
-    onChangeText: setInputText,
-    clear: clearComposer,
-    commitText,
-    applySpeechTranscript,
-    openPasteSheet,
-    closePasteSheet,
-    pasteSheetVisible,
-    inputRef: composerInputRef,
-  } = composer;
 
   const canHelpItems = buildHourlyCanHelpWith({ now: hourSlot * 60 * 60 * 1000 });
   const suggestions = buildHourlySpotlightSuggestions({
@@ -1137,38 +1135,54 @@ export default function AIChatHomeScreen({
   const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
   const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : 0;
   // ─── Load + transition animations (UI only) ─────────────────────────────────
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-  const headerOpacity = useRef(new Animated.Value(0)).current;
-  const inputOpacity = useRef(new Animated.Value(0)).current;
+  const screenOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
+  const headerOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
+  const lottieOpacity = useRef(new Animated.Value(0)).current;          // 100ms -> 500ms
+  const lottieScale = useRef(new Animated.Value(0.9)).current;          // 100ms -> 500ms (bouncy)
+  const inputOpacity = useRef(new Animated.Value(0)).current;           // 800ms -> 300ms
   const inputTranslateY = useRef(new Animated.Value(10)).current;
-  const idleGroupOpacity = useRef(new Animated.Value(1)).current;
+  const idleGroupOpacity = useRef(new Animated.Value(1)).current;       // fades out when starting chat
   const idleGroupTranslateY = useRef(new Animated.Value(0)).current;
 
+  const pillBorderAnim = useRef(new Animated.Value(0)).current;
+
+  const inputBorderAnim = useRef(new Animated.Value(0)).current; // hero / pill border loop
+
   const { listening, toggleListen } = useCoachSpeech({
-    onPartialTranscript: applySpeechTranscript,
-    onFinalTranscript: applySpeechTranscript,
+    onPartialTranscript: (text) => setInputText(text),
+    onFinalTranscript: (text) => setInputText(text),
   });
 
   useEffect(() => {
+    // Background + header
     Animated.timing(screenOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
     Animated.timing(headerOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
 
+    // Lottie
     Animated.sequence([
-      Animated.delay(400),
+      Animated.delay(100),
       Animated.parallel([
+        Animated.timing(lottieOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.spring(lottieScale, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 14 }),
+      ]),
+    ]).start();
+
+    // Subtle animated gradient border loop
+    Animated.loop(
+      Animated.timing(pillBorderAnim, { toValue: 1, duration: 7000, useNativeDriver: true })
+    ).start();
+
+    // Input (800ms)
+    Animated.sequence([
+      Animated.delay(800),
+      Animated.parallel([
+        // Must stay JS-driven because we combine opacity with keyboard height transform on same view
         Animated.timing(inputOpacity, { toValue: 1, duration: 300, useNativeDriver: false }),
+        // Must stay JS-driven because we combine it with keyboard height.
         Animated.timing(inputTranslateY, { toValue: 0, duration: 300, useNativeDriver: false }),
       ]),
     ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      const next = getCoachHourSlot();
-      setHourSlot((prev) => (prev !== next ? next : prev));
-    }, 60000);
-    return () => clearInterval(tick);
   }, []);
 
   const handleDeleteSession = async (session) => {
@@ -1182,7 +1196,7 @@ export default function AIChatHomeScreen({
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteAiChatSession(userId, sessionId);
+            await deleteDoc(doc(db, 'users', userId, 'aiChats', sessionId));
           } catch (e) {
             console.error('Failed to delete ai chat:', e);
           }
@@ -1244,6 +1258,14 @@ export default function AIChatHomeScreen({
     return () => unsub();
   }, [userId]);
 
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const next = getCoachHourSlot();
+      setHourSlot((prev) => (prev !== next ? next : prev));
+    }, 60000);
+    return () => clearInterval(tick);
+  }, []);
+
   const handleStartChat = (prefillOrPayload) => {
     const payload =
       typeof prefillOrPayload === 'string'
@@ -1270,20 +1292,20 @@ export default function AIChatHomeScreen({
   const handleCamera = () => openChatWithAttachments(pickCoachPhotoFromCamera);
   const handleFile = () => openChatWithAttachments(pickCoachDocuments);
 
-  const openAttachMenu = () => {
-    showCoachAttachMenu({
-      onPhotoLibrary: handlePhotoLibrary,
-      onCamera: handleCamera,
-      onFile: handleFile,
-    });
-  };
-
   const handleActionPress = (action) => {
     if (action.id === 'photo') {
       handleCamera();
       return;
     }
     handleStartChat(action.starter);
+  };
+
+  const openAttachMenu = () => {
+    showCoachAttachMenu({
+      onPhotoLibrary: handlePhotoLibrary,
+      onCamera: handleCamera,
+      onFile: handleFile,
+    });
   };
 
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -1309,7 +1331,7 @@ export default function AIChatHomeScreen({
       prefill,
       initialAttachments: attachments,
     });
-    clearComposer();
+    setInputText('');
     setAttachments([]);
   };
 
@@ -1377,53 +1399,78 @@ export default function AIChatHomeScreen({
               transform: [{ translateY: idleGroupTranslateY }],
             }}
           >
-            <View style={{ width: '100%', alignItems: 'flex-start', marginBottom: 4 }}>
-              <Text style={{ fontSize: 24, fontWeight: '900', color: t.textPrimary, letterSpacing: -0.4 }}>
-                {(() => {
-                  const h = new Date().getHours();
-                  const greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-                  return `${greet}, `;
-                })()}
-                <Text style={{ color: AI_COACH_UI.pink }}>{userName}!</Text>
-              </Text>
-            </View>
-
-            <CanHelpWithCarousel
-              items={canHelpItems}
-              isDark={isDark}
+            <HeroWelcomeCard
               t={t}
-              onPress={handleStartChat}
+              isDark={isDark}
+              userName={userName}
+              borderAnim={pillBorderAnim}
             />
 
-            <View style={{ width: '100%', marginTop: 24 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  letterSpacing: 1.1,
-                  textTransform: 'uppercase',
-                  color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
-                  marginBottom: 14,
-                }}
-              >
-                What do you need?
-              </Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-                {COACH_ACTIONS.map((action) => (
-                  <CoachActionOrb
-                    key={action.id}
-                    action={action}
-                    isDark={isDark}
-                    onPress={handleActionPress}
-                  />
-                ))}
-              </View>
-              <SpotlightSuggestion
-                suggestions={suggestions}
+            {/* Bigger Lottie OUTSIDE the card (so card isn't huge) */}
+            <Animated.View
+              style={{
+                width: '100%',
+                height: Math.min(420, Math.floor(SH * 0.62)),
+                marginTop: 10,
+                opacity: lottieOpacity,
+                transform: [{ scale: lottieScale }],
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOpacity: isDark ? 0.22 : 0,
+                shadowRadius: isDark ? 18 : 0,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: isDark ? 10 : 0,
+              }}
+            >
+              <LottieView
+                source={require('../../assets/Lotties for Anatrox/Cloud robotics abstract.json')}
+                autoPlay
+                loop
+                style={{ width: '100%', height: '100%' }}
+              />
+            </Animated.View>
+
+            {/* Coach starters — action orbs + rotating spotlight */}
+            <View style={{ width: '100%', marginTop: 8 }}>
+              <CanHelpWithCarousel
+                items={canHelpItems}
                 isDark={isDark}
                 t={t}
                 onPress={handleStartChat}
               />
+
+              <View style={{ width: '100%', marginTop: 24 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    letterSpacing: 1.1,
+                    textTransform: 'uppercase',
+                    color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
+                    marginBottom: 14,
+                    textAlign: 'center',
+                  }}
+                >
+                  What do you need?
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+                  {COACH_ACTIONS.map((action) => (
+                    <CoachActionOrb
+                      key={action.id}
+                      action={action}
+                      isDark={isDark}
+                      onPress={handleActionPress}
+                    />
+                  ))}
+                </View>
+                <SpotlightSuggestion
+                  suggestions={suggestions}
+                  isDark={isDark}
+                  t={t}
+                  onPress={handleStartChat}
+                />
+              </View>
             </View>
           </Animated.View>
         </ScrollView>
@@ -1509,7 +1556,6 @@ export default function AIChatHomeScreen({
               <Ionicons name="add-circle-outline" size={26} color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight} />
             </TouchableOpacity>
             <TextInput
-              ref={composerInputRef}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -1527,7 +1573,6 @@ export default function AIChatHomeScreen({
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSend}
-              onLongPress={openPasteSheet}
               placeholder="Ask your coach..."
               placeholderTextColor={t.textMuted}
               returnKeyType="send"
@@ -1579,14 +1624,6 @@ export default function AIChatHomeScreen({
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
-
-      <CoachPasteSheet
-        visible={pasteSheetVisible}
-        onClose={closePasteSheet}
-        onConfirm={commitText}
-        t={t}
-        isDark={isDark}
-      />
 
       <Sidebar
         open={sidebarOpen}

@@ -9,70 +9,70 @@
  * @file-header
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared/ui/ThemeContext';
 
 export default function FoodItem({ food, onAdd, onDelete, showDelete = false }) {
-  const { colors, spacing, isDark } = useTheme();
-  const styles = createStyles(spacing, colors, isDark);
+  const { isDark } = useTheme();
 
   const servingSize = food.servingSize || 1;
-  // Calories from FatSecret are base calories per serving
-  // For display, show total calories (base * servingSize)
   const baseCalories = Number(food.calories) || 0;
   const totalCalories = baseCalories * servingSize;
-  
-  const servingText = food.serving_description || 
-    (servingSize > 1 
+
+  const servingText =
+    food.serving_description ||
+    (servingSize > 1
       ? `${servingSize.toFixed(2)} ${food.serving_unit || 'serving'}`
       : food.serving_unit || '1 serving');
 
-  // Show brand name for FatSecret foods
   const brandText = food.brand_name || food.brand;
+  const displayName = food.name || food.food_name || 'Food Item';
+
+  const text = isDark ? '#FFFFFF' : '#0A0A0F';
+  const textMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
+  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)';
+  const borderC = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.07)';
 
   return (
-    <View style={styles.container}>
-      <View style={styles.leftSection}>
-        {food.image ? (
-          <Image source={{ uri: food.image }} style={styles.thumbnail} />
-        ) : (
-          <View style={styles.thumbnailPlaceholder}>
-            <Image 
-              source={require('../../assets/icons/burger.png')} 
-              style={{ width: 24, height: 24 }}
-              resizeMode="contain"
-            />
-          </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={1} selectable={true}>
-            {food.name || food.food_name || 'Food Item'}
+    <View style={[s.container, { backgroundColor: cardBg, borderColor: borderC }]}>
+      <View style={s.leftSection}>
+        <LinearGradient
+          colors={isDark ? ['rgba(255,107,157,0.18)', 'rgba(192,132,252,0.14)'] : ['rgba(255,107,157,0.12)', 'rgba(192,132,252,0.10)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={s.iconBox}
+        >
+          <Ionicons name="restaurant-outline" size={20} color={isDark ? '#FF6B9D' : '#BE185D'} />
+        </LinearGradient>
+
+        <View style={s.info}>
+          <Text style={[s.name, { color: text }]} numberOfLines={1} selectable={true}>
+            {displayName}
           </Text>
-          <Text style={styles.serving} selectable={true}>
-            {servingText} | {totalCalories.toFixed(1)} kcal
+          <Text style={[s.serving, { color: textMuted }]} selectable={true}>
+            {servingText}
+            {brandText ? ` · ${brandText}` : ''}
           </Text>
-          {brandText && (
-            <Text style={styles.brand} selectable={true}>{brandText}</Text>
-          )}
-          {food.food_type && food.food_type !== 'Generic' && (
-            <Text style={styles.foodType} selectable={true}>{food.food_type}</Text>
-          )}
         </View>
       </View>
-      <View style={styles.rightSection}>
+
+      <View style={s.rightSection}>
+        <View style={s.calBlock}>
+          <Text style={[s.calNum, { color: text }]} selectable={true}>
+            {Math.round(totalCalories)}
+          </Text>
+          <Text style={[s.calLabel, { color: textMuted }]}>cal</Text>
+        </View>
+
         {showDelete ? (
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => onDelete && onDelete()}
-          >
-            <Text style={styles.deleteIcon} selectable={true}>×</Text>
+          <TouchableOpacity style={s.deleteBtn} onPress={() => onDelete && onDelete()}>
+            <Ionicons name="trash-outline" size={16} color="#EF4444" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => onAdd && onAdd()}
-          >
-            <Text style={styles.addIcon} selectable={true}>+</Text>
+          <TouchableOpacity style={[s.addBtn, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(10,10,15,0.15)' }]} onPress={() => onAdd && onAdd()}>
+            <Ionicons name="add" size={18} color={isDark ? '#FF6B9D' : '#BE185D'} />
           </TouchableOpacity>
         )}
       </View>
@@ -80,91 +80,74 @@ export default function FoodItem({ food, onAdd, onDelete, showDelete = false }) 
   );
 }
 
-const createStyles = (spacing, colors, isDark) =>
-  StyleSheet.create({
-    container: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: isDark ? 'rgba(17,17,17,0.55)' : 'rgba(255,255,255,0.62)',
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 12,
-    },
-    leftSection: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    thumbnail: {
-      width: 48,
-      height: 48,
-      borderRadius: 8,
-      marginRight: 12,
-    },
-    thumbnailPlaceholder: {
-      width: 48,
-      height: 48,
-      borderRadius: 8,
-      backgroundColor: isDark ? '#1F2937' : 'rgba(15,23,42,0.06)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-    },
-    thumbnailIcon: {
-      fontSize: 24,
-    },
-    info: {
-      flex: 1,
-    },
-    name: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDark ? '#FFFFFF' : (colors?.text ?? '#111827'),
-      marginBottom: 4,
-    },
-    serving: {
-      fontSize: 12,
-      color: isDark ? '#9CA3AF' : (colors?.textSecondary ?? '#3C3C43'),
-      marginBottom: 2,
-    },
-    brand: {
-      fontSize: 11,
-      color: isDark ? '#6B7280' : (colors?.textSecondary ?? '#3C3C43'),
-    },
-    foodType: {
-      fontSize: 10,
-      color: isDark ? '#9CA3AF' : (colors?.textSecondary ?? '#3C3C43'),
-      fontStyle: 'italic',
-    },
-    rightSection: {
-      marginLeft: 12,
-    },
-    addButton: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: '#10B981',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    addIcon: {
-      fontSize: 20,
-      color: '#FFFFFF',
-      fontWeight: '300',
-    },
-    deleteButton: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: '#EF4444',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    deleteIcon: {
-      fontSize: 24,
-      color: '#FFFFFF',
-      fontWeight: '300',
-    },
-  });
-
+const s = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  serving: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginLeft: 8,
+  },
+  calBlock: {
+    alignItems: 'flex-end',
+  },
+  calNum: {
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  calLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+  },
+  addBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

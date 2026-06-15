@@ -69,8 +69,8 @@ import {
 import { httpsCallable } from 'firebase/functions';
 
 import { auth, db, functions } from './config';
-import { calculateBMR, calculateTDEE } from './calculations';
-import { getClientDateKey } from './dateKey';
+import { calculateBMR, calculateTDEE } from '../shared/fitness/calculations';
+import { getClientDateKey } from '../shared/utils/dateKeys';
 import { getLocalDateKey } from '../shared/utils/getLocalDay';
 import {
   mergeClientDailyMetrics,
@@ -99,7 +99,7 @@ import { subscribeToUnreadCount } from '../ai/services/conversationService';
 import { getOrCreateConversation, sendClientRequest } from '../ai/trainer-messaging/sendTrainerNotification';
 import AIChatHomeScreen from '../aiChat/chat-home/AIChatHomeScreen';
 import AIChatScreen from '../aiChat/screens/AIChatScreen';
-import AICoachTestSuite from '../aiChat/AICoachTestSuite';
+const AICoachTestSuite = __DEV__ ? require('../aiChat/AICoachTestSuite').default : null;
 import TrainerSearchScreen, { TrainerProfileSheet } from '../marketplace/screens/TrainerSearchScreen';
 import MyDashboardScreen from '../client/screens/MyDashboardScreen';
 import SettingsScreen from '../client/screens/SettingsScreen';
@@ -149,7 +149,7 @@ import {
   subscribePushTokenRefreshOnResume,
 } from '../shared/notifications/manageNotifications';
 import { postRemotePushNotify } from '../shared/api/sendPushNotification';
-import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead } from '../shared/notes-files/manageNotesAndFiles';
+import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, spreadsheetRowsHaveContent } from '../shared/notes-files/manageNotesAndFiles';
 import { useTheme } from '../shared/ui/ThemeContext';
 import { trainerPhotoUri } from '../shared/utils/getTrainerProfileMedia';
 import {
@@ -195,7 +195,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [showNotesFiles, setShowNotesFiles] = useState(false);
   const [notesAndFiles, setNotesAndFiles] = useState([]);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
-  const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
+  const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null, rows: null });
   const [documentViewer, setDocumentViewer] = useState({ visible: false, trainerId: null, documentId: null, title: null });
   const [mediaViewer, setMediaViewer] = useState({ visible: false, url: null, kind: 'image', name: null });
   const [embedWebViewer, setEmbedWebViewer] = useState({ visible: false, uri: null, title: null });
@@ -930,8 +930,50 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   }, [user?.uid, myOwnFiles, refreshNotesAndFiles]);
 
   const openNotesFile = useCallback((file) => {
+    if (file?.trainerId && file?.documentId) {
+      resolveTrainerSpreadsheetView(file.trainerId, file.documentId)
+        .then((res) => {
+          if (!res) {
+            if (file?.type === 'document' || file?.documentId) {
+              setDocumentViewer({
+                visible: true,
+                trainerId: file.trainerId,
+                documentId: file.documentId,
+                title: file.title || 'Document',
+              });
+            } else {
+              Alert.alert('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+            }
+            return;
+          }
+          const name = file?.title || file?.name || res.title || 'Spreadsheet';
+          if (spreadsheetRowsHaveContent(res.rows)) {
+            setSpreadsheetViewer({
+              visible: true,
+              url: res.storageUrl || null,
+              rows: res.rows,
+              name,
+            });
+            return;
+          }
+          if (res.storageUrl) {
+            setSpreadsheetViewer({
+              visible: true,
+              url: res.storageUrl,
+              rows: null,
+              name,
+            });
+            return;
+          }
+          Alert.alert('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+        })
+        .catch(() => {
+          Alert.alert('Spreadsheet unavailable', 'Could not load this spreadsheet.');
+        });
+      return;
+    }
     if (file?.type === 'spreadsheet' && file.url) {
-      setSpreadsheetViewer({ visible: true, url: file.url, name: file?.name || 'Spreadsheet' });
+      setSpreadsheetViewer({ visible: true, url: file.url, name: file?.name || 'Spreadsheet', rows: null });
       return;
     }
     if (file?.type === 'document' || (file?.documentId && file?.trainerId)) {

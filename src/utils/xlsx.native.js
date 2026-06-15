@@ -8,19 +8,7 @@
  *
  * @file-header
  */
-// Native (iOS/Android/Expo Go) shim for `xlsx`.
-//
-// `xlsx` depends on Node core modules like `fs/stream/events`, which Metro cannot
-// bundle for the native runtime. This stub keeps the app buildable.
+// Native (iOS/Android) — Metro polyfills in metro.config.js allow the real SheetJS build.
+import * as XLSX from 'xlsx';
 
-export default {
-  read: () => ({ SheetNames: [], Sheets: {} }),
-  utils: {
-    sheet_to_json: () => [],
-    book_new: () => ({}),
-    aoa_to_sheet: () => ({}),
-    book_append_sheet: () => {},
-  },
-  write: () => new ArrayBuffer(0),
-};
-
+export default XLSX;

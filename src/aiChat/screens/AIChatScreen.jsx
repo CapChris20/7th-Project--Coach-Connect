@@ -43,7 +43,6 @@ import {
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
 } from '../chat-thread/pickAttachmentType';
-import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { serverTimestamp } from 'firebase/firestore';
 import logger from '../../shared/api/logErrorToServer';
@@ -59,7 +58,7 @@ import CoachConnectHeader from '../../shared/components/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { useTheme } from '../../shared/ui/ThemeContext';
-import Markdown, { openUrl } from 'react-native-markdown-display';
+import { coachPlainText, copyCoachText } from '../lib/coachClipboard';
 import { loadCoachContextEnhanced } from '../../ai/context/CoachContextProvider';
 import { sendCoachMessageWithRetry } from '../../ai/chat-api/aiCoachServerService';
 import ToolConfirmationModal from '../components/ToolConfirmationModal';
@@ -73,29 +72,14 @@ import AICoachGlassCard from '../components/AICoachGlassCard';
 import { stripCoachToolJsonFromReply, parseCoachToolCalls } from '../../shared/parseCoachToolCalls';
 import { coerceMisroutedDeleteTool } from '../../ai/tools/parseDeleteLogRequest';
 import { guardCoachToolProposal } from '../../ai/tools/validateCoachToolProposal';
+import CoachWebSourceCards from '../chat-thread/CoachWebSourceCards';
 
 const USER_BUBBLE_GRAD = AI_COACH_UI.gradient.userBubble;
 const ACTION_GRAD = AI_COACH_UI.gradient.ctaWarm;
 const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
 const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 
-/** Firestore rejects undefined anywhere in a document. */
-function stripUndefinedDeep(value) {
-  if (value === undefined) return undefined;
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) {
-    return value
-      .map(stripUndefinedDeep)
-      .filter((item) => item !== undefined);
-  }
-  const out = {};
-  for (const [key, val] of Object.entries(value)) {
-    if (val === undefined) continue;
-    const cleaned = stripUndefinedDeep(val);
-    if (cleaned !== undefined) out[key] = cleaned;
-  }
-  return out;
-}
+import { stripUndefinedForFirestore as stripUndefinedDeep } from '../../shared/utils/firestoreSanitize';
 
 function serializeChatMessage(m) {
   if (!m) return null;
@@ -683,12 +667,11 @@ const COACH_WAIT_LABELS = {
   working: { icon: 'checkmark-circle-outline', text: 'Applying your request…' },
 };
 
-// ─── Typing / status bubbles while AI responds ───────────────────────────────
+// ─── Typing / status while AI responds (flat — no bubble) ────────────────────
 function TypingIndicator({ t, phase = 'thinking' }) {
   const dot1 = useRef(new Animated.Value(0.35)).current;
   const dot2 = useRef(new Animated.Value(0.35)).current;
   const dot3 = useRef(new Animated.Value(0.35)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const dots = [dot1, dot2, dot3];
@@ -701,154 +684,158 @@ function TypingIndicator({ t, phase = 'thinking' }) {
         ])
       )
     );
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
-    );
     loops.forEach((l) => l.start());
-    pulseLoop.start();
     return () => {
       loops.forEach((l) => l.stop());
-      pulseLoop.stop();
     };
-  }, [dot1, dot2, dot3, pulse]);
+  }, [dot1, dot2, dot3]);
 
   const meta = COACH_WAIT_LABELS[phase] || COACH_WAIT_LABELS.thinking;
-  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
 
   return (
-    <View style={{ marginBottom: 12, alignItems: 'flex-start' }}>
-      <Animated.View style={{ opacity: pulseOpacity, marginBottom: 8 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 9,
-            backgroundColor: t.aiBubbleBg,
-            borderWidth: 1,
-            borderColor: phase === 'web' ? `${AI_COACH_UI.cyan}73` : t.aiBubbleBorder,
-            borderRadius: 16,
-          }}
-        >
-          <Ionicons
-            name={meta.icon}
-            size={15}
-            color={phase === 'web' ? AI_COACH_UI.cyan : AI_COACH_UI.pink}
-          />
-          <Text style={{ color: t.textSecondary, fontSize: 13, fontWeight: '600' }}>{meta.text}</Text>
+    <View style={{ width: '100%', marginBottom: 24 }}>
+      <CoachReplyHeader t={t} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Ionicons
+          name={meta.icon}
+          size={16}
+          color={phase === 'web' ? AI_COACH_UI.cyan : AI_COACH_UI.pink}
+        />
+        <Text style={{ color: t.textSecondary, fontSize: 14, fontWeight: '600', flexShrink: 1 }}>
+          {meta.text}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+          {[dot1, dot2, dot3].map((anim, i) => (
+            <Animated.View
+              key={i}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: AI_COACH_UI.pink,
+                opacity: anim,
+              }}
+            />
+          ))}
         </View>
-      </Animated.View>
-
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 5,
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          backgroundColor: t.msgReceivedBg,
-          borderWidth: 1,
-          borderColor: t.msgReceivedBorder,
-          borderRadius: 18,
-          borderBottomLeftRadius: 4,
-        }}
-      >
-        {[dot1, dot2, dot3].map((anim, i) => (
-          <Animated.View
-            key={i}
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: AI_COACH_UI.pink,
-              opacity: anim,
-              transform: [
-                {
-                  scale: anim.interpolate({
-                    inputRange: [0.35, 1],
-                    outputRange: [0.85, 1.15],
-                  }),
-                },
-              ],
-            }}
-          />
-        ))}
       </View>
     </View>
   );
 }
 
-/** Lets you highlight / copy AI markdown replies (default Markdown Text is not selectable). */
-const MARKDOWN_SELECTABLE_RULES = {
-  text: (node, children, parent, styles, inheritedStyles = {}) => (
-    <Text key={node.key} selectable style={[inheritedStyles, styles.text]}>
-      {node.content}
-    </Text>
-  ),
-  textgroup: (node, children, parent, styles) => (
-    <Text key={node.key} selectable style={styles.textgroup}>
-      {children}
-    </Text>
-  ),
-  strong: (node, children, parent, styles) => (
-    <Text key={node.key} selectable style={styles.strong}>
-      {children}
-    </Text>
-  ),
-  em: (node, children, parent, styles) => (
-    <Text key={node.key} selectable style={styles.em}>
-      {children}
-    </Text>
-  ),
-  s: (node, children, parent, styles) => (
-    <Text key={node.key} selectable style={styles.s}>
-      {children}
-    </Text>
-  ),
-  code_inline: (node, children, parent, styles, inheritedStyles = {}) => (
-    <Text key={node.key} selectable style={[inheritedStyles, styles.code_inline]}>
-      {node.content}
-    </Text>
-  ),
-  fence: (node, children, parent, styles, inheritedStyles = {}) => {
-    let content = node.content;
-    if (
-      typeof content === 'string' &&
-      content.charAt(content.length - 1) === '\n'
-    ) {
-      content = content.substring(0, content.length - 1);
-    }
-    return (
-      <Text key={node.key} selectable style={[inheritedStyles, styles.fence]}>
-        {content}
-      </Text>
-    );
-  },
-  link: (node, children, parent, styles, onLinkPress) => (
-    <Text
-      key={node.key}
-      selectable
-      style={styles.link}
-      onPress={() => openUrl(node.attributes.href, onLinkPress)}
+function CoachReplyHeader({ t, copyText }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginBottom: 10,
+      }}
     >
-      {children}
-    </Text>
-  ),
-};
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+        <LinearGradient
+          colors={AI_COACH_UI.gradient.borderWarm}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="sparkles" size={14} color="#fff" />
+        </LinearGradient>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: t.textSecondary, letterSpacing: 0.2 }}>
+          Coach
+        </Text>
+      </View>
+      {copyText ? <CoachMessageCopyButton text={copyText} t={t} align="flex-end" compact /> : null}
+    </View>
+  );
+}
 
-async function copyMessageToClipboard(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return;
-  await Clipboard.setStringAsync(raw);
-  try {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  } catch (_) {
-    /* ignore */
-  }
+function CoachMessageCopyButton({ text, t, align = 'flex-end', compact = false }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  const handleCopy = async () => {
+    const ok = await copyCoachText(text, { announce: false });
+    if (!ok) return;
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (_) {
+      /* ignore */
+    }
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <Pressable
+      onPress={handleCopy}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      accessibilityRole="button"
+      accessibilityLabel={copied ? 'Copied to clipboard' : 'Copy message'}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: align,
+        gap: compact ? 0 : 5,
+        paddingVertical: compact ? 4 : 6,
+        paddingHorizontal: compact ? 2 : 10,
+        borderRadius: compact ? 8 : 16,
+        backgroundColor: compact
+          ? 'transparent'
+          : pressed
+            ? (copied ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.08)')
+            : copied
+              ? 'rgba(34,197,94,0.1)'
+              : 'rgba(255,255,255,0.04)',
+        borderWidth: compact ? 0 : 1,
+        borderColor: copied ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.1)',
+        alignSelf: align,
+      })}
+    >
+      <Ionicons
+        name={copied ? 'checkmark-circle' : 'copy-outline'}
+        size={compact ? 16 : 18}
+        color={copied ? AI_COACH_UI.green : t.textSecondary}
+      />
+      {!compact ? (
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '800',
+          color: copied ? AI_COACH_UI.green : t.textSecondary,
+        }}
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function CoachSelectableMessageText({ text, color, isDark }) {
+  const plain = coachPlainText(text);
+  return (
+    <Text
+      selectable
+      selectionColor={isDark ? 'rgba(236,72,153,0.35)' : 'rgba(190,24,93,0.25)'}
+      style={{ color, fontSize: 15, lineHeight: 24 }}
+    >
+      {plain}
+    </Text>
+  );
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
@@ -868,12 +855,12 @@ function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = 
     if (!hasText && firstFile) {
       return (
         <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Ionicons name="document-outline" size={28} color={sent ? '#ffffff' : t.textPrimary} />
+          <Ionicons name="document-outline" size={28} color={t.textPrimary} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: sent ? '#ffffff' : t.textPrimary }} numberOfLines={1}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary }} numberOfLines={1}>
               {firstFile.name || 'File'}
             </Text>
-            <Text style={{ fontSize: 11, marginTop: 2, color: sent ? 'rgba(255,255,255,0.6)' : t.msgTimestamp }} numberOfLines={1}>
+            <Text style={{ fontSize: 11, marginTop: 2, color: t.msgTimestamp }} numberOfLines={1}>
               Tap to view
             </Text>
           </View>
@@ -882,70 +869,41 @@ function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = 
     }
     if (sent) {
       return (
-        <Text selectable style={{ color: '#ffffff', fontSize: 14, lineHeight: 20 }}>
-          {displayText}
-        </Text>
+        <CoachSelectableMessageText text={displayText} color={t.textPrimary} isDark={isDark} />
       );
     }
     return (
-      <Markdown
-        rules={MARKDOWN_SELECTABLE_RULES}
-        style={{
-          body: { color: t.textPrimary, fontSize: 14, lineHeight: 20 },
-          strong: { color: t.textPrimary, fontWeight: '800' },
-          em: { color: t.textPrimary },
-          paragraph: { marginTop: 0, marginBottom: 8 },
-          list_item: { marginTop: 2, marginBottom: 2 },
-          bullet_list: { marginBottom: 8 },
-          ordered_list: { marginBottom: 8 },
-          code_inline: {
-            color: t.textPrimary,
-            backgroundColor: isDark ? AI_COACH_UI.surfaceElevated : t.chipBg,
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 6,
-          },
-          fence: {
-            color: t.textPrimary,
-            backgroundColor: isDark ? AI_COACH_UI.surfaceElevated : t.chipBg,
-            padding: 10,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: isDark ? AI_COACH_UI.borderHairline : t.chipBorder,
-          },
-        }}
-      >
-        {displayText}
-      </Markdown>
+      <CoachSelectableMessageText text={displayText} color={t.textPrimary} isDark={isDark} />
     );
   };
 
-  const wrapStyle = { maxWidth: '75%' };
+  const userWrapStyle = { maxWidth: '82%' };
   const bubbleBase = { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 };
   const attachmentOnly = !hasText && (firstImage || firstFile);
   const mediaStyle = attachmentOnly ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null;
-  const onCopyLongPress = hasText ? () => copyMessageToClipboard(message.text) : undefined;
+  const copyText = coachPlainText(displayText) || displayText;
 
   if (sent) {
     return (
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <View style={wrapStyle}>
-          <Pressable onLongPress={onCopyLongPress} delayLongPress={350}>
-          <LinearGradient
-            colors={USER_BUBBLE_GRAD}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[bubbleBase, { borderBottomRightRadius: 4 }, mediaStyle]}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <View style={userWrapStyle}>
+          <View
+            style={[
+              bubbleBase,
+              {
+                borderBottomRightRadius: 4,
+                overflow: 'hidden',
+                backgroundColor: t.msgReceivedBg,
+                borderWidth: 1,
+                borderColor: t.msgReceivedBorder,
+              },
+              mediaStyle,
+            ]}
           >
-            {renderContent()}
-          </LinearGradient>
-          </Pressable>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-            {hasText ? (
-              <TouchableOpacity onPress={() => copyMessageToClipboard(message.text)} hitSlop={8}>
-                <Ionicons name="copy-outline" size={16} color={t.textSecondary} />
-              </TouchableOpacity>
-            ) : null}
+            <View pointerEvents="box-none">{renderContent()}</View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            {hasText ? <CoachMessageCopyButton text={copyText} t={t} align="flex-end" compact /> : null}
             <Text style={{ fontSize: 11, color: t.msgTimestamp }}>{message.time}</Text>
           </View>
         </View>
@@ -953,67 +911,56 @@ function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = 
     );
   }
 
+  const askedForWeb = shouldShowWebSearchUI(lastUserText);
+  const webStatusLabel = message.searchedWeb
+    ? 'Searched the web'
+    : askedForWeb && message.route !== 'web-search'
+      ? 'Answered from coaching knowledge (live search unavailable)'
+      : null;
+
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 12 }}>
-      <View style={wrapStyle}>
-        <Pressable onLongPress={onCopyLongPress} delayLongPress={350}>
-          {isDark ? (
-            <LinearGradient
-              colors={['rgba(190,24,93,0.28)', 'rgba(194,65,12,0.18)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ borderRadius: 18, padding: 1 }}
-            >
-              <View
-                style={[
-                  bubbleBase,
-                  {
-                    borderWidth: 1,
-                    borderColor: AI_COACH_UI.borderHairline,
-                    backgroundColor: AI_COACH_UI.surface,
-                    borderBottomLeftRadius: 4,
-                    overflow: 'hidden',
-                  },
-                  mediaStyle,
-                ]}
-              >
-                <LinearGradient
-                  colors={AI_COACH_UI.heroInner}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-                {renderContent()}
-              </View>
-            </LinearGradient>
-          ) : (
-            <View
-              style={[
-                bubbleBase,
-                {
-                  borderWidth: 1,
-                  borderColor: t.msgReceivedBorder,
-                  backgroundColor: t.msgReceivedBg,
-                  borderBottomLeftRadius: 4,
-                },
-                mediaStyle,
-              ]}
-            >
-              {renderContent()}
-            </View>
-          )}
-        </Pressable>
-        {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
-          <ToolActionChip message={message} onPress={onToolPress} t={t} userMessage={lastUserText} />
-        ) : null}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <Text style={{ fontSize: 11, color: t.msgTimestamp, flex: 1 }}>{message.time}</Text>
-          {hasText ? (
-            <TouchableOpacity onPress={() => copyMessageToClipboard(message.text)} hitSlop={8}>
-              <Ionicons name="copy-outline" size={16} color={t.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
+    <View style={{ width: '100%', marginBottom: 24, alignSelf: 'stretch' }}>
+      <CoachReplyHeader t={t} copyText={hasText ? copyText : null} />
+      {webStatusLabel ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 10,
+          }}
+        >
+          <Ionicons
+            name={message.searchedWeb ? 'globe-outline' : 'book-outline'}
+            size={14}
+            color={message.searchedWeb ? AI_COACH_UI.cyan : t.textSecondary}
+          />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: t.textSecondary, flex: 1 }}>
+            {webStatusLabel}
+          </Text>
         </View>
+      ) : null}
+      {attachmentOnly && firstImage?.preview ? (
+        <View
+          style={{
+            borderRadius: 14,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: isDark ? AI_COACH_UI.borderHairline : t.chipBorder,
+            marginBottom: 8,
+          }}
+        >
+          {renderContent()}
+        </View>
+      ) : (
+        renderContent()
+      )}
+      <CoachWebSourceCards message={message} isDark={isDark} />
+      {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
+        <ToolActionChip message={message} onPress={onToolPress} t={t} userMessage={lastUserText} />
+      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
+        <Text style={{ fontSize: 11, color: t.msgTimestamp, flex: 1 }}>{message.time}</Text>
       </View>
     </View>
   );
@@ -1425,12 +1372,19 @@ export default function AIChatScreen({
       }
     } catch (err) {
       console.error('AI coach error:', err);
+      const raw = String(err?.message || '');
+      const friendly =
+        raw.includes('invalid data') || raw.includes('Unsupported field value')
+          ? 'Could not save this message. Please try again.'
+          : raw.includes('network') || raw.includes('Network')
+            ? 'Network error — check your connection and try again.'
+            : 'Something went wrong. Please try again.';
       setMessages((prev) => [
         ...prev,
         {
           id: `msg_err_${Date.now()}`,
           role: 'ai',
-          text: String(err?.message || 'Something went wrong. Please try again.'),
+          text: friendly,
           time: now(),
           featureCards: plannedCards,
           isError: true,
@@ -1582,7 +1536,8 @@ export default function AIChatScreen({
               paddingBottom: 16 + shellNavPad,
             }}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            removeClippedSubviews={false}
             onContentSizeChange={scrollToBottom}
             ListFooterComponent={
               typing || toolExecuting ? (
