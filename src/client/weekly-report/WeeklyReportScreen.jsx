@@ -1,3 +1,1 @@
-import WeeklyReportScreen from '../../shared/weekly-report/WeeklyReportScreen';
-
-export default WeeklyReportScreen;
+export { default } from '../screens/WeeklyReportScreen';

@@ -209,6 +209,7 @@ function toolAlignsWithUserMessage(guarded, userText) {
     logSteps: /\b(steps?)\b/,
     rateEnergy: /\b(energy|fatigue)\b/,
     logMood: /\b(mood|feel|feeling)\b/,
+    deleteLog: /\b(delete|remove|clear|undo)\b/,
   };
   const re = patterns[name];
   if (!re) return true;
@@ -230,10 +231,13 @@ const DASHBOARD_METRIC_PATTERNS = {
 function userExplicitlyRequestsAction(userText) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t) return false;
+  if (isInformationalUserMessage(userText)) return false;
   return (
     EXPLICIT_LOG_RE.test(t) ||
-    /\b(set|change|update)\s+my\b/.test(t) ||
-    /\blog\s+it\b/.test(t)
+    /\b(set|change|update|adjust)\s+my\b/.test(t) ||
+    /\blog\s+it\b/.test(t) ||
+    (/\b(delete|remove|clear|undo)\b/.test(t) &&
+      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(t))
   );
 }
 
@@ -250,7 +254,14 @@ function isInformationalUserMessage(userText) {
   if (!raw) return false;
   if (/\?$/.test(raw)) return true;
   if (/\b(too much|too little|too many|good for me|should i)\b/i.test(raw)) return true;
-  return /^(what|how|is|are|should|can|could|would|why|when|where)\b/i.test(raw);
+  if (
+    /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
+      raw,
+    )
+  ) {
+    return true;
+  }
+  return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(raw);
 }
 
 /**

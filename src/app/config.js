@@ -14,7 +14,6 @@ import { getFirestore, initializeFirestore, enableNetwork } from 'firebase/fires
 import { getFunctions } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 
 // Get Firebase config from environment variables
 // In Expo, EXPO_PUBLIC_* vars are available via process.env

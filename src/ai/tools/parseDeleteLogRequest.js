@@ -40,7 +40,16 @@ const MONTHS = {
 };
 
 function userWantsDeleteLog(text) {
-  return /\b(delete|remove|clear|undo|unlog|erase)\b/i.test(String(text || ''));
+  const t = String(text || '').toLowerCase();
+  if (!/\b(delete|remove|clear|undo|unlog|erase)\b/i.test(t)) return false;
+  if (
+    /\b(food|meal|entry|entries|nutrition|log|sleep|water|steps|energy|mood|workout|recent|last|today|yesterday)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return /\b(delete|remove|clear|undo)\b.*\b(it|that|this|one)\b/i.test(t);
 }
 
 function coachTextImpliesDelete(text) {
@@ -181,10 +190,10 @@ function cleanMisroutedFoodName(raw) {
 }
 
 function coerceMisroutedDeleteTool(toolCall, userText = '', coachText = '', normalizeToolCall) {
-  const deleteIntent = userWantsDeleteLog(userText) || coachTextImpliesDelete(coachText);
+  const deleteIntent = userWantsDeleteLog(userText);
 
   if (!toolCall) {
-    if (!userWantsDeleteLog(userText)) return null;
+    if (!deleteIntent) return null;
     return normalizeToolCall({
       name: 'deleteLog',
       params: inferDeleteLogParams(userText, coachText),

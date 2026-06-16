@@ -35,7 +35,8 @@ import {
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
 } from '../chat-thread/pickAttachmentType';
-import { collection, doc, deleteDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { deleteAiChatSession } from '../persistence/saveCoachMessagesToFirestore';
 import { db } from '../../app/config';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -79,9 +80,10 @@ const COACH_ACTIONS = [
   },
   {
     id: 'web',
-    label: 'Web',
+    label: 'Research',
+    sublabel: 'Fitness only',
     icon: 'globe-outline',
-    starter: 'Can you search the web for me?',
+    starter: 'Search the web: what does research say about protein intake for lifters?',
     rim: HOME_STAT_WATER_GRADIENT,
     labelGrad: HOME_STAT_WATER_GRADIENT,
   },
@@ -404,7 +406,7 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
       onPressIn={pressIn}
       onPressOut={pressOut}
       accessibilityRole="button"
-      accessibilityLabel={action.label}
+      accessibilityLabel={action.sublabel ? `${action.label}, ${action.sublabel}` : action.label}
       style={{ alignItems: 'center', flex: 1 }}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
@@ -457,6 +459,21 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
         >
           {action.label}
         </Text>
+        {action.sublabel ? (
+          <Text
+            style={{
+              marginTop: 2,
+              fontSize: 9,
+              fontWeight: '600',
+              letterSpacing: 0.3,
+              textTransform: 'uppercase',
+              color: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,10,15,0.38)',
+            }}
+            numberOfLines={1}
+          >
+            {action.sublabel}
+          </Text>
+        ) : null}
       </Animated.View>
     </Pressable>
   );
@@ -1204,7 +1221,7 @@ export default function AIChatHomeScreen({
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteDoc(doc(db, 'users', userId, 'aiChats', sessionId));
+            await deleteAiChatSession(userId, sessionId);
           } catch (e) {
             console.error('Failed to delete ai chat:', e);
           }

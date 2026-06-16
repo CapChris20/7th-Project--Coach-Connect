@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0A0A0F" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Reset password — Coach Connect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0A0A0F;
+      --card: #15151C;
+      --text: #FFFFFF;
+      --muted: rgba(255, 255, 255, 0.62);
+      --hairline: rgba(255, 255, 255, 0.1);
+      --pink: #FF6B9D;
+      --purple: #C084FC;
+      --cta-start: #C1265A;
+      --cta-end: #D84315;
+      --error: #F87171;
+      --success: #34D399;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 107, 157, 0.18), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 90% 80%, rgba(192, 132, 252, 0.12), transparent 50%),
+        radial-gradient(ellipse 50% 35% at 10% 90%, rgba(249, 115, 22, 0.1), transparent 45%);
+    }
+    .wrap {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--hairline);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    }
+    .stripe {
+      height: 4px;
+      background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
+    }
+    .inner { padding: 28px 24px 24px; }
+    .brand {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      color: rgba(255, 255, 255, 0.45);
+      margin: 0 0 10px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+    .sub {
+      margin: 0 0 22px;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .email-pill {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--hairline);
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.88);
+      word-break: break-all;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: rgba(255, 255, 255, 0.72);
+      margin-bottom: 8px;
+    }
+    .field {
+      position: relative;
+      margin-bottom: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 14px 44px 14px 16px;
+      border-radius: 14px;
+      border: 1.5px solid var(--hairline);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 600;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus {
+      border-color: rgba(192, 132, 252, 0.55);
+      box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.15);
+    }
+    .toggle-pw {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 6px 8px;
+    }
+    .hint {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.42);
+      margin: -6px 0 16px;
+      line-height: 1.45;
+    }
+    .msg {
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.45;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .msg.error {
+      display: block;
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      color: #FCA5A5;
+    }
+    .msg.success {
+      display: block;
+      background: rgba(52, 211, 153, 0.12);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      color: var(--success);
+    }
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 15px 20px;
+      font-size: 16px;
+      font-weight: 800;
+      font-family: inherit;
+      color: #fff;
+      cursor: pointer;
+      background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
+      box-shadow: 0 8px 24px rgba(193, 38, 90, 0.35);
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .btn:not(:disabled):active { transform: scale(0.98); }
+    .footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.38);
+      line-height: 1.5;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .success-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: rgba(52, 211, 153, 0.15);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 380px) {
+      .inner { padding: 22px 18px 20px; }
+      h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="stripe" aria-hidden="true"></div>
+      <div class="inner">
+        <p class="brand">COACH CONNECT</p>
+
+        <div id="panel-form" class="panel active">
+          <h1>Choose a new password</h1>
+          <p class="sub">Create a strong password for your account. You'll use it to sign in on the Coach Connect app.</p>
+          <div id="email-pill" class="email-pill" hidden></div>
+          <div id="form-msg" class="msg" role="alert"></div>
+          <form id="reset-form" novalidate>
+            <label for="password">New password</label>
+            <div class="field">
+              <input id="password" name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters" />
+              <button type="button" class="toggle-pw" data-target="password" aria-label="Show password">Show</button>
+            </div>
+            <label for="confirm">Confirm password</label>
+            <div class="field">
+              <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="6" required placeholder="Re-enter your password" />
+              <button type="button" class="toggle-pw" data-target="confirm" aria-label="Show confirm password">Show</button>
+            </div>
+            <p class="hint">Use at least 6 characters. Mix letters and numbers for a stronger password.</p>
+            <button type="submit" class="btn" id="submit-btn">Update password</button>
+          </form>
+        </div>
+
+        <div id="panel-success" class="panel">
+          <div class="success-icon" aria-hidden="true">✓</div>
+          <h1>Password updated</h1>
+          <p class="sub">You're all set. Open Coach Connect on your phone and sign in with your new password.</p>
+        </div>
+
+        <div id="panel-error" class="panel">
+          <h1>Link expired</h1>
+          <p class="sub" id="error-detail">This reset link is invalid or has already been used. Request a new one from the app.</p>
+        </div>
+
+        <p class="footer">© Coach Connect · Secure password reset</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var CONFIG = window.__COACH_CONNECT_RESET__ || {};
+      var apiKey = CONFIG.apiKey || '';
+      var params = new URLSearchParams(window.location.search);
+      var mode = params.get('mode');
+      var oobCode = params.get('oobCode');
+      var lang = params.get('lang') || 'en';
+
+      var panelForm = document.getElementById('panel-form');
+      var panelSuccess = document.getElementById('panel-success');
+      var panelError = document.getElementById('panel-error');
+      var formMsg = document.getElementById('form-msg');
+      var errorDetail = document.getElementById('error-detail');
+      var emailPill = document.getElementById('email-pill');
+      var form = document.getElementById('reset-form');
+      var submitBtn = document.getElementById('submit-btn');
+
+      function showPanel(name) {
+        panelForm.classList.remove('active');
+        panelSuccess.classList.remove('active');
+        panelError.classList.remove('active');
+        if (name === 'form') panelForm.classList.add('active');
+        if (name === 'success') panelSuccess.classList.add('active');
+        if (name === 'error') panelError.classList.add('active');
+      }
+
+      function showFormError(text) {
+        formMsg.textContent = text;
+        formMsg.className = 'msg error';
+      }
+
+      function clearFormError() {
+        formMsg.className = 'msg';
+        formMsg.textContent = '';
+      }
+
+      document.querySelectorAll('.toggle-pw').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-target');
+          var input = document.getElementById(id);
+          if (!input) return;
+          var show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          btn.textContent = show ? 'Hide' : 'Show';
+        });
+      });
+
+      if (!apiKey || mode !== 'resetPassword' || !oobCode) {
+        showPanel('error');
+        errorDetail.textContent = !oobCode
+          ? 'Missing reset code. Open the link from your latest password reset email.'
+          : 'This page could not be loaded correctly. Request a new reset link from the app.';
+        return;
+      }
+
+      fetch('https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=' + encodeURIComponent(apiKey), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oobCode: oobCode }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.data && res.data.email) {
+            emailPill.hidden = false;
+            emailPill.textContent = 'Account: ' + res.data.email;
+          }
+        })
+        .catch(function () {});
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearFormError();
+        var pw = document.getElementById('password').value;
+        var confirm = document.getElementById('confirm').value;
+        if (pw.length < 6) {
+          showFormError('Password must be at least 6 characters.');
+          return;
+        }
+        if (pw !== confirm) {
+          showFormError('Passwords do not match.');
+          return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Updating…';
+
+        fetch('https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=' + encodeURIComponent(apiKey), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oobCode: oobCode, newPassword: pw }),
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+          .then(function (res) {
+            if (res.ok) {
+              showPanel('success');
+              return;
+            }
+            var err = (res.data && res.data.error && res.data.error.message) || '';
+            if (/INVALID_OOB_CODE|EXPIRED_OOB_CODE/i.test(err)) {
+              showPanel('error');
+              errorDetail.textContent = 'This link has expired or was already used. Go back to the app and tap Forgot password to get a new email.';
+            } else if (/WEAK_PASSWORD/i.test(err)) {
+              showFormError('Choose a stronger password (at least 6 characters).');
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Update password';
+            } else {
+              showFormError('Could not update password. Try again or request a new reset link.');
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Update password';
+            }
+          })
+          .catch(function () {
+            showFormError('Network error. Check your connection and try again.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Update password';
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

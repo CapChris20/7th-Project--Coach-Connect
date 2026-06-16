@@ -42,6 +42,7 @@ import { useTheme } from '../shared/ui/ThemeContext';
 import { auth, db } from '../app/config';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
+import { validateTrainerCodeWithDeps } from './trainerCodeValidation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseCandidates } from '../shared/api/baseUrl';
 import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
@@ -1824,44 +1825,15 @@ export default function OnboardingScreen({ route, onComplete, role: roleProp }) 
     return result.length === 7 ? result : null;
   };
 
-  const validateTrainerCode = async (code) => {
-    if (!code || code.trim().length === 0) {
-      setCodeValid(null);
-      return;
-    }
-
-    const normalized = normalizeInviteCodeForQuery(code);
-    if (!normalized) {
-      setCodeValid(false);
-      setCodeError('Invalid code format.');
-      triggerShake();
-      return;
-    }
-
-    setValidatingCode(true);
-    try {
-      const resp = await postOnboardingApi('/api/onboarding/validate-trainer-code', {
-        code: normalized,
-      });
-
-      if (resp?.valid && resp?.trainerId) {
-        setCodeValid(true);
-        setCodeError(null);
-        setOnboardingData(prev => ({ ...prev, trainerId: resp.trainerId }));
-      } else {
-        setCodeValid(false);
-        setCodeError(null);
-        triggerShake();
-      }
-    } catch (error) {
-      console.warn('Trainer code validation failed:', error?.message || error);
-      setCodeValid(false);
-      setCodeError('Could not verify code. Check your connection and try again.');
-      triggerShake();
-    } finally {
-      setValidatingCode(false);
-    }
-  };
+  const validateTrainerCode = async (code) =>
+    validateTrainerCodeWithDeps(code, {
+      postOnboardingApi,
+      setCodeValid,
+      setCodeError,
+      setOnboardingData,
+      setValidatingCode,
+      triggerShake,
+    });
 
   const triggerShake = () => {
     Animated.sequence([

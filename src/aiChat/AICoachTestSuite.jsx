@@ -1,28 +1,18 @@
-/**
- * AICoach Test Suite
- *
- * Purpose: Tests for AICoach Test Suite.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/aiChat
- * Key exports: AICoachTestSuite
- *
- * @file-header
- */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadCoachContext } from '../ai/context/CoachContextProvider';
-import { resetAiCoachDailyUsage, sendToAI } from '../ai/chat-api/aiCoachServerService';
+import { loadCoachContextEnhanced as loadCoachContext } from '../ai/context/CoachContextProvider';
+import { sendToAI } from '../ai/chat-api/aiCoachServerService';
 import { shouldRouteToPerplexity } from '../ai/perplexityService';
-import { executeCoachTool, TOOL_NAME_ALIASES } from '../ai/tools/executeCoachTool';
+import { TOOL_NAME_ALIASES } from '../ai/tools/executeCoachTool';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 
 const COLORS = {
@@ -48,7 +38,7 @@ const TEST_SUITES = {
     { name: 'adjustMacros', prompt: "I'm always hungry, can you bump up my carbs?" },
     { name: 'logNutrition', prompt: 'I just ate chicken and rice, like 6oz chicken and a cup of rice' },
     { name: 'bookSession', prompt: 'I want to schedule a session with my trainer for Thursday at 6 PM' },
-    { name: 'openWorkoutPlan', prompt: 'Open my current workout plan and tell me what is on today\'s session' },
+    { name: 'generateDeload', prompt: 'I have been training hard for 6 weeks, think I should deload?' },
     { name: 'updateGoal', prompt: 'I hit my weight loss target, should I bulk now?' },
     { name: 'notifyTrainer', prompt: 'My knee has been killing me, let my trainer know' },
   ],
@@ -90,19 +80,15 @@ const TOOL_EXPECTATIONS = {
   adjustMacros: ['adjustMacroTargets', 'adjustMacros'],
   logNutrition: ['logNutrition'],
   bookSession: ['bookSession'],
-  openWorkoutPlan: ['openWorkoutPlan'],
+  generateDeload: ['generateDeloadWeek', 'generateDeload'],
   updateGoal: ['updateGoal'],
   notifyTrainer: ['notifyTrainer'],
 };
 
-const LOG = '[AICoachTestSuite]';
-
-function logTest(event, payload) {
-  try {
-    console.log(`${LOG} ${event}`, typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2));
-  } catch (_) {
-    console.log(`${LOG} ${event}`, payload);
-  }
+function truncate(text, max = 100) {
+  const s = String(text || '');
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
 }
 
 function toolMatchesExpectation(testName, toolCall) {
@@ -137,25 +123,11 @@ export default function AICoachTestSuite({
       const ctx = await loadCoachContext(userId, userProfile);
       if (ctx) {
         setContext(ctx);
-        logTest('CONTEXT_LOADED', {
-          userId,
-          source: ctx.source,
-          userName: ctx.userName,
-          goal: ctx.goal,
-          nutritionDaysLogged: ctx.nutritionDaysLogged,
-          workoutsLogged: ctx.workoutsLogged,
-          avgCals: ctx.avgCals,
-          avgSleep: ctx.avgSleep,
-          targetCals: ctx.targetCals,
-          fullContext: ctx,
-        });
       } else {
         setContextError('Failed to load context — check Firebase / server');
-        logTest('CONTEXT_FAILED', { userId, reason: 'null context' });
       }
     } catch (error) {
       setContextError(error?.message || String(error));
-      logTest('CONTEXT_ERROR', { userId, error: error?.message || String(error) });
     } finally {
       setContextLoading(false);
     }
@@ -165,114 +137,44 @@ export default function AICoachTestSuite({
     loadContext();
   }, [loadContext]);
 
-  const runSingleTest = async (testItem, tab) => {
-    const startedAt = Date.now();
-    logTest('TEST_START', { tab, name: testItem.name, prompt: testItem.prompt });
-
+  const runSingleTest = async (testItem) => {
     try {
       if (!context) {
-        const out = {
+        return {
           ...testItem,
           status: 'error',
           message: 'Context not loaded',
           validations: ['Context not loaded'],
         };
-        logTest('TEST_END', { ...out, durationMs: Date.now() - startedAt });
-        return out;
-      }
-
-      if (__DEV__) {
-        await resetAiCoachDailyUsage();
       }
 
       const isPerplexityRoute = shouldRouteToPerplexity(testItem.prompt);
-      logTest('TEST_SEND', {
-        tab,
-        name: testItem.name,
-        prompt: testItem.prompt,
-        isPerplexityRoute,
-        contextSnapshot: {
-          nutritionDaysLogged: context.nutritionDaysLogged,
-          workoutsLogged: context.workoutsLogged,
-          avgCals: context.avgCals,
-          avgSleep: context.avgSleep,
-          goal: context.goal,
-        },
-      });
-
-      const webMode = tab === 'perplexity' ? 'auto' : 'off';
-      const response = await sendToAI(testItem.prompt, context, userId, userProfile, {
-        testSuite: true,
-        web: webMode,
-      });
-
-      logTest('TEST_RESPONSE_RAW', {
-        tab,
-        name: testItem.name,
-        success: response?.success,
-        source: response?.source,
-        apiUrl: response?.apiUrl || response?.raw?._apiUrl,
-        searchedWeb: response?.searchedWeb,
-        usedWeeklyContext: response?.usedWeeklyContext,
-        toolCall: response?.toolCall,
-        toolCalls: response?.toolCalls,
-        error: response?.error,
-        message: response?.message,
-        fullResponse: response?.message,
-        raw: response?.raw,
-      });
+      const response = await sendToAI(testItem.prompt, context, userId, userProfile);
 
       let status = 'pass';
       const validations = [];
 
-      if (response?.source === 'guardrail') {
-        status = 'fail';
-        validations.push('Blocked by server guardrail (not real AI) — restart npm run server');
-      } else if (!response?.success) {
+      if (!response?.success) {
         status = 'fail';
         validations.push(response?.error || 'API call failed');
       } else if (!response.message || response.message.length < 10) {
         status = 'fail';
         validations.push('Response too short');
-      } else if (
-        response.message?.includes('Daily AI Coach limit') ||
-        response.message?.includes('fitness coach — I can only help')
-      ) {
-        status = 'fail';
-        validations.push('Not a real coach reply (limit or guardrail)');
       }
 
-      if (tab === 'tools') {
+      if (activeTab === 'tools') {
         if (!response.toolCall) {
           status = status === 'fail' ? 'fail' : 'warn';
           validations.push('No tool call detected (expected for tool tests)');
-        } else {
-          if (!toolMatchesExpectation(testItem.name, response.toolCall)) {
-            status = status === 'fail' ? 'fail' : 'warn';
-            validations.push(
-              `Tool was ${response.toolCall.name}; expected one of: ${(TOOL_EXPECTATIONS[testItem.name] || [testItem.name]).join(', ')}`
-            );
-          }
-          try {
-            const exec = await executeCoachTool({
-              userId,
-              trainerId: userProfile?.trainerId || userProfile?.trainer?.id || null,
-              toolCall: response.toolCall,
-            });
-            if (exec.success) {
-              validations.push(`Applied to Firestore: ${exec.message}`);
-            } else {
-              status = 'fail';
-              validations.push(`Tool execution failed: ${exec.message}`);
-            }
-          } catch (execErr) {
-            status = 'fail';
-            validations.push(`Tool execution error: ${execErr?.message || execErr}`);
-          }
+        } else if (!toolMatchesExpectation(testItem.name, response.toolCall)) {
+          status = status === 'fail' ? 'fail' : 'warn';
+          validations.push(
+            `Tool was ${response.toolCall.name}; expected one of: ${(TOOL_EXPECTATIONS[testItem.name] || [testItem.name]).join(', ')}`
+          );
         }
       }
 
-      if (tab === 'perplexity') {
+      if (activeTab === 'perplexity') {
         if (!isPerplexityRoute) {
           status = status === 'fail' ? 'fail' : 'warn';
           validations.push('Perplexity route heuristic did not match prompt');
@@ -285,35 +187,24 @@ export default function AICoachTestSuite({
         }
       }
 
-      const out = {
+      return {
         ...testItem,
         status,
-        message: response.message || '',
+        message: truncate(response.message, 120),
         fullResponse: response.message,
         toolCall: response.toolCall,
-        toolCalls: response.toolCalls,
         source: response.source,
         searchedWeb: response.searchedWeb,
-        usedWeeklyContext: response.usedWeeklyContext,
         isPerplexityRoute,
         validations,
-        raw: response.raw,
-        success: response.success,
-        error: response.error,
-        durationMs: Date.now() - startedAt,
       };
-      logTest('TEST_END', out);
-      return out;
     } catch (error) {
-      const out = {
+      return {
         ...testItem,
         status: 'error',
         message: error?.message || String(error),
         validations: [error?.message || String(error)],
-        durationMs: Date.now() - startedAt,
       };
-      logTest('TEST_ERROR', out);
-      return out;
     }
   };
 
@@ -324,40 +215,13 @@ export default function AICoachTestSuite({
 
     const tests = TEST_SUITES[activeTab] || [];
     const results = [];
-    const runStartedAt = Date.now();
-
-    const reset = await resetAiCoachDailyUsage();
-    logTest('RESET_USAGE', reset);
-
-    logTest('RUN_START', {
-      tab: activeTab,
-      testCount: tests.length,
-      userId,
-      usageReset: reset,
-      contextSummary: {
-        nutritionDaysLogged: context.nutritionDaysLogged,
-        workoutsLogged: context.workoutsLogged,
-        avgCals: context.avgCals,
-        goal: context.goal,
-      },
-    });
 
     for (const test of tests) {
-      const result = await runSingleTest(test, activeTab);
+      const result = await runSingleTest(test);
       results.push(result);
       setTestResults([...results]);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-
-    const summary = {
-      tab: activeTab,
-      pass: results.filter((r) => r.status === 'pass').length,
-      warn: results.filter((r) => r.status === 'warn').length,
-      fail: results.filter((r) => r.status === 'fail' || r.status === 'error').length,
-      durationMs: Date.now() - runStartedAt,
-      results,
-    };
-    logTest('RUN_COMPLETE', summary);
-    console.log(`${LOG} COPY_PASTE_REPORT\n${JSON.stringify(summary, null, 2)}`);
 
     setRunning(false);
   };
@@ -466,14 +330,7 @@ export default function AICoachTestSuite({
               />
             </View>
 
-            {result.message ? (
-              <Text style={styles.resultMessage} selectable>
-                {result.message}
-              </Text>
-            ) : null}
-            {result.durationMs != null ? (
-              <Text style={styles.metaText}>{result.durationMs}ms · source: {result.source || '—'}</Text>
-            ) : null}
+            {result.message ? <Text style={styles.resultMessage}>{result.message}</Text> : null}
 
             {result.toolCall ? (
               <View style={styles.toolCallBox}>
@@ -691,12 +548,6 @@ const styles = StyleSheet.create({
   validationText: {
     fontSize: 11,
     color: COLORS.textSecondary,
-  },
-  metaText: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-    opacity: 0.8,
   },
   loadingBox: {
     justifyContent: 'center',

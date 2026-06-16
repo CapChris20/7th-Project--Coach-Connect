@@ -10,6 +10,8 @@
  */
 // Fix data leakage by clearing all cached data when user switches
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { auth } from '../app/config';
+import { clearPushTokensForUid } from '../shared/notifications/manageNotifications';
 
 const CACHE_KEYS_TO_CLEAR = [
   // Legacy global AI toggle — per-user preference lives in `user_ai_enabled_<uid>` (see AIContext).
@@ -108,12 +110,41 @@ export async function clearUserSpecificData(userId) {
 // Function to call when user signs out
 export async function onUserSignOut() {
   console.log('👋 User signing out - clearing cache...');
+  const uid = auth?.currentUser?.uid;
+  if (uid) {
+    try {
+      await clearPushTokensForUid(uid);
+    } catch (e) {
+      console.log('⚠️ Push token cleanup failed:', e?.message || e);
+    }
+  }
   await clearAllUserData();
 }
+
+/** Shared keys cleared on account switch (not other users' uid-scoped data). */
+const SHARED_CACHE_KEYS = [
+  'COACHCONNECT_FOOD_CACHE',
+  'COACHCONNECT_CHAT_HISTORY',
+  'COACHCONNECT_DASHBOARD_STATE',
+  'COACHCONNECT_NUTRITION_CACHE',
+  'COACHCONNECT_WORKOUT_CACHE',
+];
 
 // Function to call when user switches accounts
 export async function onUserSwitch(fromUserId, toUserId) {
   console.log(`🔄 User switching from ${fromUserId} to ${toUserId}`);
-  await clearUserSpecificData(fromUserId);
-  await clearAllUserData(); // Also clear any shared cache
+  if (fromUserId) {
+    try {
+      await clearUserSpecificData(fromUserId);
+    } catch (e) {
+      console.log('⚠️ Failed to clear prior user cache:', e?.message || e);
+    }
+  }
+  for (const key of SHARED_CACHE_KEYS) {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch (e) {
+      console.log(`⚠️ Failed to clear shared key ${key}:`, e?.message || e);
+    }
+  }
 }

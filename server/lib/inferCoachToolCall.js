@@ -35,12 +35,13 @@ function parseSleepHoursFromMessage(text) {
 
 const {
   userWantsDeleteLog,
-  coachTextImpliesDelete,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
 } = require('../../src/ai/tools/parseDeleteLogRequest');
 const {
   guardCoachToolProposal,
+  isValidCoachToolProposal,
+  isInformationalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
 } = require('../../src/ai/tools/validateCoachToolProposal');
@@ -394,10 +395,14 @@ function serverNormalizeToolCall(raw) {
 }
 
 function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
+  const user = String(userMessage || '').trim();
+  if (isInformationalUserMessage(user)) return [];
+
   const parsed = [];
   const seen = new Set();
   const add = (call) => {
     const remapped = remapRestDayToolCall(call);
+    if (!isValidCoachToolProposal(remapped, user)) return;
     const guarded = guardCoachToolProposal(remapped);
     if (!guarded?.name) return;
     const key = `${guarded.name}:${JSON.stringify(guarded.params || {})}`;

@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,11 +28,15 @@ import { auth, db } from '../../app/config';
 import { getClientDateKey } from '../../shared/utils/dateKeys';
 import { mergeClientDailyMetrics } from '../../shared/daily-metrics/saveDailyMetricsToFirestore';
 import { markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
-import MessagingScreen from '../messaging/MessagingScreen';
-import ConversationsListScreen from '../messaging/ConversationsListScreen';
+import MessagingScreen from '../screens/MessagingScreen';
+import ConversationsListScreen from '../screens/ConversationsListScreen';
 import MyDashboardScreen from '../dashboard/MyDashboardScreen';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import {
+  readWorkoutGenerationSession,
+  subscribeWorkoutGenerationSession,
+} from '../../workouts/plan-generator/workoutPlanGenerationSession';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import {
   AuroraHeroBanner,
@@ -41,10 +45,10 @@ import {
   TrainingAgenda,
   NutritionCard,
 } from '../home/clientHomeComponents';
-import FilesNotesHeroCard from '../../shared/components/notes-files/FilesNotesHeroCard';
+import FilesNotesHeroCard from '../../shared/components/FilesNotesHeroCard';
 import FilesNotesSectionPremium from '../../shared/components/notes-files/FilesNotesSectionPremium';
 import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
-import TrainerSharedFilesModal from '../files/TrainerSharedFilesModal';
+import TrainerSharedFilesModal from '../components/TrainerSharedFilesModal';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
 import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
 import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
@@ -52,8 +56,8 @@ import DocumentViewerModal from '../../shared/components/notes-files/DocumentVie
 import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';
 import EmbedWebViewModal from '../../shared/components/notes-files/EmbedWebViewModal';
 import RemoveTrainerSheet from '../../shared/components/modals/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../dashboard/ReviewSubmitSheet';
-import MarketplaceHeroCard from '../../shared/components/home/MarketplaceHeroCard';
+import ReviewSubmitSheet from '../components/ReviewSubmitSheet';
+import MarketplaceHeroCard from '../../shared/components/MarketplaceHeroCard';
 import DashboardHeroCard from '../dashboard/DashboardHeroCard';
 import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
@@ -171,6 +175,30 @@ export default function ClientMainScreen() {
     aiChatNavHandlers,
     openCoachingPayment,
   } = s;
+
+  const [workoutPlanReadyBadge, setWorkoutPlanReadyBadge] = useState(false);
+
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) {
+      setWorkoutPlanReadyBadge(false);
+      return undefined;
+    }
+
+    const syncBadge = (session) => {
+      const show =
+        !!session?.pendingReady &&
+        !session?.inFlight &&
+        mainTab !== CLIENT_MAIN_TABS.workout;
+      setWorkoutPlanReadyBadge(show);
+    };
+
+    readWorkoutGenerationSession(uid).then(syncBadge);
+    return subscribeWorkoutGenerationSession((session) => {
+      if (session.uid !== uid) return;
+      syncBadge(session);
+    });
+  }, [user?.uid, mainTab]);
 
   const clientPaymentStatus = userData?.paymentStatus || 'inactive';
 
@@ -698,6 +726,7 @@ export default function ClientMainScreen() {
           onMessagesPress={handleOpenConversations}
           onProfilePress={() => openProfile()}
           activeTabKey={mainTabActiveKey}
+          workoutTabBadge={workoutPlanReadyBadge}
         />
       </View>
       ) : null}

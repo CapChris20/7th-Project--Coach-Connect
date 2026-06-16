@@ -11,7 +11,9 @@
 import { auth, db } from '../../app/config';
 import { doc, getDoc } from 'firebase/firestore';
 
-export const PLAN_LIMIT_TOTAL = 3;
+/** Keep in sync with server/lib/workoutGenerationLimit.js */
+export const WORKOUT_GENERATION_LIMIT = 3;
+export const PLAN_LIMIT_TOTAL = WORKOUT_GENERATION_LIMIT;
 const planLimitMonthKey = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 export const nextMonthResetDate = () => {

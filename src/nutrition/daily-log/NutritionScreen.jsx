@@ -327,7 +327,6 @@ const FoodItemRow = ({
   log,
   onRemove,
   onEdit,
-  onOpenFacts,
   colors = C,
   isDark = true,
 }) => {
@@ -379,11 +378,7 @@ const FoodItemRow = ({
   ];
 
   return (
-    <Pressable
-      onPress={() => onOpenFacts?.(log)}
-      disabled={!onOpenFacts}
-      style={({ pressed }) => [foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder, opacity: pressed && onOpenFacts ? 0.92 : 1 }]}
-    >
+    <View style={[foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
       <View style={foodRow.body}>
         <View style={foodRow.topHeader}>
           <View style={[foodRow.iconBox, { backgroundColor: colors.inputBg, borderColor: colors.cardBorderSubtle }]}>
@@ -447,7 +442,7 @@ const FoodItemRow = ({
           </TouchableOpacity>
         ) : null}
       </View>
-    </Pressable>
+    </View>
   );
 };
 
@@ -557,7 +552,7 @@ const foodRow = StyleSheet.create({
   },
 });
 
-const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, onOpenFoodFacts, colors = C, isDark }) => {
+const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
   const mealS = useMemo(() => createMealS(colors), [colors]);
   const emptyStyles = useMemo(() => createEmptyStyles(colors), [colors]);
   const foods = meal?.foods ?? [];
@@ -658,7 +653,6 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 log={food}
                 onRemove={onRemoveLog}
                 onEdit={onEditLog}
-                onOpenFacts={onOpenFoodFacts}
                 colors={colors}
                 isDark={isDark}
               />
@@ -1082,7 +1076,6 @@ export const NutritionScreen = ({
   onSelectViewDate,
   datesWithLogs = [],
   onOpenDailyFacts,
-  onOpenFoodFacts,
   topFoodNames = [],
 }) => {
   const { isDark } = useTheme();
@@ -1136,27 +1129,6 @@ export const NutritionScreen = ({
             isDark={isDark}
             datesWithLogs={datesWithLogs}
           />
-        ) : null}
-
-        {onOpenDailyFacts ? (
-          <TouchableOpacity
-            onPress={onOpenDailyFacts}
-            activeOpacity={0.85}
-            style={{ marginBottom: 12 }}
-          >
-            <LinearGradient
-              colors={NUT_CALORIES_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}
-            >
-              <Ionicons name="nutrition-outline" size={20} color="#FFFFFF" />
-              <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14, flex: 1 }}>
-                Daily Nutrition Facts
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
         ) : null}
 
         {/* Calorie ring — center hero */}
@@ -1250,6 +1222,23 @@ export const NutritionScreen = ({
 
         <WeeklyChart weekData={weekData ?? DEFAULT_WEEK} colors={colors} isDark={isDark} />
 
+        {onOpenDailyFacts ? (
+          <TouchableOpacity
+            onPress={onOpenDailyFacts}
+            activeOpacity={0.85}
+            style={[
+              screen.dailyFactsBtn,
+              { borderColor: colors.cardBorder },
+            ]}
+          >
+            <Ionicons name="nutrition-outline" size={20} color={colors.text} />
+            <Text style={[screen.dailyFactsBtnText, { color: colors.text }]}>
+              Daily Nutrition Facts
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+
         {(meals || DEFAULT_MEALS).map((meal) => (
           <MealSection
             key={meal.name}
@@ -1260,7 +1249,6 @@ export const NutritionScreen = ({
             onQuickAdd={handleOpenQuickAdd}
             onRemoveLog={onRemoveLog}
             onEditLog={onEditLog}
-            onOpenFoodFacts={onOpenFoodFacts}
             colors={colors}
             isDark={isDark}
           />
@@ -1274,6 +1262,18 @@ export const NutritionScreen = ({
 
 const screen = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
+  dailyFactsBtn: {
+    marginTop: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'transparent',
+  },
+  dailyFactsBtnText: { fontWeight: '800', fontSize: 14, flex: 1 },
   searchBlock: { marginBottom: 14 },
   searchTopRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
   searchCard: {

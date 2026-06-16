@@ -76,7 +76,7 @@ import {
   mergeClientDailyMetrics,
   parseDailyMetricsFromSnapshots,
 } from '../shared/daily-metrics/saveDailyMetricsToFirestore';
-import { useClientHomeDailyMetrics } from '../client/home/useClientHomeDailyMetrics';
+import { useClientHomeDailyMetrics } from '../client/hooks/useClientHomeDailyMetrics';
 import styles from '../client/home/clientAppStyles';
 import {
   getPremiumTheme,
@@ -119,8 +119,7 @@ import { subscribeToUnreadCount } from '../ai/chat-api/conversationService';
 import { getOrCreateConversation, sendClientRequest } from '../ai/trainer-messaging/sendTrainerNotification';
 import AIChatHomeScreen from '../aiChat/chat-home/AIChatHomeScreen';
 import AIChatScreen from '../aiChat/chat-thread/AIChatScreen';
-const AICoachTestSuite = __DEV__ ? require('../aiChat/AICoachTestSuite').default : null;
-import TrainerSearchScreen, { TrainerProfileSheet } from '../client/marketplace/TrainerSearchScreen';
+import TrainerSearchScreen, { TrainerProfileSheet } from '../client/marketplace/screens/TrainerSearchScreen';
 import MyDashboardScreen from '../client/dashboard/MyDashboardScreen';
 import SettingsScreen from '../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../settings/screens/HelpFAQScreen';
@@ -137,7 +136,7 @@ import { ClientAppShellProvider } from '../client/navigation/ClientAppShellConte
 import ClientRootNavigator from '../client/navigation/ClientRootNavigator';
 import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
-import MealPlanHomeScreen from '../client/meal-plan/MealPlanHomeScreen';
+import MealPlanHomeScreen from '../client/screens/MealPlanHomeScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
 import ProfileScreen from '../profile/screens/ProfileScreen';
 import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
@@ -150,14 +149,14 @@ import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components
 import MediaViewerModal from '../shared/components/notes-files/MediaViewerModal';
 import PdfViewerModal from '../shared/components/notes-files/PdfViewerModal';
 import RemoveTrainerSheet from '../shared/components/modals/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../client/dashboard/ReviewSubmitSheet';
+import ReviewSubmitSheet from '../client/components/ReviewSubmitSheet';
 import { SessionMeetingCard } from '../shared/components/home/SessionMeetingCard';
 import SpreadsheetViewerModal from '../shared/components/notes-files/SpreadsheetViewerModal';
-import TrainerSharedFilesModal from '../client/files/TrainerSharedFilesModal';
+import TrainerSharedFilesModal from '../client/components/TrainerSharedFilesModal';
 import ClientFilesScreen from '../client/files/ClientFilesScreen';
-import MarketplaceHeroCard from '../shared/components/home/MarketplaceHeroCard';
+import MarketplaceHeroCard from '../shared/components/MarketplaceHeroCard';
 import DashboardHeroCard from '../client/dashboard/DashboardHeroCard';
-import FilesNotesHeroCard from '../shared/components/notes-files/FilesNotesHeroCard';
+import FilesNotesHeroCard from '../shared/components/FilesNotesHeroCard';
 import { MyFilesSection } from '../client/files/MyFilesSection';
 import { TrainerSharedSection } from '../client/files/TrainerSharedSection';
 import { NotesFromTrainerSection } from '../client/files/NotesFromTrainerSection';
@@ -179,11 +178,11 @@ import {
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
 } from '../shared/utils/getFileViewType';
-import ConversationsListScreen from '../client/messaging/ConversationsListScreen';
-import PhotoGalleryScreen from '../client/photo-gallery/PhotoGalleryScreen';
-import MessagingScreen from '../client/messaging/MessagingScreen';
-import AIWorkoutPlansScreen from '../client/workout-plans/AIWorkoutPlansScreen';
-import WeeklyReportScreen from '../client/weekly-report/WeeklyReportScreen';
+import ConversationsListScreen from '../client/screens/ConversationsListScreen';
+import PhotoGalleryScreen from '../client/screens/PhotoGalleryScreen';
+import MessagingScreen from '../client/screens/MessagingScreen';
+import AIWorkoutPlansScreen from '../client/screens/AIWorkoutPlansScreen';
+import WeeklyReportScreen from '../client/screens/WeeklyReportScreen';
 import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/active-workout/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/active-workout/workout';
 import { clearAllUserData } from '../utils/clearDataOnLogout';

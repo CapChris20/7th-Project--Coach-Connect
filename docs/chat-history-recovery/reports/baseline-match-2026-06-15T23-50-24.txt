@@ -1,0 +1,252 @@
+CoachConnect baseline match audit
+Workspace: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect
+Generated: 2026-06-15T23:50:24.066Z
+
+── Chat #1 (a2116213) — infra / payments / Google Sign-In ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a2116213-660f-473b-8fb4-c4df99a1c468/a2116213-660f-473b-8fb4-c4df99a1c468.jsonl
+User messages: 180 | Write/StrReplace/Delete paths: 151
+User rejections in thread (last good state may differ): 17
+  · Cursor, you fucking idiot, that is not what I meant. First of all, for the client perspective, for the subscription, rig
+  · Fix Google Sign-In in CoachConnect based on this audit. Work through each fix in order. Do not change anything not list
+  · so ur telling me thi sfucking shit wont work on expo go wtf
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · The following documents have been saved to your filesystem. You can read them using your file-reading tool or other tool
+  · … +12 more
+
+── Chat #2 (81d5e120) — onboarding card borders ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/81d5e120-5135-4149-9dda-ebbd83abeedb/81d5e120-5135-4149-9dda-ebbd83abeedb.jsonl
+User messages: 2 | Write/StrReplace/Delete paths: 1
+
+── Chat #3 (bb3d5a73) — product advice ──
+SKIPPED — advice only
+
+── Chat #4 (43d4e4ad) — spreadsheet / plan viewer / web search ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/43d4e4ad-5153-4c58-8820-4f5b0fe99d34/43d4e4ad-5153-4c58-8820-4f5b0fe99d34.jsonl
+User messages: 134 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 6
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · Sunday, May 31, 2026, 10:50 PM (UTC-4) i literally pasted the image and its still doing this shit @/Users/captainchri
+  · Sunday, May 31, 2026, 11:23 PM (UTC-4) no actually see whats wrong on why it casnt see images
+  · [Image] [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/ca
+  · … +1 more
+
+── Chat #5 (22de0722) — folder structure ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/22de0722-96e2-4524-80eb-7a0fe3ebbe27/22de0722-96e2-4524-80eb-7a0fe3ebbe27.jsonl
+User messages: 10 | Write/StrReplace/Delete paths: 42
+
+── Chat #6 (2ec46bca) — energy 5/8 → 100% bug ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/2ec46bca-f736-4b8a-9528-5081f5559c21/2ec46bca-f736-4b8a-9528-5081f5559c21.jsonl
+User messages: 1 | Write/StrReplace/Delete paths: 0
+No Write/StrReplace/Delete paths extracted — rely on static checks only
+
+
+── Chat #7 (9405e11c) — support email ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/9405e11c-511e-4946-aa21-46b28b8bb7ed/9405e11c-511e-4946-aa21-46b28b8bb7ed.jsonl
+User messages: 5 | Write/StrReplace/Delete paths: 9
+
+── Chat #8 (8047eeaa) — nutrition facts MEGA ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/8047eeaa-aefd-44f5-a51a-18e895120b9c/8047eeaa-aefd-44f5-a51a-18e895120b9c.jsonl
+User messages: 194 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 11
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · but how can i make the barcode scanner as accurate as humanly possible and also great cuz we want to steal costumers sin
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · … +6 more
+
+── Chat #9 (842532aa) — code quality audit ──
+SKIPPED — audit report, optional
+
+── Chat #10 (2a168f9b) — terminal follow-up ──
+SKIPPED — one-line follow-up
+
+── Chat #11 (d427da4a) — Jest test suite ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b.jsonl
+User messages: 22 | Write/StrReplace/Delete paths: 98
+User rejections in thread (last good state may differ): 5
+  · Write Jest unit tests for the coach tool proposal guards. File to create: src/__tests__/unit/coachToolProposalGuards.tes
+  · Write Jest integration tests for the food search and logging flow. File to create: src/__tests__/integration/foodSearch
+  · Fix the following confirmed bugs in CoachConnect found by the Jest test suite. Read each file completely before making
+  · Audit the CoachConnect codebase for architecture bloat, poor file organization, and anything that makes the codebase h
+  · Audit the CoachConnect codebase for architecture bloat, poor file organization, and anything that makes the codebase h
+
+── Chat #12 (c2bb292e) — untested audit + tests + reorg ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/c2bb292e-64d7-4a0e-98a5-67ccff9e3269/c2bb292e-64d7-4a0e-98a5-67ccff9e3269.jsonl
+User messages: 71 | Write/StrReplace/Delete paths: 226
+User rejections in thread (last good state may differ): 6
+  · Write Jest integration tests for dashboard metric and workout log saving on MyDashboardScreen. File to create: src/__te
+  · any other tests i give u save it there ok now do these tests Write Jest unit tests for food normalization and barcode m
+  · ok can u just pls look into my coldebase folder structure architecftuee and etc and see how we can make it easy to under
+  · ok can u just pls look into my coldebase folder structure architecftuee and etc and see how we can make it easy to under
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · … +1 more
+
+── Chat #13 (a560aff3) — k6 load tests + structure doc ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a560aff3-4487-498f-9334-4f19c84b6fc0/a560aff3-4487-498f-9334-4f19c84b6fc0.jsonl
+User messages: 15 | Write/StrReplace/Delete paths: 31
+User rejections in thread (last good state may differ): 1
+  · u made them more confusing wtf
+
+── Expected test files (chats #11/#12) ──
+✓ src/__tests__/unit/coachToolProposalGuards.test.js
+✓ src/__tests__/unit/servingMath.test.js
+✓ src/__tests__/unit/authGate.test.js
+✓ src/__tests__/unit/calculations.test.js
+✓ src/__tests__/unit/parseCoachToolCalls.test.js
+✓ src/__tests__/unit/dailyMetrics.test.js
+✓ src/__tests__/unit/onboardingCalculations.test.js
+✓ src/__tests__/unit/foodSearchScoring.test.js
+✓ src/__tests__/unit/workoutPlanParsing.test.js
+✓ src/__tests__/integration/aiCoachFlow.test.js
+✓ src/__tests__/integration/foodSearchLog.test.js
+✓ src/__tests__/unit/trainerCodeValidation.test.js
+✓ src/__tests__/unit/onboardingGate.test.js
+✓ src/__tests__/components/ToolConfirmationModal.test.js
+✓ src/__tests__/integration/onboardingComplete.test.js
+✓ src/__tests__/integration/dashboardSave.test.js
+✓ src/__tests__/unit/baseUrl.test.js
+✓ src/__tests__/unit/foodNormalizeBarcode.test.js
+✓ src/__tests__/integration/clientHomeBootstrap.test.js
+✓ src/__tests__/unit/bookSessionParse.test.js
+✓ src/__tests__/unit/notesAndFiles.test.js
+
+── Cross-chat static checks ──
+✓ server/lib/index.js removed (stale duplicate)
+✗ PlanViewerScreen exists
+✓ load-tests/ folder
+✓ coach tool guards test
+✓ runJestWithLog writes test-results.txt
+✓ validateCoachToolProposal (modal guards)
+✓ filterValidCoachToolCalls on server
+✓ EMERGENCY PARSE removed from server
+✗ Daily nutrition facts screen path
+✓ support config file
+✓ npm start uses dev-client
+
+── verifyThreadGapFixes.js ──
+────────────────────────────────────────
+Results: 39 passed, 0 failed
+All thread gap-fix static checks passed.
+
+── npm test ──
+> coachconnect-app@1.0.0 test
+> node ./scripts/runJestWithLog.js --runInBand
+
+── REQUEST_STATUS_AUDIT.md (informational) ──
+DONE: 0 | PARTIAL: 0 | N/A: 0
+(PARTIAL rows are not auto-fail — many were never finished pre-deletion)
+
+══════════════════════════════════════════════════════════════
+MASTER TABLE
+| Chat | Item | File/area | Status | Notes |
+|------|------|-----------|--------|-------|
+| 1 | StrReplace src/client/components/FilesNo | src/client/components/FilesNotesHeroCard.jsx | MISSING | src/client/components/FilesNotesHeroCard |
+| 1 | StrReplace src/aiChat/AICoachTestSuite.j | src/aiChat/AICoachTestSuite.jsx | MISSING | src/aiChat/AICoachTestSuite.jsx → not fo |
+| 1 | StrReplace src/shared/services/dailyMetr | src/shared/services/dailyMetricsService.js | MISSING | src/shared/services/dailyMetricsService. |
+| 4 | Write src/ai/services/openaiClient.js | src/ai/services/openaiClient.js | MISSING | src/ai/services/openaiClient.js → intent |
+| 4 | StrReplace src/aiChat/AICoachTestSuite.j | src/aiChat/AICoachTestSuite.jsx | MISSING | src/aiChat/AICoachTestSuite.jsx → not fo |
+| 4 | StrReplace src/shared/services/pushNotif | src/shared/services/pushNotifyApi.js | MISSING | src/shared/services/pushNotifyApi.js → n |
+| 4 | Write server/lib/passwordResetEmail.js | server/lib/passwordResetEmail.js | MISSING | server/lib/passwordResetEmail.js → not f |
+| 4 | Write server/routes/authRoutes.js | server/routes/authRoutes.js | MISSING | server/routes/authRoutes.js → not found |
+| 4 | Write src/auth/services/requestPasswordR | src/auth/services/requestPasswordReset.js | MISSING | src/auth/services/requestPasswordReset.j |
+| 4 | Write docs/FORGOT_PASSWORD.md | docs/FORGOT_PASSWORD.md | MISSING | docs/FORGOT_PASSWORD.md → not found |
+| 4 | Write server/lib/passwordResetPage.js | server/lib/passwordResetPage.js | MISSING | server/lib/passwordResetPage.js → not fo |
+| 4 | Write src/client/lib/coachingBillingLabe | src/client/lib/coachingBillingLabel.js | MISSING | src/client/lib/coachingBillingLabel.js → |
+| 4 | Write docs/APP_MASTER_GUIDE.md | docs/APP_MASTER_GUIDE.md | MISSING | docs/APP_MASTER_GUIDE.md → not found |
+| 5 | StrReplace src/client/marketplace/screen | src/client/marketplace/screens/TrainerProfileScree | MISSING | src/client/marketplace/screens/TrainerPr |
+| 8 | StrReplace src/nutrition/utils/nutrition | src/nutrition/utils/nutritionNormalization.js | MISSING | src/nutrition/utils/nutritionNormalizati |
+| 8 | Write src/nutrition/utils/servingMath.js | src/nutrition/utils/servingMath.js | MISSING | src/nutrition/utils/servingMath.js → not |
+| 8 | Write server/lib/fatSecretFood.js | server/lib/fatSecretFood.js | MISSING | server/lib/fatSecretFood.js → not found |
+| 8 | Write scripts/testFatSecretBarcode.js | scripts/testFatSecretBarcode.js | MISSING | scripts/testFatSecretBarcode.js → not fo |
+| 8 | Write src/nutrition/utils/barcodeDisplay | src/nutrition/utils/barcodeDisplay.js | MISSING | src/nutrition/utils/barcodeDisplay.js →  |
+| 8 | StrReplace src/nutrition/services/foodSe | src/nutrition/services/foodSearchQueryMatch.js | MISSING | src/nutrition/services/foodSearchQueryMa |
+| 8 | Write src/nutrition/utils/foodNormalize. | src/nutrition/utils/foodNormalize.js | MISSING | src/nutrition/utils/foodNormalize.js → n |
+| 8 | Write src/nutrition/components/FoodConfi | src/nutrition/components/FoodConfirmSheet.jsx | MISSING | src/nutrition/components/FoodConfirmShee |
+| 8 | StrReplace src/client/marketplace/screen | src/client/marketplace/screens/MarketplaceScreen.j | MISSING | src/client/marketplace/screens/Marketpla |
+| 8 | StrReplace src/client/marketplace/screen | src/client/marketplace/screens/TrainerProfileScree | MISSING | src/client/marketplace/screens/TrainerPr |
+| 8 | Write scripts/testBarcodeServingUnits.js | scripts/testBarcodeServingUnits.js | MISSING | scripts/testBarcodeServingUnits.js → not |
+| 8 | Write scripts/data/nutritionAccuracySpec | scripts/data/nutritionAccuracySpecs.js | MISSING | scripts/data/nutritionAccuracySpecs.js → |
+| 8 | Write scripts/lib/nutritionAccuracyCompa | scripts/lib/nutritionAccuracyCompare.js | MISSING | scripts/lib/nutritionAccuracyCompare.js  |
+| 8 | Write scripts/testNutritionAccuracy.js | scripts/testNutritionAccuracy.js | MISSING | scripts/testNutritionAccuracy.js → not f |
+| 8 | StrReplace scripts/testPackagedFoodSearc | scripts/testPackagedFoodSearch.js | MISSING | scripts/testPackagedFoodSearch.js → not  |
+| 8 | Write docs/TESTING_NUTRITION_ACCURACY.md | docs/TESTING_NUTRITION_ACCURACY.md | MISSING | docs/TESTING_NUTRITION_ACCURACY.md → not |
+| 8 | Write scripts/data/restaurantNutritionAc | scripts/data/restaurantNutritionAccuracySpecs.js | MISSING | scripts/data/restaurantNutritionAccuracy |
+| 8 | StrReplace src/nutrition/utils/restauran | src/nutrition/utils/restaurantSerperQuality.js | MISSING | src/nutrition/utils/restaurantSerperQual |
+| 8 | Write src/nutrition/utils/casualMenuSear | src/nutrition/utils/casualMenuSearch.js | MISSING | src/nutrition/utils/casualMenuSearch.js  |
+| 8 | StrReplace src/nutrition/utils/foodSearc | src/nutrition/utils/foodSearchTitle.js | MISSING | src/nutrition/utils/foodSearchTitle.js → |
+| 8 | Write src/aiChat/components/CoachWebSour | src/aiChat/components/CoachWebSources.jsx | MISSING | src/aiChat/components/CoachWebSources.js |
+| 8 | Write src/aiChat/components/CoachCompose | src/aiChat/components/CoachComposerInput.jsx | MISSING | src/aiChat/components/CoachComposerInput |
+| 8 | Write src/aiChat/lib/pasteTextIntoCompos | src/aiChat/lib/pasteTextIntoComposer.js | MISSING | src/aiChat/lib/pasteTextIntoComposer.js  |
+| 8 | Write src/aiChat/lib/coachCategoryPrompt | src/aiChat/lib/coachCategoryPrompts.js | MISSING | src/aiChat/lib/coachCategoryPrompts.js → |
+| 8 | Write src/aiChat/lib/coachSourcePreview. | src/aiChat/lib/coachSourcePreview.js | MISSING | src/aiChat/lib/coachSourcePreview.js → n |
+| 8 | Write src/aiChat/components/CoachSourceP | src/aiChat/components/CoachSourcePreviewSheet.jsx | MISSING | src/aiChat/components/CoachSourcePreview |
+| 8 | Write scripts/testCoachSourcePreview.js | scripts/testCoachSourcePreview.js | MISSING | scripts/testCoachSourcePreview.js → not  |
+| 8 | Write src/aiChat/lib/coachConversationDe | src/aiChat/lib/coachConversationDebug.js | MISSING | src/aiChat/lib/coachConversationDebug.js |
+| 8 | Write src/aiChat/components/TrainerCoach | src/aiChat/components/TrainerCoachClientBar.jsx | MISSING | src/aiChat/components/TrainerCoachClient |
+| 8 | StrReplace src/aiChat/lib/aiChatPersiste | src/aiChat/lib/aiChatPersistence.js | MISSING | src/aiChat/lib/aiChatPersistence.js → no |
+| 8 | Write server/lib/coachFoodSearch.js | server/lib/coachFoodSearch.js | MISSING | server/lib/coachFoodSearch.js → not foun |
+| 8 | StrReplace src/shared/services/dailyMetr | src/shared/services/dailyMetricsService.js | MISSING | src/shared/services/dailyMetricsService. |
+| 8 | Write server/lib/serperMenuFoodSearch.js | server/lib/serperMenuFoodSearch.js | MISSING | server/lib/serperMenuFoodSearch.js → not |
+| 8 | StrReplace src/ai/normalizeToolParams.js | src/ai/normalizeToolParams.js | MISSING | src/ai/normalizeToolParams.js → not foun |
+| 8 | Write src/aiChat/lib/coachCapabilities.j | src/aiChat/lib/coachCapabilities.js | MISSING | src/aiChat/lib/coachCapabilities.js → no |
+| 8 | Write src/aiChat/lib/coachMarkdownStyles | src/aiChat/lib/coachMarkdownStyles.js | MISSING | src/aiChat/lib/coachMarkdownStyles.js →  |
+| 8 | Write src/aiChat/components/CoachFormatt | src/aiChat/components/CoachFormattedReply.jsx | MISSING | src/aiChat/components/CoachFormattedRepl |
+| 8 | Write scripts/generateCodebaseGuide.mjs | scripts/generateCodebaseGuide.mjs | MISSING | scripts/generateCodebaseGuide.mjs → not  |
+| 8 | StrReplace docs/APP_MASTER_GUIDE.md | docs/APP_MASTER_GUIDE.md | MISSING | docs/APP_MASTER_GUIDE.md → not found |
+| 8 | Write scripts/filePurposeOverrides.mjs | scripts/filePurposeOverrides.mjs | MISSING | scripts/filePurposeOverrides.mjs → not f |
+| 8 | Write scripts/generateFilePurposeGuide.m | scripts/generateFilePurposeGuide.mjs | MISSING | scripts/generateFilePurposeGuide.mjs → n |
+| 8 | Write src/shared/services/firestoreListe | src/shared/services/firestoreListenerUtils.js | MISSING | src/shared/services/firestoreListenerUti |
+| 8 | StrReplace src/utils/dataCacheCleanup.js | src/utils/dataCacheCleanup.js | MISSING | src/utils/dataCacheCleanup.js → not foun |
+| 8 | StrReplace src/shared/services/notificat | src/shared/services/notificationsService.js | MISSING | src/shared/services/notificationsService |
+| 8 | Write src/trainer/components/TrainerDash | src/trainer/components/TrainerDashboardHeroCard.js | MISSING | src/trainer/components/TrainerDashboardH |
+| 8 | Write jest.config.js | jest.config.js | MISSING | jest.config.js → not found |
+| 8 | Write src/__tests__/README.md | src/__tests__/README.md | MISSING | src/__tests__/README.md → ambiguous (4) |
+| 8 | Write src/__tests__/unit/.gitkeep | src/__tests__/unit/.gitkeep | MISSING | src/__tests__/unit/.gitkeep → not found |
+| 8 | Write src/__tests__/integration/.gitkeep | src/__tests__/integration/.gitkeep | MISSING | src/__tests__/integration/.gitkeep → not |
+| 8 | Write src/__tests__/components/.gitkeep | src/__tests__/components/.gitkeep | MISSING | src/__tests__/components/.gitkeep → not  |
+| 11 | Write src/auth/onboardingRole.js | src/auth/onboardingRole.js | MISSING | src/auth/onboardingRole.js → not found |
+| 11 | Write src/app/authGateLogic.js | src/app/authGateLogic.js | MISSING | src/app/authGateLogic.js → not found |
+| 11 | StrReplace src/__tests__/integration/too | src/__tests__/integration/toolExecutorReal.test.js | MISSING | src/__tests__/integration/toolExecutorRe |
+| 11 | StrReplace src/shared/services/dailyMetr | src/shared/services/dailyMetricsService.js | MISSING | src/shared/services/dailyMetricsService. |
+| 11 | StrReplace src/shared/notifications/noti | src/shared/notifications/notificationsService.js | MISSING | src/shared/notifications/notificationsSe |
+| 12 | Write src/__tests__/unit/trainerMessagin | src/__tests__/unit/trainerMessaging.test.js | MISSING | src/__tests__/unit/trainerMessaging.test |
+| 12 | Write src/__tests__/integration/toolExec | src/__tests__/integration/toolExecutorReal.test.js | MISSING | src/__tests__/integration/toolExecutorRe |
+| 12 | Write src/__tests__/unit/dataCacheCleanu | src/__tests__/unit/dataCacheCleanup.test.js | MISSING | src/__tests__/unit/dataCacheCleanup.test |
+| 12 | StrReplace src/shared/components/onboard | src/shared/components/onboarding/TrainerLocationFi | MISSING | src/shared/components/onboarding/Trainer |
+| 12 | StrReplace src/workouts/plan-generator/u | src/workouts/plan-generator/useWorkoutGeneration.j | MISSING | src/workouts/plan-generator/useWorkoutGe |
+| 12 | Write scripts/fixAiImports.js | scripts/fixAiImports.js | MISSING | scripts/fixAiImports.js → not found |
+| 12 | StrReplace src/nutrition/daily-log/nutri | src/nutrition/daily-log/nutritionService.js | MISSING | src/nutrition/daily-log/nutritionService |
+| 12 | StrReplace src/nutrition/food-search/foo | src/nutrition/food-search/foodNormalize.js | MISSING | src/nutrition/food-search/foodNormalize. |
+| 12 | StrReplace src/shared/notes-files/notesA | src/shared/notes-files/notesAndFilesService.js | MISSING | src/shared/notes-files/notesAndFilesServ |
+| 12 | Write scripts/reorganizeAssets.js | scripts/reorganizeAssets.js | MISSING | scripts/reorganizeAssets.js → not found |
+| 12 | Write scripts/rewriteAssetImports.js | scripts/rewriteAssetImports.js | MISSING | scripts/rewriteAssetImports.js → not fou |
+| … | (truncated) | | | |
+
+File edits scanned: 794 | actionable gaps: 117
+
+BASELINE MATCH NOT CONFIRMED
+117 automated gap(s) found (see table above).
+
+Top gaps:
+  · [chat 1] MISSING — src/client/components/FilesNotesHeroCard.jsx — src/client/components/FilesNotesHeroCard.jsx → ambiguous (2)
+  · [chat 1] MISSING — src/aiChat/AICoachTestSuite.jsx — src/aiChat/AICoachTestSuite.jsx → not found
+  · [chat 1] MISSING — src/shared/services/dailyMetricsService.js — src/shared/services/dailyMetricsService.js → not found
+  · [chat 4] MISSING — src/ai/services/openaiClient.js — src/ai/services/openaiClient.js → intentionally removed duplicate
+  · [chat 4] MISSING — src/aiChat/AICoachTestSuite.jsx — src/aiChat/AICoachTestSuite.jsx → not found
+  · [chat 4] MISSING — src/shared/services/pushNotifyApi.js — src/shared/services/pushNotifyApi.js → not found
+  · [chat 4] MISSING — server/lib/passwordResetEmail.js — server/lib/passwordResetEmail.js → not found
+  · [chat 4] MISSING — server/routes/authRoutes.js — server/routes/authRoutes.js → not found
+  · [chat 4] MISSING — src/auth/services/requestPasswordReset.js — src/auth/services/requestPasswordReset.js → not found
+  · [chat 4] MISSING — docs/FORGOT_PASSWORD.md — docs/FORGOT_PASSWORD.md → not found
+  · [chat 4] MISSING — server/lib/passwordResetPage.js — server/lib/passwordResetPage.js → not found
+  · [chat 4] MISSING — src/client/lib/coachingBillingLabel.js — src/client/lib/coachingBillingLabel.js → not found
+  · [chat 4] MISSING — docs/APP_MASTER_GUIDE.md — docs/APP_MASTER_GUIDE.md → not found
+  · [chat 5] MISSING — src/client/marketplace/screens/TrainerProfileScreen.jsx — src/client/marketplace/screens/TrainerProfileScreen.jsx → not found
+  · [chat 8] MISSING — src/nutrition/utils/nutritionNormalization.js — src/nutrition/utils/nutritionNormalization.js → not found
+
+Fix with per-chat GAP AUDIT + "fix the baseline gaps", or re-run after fixes:
+  npm run baseline:audit
+
+Summary: PRESENT≈608 | gaps=117 | report: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/docs/chat-history-recovery/reports/baseline-match-2026-06-15T23-50-24.txt

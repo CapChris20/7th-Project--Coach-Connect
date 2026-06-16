@@ -12,7 +12,7 @@ import React from 'react';
 import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 
 export default function LogNutritionModal({ params, reasoning, onConfirm, onCancel, loading }) {
-  const food = params?.food || params?.foodName || 'Food';
+  const food = params?.name || params?.food || params?.foodName || 'Food item';
   const cals = params?.cals ?? params?.calories ?? '—';
   const protein = params?.protein ?? '—';
 

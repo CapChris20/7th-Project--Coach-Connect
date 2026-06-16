@@ -78,12 +78,12 @@ export const CAN_HELP_WITH_ITEMS = [
   },
   {
     id: 'web',
-    title: 'Search the web with sources',
-    subtitle: 'Research, products, and current facts',
+    title: 'Fitness web research',
+    subtitle: 'Studies, supplements & training evidence — with sources',
     icon: 'globe-outline',
     accent: '#64D2FF',
     rim: ['#06B6D4', '#3B82F6'],
-    prompt: 'Can you search the web for me?',
+    prompt: 'Search the web: what does research say about protein intake for lifters?',
   },
   {
     id: 'data',

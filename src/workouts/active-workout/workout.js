@@ -66,7 +66,7 @@ import {
   stripEmojis,
 } from '../plan-viewer/workoutPlanPdfService';
 import WorkoutPlanPdfViewerModal from '../plan-viewer/WorkoutPlanPdfViewerModal';
-import PlanViewerScreen from '../../client/workout-plans/PlanViewerScreen';
+import PlanViewerScreen from '../../client/screens/PlanViewerScreen';
 import WorkoutExerciseLibraryTab from '../exercise-library/WorkoutExerciseLibraryTab';
 import { EditModalForm } from './EditModalForm_RN';
 import {
@@ -81,8 +81,17 @@ import {
   loadOnboardingAndPlanArtifacts,
   generateWorkoutPlanWithClaude,
 } from '../plan-generator/requestWorkoutPlan';
+import {
+  readWorkoutGenerationSession,
+  markWorkoutGenerationStarted,
+  markWorkoutGenerationSucceeded,
+  markWorkoutGenerationFailed,
+  clearWorkoutPlanReadyBadge,
+  subscribeWorkoutGenerationSession,
+} from '../plan-generator/workoutPlanGenerationSession';
 
 export {
+  WORKOUT_GENERATION_LIMIT,
   PLAN_LIMIT_TOTAL,
   nextMonthResetDate,
   nextMonthResetsAtIso,
@@ -1821,6 +1830,7 @@ export default function WorkoutPlanGeneratorScreen({
   const [showFullPlan, setShowFullPlan] = useState(!!readOnly);
   const [viewerErrorDelayElapsed, setViewerErrorDelayElapsed] = useState(false);
   const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
+  const [planReadyPending, setPlanReadyPending] = useState(false);
   const [showEditPlanModal, setShowEditPlanModal] = useState(false);
   const [editPlanText, setEditPlanText] = useState('');
   const [showAllSessions, setShowAllSessions] = useState(false);
@@ -1920,6 +1930,56 @@ export default function WorkoutPlanGeneratorScreen({
     });
     return () => sub.remove();
   }, []);
+
+  const hydratePlanFromLocalCache = useCallback(async (uid) => {
+    if (!uid) return null;
+    try {
+      const raw =
+        (await AsyncStorage.getItem(`workout_plan_${uid}`)) ||
+        (uid === auth.currentUser?.uid ? await AsyncStorage.getItem('@workout_plan') : null);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setGeneratedPlan(parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('hydratePlanFromLocalCache:', e?.message || e);
+    }
+    return null;
+  }, []);
+
+  useEffect(() => {
+    const uid = profileSubjectUid || auth.currentUser?.uid;
+    if (!uid || readOnly) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      const session = await readWorkoutGenerationSession(uid);
+      if (cancelled) return;
+      if (session.inFlight) setIsGenerating(true);
+      if (session.pendingReady) {
+        setPlanReadyPending(true);
+        await hydratePlanFromLocalCache(uid);
+      }
+    })();
+
+    const unsub = subscribeWorkoutGenerationSession((session) => {
+      if (session.uid !== uid) return;
+      setIsGenerating(!!session.inFlight);
+      if (session.pendingReady && !session.inFlight) {
+        setPlanReadyPending(true);
+        hydratePlanFromLocalCache(uid);
+      } else if (!session.inFlight) {
+        setPlanReadyPending(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [profileSubjectUid, readOnly, hydratePlanFromLocalCache]);
 
   const schedulePlanReadyNotification = async () => {
     try {
@@ -2374,7 +2434,13 @@ export default function WorkoutPlanGeneratorScreen({
 
     setIsGenerating(true);
     setGenerationError(null);
+    setPlanReadyPending(false);
     workoutPlanGenerationInFlight = true;
+
+    const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+    if (subjectUid) {
+      await markWorkoutGenerationStarted(subjectUid);
+    }
 
     const ui = (fn) => {
       if (mountedRef.current) fn();
@@ -2430,6 +2496,7 @@ export default function WorkoutPlanGeneratorScreen({
             planParseError: true,
           })
         );
+        if (subjectUid) await markWorkoutGenerationFailed(subjectUid);
         return;
       }
 
@@ -2454,9 +2521,9 @@ export default function WorkoutPlanGeneratorScreen({
         await setCurrentWorkoutPlan(targetUid, {
           rawPlan: planText,
           planText,
-          structuredPlan: generatedPlan?.structuredPlan || null,
-          title: generatedPlan?.structuredPlan?.goal
-            ? `${String(generatedPlan.structuredPlan.goal).slice(0, 48)} plan`
+          structuredPlan: planData.structuredPlan || null,
+          title: planData.structuredPlan?.goal
+            ? `${String(planData.structuredPlan.goal).slice(0, 48)} plan`
             : undefined,
         });
       }
@@ -2467,16 +2534,23 @@ export default function WorkoutPlanGeneratorScreen({
       ui(() => setPdfDownloadUrl(null));
       ui(() => setPlanTitleForPdf(''));
 
-      // IMPORTANT: Do not auto-generate a PDF during plan generation.
-      // The user-facing experience should rely on the plan viewer layout.
-
       const userNotOnGeneratorUi = !mountedRef.current;
       const appNotActive = !appInForegroundRef.current;
-      if (userNotOnGeneratorUi || appNotActive) {
+      const userAwayFromWorkout = userNotOnGeneratorUi || appNotActive;
+
+      if (targetUid) {
+        await markWorkoutGenerationSucceeded(targetUid, { userAwayFromWorkout });
+      }
+
+      if (userAwayFromWorkout) {
         await schedulePlanReadyNotification();
+      } else if (targetUid) {
+        await clearWorkoutPlanReadyBadge(targetUid);
       }
     } catch (error) {
       console.error('Error generating workout plan:', error);
+      const failUid = profileSubjectUid || auth.currentUser?.uid;
+      if (failUid) await markWorkoutGenerationFailed(failUid);
       if (error?.code === 'monthly_limit_reached') {
         if (error.limitPayload) {
           setWorkoutGenUsage({
@@ -2503,9 +2577,20 @@ export default function WorkoutPlanGeneratorScreen({
         );
       }
     } finally {
+      workoutPlanGenerationInFlight = false;
       ui(() => setIsGenerating(false));
     }
   };
+
+  const handleOpenReadyPlan = useCallback(async () => {
+    const uid = profileSubjectUid || auth.currentUser?.uid;
+    if (uid) await clearWorkoutPlanReadyBadge(uid);
+    setPlanReadyPending(false);
+    if (!generatedPlan && uid) {
+      await hydratePlanFromLocalCache(uid);
+    }
+    setShowFullPlan(true);
+  }, [profileSubjectUid, generatedPlan, hydratePlanFromLocalCache]);
 
   const handleAddToCollection = async () => {
     const targetUid = profileSubjectUid;
@@ -2955,9 +3040,17 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     if (isGenerating && readOnly) {
       return (
         <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={['top']}>
+          {renderWorkoutChromeHeader({
+            onBack: () => onBack?.(),
+          })}
+          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top']}>
             <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
-            <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Generating your workout plan...</Text>
+            <Text style={[planViewerRefStyles.loaderText, { color: text, textAlign: 'center' }]}>
+              Building your workout plan…
+            </Text>
+            <Text style={[planViewerRefStyles.loaderText, { color: muted, fontSize: 14, marginTop: 10, textAlign: 'center' }]}>
+              You can go back — we will notify you when your plan is ready.
+            </Text>
           </SafeAreaView>
         </View>
       );
@@ -3277,7 +3370,30 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           : {},
       )}
 
-      {isGenerating && (
+      {planReadyPending && !isGenerating ? (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={handleOpenReadyPlan}
+          style={[
+            styles.generatingInlineBanner,
+            {
+              borderColor: isDark ? 'rgba(52,211,153,0.35)' : 'rgba(16,185,129,0.35)',
+              backgroundColor: isDark ? 'rgba(52,211,153,0.12)' : 'rgba(16,185,129,0.10)',
+            },
+          ]}
+        >
+          <Ionicons name="checkmark-circle" size={22} color={isDark ? '#34D399' : '#10B981'} />
+          <View style={styles.generatingInlineBannerTextCol}>
+            <Text style={[styles.generatingInlineBannerTitle, { color: textPrimary }]}>Your plan is ready</Text>
+            <Text style={[styles.generatingInlineBannerSub, { color: textSecondary }]} numberOfLines={2}>
+              Tap to open your new workout plan.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={textSecondary} />
+        </TouchableOpacity>
+      ) : null}
+
+      {isGenerating ? (
         <View
           style={[
             styles.generatingInlineBanner,
@@ -3293,11 +3409,11 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             <Text style={[styles.generatingInlineBannerSub, { color: textSecondary }]} numberOfLines={3}>
               {GENERATING_MESSAGES[generatingMessageIndex]}
               {'\n'}
-              You can go back or use other tabs. We save your plan and notify you when it is ready.
+              Switch tabs or tap Home anytime — generation continues in the background.
             </Text>
           </View>
         </View>
-      )}
+      ) : null}
 
       <View
         style={[

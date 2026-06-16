@@ -8,6 +8,7 @@ const INFORMATIONAL_QUESTIONS = [
   'How am I doing this week?',
   'What should I eat before a workout?',
   'Is my calorie intake good?',
+  'Search the web: what does research say about protein intake for lifters? Cite sources.',
 ];
 
 const EXPLICIT_LOG_REQUESTS = [

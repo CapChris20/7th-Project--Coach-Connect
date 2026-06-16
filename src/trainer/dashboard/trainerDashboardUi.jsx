@@ -32,7 +32,7 @@ import LottieView from 'lottie-react-native';
 import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
 import { DailyQuotePill } from '../../shared/components/home/DailyQuoteCard';
 import AuroraHeroBannerBase from '../../shared/components/home/AuroraHeroBanner';
-import FilesNotesHeroCard from '../../shared/components/notes-files/FilesNotesHeroCard';
+import FilesNotesHeroCard from '../../shared/components/FilesNotesHeroCard';
 import FilesNotesSectionPremium from '../../shared/components/notes-files/FilesNotesSectionPremium';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
 import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';

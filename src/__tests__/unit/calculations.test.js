@@ -39,6 +39,14 @@ describe('calculateBMR', () => {
     expect(result).toBeGreaterThan(0);
   });
 
+  test('zero weight returns null (no nonsense BMR)', () => {
+    expect(calculateBMR(0, 180, 30, 'male')).toBeNull();
+  });
+
+  test('negative height returns null', () => {
+    expect(calculateBMR(80, -180, 30, 'male')).toBeNull();
+  });
+
   test('undefined gender defaults to male (no crash)', () => {
     expect(() => calculateBMR(80, 180, 30, undefined)).not.toThrow();
   });

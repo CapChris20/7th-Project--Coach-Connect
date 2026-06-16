@@ -68,6 +68,10 @@ export function normalizeToolCall(raw) {
   let name = TOOL_NAME_ALIASES[nameRaw] || nameRaw;
   if (!name) return null;
   const params = raw.params && typeof raw.params === 'object' ? { ...raw.params } : { ...raw };
+  if (name === 'logNutrition' && params.name && !params.food && !params.foodName) {
+    params.food = params.name;
+    params.foodName = params.name;
+  }
   delete params.name;
   delete params.tool;
 
@@ -188,7 +192,7 @@ async function executeLogNutritionClient(userId, params) {
   }
 
   await addFoodLog(userId, {
-    mealType: params.mealType || 'snack',
+    mealType: String(params.mealType || 'snack').toLowerCase(),
     date: params.date || getClientDateKey(),
     food: {
       name: foodName,
@@ -455,8 +459,13 @@ async function executeAdjustMacrosClient(userId, params) {
   const protein = num(params?.protein ?? params?.newProtein) ?? currentMacros.protein ?? 150;
   const carbs = num(params?.carbs ?? params?.newCarbs) ?? currentMacros.carbs ?? 200;
   const fat = num(params?.fat ?? params?.newFats ?? params?.fats) ?? currentMacros.fat ?? 65;
-  let calories = num(params?.calories ?? params?.newCals ?? params?.calorieTarget) ?? currentMacros.calories;
-  
+  const explicitCalories = num(params?.calories ?? params?.newCals ?? params?.calorieTarget);
+  let calories = explicitCalories ?? currentMacros.calories;
+
+  if (explicitCalories != null && explicitCalories <= 0) {
+    throw new Error(`Invalid calorie target: ${explicitCalories}`);
+  }
+
   // Calculate calories from macros if not provided
   if (calories == null || calories <= 0) {
     calories = Math.round(protein * 4 + carbs * 4 + fat * 9);
@@ -654,19 +663,41 @@ async function executeLogRestDayClient(userId, params) {
   };
 }
 
+const TRAINER_READ_ONLY_TOOLS = new Set([
+  'logSleep',
+  'logWater',
+  'logNutrition',
+  'logWorkout',
+  'logRestDay',
+  'deleteLog',
+  'adjustMacroTargets',
+  'rateWorkout',
+]);
+
 /**
  * Execute a confirmed AI Coach tool.
  */
-export async function executeCoachTool({ userId, trainerId, planId, toolCall, navigationHandlers = {} }) {
+export async function executeCoachTool({
+  userId,
+  trainerId,
+  planId,
+  toolCall,
+  navigationHandlers = {},
+  coachMode,
+  targetClientId,
+}) {
   const normalized = normalizeToolCall(toolCall);
   if (!normalized?.name) return { success: false, message: 'Unknown action' };
 
-  console.log('[DEBUG] executeCoachTool:', { name: normalized.name, params: normalized.params });
+  if (coachMode === 'trainer' && TRAINER_READ_ONLY_TOOLS.has(normalized.name)) {
+    return {
+      success: false,
+      message: 'Trainer coach mode is read-only — switch to the client profile to log data.',
+    };
+  }
 
   const params = buildServerParams(normalized.name, normalized.params, { trainerId, planId });
   const serverCall = { name: normalized.name, params };
-
-  console.log('[DEBUG] Server call:', { name: serverCall.name, params: serverCall.params });
 
   // All tools route through server first
   if (normalized.name === 'bookSession' && !params.trainerId) {
@@ -704,7 +735,6 @@ export async function executeCoachTool({ userId, trainerId, planId, toolCall, na
   }
 
   const serverResult = await executeToolViaServer(userId, serverCall);
-  console.log('[DEBUG] Server result:', { success: serverResult.success, message: serverResult.message });
 
   if (normalized.name === 'openWorkoutPlan') {
     if (typeof navigationHandlers.onOpenWorkoutPlan === 'function') {

@@ -12,7 +12,14 @@
 /** BMR calculation using Mifflin-St Jeor equation. */
 export const calculateBMR = (weight, height, age, gender) => {
   try {
-    if (!gender) { gender = 'male'; }
+    if (!gender) {
+      console.warn('calculateBMR: missing gender, defaulting to male');
+      gender = 'male';
+    }
+    if (height <= 0 || weight <= 0) {
+      console.warn('calculateBMR: invalid height or weight', { height, weight });
+      return null;
+    }
     console.log('Calculating BMR for:', { weight, height, age, gender });
 
     let bmr;

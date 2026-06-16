@@ -16,10 +16,14 @@ import { parseCoachToolCalls } from '../../shared/coach-tools/parseCoachToolCall
 import { normalizeToolCall } from './executeCoachTool';
 import {
   userWantsDeleteLog,
-  coachTextImpliesDelete,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
 } from './parseDeleteLogRequest';
+import {
+  isInformationalUserMessage,
+  userExplicitlyRequestsAction,
+  userWantsExplicitDashboardLog,
+} from './validateCoachToolProposal';
 
 /** AI messages that describe a completed action — never show Confirm again. */
 function isToolOutcomeMessage(text) {
@@ -39,6 +43,7 @@ function isToolOutcomeMessage(text) {
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();
   if (!t.trim()) return false;
+  if (!userExplicitlyRequestsAction(text)) return false;
   if (userWantsDeleteLog(t)) return false;
   if (/\b(dashboard|for me|able to|something for|on there|on my)\b/.test(t)) return false;
   if (/\b(sleep|slept|energy|water|steps)\b/.test(t)) return false;
@@ -79,6 +84,9 @@ export { isToolOutcomeMessage };
 export function inferToolCallFromCoachMessage(text, userMessage = '') {
   const raw = String(text || '');
   const user = String(userMessage || '').trim();
+
+  if (isInformationalUserMessage(user)) return null;
+
   const combined = `${user}\n${raw}`.toLowerCase();
 
   if (isToolOutcomeMessage(raw)) return null;
@@ -119,7 +127,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   }
 
   const sleepMatch = combined.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/i);
-  if (user && (sleepMatch || /\blog\s*sleep/i.test(combined))) {
+  if (user && userWantsExplicitDashboardLog(user, 'sleep') && (sleepMatch || /\blog\s*sleep/i.test(combined))) {
     return normalizeToolCall({
       name: 'logSleep',
       params: { hours: Number(sleepMatch?.[1] || 8) },
@@ -128,7 +136,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   }
 
   const stepsMatch = combined.match(/(\d[\d,]*)\s*steps/i);
-  if (user && (stepsMatch || /\blog\s*steps/i.test(combined))) {
+  if (user && userWantsExplicitDashboardLog(user, 'steps') && (stepsMatch || /\blog\s*steps/i.test(combined))) {
     return normalizeToolCall({
       name: 'logSteps',
       params: { step_count: Number(String(stepsMatch?.[1] || '0').replace(/,/g, '')) },
@@ -137,7 +145,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   }
 
   const waterMatch = combined.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i);
-  if (user && (waterMatch || /\blog\s*water/i.test(combined))) {
+  if (user && userWantsExplicitDashboardLog(user, 'water') && (waterMatch || /\blog\s*water/i.test(combined))) {
     return normalizeToolCall({
       name: 'logWater',
       params: { amount_oz: Number(waterMatch[1]) },
@@ -149,7 +157,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
     combined.match(/(?:energy|log\s*(?:my\s*)?energy)[^\d]{0,24}(\d+)\s*(?:\/\s*10|out of 10)?/i) ||
     combined.match(/(\d+)\s*(?:\/\s*10|out of 10)\s*(?:energy|energy level)/i) ||
     combined.match(/(?:rate|log)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
-  if (user && (energyMatch || /\blog\s*(?:my\s*)?energy/i.test(combined))) {
+  if (user && userWantsExplicitDashboardLog(user, 'energy') && (energyMatch || /\blog\s*(?:my\s*)?energy/i.test(combined))) {
     const rating = Number(energyMatch?.[1]);
     if (Number.isFinite(rating) && rating >= 1 && rating <= 10) {
       return normalizeToolCall({
@@ -177,7 +185,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
     });
   }
 
-  if (/\b(rest day|log rest|mark.*rest|take a rest)\b/i.test(combined)) {
+  if (userWantsExplicitDashboardLog(user, 'restDay') && /\b(rest day|log rest|mark.*rest|take a rest)\b/i.test(combined)) {
     const dateMatch = combined.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
     return normalizeToolCall({
       name: 'logRestDay',
@@ -186,7 +194,8 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
     });
   }
 
-  if (userWantsDeleteLog(user) || coachTextImpliesDelete(raw) || userWantsDeleteLog(raw)) {
+  // Delete only when the user asked — never from coach prose ("remove from your diet", etc.).
+  if (userWantsDeleteLog(user)) {
     const inferred = inferDeleteLogParams(user, raw);
 
     if (/\b(sleep|slept)\b/i.test(combined)) {

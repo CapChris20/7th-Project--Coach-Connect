@@ -729,7 +729,17 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(userId)).data.trainer_id == request.auth.uid ||
         exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId))
       );
-      allow update, delete: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        (
+          resource.data.addedBy == 'trainer' &&
+          (
+            get(/databases/$(database)/documents/users/$(userId)).data.trainerId == request.auth.uid ||
+            get(/databases/$(database)/documents/users/$(userId)).data.trainer_id == request.auth.uid ||
+            exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(userId))
+          )
+        )
+      );
     }
 
     // User daily tracking subcollection (water, etc.) - NEW

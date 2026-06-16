@@ -18,11 +18,14 @@ const MAX_DATA_URL_CHARS = 5_500_000;
 
 const VISION_SYSTEM_ADDENDUM = `
 PHOTO ANALYSIS (this turn):
-The user attached photo(s). You CAN see them — describe what is actually visible.
-- Progress / physique: note posture, lighting, angle limits; give constructive coaching feedback tied to their goal. Do not claim exact body-fat % or medical diagnoses.
+The user attached photo(s). Describe ONLY what is actually visible.
+- Never invent details. Do not mention people, gym equipment, exercises, or physique unless clearly visible.
+- If the image is blurry, too dark, or failed to load, say that clearly and ask for a re-send as JPEG/PNG.
+- If unsure about a detail, say you are unsure.
+- Start with a short "What I can see" section listing 3–8 concrete observable things (e.g. flowers, green leaves, a countertop).
+- Progress / physique: only when a person is clearly visible — note posture, lighting, angle limits; no exact body-fat % or medical diagnoses.
 - Food: describe the meal; estimate macros only if they ask or it fits the question.
-- Form / exercise: comment on visible setup and cues; flag what you cannot see from the angle.
-Never say you cannot see the image. If quality is poor, say what limits your read.`;
+- Form / exercise: only when exercise setup is clearly visible; flag what you cannot see from the angle.`;
 
 function resolveDeepSeekKey() {
   return process.env.DEEPSEEK_API_KEY || null;
@@ -248,6 +251,42 @@ async function callOpenAIVisionForAnalysis({ apiKey, userText, imageDataUrls }) 
   return { text: String(text), source: 'openai-vision', model };
 }
 
+function extractReplicateOutput(data) {
+  const out = data?.output;
+  const text = Array.isArray(out) ? out.join('') : typeof out === 'string' ? out : '';
+  return String(text || '').trim();
+}
+
+async function pollReplicatePrediction({ token, predictionId, maxWaitMs = 110000, intervalMs = 1500 }) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const resp = await axios.get(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+      headers: { ...replicateAuthHeader(token), 'Content-Type': 'application/json' },
+      timeout: 20000,
+      validateStatus: () => true,
+    });
+    if (resp.status < 200 || resp.status >= 300) {
+      throw new Error(formatReplicateError(resp));
+    }
+    const status = String(resp?.data?.status || '').toLowerCase();
+    if (status === 'succeeded') {
+      const text = extractReplicateOutput(resp.data);
+      if (!text) {
+        throw new Error(
+          'Photo analysis failed to read the image. Please resend as a clear JPEG/PNG (not HEIC/Live Photo).'
+        );
+      }
+      return text;
+    }
+    if (status === 'failed' || status === 'canceled') {
+      const err = resp?.data?.error || status;
+      throw new Error(`Replicate DeepSeek-VL2 ${status}${err ? `: ${err}` : ''}`);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error('Replicate DeepSeek-VL2 timed out waiting for vision output. Try again in a moment.');
+}
+
 async function callDeepSeekVLViaReplicate({ token, userText, imageDataUrls }) {
   const prompt = buildVLAnalysisPrompt(userText);
   const version = await resolveReplicateDeepSeekVL2Version(token);
@@ -276,13 +315,23 @@ async function callDeepSeekVLViaReplicate({ token, userText, imageDataUrls }) {
     throw new Error(formatReplicateError(resp));
   }
 
-  const out = resp?.data?.output;
-  const text = Array.isArray(out) ? out.join('') : typeof out === 'string' ? out : '';
-  if (!text || !String(text).trim()) {
-    const err = resp?.data?.error;
-    throw new Error(err ? `Replicate DeepSeek-VL2 failed: ${err}` : 'Replicate DeepSeek-VL2 returned empty output');
+  const pred = resp?.data || {};
+  const status = String(pred.status || '').toLowerCase();
+  let text = extractReplicateOutput(pred);
+
+  if (!text && pred.id && (status === 'starting' || status === 'processing' || status === 'queued' || !pred.output)) {
+    text = await pollReplicatePrediction({ token, predictionId: pred.id });
   }
-  return { text: String(text), source: 'deepseek-vl2-replicate', model: 'deepseek-ai/deepseek-vl2' };
+
+  if (!text) {
+    const err = pred.error;
+    throw new Error(
+      err
+        ? `Replicate DeepSeek-VL2 failed: ${err}`
+        : 'Photo analysis failed to read the image. Please resend as a clear JPEG/PNG (not HEIC/Live Photo).'
+    );
+  }
+  return { text, source: 'deepseek-vl2-replicate', model: 'deepseek-ai/deepseek-vl2' };
 }
 
 async function polishVisionWithDeepSeekCoach({ apiKey, systemPrompt, messages, visualAnalysis }) {
@@ -294,7 +343,7 @@ async function polishVisionWithDeepSeekCoach({ apiKey, systemPrompt, messages, v
   const coachMessages = [
     {
       role: 'user',
-      content: `PHOTO ANALYSIS (from DeepSeek-VL — treat as what you saw in the image):\n${visualAnalysis}\n\nClient question: ${question}\n\nRespond as their CoachConnect coach. Do not mention VL, Replicate, or internal tools.`,
+      content: `PHOTO ANALYSIS (from vision model — treat as what you saw in the image):\n${visualAnalysis}\n\nClient question: ${question}\n\nRespond as their CoachConnect coach. Start with "What I can see:" and list only observable details. Never invent people, gym scenes, or exercises unless clearly described above. Do not mention VL, Replicate, or internal tools.`,
     },
   ];
 

@@ -1,0 +1,10 @@
+# Jest test result logging
+
+- **Always run Jest via npm scripts**, not raw `npx jest`:
+  - `npm test` (all tests)
+  - `npm run test:coverage` (with coverage)
+  - Pass Jest flags after `--`, e.g. `npm run test:coverage -- --testPathPattern=servingMath`
+- These scripts use `scripts/runJestWithLog.js`, which **appends** the full terminal output to **`test-results.txt`** at the project root (each run is separated by a banner with timestamp, command, and exit code).
+- After Jest runs, read `test-results.txt` for the full history of local test output; do not skip logging by invoking `jest` directly.
+- To start a fresh log file: `npm test -- --clear-test-log` or `npm run test:coverage -- --clear-test-log --testPathPattern=foo`
+- `test-results.txt` is gitignored — delete it manually anytime to reset the log.

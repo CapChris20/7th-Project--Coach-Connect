@@ -26,6 +26,7 @@ import {
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import BlurBackdropPlate from '../../shared/ui/BlurBackdropPlate';
+import { getClientDateKey } from '../../shared/utils/dateKeys';
 import {
   HOME_STAT_WORKOUT_GRADIENT,
   HOME_STAT_WATER_GRADIENT,

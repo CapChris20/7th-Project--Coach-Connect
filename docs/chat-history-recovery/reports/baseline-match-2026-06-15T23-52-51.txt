@@ -1,0 +1,98 @@
+CoachConnect baseline match audit
+Workspace: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect
+Generated: 2026-06-15T23:52:51.777Z
+
+── Chat #8 (8047eeaa) — nutrition facts MEGA ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/8047eeaa-aefd-44f5-a51a-18e895120b9c/8047eeaa-aefd-44f5-a51a-18e895120b9c.jsonl
+User messages: 194 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 11
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · but how can i make the barcode scanner as accurate as humanly possible and also great cuz we want to steal costumers sin
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · … +6 more
+
+── Expected test files (chats #11/#12) ──
+✓ src/__tests__/unit/coachToolProposalGuards.test.js
+✓ src/__tests__/unit/servingMath.test.js
+✓ src/__tests__/unit/authGate.test.js
+✓ src/__tests__/unit/calculations.test.js
+✓ src/__tests__/unit/parseCoachToolCalls.test.js
+✓ src/__tests__/unit/dailyMetrics.test.js
+✓ src/__tests__/unit/onboardingCalculations.test.js
+✓ src/__tests__/unit/foodSearchScoring.test.js
+✓ src/__tests__/unit/workoutPlanParsing.test.js
+✓ src/__tests__/integration/aiCoachFlow.test.js
+✓ src/__tests__/integration/foodSearchLog.test.js
+✓ src/__tests__/unit/trainerCodeValidation.test.js
+✓ src/__tests__/unit/onboardingGate.test.js
+✓ src/__tests__/components/ToolConfirmationModal.test.js
+✓ src/__tests__/integration/onboardingComplete.test.js
+✓ src/__tests__/integration/dashboardSave.test.js
+✓ src/__tests__/unit/baseUrl.test.js
+✓ src/__tests__/unit/foodNormalizeBarcode.test.js
+✓ src/__tests__/integration/clientHomeBootstrap.test.js
+✓ src/__tests__/unit/bookSessionParse.test.js
+✓ src/__tests__/unit/notesAndFiles.test.js
+
+── Cross-chat static checks ──
+✓ server/lib/index.js removed (stale duplicate)
+✓ PlanViewerScreen exists
+✓ load-tests/ folder
+✓ coach tool guards test
+✓ runJestWithLog writes test-results.txt
+✓ validateCoachToolProposal (modal guards)
+✓ filterValidCoachToolCalls on server
+✓ EMERGENCY PARSE removed from server
+✓ Daily nutrition facts screen path
+✓ support config file
+✓ npm start uses dev-client
+
+── verifyThreadGapFixes.js ──
+────────────────────────────────────────
+Results: 39 passed, 0 failed
+All thread gap-fix static checks passed.
+
+── npm test SKIPPED (--skip-tests) ──
+
+── REQUEST_STATUS_AUDIT.md (informational) ──
+DONE: 15 | PARTIAL: 152 | N/A: 120
+(PARTIAL rows are not auto-fail — many were never finished pre-deletion)
+
+══════════════════════════════════════════════════════════════
+MASTER TABLE
+| Chat | Item | File/area | Status | Notes |
+|------|------|-----------|--------|-------|
+| 8 | Write src/nutrition/utils/casualMenuSear | src/nutrition/utils/casualMenuSearch.js | MISSING | src/nutrition/utils/casualMenuSearch.js  |
+| 8 | Write src/aiChat/lib/coachConversationDe | src/aiChat/lib/coachConversationDebug.js | MISSING | src/aiChat/lib/coachConversationDebug.js |
+| 8 | Write src/aiChat/components/TrainerCoach | src/aiChat/components/TrainerCoachClientBar.jsx | MISSING | src/aiChat/components/TrainerCoachClient |
+| 8 | Write server/lib/coachFoodSearch.js | server/lib/coachFoodSearch.js | MISSING | server/lib/coachFoodSearch.js → not foun |
+| 8 | Write server/lib/serperMenuFoodSearch.js | server/lib/serperMenuFoodSearch.js | MISSING | server/lib/serperMenuFoodSearch.js → not |
+| 8 | Write src/aiChat/lib/coachCapabilities.j | src/aiChat/lib/coachCapabilities.js | MISSING | src/aiChat/lib/coachCapabilities.js → no |
+| 8 | Write src/aiChat/lib/coachMarkdownStyles | src/aiChat/lib/coachMarkdownStyles.js | MISSING | src/aiChat/lib/coachMarkdownStyles.js →  |
+| 8 | Write src/aiChat/components/CoachFormatt | src/aiChat/components/CoachFormattedReply.jsx | MISSING | src/aiChat/components/CoachFormattedRepl |
+| 8 | Write src/shared/services/firestoreListe | src/shared/services/firestoreListenerUtils.js | MISSING | src/shared/services/firestoreListenerUti |
+| 8 | Write src/trainer/components/TrainerDash | src/trainer/components/TrainerDashboardHeroCard.js | MISSING | src/trainer/components/TrainerDashboardH |
+
+File edits scanned: 162 | actionable gaps: 10
+
+BASELINE MATCH NOT CONFIRMED
+10 automated gap(s) found (see table above).
+
+Top gaps:
+  · [chat 8] MISSING — src/nutrition/utils/casualMenuSearch.js — src/nutrition/utils/casualMenuSearch.js → not found
+  · [chat 8] MISSING — src/aiChat/lib/coachConversationDebug.js — src/aiChat/lib/coachConversationDebug.js → not found
+  · [chat 8] MISSING — src/aiChat/components/TrainerCoachClientBar.jsx — src/aiChat/components/TrainerCoachClientBar.jsx → not found
+  · [chat 8] MISSING — server/lib/coachFoodSearch.js — server/lib/coachFoodSearch.js → not found
+  · [chat 8] MISSING — server/lib/serperMenuFoodSearch.js — server/lib/serperMenuFoodSearch.js → not found
+  · [chat 8] MISSING — src/aiChat/lib/coachCapabilities.js — src/aiChat/lib/coachCapabilities.js → not found
+  · [chat 8] MISSING — src/aiChat/lib/coachMarkdownStyles.js — src/aiChat/lib/coachMarkdownStyles.js → not found
+  · [chat 8] MISSING — src/aiChat/components/CoachFormattedReply.jsx — src/aiChat/components/CoachFormattedReply.jsx → not found
+  · [chat 8] MISSING — src/shared/services/firestoreListenerUtils.js — src/shared/services/firestoreListenerUtils.js → not found
+  · [chat 8] MISSING — src/trainer/components/TrainerDashboardHeroCard.jsx — src/trainer/components/TrainerDashboardHeroCard.jsx → not found
+
+Fix with per-chat GAP AUDIT + "fix the baseline gaps", or re-run after fixes:
+  npm run baseline:audit
+
+Summary: PRESENT≈151 | gaps=10 | report: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/docs/chat-history-recovery/reports/baseline-match-2026-06-15T23-52-51.txt

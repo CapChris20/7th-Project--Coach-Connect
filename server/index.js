@@ -22,16 +22,23 @@ const { getWeeklyContext } = require('./getWeeklyContext');
 const { serperOrganicSearch } = require('./lib/serperWebSearch');
 const {
   shouldInvokeWebSearch,
+  shouldUseWebAuto,
   WEB_SEARCH_SYSTEM_APPEND,
   WEB_SOURCE_QUOTE_SYSTEM_APPEND,
   THREAD_CLARIFY_SYSTEM_APPEND,
   NO_WEB_SEARCH_HONESTY_APPEND,
+  WEB_SEARCH_FAILED_APPEND,
   messagesRequestWebSearch,
   buildWebSearchQuery,
   stripWebSearchPrefix,
+  stripFakeWebSearchClaims,
+  userRequestedWebSearchTurn,
   isWebSourceQuoteFollowUp,
   isWebAnswerFollowUp,
   findPriorSubstantiveUserQuestion,
+  isFitnessNutritionQuery,
+  filterFitnessWebSources,
+  resolveCoachWebSearchGate,
 } = require('./lib/coachWebSearch');
 const { shouldIncludeWeeklyContextInCoachPrompt } = require('./lib/coachPersonalDataRouting');
 const { fetchOpenWorkoutPlanPayload, fetchWorkoutPlanContext } = require('./lib/coachExtendedContext');
@@ -45,6 +52,7 @@ const logger = require('./lib/logger');
 const { initServerMonitoring } = require('./lib/monitoring');
 initServerMonitoring();
 const { mergeCoachToolCalls } = require('./lib/inferCoachToolCall');
+const { filterValidCoachToolProposals } = require('../src/ai/tools/validateCoachToolProposal');
 const { assertCanSendPushNotification } = require('./lib/pushNotificationAuth');
 const { buildWorkoutSystemPrompt, buildWorkoutUserPrompt } = require('./lib/workoutPlanPrompt');
 const { estimateCost, isWithinMonthlyLimit } = require('./config/apiCosts');
@@ -80,6 +88,8 @@ const { registerWorkoutRoutes } = require('./routes/workoutRoutes');
 const { registerFoodRoutes } = require('./routes/foodRoutes');
 const { registerDevRoutes } = require('./routes/devRoutes');
 const { registerMarketplaceRoutes } = require('./routes/marketplaceRoutes');
+const { registerAuthRoutes } = require('./routes/authRoutes');
+const { renderPasswordResetPageHtml } = require('./lib/passwordResetPage');
 const { mergeUserDailyMetrics } = require('./lib/dailyMetricsServer');
 const { executeDeleteLogServer } = require('./lib/coachDeleteLog');
 const { sanitizeCoachImageAttachments, runCoachVisionTurn, isCoachVisionConfigured } = require('./lib/coachVision');
@@ -642,7 +652,10 @@ function parseToolCalls(aiResponse) {
 }
 
 function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
-  return mergeCoachToolCalls(aiText, userMessage, weeklyContext || {});
+  return filterValidCoachToolProposals(
+    mergeCoachToolCalls(aiText, userMessage, weeklyContext || {}),
+    userMessage,
+  );
 }
 
 async function executeTool(userId, toolCall) {
@@ -1602,38 +1615,6 @@ async function createAlert(userId, alert) {
   return { success: true, message: 'Alert created', data: { alertId } };
 }
 
-function isFitnessNutritionQuery(text) {
-  const t = String(text || '').toLowerCase();
-  if (!t.trim()) return true;
-
-  const fitness = [
-    'workout', 'work out', 'training', 'lift', 'lifting', 'gym', 'exercise', 'cardio', 'hiit',
-    'strength', 'hypertrophy', 'sets', 'reps', 'pr', 'progressive overload', 'deload',
-    'squat', 'bench', 'deadlift', 'press', 'pull-up', 'pull up', 'form', 'technique',
-    'mobility', 'stretch', 'warm up', 'cool down', 'recovery', 'soreness',
-    'sleep', 'steps', 'heart rate', 'streak', 'progress', 'adherence', 'week', 'this week',
-    'body recomposition', 'recomposition', 'recomp', 'skinny fat', 'bodyfat', 'body fat', 'bf%',
-    'cutting', 'cut', 'bulking', 'bulk', 'lean bulk', 'maintenance', 'caloric deficit', 'calorie deficit',
-    'calorie surplus', 'caloric surplus', 'tone up', 'toning', 'fat loss', 'lose fat', 'build muscle',
-    'bench press', 'dead lift', 'dead-lift',
-    'shoulder', 'knee', 'back', 'hip', 'injury', 'hurt', 'pain', 'ache', 'sore',
-    'trainer', 'coach', 'session', 'appointment', 'schedule',
-    'swap', 'replace', 'modify', 'program', 'plan', 'routine', 'split',
-    'overhead', 'fatigue', 'tired', 'plateau',
-  ];
-  const nutrition = [
-    'nutrition', 'diet', 'calories', 'macro', 'macros', 'protein', 'carbs', 'fat', 'fats',
-    'meal', 'meals', 'meal plan', 'weight loss', 'gain muscle', 'weight',
-    'supplement', 'supplements', 'creatine', 'whey', 'caffeine', 'electrolyte',
-    'hydration', 'water', 'fiber',
-    'calorie', 'caloric', 'tdee', 'bmr', 'metabolism', 'weigh', 'weigh-in',
-    'chicken', 'rice', 'ate', 'eat', 'eating', 'food', 'hungry', 'hunger', 'log',
-    'oz', 'cup', 'grams', 'kcal',
-  ];
-
-  return [...fitness, ...nutrition].some((k) => t.includes(k));
-}
-
 const normalizeCoachMessages = (messages) => {
   if (!Array.isArray(messages)) return [];
   return messages
@@ -1729,13 +1710,14 @@ function extractPerplexityWebSources(data) {
 }
 
 async function fetchSerperCoachSearch(query) {
-  const items = await serperOrganicSearch(String(query || '').trim(), 6);
+  const items = await serperOrganicSearch(String(query || '').trim(), 8);
   if (!items.length) return { context: null, sources: [] };
-  const context = items.map((r) => `- ${r.title} — ${r.link}\n${r.snippet || ''}`).join('\n');
-  return {
-    context,
-    sources: normalizeWebSources(items.map((r) => ({ title: r.title, url: r.link, snippet: r.snippet }))),
-  };
+  const sources = filterFitnessWebSources(
+    normalizeWebSources(items.map((r) => ({ title: r.title, url: r.link, snippet: r.snippet }))),
+  );
+  if (!sources.length) return { context: null, sources: [] };
+  const context = sources.map((r) => `- ${r.title} — ${r.url}\n${r.snippet || ''}`).join('\n');
+  return { context, sources };
 }
 
 /** DeepSeek has no native browsing — prepend Serper snippets so it can answer with current web facts. */
@@ -2197,17 +2179,27 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
   const deepSeekKey = resolveDeepSeekKey();
   const perplexityKey = resolvePerplexityKey();
   const answerFollowUp = isWebAnswerFollowUp(lastUserMsg, normalized);
-  const invokeWeb =
+  const userWantsWeb = userRequestedWebSearchTurn({
+    webMode,
+    lastUserMsg,
+    messages: normalized,
+    hasImages,
+  });
+  let invokeWeb =
     !hasImages &&
     !answerFollowUp &&
     (webMode === 'on' ||
       (webMode !== 'off' &&
         (shouldInvokeWebSearch(webMode, lastUserMsg) || messagesRequestWebSearch(normalized, lastUserMsg))));
+  if (userWantsWeb && !answerFollowUp && !hasImages && webMode !== 'off') {
+    invokeWeb = true;
+  }
   const webSearchQuery = buildWebSearchQuery(normalized, lastUserMsg);
+  let webSearchFailed = false;
 
   const promptOptions = {
     ...(options || {}),
-    includePersonalData: invokeWeb ? false : options?.includePersonalData,
+    includePersonalData: invokeWeb || userWantsWeb ? false : options?.includePersonalData,
   };
   let { systemPrompt, weeklyContext, usedWeeklyContext } = await buildCoachPromptForUser(
     targetUid,
@@ -2245,6 +2237,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
     }
   } else if (!invokeWeb) {
     systemPrompt += NO_WEB_SEARCH_HONESTY_APPEND;
+    if (userWantsWeb) systemPrompt += WEB_SEARCH_FAILED_APPEND;
   }
 
   const coachMeta = {
@@ -2289,28 +2282,43 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
   }
 
   if (invokeWeb) {
+    const webGate = resolveCoachWebSearchGate({
+      lastUserMsg,
+      messages: normalized,
+      rawQuery: searchQueryOverride || webSearchQuery,
+    });
+    if (webGate.action === 'ask_topic' || webGate.action === 'off_topic') {
+      return res.json({
+        reply: webGate.reply,
+        toolCalls: [],
+        source: 'coach',
+        searchedWeb: false,
+        webProvider: null,
+        route: webGate.action === 'ask_topic' ? 'web-search-ask-topic' : 'web-search-off-topic',
+        ...coachMeta,
+        ms: Date.now() - started,
+      });
+    }
     try {
       const result = await runCoachWebSearch({
         systemPrompt,
         messages: coachMessagesForLlm(normalized),
-        searchQuery: searchQueryOverride || webSearchQuery,
+        searchQuery: webGate.query || searchQueryOverride || webSearchQuery,
         lastUserMsg,
         weeklyContext,
         targetUid,
         perplexityKey,
         deepSeekKey,
       });
+      if (Array.isArray(result.webSources) && result.webSources.length) {
+        result.webSources = filterFitnessWebSources(result.webSources);
+      }
       return res.json({ ...result, ...coachMeta, ms: Date.now() - started });
     } catch (e) {
-      if (forceWebSearch || webMode === 'on') {
-        return res.status(e.status || 503).json({
-          error: e.message || 'Web search failed',
-          route: 'web-search',
-          hint: 'Set PERPLEXITY_API_KEY or SERPER_API_KEY + DEEPSEEK_API_KEY in server .env',
-        });
-      }
-      console.warn('Web search failed; falling back to standard coach:', e?.message || e);
+      webSearchFailed = true;
+      console.warn('Web search failed; falling back to honest coach reply:', e?.message || e);
       systemPrompt += NO_WEB_SEARCH_HONESTY_APPEND;
+      systemPrompt += WEB_SEARCH_FAILED_APPEND;
     }
   }
 
@@ -2322,40 +2330,11 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
         messages: coachMessagesForLlm(normalized),
       });
       const toolCalls = resolveCoachToolCalls(response.text, lastUserMsg, weeklyContext);
-      const reply = stripToolJsonFromReply(response.text);
-      
-      // Debug: log what tools were resolved
-      if (toolCalls && toolCalls.length > 0) {
-        console.log('[DEBUG] toolCalls resolved:', toolCalls.map(t => ({ name: t.name, params: t.params })));
-      } else {
-        console.log('[DEBUG] No toolCalls from AI response. User message:', lastUserMsg);
-        console.log('[DEBUG] AI response preview:', response.text.slice(0, 300));
-        
-        // AGGRESSIVE FALLBACK: Parse specific numbers from AI response if it mentions actions
-        const mentionsAction = /\b(I'm|I'll|I am)\s+(?:also\s+)?(?:going\s+to\s+)?(?:setting?|adjusting?|changing?|resetting?|updating?|logging?)/i.test(response.text);
-        const calorieMatch = response.text.match(/(?:set|keep|maintain|adjust).*?(?:calorie[s]?|kcal)[s]?.*?(?:to|at|around)\s+(\d{3,4})\b/i);
-        const proteinMatch = response.text.match(/(?:protein|carb|fat).*?(?:to|at|around)\s+(\d+)g?\b/i);
-        
-        if (mentionsAction && (calorieMatch || proteinMatch)) {
-          const calories = calorieMatch ? Number(calorieMatch[1]) : weeklyContext?.targetCal || 2250;
-          const protein = proteinMatch ? Number(proteinMatch[1]) : weeklyContext?.targetP || 150;
-          
-          // Try to extract carbs and fat too
-          const carbMatch = response.text.match(/carb[s]?.*?(?:to|at|around)\s+(\d+)g?\b/i);
-          const fatMatch = response.text.match(/fat.*?(?:to|at|around)\s+(\d+)g?\b/i);
-          
-          const carbs = carbMatch ? Number(carbMatch[1]) : weeklyContext?.targetC || 200;
-          const fat = fatMatch ? Number(fatMatch[1]) : weeklyContext?.targetF || 65;
-          
-          if (Number.isFinite(calories) && calories >= 800) {
-            console.log('[DEBUG] ✅ EMERGENCY PARSE: Extracted from AI response:', { calories, protein, carbs, fat });
-            const inferred = {
-              name: 'adjustMacroTargets',
-              params: { calories, protein, carbs, fat },
-              reasoning: 'AI Coach recommendations',
-            };
-            toolCalls.push(inferred);
-          }
+      let reply = stripToolJsonFromReply(response.text);
+      if ((userWantsWeb || webSearchFailed) && !answerFollowUp) {
+        reply = stripFakeWebSearchClaims(reply);
+        if (reply && !/live search (?:wasn't|was not|isn't|is not) available/i.test(reply)) {
+          reply = `Live search wasn't available this turn — here's what I know from coaching knowledge, not cited web results. ${reply}`;
         }
       }
       
@@ -2368,7 +2347,11 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
         source: 'deepseek',
         searchedWeb: false,
         webProvider: null,
-        route: answerFollowUp ? 'thread-follow-up' : 'chat',
+        route: webSearchFailed || (userWantsWeb && !answerFollowUp)
+          ? 'web-search-failed'
+          : answerFollowUp
+            ? 'thread-follow-up'
+            : 'chat',
         answerFollowUp: answerFollowUp === true,
         webSources: answerFollowUp && priorSourcesForFollowUp.length ? priorSourcesForFollowUp : [],
         ...coachMeta,
@@ -2456,8 +2439,19 @@ registerOnboardingRoutes(app, routeDeps);
 registerTrainerRoutes(app, routeDeps);
 registerWorkoutRoutes(app, routeDeps);
 registerFoodRoutes(app, routeDeps);
+registerAuthRoutes(app);
 registerDevRoutes(app, routeDeps);
 registerMarketplaceRoutes(app);
+
+app.get('/reset-password', (req, res) => {
+  try {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderPasswordResetPageHtml());
+  } catch (e) {
+    console.error('[reset-password] page render failed:', e?.message || e);
+    res.status(500).send('Password reset page is unavailable.');
+  }
+});
 
 // ─────────────────────────────────────────────
 // Firebase scheduled jobs (exportable in Functions runtime)

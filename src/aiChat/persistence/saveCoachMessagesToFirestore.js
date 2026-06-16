@@ -4,7 +4,7 @@
  * Purpose: ai Chat Persistence — Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/aiChat
- * Key exports: loadAiChatMessages, restoreChatMessagesFromSaved, persistAiChatSession, upsertAiChatMessage, deleteAiChatSession, clearLegacyMessagesField
+ * Key exports: loadAiChatMessages, restoreChatMessagesFromSaved, persistAiChatSession, upsertAiChatMessage, upsertAiChatMessages, deleteAiChatSession, clearLegacyMessagesField
  *
  * @file-header
  */
@@ -123,12 +123,46 @@ export async function persistAiChatSession(userId, sessionId, { messages = [], m
     omitUndefined({
       sessionId,
       ...meta,
-      messages: serialized,
+      messages: deleteField(),
       updatedAt: serverTimestamp(),
       createdAt: meta.createdAt || serverTimestamp(),
     }),
     { merge: true },
   );
+  for (const msg of serialized) {
+    batch.set(
+      doc(messagesCol(userId, sessionId), msg.id),
+      omitUndefined({ ...msg, updatedAt: serverTimestamp() }),
+      { merge: true },
+    );
+  }
+  await batch.commit();
+}
+
+/** Incremental write — only upserts the given messages (e.g. after tool confirm). */
+export async function upsertAiChatMessages(userId, sessionId, messages = [], meta = {}) {
+  if (!db || !userId || !sessionId) return;
+  const serialized = (Array.isArray(messages) ? messages : []).map(serializeMessage).filter(Boolean);
+  if (!serialized.length && !Object.keys(meta).length) return;
+
+  const batch = writeBatch(db);
+  batch.set(
+    sessionRef(userId, sessionId),
+    omitUndefined({
+      sessionId,
+      ...meta,
+      messages: deleteField(),
+      updatedAt: serverTimestamp(),
+    }),
+    { merge: true },
+  );
+  for (const msg of serialized) {
+    batch.set(
+      doc(messagesCol(userId, sessionId), msg.id),
+      omitUndefined({ ...msg, updatedAt: serverTimestamp() }),
+      { merge: true },
+    );
+  }
   await batch.commit();
 }
 
@@ -141,6 +175,7 @@ export async function upsertAiChatMessage(userId, sessionId, message, meta = {})
     omitUndefined({
       sessionId,
       ...meta,
+      messages: deleteField(),
       updatedAt: serverTimestamp(),
       lastUserMessage: serialized.role === 'user' ? serialized.text : meta.lastUserMessage,
       lastAssistantMessage:

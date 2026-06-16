@@ -128,7 +128,7 @@ Day 2: Pull
     let usage = null;
     if (admin.apps.length) {
       const db = admin.firestore();
-      usage = await recordSuccessfulWorkoutGeneration(db, targetUid, serverTs());
+      usage = await recordSuccessfulWorkoutGeneration(db, targetUid, serverTs);
     }
 
     return res.json({

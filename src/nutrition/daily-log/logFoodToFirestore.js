@@ -111,22 +111,17 @@ export function buildFoodHistoryEntry(food) {
 }
 
 function formatDateKey(date = new Date()) {
-  try {
-    const now = typeof date === 'string' ? new Date(date) : date;
-    const dateKey = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0')
-    ].join('-');
-    return dateKey;
-  } catch (e) {
-    const now = new Date();
-    return [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0')
-    ].join('-');
+  if (typeof date === 'string' && YYYY_MM_DD.test(date)) return date;
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
+    throw new Error(`Invalid date passed to food log: ${String(date)}`);
   }
+  const dateKey = [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+  return dateKey;
 }
 
 export async function getDailyGoals(userId) {

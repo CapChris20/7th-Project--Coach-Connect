@@ -1,6 +1,10 @@
 # Coach Connect — Codebase Guide
 
-Quick orientation for developers working in this repo. For per-file detail see [`docs/CoachConnect-src-reference.md`](docs/CoachConnect-src-reference.md). For architecture diagrams see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md).
+Quick orientation for developers. **Full per-file catalog (409+ files):** [`src/CODEBASE_GUIDE.md`](src/CODEBASE_GUIDE.md)
+
+Regenerate the catalog: `node scripts/appendSrcInventoryToGuide.mjs`
+
+For architecture diagrams see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md).
 
 ## Stack
 

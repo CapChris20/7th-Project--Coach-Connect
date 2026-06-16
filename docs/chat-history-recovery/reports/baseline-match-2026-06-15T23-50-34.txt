@@ -1,0 +1,145 @@
+CoachConnect baseline match audit
+Workspace: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect
+Generated: 2026-06-15T23:50:34.490Z
+
+── Chat #8 (8047eeaa) — nutrition facts MEGA ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/8047eeaa-aefd-44f5-a51a-18e895120b9c/8047eeaa-aefd-44f5-a51a-18e895120b9c.jsonl
+User messages: 194 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 11
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · but how can i make the barcode scanner as accurate as humanly possible and also great cuz we want to steal costumers sin
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · … +6 more
+
+── Expected test files (chats #11/#12) ──
+✓ src/__tests__/unit/coachToolProposalGuards.test.js
+✓ src/__tests__/unit/servingMath.test.js
+✓ src/__tests__/unit/authGate.test.js
+✓ src/__tests__/unit/calculations.test.js
+✓ src/__tests__/unit/parseCoachToolCalls.test.js
+✓ src/__tests__/unit/dailyMetrics.test.js
+✓ src/__tests__/unit/onboardingCalculations.test.js
+✓ src/__tests__/unit/foodSearchScoring.test.js
+✓ src/__tests__/unit/workoutPlanParsing.test.js
+✓ src/__tests__/integration/aiCoachFlow.test.js
+✓ src/__tests__/integration/foodSearchLog.test.js
+✓ src/__tests__/unit/trainerCodeValidation.test.js
+✓ src/__tests__/unit/onboardingGate.test.js
+✓ src/__tests__/components/ToolConfirmationModal.test.js
+✓ src/__tests__/integration/onboardingComplete.test.js
+✓ src/__tests__/integration/dashboardSave.test.js
+✓ src/__tests__/unit/baseUrl.test.js
+✓ src/__tests__/unit/foodNormalizeBarcode.test.js
+✓ src/__tests__/integration/clientHomeBootstrap.test.js
+✓ src/__tests__/unit/bookSessionParse.test.js
+✓ src/__tests__/unit/notesAndFiles.test.js
+
+── Cross-chat static checks ──
+✓ server/lib/index.js removed (stale duplicate)
+✗ PlanViewerScreen exists
+✓ load-tests/ folder
+✓ coach tool guards test
+✓ runJestWithLog writes test-results.txt
+✓ validateCoachToolProposal (modal guards)
+✓ filterValidCoachToolCalls on server
+✓ EMERGENCY PARSE removed from server
+✗ Daily nutrition facts screen path
+✓ support config file
+✓ npm start uses dev-client
+
+── verifyThreadGapFixes.js ──
+────────────────────────────────────────
+Results: 39 passed, 0 failed
+All thread gap-fix static checks passed.
+
+── npm test SKIPPED (--skip-tests) ──
+
+── REQUEST_STATUS_AUDIT.md (informational) ──
+DONE: 0 | PARTIAL: 0 | N/A: 0
+(PARTIAL rows are not auto-fail — many were never finished pre-deletion)
+
+══════════════════════════════════════════════════════════════
+MASTER TABLE
+| Chat | Item | File/area | Status | Notes |
+|------|------|-----------|--------|-------|
+| 8 | StrReplace src/nutrition/utils/nutrition | src/nutrition/utils/nutritionNormalization.js | MISSING | src/nutrition/utils/nutritionNormalizati |
+| 8 | Write src/nutrition/utils/servingMath.js | src/nutrition/utils/servingMath.js | MISSING | src/nutrition/utils/servingMath.js → not |
+| 8 | Write server/lib/fatSecretFood.js | server/lib/fatSecretFood.js | MISSING | server/lib/fatSecretFood.js → not found |
+| 8 | Write scripts/testFatSecretBarcode.js | scripts/testFatSecretBarcode.js | MISSING | scripts/testFatSecretBarcode.js → not fo |
+| 8 | Write src/nutrition/utils/barcodeDisplay | src/nutrition/utils/barcodeDisplay.js | MISSING | src/nutrition/utils/barcodeDisplay.js →  |
+| 8 | StrReplace src/nutrition/services/foodSe | src/nutrition/services/foodSearchQueryMatch.js | MISSING | src/nutrition/services/foodSearchQueryMa |
+| 8 | Write src/nutrition/utils/foodNormalize. | src/nutrition/utils/foodNormalize.js | MISSING | src/nutrition/utils/foodNormalize.js → n |
+| 8 | Write src/nutrition/components/FoodConfi | src/nutrition/components/FoodConfirmSheet.jsx | MISSING | src/nutrition/components/FoodConfirmShee |
+| 8 | StrReplace src/client/marketplace/screen | src/client/marketplace/screens/MarketplaceScreen.j | MISSING | src/client/marketplace/screens/Marketpla |
+| 8 | StrReplace src/client/marketplace/screen | src/client/marketplace/screens/TrainerProfileScree | MISSING | src/client/marketplace/screens/TrainerPr |
+| 8 | Write scripts/testBarcodeServingUnits.js | scripts/testBarcodeServingUnits.js | MISSING | scripts/testBarcodeServingUnits.js → not |
+| 8 | Write scripts/data/nutritionAccuracySpec | scripts/data/nutritionAccuracySpecs.js | MISSING | scripts/data/nutritionAccuracySpecs.js → |
+| 8 | Write scripts/lib/nutritionAccuracyCompa | scripts/lib/nutritionAccuracyCompare.js | MISSING | scripts/lib/nutritionAccuracyCompare.js  |
+| 8 | Write scripts/testNutritionAccuracy.js | scripts/testNutritionAccuracy.js | MISSING | scripts/testNutritionAccuracy.js → not f |
+| 8 | StrReplace scripts/testPackagedFoodSearc | scripts/testPackagedFoodSearch.js | MISSING | scripts/testPackagedFoodSearch.js → not  |
+| 8 | Write docs/TESTING_NUTRITION_ACCURACY.md | docs/TESTING_NUTRITION_ACCURACY.md | MISSING | docs/TESTING_NUTRITION_ACCURACY.md → not |
+| 8 | Write scripts/data/restaurantNutritionAc | scripts/data/restaurantNutritionAccuracySpecs.js | MISSING | scripts/data/restaurantNutritionAccuracy |
+| 8 | StrReplace src/nutrition/utils/restauran | src/nutrition/utils/restaurantSerperQuality.js | MISSING | src/nutrition/utils/restaurantSerperQual |
+| 8 | Write src/nutrition/utils/casualMenuSear | src/nutrition/utils/casualMenuSearch.js | MISSING | src/nutrition/utils/casualMenuSearch.js  |
+| 8 | StrReplace src/nutrition/utils/foodSearc | src/nutrition/utils/foodSearchTitle.js | MISSING | src/nutrition/utils/foodSearchTitle.js → |
+| 8 | Write src/aiChat/components/CoachWebSour | src/aiChat/components/CoachWebSources.jsx | MISSING | src/aiChat/components/CoachWebSources.js |
+| 8 | Write src/aiChat/components/CoachCompose | src/aiChat/components/CoachComposerInput.jsx | MISSING | src/aiChat/components/CoachComposerInput |
+| 8 | Write src/aiChat/lib/pasteTextIntoCompos | src/aiChat/lib/pasteTextIntoComposer.js | MISSING | src/aiChat/lib/pasteTextIntoComposer.js  |
+| 8 | Write src/aiChat/lib/coachCategoryPrompt | src/aiChat/lib/coachCategoryPrompts.js | MISSING | src/aiChat/lib/coachCategoryPrompts.js → |
+| 8 | Write src/aiChat/lib/coachSourcePreview. | src/aiChat/lib/coachSourcePreview.js | MISSING | src/aiChat/lib/coachSourcePreview.js → n |
+| 8 | Write src/aiChat/components/CoachSourceP | src/aiChat/components/CoachSourcePreviewSheet.jsx | MISSING | src/aiChat/components/CoachSourcePreview |
+| 8 | Write scripts/testCoachSourcePreview.js | scripts/testCoachSourcePreview.js | MISSING | scripts/testCoachSourcePreview.js → not  |
+| 8 | Write src/aiChat/lib/coachConversationDe | src/aiChat/lib/coachConversationDebug.js | MISSING | src/aiChat/lib/coachConversationDebug.js |
+| 8 | Write src/aiChat/components/TrainerCoach | src/aiChat/components/TrainerCoachClientBar.jsx | MISSING | src/aiChat/components/TrainerCoachClient |
+| 8 | StrReplace src/aiChat/lib/aiChatPersiste | src/aiChat/lib/aiChatPersistence.js | MISSING | src/aiChat/lib/aiChatPersistence.js → no |
+| 8 | Write server/lib/coachFoodSearch.js | server/lib/coachFoodSearch.js | MISSING | server/lib/coachFoodSearch.js → not foun |
+| 8 | StrReplace src/shared/services/dailyMetr | src/shared/services/dailyMetricsService.js | MISSING | src/shared/services/dailyMetricsService. |
+| 8 | Write server/lib/serperMenuFoodSearch.js | server/lib/serperMenuFoodSearch.js | MISSING | server/lib/serperMenuFoodSearch.js → not |
+| 8 | StrReplace src/ai/normalizeToolParams.js | src/ai/normalizeToolParams.js | MISSING | src/ai/normalizeToolParams.js → not foun |
+| 8 | Write src/aiChat/lib/coachCapabilities.j | src/aiChat/lib/coachCapabilities.js | MISSING | src/aiChat/lib/coachCapabilities.js → no |
+| 8 | Write src/aiChat/lib/coachMarkdownStyles | src/aiChat/lib/coachMarkdownStyles.js | MISSING | src/aiChat/lib/coachMarkdownStyles.js →  |
+| 8 | Write src/aiChat/components/CoachFormatt | src/aiChat/components/CoachFormattedReply.jsx | MISSING | src/aiChat/components/CoachFormattedRepl |
+| 8 | Write scripts/generateCodebaseGuide.mjs | scripts/generateCodebaseGuide.mjs | MISSING | scripts/generateCodebaseGuide.mjs → not  |
+| 8 | StrReplace docs/APP_MASTER_GUIDE.md | docs/APP_MASTER_GUIDE.md | MISSING | docs/APP_MASTER_GUIDE.md → not found |
+| 8 | Write scripts/filePurposeOverrides.mjs | scripts/filePurposeOverrides.mjs | MISSING | scripts/filePurposeOverrides.mjs → not f |
+| 8 | Write scripts/generateFilePurposeGuide.m | scripts/generateFilePurposeGuide.mjs | MISSING | scripts/generateFilePurposeGuide.mjs → n |
+| 8 | Write src/shared/services/firestoreListe | src/shared/services/firestoreListenerUtils.js | MISSING | src/shared/services/firestoreListenerUti |
+| 8 | StrReplace src/utils/dataCacheCleanup.js | src/utils/dataCacheCleanup.js | MISSING | src/utils/dataCacheCleanup.js → not foun |
+| 8 | StrReplace src/shared/services/notificat | src/shared/services/notificationsService.js | MISSING | src/shared/services/notificationsService |
+| 8 | Write src/trainer/components/TrainerDash | src/trainer/components/TrainerDashboardHeroCard.js | MISSING | src/trainer/components/TrainerDashboardH |
+| 8 | Write jest.config.js | jest.config.js | MISSING | jest.config.js → not found |
+| 8 | Write src/__tests__/README.md | src/__tests__/README.md | MISSING | src/__tests__/README.md → ambiguous (4) |
+| 8 | Write src/__tests__/unit/.gitkeep | src/__tests__/unit/.gitkeep | MISSING | src/__tests__/unit/.gitkeep → not found |
+| 8 | Write src/__tests__/integration/.gitkeep | src/__tests__/integration/.gitkeep | MISSING | src/__tests__/integration/.gitkeep → not |
+| 8 | Write src/__tests__/components/.gitkeep | src/__tests__/components/.gitkeep | MISSING | src/__tests__/components/.gitkeep → not  |
+| 0 | PlanViewerScreen exists | (static) | MISSING |  |
+| 0 | Daily nutrition facts screen path | (static) | MISSING |  |
+
+File edits scanned: 174 | actionable gaps: 52
+
+BASELINE MATCH NOT CONFIRMED
+52 automated gap(s) found (see table above).
+
+Top gaps:
+  · [chat 8] MISSING — src/nutrition/utils/nutritionNormalization.js — src/nutrition/utils/nutritionNormalization.js → not found
+  · [chat 8] MISSING — src/nutrition/utils/servingMath.js — src/nutrition/utils/servingMath.js → not found
+  · [chat 8] MISSING — server/lib/fatSecretFood.js — server/lib/fatSecretFood.js → not found
+  · [chat 8] MISSING — scripts/testFatSecretBarcode.js — scripts/testFatSecretBarcode.js → not found
+  · [chat 8] MISSING — src/nutrition/utils/barcodeDisplay.js — src/nutrition/utils/barcodeDisplay.js → not found
+  · [chat 8] MISSING — src/nutrition/services/foodSearchQueryMatch.js — src/nutrition/services/foodSearchQueryMatch.js → not found
+  · [chat 8] MISSING — src/nutrition/utils/foodNormalize.js — src/nutrition/utils/foodNormalize.js → not found
+  · [chat 8] MISSING — src/nutrition/components/FoodConfirmSheet.jsx — src/nutrition/components/FoodConfirmSheet.jsx → not found
+  · [chat 8] MISSING — src/client/marketplace/screens/MarketplaceScreen.jsx — src/client/marketplace/screens/MarketplaceScreen.jsx → not found
+  · [chat 8] MISSING — src/client/marketplace/screens/TrainerProfileScreen.jsx — src/client/marketplace/screens/TrainerProfileScreen.jsx → not found
+  · [chat 8] MISSING — scripts/testBarcodeServingUnits.js — scripts/testBarcodeServingUnits.js → not found
+  · [chat 8] MISSING — scripts/data/nutritionAccuracySpecs.js — scripts/data/nutritionAccuracySpecs.js → not found
+  · [chat 8] MISSING — scripts/lib/nutritionAccuracyCompare.js — scripts/lib/nutritionAccuracyCompare.js → not found
+  · [chat 8] MISSING — scripts/testNutritionAccuracy.js — scripts/testNutritionAccuracy.js → not found
+  · [chat 8] MISSING — scripts/testPackagedFoodSearch.js — scripts/testPackagedFoodSearch.js → not found
+
+Fix with per-chat GAP AUDIT + "fix the baseline gaps", or re-run after fixes:
+  npm run baseline:audit
+
+Summary: PRESENT≈122 | gaps=52 | report: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/docs/chat-history-recovery/reports/baseline-match-2026-06-15T23-50-34.txt

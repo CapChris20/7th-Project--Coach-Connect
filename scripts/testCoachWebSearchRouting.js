@@ -13,6 +13,10 @@ const {
   isWebAnswerFollowUp,
   isWebSourceQuoteFollowUp,
   findPriorSubstantiveUserQuestion,
+  isGenericWebSearchRequest,
+  resolveCoachWebSearchGate,
+  filterFitnessWebSources,
+  scopeWebSearchQueryForCoach,
 } = require('../server/lib/coachWebSearch');
 
 /** Mirrors handleAICoachRequest invokeWeb (without images). */
@@ -94,15 +98,28 @@ const cases = [
     expect: true,
   },
   {
-    fn: 'simulate',
-    webMode: 'on',
-    msg: 'Can you tell me specifically about what you found',
-    msgs: [
-      { role: 'user', content: 'How much creatine should I take per day?' },
-      { role: 'assistant', content: 'Most people do 3-5g daily.' },
-      { role: 'user', content: 'Can you tell me specifically about what you found' },
+    fn: 'gate',
+    msg: 'Can you search the web for me?',
+    expect: 'ask_topic',
+  },
+  {
+    fn: 'gate',
+    msg: 'search the web for best iPhone deals',
+    expect: 'off_topic',
+  },
+  {
+    fn: 'gate',
+    msg: 'search the web for creatine loading protocol',
+    expect: 'search',
+    expectQueryIncludes: 'creatine',
+  },
+  {
+    fn: 'filter',
+    sources: [
+      { title: 'Search the web in Chrome', url: 'https://support.google.com/chrome', snippet: '' },
+      { title: 'Creatine supplementation', url: 'https://examine.com/supplements/creatine/', snippet: 'dosing' },
     ],
-    expect: false,
+    expectCount: 1,
   },
 ];
 
@@ -122,6 +139,15 @@ for (const c of cases) {
   } else if (c.fn === 'followup') got = isWebAnswerFollowUp(c.msg, c.msgs);
   else if (c.fn === 'simulate') {
     got = simulateInvokeWeb({ webMode: c.webMode, lastUserMsg: c.msg, messages: c.msgs });
+  } else if (c.fn === 'gate') {
+    const gate = resolveCoachWebSearchGate({ lastUserMsg: c.msg, messages: c.msgs || [], rawQuery: c.msg });
+    got = gate.action;
+    if (c.expectQueryIncludes && gate.query && !gate.query.toLowerCase().includes(c.expectQueryIncludes)) {
+      got = `search-missing-${c.expectQueryIncludes}`;
+    }
+  } else if (c.fn === 'filter') {
+    got = filterFitnessWebSources(c.sources).length;
+    c.expect = c.expectCount;
   } else throw new Error(`unknown fn ${c.fn}`);
 
   const ok = got === c.expect;

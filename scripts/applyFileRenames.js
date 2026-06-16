@@ -163,6 +163,29 @@ function stripExt(p) {
   return p.replace(/\.(jsx?|cjs|mjs)$/, '');
 }
 
+/** Never rewrite these single-segment suffixes (package names, RN API keys). */
+const SUFFIX_DENY = new Set([
+  'storage', 'config', 'workout', 'workouts', 'calculations', 'logger', 'monitoring',
+  'sessions', 'routes', 'linking', 'session', 'storageHelpers',
+]);
+
+function pathSuffixPairs(fromPath, toPath) {
+  const fromParts = stripExt(fromPath.replace(/^src\//, '')).split('/');
+  const toParts = stripExt(toPath.replace(/^src\//, '')).split('/');
+  const pairs = [];
+  const minLen = Math.min(fromParts.length, toParts.length);
+  for (let depth = 1; depth <= minLen; depth += 1) {
+    const fromSuffix = fromParts.slice(fromParts.length - depth).join('/');
+    const toSuffix = toParts.slice(toParts.length - depth).join('/');
+    if (fromSuffix === toSuffix) continue;
+    const base = fromParts[fromParts.length - 1];
+    if (SUFFIX_DENY.has(base)) continue;
+    if (!fromSuffix.includes('/') && base.length < 12) continue;
+    pairs.push([fromSuffix, toSuffix]);
+  }
+  return pairs;
+}
+
 function buildReplacements(appliedMoves) {
   const seen = new Set();
   const pairs = [];
@@ -177,6 +200,9 @@ function buildReplacements(appliedMoves) {
     add(fromNoExt, toNoExt);
     if (fromNoExt.startsWith('src/')) {
       add(fromNoExt.slice(4), toNoExt.slice(4));
+    }
+    for (const [fromSuffix, toSuffix] of pathSuffixPairs(from, to)) {
+      add(fromSuffix, toSuffix);
     }
   }
   pairs.sort((a, b) => b[0].length - a[0].length);

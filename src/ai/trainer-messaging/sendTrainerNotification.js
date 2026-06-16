@@ -151,9 +151,10 @@ export async function getOrCreateConversation(clientId, trainerId) {
  */
 export async function sendMessage(conversationId, senderId, messageText) {
   try {
-    console.log('📤 sendMessage called:', { conversationId, senderId, messageLength: messageText.length });
-    
-    if (!conversationId || !senderId || !messageText) {
+    const text = String(messageText || '').trim();
+    console.log('📤 sendMessage called:', { conversationId, senderId, messageLength: text.length });
+
+    if (!conversationId || !senderId || !text) {
       throw new Error('Missing required parameters: conversationId, senderId, or messageText');
     }
 
@@ -167,7 +168,7 @@ export async function sendMessage(conversationId, senderId, messageText) {
       id: messageId,
       conversationId,
       senderId,
-      text: messageText,
+      text,
       timestamp: serverTimestamp(),
       read: false,
     };
@@ -180,7 +181,7 @@ export async function sendMessage(conversationId, senderId, messageText) {
       
       // Update conversation with last message atomically
       transaction.update(conversationRef, {
-        lastMessage: messageText,
+        lastMessage: text,
         lastMessageTime: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -202,7 +203,7 @@ export async function sendMessage(conversationId, senderId, messageText) {
           senderId,
           conversationId,
           messageId,
-          messageText,
+          messageText: text,
         });
       }
     } catch (notifError) {

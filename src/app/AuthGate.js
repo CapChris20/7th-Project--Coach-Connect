@@ -34,6 +34,7 @@ import { clearOldSharedChats } from '../ai/chat-api/chatStorageService';
 import { clearAllUserData } from '../utils/clearDataOnLogout';
 import { flushPendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
 import { clearPushTokensForUid } from '../shared/notifications/manageNotifications';
+import { fetchUserProfile } from '../shared/services/fetchUserProfile';
 import {
   getProfileCacheKey,
   isLikelyNewFirebaseUser,
@@ -377,38 +378,7 @@ export default function AuthGate() {
   const refetchUserData = async () => {
     try {
       if (!user?.uid) return;
-
-      const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-      const fallbackBaseUrls = [
-        'http://localhost:4002',
-        'http://127.0.0.1:4002',
-        'http://localhost:4001',
-        'http://127.0.0.1:4001',
-      ];
-      const baseUrls = apiBaseUrl ? [apiBaseUrl, ...fallbackBaseUrls] : fallbackBaseUrls;
-
-      await user.reload();
-      const idToken = await user.getIdToken(true);
-
-      let payload = null;
-      for (const baseUrl of baseUrls) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
-      try {
-        const resp = await fetch(`${baseUrl}/api/me`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        if (!resp.ok) throw new Error(`/api/me failed (${resp.status})`);
-        const json = await resp.json();
-        payload = json?.user || json || null;
-        break;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      }
-
+      const payload = await fetchUserProfile(user);
       if (payload) setUserData(payload);
     } catch (e) {
       console.error('refetchUserData:', e);

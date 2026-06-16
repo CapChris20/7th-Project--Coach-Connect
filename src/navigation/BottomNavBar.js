@@ -79,6 +79,8 @@ export default function BottomNavBar({
   onMessagesPress: onMessagesPressProp,
   // Optional: force the initial highlighted tab instantly (used when screens remount).
   activeTabKey: activeTabKeyProp,
+  /** Pink dot on Workout tab when a background-generated plan is ready. */
+  workoutTabBadge = false,
 }) {
   const mergedNav = useMergedNavigation({
     onHomePress: onHomePressProp,
@@ -248,6 +250,17 @@ export default function BottomNavBar({
       ...StyleSheet.absoluteFillObject,
       opacity: 0.85,
     },
+    tabBadgeDot: {
+      position: 'absolute',
+      top: 2,
+      right: 2,
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      backgroundColor: '#FF6B9D',
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.95)',
+    },
   });
 
   const containerBlurIntensity = isDark ? 28 : 18;
@@ -335,6 +348,7 @@ export default function BottomNavBar({
           <View style={styles.navContent}>
             <View style={styles.navIcon}>
               <BrandGradientIcon name="barbell" size={36} />
+              {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
             </View>
             <Text
               style={[
@@ -481,6 +495,7 @@ export default function BottomNavBar({
         <View style={styles.navContent}>
           <View style={styles.navIcon}>
             <BrandGradientIcon name="barbell" size={36} />
+            {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
           </View>
           <Text
             style={[

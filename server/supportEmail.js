@@ -87,6 +87,70 @@ async function sendSupportInquiryEmail({ subject, text, html, replyTo }) {
   );
 }
 
+function isTransactionalEmailConfigured() {
+  return Boolean(
+    process.env.RESEND_API_KEY ||
+      (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
+  );
+}
+
+/**
+ * Sends a transactional email directly to an end user (password reset, etc.).
+ */
+async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (!isTransactionalEmailConfigured()) {
+    throw new Error('Transactional email is not configured');
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    const from =
+      process.env.SUPPORT_EMAIL_FROM?.trim() || 'CoachConnect <onboarding@resend.dev>';
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [String(to || '').trim()],
+        subject,
+        text,
+        html: html || undefined,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.message || data?.error || JSON.stringify(data) || `Resend HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    return { provider: 'resend', id: data?.id };
+  }
+
+  // eslint-disable-next-line global-require
+  const nodemailer = require('nodemailer');
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  await transporter.sendMail({
+    from,
+    to: String(to || '').trim(),
+    subject,
+    text,
+    html,
+  });
+  return { provider: 'smtp' };
+}
+
 function buildBodies({ message, userUid, userEmail }) {
   const header = [`User: ${userEmail || '(no email)'}`, `UID: ${userUid || '(none)'}`, ''].join('\n');
   const text = `${header}\n${message}`;
@@ -96,6 +160,8 @@ function buildBodies({ message, userUid, userEmail }) {
 
 module.exports = {
   sendSupportInquiryEmail,
+  sendTransactionalEmail,
+  isTransactionalEmailConfigured,
   buildBodies,
   DEFAULT_INBOX,
 };

@@ -1,16 +1,25 @@
 /**
  * Coach Web Source Cards
  *
- * Rich web source preview row for AI Coach replies (after web search).
+ * Collapsible source links under AI Coach web-search replies.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  hostLabel,
-  faviconUrl,
-  resolveSourcePreviewUri,
-} from './renderSourcePreview';
+import { AI_COACH_UI } from '../aiCoachUiTokens';
+import { hostLabel, faviconUrl } from './renderSourcePreview';
+
+const JUNK_SOURCE_RES = [
+  /how to search the web/i,
+  /search the web in chrome/i,
+  /support\.google\.com/i,
+  /advanced search\s*-\s*google/i,
+];
+
+function isJunkSource(source) {
+  const blob = `${source?.title || ''} ${source?.snippet || ''} ${source?.url || ''}`;
+  return JUNK_SOURCE_RES.some((re) => re.test(blob));
+}
 
 function extractSourcesFromText(text) {
   const raw = String(text || '');
@@ -33,96 +42,125 @@ function extractSourcesFromText(text) {
       out.push({ url, title: hostLabel(url) });
     }
   }
-  return out.slice(0, 4);
+  return out.slice(0, 6);
 }
 
 export default function CoachWebSourceCards({ message, isDark = true }) {
+  const [expanded, setExpanded] = useState(false);
+
   const sources = useMemo(() => {
     const fromMsg = Array.isArray(message?.webSources)
       ? message.webSources
       : Array.isArray(message?.sources)
         ? message.sources
         : [];
-    if (fromMsg.length) return fromMsg.slice(0, 4);
+    if (fromMsg.length) return fromMsg.filter((s) => !isJunkSource(s)).slice(0, 6);
     if (message?.searchedWeb) return extractSourcesFromText(message?.text);
     return [];
   }, [message]);
 
   if (!sources.length) return null;
 
-  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.04)';
-  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.08)';
-  const textPrimary = isDark ? '#FFFFFF' : '#0A0A0F';
-  const textMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
+  const border = isDark ? AI_COACH_UI.borderHairline : 'rgba(10,10,15,0.1)';
+  const textPrimary = isDark ? AI_COACH_UI.textPrimary : '#0A0A0F';
+  const textMuted = isDark ? AI_COACH_UI.textSecondary : 'rgba(10,10,15,0.55)';
+  const accent = AI_COACH_UI.cyan;
 
   return (
     <View style={styles.wrap}>
-      <Text style={[styles.heading, { color: textMuted }]}>Sources</Text>
-      {sources.map((source, idx) => {
-        const url = source.url || source.link;
-        if (!url) return null;
-        const title = source.title || source.name || hostLabel(url);
-        const preview = resolveSourcePreviewUri(source);
-        const favicon = faviconUrl(url);
-        return (
-          <TouchableOpacity
-            key={`${url}-${idx}`}
-            style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}
-            onPress={() => Linking.openURL(url).catch(() => {})}
-            activeOpacity={0.85}
-            accessibilityRole="link"
-            accessibilityLabel={`Open source ${title}`}
-          >
-            {preview ? (
-              <Image source={{ uri: preview }} style={styles.preview} resizeMode="cover" />
-            ) : null}
-            <View style={styles.meta}>
-              {favicon ? (
-                <Image source={{ uri: favicon }} style={styles.favicon} />
-              ) : (
-                <Ionicons name="globe-outline" size={14} color={textMuted} />
-              )}
-              <View style={styles.textCol}>
-                <Text style={[styles.title, { color: textPrimary }]} numberOfLines={2}>
-                  {title}
-                </Text>
-                <Text style={[styles.host, { color: textMuted }]} numberOfLines={1}>
-                  {hostLabel(url)}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={textMuted} />
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+      <TouchableOpacity
+        onPress={() => setExpanded((v) => !v)}
+        activeOpacity={0.85}
+        style={[styles.pill, { borderColor: border }]}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${expanded ? 'Hide' : 'Show'} ${sources.length} sources`}
+      >
+        <Ionicons name="globe-outline" size={14} color={accent} />
+        <Text style={[styles.pillText, { color: textPrimary }]}>
+          Sources · {sources.length}
+        </Text>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={14}
+          color={textMuted}
+        />
+      </TouchableOpacity>
+
+      {expanded ? (
+        <View style={[styles.list, { borderColor: border }]}>
+          {sources.map((source, idx) => {
+            const url = source.url || source.link;
+            if (!url) return null;
+            const title = source.title || source.name || hostLabel(url);
+            const host = hostLabel(url);
+            const favicon = faviconUrl(url);
+            const snippet = String(source.snippet || '').trim();
+            const isLast = idx === sources.length - 1;
+            return (
+              <TouchableOpacity
+                key={`${url}-${idx}`}
+                style={[styles.row, !isLast && { borderBottomWidth: 1, borderBottomColor: border }]}
+                onPress={() => Linking.openURL(url).catch(() => {})}
+                activeOpacity={0.85}
+                accessibilityRole="link"
+                accessibilityLabel={`Open source ${title}`}
+              >
+                {favicon ? (
+                  <Image source={{ uri: favicon }} style={styles.favicon} />
+                ) : (
+                  <Ionicons name="link-outline" size={14} color={textMuted} style={styles.faviconFallback} />
+                )}
+                <View style={styles.textCol}>
+                  <Text style={[styles.title, { color: textPrimary }]} numberOfLines={2}>
+                    {title}
+                  </Text>
+                  <Text style={[styles.host, { color: textMuted }]} numberOfLines={1}>
+                    {host}
+                    {snippet ? ` · ${snippet}` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={14} color={textMuted} />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 8, gap: 8, maxWidth: '100%' },
-  heading: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 2,
+  wrap: { marginTop: 10, maxWidth: '100%' },
+  pill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
   },
-  card: {
+  pillText: { fontSize: 12, fontWeight: '700' },
+  list: {
+    marginTop: 8,
     borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
-  preview: { width: '100%', height: 72 },
-  meta: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  favicon: { width: 16, height: 16, borderRadius: 4 },
+  favicon: { width: 18, height: 18, borderRadius: 4 },
+  faviconFallback: { width: 18 },
   textCol: { flex: 1, minWidth: 0 },
-  title: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
-  host: { fontSize: 11, marginTop: 2 },
+  title: { fontSize: 13, fontWeight: '600', lineHeight: 17 },
+  host: { fontSize: 11, marginTop: 2, lineHeight: 15 },
 });

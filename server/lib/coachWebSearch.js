@@ -342,7 +342,178 @@ function buildWebSearchQuery(messages, lastUserMsg = '') {
       return `${prior} ${last}`.trim();
     }
   }
-  return stripWebSearchPrefix(last) || last;
+  const built = stripWebSearchPrefix(last) || last;
+  return scopeWebSearchQueryForCoach(built);
+}
+
+/** Training, nutrition, recovery, supplements — web search is fitness-coach scoped only. */
+function isFitnessNutritionQuery(text) {
+  const t = String(text || '').toLowerCase();
+  if (!t.trim()) return false;
+
+  const fitness = [
+    'workout', 'work out', 'training', 'lift', 'lifting', 'gym', 'exercise', 'cardio', 'hiit',
+    'strength', 'hypertrophy', 'sets', 'reps', 'pr', 'progressive overload', 'deload',
+    'squat', 'bench', 'deadlift', 'press', 'pull-up', 'pull up', 'form', 'technique',
+    'mobility', 'stretch', 'warm up', 'cool down', 'recovery', 'soreness',
+    'sleep', 'steps', 'heart rate', 'streak', 'progress', 'adherence',
+    'body recomposition', 'recomposition', 'recomp', 'skinny fat', 'bodyfat', 'body fat', 'bf%',
+    'cutting', 'cut', 'bulking', 'bulk', 'lean bulk', 'maintenance', 'caloric deficit', 'calorie deficit',
+    'calorie surplus', 'caloric surplus', 'tone up', 'toning', 'fat loss', 'lose fat', 'build muscle',
+    'shoulder', 'knee', 'back', 'hip', 'injury', 'hurt', 'pain', 'ache', 'sore',
+    'trainer', 'coach', 'session', 'appointment', 'schedule',
+    'swap', 'replace', 'modify', 'program', 'plan', 'routine', 'split',
+    'overhead', 'fatigue', 'tired', 'plateau', 'lifter', 'lifters', 'athlete', 'athletes',
+    'research', 'study', 'studies', 'evidence', 'meta-analysis', 'systematic review',
+    'creatine', 'ashwagandha', 'magnesium', 'electrolyte', 'pre-workout', 'preworkout',
+    'zone 2', 'zone2', 'vo2', 'testosterone', 'trt', 'hormone', 'cortisol',
+  ];
+  const nutrition = [
+    'nutrition', 'diet', 'calories', 'macro', 'macros', 'protein', 'carbs', 'fat', 'fats',
+    'meal', 'meals', 'meal plan', 'weight loss', 'gain muscle', 'weight',
+    'supplement', 'supplements', 'whey', 'caffeine',
+    'hydration', 'water', 'fiber', 'sodium', 'cholesterol', 'saturated fat',
+    'calorie', 'caloric', 'tdee', 'bmr', 'metabolism', 'weigh', 'weigh-in',
+    'chicken', 'rice', 'ate', 'eat', 'eating', 'food', 'hungry', 'hunger', 'log',
+    'oz', 'cup', 'grams', 'kcal', 'chipotle', 'restaurant', 'menu',
+  ];
+
+  return [...fitness, ...nutrition].some((k) => t.includes(k));
+}
+
+const FITNESS_WEB_ASK_TOPIC_REPLY =
+  "I'm your fitness coach — I only look things up on the web for training, nutrition, recovery, supplements, and your fitness goals. What should I search? For example: protein targets for lifters, creatine dosing, or body recomposition research.";
+
+const FITNESS_WEB_OFF_TOPIC_REPLY =
+  "I'm your fitness coach — I can only search the web for training, nutrition, recovery, and supplements. That topic is outside what I cover here. What fitness or nutrition question should I look up?";
+
+function normalizeWebIntentText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\w\s']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** "Can you search the web for me?" with no fitness topic — ask what to search. */
+function isGenericWebSearchRequest(text) {
+  const t = normalizeWebIntentText(text);
+  if (!t) return false;
+  const generic = [
+    'can you search the web for me',
+    'can you search the web',
+    'can u search the web',
+    'search the web for me',
+    'search the web',
+    'can you search online for me',
+    'can you search online',
+    'search online for me',
+    'look up on the web',
+    'look up the web',
+    'can you look up on the web',
+    'can you google for me',
+    'can you google something for me',
+    'browse the web for me',
+    'can you check the web for me',
+  ];
+  if (generic.includes(t)) return true;
+  if (isMetaOnlyWebCheck(t) && !isFitnessNutritionQuery(t)) return true;
+  return false;
+}
+
+/** Bias Serper/Perplexity toward exercise-science results, not generic "how to Google" pages. */
+function scopeWebSearchQueryForCoach(query) {
+  const q = String(query || '').trim();
+  if (!q) return '';
+  const stripped = stripWebSearchPrefix(q) || q;
+  if (isFitnessNutritionQuery(stripped) && stripped.length >= 28) return stripped;
+  if (isFitnessNutritionQuery(stripped)) {
+    return `${stripped} evidence-based fitness exercise science`.replace(/\s+/g, ' ').trim();
+  }
+  return `${stripped} fitness training nutrition exercise science evidence-based`.replace(/\s+/g, ' ').trim();
+}
+
+const JUNK_WEB_SOURCE_PATTERNS = [
+  /how to search the web/i,
+  /search the web in chrome/i,
+  /advanced search\s*-\s*google/i,
+  /support\.google\.com/i,
+  /google\.com\/intl\/.*\/search/i,
+  /youtube\.com.*how to search/i,
+  /how to use google/i,
+];
+
+const TRUSTED_FITNESS_HOST_FRAGMENTS = [
+  'pubmed', 'ncbi.nlm', 'examine.com', 'strongerbyscience', 'nsca.com', 'acefitness.org',
+  'precisionnutrition', 'healthline.com', 'bodybuilding.com', 'barbellmedicine', 'jissn',
+  'nutrition.org', 'nih.gov', 'cdc.gov', 'who.int', 'mayoclinic', 'sciencedirect',
+  'springer.com', 'nature.com', 'frontiersin.org', 'bmj.com', 'cochrane.org',
+];
+
+function hostFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+  } catch (_) {
+    return '';
+  }
+}
+
+function isTrustedFitnessHost(url) {
+  const host = hostFromUrl(url);
+  if (!host) return false;
+  return TRUSTED_FITNESS_HOST_FRAGMENTS.some((frag) => host.includes(frag));
+}
+
+function isJunkWebSource(source = {}) {
+  const blob = `${source.title || ''} ${source.snippet || ''} ${source.url || ''}`;
+  return JUNK_WEB_SOURCE_PATTERNS.some((re) => re.test(blob));
+}
+
+/** Drop generic Google-help / YouTube tutorial hits from coach web results. */
+function filterFitnessWebSources(sources = []) {
+  const list = Array.isArray(sources) ? sources : [];
+  const filtered = list.filter((s) => {
+    if (!s?.url) return false;
+    if (isJunkWebSource(s)) return false;
+    const blob = `${s.title || ''} ${s.snippet || ''} ${s.url || ''}`.toLowerCase();
+    return isFitnessNutritionQuery(blob) || isTrustedFitnessHost(s.url);
+  });
+  if (filtered.length) return filtered.slice(0, 8);
+  const salvage = list.filter((s) => s?.url && !isJunkWebSource(s));
+  return salvage.slice(0, 4);
+}
+
+/**
+ * Before calling Serper/Perplexity: block generic web requests; scope queries to fitness.
+ * @returns {{ action: 'search'|'ask_topic'|'off_topic', query?: string, reply?: string }}
+ */
+function resolveCoachWebSearchGate({ lastUserMsg, messages, rawQuery }) {
+  const last = String(lastUserMsg || '').trim();
+  const query = String(rawQuery || '').trim() || last;
+  const prior = findPriorSubstantiveUserQuestion(messages, lastUserMsg);
+  const priorFitness = prior ? isFitnessNutritionQuery(prior) : false;
+  const topicFitness = isFitnessNutritionQuery(query) || isFitnessNutritionQuery(last);
+
+  if (isGenericWebSearchRequest(last)) {
+    if (priorFitness) {
+      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebSearchPrefix(prior) || query) };
+    }
+    return { action: 'ask_topic', reply: FITNESS_WEB_ASK_TOPIC_REPLY };
+  }
+
+  if (isMetaOnlyWebCheck(last)) {
+    if (priorFitness) {
+      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebSearchPrefix(prior) || query) };
+    }
+    return { action: 'ask_topic', reply: FITNESS_WEB_ASK_TOPIC_REPLY };
+  }
+
+  const wantsWeb = shouldUseWebAuto(last) || shouldUsePerplexity(last);
+  if (wantsWeb && !topicFitness && !priorFitness) {
+    return { action: 'off_topic', reply: FITNESS_WEB_OFF_TOPIC_REPLY };
+  }
+
+  return { action: 'search', query: scopeWebSearchQueryForCoach(query) };
 }
 
 function stripInlineWebCitations(text) {
@@ -354,8 +525,9 @@ function stripInlineWebCitations(text) {
 
 const WEB_SEARCH_SYSTEM_APPEND = `
 
-WEB SEARCH MODE:
-You have live web results in this prompt (Perplexity or Serper snippets). Use them for current facts, studies, products, and news.
+WEB SEARCH MODE (FITNESS COACH ONLY):
+You have live web results in this prompt (Perplexity or Serper snippets). Use them ONLY for training, nutrition, recovery, supplements, and exercise-science topics.
+IGNORE generic pages about "how to search the web", Google Help, YouTube tutorials, or anything unrelated to fitness/nutrition.
 Mention source names naturally in your sentences when you cite a specific claim — still no bullets, bold, or lists.
 You DID search the web for this reply — you may say so briefly.
 Do not mention reviewing their app logs, weekly summary, or personal tracking unless they explicitly asked about their own data in the same message.
@@ -385,11 +557,54 @@ If they ask what sources said: explain what your prior answer was based on, name
 FORBIDDEN: unrelated topics, citation rules, or random transcripts.
 If the thread lacks source detail, say that honestly and expand from your prior answer — do NOT invent unrelated sources or run a new topic.`;
 
+const WEB_SEARCH_FAILED_APPEND = `
+
+WEB SEARCH FAILED THIS TURN:
+Live search did not complete. You MUST NOT say you searched, googled, ran a live search, or describe current web research.
+Open with ONE short sentence that live search was not available, then answer from general coaching knowledge only.
+Do NOT cite studies, links, or "what research says" as if you browsed. No fake sources.`;
+
+const FAKE_WEB_SEARCH_OPENERS = [
+  /^i ran a live search[^.!?]*[.!?]\s*/i,
+  /^i (?:just )?searched the web[^.!?]*[.!?]\s*/i,
+  /^i (?:just )?looked (?:that )?up online[^.!?]*[.!?]\s*/i,
+  /^after searching the web[^.!?]*[.!?]\s*/i,
+  /^based on (?:my )?(?:live )?web search[^.!?]*[.!?]\s*/i,
+  /^here(?:'s| is) what (?:the )?(?:current )?(?:research|web) says[^.!?]*[.!?]\s*/i,
+];
+
+function stripFakeWebSearchClaims(text) {
+  let t = String(text || '').trim();
+  if (!t) return t;
+  for (const re of FAKE_WEB_SEARCH_OPENERS) {
+    t = t.replace(re, '');
+  }
+  return t.trim();
+}
+
+function userRequestedWebSearchTurn({ webMode, lastUserMsg, messages, hasImages }) {
+  if (hasImages) return false;
+  return (
+    webMode === 'on' ||
+    shouldUseWebAuto(lastUserMsg) ||
+    shouldUsePerplexity(lastUserMsg) ||
+    messagesRequestWebSearch(messages, lastUserMsg)
+  );
+}
+
 module.exports = {
   shouldUseWebAuto,
   shouldUsePerplexity,
   shouldInvokeWebSearch,
   shouldForceDedicatedWebSearchRoute,
+  isFitnessNutritionQuery,
+  isGenericWebSearchRequest,
+  scopeWebSearchQueryForCoach,
+  filterFitnessWebSources,
+  resolveCoachWebSearchGate,
+  WEB_SEARCH_FAILED_APPEND,
+  stripFakeWebSearchClaims,
+  userRequestedWebSearchTurn,
   WEB_SEARCH_SYSTEM_APPEND,
   WEB_SOURCE_QUOTE_SYSTEM_APPEND,
   THREAD_CLARIFY_SYSTEM_APPEND,

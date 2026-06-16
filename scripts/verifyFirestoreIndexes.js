@@ -11,6 +11,7 @@ const INDEX_PATH = path.join(__dirname, '..', 'firestore.indexes.json');
 /** @type {{ collectionGroup: string, fields: string[] }[]} */
 const REQUIRED = [
   { collectionGroup: 'nutrition_logs', fields: ['user_id', 'date'] },
+  { collectionGroup: 'nutrition_logs', fields: ['user_id', 'created_at'] },
   { collectionGroup: 'nutrition_logs', fields: ['userId', 'date'] },
   { collectionGroup: 'conversations', fields: ['participants', 'updatedAt'] },
   { collectionGroup: 'messages', fields: ['conversationId', 'timestamp'] },

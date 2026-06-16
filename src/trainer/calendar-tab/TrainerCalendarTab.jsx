@@ -10,8 +10,8 @@
  */
 /** Trainer dashboard — Calendar tab */
 import React, { useState } from 'react';
-import SessionFormScreen from '../sessions/SessionFormScreen';
-import SessionSchedulingScreen from '../sessions/SessionSchedulingScreen';
+import SessionFormScreen from '../screens/SessionFormScreen';
+import SessionSchedulingScreen from '../screens/SessionSchedulingScreen';
 
 const CalendarTab = ({ isDark, clientData, trainerId, clientId, clientName, trainerName }) => {
   const theme = isDark ? 'dark' : 'light';

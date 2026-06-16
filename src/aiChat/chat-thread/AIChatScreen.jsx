@@ -50,6 +50,7 @@ import {
   loadAiChatMessages,
   persistAiChatSession,
   restoreChatMessagesFromSaved,
+  upsertAiChatMessages,
 } from '../persistence/saveCoachMessagesToFirestore';
 import { useCoachComposerInput } from './useCoachComposerInput';
 import CoachPasteSheet from './CoachPasteSheet';
@@ -70,7 +71,11 @@ import { AI_COACH_UI } from '../aiCoachUiTokens';
 import AICoachGlassCard from '../components/AICoachGlassCard';
 import { stripCoachToolJsonFromReply, parseCoachToolCalls } from '../../shared/coach-tools/parseCoachToolCalls';
 import { coerceMisroutedDeleteTool } from '../../ai/tools/parseDeleteLogRequest';
-import { guardCoachToolProposal } from '../../ai/tools/validateCoachToolProposal';
+import {
+  guardCoachToolProposal,
+  isValidCoachToolProposal,
+  isInformationalUserMessage,
+} from '../../ai/tools/validateCoachToolProposal';
 import {
   shouldAutoExecuteCoachTool,
   shouldAutoOpenCoachToolModal,
@@ -113,15 +118,25 @@ function resolveIncomingCoachTool(coachResponse, userText = '') {
   const user = String(userText || '').trim();
   const rawTool = coachResponse?.toolCall || parseCoachToolCalls(rawReply)[0] || null;
   const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
-  if (coerced) return guardCoachToolProposal(coerced);
+  if (coerced && isValidCoachToolProposal(coerced, user)) return coerced;
+
+  if (coachResponse?.searchedWeb || isInformationalUserMessage(user)) {
+    return null;
+  }
+
   const displayReply = stripCoachToolJsonFromReply(rawReply) || rawReply;
-  return guardCoachToolProposal(inferToolCallFromCoachMessage(displayReply, userText));
+  const inferred = inferToolCallFromCoachMessage(displayReply, userText);
+  return inferred && isValidCoachToolProposal(inferred, user) ? inferred : null;
 }
 
 function resolveMessageToolCall(message, userMessage = '') {
   if (!message || message.toolConfirmed || message.isToolResult) return null;
-  if (message.toolCall) return guardCoachToolProposal(normalizeToolCall(message.toolCall));
-  return guardCoachToolProposal(inferToolCallFromCoachMessage(message.text, userMessage));
+  if (message.toolCall) {
+    const guarded = guardCoachToolProposal(normalizeToolCall(message.toolCall));
+    return guarded && isValidCoachToolProposal(guarded, userMessage) ? guarded : null;
+  }
+  const inferred = inferToolCallFromCoachMessage(message.text, userMessage);
+  return inferred && isValidCoachToolProposal(inferred, userMessage) ? inferred : null;
 }
 
 function coachActionPromptVisible(message, userMessage = '') {
@@ -872,7 +887,15 @@ function CoachSelectableMessageText({ text, color, isDark }) {
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = '', toolModalVisible = false }) {
+function MessageBubble({
+  message,
+  t,
+  onToolPress,
+  isDark = true,
+  lastUserText = '',
+  threadMessages = null,
+  toolModalVisible = false,
+}) {
   const sent = message.role === 'user';
   const atts = Array.isArray(message.attachments) ? message.attachments : [];
   const firstImage = atts.find((a) => a?.preview);
@@ -944,7 +967,7 @@ function MessageBubble({ message, t, onToolPress, isDark = true, lastUserText = 
     );
   }
 
-  const askedForWeb = shouldShowWebSearchUI(lastUserText);
+  const askedForWeb = shouldShowWebSearchUI(lastUserText, threadMessages);
   const webStatusLabel = message.searchedWeb
     ? 'Searched the web'
     : askedForWeb && message.route !== 'web-search'
@@ -1167,8 +1190,6 @@ export default function AIChatScreen({
       return;
     }
 
-    console.log('[DEBUG] Tool confirm:', { toolName: merged.name, params: merged.params });
-
     setToolExecuting(true);
     try {
       const result = await executeCoachTool({
@@ -1178,8 +1199,6 @@ export default function AIChatScreen({
         toolCall: merged,
         navigationHandlers: { onOpenWorkoutPlan },
       });
-
-      console.log('[DEBUG] Tool result:', { success: result.success, message: result.message });
 
       const resultMsg = {
         id: `msg_tool_${Date.now()}`,
@@ -1225,7 +1244,19 @@ export default function AIChatScreen({
           ];
         }
         if (db && userId) {
-          persistSession(next).catch(() => {});
+          const toPersist = next.filter((m) => {
+            if (targetId && m.id === targetId) return true;
+            if (result.success && inline && result.message && m.id?.startsWith('msg_tool_ok_')) return true;
+            if (!result.success && m.id === resultMsg.id) return true;
+            return false;
+          });
+          const lastUser = [...next].reverse().find((m) => m.role === 'user');
+          const lastAi = [...next].reverse().find((m) => m.role === 'ai');
+          upsertAiChatMessages(userId, sessionId, toPersist, {
+            sessionId,
+            lastUserMessage: lastUser?.text || '',
+            lastAssistantMessage: lastAi?.text || '',
+          }).catch(() => {});
         }
         return next;
       });
@@ -1408,7 +1439,7 @@ export default function AIChatScreen({
       if (resolvedTool) {
         if (shouldAutoExecuteCoachTool(resolvedTool)) {
           handleToolConfirm({}, resolvedTool, { inline: true, messageId: aiMsg.id });
-        } else if (shouldAutoOpenCoachToolModal(resolvedTool, { fromServer: !!coachResponse?.toolCall })) {
+        } else if (shouldAutoOpenCoachToolModal(resolvedTool, { fromServer: !!coachResponse?.toolCall, userText: text.trim() })) {
           openToolModal(resolvedTool, aiMsg.id);
         }
       } else if (
@@ -1570,6 +1601,11 @@ export default function AIChatScreen({
                   break;
                 }
               }
+              const threadMessages = messages.slice(0, index + 1).map((m) => ({
+                role: m.role === 'ai' ? 'assistant' : 'user',
+                text: m.text || '',
+                content: m.text || '',
+              }));
               return (
                 <MessageBubble
                   message={item}
@@ -1577,6 +1613,7 @@ export default function AIChatScreen({
                   isDark={isDark}
                   onToolPress={openToolModal}
                   lastUserText={lastUserText}
+                  threadMessages={threadMessages}
                   toolModalVisible={toolModalVisible}
                 />
               );

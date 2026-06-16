@@ -172,3 +172,11 @@ describe('isLikelyNewFirebaseUser', () => {
     expect(nullMetaResult).toBe(false);
   });
 });
+
+afterEach(() => {
+  jest.clearAllTimers();
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});

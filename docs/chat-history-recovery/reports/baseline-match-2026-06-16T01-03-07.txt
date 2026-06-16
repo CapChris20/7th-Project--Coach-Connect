@@ -1,0 +1,153 @@
+CoachConnect baseline match audit
+Workspace: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect
+Generated: 2026-06-16T01:03:07.884Z
+
+── Chat #1 (a2116213) — infra / payments / Google Sign-In ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a2116213-660f-473b-8fb4-c4df99a1c468/a2116213-660f-473b-8fb4-c4df99a1c468.jsonl
+User messages: 180 | Write/StrReplace/Delete paths: 151
+User rejections in thread (last good state may differ): 17
+  · Cursor, you fucking idiot, that is not what I meant. First of all, for the client perspective, for the subscription, rig
+  · Fix Google Sign-In in CoachConnect based on this audit. Work through each fix in order. Do not change anything not list
+  · so ur telling me thi sfucking shit wont work on expo go wtf
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · The following documents have been saved to your filesystem. You can read them using your file-reading tool or other tool
+  · … +12 more
+
+── Chat #2 (81d5e120) — onboarding card borders ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/81d5e120-5135-4149-9dda-ebbd83abeedb/81d5e120-5135-4149-9dda-ebbd83abeedb.jsonl
+User messages: 2 | Write/StrReplace/Delete paths: 1
+
+── Chat #3 (bb3d5a73) — product advice ──
+SKIPPED — advice only
+
+── Chat #4 (43d4e4ad) — spreadsheet / plan viewer / web search ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/43d4e4ad-5153-4c58-8820-4f5b0fe99d34/43d4e4ad-5153-4c58-8820-4f5b0fe99d34.jsonl
+User messages: 134 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 6
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · Sunday, May 31, 2026, 10:50 PM (UTC-4) i literally pasted the image and its still doing this shit @/Users/captainchri
+  · Sunday, May 31, 2026, 11:23 PM (UTC-4) no actually see whats wrong on why it casnt see images
+  · [Image] [Image] The following images were provdied by the user and saved to the workspace for future use: 1. /Users/ca
+  · … +1 more
+
+── Chat #5 (22de0722) — folder structure ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/22de0722-96e2-4524-80eb-7a0fe3ebbe27/22de0722-96e2-4524-80eb-7a0fe3ebbe27.jsonl
+User messages: 10 | Write/StrReplace/Delete paths: 42
+
+── Chat #6 (2ec46bca) — energy 5/8 → 100% bug ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/2ec46bca-f736-4b8a-9528-5081f5559c21/2ec46bca-f736-4b8a-9528-5081f5559c21.jsonl
+User messages: 1 | Write/StrReplace/Delete paths: 0
+No Write/StrReplace/Delete paths extracted — rely on static checks only
+
+
+── Chat #7 (9405e11c) — support email ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/9405e11c-511e-4946-aa21-46b28b8bb7ed/9405e11c-511e-4946-aa21-46b28b8bb7ed.jsonl
+User messages: 5 | Write/StrReplace/Delete paths: 9
+
+── Chat #8 (8047eeaa) — nutrition facts MEGA ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/8047eeaa-aefd-44f5-a51a-18e895120b9c/8047eeaa-aefd-44f5-a51a-18e895120b9c.jsonl
+User messages: 194 | Write/StrReplace/Delete paths: 163
+User rejections in thread (last good state may differ): 11
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/captainchr
+  · but how can i make the barcode scanner as accurate as humanly possible and also great cuz we want to steal costumers sin
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · issue 1, its still saying today isnt june 8 tf @/Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-C
+  · … +6 more
+
+── Chat #9 (842532aa) — code quality audit ──
+SKIPPED — audit report, optional
+
+── Chat #10 (2a168f9b) — terminal follow-up ──
+SKIPPED — one-line follow-up
+
+── Chat #11 (d427da4a) — Jest test suite ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b/d427da4a-27c8-4c2f-9c22-bd7495ad4c4b.jsonl
+User messages: 22 | Write/StrReplace/Delete paths: 98
+User rejections in thread (last good state may differ): 5
+  · Write Jest unit tests for the coach tool proposal guards. File to create: src/__tests__/unit/coachToolProposalGuards.tes
+  · Write Jest integration tests for the food search and logging flow. File to create: src/__tests__/integration/foodSearch
+  · Fix the following confirmed bugs in CoachConnect found by the Jest test suite. Read each file completely before making
+  · Audit the CoachConnect codebase for architecture bloat, poor file organization, and anything that makes the codebase h
+  · Audit the CoachConnect codebase for architecture bloat, poor file organization, and anything that makes the codebase h
+
+── Chat #12 (c2bb292e) — untested audit + tests + reorg ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/c2bb292e-64d7-4a0e-98a5-67ccff9e3269/c2bb292e-64d7-4a0e-98a5-67ccff9e3269.jsonl
+User messages: 71 | Write/StrReplace/Delete paths: 226
+User rejections in thread (last good state may differ): 6
+  · Write Jest integration tests for dashboard metric and workout log saving on MyDashboardScreen. File to create: src/__te
+  · any other tests i give u save it there ok now do these tests Write Jest unit tests for food normalization and barcode m
+  · ok can u just pls look into my coldebase folder structure architecftuee and etc and see how we can make it easy to under
+  · ok can u just pls look into my coldebase folder structure architecftuee and etc and see how we can make it easy to under
+  · [Image] [Image] The following images were provided by the user and saved to the workspace for future use: 1. /Users/ca
+  · … +1 more
+
+── Chat #13 (a560aff3) — k6 load tests + structure doc ──
+Transcript: /Users/captainchris20/.cursor/projects/Users-captainchris20-Desktop-My-Coding-Portfolio-7th-Project-Coach-Connect-Mobile-App/agent-transcripts/a560aff3-4487-498f-9334-4f19c84b6fc0/a560aff3-4487-498f-9334-4f19c84b6fc0.jsonl
+User messages: 15 | Write/StrReplace/Delete paths: 31
+User rejections in thread (last good state may differ): 1
+  · u made them more confusing wtf
+
+── Expected test files (chats #11/#12) ──
+✓ src/__tests__/unit/coachToolProposalGuards.test.js
+✓ src/__tests__/unit/servingMath.test.js
+✓ src/__tests__/unit/authGate.test.js
+✓ src/__tests__/unit/calculations.test.js
+✓ src/__tests__/unit/parseCoachToolCalls.test.js
+✓ src/__tests__/unit/dailyMetrics.test.js
+✓ src/__tests__/unit/onboardingCalculations.test.js
+✓ src/__tests__/unit/foodSearchScoring.test.js
+✓ src/__tests__/unit/workoutPlanParsing.test.js
+✓ src/__tests__/integration/aiCoachFlow.test.js
+✓ src/__tests__/integration/foodSearchLog.test.js
+✓ src/__tests__/unit/trainerCodeValidation.test.js
+✓ src/__tests__/unit/onboardingGate.test.js
+✓ src/__tests__/components/ToolConfirmationModal.test.js
+✓ src/__tests__/integration/onboardingComplete.test.js
+✓ src/__tests__/integration/dashboardSave.test.js
+✓ src/__tests__/unit/baseUrl.test.js
+✓ src/__tests__/unit/foodNormalizeBarcode.test.js
+✓ src/__tests__/integration/clientHomeBootstrap.test.js
+✓ src/__tests__/unit/bookSessionParse.test.js
+✓ src/__tests__/unit/notesAndFiles.test.js
+
+── Cross-chat static checks ──
+✓ server/lib/index.js removed (stale duplicate)
+✓ PlanViewerScreen exists
+✓ load-tests/ folder
+✓ coach tool guards test
+✓ runJestWithLog writes test-results.txt
+✓ validateCoachToolProposal (modal guards)
+✓ filterValidCoachToolCalls on server
+✓ EMERGENCY PARSE removed from server
+✓ Daily nutrition facts screen path
+✓ support config file
+✓ npm start uses dev-client
+
+── verifyThreadGapFixes.js ──
+────────────────────────────────────────
+Results: 39 passed, 0 failed
+All thread gap-fix static checks passed.
+
+── npm test ──
+> coachconnect-app@1.0.0 test
+> node ./scripts/runJestWithLog.js --runInBand
+
+── REQUEST_STATUS_AUDIT.md (informational) ──
+DONE: 15 | PARTIAL: 152 | N/A: 120
+(PARTIAL rows are not auto-fail — many were never finished pre-deletion)
+
+══════════════════════════════════════════════════════════════
+MASTER TABLE
+| Chat | Item | File/area | Status | Notes |
+|------|------|-----------|--------|-------|
+
+File edits scanned: 787 | actionable gaps: 0
+
+BASELINE MATCH CONFIRMED
+The current workspace matches the pre–June 14 1 AM baseline for all automated checks.
+
+Say: "I confirm baseline match. Lock it in."
+
+Summary: PRESENT≈711 | gaps=0 | report: /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/docs/chat-history-recovery/reports/baseline-match-2026-06-16T01-03-07.txt

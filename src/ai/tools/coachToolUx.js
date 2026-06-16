@@ -2,6 +2,7 @@
  * When coach tools should interrupt with a modal vs inline chip vs auto-run.
  */
 import { normalizeToolCall } from './executeCoachTool';
+import { isValidCoachToolProposal } from './validateCoachToolProposal';
 
 /** Destructive or affects others — auto-open confirm modal. */
 export const COACH_TOOL_MODAL_REQUIRED = new Set([
@@ -68,9 +69,11 @@ export function hasCompleteLogToolParams(toolCall) {
   return LOG_TOOL_READY[name](normalized.params || {});
 }
 
-export function shouldAutoOpenCoachToolModal(toolCall, { fromServer = false } = {}) {
-  const name = normalizeToolCall(toolCall)?.name;
+export function shouldAutoOpenCoachToolModal(toolCall, { fromServer = false, userText = '' } = {}) {
+  const normalized = normalizeToolCall(toolCall);
+  const name = normalized?.name;
   if (!name) return false;
+  if (userText && !isValidCoachToolProposal(normalized, userText)) return false;
   if (COACH_TOOL_MODAL_REQUIRED.has(name)) return true;
   if (COACH_TOOL_CHIP_ONLY.has(name) && hasCompleteLogToolParams(toolCall) && fromServer) {
     return true;

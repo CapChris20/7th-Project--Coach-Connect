@@ -131,6 +131,12 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
       keyboardShouldPersistTaps="handled"
     >
         <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+        <LinearGradient
+          colors={['#BE185D', '#C2410C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.topAccent}
+        />
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -147,7 +153,6 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
               <Text style={[styles.headerSubtitle, { color: t.textMuted }]}>Log your nutrition</Text>
             </View>
           </View>
-          <Ionicons name="sparkles" size={16} color={t.faint} />
         </View>
 
         {recentFoods.length > 0 ? (
@@ -342,8 +347,17 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 24,
     padding: 20,
+    paddingTop: 24,
     borderWidth: 1,
     marginBottom: 8,
+    overflow: 'hidden',
+  },
+  topAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
   header: {
     flexDirection: 'row',

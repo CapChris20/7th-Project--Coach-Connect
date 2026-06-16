@@ -25,6 +25,10 @@ const INFORMATIONAL_TOOL_BY_TEXT = {
   'How am I doing this week?': { name: 'logNutrition', params: { food: 'weekly intake' } },
   'What should I eat before a workout?': { name: 'logNutrition', params: { food: 'pre-workout snack' } },
   'Is my calorie intake good?': { name: 'logNutrition', params: { food: 'calories' } },
+  'Search the web: what does research say about protein intake for lifters? Cite sources.': {
+    name: 'deleteLog',
+    params: { logType: 'nutrition' },
+  },
 };
 
 const EXPLICIT_TOOL_BY_TEXT = {

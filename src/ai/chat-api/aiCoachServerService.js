@@ -29,7 +29,7 @@ import {
 
 const TIMEOUT_MS = 20000;
 const TIMEOUT_MS_WEB = 45000;
-const TIMEOUT_MS_VISION = 50000;
+const TIMEOUT_MS_VISION = 120000;
 
 /** Clear today's AI Coach usage counter (dev / test suite). */
 export async function resetAiCoachDailyUsage() {
