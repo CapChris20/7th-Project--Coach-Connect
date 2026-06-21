@@ -138,7 +138,6 @@ import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
 import LogTodaysMealsScreen from '../client-app/screens/LogTodaysMealsScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
-import ViewMyProfileScreen from '../client-app/profile/ViewMyProfileScreen';
 import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';

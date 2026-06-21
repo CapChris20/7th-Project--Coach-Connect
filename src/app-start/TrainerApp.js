@@ -79,7 +79,6 @@ import MyMessagesScreen from "../trainer-app/screens/MyMessagesScreen";
 import VoiceCoachScreen from "../ai-coach/chat-ui/voice/VoiceCoachScreen";
 import ChatWithCoachScreen from "../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen";
 import NutritionContainer from "../nutrition/daily-log/NutritionContainer";
-import ViewMyProfileScreen from '../client-app/profile/ViewMyProfileScreen';
 import SettingsScreen from "../settings/screens/SettingsScreen";
 import HelpFAQScreen from "../settings/screens/HelpFAQScreen";
 import TermsOfServiceScreen from "../settings/screens/TermsOfServiceScreen";

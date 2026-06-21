@@ -68,7 +68,24 @@ workouts      ✅ Yes — workout plans + active workout
 
 ## 3. Structural issues (report only)
 
-### 🔴 Broken import paths in `app-start/` (runtime risk)
+### 🔴 Broken import paths in `app-start/` — **FIXED** (2026-06-21)
+
+Resolved in commits after audit: `ClientApp.js` and `TrainerApp.js` now import from `../ai-coach/chat-ui/` and `../ai-coach/server-logic/`.
+
+### 🔴 Profile screen filename mismatch — **FIXED** (2026-06-21)
+
+Overlay navigators import from `client-app/profile/ViewMyProfileScreen.jsx` (default export is `ViewMyViewMyProfileScreen`). Component rename to `ViewMyProfileScreen` remains optional cleanup.
+
+### 🔴 Password reset shim — **FIXED** (2026-06-21)
+
+`auth/ResetPasswordScreen.jsx` re-export pointed at non-existent `ForgotPasswordFlowFlow`; corrected to `ForgotPasswordFlow.js`.
+
+---
+
+### ~~Broken import paths in `app-start/` (runtime risk)~~
+
+<details>
+<summary>Original finding (superseded)</summary>
 
 These paths assume `src/chat-ui/` and `src/server-logic/` exist at the **top level of `src/`**. They do not — they live under `src/ai-coach/`.
 
@@ -82,15 +99,17 @@ These paths assume `src/chat-ui/` and `src/server-logic/` exist at the **top lev
 | `app-start/TrainerApp.js` | `../server-logic/chat-api/...` | `../ai-coach/server-logic/chat-api/...` |
 | `app-start/TrainerApp.js` | `../server-logic/services/...` | `../ai-coach/server-logic/services/...` |
 
-**Note:** Jest passes (55/55) because `app-start/ClientApp.js` and `TrainerApp.js` are not imported by test suites. Expo runtime may fail when opening AI coach or trainer messaging from these shells.
+</details>
 
-### 🔴 Profile screen filename mismatch
+### ~~Profile screen filename mismatch~~
+
+<details>
+<summary>Original finding (superseded)</summary>
 
 - **File on disk:** `client-app/profile/ViewMyProfileScreen.jsx`
 - **Imported as:** `../client-app/profile/ViewMyViewMyProfileScreen` (in ClientApp, TrainerApp, overlay navigators)
-- **Export name inside file:** `ViewMyViewMyProfileScreen` (typo duplicated in component name)
 
-Imports point to a **non-existent filename**. Likely works only if Metro resolves another way or this path is dead — **verify in Expo**.
+</details>
 
 ### 🟡 Duplicate asset roots
 

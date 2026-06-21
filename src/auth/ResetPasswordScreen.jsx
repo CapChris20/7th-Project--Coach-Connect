@@ -8,4 +8,4 @@
  *
  * @file-header
  */
-export { default } from '../settings/screens/ForgotPasswordFlowFlow';
+export { default } from '../settings/screens/ForgotPasswordFlow';
