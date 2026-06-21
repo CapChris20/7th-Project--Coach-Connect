@@ -20,13 +20,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import TrainerCard from '../components/TrainerCard';
+import TrainerCard from './TrainerCard';
 import {
   GlassCard,
   GlassPanel,
   Pill,
   FilterGradientButton,
-} from '../components/MarketplaceUI';
+} from './MarketplaceUI';
 import { BRAND, MP_FONT, QUICK_SPECIALTIES, getTheme } from '../marketplaceFilters';
 
 /** Matches ClientApp AI Coach `HeroWelcomeCard` / home hero banner shell (static border). */

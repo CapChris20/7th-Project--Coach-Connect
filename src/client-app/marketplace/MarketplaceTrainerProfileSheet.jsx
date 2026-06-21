@@ -37,7 +37,7 @@ import {
   SectionLabel,
   GradientText,
 } from './MarketplaceUI';
-import { trainerPhotoUri } from '../../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
 const PROFILE_FOOTER_H = 88;
 

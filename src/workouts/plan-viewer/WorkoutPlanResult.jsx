@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import ViewMyWorkoutPlanScreen from '../../client-app/screens/ViewMyWorkoutPlanScreen';
+import ViewMyWorkoutPlanScreen from '../../client-app/workout-plans/ViewMyWorkoutPlanScreen';
 import WorkoutPlanPdfViewerModal from './WorkoutPlanPdfViewerModal';
 import { planViewerRefStyles } from './workoutPlanUiComponents';
 import {

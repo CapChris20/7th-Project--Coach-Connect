@@ -25,7 +25,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { trainerPhotoUri } from '../../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);

@@ -20,7 +20,7 @@ import {
   MP_FONT,
 } from '../marketplaceFilters';
 import { GlassCard, PrimaryButton, SecondaryButton, VerifiedBadge, GradientText } from './MarketplaceUI';
-import { trainerPhotoUri } from '../../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
 function modeIcon(mode) {
   const m = String(mode || '').toLowerCase();

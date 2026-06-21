@@ -26,7 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BRAND, AURORA_GLOWS, MP_FONT, getTheme } from '../marketplaceFilters';
 import { MarketplaceGlass } from './MarketplaceGlass';
-import BlurBackdropPlate from '../../../shared-ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

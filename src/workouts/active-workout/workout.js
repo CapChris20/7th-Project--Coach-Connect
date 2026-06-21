@@ -66,7 +66,7 @@ import {
   stripEmojis,
 } from '../plan-viewer/workoutPlanPdfService';
 import WorkoutPlanPdfViewerModal from '../plan-viewer/WorkoutPlanPdfViewerModal';
-import ViewMyWorkoutPlanScreen from '../../client-app/screens/ViewMyWorkoutPlanScreen';
+import ViewMyWorkoutPlanScreen from '../../client-app/workout-plans/ViewMyWorkoutPlanScreen';
 import WorkoutExerciseLibraryTab from '../exercise-library/WorkoutExerciseLibraryTab';
 import { EditModalForm } from './EditModalForm_RN';
 import {

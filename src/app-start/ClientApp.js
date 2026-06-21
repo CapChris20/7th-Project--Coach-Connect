@@ -76,7 +76,7 @@ import {
   mergeClientDailyMetrics,
   parseDailyMetricsFromSnapshots,
 } from '../metrics/daily-metrics/saveDailyMetricsToFirestore';
-import { useClientHomeDailyMetrics } from '../client-app/hooks/useClientHomeDailyMetrics';
+import { useClientHomeDailyMetrics } from '../client-app/home/useClientHomeDailyMetrics';
 import styles from '../client-app/home/clientAppStyles';
 import {
   getPremiumTheme,
@@ -119,7 +119,7 @@ import { subscribeToUnreadCount } from '../ai-coach/server-logic/chat-api/loadMo
 import { getOrCreateConversation, sendClientRequest } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
 import StartCoachChatScreen from '../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
 import ChatWithCoachScreen from '../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
-import SearchTrainersScreen, { TrainerProfileSheet } from '../client-app/marketplace/screens/SearchTrainersScreen';
+import SearchTrainersScreen, { TrainerProfileSheet } from '../client-app/marketplace/SearchTrainersScreen';
 import TrainingDashboardScreen from '../client-app/dashboard/TrainingDashboardScreen';
 import SettingsScreen from '../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../settings/screens/HelpFAQScreen';
@@ -136,7 +136,7 @@ import { ClientAppShellProvider } from '../client-app/navigation/ClientAppShellC
 import ClientRootNavigator from '../client-app/navigation/ClientRootNavigator';
 import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
-import LogTodaysMealsScreen from '../client-app/screens/LogTodaysMealsScreen';
+import LogTodaysMealsScreen from '../client-app/meal-plan/LogTodaysMealsScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
 import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
@@ -148,10 +148,10 @@ import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components
 import MediaViewerModal from '../shared/components/notes-files/MediaViewerModal';
 import PdfViewerModal from '../shared/components/notes-files/PdfViewerModal';
 import RemoveTrainerSheet from '../shared/components/modals/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../client-app/components/ReviewSubmitSheet';
+import ReviewSubmitSheet from '../client-app/dashboard/ReviewSubmitSheet';
 import { SessionMeetingCard } from '../shared/components/home/SessionMeetingCard';
 import SpreadsheetViewerModal from '../shared/components/notes-files/SpreadsheetViewerModal';
-import TrainerSharedFilesModal from '../client-app/components/TrainerSharedFilesModal';
+import TrainerSharedFilesModal from '../client-app/files/TrainerSharedFilesModal';
 import ClientFilesScreen from '../client-app/files/ClientFilesScreen';
 import MarketplaceHeroCard from '../shared/components/MarketplaceHeroCard';
 import DashboardHeroCard from '../client-app/dashboard/DashboardHeroCard';
@@ -177,11 +177,11 @@ import {
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
 } from '../shared-utils/getFileViewType';
-import MyMessagesScreen from '../client-app/screens/MyMessagesScreen';
-import MyProgressPhotosScreen from '../client-app/screens/MyProgressPhotosScreen';
-import ChatWithTrainerScreen from '../client-app/screens/ChatWithTrainerScreen';
-import BrowseSavedWorkoutsScreen from '../client-app/screens/BrowseSavedWorkoutsScreen';
-import ViewWeekProgressReportScreen from '../client-app/screens/ViewWeekProgressReportScreen';
+import MyMessagesScreen from '../messaging/MyMessagesScreen';
+import MyProgressPhotosScreen from '../shared/screens/MyProgressPhotosScreen';
+import ChatWithTrainerScreen from '../messaging/ChatThreadScreen';
+import BrowseSavedWorkoutsScreen from '../shared/screens/BrowseSavedWorkoutsScreen';
+import ViewWeekProgressReportScreen from '../shared/screens/ViewWeekProgressReportScreen';
 import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/active-workout/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/active-workout/workout';
 import { clearAllUserData } from '../utils/clearDataOnLogout';

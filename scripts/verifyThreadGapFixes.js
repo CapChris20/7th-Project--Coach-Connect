@@ -146,8 +146,8 @@ console.log('Thread gap-fix static verification\n');
   assert('Dockerfile copies food-details path', docker.includes('src/nutrition/food-details/'));
   assert('Dockerfile does not copy stale services path', !docker.includes('src/nutrition/services/'));
 
-  assert('ViewMyWorkoutPlanScreen exists', fileExists('src/client-app/screens/ViewMyWorkoutPlanScreen.jsx'));
-  const planViewer = read('src/client-app/screens/ViewMyWorkoutPlanScreen.jsx');
+  assert('ViewMyWorkoutPlanScreen exists', fileExists('src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx'));
+  const planViewer = read('src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx');
   assert('PlanViewer uses gradient UI', planViewer.includes('LinearGradient'));
 
   const notes = read('src/shared/notes-files/manageNotesAndFiles.js');

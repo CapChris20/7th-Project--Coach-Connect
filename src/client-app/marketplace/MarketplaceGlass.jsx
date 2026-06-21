@@ -11,7 +11,7 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import BlurBackdropPlate from '../../../shared-ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 import { getGlass } from '../marketplaceFilters';
 
 /**

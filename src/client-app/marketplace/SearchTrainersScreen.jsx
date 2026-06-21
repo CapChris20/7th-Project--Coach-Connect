@@ -12,21 +12,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
-import { db, storage } from '../../../app-start/config';
-import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../../shared-utils/getTrainerProfileMedia';
-import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../../navigation/BottomNavBar';
-import TrainerRequestConfirmModal from '../components/TrainerRequestConfirmModal';
-import TrainerRequestIntroModal from '../components/TrainerRequestIntroModal';
+import { db, storage } from '../../app-start/config';
+import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared-utils/getTrainerProfileMedia';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import BottomNavBar from '../../navigation/BottomNavBar';
+import TrainerRequestConfirmModal from './TrainerRequestConfirmModal';
+import TrainerRequestIntroModal from './TrainerRequestIntroModal';
 import BrowseTrainersScreen from './BrowseTrainersScreen';
-import FilterModal from '../components/FilterModal';
-import { TrainerProfileSheet } from '../components/MarketplaceTrainerProfileSheet';
+import FilterModal from './FilterModal';
+import { TrainerProfileSheet } from './MarketplaceTrainerProfileSheet';
 import {
   DEFAULT_FILTERS,
   filterTrainers,
   normalizeTrainer,
   getTheme,
-} from '../marketplaceFilters';
+} from './marketplaceFilters';
 
 const SearchTrainersScreen = ({
   onClose,
