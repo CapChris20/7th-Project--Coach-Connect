@@ -31,9 +31,9 @@ import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } 
 import XLSX from '../../utils/xlsx';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { db, storage } from '../../app/config';
+import { db, storage } from '../../app-start/config';
 import { postRemotePushNotify } from '../api/sendPushNotification';
-import { randomNotesSharedBody } from '../notifications/pushNotificationText';
+import { randomNotesSharedBody } from '../notifications/buildPushNotificationText';
 
 const COLLECTION = 'notes_and_files';
 const DOCUMENTS_COLLECTION = 'documents';

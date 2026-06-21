@@ -18,7 +18,7 @@ jest.mock('firebase/firestore', () => ({
   orderBy: jest.fn(),
 }));
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   storage: {},
   db: {},
 }));

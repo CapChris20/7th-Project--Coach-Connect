@@ -5,7 +5,8 @@
  *
  * Server-side only: enriches Serper + ranking. The user's typed query is unchanged in UI.
  */
-const { normalizeQueryText, significantQueryTokens } = require('../food-search/rankFoodSearchResults');
+const { normalizeQueryText, significantQueryTokens } = require('../food-search/sortBestFoodMatches');
+const { servingLabelFromQueryStructure } = require('../food-search/guessServingSize');
 
 const SIZE_WORDS = ['large', 'medium', 'small', 'personal', 'family', 'regular', 'mini', 'grande', 'venti', 'tall'];
 
@@ -302,4 +303,5 @@ module.exports = {
   buildCasualMenuSerperQueries,
   displayNameFromCasualQuery,
   casualMenuRankingContext,
+  servingLabelFromQueryStructure,
 };

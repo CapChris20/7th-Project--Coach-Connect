@@ -6,10 +6,7 @@
 const logger = require('./logger');
 
 /** Cap completedWorkouts reads per aggregation (scalability guard). */
-const COMPLETED_WORKOUTS_QUERY_LIMIT = 500;
-
-/** Max account history loaded into coach context (performance cap). */
-const COACH_MAX_LOOKBACK_DAYS = 730;
+const COMPLETED_WORKOUTS_QUERY_LIMIT = 2000;
 
 /** Recent days with per-meal detail in the AI prompt (token cap). */
 const COACH_PROMPT_MEAL_DETAIL_DAYS = 45;
@@ -53,17 +50,16 @@ function tsFromProfileValue(v) {
 }
 
 /**
- * Start of coach personal-data window: account creation → now (capped at COACH_MAX_LOOKBACK_DAYS).
+ * Start of coach personal-data window: account creation → now (full history).
  * @param {object} [profile]
  * @returns {number} epoch ms
  */
 function resolveCoachContextStartMs(profile) {
   const now = Date.now();
-  const maxBack = now - COACH_MAX_LOOKBACK_DAYS * 86400000;
   const created =
     tsFromProfileValue(profile?.createdAt) ??
     tsFromProfileValue(profile?.onboardingCompletedAt);
-  if (created != null) return Math.max(created, maxBack);
+  if (created != null) return created;
   return now - 7 * 86400000;
 }
 
@@ -354,6 +350,9 @@ async function fetchWorkoutAnalysis(db, userId, startMs) {
   return {
     sessionsLogged,
     sessionDates: [...sessionDays].sort(),
+    firstSessionDate: sessionDays.size ? [...sessionDays].sort()[0] : null,
+    lastSessionDate: sessionDays.size ? [...sessionDays].sort().slice(-1)[0] : null,
+    monthlyTimeline: buildWorkoutMonthlyTimeline([...sessionDays]),
     totalVolume: volumes.length ? volumes.reduce((a, b) => a + b, 0) : null,
     avgRPE,
     volumeTrend: computeVolumeTrend(volumes),
@@ -714,6 +713,92 @@ async function fetchMacroTargets(db, userId) {
   return { calories, protein, carbs, fat };
 }
 
+function buildNutritionMonthlyTimeline(sortedDays) {
+  if (!sortedDays.length) return [];
+
+  const byMonth = {};
+  for (const d of sortedDays) {
+    const month = String(d.date).slice(0, 7);
+    if (!byMonth[month]) {
+      byMonth[month] = { calories: [], protein: [], days: 0 };
+    }
+    byMonth[month].calories.push(d.calories);
+    byMonth[month].protein.push(d.protein);
+    byMonth[month].days += 1;
+  }
+
+  return Object.entries(byMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, stats]) => ({
+      month,
+      daysLogged: stats.days,
+      avgCalories: Math.round(meanOrNull(stats.calories) || 0),
+      avgProtein: Math.round(meanOrNull(stats.protein) || 0),
+    }));
+}
+
+function buildWorkoutMonthlyTimeline(sessionDates) {
+  if (!Array.isArray(sessionDates) || !sessionDates.length) return [];
+
+  const byMonth = {};
+  for (const d of sessionDates) {
+    const month = String(d).slice(0, 7);
+    if (!month || month.length < 7) continue;
+    byMonth[month] = (byMonth[month] || 0) + 1;
+  }
+
+  return Object.entries(byMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, sessions]) => ({ month, sessions }));
+}
+
+/** Early vs recent phase comparison for progress-cycle attribution. */
+function buildProgressCycleSummary(nutritionTimeline, workoutTimeline, weightLog) {
+  const lines = [];
+
+  if (Array.isArray(nutritionTimeline) && nutritionTimeline.length >= 2) {
+    const first = nutritionTimeline[0];
+    const last = nutritionTimeline[nutritionTimeline.length - 1];
+    const calDelta = last.avgCalories - first.avgCalories;
+    const proDelta = last.avgProtein - first.avgProtein;
+    lines.push(
+      `Nutrition: ${first.month} (${first.avgCalories} cal, ${first.avgProtein}g P, ${first.daysLogged} log days) → ${last.month} (${last.avgCalories} cal, ${last.avgProtein}g P, ${last.daysLogged} log days) | Δ ${calDelta >= 0 ? '+' : ''}${calDelta} cal, ${proDelta >= 0 ? '+' : ''}${proDelta}g protein`,
+    );
+  } else if (nutritionTimeline?.length === 1) {
+    const m = nutritionTimeline[0];
+    lines.push(
+      `Nutrition: only ${m.month} logged so far (${m.avgCalories} cal, ${m.avgProtein}g P, ${m.daysLogged} days)`,
+    );
+  }
+
+  if (Array.isArray(workoutTimeline) && workoutTimeline.length >= 2) {
+    const first = workoutTimeline[0];
+    const last = workoutTimeline[workoutTimeline.length - 1];
+    lines.push(
+      `Training: ${first.month} (${first.sessions} sessions) → ${last.month} (${last.sessions} sessions)`,
+    );
+  } else if (workoutTimeline?.length === 1) {
+    lines.push(`Training: ${workoutTimeline[0].month} (${workoutTimeline[0].sessions} sessions)`);
+  }
+
+  if (Array.isArray(weightLog) && weightLog.length >= 2) {
+    const first = weightLog[0];
+    const last = weightLog[weightLog.length - 1];
+    const delta = Math.round((last.weightLbs - first.weightLbs) * 10) / 10;
+    lines.push(
+      `Weight: ${first.date} (${first.weightLbs} lbs) → ${last.date} (${last.weightLbs} lbs) | Δ ${delta >= 0 ? '+' : ''}${delta} lbs`,
+    );
+  } else if (weightLog?.length === 1) {
+    lines.push(`Weight: single entry ${weightLog[0].date} (${weightLog[0].weightLbs} lbs)`);
+  }
+
+  return lines;
+}
+
+function buildMonthlyRollup(sortedDays, detailCutoff) {
+  return buildNutritionMonthlyTimeline(sortedDays.filter((d) => d.date < detailCutoff));
+}
+
 function buildNutritionAnalysis(nutritionDays, contextStartMs) {
   const daysLogged = nutritionDays.length;
   if (!daysLogged) return null;
@@ -743,6 +828,8 @@ function buildNutritionAnalysis(nutritionDays, contextStartMs) {
         foods: d.foods || [],
         meals: d.meals || [],
       })),
+    monthlyRollup: buildMonthlyRollup(sorted, detailCutoff),
+    monthlyTimeline: buildNutritionMonthlyTimeline(sorted),
     totalLoggedDaysAllTime: daysLogged,
   };
 }
@@ -770,6 +857,12 @@ async function aggregateCoachWeeklyData(db, userId, startMs) {
     weightTrend = 'single_entry';
   }
 
+  const progressCycleSummary = buildProgressCycleSummary(
+    nutritionAnalysis?.monthlyTimeline,
+    workoutAnalysis?.monthlyTimeline,
+    weightLog,
+  );
+
   return {
     nutritionAnalysis,
     workoutAnalysis,
@@ -779,9 +872,11 @@ async function aggregateCoachWeeklyData(db, userId, startMs) {
     weightTrend,
     wellnessAnalysis,
     streakData,
+    progressCycleSummary,
     contextMeta: {
       startKey,
       startMs,
+      accountCreatedAt: isoDateKey(new Date(startMs)),
       totalDaysSinceJoin: Math.max(1, Math.ceil((Date.now() - startMs) / 86400000)),
     },
   };
@@ -792,6 +887,9 @@ module.exports = {
   isoDateKey,
   last7DateKeys,
   resolveCoachContextStartMs,
+  buildNutritionMonthlyTimeline,
+  buildWorkoutMonthlyTimeline,
+  buildProgressCycleSummary,
   COACH_PROMPT_MEAL_DETAIL_DAYS,
   COACH_PROMPT_WELLNESS_DETAIL_DAYS,
 };

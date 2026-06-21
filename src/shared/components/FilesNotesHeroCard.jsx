@@ -15,10 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
 const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
-const TOP_BORDER_GRADIENT = ['#C084FC', '#FF6B9D'];
-const CTA_GRADIENT = ['#C084FC', '#FF6B9D'];
-const PURPLE = '#C084FC';
-const CYAN = '#06B6D4';
+/** Dark orange → dark purple — border, CTA, glow */
+const ORANGE_PURPLE_GRADIENT = ['#C2410C', '#4C1D95'];
+const TOP_BORDER_GRADIENT = ORANGE_PURPLE_GRADIENT;
+const CTA_GRADIENT = ORANGE_PURPLE_GRADIENT;
 const PINK = '#FF6B9D';
 const INK = '#0A0A0F';
 
@@ -94,7 +94,7 @@ export default function FilesNotesHeroCard({
             >
               <View style={styles.headerRow}>
                 <Text style={[styles.label, { color: labelColor }]}>{hLabel}</Text>
-                <Ionicons name="folder-open-outline" size={24} color={PURPLE} />
+                <Ionicons name="folder-open-outline" size={24} color={PINK} />
               </View>
 
               {/* Big stat row */}
@@ -112,7 +112,7 @@ export default function FilesNotesHeroCard({
               <View style={styles.pillsRow}>
                 {FEATURES.map(({ icon, label }) => (
                   <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
-                    <Ionicons name={icon} size={12} color={PURPLE} style={styles.pillIcon} />
+                    <Ionicons name={icon} size={12} color={PINK} style={styles.pillIcon} />
                     <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
                       {label}
                     </Text>
@@ -172,10 +172,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     ...Platform.select({
       ios: {
-        shadowColor: '#C084FC',
+        shadowColor: '#C2410C',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.32,
-        shadowRadius: 16,
+        shadowOpacity: 0.38,
+        shadowRadius: 18,
       },
       android: { elevation: 10 },
     }),
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 42,
     fontWeight: '900',
-    color: '#06B6D4',
+    color: PINK,
     lineHeight: 46,
     letterSpacing: -1,
   },

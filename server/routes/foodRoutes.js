@@ -2,7 +2,7 @@
 const path = require('path');
 const admin = require('firebase-admin');
 const axios = require('axios');
-const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/normalizeNutritionData');
+const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/fixFoodNutritionNumbers');
 const { buildRestaurantSearchQuery } = require('../utils/restaurantNutrition');
 const { serperOrganicSearch } = require('../lib/serperWebSearch');
 const {
@@ -17,10 +17,11 @@ const {
   itemMatchesQuery,
   isRetailFoodNoise,
   significantQueryTokens,
+  filterFoodSearchRows,
   searchResultsDocId,
   rankSerperFoodResultRows,
 } = require('../nutritionSearchHelpers');
-const { resolveFoodBrandLabel, findConsumerBrandInQuery } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { resolveFoodBrandLabel, findConsumerBrandInQuery } = require('../../src/nutrition/food-details/cleanFoodBrandName');
 const {
   cleanSerperFoodTitle,
   displayNameForSerperRow,
@@ -28,7 +29,8 @@ const {
   isPlausibleNutritionRow,
   dedupeFoodRows,
   formatUserQueryAsFoodName,
-} = require('../../src/nutrition/food-search/formatFoodSearchTitle');
+  applyFoodCardPresentationToRows,
+} = require('../../src/nutrition/food-search/cleanFoodCardLabels');
 const { lookupBarcodeFatSecret, fatSecretConfigured, searchFoodsFatSecret } = require('../lib/fatSecretClient');
 const { guardBarcodeResult } = require('../lib/barcodeMerge');
 const { variableWeightBarcodeHint } = require('../lib/variableWeightBarcode');
@@ -55,12 +57,8 @@ function roundSearchMacro(v, decimals = 0) {
 }
 
 function sanitizeSearchResultRows(rows, userQuery = '') {
-  return (Array.isArray(rows) ? rows : []).map((it) => {
-    const rawName = String(it.food_name || it.name || '').trim();
-    const foodName =
-      it.source === 'serper' && userQuery
-        ? cleanSerperFoodTitle(rawName, userQuery)
-        : rawName;
+  return applyFoodCardPresentationToRows(Array.isArray(rows) ? rows : [], userQuery).map((it) => {
+    const foodName = String(it.food_name || it.name || '').trim();
     const brand = resolveFoodBrandLabel(foodName, it.brand_name || it.brand || '');
     const cal = roundSearchMacro(it.nf_calories ?? it.calories, 0);
     const protein = roundSearchMacro(it.nf_protein ?? it.protein, 1);
@@ -69,7 +67,7 @@ function sanitizeSearchResultRows(rows, userQuery = '') {
     return {
       ...it,
       food_name: foodName || it.food_name,
-      name: String(it.name || foodName || '').trim() || foodName,
+      name: foodName || it.name,
       brand_name: brand,
       brand,
       nf_calories: cal,
@@ -1177,43 +1175,30 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   }
 
   if (requiredConsumerBrand && Array.isArray(results) && results.length) {
-    const strict = results.filter((it) => {
-      const text = itemText(it);
-      if (isRetailFoodNoise(text)) return false;
-      return brandMatchesItem(text, requiredConsumerBrand);
-    });
-    if (strict.length > 0) {
-      results = rankResults(strict);
-      console.log('[Food Search] Brand/token filter:', strict.length, 'rows for', query);
-    } else {
-      results = [];
+    const before = results.length;
+    results = filterFoodSearchRows(query, results, limit);
+    console.log('[Food Search] Shared relevance filter:', before, '→', results.length, 'for', query);
+    if (results.length === 0) {
       searchHint = `No ${requiredConsumerBrand} products matched. Try scanning the barcode or a shorter product name.`;
-      console.log('[Food Search] No rows matched required brand — returning empty for', query);
     }
-  }
-
-  if (menuStyleQuery && Array.isArray(results) && results.length) {
-    const strict = results.filter((it) => {
-      const text = itemText(it);
-      if (isRetailFoodNoise(text)) return false;
-      if (it.source === 'serper') {
-        const macros = {
-          calories: it.nf_calories ?? it.calories,
-          protein: it.nf_protein ?? it.protein,
-          carbs: it.nf_total_carbohydrate ?? it.carbs,
-          fat: it.nf_total_fat ?? it.fat,
-        };
-        if (!isPlausibleNutritionRow(macros)) return false;
-        if (isJunkWebSearchTitle(it.food_name || it.name)) return false;
-        return true;
-      }
-      if (!itemMatchesQuery(text, query)) return false;
+  } else if (menuStyleQuery && Array.isArray(results) && results.length) {
+    const serperSafe = results.filter((it) => {
+      if (it.source !== 'serper') return true;
+      const macros = {
+        calories: it.nf_calories ?? it.calories,
+        protein: it.nf_protein ?? it.protein,
+        carbs: it.nf_total_carbohydrate ?? it.carbs,
+        fat: it.nf_total_fat ?? it.fat,
+      };
+      if (!isPlausibleNutritionRow(macros)) return false;
+      if (isJunkWebSearchTitle(it.food_name || it.name)) return false;
       return true;
     });
-    if (strict.length > 0) {
-      results = rankResults(strict);
-      console.log('[Food Search] Query-token filter:', strict.length, 'relevant rows for', query);
-    }
+    const before = serperSafe.length;
+    results = filterFoodSearchRows(query, serperSafe, limit);
+    console.log('[Food Search] Menu relevance filter:', before, '→', results.length, 'for', query);
+  } else if (Array.isArray(results) && results.length > limit) {
+    results = filterFoodSearchRows(query, results, limit);
   }
 
   let sliced = (results || []).slice(0, limit);

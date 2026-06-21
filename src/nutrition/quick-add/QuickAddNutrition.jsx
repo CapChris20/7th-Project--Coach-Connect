@@ -12,8 +12,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { getRecentFoods } from '../daily-log/logFoodToFirestore';
+import { makeReadableFoodTitle } from '../food-search/makeReadableFoodTitle';
 
 const initialMacros = {
   protein: '',
@@ -103,8 +104,9 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
   const handleLog = () => {
     if (!isValid) return;
+    const { name } = makeReadableFoodTitle({ name: foodName.trim(), source: 'manual' });
     const entry = {
-      name: foodName.trim(),
+      name,
       quantity,
       calories: parseFloat(calories),
       ...macros,

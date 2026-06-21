@@ -4,7 +4,7 @@ const {
   trainerFirstName,
   gradGradient,
   DEFAULT_FILTERS,
-} = require('../../client/marketplace/marketplaceFilters');
+} = require('../../client-app/marketplace/marketplaceFilters');
 
 describe('marketplace filter utils', () => {
   test('normalizes trainer shape', () => {

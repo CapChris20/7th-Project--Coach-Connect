@@ -9,7 +9,7 @@ const mockOnSnapshot = jest.fn();
 const mockPostRemotePushNotify = jest.fn();
 const mockGetDocsWithIndexFallback = jest.fn();
 
-jest.mock('../../app/config', () => ({ db: {} }));
+jest.mock('../../app-start/config', () => ({ db: {} }));
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn((...s) => ({ kind: 'collection', path: s.join('/') })),
@@ -44,7 +44,7 @@ const {
   markMessagesAsRead,
   subscribeToMessages,
   CLIENT_REQUEST_TYPES,
-} = require('../../ai/trainer-messaging/sendTrainerNotification');
+} = require('../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification');
 
 beforeEach(() => {
   jest.clearAllMocks();

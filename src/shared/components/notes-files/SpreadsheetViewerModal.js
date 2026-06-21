@@ -12,7 +12,7 @@
  * SpreadsheetViewerModal — read-only viewer for uploaded .csv / .xlsx files.
  *
  * NOTE: This is NOT SpreadsheetEditorModal (trainer edit UI lives at
- * src/trainer/documents/SpreadsheetEditorModal.js). Clients and trainers
+ * src/trainer-app/documents/SpreadsheetEditorModal.js). Clients and trainers
  * use this modal to preview file attachments from a download URL.
  *
  * Flow:

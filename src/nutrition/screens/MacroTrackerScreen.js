@@ -10,8 +10,8 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useTheme } from '../../shared/ui/ThemeContext';
-import { auth } from '../../app/config';
+import { useTheme } from '../../shared-ui/ThemeContext';
+import { auth } from '../../app-start/config';
 import {
   getDailyGoals,
   getFoodLogsForDate,

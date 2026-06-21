@@ -4,7 +4,7 @@
  */
 
 const axios = require('axios');
-const { resolveBarcodeBrand: resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { resolveBarcodeBrand: resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
 
 const SERPER_JUNK_PATTERN =
   /barcode tracker|fooddata central|gs1 us|dietagram|calorie content of products|search by barcode/i;

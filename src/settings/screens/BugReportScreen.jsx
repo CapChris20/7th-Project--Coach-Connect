@@ -11,13 +11,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto';
 import { getApiBase } from '../../shared/api/baseUrl';
 import { getAuth } from 'firebase/auth';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -60,7 +60,7 @@ function openBugMail() {
   openSupportMailto({ subject: 'Bug report — Coach Connect', body });
 }
 
-export default function BugReportScreen({ onClose }) {
+export default function BugReportScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
   const supportEmail = getSupportEmail();
   const t = getCardTokens(isDark);
@@ -154,7 +154,7 @@ export default function BugReportScreen({ onClose }) {
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scroll: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 24 },
+    scroll: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24 },
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
       borderRadius: 14,
@@ -360,8 +360,6 @@ export default function BugReportScreen({ onClose }) {
           </View>
         </Animated.View>
       </ScrollView>
-
-      <BottomNavBar activeTabKey="home" />
     </SafeAreaView>
   );
 }

@@ -11,10 +11,10 @@
 import React, { useRef } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -49,7 +49,7 @@ function GradientCard({ borderColors, style, innerStyle, children }) {
   );
 }
 
-export default function TermsOfServiceScreen({ onClose }) {
+export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
   const supportEmail = getSupportEmail();
   const t = getCardTokens(isDark);
@@ -57,7 +57,7 @@ export default function TermsOfServiceScreen({ onClose }) {
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scrollContent: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 24 },
+    scrollContent: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24 },
 
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
@@ -238,8 +238,6 @@ export default function TermsOfServiceScreen({ onClose }) {
           </Text>
         </Animated.View>
       </ScrollView>
-
-      <BottomNavBar activeTabKey="home" />
     </SafeAreaView>
   );
 }

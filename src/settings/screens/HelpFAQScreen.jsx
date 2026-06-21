@@ -11,10 +11,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -159,7 +159,7 @@ const FAQ_SECTIONS = [
   },
 ];
 
-export default function HelpFAQScreen({ onClose }) {
+export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
   const supportEmail = getSupportEmail();
   const [openKey, setOpenKey] = useState(null);
@@ -184,7 +184,7 @@ export default function HelpFAQScreen({ onClose }) {
     scrollContent: {
       paddingHorizontal: 16,
       paddingVertical: 16,
-      paddingBottom: 24,
+      paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24,
     },
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
@@ -309,8 +309,6 @@ export default function HelpFAQScreen({ onClose }) {
           </View>
         </Animated.View>
       </ScrollView>
-
-      <BottomNavBar activeTabKey="home" />
     </SafeAreaView>
   );
 }

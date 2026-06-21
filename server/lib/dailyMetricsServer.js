@@ -1,7 +1,7 @@
 /**
  * Server-side daily metrics — canonical `dailyLogs`, mirror `daily_tracking`.
  */
-const { trackingMirrorFromLogs } = require('../../src/shared/daily-metrics/dailyMetricsParse.cjs');
+const { trackingMirrorFromLogs } = require('../../src/metrics/daily-metrics/parseUserDailyMetrics.js');
 
 async function mergeUserDailyMetrics(db, userId, dateKey, { logs = {}, tracking = {} }, serverTs) {
   const ts = serverTs();

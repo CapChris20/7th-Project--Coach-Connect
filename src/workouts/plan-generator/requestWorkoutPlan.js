@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { auth, db } from '../../app/config';
+import { auth, db } from '../../app-start/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { getCurrentWorkoutPlan } from '../active-workout/workoutService';

@@ -10,8 +10,8 @@
  */
 // Fix data leakage by clearing all cached data when user switches
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../app/config';
-import { clearPushTokensForUid } from '../shared/notifications/manageNotifications';
+import { auth } from '../app-start/config';
+import { clearPushTokensForUid } from '../notifications/manageNotifications';
 
 const CACHE_KEYS_TO_CLEAR = [
   // Legacy global AI toggle — per-user preference lives in `user_ai_enabled_<uid>` (see AIContext).

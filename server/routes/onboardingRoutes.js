@@ -1,5 +1,6 @@
 /** Onboarding API (invite codes, complete) */
 const admin = require('firebase-admin');
+const { writeTrainerClientLinks } = require('../lib/onboardingCompleteLinks');
 
 function registerOnboardingRoutes(app, deps) {
   const { verifyFirebaseBearerToken } = deps;
@@ -206,31 +207,10 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
         return res.json({ success: true, linked: false, reason: 'Invalid trainerId' });
       }
 
-      await db
-        .collection('trainer_clients')
-        .doc(trainerId)
-        .collection('clients')
-        .doc(uid)
-        .set(
-          {
-            id: uid,
-            joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: 'active',
-          },
-          { merge: true }
-        );
-
-      await db
-        .collection('trainer_client_links')
-        .doc(`${trainerId}_${uid}`)
-        .set(
-          {
-            trainerId,
-            clientId: uid,
-            joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+      await writeTrainerClientLinks(db, trainerId, uid, {
+        serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+        merge: true,
+      });
     }
 
     return res.json({ success: true, role: resolvedRole });

@@ -1,6 +1,7 @@
 /**
- * AI Coach web-search routing (server). Keep in sync with src/ai/chat-api/detectWebSearchRequest.js.
+ * AI Coach web-search routing (server). Keep in sync with src/ai-coach/server-logic/chat-api/shouldUseWebSearch.js.
  */
+const { COACH_WEB_SEARCH_FORMAT } = require('./coachVoice');
 
 /** User wants their CoachConnect logs — not a public web lookup. */
 function isPersonalDataLookup(userText) {
@@ -209,7 +210,7 @@ function hasRecentAssistantReply(messages) {
 }
 
 /** Short meta follow-up after the coach already replied — must not re-search the web. */
-function isMetaSourceFollowUp(userText) {
+function isMetaSourceFollowUp(userText, messages = null) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t || t.length > 300) return false;
 
@@ -226,7 +227,7 @@ function isMetaSourceFollowUp(userText) {
   return (
     (aboutPrior && (asksSources || asksSaid || researchPhrase || wantsDetail)) ||
     (researchPhrase && aboutPrior) ||
-    (asksSources && asksSaid && t.length < 220)
+    (hasRecentAssistantReply(messages) && asksSources && asksSaid && t.length < 220)
   );
 }
 
@@ -251,8 +252,9 @@ function isSourceListFollowUp(userText, messages = null) {
 
 /** Follow-up about the coach's prior answer/sources — never a fresh web search. */
 function isWebAnswerFollowUp(userText, messages = null) {
+  if (shouldUseWebAuto(userText) || shouldUsePerplexity(userText)) return false;
   if (isWebSourceQuoteFollowUp(userText) || isWebThreadClarifyFollowUp(userText)) return true;
-  if (isMetaSourceFollowUp(userText)) return true;
+  if (isMetaSourceFollowUp(userText, messages)) return true;
   if (isSourceListFollowUp(userText, messages)) return true;
 
   if (!hasRecentAssistantReply(messages)) return false;
@@ -518,20 +520,20 @@ function resolveCoachWebSearchGate({ lastUserMsg, messages, rawQuery }) {
 
 function stripInlineWebCitations(text) {
   return String(text || '')
-    .replace(/\[\d+\]/g, '')
-    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*\[\d+\]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
-const WEB_SEARCH_SYSTEM_APPEND = `
+const WEB_SEARCH_SYSTEM_APPEND = `${COACH_WEB_SEARCH_FORMAT}
 
 WEB SEARCH MODE (FITNESS COACH ONLY):
 You have live web results in this prompt (Perplexity or Serper snippets). Use them ONLY for training, nutrition, recovery, supplements, and exercise-science topics.
 IGNORE generic pages about "how to search the web", Google Help, YouTube tutorials, or anything unrelated to fitness/nutrition.
-Mention source names naturally in your sentences when you cite a specific claim — still no bullets, bold, or lists.
-You DID search the web for this reply — you may say so briefly.
+You DID search the web for this reply — you may say so briefly in the Takeaway (one short phrase max).
 Do not mention reviewing their app logs, weekly summary, or personal tracking unless they explicitly asked about their own data in the same message.
-Same coach voice: direct, casual, lead with the takeaway.`;
+Follow COACH_WEB_SEARCH_FORMAT exactly: opening line, ## What it is, ## Key findings, ## Practical notes, ## What this means for you, ## Next steps, ## Suggested follow-ups (3 questions).
+Cite sources as [Source Name] after claims — not numbered [1][2] footnotes.`;
 
 const NO_WEB_SEARCH_HONESTY_APPEND = `
 

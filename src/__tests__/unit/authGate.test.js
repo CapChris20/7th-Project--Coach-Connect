@@ -2,7 +2,7 @@ import React from 'react';
 
 let authStateCallback;
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   auth: {},
   db: {},
 }));
@@ -28,7 +28,7 @@ jest.mock('../../utils/syncErrorsToServer', () => ({
   initializeErrorSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../ai/chat-api/chatStorageService', () => ({
+jest.mock('../../ai-coach/server-logic/chat-api/chatStorageService', () => ({
   clearOldSharedChats: jest.fn(() => Promise.resolve()),
 }));
 
@@ -40,7 +40,7 @@ jest.mock('../../shared/api/syncOnboardingToServer', () => ({
   flushPendingOnboardingSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../shared/notifications/manageNotifications', () => ({
+jest.mock('../../notifications/manageNotifications', () => ({
   clearPushTokensForUid: jest.fn(() => Promise.resolve()),
 }));
 
@@ -49,17 +49,17 @@ jest.mock('../../shared/api/logErrorToServer', () => ({
   default: { warn: jest.fn(), error: jest.fn() },
 }));
 
-jest.mock('../../auth/AuthScreen', () => () => null);
-jest.mock('../../auth/ForgotPasswordScreen', () => () => null);
-jest.mock('../../auth/OnboardingScreen', () => () => null);
+jest.mock('../../auth/LoginScreen', () => () => null);
+jest.mock('../../auth/ResetPasswordScreen', () => () => null);
+jest.mock('../../auth/OnboardingWizardScreen', () => () => null);
 jest.mock('../../shared/components/shell/AppLoadingScreen', () => () => null);
 
-jest.mock('../../app/TrainerApp', () => {
+jest.mock('../../app-start/TrainerApp', () => {
   const ReactLocal = require('react');
   return () => ReactLocal.createElement('TrainerApp', { testID: 'trainer-app' }, null);
 });
 
-jest.mock('../../app/ClientApp', () => {
+jest.mock('../../app-start/ClientApp', () => {
   const ReactLocal = require('react');
   return () => ReactLocal.createElement('ClientApp', { testID: 'client-app' }, null);
 });
@@ -68,7 +68,7 @@ const {
   normalizeAppRole,
   profileNeedsOnboarding,
   isLikelyNewFirebaseUser,
-} = require('../../app/AuthGate');
+} = require('../../app-start/AuthGate');
 
 function firebaseUserWithSignInGap(createdMsAgo, lastSignInMsAgo = createdMsAgo) {
   const now = Date.now();

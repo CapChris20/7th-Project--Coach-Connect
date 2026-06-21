@@ -45,6 +45,7 @@ const { fetchOpenWorkoutPlanPayload, fetchWorkoutPlanContext } = require('./lib/
 const { parseBookSessionFields, formatSessionLabel } = require('./lib/bookSessionParse');
 const {
   COACH_VOICE_DIRECTIVE,
+  COACH_WEB_SEARCH_FORMAT,
   COACH_TOOL_VOICE_NOTE,
   COACH_DATA_INTEGRITY_RULE,
 } = require('./lib/coachVoice');
@@ -52,7 +53,7 @@ const logger = require('./lib/logger');
 const { initServerMonitoring } = require('./lib/monitoring');
 initServerMonitoring();
 const { mergeCoachToolCalls } = require('./lib/inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../src/ai/tools/validateCoachToolProposal');
+const { filterValidCoachToolProposals } = require('../src/ai-coach/server-logic/tools/shouldShowCoachAction');
 const { assertCanSendPushNotification } = require('./lib/pushNotificationAuth');
 const { buildWorkoutSystemPrompt, buildWorkoutUserPrompt } = require('./lib/workoutPlanPrompt');
 const { estimateCost, isWithinMonthlyLimit } = require('./config/apiCosts');
@@ -86,6 +87,8 @@ const { registerOnboardingRoutes } = require('./routes/onboardingRoutes');
 const { registerTrainerRoutes } = require('./routes/trainerRoutes');
 const { registerWorkoutRoutes } = require('./routes/workoutRoutes');
 const { registerFoodRoutes } = require('./routes/foodRoutes');
+const { registerNutritionSearchRoutes } = require('./routes/nutritionSearchRoutes');
+const { createTokenBucketLimiter } = require('./middleware/tokenBucketRateLimit');
 const { registerDevRoutes } = require('./routes/devRoutes');
 const { registerMarketplaceRoutes } = require('./routes/marketplaceRoutes');
 const { registerAuthRoutes } = require('./routes/authRoutes');
@@ -130,7 +133,7 @@ function safeJsonParse(s) {
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply: stripToolJsonFromReply,
-} = require('../src/shared/coach-tools/parseCoachToolCalls');
+} = require('../src/ai-coach/tools/parseCoachToolCalls');
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
@@ -238,6 +241,12 @@ const foodSearchLimiter = rateLimit({
   message: { error: 'Food search rate limit exceeded.' },
 });
 
+const nutritionSearchLimiter = createTokenBucketLimiter({
+  capacity: 100,
+  refillIntervalMs: 60 * 1000,
+  message: { error: 'Nutrition search rate limit exceeded. Max 100 requests per minute.' },
+});
+
 app.use(generalLimiter);
 
 // Apply strict limiters to specific routes
@@ -262,6 +271,7 @@ app.use('/api/food/search', foodSearchLimiter);
 app.use('/api/food/barcode', foodSearchLimiter);
 app.use('/api/nutrition/restaurant', foodSearchLimiter);
 app.use('/api/food/usda', foodSearchLimiter);
+app.use('/api/nutrition/search', nutritionSearchLimiter);
 app.use('/api/youtube/search', generalLimiter);
 
 function resolveDeepSeekKey() {
@@ -301,7 +311,7 @@ Keep replies tight. No essays unless they asked for depth.
 DATA:
 ${
   generalMode
-    ? `This turn is a general coaching question (food yes/no, sodium, supplements, workouts for a goal, form, programming). Answer ONLY what they asked — short and direct. Do NOT mention their app food log, calorie averages, log consistency, meals they ate, workout gaps, or sleep unless they explicitly asked about their logs or personal progress. Do not guilt, nag, or pivot with "your real problem is..." Do not invent log data. You may lightly reference their stated goal or training level from profile when helpful. If they ask what they logged or what's in their nutrition diary, say: "Ask me again with something like 'what did I eat today?' and I'll pull your Nutrition log" — do NOT claim you can see or cannot see log data you weren't given.`
+    ? `This turn is a general coaching question (food yes/no, sodium, supplements, workouts for a goal, form, programming). Answer ONLY what they asked — short and direct. Do NOT mention their app food log, calorie averages, log consistency, meals they ate, workout gaps, or sleep unless they explicitly asked about their logs or personal progress. Do not guilt, nag, or pivot with "your real problem is..." Do not invent log data. You may lightly reference their stated goal or training level from profile when helpful. If they ask about their nutrition log or what they ate and you do NOT have VERIFIED_FOOD_LOG_JSON in this prompt, say the app can pull their Nutrition log when they ask specifically (e.g. "what did I eat today?") — never say their diary is a separate system or that Coach Connect cannot access it.`
     : `When you have their weekly summary or food log in this prompt, use real numbers and dates. Never ask them to paste a log you can already see. If a day isn't in the log, say they didn't log that day.`
 }
 
@@ -392,6 +402,30 @@ ${COACH_DATA_INTEGRITY_RULE}`;
     systemPrompt += `\n\nUSER PROFILE:\n${JSON.stringify(slim, null, 2)}`;
   }
   return systemPrompt;
+}
+
+function formatMonthlyNutritionLines(monthlyRollup) {
+  if (!Array.isArray(monthlyRollup) || !monthlyRollup.length) return '';
+  return monthlyRollup
+    .map(
+      (m) =>
+        `- ${m.month}: ${m.daysLogged} days logged, ${m.avgCalories} cal/day avg, ${m.avgProtein}g protein avg`,
+    )
+    .join('\n');
+}
+
+function formatWorkoutMonthlyLines(workoutTimeline) {
+  if (!Array.isArray(workoutTimeline) || !workoutTimeline.length) return '';
+  return workoutTimeline.map((m) => `- ${m.month}: ${m.sessions} sessions`).join('\n');
+}
+
+function formatProgressCycleBlock(progressCycleSummary, accountCreatedAt) {
+  if (!Array.isArray(progressCycleSummary) || !progressCycleSummary.length) {
+    return accountCreatedAt
+      ? `Progress cycle: account since ${accountCreatedAt} — not enough logged history yet to compare phases.`
+      : '';
+  }
+  return `Progress cycle (since account start${accountCreatedAt ? ` ${accountCreatedAt}` : ''}):\n${progressCycleSummary.map((l) => `- ${l}`).join('\n')}`;
 }
 
 function formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays } = {}) {
@@ -540,11 +574,14 @@ function buildWeeklyContextSystemPrompt(weeklyContext) {
     sessions, sessionDates, totalVol, avgRPE,
     avgHours, sleepQuality, isDepleted,
     streak, weightTrend, volumeTrend,
-    dailyBreakdown, weightLog,
+    dailyBreakdown, monthlyRollup, monthlyTimeline, workoutMonthlyTimeline,
+    progressCycleSummary, accountCreatedAt,
+    weightLog,
     wellness,
     workoutPlan,
     notesAndFiles,
     trainerDocuments,
+    firstSessionDate, lastSessionDate,
   } = weeklyContext || {};
 
   const sessionDateLine =
@@ -569,17 +606,20 @@ function buildWeeklyContextSystemPrompt(weeklyContext) {
 
   const streakLine = streak > 0 ? `\n\nStreak ${streak} days.` : '';
   const historySpan = totalDaysSinceJoin || 7;
+  const mealDetailDays = Array.isArray(dailyBreakdown) ? dailyBreakdown.length : 0;
   const foodLogMeta =
-    totalLoggedDaysAllTime > daysLogged
-      ? ` (${totalLoggedDaysAllTime} total logged days since joining; meal detail below is the most recent ${daysLogged} days)`
+    totalLoggedDaysAllTime > mealDetailDays
+      ? ` (${totalLoggedDaysAllTime} total logged days since joining; meal detail below is the most recent ${mealDetailDays} days)`
       : '';
+
+  const nutritionTimeline = monthlyTimeline?.length ? monthlyTimeline : monthlyRollup;
 
   return `You are their CoachConnect coach. Everything below is real data from their app — use it, don't ask them to paste logs.
 
 ${COACH_VOICE_DIRECTIVE}
 
 DATA RULES:
-The daily nutrition log below is what they actually logged in the app. Lifetime averages cover their full history since joining. If a date is listed with foods, reference those meals in normal sentences. If a date is missing from the recent detail section, they didn't log that day — say so plainly. Never claim you can't see their food log when data is below.
+This prompt covers their FULL account history since they joined${accountCreatedAt ? ` (${accountCreatedAt})` : ''}. Lifetime averages and monthly timelines span from first log to today. The daily food log is meal-level detail for the most recent ${mealDetailDays || 45} days only — for older dates use monthly timeline + lifetime averages. When discussing progress, attribute changes to specific months/phases using the progress cycle block — not vague "recently". Never claim you can't see their food log when data is below.
 
 CLIENT: ${age}yo, ${weight}lbs, ${height}" | goal ${goal} | ${trainingLevel}
 Targets: ${targetCal} cal, ${targetP}g protein, ${targetC}g carbs, ${targetF}g fat
@@ -587,8 +627,10 @@ Targets: ${targetCal} cal, ${targetP}g protein, ${targetC}g carbs, ${targetF}g f
 ACCOUNT HISTORY (${historySpan} days since joining):
 Nutrition lifetime avg ${avgCal} cal vs ${targetCal} target (${calGap > 0 ? '+' : ''}${calGap}), protein ${avgP}g vs ${targetP}g (${proGap > 0 ? '+' : ''}${proGap}), carbs ${avgC}g, fat ${avgF}g. Logged on ${totalLoggedDaysAllTime || daysLogged || 0} days (${consistency}% of days since joining).${firstLogDate ? ` First log: ${firstLogDate}.` : ''}${lastLogDate ? ` Last log: ${lastLogDate}.` : ''} Calorie trend vs target: ${avgCal > targetCal ? 'over' : avgCal < targetCal ? 'under' : 'on target'}.
 
-Recent daily food log${foodLogMeta}:
-${formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays: daysLogged })}
+${formatProgressCycleBlock(progressCycleSummary, accountCreatedAt)}
+
+${nutritionTimeline?.length ? `Nutrition by month (full history since first log):\n${formatMonthlyNutritionLines(nutritionTimeline)}\n\n` : ''}${workoutMonthlyTimeline?.length ? `Training by month (full history${firstSessionDate && lastSessionDate ? `, ${firstSessionDate} → ${lastSessionDate}` : ''}):\n${formatWorkoutMonthlyLines(workoutMonthlyTimeline)}\n\n` : ''}Recent daily food log${foodLogMeta}:
+${formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays: mealDetailDays })}
 
 Weight (trend ${weightTrend}):
 ${formatWeightLogLines(weightLog)}
@@ -600,7 +642,7 @@ Recovery: sleep ~${avgHours}h/night${sleepDeficit ? `, about ${sleepDeficit}h un
 Weight trend ${weightTrend}.
 
 COACHING:
-Lead with what matters most for their goal. Only cite their logged numbers when the user asked about their progress, logs, habits, or personal situation — not for general fitness/nutrition questions (sodium, protein timing, supplements, form). If they asked a general question, answer it directly without dragging in calorie averages or log gaps.
+When they ask about progress, results, or "since I started", tie outcomes to the monthly timelines and progress cycle block above — name the phase/month where behavior shifted. Only cite their logged numbers when the user asked about their progress, logs, habits, or personal situation — not for general fitness/nutrition questions (sodium, protein timing, supplements, form). If they asked a general question, answer it directly without dragging in calorie averages or log gaps.
 
 YOUR JOB:
 - Give information and answer questions
@@ -1233,7 +1275,7 @@ async function callPerplexity({ apiKey, systemPrompt, messages }) {
     model: 'pplx-70b-online',
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.7,
-    max_tokens: 700,
+    max_tokens: 1200,
   };
 
   const resp = await axios.post(url, payload, {
@@ -1297,7 +1339,7 @@ async function callClaude({ systemPrompt, messages }) {
 
   const payload = {
     model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620',
-    max_tokens: 700,
+    max_tokens: 1200,
     temperature: 0.7,
     system: String(systemPrompt || ''),
     messages: anthropicMessages,
@@ -1742,7 +1784,7 @@ async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     temperature: 0.7,
-    max_tokens: 700,
+    max_tokens: 1200,
   };
 
   const resp = await axios.post(url, payload, {
@@ -1887,11 +1929,12 @@ function buildPerplexityWebMessages(messages, searchQuery) {
 }
 
 const PERPLEXITY_WEB_SYSTEM = `${COACH_VOICE_DIRECTIVE}
+${COACH_WEB_SEARCH_FORMAT}
 
 WEB SEARCH MODE:
 You have live internet access. Search the web and answer using current sources.
-Mention source names naturally when citing specific claims.
-Lead with the takeaway — direct coach voice, no bullet lists.`;
+Follow the WEB SEARCH REPLY FORMAT above — opening line, ## What it is, ## Key findings, ## Practical notes, ## Suggested follow-ups. Never one long paragraph.
+Cite sources as [Source Name] after claims.`;
 
 async function callPerplexityCoach({ apiKey, systemPrompt, messages, searchQuery = '' }) {
   const url = 'https://api.perplexity.ai/chat/completions';
@@ -1903,7 +1946,7 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages, searchQuery
       ...perplexityMessages,
     ],
     temperature: 0.5,
-    max_tokens: 900,
+    max_tokens: 1400,
     return_citations: true,
   };
 
@@ -1939,13 +1982,14 @@ async function buildCoachPromptForUser(
   coachOptions = {}
 ) {
   let includeWeekly;
-  if (coachOptions.includePersonalData === false) {
-    includeWeekly = false;
-  } else if (coachOptions.includePersonalData === true && targetUid) {
+  if (coachOptions.includePersonalData === true && targetUid) {
     includeWeekly = true;
   } else {
     includeWeekly = targetUid
-      ? shouldIncludeWeeklyContextInCoachPrompt(lastUserMessage)
+      ? shouldIncludeWeeklyContextInCoachPrompt(
+          lastUserMessage,
+          coachOptions.conversationMessages,
+        )
       : false;
   }
 
@@ -2004,12 +2048,20 @@ async function buildCoachPromptForUser(
       avgC: Math.round(Number(wc?.nutritionAnalysis?.avgCarbs) || 0),
       avgF: Math.round(Number(wc?.nutritionAnalysis?.avgFat) || 0),
       consistency: Number(wc?.nutritionAnalysis?.consistencyScore) || 0,
-      daysLogged: Number(wc?.nutritionAnalysis?.dailyBreakdown?.length) || 0,
+      daysLogged: Number(wc?.nutritionAnalysis?.totalLoggedDaysAllTime) || 0,
+      mealDetailDays: Number(wc?.nutritionAnalysis?.dailyBreakdown?.length) || 0,
       totalDaysSinceJoin: Number(wc?.contextMeta?.totalDaysSinceJoin) || 7,
+      accountCreatedAt: wc?.contextMeta?.accountCreatedAt || null,
       totalLoggedDaysAllTime: Number(wc?.nutritionAnalysis?.totalLoggedDaysAllTime) || Number(wc?.nutritionAnalysis?.daysLogged) || 0,
       firstLogDate: wc?.nutritionAnalysis?.firstLogDate || null,
       lastLogDate: wc?.nutritionAnalysis?.lastLogDate || null,
       dailyBreakdown: wc?.nutritionAnalysis?.dailyBreakdown || [],
+      monthlyRollup: wc?.nutritionAnalysis?.monthlyRollup || [],
+      monthlyTimeline: wc?.nutritionAnalysis?.monthlyTimeline || [],
+      workoutMonthlyTimeline: wc?.workoutAnalysis?.monthlyTimeline || [],
+      firstSessionDate: wc?.workoutAnalysis?.firstSessionDate || null,
+      lastSessionDate: wc?.workoutAnalysis?.lastSessionDate || null,
+      progressCycleSummary: wc?.progressCycleSummary || [],
 
       sessions: Number(wc?.workoutAnalysis?.sessionsLogged) || 0,
       sessionDates: wc?.workoutAnalysis?.sessionDates || [],
@@ -2199,7 +2251,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
 
   const promptOptions = {
     ...(options || {}),
-    includePersonalData: invokeWeb || userWantsWeb ? false : options?.includePersonalData,
+    conversationMessages: normalized,
   };
   let { systemPrompt, weeklyContext, usedWeeklyContext } = await buildCoachPromptForUser(
     targetUid,
@@ -2439,6 +2491,7 @@ registerOnboardingRoutes(app, routeDeps);
 registerTrainerRoutes(app, routeDeps);
 registerWorkoutRoutes(app, routeDeps);
 registerFoodRoutes(app, routeDeps);
+registerNutritionSearchRoutes(app, routeDeps);
 registerAuthRoutes(app);
 registerDevRoutes(app, routeDeps);
 registerMarketplaceRoutes(app);

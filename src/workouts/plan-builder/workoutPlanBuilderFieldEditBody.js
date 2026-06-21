@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import ExerciseDislikePicker from '../exercise-library/ExerciseDislikePicker';
 
 /**
  * Inline edit bodies for workout plan builder rows — logic copied from WorkoutPlanGeneratorScreen.
@@ -379,14 +380,18 @@ export default function WorkoutPlanBuilderFieldEditBody({
     case 'exercisesDislike':
       return (
         <View style={styles.editFields}>
-          <TextInput
-            style={[styles.editTextArea, { color: ui.text, backgroundColor: ui.inputBg, borderColor: ui.border }]}
+          <ExerciseDislikePicker
+            t={{
+              cardBg: ui.inputBg,
+              cardBorder: ui.border,
+              cardSelectedBg: ui.optionSelectedBg,
+              cardSelectedBorder: ui.optionSelectedBg,
+              textPrimary: ui.text,
+              textSecondary: ui.muted,
+            }}
             value={onboardingData.exercisesDislike || ''}
-            onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: text }))}
-            placeholder="e.g. burpees, running..."
-            placeholderTextColor={ui.muted}
-            multiline
-            textAlignVertical="top"
+            onChange={(next) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: next }))}
+            animatePills
           />
         </View>
       );

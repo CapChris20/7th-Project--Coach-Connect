@@ -28,8 +28,8 @@ const {
   extractMultipleSerperRowsFromOrganic,
   fixTypoForSerperQuery,
 } = require('../server/nutritionSearchHelpers');
-const { isPlausibleNutritionRow } = require('../src/nutrition/food-search/formatFoodSearchTitle');
-const { scoreOrganicNutritionHit } = require('../src/nutrition/food-search/validateRestaurantResult');
+const { isPlausibleNutritionRow } = require('../src/nutrition/food-search/cleanFoodCardLabels');
+const { scoreOrganicNutritionHit } = require('../src/nutrition/food-search/isReliableRestaurantFood');
 
 const USER_QUERY = 'cottage inn large cheese pizza';
 const EXPECTED_CAL = 240;

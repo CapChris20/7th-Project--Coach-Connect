@@ -9,7 +9,7 @@ const mockGetDoc = jest.fn();
 const mockAddDoc = jest.fn(() => Promise.resolve({ id: 'action-1' }));
 const mockDeleteDoc = jest.fn(() => Promise.resolve());
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   auth: {
     currentUser: {
       uid: TEST_UID,
@@ -19,7 +19,7 @@ jest.mock('../../app/config', () => ({
   db: {},
 }));
 
-jest.mock('../../shared/utils/dateKeys', () => ({
+jest.mock('../../shared-utils/dateKeys', () => ({
   getClientDateKey: () => FIXED_DATE,
 }));
 
@@ -63,7 +63,7 @@ global.fetch = jest.fn(() =>
   }),
 );
 
-const { executeCoachTool } = require('../../ai/tools/executeCoachTool');
+const { runCoachAction } = require('../../ai-coach/server-logic/tools/runCoachAction');
 
 function dailyLogsWrite() {
   return mockSetDoc.mock.calls.find(([ref, payload]) =>
@@ -102,7 +102,7 @@ beforeEach(() => {
 
 describe('logSleep real execution', () => {
   it('Valid hours → writes to correct Firestore path dashboard_sleep field', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logSleep', params: { hours: 7.5 } },
     });
@@ -114,7 +114,7 @@ describe('logSleep real execution', () => {
   });
 
   it('Hours as string "7" → normalized to number 7', async () => {
-    await executeCoachTool({
+    await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logSleep', params: { hours: '7' } },
     });
@@ -123,7 +123,7 @@ describe('logSleep real execution', () => {
   });
 
   it('Hours as 0 → writes 0 not null', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logSleep', params: { hours: 0 } },
     });
@@ -137,7 +137,7 @@ describe('logSleep real execution', () => {
   });
 
   it('Hours over 24 → rejected or capped', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logSleep', params: { hours: 30 } },
     });
@@ -148,7 +148,7 @@ describe('logSleep real execution', () => {
 
 describe('logWater real execution', () => {
   it('Valid amount → writes to correct path', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logWater', params: { amount_oz: 32 } },
     });
@@ -164,7 +164,7 @@ describe('logWater real execution', () => {
   });
 
   it('Amount in oz → converted correctly if needed', async () => {
-    await executeCoachTool({
+    await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logWater', params: { amountOz: 16 } },
     });
@@ -173,7 +173,7 @@ describe('logWater real execution', () => {
   });
 
   it('Zero amount → rejected before write', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logWater', params: { amount_oz: 0 } },
     });
@@ -185,7 +185,7 @@ describe('logWater real execution', () => {
 
 describe('logNutrition real execution', () => {
   it('Valid food data → writes to nutrition_logs collection', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: {
         name: 'logNutrition',
@@ -215,7 +215,7 @@ describe('logNutrition real execution', () => {
       Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [] }) }),
     );
 
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'logNutrition', params: { food: 'Mystery Meal' } },
     });
@@ -225,7 +225,7 @@ describe('logNutrition real execution', () => {
   });
 
   it('Wrong meal type → normalized not silently wrong', async () => {
-    await executeCoachTool({
+    await runCoachAction({
       userId: TEST_UID,
       toolCall: {
         name: 'logNutrition',
@@ -241,7 +241,7 @@ describe('logNutrition real execution', () => {
 
 describe('deleteLog real execution', () => {
   it('Valid logId → deletes correct document', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'deleteLog', params: { logType: 'nutrition', logId: 'log-abc-123' } },
     });
@@ -256,7 +256,7 @@ describe('deleteLog real execution', () => {
   it('Missing logId → throws clear error not undefined path', async () => {
     mockDeleteFoodLogsForDate.mockResolvedValueOnce({ deletedCount: 0, deletedNames: [] });
 
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'deleteLog', params: { logType: 'nutrition', foodName: 'Ghost Food' } },
     });
@@ -269,7 +269,7 @@ describe('deleteLog real execution', () => {
   it('Already deleted → no crash', async () => {
     mockDeleteFoodLogsForDate.mockResolvedValueOnce({ deletedCount: 0, deletedNames: [] });
 
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'deleteLog', params: { logType: 'nutrition', logId: 'gone-id' } },
     });
@@ -281,7 +281,7 @@ describe('deleteLog real execution', () => {
 
 describe('adjustMacroTargets real execution', () => {
   it('Valid new targets → writes to users/{uid} doc', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: {
         name: 'adjustMacroTargets',
@@ -299,7 +299,7 @@ describe('adjustMacroTargets real execution', () => {
   });
 
   it('Negative calorie target → rejected', async () => {
-    const result = await executeCoachTool({
+    const result = await runCoachAction({
       userId: TEST_UID,
       toolCall: {
         name: 'adjustMacroTargets',
@@ -312,7 +312,7 @@ describe('adjustMacroTargets real execution', () => {
   });
 
   it('Partial update (only protein) → other macros unchanged not zeroed out', async () => {
-    await executeCoachTool({
+    await runCoachAction({
       userId: TEST_UID,
       toolCall: { name: 'adjustMacroTargets', params: { protein: 175 } },
     });
@@ -337,7 +337,7 @@ describe('trainer mode blocks all writes', () => {
 
     for (const toolCall of tools) {
       jest.clearAllMocks();
-      const result = await executeCoachTool({
+      const result = await runCoachAction({
         userId: TEST_UID,
         coachMode: 'trainer',
         targetClientId: 'client-under-coach',

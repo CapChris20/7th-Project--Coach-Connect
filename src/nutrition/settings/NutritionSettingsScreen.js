@@ -22,22 +22,20 @@ import {
   TextInput,
   ScrollView,
   Alert,
-  Platform,
   StatusBar,
   Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 
 const PINK = '#BE185D';
 const PINK_SOFT = '#FF6B9D';
 const ORANGE = '#C2410C';
 const ORANGE_SOFT = '#F97316';
 const CYAN = '#06B6D4';
-const BRAND_GRAD = ['#6D28D9', '#C2410C'];
-const CTA_GRAD = BRAND_GRAD;
+const CTA_GRAD = [PINK, ORANGE];
 
 const MACRO_LANES = [
   {
@@ -68,24 +66,26 @@ function getPalette(isDark) {
     ? {
         bg: '#0A0A0F',
         panel: 'rgba(255,255,255,0.045)',
-        panelBorder: 'rgba(255,255,255,0.07)',
+        cardSolid: '#12131A',
+        panelBorder: 'rgba(255,255,255,0.10)',
         text: '#FFFFFF',
         textSoft: 'rgba(255,255,255,0.62)',
         textMuted: 'rgba(255,255,255,0.38)',
         inputBg: 'rgba(255,255,255,0.07)',
-        stepBg: 'rgba(190,24,93,0.14)',
-        stepBorder: 'rgba(190,24,93,0.35)',
+        stepBg: 'rgba(255,255,255,0.06)',
+        stepBorder: 'rgba(255,255,255,0.12)',
         destructive: '#FCA5A5',
       }
     : {
         bg: '#F4F4F8',
         panel: '#FFFFFF',
-        panelBorder: 'rgba(10,10,15,0.07)',
+        cardSolid: '#FFFFFF',
+        panelBorder: 'rgba(10,10,15,0.08)',
         text: '#0A0A0F',
         textSoft: 'rgba(10,10,15,0.62)',
         textMuted: 'rgba(10,10,15,0.42)',
         inputBg: 'rgba(0,0,0,0.04)',
-        stepBg: 'rgba(190,24,93,0.08)',
+        stepBg: 'rgba(190,24,93,0.06)',
         stepBorder: 'rgba(190,24,93,0.22)',
         destructive: '#DC2626',
       };
@@ -96,7 +96,7 @@ function MacroLane({ row, value, onChange, palette }) {
   const fill = Math.min(1, n / row.barMax);
 
   return (
-    <View style={[lane.wrap, { backgroundColor: palette.panel, borderColor: palette.panelBorder }]}>
+    <View style={[lane.wrap, { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder }]}>
       <View style={lane.topRow}>
         <Image source={row.icon} style={lane.icon} resizeMode="contain" />
         <Text style={[lane.label, { color: palette.text }]}>{row.label}</Text>
@@ -210,14 +210,8 @@ export default function NutritionSettingsScreen({
             Tap values to edit. Use +/− for calories.
           </Text>
 
-          <LinearGradient
-            colors={BRAND_GRAD}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ borderRadius: 18, padding: 1.5, marginBottom: 20 }}
-          >
-          <View style={[s.calPanel, { backgroundColor: palette.panel, borderColor: 'transparent', marginBottom: 0 }]}>
-            <LinearGradient colors={BRAND_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.calStripe} />
+          <View style={[s.calPanel, { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder }]}>
+            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.calStripe} />
             <Text style={[s.calLabel, { color: palette.textMuted }]}>CALORIES PER DAY</Text>
 
             <View style={s.calRow}>
@@ -260,7 +254,6 @@ export default function NutritionSettingsScreen({
               <Text style={{ color: CYAN }}>{estMacros.fat}g F</Text>
             </Text>
           </View>
-          </LinearGradient>
 
           <Text style={[s.sectionTitle, { color: palette.textMuted }]}>Macro targets</Text>
 
@@ -274,10 +267,17 @@ export default function NutritionSettingsScreen({
             />
           ))}
 
-          <TouchableOpacity onPress={handleSave} activeOpacity={0.88} style={s.saveWrap} disabled={saving}>
-            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
-              <Text style={s.saveText}>{saving ? 'Saving…' : 'Save goals'}</Text>
-            </LinearGradient>
+          <TouchableOpacity
+            onPress={handleSave}
+            activeOpacity={0.88}
+            style={[
+              s.saveBtn,
+              { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder },
+            ]}
+            disabled={saving}
+          >
+            <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveStripe} />
+            <Text style={[s.saveText, { color: PINK_SOFT }]}>{saving ? 'Saving…' : 'Save goals'}</Text>
           </TouchableOpacity>
 
           <View style={[s.resetZone, { borderTopColor: palette.panelBorder }]}>
@@ -355,10 +355,10 @@ const s = StyleSheet.create({
   },
   calPanel: {
     borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     paddingHorizontal: 18,
     paddingBottom: 18,
-    marginBottom: 28,
+    marginBottom: 20,
     overflow: 'hidden',
   },
   calStripe: {
@@ -420,28 +420,23 @@ const s = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 12,
   },
-  saveWrap: {
+  saveBtn: {
     marginTop: 8,
     borderRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: PINK,
-        shadowRadius: 14,
-        shadowOpacity: 0.28,
-        shadowOffset: { width: 0, height: 8 },
-      },
-      android: { elevation: 5 },
-    }),
-  },
-  saveBtn: {
-    paddingVertical: 17,
+    borderWidth: 1,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  saveStripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
   },
   saveText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.2,
@@ -468,7 +463,7 @@ const s = StyleSheet.create({
 const lane = StyleSheet.create({
   wrap: {
     borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 12,
   },

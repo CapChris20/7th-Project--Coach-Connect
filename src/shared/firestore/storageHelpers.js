@@ -16,7 +16,7 @@ import {
   listAll, 
   getMetadata 
 } from 'firebase/storage';
-import { storage } from '../../app/config';
+import { storage } from '../../app-start/config';
 
 // Upload a file to Firebase Storage
 export const uploadFile = async (file, path, metadata = {}) => {

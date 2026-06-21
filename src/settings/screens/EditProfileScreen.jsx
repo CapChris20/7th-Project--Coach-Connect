@@ -4,16 +4,16 @@
  * Purpose: UI screen or component: Edit Profile Screen. Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/settings
- * Key exports: EditProfileScreen
+ * Key exports: EditViewMyViewMyProfileScreen
  *
  * @file-header
  */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 
-export default function EditProfileScreen({ onClose }) {
+export default function EditViewMyViewMyProfileScreen({ onClose }) {
   const { colors, spacing, isDark } = useTheme();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');

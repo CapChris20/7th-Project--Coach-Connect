@@ -4,7 +4,7 @@
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { auth } from '../../app/config';
+import { auth } from '../../app-start/config';
 import { getApiBase } from '../../shared/api/baseUrl';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

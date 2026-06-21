@@ -98,6 +98,18 @@ const cases = [
     expect: true,
   },
   {
+    fn: 'followup',
+    msg: 'Search the web: what does research say about protein intake for lifters?',
+    msgs: [{ role: 'user', content: 'Search the web: what does research say about protein intake for lifters?' }],
+    expect: false,
+  },
+  {
+    fn: 'thread',
+    msg: 'Search the web: what does research say about protein intake for lifters?',
+    msgs: [{ role: 'user', content: 'Search the web: what does research say about protein intake for lifters?' }],
+    expect: true,
+  },
+  {
     fn: 'gate',
     msg: 'Can you search the web for me?',
     expect: 'ask_topic',

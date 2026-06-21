@@ -19,8 +19,8 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
-import foodSearchProvider from '../food-search/foodSearchProvider';
+import { useTheme } from '../../shared-ui/ThemeContext';
+import searchFoodsService from '../food-search/searchFoodsService';
 import { normalizeBarcodeForLookup } from '../barcode/normalizeBarcodeForLookup';
 import { cacheFoodProduct } from '../daily-log/logFoodToFirestore';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -104,7 +104,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     
     try {
       console.log('Looking up barcode:', normalized);
-      const raw = await foodSearchProvider.lookupBarcode(normalized);
+      const raw = await searchFoodsService.lookupBarcode(normalized);
       const isFoodHit = raw && !raw.notFound && !raw.variableWeightBarcode;
       const result = isFoodHit
         ? { success: true, data: raw }

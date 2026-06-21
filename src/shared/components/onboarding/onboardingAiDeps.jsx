@@ -10,7 +10,7 @@
  */
 /**
  * Shared onboarding tokens + primary CTA only.
- * Used by AIOptInStep (avoids circular import with OnboardingScreen.js).
+ * Used by AIOptInStep (avoids circular import with OnboardingWizardScreen.jsx).
  */
 import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';

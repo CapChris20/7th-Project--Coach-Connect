@@ -25,12 +25,12 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { deleteUser, getAuth, signOut, updatePassword } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../app/config';
+import { db } from '../../app-start/config';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../app/config';
+import { functions } from '../../app-start/config';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -223,11 +223,15 @@ function payoutChipTone(status) {
 
 export default function SettingsScreen({
   onNavigate: onNavigateProp,
+  onBack: onBackProp,
+  onClose,
   userRole: userRoleProp,
   userData: userDataProp,
   trainerData: trainerDataProp,
+  embedShellBottomNav = false,
 }) {
   const onNavigate = useShellNavigate(onNavigateProp);
+  const onBack = onBackProp || onClose;
   const go = (screen) => openSettingsSubScreen(screen, onNavigate);
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
   /** Pill position: explicit light/dark, or match current UI when theme follows system. */
@@ -458,6 +462,7 @@ export default function SettingsScreen({
         <CoachConnectHeader
           title="SETTINGS"
           skipTopSafeInset
+          onBack={onBack || undefined}
           onProfilePress={onNavigate ? () => go('profile') : null}
           onSettingsPress={() => {}}
         />
@@ -704,7 +709,7 @@ export default function SettingsScreen({
         onHoldComplete={performDeleteAccount}
       />
 
-      {onNavigate ? (
+      {onNavigate && !embedShellBottomNav ? (
         <BottomNavBar
           onHomePress={() => go('home')}
           onProfilePress={() => go('profile')}

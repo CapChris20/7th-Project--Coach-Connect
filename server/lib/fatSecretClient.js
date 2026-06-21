@@ -3,7 +3,7 @@
  * Env: FATSECRET_CLIENT_ID + FATSECRET_CLIENT_SECRET (OAuth 2.0 or OAuth 1.0 Consumer Key/Secret)
  */
 const axios = require('axios');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
 const { fatSecretOAuth1Get } = require('./fatSecretOAuth1');
 
 let cachedToken = null;

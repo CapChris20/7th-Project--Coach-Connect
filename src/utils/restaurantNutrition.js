@@ -14,10 +14,10 @@
  */
 
 import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../app/config';
+import { db } from '../app-start/config';
 import { getApiBase } from '../shared/api/baseUrl';
 import { getApiAuthHeaders } from '../shared/api/getAuthHeaders';
-import { isMenuStyleQuery } from '../nutrition/food-search/rankFoodSearchResults';
+import { isMenuStyleQuery } from '../nutrition/food-search/sortBestFoodMatches';
 
 /**
  * True when the query looks like a restaurant menu item (generic heuristics, no brand list).

@@ -31,7 +31,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { auth } from '../../../app/config';
+import { auth } from '../../../app-start/config';
 import { addNote, addFile, addSpreadsheetFile } from '../../notes-files/manageNotesAndFiles';
 
 const OPTIONS = [

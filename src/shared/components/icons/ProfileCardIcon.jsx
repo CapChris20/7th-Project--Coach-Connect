@@ -18,7 +18,7 @@ import {
 
 /**
  * Filled PNG icon for workout profile cards — shared by ClientApp and TrainerApp
- * (WorkoutPlanGeneratorScreen) and client ProfileScreen rows.
+ * (WorkoutPlanGeneratorScreen) and client ViewMyViewMyProfileScreen rows.
  */
 export default function ProfileCardIcon({
   itemId,

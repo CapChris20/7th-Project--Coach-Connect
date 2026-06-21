@@ -12,6 +12,7 @@
  * Shared food normalization + serving unit guards for search, barcode, and logging.
  */
 const { finalizeBarcodeFood, isPer100gSource } = require('../food-details/calculateServingSize');
+const { applyFoodCardPresentation } = require('../food-search/cleanFoodCardLabels');
 
 const SOLID_FOOD_PATTERN =
   /\b(nugget|nuggets|chicken|tenders|wings|produce|apple|banana|orange|potato|tomato|lettuce|broccoli|carrot|onion|grape|berry|berries|frozen|snack|chips|crisp|crisps|cracker|crackers|cookie|cookies|candy|bar|bars|cereal|granola|popcorn|pretzel|pretzels|pizza|bread|bagel|muffin|cake|brownie|doritos|oreo|klondike|ice\s*cream\s*bar|tortilla|nacho|cheese\s*stick|fish\s*stick|patty|meatball|sausage|bacon|ham|turkey|beef|pork|lamb|tofu|tempeh|seitan|yogurt\s*cup|pudding\s*cup|ramen|noodle|pasta|rice|oatmeal|granola)\b/i;
@@ -115,7 +116,6 @@ function mapSearchRowToFoodShape(item) {
     servingMultiplier: item.servingMultiplier ?? null,
     serving_label: item.serving_label || item.servingLabel || item.householdServingFullText || null,
     portion_text: item.portion_text || item.serving_label || item.servingLabel || null,
-    metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : item,
   };
 
   if (source === 'openfoodfacts' || source === 'usda' || source === 'fatsecret') {
@@ -139,32 +139,35 @@ function mapSearchRowToFoodShape(item) {
 
 function normalizeFoodForLog(food) {
   if (!food) return food;
+  const { normalizeFoodRecordForStorage } = require('./makeReadableFoodTitle');
+  let out;
   if (food.dataBasis === 'logged_totals' || food.fromRecentLog) {
-    return servingUnitGuard({
+    out = servingUnitGuard({
       ...food,
       dataBasis: 'logged_totals',
     });
+  } else if (food.dataBasis === 'label_serving' || isPer100gSource(food.source)) {
+    out = mapSearchRowToFoodShape(food);
+  } else {
+    out = servingUnitGuard(mapSearchRowToFoodShape(food));
   }
-  if (food.dataBasis === 'label_serving' || isPer100gSource(food.source)) {
-    return mapSearchRowToFoodShape(food);
-  }
-  return servingUnitGuard(mapSearchRowToFoodShape(food));
+  return normalizeFoodRecordForStorage(out);
 }
 
 function normalizeFoodItem(item, searchQuery) {
   const normalized = mapSearchRowToFoodShape(item) || {};
-  let cleanedName = normalized.name || '';
-  if (String(item?.source || '').toLowerCase() === 'serper') {
-    cleanedName = cleanedName.replace(/\s*-\s*.*$/, '').replace(/\bNutrition Facts\b/gi, '').trim();
-    if (searchQuery && !cleanedName.toLowerCase().includes(String(searchQuery).toLowerCase())) {
-      cleanedName = searchQuery;
-    }
-  }
+  const presented = applyFoodCardPresentation(
+    {
+      ...item,
+      ...normalized,
+      name: normalized.name,
+      food_name: normalized.name,
+    },
+    searchQuery,
+  );
   return {
-    ...normalized,
-    name: cleanedName || normalized.name || 'Unknown Food',
-    food_name: cleanedName || normalized.name || 'Unknown Food',
-    brand_name: normalized.brand || item?.brand_name || '',
+    ...presented,
+    brand_name: presented.brand || item?.brand_name || '',
     serving_grams: normalized.servingGrams || 100,
   };
 }

@@ -1,5 +1,5 @@
 /**
- * CJS mirror of src/trainer/crm/formatClientName.js for Node scripts.
+ * CJS mirror of src/trainer-app/crm/getTraineeDisplayName.js for Node scripts.
  * Keep in sync when changing app resolver logic.
  */
 

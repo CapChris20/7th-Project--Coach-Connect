@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { db } from '../../app/config';
+import { db } from '../../app-start/config';
 import {
   collection,
   addDoc,

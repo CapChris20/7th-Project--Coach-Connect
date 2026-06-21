@@ -7,65 +7,65 @@ const ROOT = path.join(__dirname, '..');
 
 /** [directory prefix from src/, [[from, to], ...]] */
 const DIR_RULES = [
-  ['src/client/home/', [
+  ['src/client-app/home/', [
     ['../../../assets/', '../../assets/'],
     ['../components/home/', './'],
   ]],
-  ['src/client/navigation/', [
-    ['../screens/MessagingScreen', '../messaging/MessagingScreen'],
-    ['../screens/ConversationsListScreen', '../messaging/ConversationsListScreen'],
-    ['../screens/MyDashboardScreen', '../dashboard/MyDashboardScreen'],
-    ['../screens/WeeklyReportScreen', '../weekly-report/WeeklyReportScreen'],
-    ['../screens/PhotoGalleryScreen', '../photo-gallery/PhotoGalleryScreen'],
-    ['../screens/AIWorkoutPlansScreen', '../workout-plans/AIWorkoutPlansScreen'],
+  ['src/client-app/navigation/', [
+    ['../screens/ChatWithTrainerScreen', '../messaging/ChatThreadScreen'],
+    ['../screens/MyMessagesScreen', '../messaging/MyMessagesScreen'],
+    ['../screens/TrainingDashboardScreen', '../dashboard/TrainingDashboardScreen'],
+    ['../screens/ViewWeekProgressReportScreen', '../weekly-report/ViewWeekProgressReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../photo-gallery/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../workout-plans/BrowseSavedWorkoutsScreen'],
     ['../components/home/', '../home/'],
     ['../components/TrainerSharedFilesModal', '../files/TrainerSharedFilesModal'],
     ['../components/ReviewSubmitSheet', '../dashboard/ReviewSubmitSheet'],
     ['../components/DashboardHeroCard', '../dashboard/DashboardHeroCard'],
     ['../hooks/useClientScreenNavigation', './useClientScreenNavigation'],
-    ['../marketplace/screens/TrainerSearchScreen', '../marketplace/TrainerSearchScreen'],
+    ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
   ]],
-  ['src/client/navigation/clientOverlayScreens.jsx', [
-    ['../screens/WeeklyReportScreen', '../weekly-report/WeeklyReportScreen'],
-    ['../screens/PhotoGalleryScreen', '../photo-gallery/PhotoGalleryScreen'],
-    ['../screens/AIWorkoutPlansScreen', '../workout-plans/AIWorkoutPlansScreen'],
-    ['../marketplace/screens/TrainerSearchScreen', '../marketplace/TrainerSearchScreen'],
+  ['src/client-app/navigation/clientOverlayScreens.jsx', [
+    ['../screens/ViewWeekProgressReportScreen', '../weekly-report/ViewWeekProgressReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../photo-gallery/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../workout-plans/BrowseSavedWorkoutsScreen'],
+    ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
   ]],
-  ['src/client/dashboard/', [
+  ['src/client-app/dashboard/', [
     ['../components/PremiumTrainerCard', './PremiumTrainerCard'],
     ['../components/PremiumStatsSection', './PremiumStatsSection'],
     ['../lib/coachingBillingLabel', './coachingBillingLabel'],
   ]],
-  ['src/client/marketplace/', [
-    ['../../../app/', '../../app/'],
+  ['src/client-app/marketplace/', [
+    ['../../../app-start/', '../../app-start/'],
     ['../../../shared/', '../../shared/'],
     ['../../../navigation/', '../../navigation/'],
     ['../components/', './'],
     ['../utils/', './'],
     ['../screens/', './'],
   ]],
-  ['src/trainer/navigation/', [
-    ['../screens/TrainerMessagingScreen', '../messaging/TrainerMessagingScreen'],
-    ['../screens/ConversationsListScreen', '../messaging/ConversationsListScreen'],
-    ['../screens/ClientRequestsScreen', '../client-requests/ClientRequestsScreen'],
-    ['../screens/TrainerClientsListScreen', '../clients-list/TrainerClientsListScreen'],
+  ['src/trainer-app/navigation/', [
+    ['../screens/ChatWithTraineeScreen', '../messaging/ChatWithTraineeScreen'],
+    ['../screens/MyMessagesScreen', '../messaging/MyMessagesScreen'],
+    ['../screens/NewTraineeRequestsScreen', '../client-requests/NewTraineeRequestsScreen'],
+    ['../screens/MyTraineesScreen', '../clients-list/MyTraineesScreen'],
     ['../screens/TrainerDashboardContent', '../dashboard/TrainerDashboardContent'],
-    ['../screens/PhotoGalleryScreen', '../photo-gallery/PhotoGalleryScreen'],
-    ['../screens/AIWorkoutPlansScreen', '../workout-plans/AIWorkoutPlansScreen'],
+    ['../screens/MyProgressPhotosScreen', '../photo-gallery/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../workout-plans/BrowseSavedWorkoutsScreen'],
     ['../components/documents/', '../documents/'],
     ['../components/dashboard/', '../dashboard/'],
   ]],
-  ['src/trainer/navigation/trainerOverlayScreens.jsx', [
-    ['../screens/TrainerSearchScreen', '../marketplace/TrainerSearchScreen'],
-    ['../screens/TrainerWeeklyReportScreen', '../weekly-report/TrainerWeeklyReportScreen'],
+  ['src/trainer-app/navigation/trainerOverlayScreens.jsx', [
+    ['../screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
+    ['../screens/TrainerViewWeekProgressReportScreen', '../weekly-report/TrainerViewWeekProgressReportScreen'],
     ['../screens/ManualWorkoutPlanBuilderScreen', '../workout-plans/ManualWorkoutPlanBuilderScreen'],
     ['../screens/PaymentsScreen', '../payments/PaymentsScreen'],
   ]],
-  ['src/trainer/weekly-report/', [
+  ['src/trainer-app/weekly-report/', [
     ['../../../assets/', '../../assets/'],
     ['./weeklyReport/WeeklyReportHeroCard', './WeeklyReportHeroCard'],
   ]],
-  ['src/trainer/dashboard/', [
+  ['src/trainer-app/dashboard/', [
     ['../../../assets/', '../../assets/'],
     ['../../../shared/assets/', '../../shared/assets/'],
     ['../components/documents/', '../documents/'],
@@ -74,42 +74,42 @@ const DIR_RULES = [
     ['../lib/trainerFirestoreErrors', '../crm/trainerFirestoreErrors'],
     ['../services/clientCRMService', '../clients-list/clientCRMService'],
   ]],
-  ['src/trainer/client-detail/', [
+  ['src/trainer-app/client-detail/', [
     ['../components/documents/', '../documents/'],
     ['../components/dashboard/', '../dashboard/'],
     ['../lib/trainerFirestoreErrors', '../crm/trainerFirestoreErrors'],
   ]],
-  ['src/trainer/progress-tab/', [['../components/dashboard/', '../dashboard/']]],
-  ['src/trainer/nutrition-tab/', [['../components/dashboard/', '../dashboard/']]],
-  ['src/trainer/payments/', [['../components/dashboard/', '../dashboard/']]],
-  ['src/trainer/clients-list/', [['../components/dashboard/', '../dashboard/']]],
-  ['src/trainer/sessions/', [
-    ['../hooks/use-sessions', './use-sessions'],
+  ['src/trainer-app/progress-tab/', [['../components/dashboard/', '../dashboard/']]],
+  ['src/trainer-app/nutrition-tab/', [['../components/dashboard/', '../dashboard/']]],
+  ['src/trainer-app/payments/', [['../components/dashboard/', '../dashboard/']]],
+  ['src/trainer-app/clients-list/', [['../components/dashboard/', '../dashboard/']]],
+  ['src/trainer-app/sessions/', [
+    ['../hooks/useMyTrainingSessions', './useMyTrainingSessions'],
     ['../components/sessions/', './'],
     ['../components/WheelPicker', './WheelPicker'],
     ['../services/pushSessionNotification', './pushSessionNotification'],
   ]],
-  ['src/trainer/documents/', [
+  ['src/trainer-app/documents/', [
     ['../../services/clientCRMService', '../clients-list/clientCRMService'],
   ]],
-  ['src/trainer/client-requests/', [
-    ['../services/trainerPendingRequestsService', './trainerPendingRequestsService'],
+  ['src/trainer-app/client-requests/', [
+    ['../services/loadPendingTraineeRequests', './loadPendingTraineeRequests'],
   ]],
-  ['src/trainer/clients-list/', [
+  ['src/trainer-app/clients-list/', [
     ['../lib/trainerClientFirestorePaths', '../crm/trainerClientFirestorePaths'],
-    ['../lib/resolveLinkedTrainerClients', '../crm/resolveLinkedTrainerClients'],
+    ['../lib/loadMyLinkedTrainees', '../crm/loadMyLinkedTrainees'],
   ]],
-  ['src/trainer/workout-plans/', [
+  ['src/trainer-app/workout-plans/', [
     ['../services/manualWorkoutPlanService', './manualWorkoutPlanService'],
   ]],
   ['src/nutrition/daily-log/', [
     ['../services/nutritionService', './nutritionService'],
-    ['../services/foodSearchProvider', '../food-search/foodSearchProvider'],
+    ['../services/searchFoodsService', '../food-search/searchFoodsService'],
     ['../components/EditServingModal', '../food-details/EditServingModal'],
     ['../components/NutritionDayPicker', './NutritionDayPicker'],
     ['../components/MacroBar', './MacroBar'],
     ['../components/MealCard', './MealCard'],
-    ['./NutritionOnboardingScreen', '../settings/NutritionOnboardingScreen'],
+    ['./NutritionOnboardingWizardScreen', '../settings/NutritionOnboardingWizardScreen'],
     ['./NutritionFactsScreen', '../food-details/NutritionFactsScreen'],
     ['./QuickAddNutrition', '../quick-add/QuickAddNutrition'],
     ['./FoodSearchScreen', '../food-search/FoodSearchScreen'],
@@ -140,20 +140,20 @@ const DIR_RULES = [
     ['../utils/barcodeDisplay', '../barcode/barcodeDisplay'],
   ]],
   ['src/nutrition/barcode/', [
-    ['../services/foodSearchProvider', '../food-search/foodSearchProvider'],
+    ['../services/searchFoodsService', '../food-search/searchFoodsService'],
     ['../services/nutritionService', '../daily-log/nutritionService'],
     ['../utils/servingMath', '../food-details/servingMath'],
     ['../components/FoodConfirmSheet', '../food-search/FoodConfirmSheet'],
   ]],
   ['src/nutrition/food-details/', [
-    ['../services/foodSearchProvider', '../food-search/foodSearchProvider'],
+    ['../services/searchFoodsService', '../food-search/searchFoodsService'],
     ['../services/nutritionService', '../daily-log/nutritionService'],
     ['../utils/nutritionFactsModel', './nutritionFactsModel'],
   ]],
   ['src/nutrition/quick-add/', [
     ['../services/nutritionService', '../daily-log/nutritionService'],
   ]],
-  ['src/aiChat/chat-home/', [
+  ['src/ai-coach/chat-ui/chat-home/', [
     ['../lib/showCoachAttachMenu', '../chat-thread/showCoachAttachMenu'],
     ['../lib/coachAttachmentPickers', '../chat-thread/coachAttachmentPickers'],
     ['../lib/aiChatPersistence', '../persistence/aiChatPersistence'],
@@ -163,13 +163,13 @@ const DIR_RULES = [
     ['../hooks/useCoachComposerInput', '../chat-thread/useCoachComposerInput'],
     ['../components/CoachPasteSheet', '../chat-thread/CoachPasteSheet'],
   ]],
-  ['src/aiChat/chat-thread/', [
+  ['src/ai-coach/chat-ui/chat-thread/', [
     ['../toolModals/', '../tool-modals/'],
     ['../lib/showCoachAttachMenu', './showCoachAttachMenu'],
     ['../lib/coachAttachmentPickers', './coachAttachmentPickers'],
     ['../lib/aiChatPersistence', '../persistence/aiChatPersistence'],
     ['../lib/coachCategoryPrompts', './coachCategoryPrompts'],
-    ['../lib/coachClipboard', './coachClipboard'],
+    ['../lib/formatCoachMessageText', './formatCoachMessageText'],
     ['../lib/coachMarkdownStyles', './coachMarkdownStyles'],
     ['../lib/coachSourcePreview', './coachSourcePreview'],
     ['../lib/coachConversationDebug', '../persistence/coachConversationDebug'],

@@ -2,10 +2,10 @@
  * Shared barcode resolution: USDA + FatSecret + OFF → merge → Serper → validate.
  */
 const axios = require('axios');
-const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/normalizeNutritionData');
+const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/fixFoodNutritionNumbers');
 const { finalizeBarcodeFood } = require('../../src/nutrition/food-details/calculateServingSize');
 const { servingUnitGuard, usdaDescriptionLooksLiquid } = require('../../src/nutrition/food-search/normalizeFoodQuery');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/formatFoodBrand');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
 const { pickBestBarcodeCandidate } = require('./barcodeMerge');
 const { lookupBarcodeFatSecret } = require('./fatSecretFood');
 const { lookupBarcodeWithSerper, barcodeGtinVariants } = require('./barcodeSerperLookup');

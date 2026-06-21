@@ -17,7 +17,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { useTheme } from '../shared/ui/ThemeContext';
+import { useTheme } from '../shared-ui/ThemeContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 

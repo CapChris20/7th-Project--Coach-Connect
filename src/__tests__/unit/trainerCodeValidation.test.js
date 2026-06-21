@@ -1,10 +1,10 @@
 /**
- * Trainer invite code validation (trainerCodeValidation module).
+ * Trainer invite code validation (validateTrainerInviteCode module).
  */
 const {
   normalizeInviteCodeForQuery,
   validateTrainerCodeWithDeps,
-} = require('../../auth/trainerCodeValidation');
+} = require('../../auth/validateTrainerInviteCode');
 
 function createValidationHarness() {
   const state = {

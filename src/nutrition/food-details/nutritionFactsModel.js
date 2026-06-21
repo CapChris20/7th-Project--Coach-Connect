@@ -108,12 +108,8 @@ function scaledFromMeta(log, key) {
 }
 
 export function cleanFoodDisplayName(name) {
-  return String(name || 'Food Item')
-    .replace(/:\s*calories.*$/i, '')
-    .replace(/\s*[•·]\s*\d+\s+slice.*$/i, '')
-    .replace(/\s*[-–]\s*nutrition.*$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const { makeReadableFoodTitle } = require('../food-search/makeReadableFoodTitle');
+  return makeReadableFoodTitle({ name }).name || 'Food Item';
 }
 
 /**

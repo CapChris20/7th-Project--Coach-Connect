@@ -33,14 +33,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { searchFoods, getRecentFoods, getFoodSearchHint } from '../daily-log/logFoodToFirestore';
-import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle, findConsumerBrandInQuery } from '../food-details/formatFoodBrand';
-import { itemMatchesQuery } from '../food-search/rankFoodSearchResults';
-import { cleanSerperFoodTitle, isPlausibleNutritionRow, isJunkWebSearchTitle } from '../food-search/formatFoodSearchTitle';
+import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../food-details/cleanFoodBrandName';
+import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/cleanFoodCardLabels';
 import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
 import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
 import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
-import { auth } from '../../app/config';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { HOME_STAT_SLEEP_GRADIENT } from '../../shared-ui/homeStatGradients';
+import FoodCard from '../components/premiumFoodCard/FoodCard';
+import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
+import { auth } from '../../app-start/config';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HERO_TOP_BORDER = ['#BE185D', '#C2410C'];
@@ -177,6 +179,32 @@ function formatServingLine(item) {
   }
   return '1 serving';
 }
+
+/** Saved / recent history — same premium card as logged foods on NutritionScreen. */
+const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
+  const [expanded, setExpanded] = useState(false);
+  const amount = formatServingLine(item);
+  const food = useMemo(() => formatLoggedFoodDisplay(item, amount), [item, amount]);
+
+  return (
+    <View style={recentHistoryCardStyles.wrap}>
+      <FoodCard
+        food={food}
+        expanded={expanded}
+        embedded
+        isDark={isDark}
+        onToggle={() => setExpanded((v) => !v)}
+        onEdit={() => onAdd(item)}
+      />
+    </View>
+  );
+};
+
+const recentHistoryCardStyles = StyleSheet.create({
+  wrap: {
+    marginBottom: 10,
+  },
+});
 
 const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
   const [adding, setAdding] = useState(false);
@@ -501,7 +529,7 @@ const FoodSearchScreen = ({
   mealType: mealTypeProp,
   defaultMeal,
   onFoodSelected,
-  /** @deprecated use onFoodSelected — kept for MealPlanHomeScreen */
+  /** @deprecated use onFoodSelected — kept for LogTodaysMealsScreen */
   onSelectFood,
   onClose,
   userId,
@@ -571,33 +599,11 @@ const FoodSearchScreen = ({
     try {
       const raw = await searchFoods(searchQuery, 20);
       const q = searchQuery.trim();
-      const requiredBrand = findConsumerBrandInQuery(q);
       setResults(
         (raw || [])
           .filter((item) => {
             const title = item?.name || item?.food_name || '';
-            const hay = `${title} ${item?.brand || item?.brand_name || ''}`;
-            if (isJunkWebSearchTitle(title)) return false;
-            if (requiredBrand && !new RegExp(`\\b${requiredBrand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(hay)) {
-              return false;
-            }
-            if (q.split(/\s+/).filter((t) => t.length >= 3).length >= 2 && !itemMatchesQuery(hay, q)) {
-              return false;
-            }
-            if (item?.source === 'serper') {
-              return isPlausibleNutritionRow({
-                calories: item.calories ?? item.nf_calories,
-                protein: item.protein ?? item.nf_protein,
-                carbs: item.carbs ?? item.nf_total_carbohydrate,
-                fat: item.fat ?? item.nf_total_fat,
-              });
-            }
-            return isPlausibleNutritionRow({
-              calories: item.calories ?? item.nf_calories,
-              protein: item.protein ?? item.nf_protein,
-              carbs: item.carbs ?? item.nf_total_carbohydrate,
-              fat: item.fat ?? item.nf_total_fat,
-            });
+            return !isJunkWebSearchTitle(title);
           })
           .map((item) => normalizeFood(item, q)),
       );
@@ -691,10 +697,9 @@ const FoodSearchScreen = ({
 
       <View style={[fs.searchOuter, embedded && fs.searchOuterEmbedded]}>
         <LinearGradient
-          colors={colors.borderGradient}
+          colors={HOME_STAT_SLEEP_GRADIENT}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          locations={[0, 0.5, 1]}
+          end={{ x: 1, y: 0 }}
           style={{ borderRadius: 16, padding: 1.5 }}
         >
           <View
@@ -828,9 +833,13 @@ const FoodSearchScreen = ({
               {renderSectionTitle()}
             </View>
           }
-          renderItem={({ item }) => (
-            <FoodResultRow item={item} onAdd={handleAddFood} colors={colors} isDark={isDark} />
-          )}
+          renderItem={({ item }) =>
+            showRecent ? (
+              <RecentHistoryFoodCard item={item} isDark={isDark} onAdd={handleAddFood} />
+            ) : (
+              <FoodResultRow item={item} onAdd={handleAddFood} colors={colors} isDark={isDark} />
+            )
+          }
           ListEmptyComponent={
             showEmpty && !loading ? (
               <EmptyState

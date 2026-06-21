@@ -22,7 +22,7 @@ import {
   where,
   orderBy,
 } from 'firebase/firestore';
-import { auth, db } from '../../app/config';
+import { auth, db } from '../../app-start/config';
 import { fetchSavedWorkoutPlans, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from '../active-workout/workoutService';
 
 function isBenignLoadError(e) {

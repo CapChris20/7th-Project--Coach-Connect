@@ -1,5 +1,5 @@
 /**
- * Food search → log flow (logFoodToFirestore + foodSearchProvider).
+ * Food search → log flow (logFoodToFirestore + searchFoodsService).
  */
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(() => Promise.resolve(null)),
@@ -26,7 +26,7 @@ jest.mock('../../shared/api/logErrorToServer', () => ({
   default: { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   db: {},
 }));
 
@@ -53,11 +53,20 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 const AsyncStorage = require('@react-native-async-storage/async-storage');
-const foodSearchProvider = require('../../nutrition/food-search/foodSearchProvider').default;
+const searchFoodsService = require('../../nutrition/food-search/searchFoodsService').default;
 const { searchFoods, addFoodLog } = require('../../nutrition/daily-log/logFoodToFirestore');
 
 const SERVER_SEARCH = 'https://api.test/api/food/search';
+const NUTRITION_SEARCH = 'https://api.test/api/nutrition/search';
 const OFF_SEARCH = 'https://search.openfoodfacts.org/search';
+
+function nutritionSearchEmpty() {
+  return {
+    match: (url, init) =>
+      url.startsWith(NUTRITION_SEARCH) && String(init?.method || 'GET').toUpperCase() === 'POST',
+    handler: () => jsonResponse({ error: 'No nutrition data found for this food' }, 404),
+  };
+}
 
 function makeServerFood(id, name, macros = {}) {
   return {
@@ -111,7 +120,7 @@ function jsonResponse(body, status = 200) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  foodSearchProvider.clearAllCaches();
+  searchFoodsService.clearAllCaches();
   AsyncStorage.getItem.mockResolvedValue(null);
 });
 
@@ -124,6 +133,7 @@ describe('Food search → results', () => {
     ];
 
     mockFetchRouter([
+      nutritionSearchEmpty(),
       {
         match: (url) => url.startsWith(SERVER_SEARCH),
         handler: () => jsonResponse({ results: serverResults }),
@@ -144,14 +154,15 @@ describe('Food search → results', () => {
         }),
       );
     });
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(String(global.fetch.mock.calls[0][0])).toContain('query=big%20mac');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch.mock.calls.some(([url]) => String(url).includes('query=big%20mac'))).toBe(true);
   });
 
   it('uses in-memory cache on the second identical search (server called once)', async () => {
     const serverResults = [makeServerFood('cache-1', 'Big Mac')];
 
     mockFetchRouter([
+      nutritionSearchEmpty(),
       {
         match: (url) => url.startsWith(SERVER_SEARCH),
         handler: () => jsonResponse({ results: serverResults }),
@@ -163,11 +174,12 @@ describe('Food search → results', () => {
 
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to Open Food Facts when the server is unreachable', async () => {
     mockFetchRouter([
+      nutritionSearchEmpty(),
       {
         match: (url) => url.startsWith(SERVER_SEARCH),
         handler: () => {
@@ -206,6 +218,7 @@ describe('Food search → results', () => {
 
   it('returns an empty array (not null) when the server has no matches', async () => {
     mockFetchRouter([
+      nutritionSearchEmpty(),
       {
         match: (url) => url.startsWith(SERVER_SEARCH),
         handler: () => jsonResponse({ results: [] }),

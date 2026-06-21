@@ -27,7 +27,7 @@ jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));
 
-jest.mock('../../ai/tools/executeCoachTool', () => ({
+jest.mock('../../ai-coach/server-logic/tools/runCoachAction', () => ({
   normalizeToolCall: (raw) => {
     if (!raw) return null;
     const nameRaw = raw.name || raw.tool || raw.action;
@@ -56,14 +56,14 @@ jest.mock('firebase/firestore', () => ({
   getDoc: jest.fn(() => Promise.resolve({ exists: () => false })),
 }));
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   auth: { currentUser: { uid: 'user-1' } },
   db: {},
 }));
 
 const passthroughModal = () => () => null;
 
-jest.mock('../../aiChat/tool-modals/toolModalHelpers', () => {
+jest.mock('../../ai-coach/chat-ui/tool-modals/toolModalHelpers', () => {
   const ReactLocal = require('react');
   return {
     ToolModalBody: ({ children }) => ReactLocal.createElement('ToolModalBody', null, children),
@@ -86,24 +86,24 @@ jest.mock('../../aiChat/tool-modals/toolModalHelpers', () => {
   };
 });
 
-jest.mock('../../aiChat/tool-modals/UpdateWorkoutModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/BookSessionModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/UpdateGoalModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/NotifyTrainerModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/LogWaterModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/LogStepsModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/RateEnergyModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/LogMoodModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/RateWorkoutModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/OpenWorkoutPlanModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/LogRestDayModal', () => passthroughModal());
-jest.mock('../../aiChat/tool-modals/DeleteLogModal', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/UpdateWorkoutSessionSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/BookTraineeSessionSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/UpdateFitnessGoalSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/SendTrainerMessageSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogWaterIntakeSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogDailyStepsSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/RateEnergyLevelSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogMoodRatingSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/RateWorkoutFeelSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/OpenWorkoutPlanSheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogRestDaySheet', () => passthroughModal());
+jest.mock('../../ai-coach/chat-ui/tool-modals/ConfirmDeleteLogSheet', () => passthroughModal());
 
-jest.mock('../../aiChat/tool-modals/LogSleepModal', () => {
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogSleepHoursSheet', () => {
   const ReactLocal = require('react');
-  return function LogSleepModal({ params, onConfirm, onCancel, loading }) {
+  return function LogSleepHoursSheet({ params, onConfirm, onCancel, loading }) {
     return ReactLocal.createElement(
-      'LogSleepModal',
+      'LogSleepHoursSheet',
       null,
       ReactLocal.createElement('Text', null, String(params?.hours)),
       ReactLocal.createElement('Text', null, 'hours'),
@@ -121,12 +121,12 @@ jest.mock('../../aiChat/tool-modals/LogSleepModal', () => {
   };
 });
 
-jest.mock('../../aiChat/tool-modals/LogNutritionModal', () => {
+jest.mock('../../ai-coach/chat-ui/tool-modals/LogMealSheet', () => {
   const ReactLocal = require('react');
-  return function LogNutritionModal({ params }) {
+  return function LogMealSheet({ params }) {
     const food = params?.name || params?.food || params?.foodName || 'Food';
     return ReactLocal.createElement(
-      'LogNutritionModal',
+      'LogMealSheet',
       null,
       ReactLocal.createElement('Text', null, food),
       ReactLocal.createElement('Text', null, String(params?.calories ?? '')),
@@ -134,11 +134,11 @@ jest.mock('../../aiChat/tool-modals/LogNutritionModal', () => {
   };
 });
 
-jest.mock('../../aiChat/tool-modals/AdjustMacrosModal', () => {
+jest.mock('../../ai-coach/chat-ui/tool-modals/AdjustMacroTargetsSheet', () => {
   const ReactLocal = require('react');
-  return function AdjustMacrosModal({ params }) {
+  return function AdjustMacroTargetsSheet({ params }) {
     return ReactLocal.createElement(
-      'AdjustMacrosModal',
+      'AdjustMacroTargetsSheet',
       null,
       ReactLocal.createElement('Text', null, String(params?.calories ?? '')),
       ReactLocal.createElement('Text', null, String(params?.protein ?? '')),
@@ -146,7 +146,7 @@ jest.mock('../../aiChat/tool-modals/AdjustMacrosModal', () => {
   };
 });
 
-const ToolConfirmationModal = require('../../aiChat/chat-thread/ToolConfirmationModal').default;
+const ToolConfirmationModal = require('../../ai-coach/chat-ui/chat-thread/ToolConfirmationModal').default;
 
 function renderModal(props = {}) {
   let tree;
@@ -175,7 +175,7 @@ function textContent(tree) {
 describe('ToolConfirmationModal rendering', () => {
   it('does not render when no tool is present', () => {
     const tree = renderModal({ toolCall: null });
-    expect(tree.root.findAllByType('LogSleepModal')).toHaveLength(0);
+    expect(tree.root.findAllByType('LogSleepHoursSheet')).toHaveLength(0);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirm' })).toHaveLength(0);
   });
 

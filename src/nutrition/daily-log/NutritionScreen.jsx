@@ -15,9 +15,10 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 
 import NutritionDayPicker from './NutritionDayPicker';
+import { LoggedFoodCard } from '../components/premiumFoodCard';
 import { NUT_CALORIES_GRADIENT as THEME_CAL_GRAD, NUT_MACRO_GRADIENTS } from '../nutritionTheme';
 
 // Nutrition Today gradients (macro donuts + calorie ring when logging)
@@ -117,22 +118,22 @@ const getMealEmptyVisual = (mealName) => {
   const key = (mealName || '').toLowerCase();
   if (key.includes('breakfast')) {
     return {
-      lottie: require('../../assets/Lotties for Anatrox/Healthy food for diet & fitness.json'),
+      lottie: require('../../assets/animations/legacy/Healthy food for diet & fitness.json'),
     };
   }
   if (key.includes('lunch')) {
     return {
-      lottie: require('../../assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json'),
+      lottie: require('../../assets/animations/legacy/Food squeeze_With Burger and hot dog.json'),
     };
   }
   if (key.includes('dinner')) {
     return {
-      lottie: require('../../assets/Lotties for Anatrox/Fast food.json'),
+      lottie: require('../../assets/animations/legacy/Fast food.json'),
     };
   }
   // snacks / default
   return {
-    lottie: require('../../assets/Lotties for Anatrox/food around the city.json'),
+    lottie: require('../../assets/animations/legacy/food around the city.json'),
   };
 };
 
@@ -237,47 +238,6 @@ const MacroPercentText = ({ children, style, color }) => (
   <Text style={[style, { color }]}>{children}</Text>
 );
 
-/** Whole numbers when exact (3 → "3"); one decimal when needed (4.5 → "4.5"). */
-function formatNutrientAmount(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return '0';
-  const oneDec = Math.round(x * 10) / 10;
-  if (Math.abs(oneDec - Math.round(oneDec)) < 1e-6) {
-    return String(Math.round(oneDec));
-  }
-  return oneDec.toFixed(1);
-}
-
-/** P/C/F palette for macro bars (food row). */
-const MACRO_BAR_COLORS = {
-  protein: '#FF6B9D',
-  carbs: '#F97316',
-  fat: '#64D2FF',
-};
-
-/** Thin horizontal tracks — keeps macro block short vertically. */
-const MACRO_BAR_THICKNESS = 8;
-
-/** Heights / flex weights for P+C+F proportion visuals (avoids zero-height glitches). */
-function macroProportions(pg, cg, fg) {
-  const p = Math.max(0, Number(pg) || 0);
-  const c = Math.max(0, Number(cg) || 0);
-  const f = Math.max(0, Number(fg) || 0);
-  const total = p + c + f;
-  if (total <= 0) {
-    return { total: 0, pp: 0, pc: 0, pf: 0, flexP: 1, flexC: 1, flexF: 1 };
-  }
-  return {
-    total,
-    pp: p / total,
-    pc: c / total,
-    pf: f / total,
-    flexP: p,
-    flexC: c,
-    flexF: f,
-  };
-}
-
 const getMealAccentColor = (mealName) => {
   const n = (mealName || '').toLowerCase();
   if (n.includes('breakfast')) return '#F97316';
@@ -315,242 +275,6 @@ const WaterCupCircle = ({ filled, index, isDark }) => {
     </View>
   );
 };
-
-const FoodItemRow = ({
-  name,
-  cals,
-  amount,
-  p,
-  c,
-  f,
-  logId,
-  log,
-  onRemove,
-  onEdit,
-  colors = C,
-  isDark = true,
-}) => {
-  const toG = (g) => Number(g) || 0;
-  const pg = toG(p);
-  const cg = toG(c);
-  const fg = toG(f);
-  const macroPct = macroProportions(pg, cg, fg);
-
-  const cardBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
-  const cardBorder = colors.foodItemCardBorder ?? colors.cardBorder;
-  const titleColor = colors.foodItemTitle ?? colors.text;
-  const subColor = isDark ? '#A6A6A6' : '#666666';
-  const calorieAccentColor = isDark ? ACCENT.hotPink : '#E11D48';
-  const iconTint = colors.foodItemIcon ?? colors.textVeryMuted;
-  const actionTint = colors.foodItemActionIcon ?? colors.textMuted;
-  const barTrackBg = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
-
-  /** % of track width (P+C+F mix); tiny floor so non-zero macros stay visible. */
-  const fillWidthPct = (pct, grams) => {
-    if (macroPct.total <= 0 || grams <= 0) return 0;
-    const raw = pct * 100;
-    const boosted = Math.max(raw, grams > 0 ? 8 : 0);
-    return Math.min(100, boosted);
-  };
-
-  const macroRows = [
-    {
-      key: 'protein',
-      grams: pg,
-      fillPct: macroPct.pp,
-      color: MACRO_BAR_COLORS.protein,
-      name: 'Protein',
-    },
-    {
-      key: 'carbs',
-      grams: cg,
-      fillPct: macroPct.pc,
-      color: MACRO_BAR_COLORS.carbs,
-      name: 'Carbs',
-    },
-    {
-      key: 'fat',
-      grams: fg,
-      fillPct: macroPct.pf,
-      color: MACRO_BAR_COLORS.fat,
-      name: 'Fat',
-    },
-  ];
-
-  return (
-    <View style={[foodRow.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-      <View style={foodRow.body}>
-        <View style={foodRow.topHeader}>
-          <View style={[foodRow.iconBox, { backgroundColor: colors.inputBg, borderColor: colors.cardBorderSubtle }]}>
-            <Ionicons name="restaurant-outline" size={20} color={iconTint} />
-          </View>
-          <Text style={[foodRow.foodTitle, { color: titleColor }]} numberOfLines={2}>
-            {name}
-          </Text>
-          <View style={foodRow.calSlot}>
-            <Text style={[foodRow.caloriesValue, { color: calorieAccentColor }]}>
-              {Math.round(Number(cals) || 0)}
-            </Text>
-            <Text style={[foodRow.caloriesUnit, { color: calorieAccentColor }]}>cal</Text>
-          </View>
-        </View>
-
-        <Text style={[foodRow.portionText, { color: subColor }]}>{amount}</Text>
-
-        <View style={foodRow.macroVisualSection}>
-          {macroRows.map((row) => (
-            <View key={row.key} style={foodRow.macroRow}>
-              <Text style={[foodRow.macroRowLabel, { color: subColor }]} numberOfLines={1}>
-                {row.name}
-              </Text>
-              <View style={[foodRow.macroBarTrackH, { backgroundColor: barTrackBg }]}>
-                <View
-                  style={[
-                    foodRow.macroBarFillH,
-                    {
-                      width: `${fillWidthPct(row.fillPct, row.grams)}%`,
-                      backgroundColor: row.color,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={[foodRow.macroGramInline, { color: titleColor }]}>
-                {formatNutrientAmount(row.grams)}g
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={foodRow.actionsCol}>
-        {onEdit && log ? (
-          <TouchableOpacity
-            onPress={() => onEdit(log)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="pencil-outline" size={18} color={actionTint} />
-          </TouchableOpacity>
-        ) : null}
-        {onRemove && logId ? (
-          <TouchableOpacity
-            onPress={() => onRemove(logId)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="trash-outline" size={18} color="rgba(255,107,157,0.85)" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </View>
-  );
-};
-
-const foodRow = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 10,
-  },
-  body: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 4,
-  },
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 40,
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  foodTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    paddingHorizontal: 10,
-    textAlign: 'center',
-  },
-  calSlot: {
-    width: 92,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  caloriesValue: {
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-    textAlign: 'right',
-  },
-  caloriesUnit: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textAlign: 'right',
-    textTransform: 'uppercase',
-    marginTop: -2,
-    opacity: 0.95,
-  },
-  portionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 8,
-    letterSpacing: 0.2,
-  },
-  macroVisualSection: {
-    marginTop: 8,
-    width: '100%',
-    gap: 6,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 22,
-    gap: 8,
-  },
-  macroRowLabel: {
-    width: 64,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.35,
-  },
-  macroBarTrackH: {
-    flex: 1,
-    height: MACRO_BAR_THICKNESS,
-    borderRadius: 999,
-    overflow: 'hidden',
-    minWidth: 0,
-  },
-  macroBarFillH: {
-    height: '100%',
-    borderRadius: 999,
-    minWidth: 0,
-  },
-  macroGramInline: {
-    width: 44,
-    fontSize: 15,
-    fontWeight: '800',
-    textAlign: 'right',
-    letterSpacing: -0.2,
-  },
-  actionsCol: {
-    justifyContent: 'flex-start',
-    gap: 12,
-    paddingLeft: 4,
-    paddingTop: 2,
-  },
-});
 
 const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
   const mealS = useMemo(() => createMealS(colors), [colors]);
@@ -638,23 +362,23 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         </View>
       )}
       {hasFood ? (
-        <View style={[mealS.inner, { backgroundColor: colors.mealInnerBg, borderColor: colors.cardBorder }, innerShadow]}>
-          <View style={{ marginBottom: 6 }}>
+        <View
+          style={[
+            mealS.inner,
+            mealS.innerWithFood,
+            { backgroundColor: colors.mealInnerBg, borderColor: colors.cardBorder },
+            innerShadow,
+          ]}
+        >
+          <View style={mealS.foodList}>
             {meal.foods.map((food) => (
-              <FoodItemRow
+              <LoggedFoodCard
                 key={food.id || food.food_name}
-                name={food.food_name}
-                cals={food.calories}
-                p={food.protein}
-                c={food.carbs}
-                f={food.fat}
-                amount={toDisplayAmount(food.serving_grams ?? 0, (food.metadata?.servingUnit || '').toLowerCase() === 'ml') || '—'}
-                logId={food.id}
                 log={food}
+                isDark={isDark}
+                amount={toDisplayAmount(food.serving_grams ?? 0, (food.metadata?.servingUnit || '').toLowerCase() === 'ml') || '—'}
                 onRemove={onRemoveLog}
                 onEdit={onEditLog}
-                colors={colors}
-                isDark={isDark}
               />
             ))}
           </View>
@@ -725,13 +449,22 @@ const createMealS = (colors) =>
       borderRadius: 28,
       padding: 16,
       marginBottom: 14,
-      overflow: 'hidden',
+      overflow: 'visible',
     },
     inner: {
       borderRadius: 22,
       borderWidth: StyleSheet.hairlineWidth,
       marginTop: 4,
       overflow: 'hidden',
+    },
+    innerWithFood: {
+      overflow: 'visible',
+      paddingTop: 8,
+      paddingHorizontal: 8,
+      paddingBottom: 12,
+    },
+    foodList: {
+      marginBottom: 6,
     },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
     titleBlock: { flex: 1 },
@@ -1318,6 +1051,7 @@ const screen = StyleSheet.create({
   suggChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
   suggText: { fontSize: 11, fontWeight: '600' },
   ringCardOuter: {
+    marginTop: 12,
     marginBottom: 12,
   },
   ringCard: {

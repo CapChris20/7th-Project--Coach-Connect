@@ -224,7 +224,7 @@ export function getResilientApiBases() {
   return list;
 }
 
-function isCloudHostedApiBase(base) {
+export function isCloudHostedApiBase(base) {
   const b = String(base || '').toLowerCase();
   return b.includes('run.app') || b.includes('cloudfunctions.net') || b.includes('appspot.com');
 }
@@ -242,11 +242,39 @@ function isLocalDevApiBase(base) {
 }
 
 /**
- * AI Coach API bases — same order as food search / nutrition (`getResilientApiBases`).
- * Uses EXPO_PUBLIC_API_BASE_URL (Cloud Run) when set so the coach works without `npm run server`.
+ * AI Coach API bases — Cloud Run first (needs Serper/Perplexity keys).
+ * Local :4000 is only a fallback when Cloud Run is unreachable; it often lacks web-search keys
+ * and would return "live search unavailable" if tried before production.
  */
 export function getAICoachApiBases() {
-  return getResilientApiBases();
+  const list = [];
+  const seen = new Set();
+  const push = (u) => {
+    const s = String(u || '').trim().replace(/\/$/, '');
+    if (!s || seen.has(s)) return;
+    if (isPhysicalDevice() && isLoopbackBase(s)) return;
+    seen.add(s);
+    list.push(s);
+  };
+
+  push(PRODUCTION_API_BASE_URL);
+
+  const explicit = readExplicitApiBaseString();
+  if (explicit && !isCloudHostedApiBase(explicit)) {
+    push(explicit);
+  }
+
+  for (const base of getResilientApiBases()) {
+    if (!isCloudHostedApiBase(base)) {
+      push(base);
+    }
+  }
+
+  if (explicit && isCloudHostedApiBase(explicit)) {
+    push(explicit);
+  }
+
+  return list.length ? list : [PRODUCTION_API_BASE_URL.replace(/\/$/, '')];
 }
 
 /**

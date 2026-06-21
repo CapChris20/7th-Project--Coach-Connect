@@ -16,7 +16,7 @@
 import * as Print from 'expo-print';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { storage, db } from '../../app/config';
+import { storage, db } from '../../app-start/config';
 
 const STORAGE_PATH_PREFIX = 'workout-plans';
 const FIRESTORE_COLLECTION = 'workoutPlans';

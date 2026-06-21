@@ -1,8 +1,8 @@
 # Coach Connect — Codebase Guide
 
-Quick orientation for developers. **Full per-file catalog (409+ files):** [`src/CODEBASE_GUIDE.md`](src/CODEBASE_GUIDE.md)
+Quick orientation for developers. **Full per-file catalog (565 files, every folder):** [`src/SRC_FILE_CATALOG.md`](src/SRC_FILE_CATALOG.md)
 
-Regenerate the catalog: `node scripts/appendSrcInventoryToGuide.mjs`
+Regenerate the catalog: `node scripts/generateSrcFileCatalog.mjs`
 
 For architecture diagrams see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md).
 
@@ -19,36 +19,41 @@ For architecture diagrams see [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/SY
 
 | Task | Start here |
 |------|------------|
-| Auth / routing | `src/app/AuthGate.js`, `src/auth/authGateHelpers.js` |
-| Client home | `src/client/components/home/clientHomeComponents.jsx` |
-| Client dashboard | `src/client/screens/MyDashboardScreen.jsx` |
-| AI Coach chat | `src/aiChat/screens/AIChatScreen.jsx`, `src/aiChat/screens/AIChatHomeScreen.jsx` |
-| AI tools | `src/ai/tools/executeCoachTool.js`, `src/ai/tools/validateCoachToolProposal.js` |
-| Nutrition | `src/nutrition/screens/NutritionContainer.jsx`, `src/nutrition/daily-log/logFoodToFirestore.js` |
-| Daily metrics | `src/shared/daily-metrics/saveDailyMetricsToFirestore.js` |
-| Trainer CRM | `src/trainer/`, `src/trainer/lib/trainerClientFirestorePaths.js` |
+| Auth / routing | `src/app-start/AuthGate.js`, `src/auth/detectUserRole.js` |
+| Client home | `src/client-app/home/clientHomeComponents.jsx` |
+| Client dashboard | `src/client-app/dashboard/TrainingDashboardScreen.jsx` |
+| AI Coach chat | `src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx`, `src/ai-coach/chat-ui/chat-home/StartCoachChatScreen.jsx` |
+| AI tools | `src/ai-coach/server-logic/tools/runCoachAction.js`, `src/ai-coach/tools/parseCoachToolCalls.js` |
+| Nutrition | `src/nutrition/daily-log/NutritionContainer.jsx`, `src/nutrition/daily-log/logFoodToFirestore.js` |
+| Daily metrics | `src/metrics/daily-metrics/saveDailyMetricsToFirestore.js` |
+| Trainer CRM | `src/trainer-app/`, `src/trainer-app/crm/trainerClientFirestorePaths.js` |
+| Messaging | `src/messaging/MyMessagesScreen.jsx`, `src/messaging/ChatThreadScreen.jsx` |
 | API routes | `server/routes/`, `server/index.js` |
 
 ## Folder map (`src/`)
 
 ```
 src/
-├── app/           # AuthGate, ClientApp, TrainerApp, firebase config
-├── auth/          # Login, onboarding, auth helpers
-├── client/        # Client screens, home components, navigation
-├── trainer/       # Trainer screens, CRM, sessions
-├── ai/            # Coach context, tools, DeepSeek client, guards
-├── aiChat/        # AI Coach UI (home, chat, modals, persistence)
+├── app-start/     # AuthGate, ClientApp, TrainerApp, firebase config
+├── auth/          # Login, onboarding, role detection
+├── client-app/    # Client screens, home, navigation, profile
+├── trainer-app/   # Trainer screens, CRM, sessions
+├── ai-coach/      # Coach server logic, chat UI, shared tools
 ├── nutrition/     # Food log, search, barcode, facts screen
 ├── workouts/      # Workout plan viewer, generation, active workout
-├── shared/        # Cross-feature services, UI kit, utils
+├── metrics/       # Daily metrics + quotes (moved from shared/)
+├── messaging/     # Client/trainer chat screens (moved from shared/)
+├── notifications/ # Push tokens + notification copy (moved from shared/)
+├── shared/        # Cross-feature services, API helpers, components
+├── shared-ui/     # Theme, layout, liquid glass UI kit
+├── shared-utils/  # Date keys, Firestore sanitize, formatting helpers
 ├── navigation/    # Route names, bottom nav, deep links
-└── settings/      # Support config, app settings helpers
+└── settings/      # Support config, app settings screens
 ```
 
 ## Data conventions
 
-1. **Client “today”** = device local date (`src/app/dateKey.js`, `src/shared/utils/getLocalDay.js`).
+1. **Client “today”** = device local date (`src/shared-utils/dateKeys.js`, `src/shared-utils/getLocalDay.js`).
 2. **Canonical daily writes** → `users/{uid}/dailyLogs/{date}` via `dailyMetricsService.js` only.
 3. **Trainer CRM** → `trainer_clients/{trainerId}/clients/{clientId}` (legacy `clients/` still read as fallback).
 4. **AI tool execution** → client confirms → `POST /api/ai-coach/execute-tool` → Firestore.
@@ -88,3 +93,4 @@ June 2026 design targets: `.ui-refs-temp/ref1.png` … `ref16.png` (client home,
 - [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) — product scope
 - [`docs/PRODUCT_QUALITY.md`](docs/PRODUCT_QUALITY.md) — quality bar
 - [`RESTORE-INSTRUCTIONS.md`](RESTORE-INSTRUCTIONS.md) — emergency rollback
+`

@@ -10,7 +10,7 @@
  */
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 
 export default function MacroBar({ label, current, target, color = '#10B981', animatedValue }) {
   const { colors, spacing, isDark } = useTheme();

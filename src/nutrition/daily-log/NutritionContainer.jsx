@@ -10,10 +10,10 @@
  */
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { auth, db } from '../../app/config';
-import { getClientDateKey } from '../../shared/utils/dateKeys';
+import { auth, db } from '../../app-start/config';
+import { getClientDateKey } from '../../shared-utils/dateKeys';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +29,7 @@ import {
   upsertDailyGoals,
   getTopLoggedFoodNames,
 } from '../daily-log/logFoodToFirestore';
-import NutritionOnboardingScreen from '../settings/NutritionOnboardingScreen';
+import NutritionOnboardingWizardScreen from '../settings/NutritionOnboardingWizardScreen';
 import NutritionScreen from './NutritionScreen';
 import NutritionFactsScreen from '../food-details/NutritionFactsScreen';
 import QuickAddNutrition from '../quick-add/QuickAddNutrition';
@@ -448,7 +448,7 @@ export const NutritionContainer = ({
           onSettingsPress={onSettingsPress}
         />
         <View style={{ flex: 1, minHeight: 0 }}>
-          <NutritionOnboardingScreen
+          <NutritionOnboardingWizardScreen
             onComplete={handleOnboardingComplete}
             reservedBottomInset={
               hideBottomNav && typeof onOnboardingActiveChange !== 'function'
@@ -512,6 +512,8 @@ export const NutritionContainer = ({
           isDark={isDark}
           skipTopSafeInset={true}
           onBack={() => setShowQuickAdd(false)}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
         />
         <QuickAddNutrition
           userId={uid}
@@ -553,6 +555,8 @@ export const NutritionContainer = ({
           isDark={isDark}
           skipTopSafeInset
           onBack={() => setShowDailyFacts(false)}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
         />
         <NutritionFactsScreen
           logs={logs}
@@ -572,6 +576,8 @@ export const NutritionContainer = ({
           title="Goals"
           skipTopSafeInset
           onBack={() => setShowNutritionSettings(false)}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
         />
         <View style={{ flex: 1, minHeight: 0 }}>
           <NutritionSettingsScreen

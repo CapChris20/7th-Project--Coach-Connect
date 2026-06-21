@@ -1,10 +1,10 @@
 const {
   parseCoachToolCalls,
   stripCoachToolJsonFromReply,
-} = require('../../shared/coach-tools/parseCoachToolCalls');
+} = require('../../ai-coach/tools/parseCoachToolCalls');
 const {
   shouldIncludeWeeklyContextInCoachPrompt,
-} = require('../../ai/context/gatherCoachContextFromUser');
+} = require('../../ai-coach/server-logic/context/buildCoachPromptData');
 
 describe('ai coach flow integration', () => {
   test('parses tool payload and keeps readable assistant text', () => {

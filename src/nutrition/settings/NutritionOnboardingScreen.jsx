@@ -4,7 +4,7 @@
  * Purpose: UI screen or component: Nutrition Onboarding Screen. Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/nutrition
- * Key exports: NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE, NutritionOnboardingScreen
+ * Key exports: NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE, NutritionOnboardingWizardScreen
  *
  * @file-header
  */
@@ -14,7 +14,7 @@
  * Single file — all components inlined, no navbar, no CoachConnect header
  *
  * WHAT WAS IN THE ZIP:
- *   src/pages/Index.tsx                        → NutritionOnboardingScreen (orchestrator)
+ *   src/pages/Index.tsx                        → NutritionOnboardingWizardScreen (orchestrator)
  *   src/components/CalorieGoalStep.tsx         → CalorieGoalStep (inlined)
  *   src/components/MacrosStep.tsx              → MacrosStep (inlined)
  *   src/components/FavoriteFoodsStep.tsx       → FavoriteFoodsStep (inlined)
@@ -32,7 +32,7 @@
  * DEPENDENCIES — install if not already present:
  *   npx expo install expo-linear-gradient @expo/vector-icons
  *
- * Firebase is wired and configured in src/app/config.js
+ * Firebase is wired and configured in src/app-start/config.js
  *   On handleFinish, write to Firestore:
  *   setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
  *     user_id: currentUser.uid,
@@ -47,7 +47,7 @@
  *
  * USAGE:
  *   Show this screen only when getDailyGoals(uid) returns null (no goals set yet).
- *   <Stack.Screen name="NutritionOnboarding" component={NutritionOnboardingScreen} />
+ *   <Stack.Screen name="NutritionOnboarding" component={NutritionOnboardingWizardScreen} />
  */
 
 import React, { useState } from 'react';
@@ -559,7 +559,7 @@ const step = StyleSheet.create({
 /** Matches BottomNavBar minHeight when tab bar overlays this screen. */
 export const NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE = 88;
 
-export const NutritionOnboardingScreen = ({ onComplete, reservedBottomInset = 0 }) => {
+export const NutritionOnboardingWizardScreen = ({ onComplete, reservedBottomInset = 0 }) => {
   const insets = useSafeAreaInsets();
   const footerPadBottom =
     Math.max(insets.bottom, 12) + Math.max(reservedBottomInset, 0) + 20;
@@ -568,8 +568,8 @@ export const NutritionOnboardingScreen = ({ onComplete, reservedBottomInset = 0 
   const [macros, setMacros] = useState({ protein: 150, carbs: 200, fat: 65 });
 
   const handleFinish = async () => {
-    // Firebase wiring: configured in src/app/config.js
-    // import { db } from '../../app/config';
+    // Firebase wiring: configured in src/app-start/config.js
+    // import { db } from '../../app-start/config';
     // import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
     // const { currentUser } = auth;
     // await setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
@@ -623,5 +623,5 @@ export const NutritionOnboardingScreen = ({ onComplete, reservedBottomInset = 0 
   );
 };
 
-export default NutritionOnboardingScreen;
+export default NutritionOnboardingWizardScreen;
 

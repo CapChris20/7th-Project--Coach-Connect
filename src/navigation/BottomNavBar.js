@@ -18,12 +18,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../shared/ui/ThemeContext';
+import { useTheme } from '../shared-ui/ThemeContext';
 import { useMergedNavigation } from './AppNavigationContext';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import BlurBackdropPlate from '../shared/ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
 import GradientGeminiNavIcon from '../shared/components/icons/GradientGeminiNavIcon';
 import { useAI } from '../shared/contexts/AIContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,7 +32,7 @@ import {
   BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   BRAND_ICON_GRADIENT_START,
   BRAND_ICON_GRADIENT_END,
-} from '../shared/ui/brandGradients';
+} from '../shared-ui/brandGradients';
 
 /** Logo-aligned vertical gradient for all tab icons (pink → purple → indigo). */
 const BrandGradientIcon = ({

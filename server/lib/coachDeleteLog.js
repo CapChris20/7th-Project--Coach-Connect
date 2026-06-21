@@ -3,7 +3,7 @@
  */
 const admin = require('firebase-admin');
 const { mergeUserDailyMetrics } = require('./dailyMetricsServer');
-const { sanitizeDeleteFoodQuery } = require('../../src/ai/tools/parseDeleteLogRequest');
+const { sanitizeDeleteFoodQuery } = require('../../src/ai-coach/server-logic/tools/detectDeleteFoodRequest');
 
 const FieldValue = admin.firestore.FieldValue;
 

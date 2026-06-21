@@ -2,7 +2,7 @@
  * User profile fetch — Firestore-first (production project anatrox-auth).
  */
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../app/config';
+import { db } from '../../app-start/config';
 
 /**
  * Load users/{uid} from Firestore.

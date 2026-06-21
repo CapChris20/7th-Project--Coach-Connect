@@ -26,7 +26,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../../../app/config';
+import { db, functions } from '../../../app-start/config';
 
 const REASONS = [
   'Not seeing results',

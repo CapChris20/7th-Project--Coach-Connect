@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import { getOnboardingUiTokens, OnboardingPrimaryButton } from './onboardingAiDeps';
 
-const AI_LOTTIE = require('../../../assets/Lotties for Anatrox/Artificial intelligence digital technology (1).json');
+const AI_LOTTIE = require('../../../assets/animations/legacy/Artificial intelligence digital technology (1).json');
 
 export function AIOptInStep({
   isDark,

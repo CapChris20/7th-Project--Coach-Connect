@@ -1,4 +1,4 @@
-const { stripUndefinedForFirestore } = require('../../shared/utils/firestoreSanitize');
+const { stripUndefinedForFirestore } = require('../../shared-utils/firestoreSanitize');
 
 describe('saveCoachMessages Firestore payloads', () => {
   test('stripUndefinedForFirestore removes nested undefined in attachments', () => {

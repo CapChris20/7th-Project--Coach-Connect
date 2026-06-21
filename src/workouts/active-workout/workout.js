@@ -38,11 +38,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
-import { useTheme } from '../../shared/ui/ThemeContext';
-import { auth, db } from '../../app/config';
+import { useTheme } from '../../shared-ui/ThemeContext';
+import { auth, db } from '../../app-start/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Liquid } from '../../shared/ui/liquid/liquidTokens';
+import { Liquid } from '../../shared-ui/liquid/liquidTokens';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -60,13 +60,13 @@ import {
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from './workoutService';
 import Markdown from 'react-native-markdown-display';
 import { useAI } from '../../shared/contexts/AIContext';
-import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai/trainer-messaging/sendTrainerNotification';
+import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
 import {
   stripMarkdown,
   stripEmojis,
 } from '../plan-viewer/workoutPlanPdfService';
 import WorkoutPlanPdfViewerModal from '../plan-viewer/WorkoutPlanPdfViewerModal';
-import PlanViewerScreen from '../../client/screens/PlanViewerScreen';
+import ViewMyWorkoutPlanScreen from '../../client-app/screens/ViewMyWorkoutPlanScreen';
 import WorkoutExerciseLibraryTab from '../exercise-library/WorkoutExerciseLibraryTab';
 import { EditModalForm } from './EditModalForm_RN';
 import {
@@ -3127,7 +3127,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               }
             }}
           />
-          <PlanViewerScreen
+          <ViewMyWorkoutPlanScreen
             route={{
               params: {
                 workoutPlan: workoutPlanRows,

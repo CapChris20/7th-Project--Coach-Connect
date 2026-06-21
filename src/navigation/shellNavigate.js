@@ -9,8 +9,8 @@
  * @file-header
  */
 import { useContext, useMemo } from 'react';
-import { ClientAppShellContext } from '../client/navigation/ClientAppShellContext';
-import { TrainerAppShellContext } from '../trainer/navigation/TrainerAppShellContext';
+import { ClientAppShellContext } from '../client-app/navigation/ClientAppShellContext';
+import { TrainerAppShellContext } from '../trainer-app/navigation/TrainerAppShellContext';
 
 /** Resolve stack/tab navigation from app shell when a screen prop is missing. */
 export function buildNavigateFromShell(shell) {
@@ -23,7 +23,7 @@ export function buildNavigateFromShell(shell) {
       shell.handleHomePress?.();
       return;
     }
-    if (screen === 'profile' || screen === 'ProfileScreen') {
+    if (screen === 'profile' || screen === 'ViewMyViewMyProfileScreen') {
       shell.handleHomePress?.();
       shell.openProfile?.();
       return;

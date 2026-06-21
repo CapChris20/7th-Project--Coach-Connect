@@ -2,7 +2,7 @@ const {
   normalizeWorkoutDayLabel,
   isAllowedClientWorkoutDayLabel,
   WORKOUT_DAY_EXAMPLES_SHORT,
-} = require('../../shared/utils/workoutDayLabels');
+} = require('../../shared-utils/workoutDayLabels');
 
 test('workout day label normalization and allowlist', () => {
   expect(normalizeWorkoutDayLabel('  Chest   Day ')).toBe('chest day');

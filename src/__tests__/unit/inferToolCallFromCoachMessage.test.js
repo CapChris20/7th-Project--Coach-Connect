@@ -1,11 +1,11 @@
-jest.mock('../../ai/tools/executeCoachTool.js', () => ({
+jest.mock('../../ai-coach/server-logic/tools/runCoachAction.js', () => ({
   normalizeToolCall: (raw) => {
     if (!raw?.name) return null;
     return { name: raw.name, params: raw.params || {}, reasoning: raw.reasoning || '' };
   },
 }));
 
-const { inferToolCallFromCoachMessage } = require('../../ai/tools/parseUserMessageForTools');
+const { inferToolCallFromCoachMessage } = require('../../ai-coach/server-logic/tools/findCoachRequestsInText');
 
 const WEB_SEARCH_USER =
   'Search the web: what does research say about protein intake for lifters? Cite sources.';

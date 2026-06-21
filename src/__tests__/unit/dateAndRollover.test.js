@@ -2,7 +2,7 @@ const {
   getLocalDateKey,
   msUntilLocalMidnight,
   nextLocalMidnight,
-} = require('../../shared/utils/getLocalDay');
+} = require('../../shared-utils/getLocalDay');
 
 describe('local day helpers', () => {
   test('returns YYYY-MM-DD local date key', () => {

@@ -12,7 +12,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../app/config';
+import { auth } from '../../app-start/config';
 
 const AIContext = createContext(null);
 

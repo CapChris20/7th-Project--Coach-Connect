@@ -13,7 +13,7 @@
  */
 
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../app/config';
+import { db } from '../../app-start/config';
 import { buildClientRegistryDoc } from './clientProfileFirestore';
 
 /** Read clients/{uid} merged with users/{uid} (registry first, user fills gaps). */

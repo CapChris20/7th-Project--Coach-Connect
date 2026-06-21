@@ -2,7 +2,7 @@
  * Workout plan generation state + API orchestration.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { auth } from '../../app/config';
+import { auth } from '../../app-start/config';
 import {
   formatWorkoutLimitResetLabel,
   nextMonthResetsAtIso,

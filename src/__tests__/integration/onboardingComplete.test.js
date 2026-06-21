@@ -7,7 +7,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 const AsyncStorage = require('@react-native-async-storage/async-storage');
-const { completeOnboardingClient } = require('../../auth/onboardingCompleteClient');
+const { completeOnboardingClient } = require('../../auth/finishOnboarding');
 const {
   applyOnboardingCompleteServer,
 } = require('../../../server/lib/onboardingCompleteLinks');
@@ -74,7 +74,8 @@ describe('Onboarding complete → trainer link creation', () => {
     expect(clientResult.error).toBeNull();
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
     const clientPayload = mockSetDoc.mock.calls[0][1];
-    expect(clientPayload.trainerId).toBe(trainerId);
+    expect(clientPayload.trainerId).toBeUndefined();
+    expect(clientPayload.role).toBeUndefined();
     expect(clientPayload.onboardingCompleted).toBe(true);
 
     const db = createMockFirestore();
@@ -116,7 +117,7 @@ describe('Onboarding complete → trainer link creation', () => {
     });
 
     const clientPayload = mockSetDoc.mock.calls[0][1];
-    expect(clientPayload.role).toBe('client');
+    expect(clientPayload.role).toBeUndefined();
     expect(clientPayload.trainerId).toBeUndefined();
 
     const db = createMockFirestore();

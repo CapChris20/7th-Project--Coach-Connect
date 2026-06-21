@@ -29,16 +29,16 @@ const BASENAME_ALIASES = {
   'FoodConfirmSheet.jsx': 'ConfirmFoodSelectionSheet.jsx',
   'barcodeDisplay.js': 'renderScannedBarcode.js',
   'fatSecretFood.js': 'fatSecretClient.js',
-  'foodSearchQueryMatch.js': 'rankFoodSearchResults.js',
-  'foodSearchTitle.js': 'formatFoodSearchTitle.js',
-  'restaurantSerperQuality.js': 'validateRestaurantResult.js',
-  'nutritionNormalization.js': 'normalizeNutritionData.js',
+  'foodSearchQueryMatch.js': 'sortBestFoodMatches.js',
+  'foodSearchTitle.js': 'cleanFoodCardLabels.js',
+  'restaurantSerperQuality.js': 'isReliableRestaurantFood.js',
+  'nutritionNormalization.js': 'fixFoodNutritionNumbers.js',
   'servingMath.js': 'calculateServingSize.js',
   'foodNormalize.js': 'normalizeFoodQuery.js',
   'coachCategoryPrompts.js': 'coachQuickPrompts.js',
   'coachSourcePreview.js': 'renderSourcePreview.js',
   'CoachSourcePreviewSheet.jsx': 'CoachPasteSheet.jsx',
-  'aiChatPersistence.js': 'saveCoachMessagesToFirestore.js',
+  'aiChatPersistence.js': 'saveCoachMessages.js',
   'normalizeToolParams.js': 'cleanupToolParams.js',
   'dataCacheCleanup.js': 'clearDataOnLogout.js',
   'notificationsService.js': 'manageNotifications.js',
@@ -50,20 +50,20 @@ const BASENAME_ALIASES = {
 
 /** Present if any target exists (split refactors). */
 const MULTI_REMAP = {
-  'src/aiChat/components/CoachComposerInput.jsx': [
-    'src/aiChat/chat-thread/useCoachComposerInput.js',
-    'src/aiChat/chat-thread/CoachPasteSheet.jsx',
+  'src/ai-coach/chat-ui/components/CoachComposerInput.jsx': [
+    'src/ai-coach/chat-ui/chat-thread/useCoachComposerInput.js',
+    'src/ai-coach/chat-ui/chat-thread/CoachPasteSheet.jsx',
   ],
-  'src/aiChat/lib/pasteTextIntoComposer.js': [
-    'src/aiChat/chat-thread/useCoachComposerInput.js',
-    'src/aiChat/chat-thread/CoachPasteSheet.jsx',
+  'src/ai-coach/chat-ui/lib/pasteTextIntoComposer.js': [
+    'src/ai-coach/chat-ui/chat-thread/useCoachComposerInput.js',
+    'src/ai-coach/chat-ui/chat-thread/CoachPasteSheet.jsx',
   ],
-  'src/client/marketplace/screens/MarketplaceScreen.jsx': [
-    'src/client/marketplace/components/MarketplaceUI.jsx',
-    'src/client/home/ClientMainScreen.jsx',
+  'src/client-app/marketplace/screens/MarketplaceScreen.jsx': [
+    'src/client-app/marketplace/components/MarketplaceUI.jsx',
+    'src/client-app/home/ClientMainScreen.jsx',
   ],
-  'src/client/marketplace/screens/TrainerProfileScreen.jsx': [
-    'src/client/marketplace/components/MarketplaceTrainerProfileSheet.jsx',
+  'src/client-app/marketplace/screens/TrainerViewMyViewMyViewMyProfileScreen.jsx': [
+    'src/client-app/marketplace/components/MarketplaceTrainerProfileSheet.jsx',
   ],
 };
 
@@ -89,15 +89,15 @@ function buildExtendedRemap() {
       remap[`src/nutrition/services/${base}`] = to;
       if (base.endsWith('.jsx')) remap[`src/nutrition/components/${base}`] = to;
     }
-    if (from.startsWith('src/aiChat/')) {
-      remap[`src/aiChat/lib/${base}`] = to;
-      if (base.endsWith('.jsx')) remap[`src/aiChat/components/${base}`] = to;
+    if (from.startsWith('src/ai-coach/chat-ui/')) {
+      remap[`src/ai-coach/chat-ui/lib/${base}`] = to;
+      if (base.endsWith('.jsx')) remap[`src/ai-coach/chat-ui/components/${base}`] = to;
     }
     if (from.startsWith('src/shared/')) {
       remap[`src/shared/services/${base}`] = to;
     }
-    if (from.startsWith('src/ai/tools/')) {
-      remap[`src/ai/${base}`] = to;
+    if (from.startsWith('src/ai-coach/server-logic/tools/')) {
+      remap[`src/ai-coach/server-logic/${base}`] = to;
     }
     if (from.startsWith('src/utils/')) {
       remap[`src/utils/${base}`] = to;
@@ -113,20 +113,20 @@ function buildExtendedRemap() {
   }
 
   // Correct stale manual entries from pre-reorg layout
-  remap['src/client/screens/PlanViewerScreen.jsx'] = 'src/client/screens/PlanViewerScreen.jsx';
-  remap['src/client/workout-plans/PlanViewerScreen.jsx'] = 'src/client/screens/PlanViewerScreen.jsx';
+  remap['src/client-app/screens/ViewMyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
+  remap['src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
   remap['src/nutrition/screens/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
   remap['src/nutrition/daily-log/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
   remap['src/shared/services/pushNotifyApi.js'] = 'src/shared/api/sendPushNotification.js';
-  remap['src/shared/services/dailyMetricsService.js'] = 'src/shared/daily-metrics/saveDailyMetricsToFirestore.js';
-  remap['src/ai/normalizeToolParams.js'] = 'src/ai/tools/cleanupToolParams.js';
-  remap['src/client/home/ClientHomeScreen.jsx'] = 'src/client/navigation/ClientMainScreen.jsx';
-  remap['src/trainer/home/TrainerHomeScreen.jsx'] = 'src/trainer/navigation/TrainerMainScreen.jsx';
-  remap['src/client/components/FilesNotesHeroCard.jsx'] = 'src/shared/components/FilesNotesHeroCard.jsx';
-  remap['src/aiChat/lib/coachConversationDebug.js'] = 'src/aiChat/persistence/coachConversationDebug.js';
-  remap['src/aiChat/components/TrainerCoachClientBar.jsx'] = 'src/aiChat/trainer-coach-mode/TrainerCoachClientBar.jsx';
-  remap['src/aiChat/lib/coachMarkdownStyles.js'] = 'src/aiChat/chat-thread/coachMarkdownStyles.js';
-  remap['src/aiChat/components/CoachFormattedReply.jsx'] = 'src/aiChat/chat-thread/CoachFormattedReply.jsx';
+  remap['src/shared/services/dailyMetricsService.js'] = 'src/metrics/daily-metrics/saveDailyMetricsToFirestore.js';
+  remap['src/ai-coach/server-logic/normalizeToolParams.js'] = 'src/ai-coach/server-logic/tools/cleanupToolParams.js';
+  remap['src/client-app/home/ClientHomeScreen.jsx'] = 'src/client-app/navigation/ClientMainScreen.jsx';
+  remap['src/trainer-app/home/TrainerHomeScreen.jsx'] = 'src/trainer-app/navigation/TrainerMainScreen.jsx';
+  remap['src/client-app/components/FilesNotesHeroCard.jsx'] = 'src/shared/components/FilesNotesHeroCard.jsx';
+  remap['src/ai-coach/chat-ui/lib/coachConversationDebug.js'] = 'src/ai-coach/chat-ui/persistence/coachConversationDebug.js';
+  remap['src/ai-coach/chat-ui/components/TrainerCoachClientBar.jsx'] = 'src/ai-coach/chat-ui/trainer-coach-mode/TrainerCoachClientBar.jsx';
+  remap['src/ai-coach/chat-ui/lib/coachMarkdownStyles.js'] = 'src/ai-coach/chat-ui/chat-thread/coachMarkdownStyles.js';
+  remap['src/ai-coach/chat-ui/components/CoachFormattedReply.jsx'] = 'src/ai-coach/chat-ui/chat-thread/CoachFormattedReply.jsx';
   remap['src/shared/services/firestoreListenerUtils.js'] = 'src/shared/firestore/firestoreListenerUtils.js';
   remap['src/nutrition/utils/casualMenuSearch.js'] = 'src/nutrition/food-search/casualMenuSearch.js';
 
@@ -311,9 +311,9 @@ function resolvePath(relPath, fileIndex) {
     ['src/nutrition/utils/', ['src/nutrition/food-details/', 'src/nutrition/food-search/', 'src/nutrition/barcode/']],
     ['src/nutrition/services/', ['src/nutrition/food-search/']],
     ['src/nutrition/components/', ['src/nutrition/food-search/']],
-    ['src/aiChat/lib/', ['src/aiChat/chat-thread/', 'src/aiChat/persistence/']],
-    ['src/aiChat/components/', ['src/aiChat/chat-thread/']],
-    ['src/shared/services/', ['src/shared/daily-metrics/', 'src/shared/api/', 'src/shared/notifications/']],
+    ['src/ai-coach/chat-ui/lib/', ['src/ai-coach/chat-ui/chat-thread/', 'src/ai-coach/chat-ui/persistence/']],
+    ['src/ai-coach/chat-ui/components/', ['src/ai-coach/chat-ui/chat-thread/']],
+    ['src/shared/services/', ['src/metrics/daily-metrics/', 'src/shared/api/', 'src/notifications/']],
   ];
   for (const [oldPre, newPres] of prefixTry) {
     if (!normalized.startsWith(oldPre)) continue;
@@ -451,16 +451,16 @@ function runStaticChecks() {
   // verifyThreadGapFixes highlights
   check('server/lib/index.js removed (stale duplicate)', !exists('server/lib/index.js'));
   check(
-    'PlanViewerScreen exists',
+    'ViewMyWorkoutPlanScreen exists',
     existsAny([
-      'src/client/screens/PlanViewerScreen.jsx',
-      'src/client/workout-plans/PlanViewerScreen.jsx',
+      'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx',
+      'src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx',
     ]),
   );
   check('load-tests/ folder', exists('load-tests/run-all.sh'));
   check('coach tool guards test', exists('src/__tests__/unit/coachToolProposalGuards.test.js'));
   check('runJestWithLog writes test-results.txt', exists('scripts/runJestWithLog.js'));
-  check('validateCoachToolProposal (modal guards)', exists('src/ai/tools/validateCoachToolProposal.js'));
+  check('shouldShowCoachAction (modal guards)', exists('src/ai-coach/server-logic/tools/shouldShowCoachAction.js'));
   check('filterValidCoachToolCalls on server', read('server/index.js').includes('filterValidCoachToolProposals'));
   check('EMERGENCY PARSE removed from server', !read('server/index.js').includes('EMERGENCY PARSE'));
   check(
@@ -472,8 +472,8 @@ function runStaticChecks() {
   );
   check('support config file', exists('src/shared/config/supportConfig.js') || read('server/supportEmail.js').includes('coachconnect0@gmail.com'));
 
-  if (exists('src/client/home/ClientMainScreen.jsx')) {
-    const main = read('src/client/home/ClientMainScreen.jsx');
+  if (exists('src/client-app/home/ClientMainScreen.jsx')) {
+    const main = read('src/client-app/home/ClientMainScreen.jsx');
     check('energy not raw /8 as percent heuristic', !/\/\s*8\s*\*\s*100|energy.*100\s*%/i.test(main));
   }
 
@@ -497,7 +497,7 @@ const EXPECTED_TESTS = [
   'src/__tests__/unit/workoutPlanParsing.test.js',
   'src/__tests__/integration/aiCoachFlow.test.js',
   'src/__tests__/integration/foodSearchLog.test.js',
-  'src/__tests__/unit/trainerCodeValidation.test.js',
+  'src/__tests__/unit/validateTrainerInviteCode.test.js',
   'src/__tests__/unit/onboardingGate.test.js',
   'src/__tests__/components/ToolConfirmationModal.test.js',
   'src/__tests__/integration/onboardingComplete.test.js',

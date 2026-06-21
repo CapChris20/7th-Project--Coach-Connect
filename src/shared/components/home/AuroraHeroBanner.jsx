@@ -20,12 +20,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { DailyQuotePill } from './DailyQuoteCard';
+import HeroCardBackGlow from './HeroCardBackGlow';
 
 /** Dark purple → dark orange — Today/time card icon accent. */
 export const TODAY_CARD_TOP_STRIPE = ['#6D28D9', '#C2410C'];
 
 /** Hot pink → dark orange rim on welcome hero (client + trainer). */
 export const AURORA_HERO_BORDER = ['#FF6B9D', '#C2410C'];
+
+/** Inner fill — same family as FilesNotesHeroCard (not flat black). */
+const HERO_INNER_BG_DARK = ['#1a0a2e', '#0f0a1a'];
+const HERO_INNER_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
+const HERO_TOP_STRIPE = ['#C2410C', '#4C1D95'];
 
 export function getAuroraHeroGreeting() {
   const hour = new Date().getHours();
@@ -135,30 +141,58 @@ function AuroraHeroLiveClock({ isDark }) {
   );
 }
 
-/** Welcome shell — hot pink → dark orange gradient rim. */
+/** Welcome shell — gradient rim + flat glow behind card (FilesNotesHeroCard style). */
 function HeroGradientFrame({ isDark, layout, children }) {
-  const outerStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
-  const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const radius = outerStyle.borderRadius ?? 24;
+  const shellStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
+  const radius = shellStyle.borderRadius ?? 24;
+  const innerBg = isDark ? HERO_INNER_BG_DARK : HERO_INNER_BG_LIGHT;
 
   return (
-    <LinearGradient
-      colors={AURORA_HERO_BORDER}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[
-        outerStyle,
-        {
-          padding: 1.5,
-          shadowColor: '#FF6B9D',
-          shadowOpacity: isDark ? 0.24 : 0.16,
-        },
-      ]}
-    >
-      <View style={[styles.inner, { backgroundColor: innerBg, borderRadius: radius - 1.5 }]}>
-        {children}
+    <View style={[shellStyle, styles.heroShell]}>
+      <HeroCardBackGlow isDark={isDark} borderRadius={radius} />
+
+      <View
+        style={[
+          styles.cardShadow,
+          { borderRadius: radius },
+          Platform.select({
+            ios: {
+              shadowColor: '#C2410C',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: isDark ? 0.38 : 0.22,
+              shadowRadius: 18,
+            },
+            android: { elevation: 10 },
+          }),
+        ]}
+      >
+        <View style={[styles.cardClip, { borderRadius: radius }]}>
+          <LinearGradient
+            colors={AURORA_HERO_BORDER}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ padding: 1.5, borderRadius: radius }}
+          >
+            <View style={[styles.innerClip, { borderRadius: radius - 1.5 }]}>
+              <LinearGradient
+                colors={HERO_TOP_STRIPE}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.topStripe}
+              />
+              <LinearGradient
+                colors={innerBg}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.inner}
+              >
+                {children}
+              </LinearGradient>
+            </View>
+          </LinearGradient>
+        </View>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -241,26 +275,35 @@ export default function AuroraHeroBanner({
 }
 
 const styles = StyleSheet.create({
-  outerClient: {
-    marginHorizontal: 22,
-    marginTop: 0,
-    marginBottom: 6,
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 14 },
-    shadowRadius: 24,
-    elevation: 10,
+  heroShell: {
     position: 'relative',
+    overflow: 'visible',
+  },
+  cardShadow: {
+    position: 'relative',
+    zIndex: 1,
+    borderRadius: 24,
+  },
+  cardClip: {
+    overflow: 'hidden',
+  },
+  innerClip: {
+    overflow: 'hidden',
+  },
+  topStripe: {
+    height: 3,
+    width: '100%',
+  },
+  outerClient: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 16,
+    borderRadius: 24,
   },
   outerTrainer: {
-    marginTop: 4,
-    marginBottom: 0,
+    marginTop: 10,
+    marginBottom: 8,
     borderRadius: 24,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 14 },
-    shadowRadius: 24,
-    elevation: 10,
-    position: 'relative',
   },
   inner: {
     overflow: 'hidden',

@@ -3,9 +3,10 @@ const {
   significantQueryTokens,
   itemMatchesQuery,
   isMenuStyleQuery,
-} = require('../../nutrition/food-search/rankFoodSearchResults');
+  filterFoodSearchRows,
+} = require('../../nutrition/food-search/sortBestFoodMatches');
 
-const { scoreSerperFoodResultRow } = require('../../nutrition/food-search/validateRestaurantResult');
+const { scoreSerperFoodResultRow } = require('../../nutrition/food-search/isReliableRestaurantFood');
 
 const { extractMacrosFromText } = require('../../../server/nutritionSearchHelpers.js');
 
@@ -63,13 +64,68 @@ describe('itemMatchesQuery', () => {
     expect(itemMatchesQuery('GUMMI JETS candy', 'jets pizza')).toBe(false);
   });
 
-  it('requires all tokens for multi-word queries', () => {
+  it('requires all tokens for multi-word menu queries', () => {
     expect(itemMatchesQuery('Big Mac', 'big mac')).toBe(true);
     expect(itemMatchesQuery('Mac sauce only', 'big mac')).toBe(false);
   });
 
+  it('allows partial token overlap for packaged grocery queries', () => {
+    expect(itemMatchesQuery('Apple Jacks', 'apple jacks cereal')).toBe(true);
+    expect(itemMatchesQuery('Kelloggs Apple Jacks Cereal', 'apple jacks cereal')).toBe(true);
+    expect(itemMatchesQuery('Apple Cinnamon Cheerios', 'apple jacks cereal')).toBe(false);
+  });
+
   it('rejects partial token matches when other tokens are missing', () => {
     expect(itemMatchesQuery('Big Fries', 'big mac')).toBe(false);
+  });
+
+  it('matches abbreviated piece counts against spelled-out menu titles', () => {
+    expect(
+      itemMatchesQuery(
+        "McDonald's 20 piece chicken mcnuggets",
+        '20pc mcnuggets',
+      ),
+    ).toBe(true);
+  });
+
+  it('matches Ghost brand products without requiring every flavor token', () => {
+    expect(itemMatchesQuery('Ghost whey protein', 'Ghost Whey Protein Cereal')).toBe(true);
+    expect(itemMatchesQuery('Ghost Whey Protein Cereal Milk', 'Ghost Whey Protein Cereal')).toBe(true);
+    expect(itemMatchesQuery('Myprotein whey isolate', 'Ghost Whey Protein Cereal')).toBe(false);
+  });
+});
+
+describe('filterFoodSearchRows general behavior', () => {
+  it('returns ranked grocery matches instead of empty when titles omit a descriptor word', () => {
+    const rows = [
+      { name: 'Apple Jacks', brand: "Kellogg's" },
+      { name: 'Apple Cinnamon Cheerios', brand: 'General Mills' },
+      { name: 'Random Apple Sauce', brand: 'Store' },
+    ];
+    const out = filterFoodSearchRows('apple jacks cereal', rows, 10);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].name).toMatch(/Apple Jacks/i);
+  });
+
+  it('keeps menu queries strict (no jets pizza → gummi jets)', () => {
+    const rows = [
+      { name: "Jet's Pepperoni Pizza", brand: "Jet's Pizza" },
+      { name: 'GUMMI JETS candy', brand: 'Haribo' },
+    ];
+    const out = filterFoodSearchRows('jets pizza', rows, 10);
+    expect(out.some((r) => /pizza/i.test(r.name))).toBe(true);
+    expect(out.some((r) => /gummi/i.test(r.name))).toBe(false);
+  });
+});
+describe('isMenuStyleQuery branded supplements', () => {
+  it('does not treat supplement brand queries as restaurant menu searches', () => {
+    expect(isMenuStyleQuery('Ghost Whey Protein Cereal')).toBe(false);
+    expect(isMenuStyleQuery('optimum nutrition gold standard')).toBe(false);
+  });
+
+  it('still treats pizza and chain menu items as menu-style', () => {
+    expect(isMenuStyleQuery('jets pizza')).toBe(true);
+    expect(isMenuStyleQuery('starbucks latte')).toBe(true);
   });
 });
 

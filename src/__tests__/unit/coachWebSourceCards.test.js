@@ -2,7 +2,7 @@ const {
   hostLabel,
   faviconUrl,
   resolveSourcePreviewUri,
-} = require('../../aiChat/chat-thread/renderSourcePreview');
+} = require('../../ai-coach/chat-ui/chat-thread/renderSourcePreview');
 
 describe('CoachWebSourceCards helpers', () => {
   test('extracts host and preview URLs for web source cards', () => {

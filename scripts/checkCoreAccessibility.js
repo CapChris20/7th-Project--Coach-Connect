@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..');
 
 const CORE_FILES = [
   {
-    file: 'src/aiChat/chat-thread/AIChatScreen.jsx',
+    file: 'src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx',
     mustInclude: [
       'Refresh coach context',
       'Message input',
@@ -20,7 +20,7 @@ const CORE_FILES = [
     ],
   },
   {
-    file: 'src/aiChat/tool-modals/toolModalHelpers.js',
+    file: 'src/ai-coach/chat-ui/tool-modals/toolModalHelpers.js',
     mustInclude: ['accessibilityLabel="Cancel"', 'accessibilityLabel="Confirm"'],
   },
   {

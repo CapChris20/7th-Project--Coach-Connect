@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { auth, db } from '../../app/config';
+import { auth, db } from '../../app-start/config';
 import { doc, getDoc } from 'firebase/firestore';
 
 /** Keep in sync with server/lib/workoutGenerationLimit.js */

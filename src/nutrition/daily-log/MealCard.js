@@ -10,10 +10,10 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import FoodItem from '../food-details/FoodItem';
-import FluidGlass from '../../shared/ui/FluidGlass';
+import FluidGlass from '../../shared-ui/FluidGlass';
 
 const ACCENT = '#7C3AED';
 

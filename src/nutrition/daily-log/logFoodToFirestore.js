@@ -9,7 +9,7 @@
  * @file-header
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from '../../app/config';
+import { db } from '../../app-start/config';
 import {
   collection,
   doc,
@@ -25,10 +25,12 @@ import {
   serverTimestamp,
   limit as limitFn,
 } from 'firebase/firestore';
-import foodSearchProvider from '../food-search/foodSearchProvider';
-export { FOOD_SEARCH_OFFLINE_HINT } from '../food-search/foodSearchProvider';
+import searchFoodsService from '../food-search/searchFoodsService';
+export { FOOD_SEARCH_OFFLINE_HINT } from '../food-search/searchFoodsService';
 import { autoLogErrorSync } from '../../utils/autoLogError';
+import { stripUndefinedForFirestore } from '../../shared-utils/firestoreSanitize';
 import { normalizeFoodForLog, isLiquidFood } from '../food-search/normalizeFoodQuery';
+import { normalizeFoodRecordForStorage } from '../food-search/makeReadableFoodTitle';
 import { isPer100gSource, resolveServingGrams } from '../food-details/calculateServingSize';
 
 const LOGS_COLLECTION = 'nutrition_logs';
@@ -36,10 +38,24 @@ const GOALS_COLLECTION = 'nutrition_goals';
 const FOOD_CACHE_KEY = 'COACHCONNECT_FOOD_CACHE';
 const MAX_CACHE_ITEMS = 50;
 
+/** Peel nested metadata.metadata… layers and drop undefined before Firestore writes. */
+function flattenFoodForMetadata(food) {
+  const normalized = normalizeFoodForLog(food) || {};
+  let flat = { ...normalized };
+  for (let depth = 0; depth < 6; depth += 1) {
+    const inner = flat.metadata;
+    if (!inner || typeof inner !== 'object' || Array.isArray(inner)) break;
+    const { metadata: _nested, ...outerRest } = flat;
+    flat = { ...inner, ...outerRest };
+  }
+  const { metadata: _drop, ...withoutMeta } = flat;
+  return stripUndefinedForFirestore(withoutMeta);
+}
+
 function normalizeHistoryName(name) {
-  return String(name || '')
-    .trim()
-    .toLowerCase()
+  const { makeReadableFoodTitle } = require('../food-search/makeReadableFoodTitle');
+  return makeReadableFoodTitle({ name })
+    .name.toLowerCase()
     .replace(/[''`]/g, "'")
     .replace(/\s+/g, ' ');
 }
@@ -55,7 +71,7 @@ export function buildFoodHistoryId(food) {
 
 /** Per-serving template for re-logging (Quick Add, search, barcode, coach). */
 export function buildFoodHistoryEntry(food) {
-  const normalized = normalizeFoodForLog(food);
+  const normalized = normalizeFoodRecordForStorage(normalizeFoodForLog(food));
   const name = String(normalized?.name || normalized?.food_name || '').trim();
   if (!name) return null;
 
@@ -288,7 +304,7 @@ export async function addFoodLog(userId, log) {
   let totalPotassium = 0;
 
   const rawFood = log.food || {};
-  const food = clampNutrition(rawFood);
+  const food = normalizeFoodRecordForStorage(clampNutrition(flattenFoodForMetadata(rawFood)));
   let rawQty;
   if (log.servingSize != null && log.servingSize !== '') {
     rawQty = Number(log.servingSize);
@@ -356,6 +372,7 @@ export async function addFoodLog(userId, log) {
     metadata: food,
     created_at: serverTimestamp(),
   };
+  const safePayload = stripUndefinedForFirestore(payload);
 
   try {
     console.log('💾 Saving to Firestore:', {
@@ -364,14 +381,14 @@ export async function addFoodLog(userId, log) {
       serving_size: payload.serving_size,
       serving_grams: payload.serving_grams,
     });
-    const docRef = await addDoc(collection(db, LOGS_COLLECTION), payload);
+    const docRef = await addDoc(collection(db, LOGS_COLLECTION), safePayload);
     if (__DEV__) console.log('✅ Saved successfully with ID:', docRef.id);
     try {
       await saveFoodToHistory(food);
     } catch (historyErr) {
       if (__DEV__) console.warn('Food history save failed:', historyErr?.message);
     }
-    return { id: docRef.id, ...payload };
+    return { id: docRef.id, ...safePayload };
   } catch (error) {
     if (__DEV__) console.error('Failed to add food log:', error);
     // Auto-log the error
@@ -549,7 +566,7 @@ export async function cacheFoodProduct(product) {
     const name = String(product.name || product.food_name || '').trim();
     if (!name) return;
 
-    const cachedFoods = await foodSearchProvider.getCachedFoods();
+    const cachedFoods = await searchFoodsService.getCachedFoods();
     const filtered = cachedFoods.filter(
       (item) => item.id !== id && normalizeHistoryName(item.name || item.food_name) !== normalizeHistoryName(name),
     );
@@ -559,7 +576,7 @@ export async function cacheFoodProduct(product) {
       filtered.splice(MAX_CACHE_ITEMS);
     }
 
-    await foodSearchProvider.saveCachedFoods(filtered);
+    await searchFoodsService.saveCachedFoods(filtered);
   } catch (error) {
     if (__DEV__) console.warn('Failed to cache food product', error.message);
   }
@@ -567,7 +584,7 @@ export async function cacheFoodProduct(product) {
 
 export async function getCachedFoods() {
   try {
-    return await foodSearchProvider.getCachedFoods();
+    return await searchFoodsService.getCachedFoods();
   } catch (error) {
     if (__DEV__) console.error('Error getting cached foods:', error);
     // Return sample foods even if cache fails
@@ -598,13 +615,13 @@ function getDefaultGoals() {
 
 // Food search functions using unified provider
 export function getFoodSearchHint() {
-  return foodSearchProvider.getLastSearchHint?.() ?? null;
+  return searchFoodsService.getLastSearchHint?.() ?? null;
 }
 
 export async function searchFoods(query, maxResults = 20) {
   try {
     if (__DEV__) console.log('🍔 Starting unified food search for:', query);
-    const results = await foodSearchProvider.searchFoods(query, maxResults);
+    const results = await searchFoodsService.searchFoods(query, maxResults);
     if (__DEV__) console.log(`🍔 Unified search returned ${results.length} results`);
     return results;
   } catch (error) {
@@ -612,7 +629,7 @@ export async function searchFoods(query, maxResults = 20) {
     // Fallback to cached foods only
     if (__DEV__) console.log('🍔 Falling back to local cache only');
     try {
-      const cachedFoods = await foodSearchProvider.getCachedFoods();
+      const cachedFoods = await searchFoodsService.getCachedFoods();
       // Ensure cachedFoods is an array before filtering
       const foodsArray = Array.isArray(cachedFoods) ? cachedFoods : [];
       return foodsArray.filter(food => 
@@ -629,7 +646,7 @@ export async function searchFoods(query, maxResults = 20) {
 export async function lookupBarcode(barcode) {
   try {
     if (__DEV__) console.log('🍔 Looking up barcode:', barcode);
-    const result = await foodSearchProvider.lookupBarcode(barcode);
+    const result = await searchFoodsService.lookupBarcode(barcode);
     if (__DEV__) console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
     return result;
   } catch (error) {
@@ -642,7 +659,7 @@ export async function getFoodDetails(foodId, source = 'cache') {
   try {
     // For now, just return cached food details
     // This can be enhanced later to call server endpoints
-    const cachedFoods = await foodSearchProvider.getCachedFoods();
+    const cachedFoods = await searchFoodsService.getCachedFoods();
     return cachedFoods.find(food => food.id === foodId) || null;
   } catch (error) {
     if (__DEV__) console.error('Error getting food details:', error);
@@ -653,7 +670,7 @@ export async function getFoodDetails(foodId, source = 'cache') {
 export async function getPopularFoods(limit = 10) {
   try {
     // Return cached foods sorted by recent usage
-    const cachedFoods = await foodSearchProvider.getCachedFoods();
+    const cachedFoods = await searchFoodsService.getCachedFoods();
     return cachedFoods.slice(0, limit);
   } catch (error) {
     if (__DEV__) console.error('Error getting popular foods:', error);
@@ -672,7 +689,7 @@ function logToHistoryEntry(log) {
       id: meta.id || buildFoodHistoryId(meta),
       name,
       food_name: name,
-      fromRecentLog: meta.dataBasis === 'logged_totals' || meta.fromRecentLog,
+      fromRecentLog: Boolean(meta.dataBasis === 'logged_totals' || meta.fromRecentLog),
     });
   }
 
@@ -765,7 +782,7 @@ export async function getRecentFoods(userId, limit = 15) {
       for (const item of cached) {
         pushUnique({
           ...item,
-          fromRecentLog: item.dataBasis === 'logged_totals' || item.fromRecentLog,
+          fromRecentLog: Boolean(item.dataBasis === 'logged_totals' || item.fromRecentLog),
         });
         if (recent.length >= limit) break;
       }

@@ -2,16 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared/ui/ThemeContext';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import CenteredTwoColumnGrid from '../../shared/ui/layout/CenteredTwoColumnGrid';
-import { StatGradientText } from '../../shared/ui/homeStatGradients';
+import CenteredTwoColumnGrid from '../../shared-ui/layout/CenteredTwoColumnGrid';
+import { StatGradientText } from '../../shared-ui/homeStatGradients';
 import {
   NUT_ACTION_GRADIENT,
   NUT_CALORIES_GRADIENT,
   NUT_SECTION_GRADIENT,
 } from '../nutritionTheme';
-import foodSearchProvider from '../food-search/foodSearchProvider';
+import searchFoodsService from '../food-search/searchFoodsService';
 import { updateFoodLog } from '../daily-log/logFoodToFirestore';
 import {
   buildDailyNutritionFactsCardData,
@@ -227,7 +227,7 @@ export default function NutritionFactsScreen({
           let nutrients = cache.get(name);
           if (nutrients === undefined) {
             try {
-              nutrients = await foodSearchProvider.fetchNutritionDetails(name);
+              nutrients = await searchFoodsService.fetchNutritionDetails(name);
             } catch (_) {
               nutrients = null;
             }

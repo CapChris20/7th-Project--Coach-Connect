@@ -14,13 +14,16 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../utils/formatFileSize';
 
-/** Coach / docs — dark cyan → dark gold */
-const GRAD_COACH = ['#0891B2', '#B45309'];
-/** My files / images — dark pink → dark orange */
-const GRAD_MY = ['#DB2777', '#C2410C'];
+/** Dark orange → dark purple accent gradient */
+const ORANGE_PURPLE_GRAD = ['#C2410C', '#4C1D95'];
+const BRAND_PINK = '#FF6B9D';
+const PINK_GRAD = ['#BE185D', '#FF6B9D'];
 
-const HERO_BORDER = [...GRAD_COACH, ...GRAD_MY];
-const UPLOAD_GRADIENT = GRAD_MY;
+const GRAD_COACH = ORANGE_PURPLE_GRAD;
+const GRAD_MY = PINK_GRAD;
+
+const HERO_BORDER = ORANGE_PURPLE_GRAD;
+const UPLOAD_GRADIENT = ORANGE_PURPLE_GRAD;
 
 const FILE_TYPE_META = {
   pdf:         { label: 'PDF',    icon: 'file-text',  gradient: GRAD_COACH },
@@ -31,10 +34,10 @@ const FILE_TYPE_META = {
   file:        { label: 'FILE',   icon: 'file',       gradient: GRAD_COACH },
 };
 
-const CARD_GRADIENT_COACH = ['rgba(8,145,178,0.20)', 'rgba(180,83,9,0.12)', 'rgba(10,10,15,0.95)'];
-const CARD_GRADIENT_MY    = ['rgba(219,39,119,0.22)', 'rgba(194,65,12,0.14)', 'rgba(10,10,15,0.95)'];
-const CARD_GRADIENT_COACH_LIGHT = ['rgba(8,145,178,0.12)', 'rgba(180,83,9,0.08)', 'rgba(248,249,252,0.95)'];
-const CARD_GRADIENT_MY_LIGHT    = ['rgba(219,39,119,0.12)', 'rgba(194,65,12,0.08)', 'rgba(248,249,252,0.95)'];
+const CARD_GRADIENT_COACH = ['rgba(194,65,12,0.22)', 'rgba(76,29,149,0.14)', 'rgba(10,10,15,0.95)'];
+const CARD_GRADIENT_MY    = ['rgba(190,24,93,0.20)', 'rgba(255,107,157,0.12)', 'rgba(10,10,15,0.95)'];
+const CARD_GRADIENT_COACH_LIGHT = ['rgba(194,65,12,0.10)', 'rgba(76,29,149,0.08)', 'rgba(248,249,252,0.95)'];
+const CARD_GRADIENT_MY_LIGHT    = ['rgba(255,107,157,0.12)', 'rgba(190,24,93,0.06)', 'rgba(248,249,252,0.95)'];
 
 function GradientPill({ colors, style, children }) {
   return (
@@ -163,8 +166,8 @@ export default function FilesNotesSectionPremium({
       ? (isDark ? CARD_GRADIENT_COACH : CARD_GRADIENT_COACH_LIGHT)
       : (isDark ? CARD_GRADIENT_MY : CARD_GRADIENT_MY_LIGHT);
     const borderCol = variant === 'coach'
-      ? (isDark ? 'rgba(8,145,178,0.28)' : 'rgba(8,145,178,0.18)')
-      : (isDark ? 'rgba(219,39,119,0.28)' : 'rgba(219,39,119,0.18)');
+      ? (isDark ? 'rgba(194,65,12,0.28)' : 'rgba(194,65,12,0.16)')
+      : (isDark ? 'rgba(255,107,157,0.28)' : 'rgba(255,107,157,0.16)');
 
     return (
       <TouchableOpacity
@@ -261,9 +264,9 @@ export default function FilesNotesSectionPremium({
           try { await onMarkRead?.(note); } catch (_e) {}
           Alert.alert(noteTitle, preview || '\u2014');
         }}
-        style={[s.noteCard, { backgroundColor: isDark ? '#0f1018' : '#FFFFFF', borderColor: isDark ? 'rgba(8,145,178,0.18)' : 'rgba(8,145,178,0.12)' }]}
+        style={[s.noteCard, { backgroundColor: isDark ? '#0f1018' : '#FFFFFF', borderColor: isDark ? 'rgba(194,65,12,0.20)' : 'rgba(194,65,12,0.12)' }]}
       >
-        <LinearGradient colors={GRAD_COACH} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.noteAccent} />
+        <LinearGradient colors={ORANGE_PURPLE_GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.noteAccent} />
         <View style={s.noteContent}>
           {dateStr ? <Text style={s.noteDate}>{dateStr}</Text> : null}
           <Text style={[s.noteText, { color: th.text70 }]} numberOfLines={4}>{preview || '\u2014'}</Text>
@@ -299,9 +302,9 @@ export default function FilesNotesSectionPremium({
         <LinearGradient colors={HERO_BORDER} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroBorderRing}>
           <View style={[s.heroInner, { backgroundColor: isDark ? '#0A0A0F' : '#F0F0F8' }]}>
             <Text style={[s.heroTitle, { color: th.text }]}>{heroCopy.title}</Text>
-            <LinearGradient colors={GRAD_COACH} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.heroRule} />
+            <LinearGradient colors={ORANGE_PURPLE_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.heroRule} />
             <Text style={[s.heroKicker, { color: th.text50 }]}>{heroCopy.kicker}</Text>
-            <Text style={s.heroBrand}>{heroCopy.brand}</Text>
+            <Text style={[s.heroBrand, { color: BRAND_PINK }]}>{heroCopy.brand}</Text>
             <Text style={[s.heroTagline, { color: th.text30 }]}>{heroCopy.tagline}</Text>
           </View>
         </LinearGradient>
@@ -381,7 +384,7 @@ const s = StyleSheet.create({
   heroTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.3 },
   heroRule: { width: 36, height: 3, borderRadius: 2, marginVertical: 12 },
   heroKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 },
-  heroBrand: { fontSize: 30, fontWeight: '900', color: GRAD_MY[0], letterSpacing: -0.5, marginBottom: 8 },
+  heroBrand: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginBottom: 8 },
   heroTagline: { fontSize: 10, fontWeight: '700', letterSpacing: 1.8, textTransform: 'uppercase' },
 
   sectionWrap: { marginBottom: 24 },
@@ -426,7 +429,7 @@ const s = StyleSheet.create({
   },
   noteAccent: { width: 4 },
   noteContent: { flex: 1, padding: 16 },
-  noteDate: { fontSize: 12, fontWeight: '800', color: GRAD_MY[0], letterSpacing: 0.5, marginBottom: 8 },
+  noteDate: { fontSize: 12, fontWeight: '800', color: BRAND_PINK, letterSpacing: 0.5, marginBottom: 8 },
   noteText: { fontSize: 14, fontWeight: '600', lineHeight: 22 },
 
   emptyCard: {

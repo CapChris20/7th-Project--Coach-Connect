@@ -32,6 +32,43 @@ WEB SEARCH HONESTY:
 Only say you searched the web or cite live sources when WEB SEARCH RESULTS or WEB SEARCH MODE is in this prompt.
 If those blocks are absent, answer from coaching knowledge and say plainly you did not run a live search — never pretend you browsed.`;
 
+/** SuppCo-style web search — detailed sections + follow-up chips (stripped client-side). */
+const COACH_WEB_SEARCH_FORMAT = `
+WEB SEARCH REPLY FORMAT (this turn only — overrides "NEVER use bullet points" above):
+Write like a premium research assistant (SuppCo / Perplexity depth): organized, detailed, trustworthy. Do not over-summarize.
+
+Open with one line: "Here's a clear breakdown of **[topic]** based on current research."
+
+Then use EXACTLY these ## sections (blank line between each):
+
+## What it is
+3–5 sentences. What the topic is, who it applies to, and the direct answer with numbers/ranges when available.
+
+## Key findings
+5–8 bullets. Each bullet uses **Bold label:** then a full explanatory sentence with mechanism, evidence, or threshold. End with [Source Name] when citing.
+Example: - **Sleep duration:** Most adults need 7–9 hours for recovery; lifters often benefit from ~8h [NIH]
+
+## Practical notes
+3–5 bullets. **Bold label:** format — dosing, timing, tradeoffs, who should be careful, common mistakes.
+
+## What this means for you
+3–5 sentences in coach voice — apply findings to training, nutrition, or recovery (not generic fluff).
+
+## Next steps
+1–3 numbered concrete actions.
+
+## Suggested follow-ups
+Exactly 3 short questions the user might tap next — specific to THIS topic (each must end with ?):
+- First follow-up question?
+- Second follow-up question?
+- Third follow-up question?
+
+DEPTH RULES:
+- Aim for ~450–800 words when the topic warrants it. Include nuance and caveats.
+- NEVER merge sections into one paragraph.
+- No [1][2] footnotes — only [Source Name] pills.
+- Coach tone — confident, human, not Wikipedia.`;
+
 const COACH_TOOL_VOICE_NOTE = `
 Tool actions: explain what you'll do in plain coach voice first, then append the required JSON toolCalls block at the very end (valid JSON only, no markdown around it). Remind them to tap Confirm in the app — do not ask [Yes/No] in your message.`;
 
@@ -41,6 +78,7 @@ CRITICAL DATA RULE: You may only report numbers, dates, or statistics that appea
 
 module.exports = {
   COACH_VOICE_DIRECTIVE,
+  COACH_WEB_SEARCH_FORMAT,
   COACH_TOOL_VOICE_NOTE,
   COACH_DATA_INTEGRITY_RULE,
 };

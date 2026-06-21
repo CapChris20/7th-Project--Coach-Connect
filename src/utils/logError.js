@@ -38,7 +38,7 @@ function getDb() {
   dbChecked = true;
   try {
     if (typeof require !== 'undefined') {
-      const firebaseConfig = require('../app/config');
+      const firebaseConfig = require('../app-start/config');
       if (firebaseConfig && firebaseConfig.db) {
         db = firebaseConfig.db;
         console.log('✅ Firestore db loaded for error logging');

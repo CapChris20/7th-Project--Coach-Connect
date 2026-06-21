@@ -1,0 +1,150 @@
+/**
+ * use Settings Chrome
+ *
+ * Purpose: UI screen or component: use Settings Chrome. Feature module for Coach Connect.
+ * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Area: src/screens
+ * Key exports: useSettingsPageFrame, ACCENT, PURPLE
+ *
+ * @file-header
+ */
+import { useMemo } from 'react';
+import { useTheme } from '../../../shared-ui/ThemeContext';
+
+import { colors as lovableColors } from '../../../shared-ui/lovableColors';
+
+export const ACCENT = lovableColors.primary;
+export const PURPLE = lovableColors.secondary;
+
+/**
+ * CoachConnect settings surfaces: dark (#0A0A0F glass) or light (theme background + frosted cards).
+ */
+export function useSettingsPageFrame() {
+  const { colors, isDark } = useTheme();
+
+  return useMemo(() => {
+    if (isDark) {
+      return {
+        isDark: true,
+        statusBar: 'light',
+        bg: lovableColors.background,
+        headerBg: 'rgba(255,255,255,0.06)',
+        headerBorder: 'rgba(255,255,255,0.08)',
+        backBtnBg: lovableColors.glassStrong,
+        backBtnBorder: lovableColors.glassStrongBorder,
+        title: lovableColors.textPrimary,
+        subtitle: lovableColors.textSecondary,
+        icon: lovableColors.textPrimary,
+        sectionLabel: lovableColors.textSecondary,
+        glass: lovableColors.glassStrong,
+        glassBorder: lovableColors.glassStrongBorder,
+        divider: 'rgba(255,255,255,0.08)',
+        rowText: lovableColors.textPrimary,
+        rowMuted: lovableColors.textSecondary,
+        rowDim: 'rgba(255,255,255,0.45)',
+        label: lovableColors.textSecondary,
+        counter: 'rgba(255,255,255,0.5)',
+        inputBg: lovableColors.glassLight,
+        inputBorder: lovableColors.glassLightBorder,
+        inputText: lovableColors.textPrimary,
+        placeholder: lovableColors.textMuted,
+        inputErrorBg: 'rgba(255, 107, 157, 0.08)',
+        focusBorder: PURPLE,
+        iconMuted: lovableColors.textSecondary,
+        hint: 'rgba(255,255,255,0.5)',
+        error: lovableColors.primary,
+        modalOverlay: 'rgba(0,0,0,0.5)',
+        modalBg: '#1A1A1F',
+        modalBorder: 'rgba(255,255,255,0.12)',
+        optionDivider: 'rgba(255,255,255,0.08)',
+        optionText: lovableColors.textPrimary,
+        optionTextActive: lovableColors.primary,
+        body: 'rgba(255,255,255,0.65)',
+        noteBg: 'rgba(255,255,255,0.06)',
+        noteBorder: 'rgba(255,255,255,0.12)',
+        noteText: 'rgba(255,255,255,0.45)',
+        strengthTrack: 'rgba(255,255,255,0.1)',
+        strengthValue: lovableColors.textPrimary,
+        requirementIconBg: 'rgba(255,255,255,0.05)',
+        reqSectionBorder: 'rgba(255,255,255,0.08)',
+        requirementText: lovableColors.textSecondary,
+        chipBg: 'rgba(255,255,255,0.06)',
+        chipBorder: 'rgba(255,255,255,0.12)',
+        chipText: 'rgba(255,255,255,0.7)',
+        chipActiveBg: 'rgba(255, 107, 157, 0.15)',
+        faqBorder: 'rgba(255,255,255,0.08)',
+        profileRing: 'rgba(255,255,255,0.08)',
+        profileBorder: 'rgba(255,255,255,0.12)',
+        profilePlaceholder: 'rgba(255,255,255,0.35)',
+        weightToggleBorder: 'rgba(255,255,255,0.2)',
+        weightToggleInactive: lovableColors.textSecondary,
+        unitInactiveBg: 'rgba(255,255,255,0.06)',
+        switchOff: 'rgba(255,255,255,0.12)',
+        attachRowBg: 'rgba(255,255,255,0.08)',
+        attachRowBorder: 'rgba(255,255,255,0.12)',
+        sectionTitle: lovableColors.textPrimary,
+      };
+    }
+
+    return {
+      isDark: false,
+      statusBar: 'dark',
+      bg: colors.background,
+      headerBg: 'rgba(255,255,255,0.78)',
+      headerBorder: colors.border,
+      backBtnBg: 'rgba(255,255,255,0.95)',
+      backBtnBorder: 'rgba(0,0,0,0.08)',
+      title: colors.text,
+      subtitle: colors.textSecondary,
+      icon: colors.text,
+      sectionLabel: colors.textSecondary,
+      glass: 'rgba(255,255,255,0.92)',
+      glassBorder: 'rgba(0,0,0,0.08)',
+      divider: colors.border,
+      rowText: colors.text,
+      rowMuted: colors.textSecondary,
+      rowDim: 'rgba(0,0,0,0.38)',
+      label: 'rgba(0,0,0,0.5)',
+      counter: 'rgba(0,0,0,0.45)',
+      inputBg: 'rgba(255,255,255,0.98)',
+      inputBorder: 'rgba(0,0,0,0.1)',
+      inputText: colors.text,
+      placeholder: 'rgba(0,0,0,0.35)',
+      inputErrorBg: 'rgba(255, 107, 157, 0.1)',
+      focusBorder: PURPLE,
+      iconMuted: 'rgba(0,0,0,0.45)',
+      hint: colors.textSecondary,
+      error: ACCENT,
+      modalOverlay: 'rgba(0,0,0,0.35)',
+      modalBg: colors.surface,
+      modalBorder: colors.border,
+      optionDivider: colors.border,
+      optionText: colors.text,
+      optionTextActive: ACCENT,
+      body: colors.textSecondary,
+      noteBg: colors.surfaceSecondary || colors.surface,
+      noteBorder: colors.border,
+      noteText: colors.textSecondary,
+      strengthTrack: 'rgba(0,0,0,0.08)',
+      strengthValue: colors.text,
+      requirementIconBg: 'rgba(0,0,0,0.05)',
+      reqSectionBorder: colors.border,
+      requirementText: colors.textSecondary,
+      chipBg: 'rgba(255,255,255,0.9)',
+      chipBorder: 'rgba(0,0,0,0.1)',
+      chipText: colors.textSecondary,
+      chipActiveBg: 'rgba(255, 107, 157, 0.12)',
+      faqBorder: colors.border,
+      profileRing: 'rgba(0,0,0,0.04)',
+      profileBorder: 'rgba(0,0,0,0.1)',
+      profilePlaceholder: 'rgba(0,0,0,0.25)',
+      weightToggleBorder: 'rgba(0,0,0,0.12)',
+      weightToggleInactive: colors.textSecondary,
+      unitInactiveBg: 'rgba(0,0,0,0.04)',
+      switchOff: 'rgba(0,0,0,0.12)',
+      attachRowBg: 'rgba(255,255,255,0.95)',
+      attachRowBorder: 'rgba(0,0,0,0.1)',
+      sectionTitle: colors.text,
+    };
+  }, [isDark, colors]);
+}

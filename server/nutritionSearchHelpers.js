@@ -7,7 +7,8 @@ const {
   isRetailFoodNoise,
   significantQueryTokens,
   isGroceryIngredientQuery,
-} = require('../src/nutrition/food-search/rankFoodSearchResults');
+  filterFoodSearchRows,
+} = require('../src/nutrition/food-search/sortBestFoodMatches');
 
 const EMPTY_SEARCH_HINT =
   "Can't find that. Try searching differently or add manually";
@@ -626,11 +627,11 @@ const {
   scoreOrganicNutritionHit,
   isPlausibleRestaurantNutritionRow,
   rankSerperFoodResultRows,
-} = require('../src/nutrition/food-search/validateRestaurantResult');
+} = require('../src/nutrition/food-search/isReliableRestaurantFood');
 const {
   displayNameForSerperRow,
   isJunkWebSearchTitle,
-} = require('../src/nutrition/food-search/formatFoodSearchTitle');
+} = require('../src/nutrition/food-search/cleanFoodCardLabels');
 
 const MIN_ORGANIC_HIT_SCORE = 18;
 const MIN_ORGANIC_HIT_SCORE_RELAXED = 8;
@@ -808,6 +809,7 @@ module.exports = {
   itemMatchesQuery,
   isRetailFoodNoise,
   significantQueryTokens,
+  filterFoodSearchRows,
   searchResultsDocId,
   parseFloatSafe,
 };

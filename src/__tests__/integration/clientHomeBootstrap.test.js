@@ -1,4 +1,4 @@
-const { getLocalDateKey } = require('../../shared/utils/getLocalDay');
+const { getLocalDateKey } = require('../../shared-utils/getLocalDay');
 
 describe('client home bootstrap', () => {
   test('getLocalDateKey returns stable YYYY-MM-DD for home daily metrics', () => {

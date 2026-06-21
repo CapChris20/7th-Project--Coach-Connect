@@ -13,9 +13,9 @@ jest.mock('firebase-admin', () => ({
 
 const normalizeToolCall = (t) => (t ? { name: t.name || t.tool, params: t.params || {} } : null);
 
-/** Same resolution path as AIChatScreen + server mergeCoachToolCalls. */
+/** Same resolution path as ChatWithCoachScreen + server mergeCoachToolCalls. */
 function resolveEffectiveToolCalls(json, userMessage) {
-  const { coerceMisroutedDeleteTool } = require('../../ai/tools/parseDeleteLogRequest');
+  const { coerceMisroutedDeleteTool } = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
   const { mergeCoachToolCalls } = require('../../../server/lib/inferCoachToolCall.js');
   const reply = String(json?.reply || '');
   const rawTools = Array.isArray(json?.toolCalls) ? json.toolCalls : [];
@@ -105,10 +105,10 @@ describe('offline — delete log, personal data, tool inference', () => {
     inferDeleteLogParams,
     coerceMisroutedDeleteTool,
     wantsDeleteAllFoodLogs,
-  } = require('../../ai/tools/parseDeleteLogRequest');
+  } = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
   const { shouldIncludeWeeklyContextInCoachPrompt } = require('../../../server/lib/coachPersonalDataRouting.js');
   const { mergeCoachToolCalls, inferCoachToolCall } = require('../../../server/lib/inferCoachToolCall.js');
-  const { parseCoachToolCalls } = require('../../shared/coach-tools/parseCoachToolCalls');
+  const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');
   const { isCoachVisionConfigured } = require('../../../server/lib/coachVision.js');
 
   describe('inferDeleteLogParams', () => {

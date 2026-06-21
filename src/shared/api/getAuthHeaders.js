@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { auth } from '../../app/config';
+import { auth } from '../../app-start/config';
 
 /**
  * Bearer token headers for Coach Connect API routes (Firebase ID token).

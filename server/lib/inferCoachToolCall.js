@@ -37,14 +37,14 @@ const {
   userWantsDeleteLog,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
-} = require('../../src/ai/tools/parseDeleteLogRequest');
+} = require('../../src/ai-coach/server-logic/tools/detectDeleteFoodRequest');
 const {
   guardCoachToolProposal,
   isValidCoachToolProposal,
   isInformationalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
-} = require('../../src/ai/tools/validateCoachToolProposal');
+} = require('../../src/ai-coach/server-logic/tools/shouldShowCoachAction');
 
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();
@@ -411,7 +411,7 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
     parsed.push(guarded);
   };
 
-  const { parseCoachToolCalls } = require('../../src/shared/coach-tools/parseCoachToolCalls');
+  const { parseCoachToolCalls } = require('../../src/ai-coach/tools/parseCoachToolCalls');
   for (const c of parseCoachToolCalls(modelText)) {
     add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));
   }

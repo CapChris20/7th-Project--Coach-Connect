@@ -42,7 +42,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `__tests__/unit/coachToolProposalGuards.test.js` | Test or fixture file. |
 | `__tests__/unit/coachWebSourceCards.test.js` | Test or fixture file. |
 | `__tests__/unit/dailyMetrics.test.js` | Test or fixture file. |
-| `__tests__/unit/dailyMetricsParse.test.js` | Test or fixture file. |
+| `__tests__/unit/parseUserDailyMetrics.test.js` | Test or fixture file. |
 | `__tests__/unit/dateAndRollover.test.js` | Test or fixture file. |
 | `__tests__/unit/foodNormalize.test.js` | Test or fixture file. |
 | `__tests__/unit/foodNormalizeBarcode.test.js` | Test or fixture file. |
@@ -51,7 +51,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `__tests__/unit/notesAndFiles.test.js` | Test or fixture file. |
 | `__tests__/unit/onboardingGate.test.js` | Test or fixture file. |
 | `__tests__/unit/parseCoachToolCalls.test.js` | Test or fixture file. |
-| `__tests__/unit/parseDeleteLogRequest.test.js` | Test or fixture file. |
+| `__tests__/unit/detectDeleteFoodRequest.test.js` | Test or fixture file. |
 | `__tests__/unit/resolveCoachToolCalls.test.js` | Test or fixture file. |
 | `__tests__/unit/saveCoachMessagesFirestore.test.js` | Test or fixture file. |
 | `__tests__/unit/servingMath.test.js` | Test or fixture file. |
@@ -71,18 +71,18 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `ai/chat-api/aiCoachServerService.js` | Data/service layer: deepseek Service. Feature module for Coach Connect. |
+| `ai/chat-api/sendCoachMessageToServer.js` | Data/service layer: deepseek Service. Feature module for Coach Connect. |
 | `ai/chat-api/chatStorageService.js` | Data/service layer: chat Storage Service. Feature module for Coach Connect. |
-| `ai/chat-api/conversationService.js` | Data/service layer: conversation Service. Feature module for Coach Connect. |
-| `ai/chat-api/detectWebSearchRequest.js` | web Search Routing |
+| `ai/chat-api/loadMoreCoachConversations.js` | Data/service layer: conversation Service. Feature module for Coach Connect. |
+| `ai/chat-api/shouldUseWebSearch.js` | web Search Routing |
 
 ## `ai/context/`
 
 | File | What it does |
 |------|-------------|
-| `ai/context/CoachContextProvider.js` | context Aggregation |
-| `ai/context/gatherCoachContextFromUser.js` | coach Personal Data Routing |
-| `ai/context/gatherCoachWeeklyStats.js` | coach Weekly Data Client |
+| `ai/context/loadCoachPersonalContext.js` | context Aggregation |
+| `ai/context/buildCoachPromptData.js` | coach Personal Data Routing |
+| `ai/context/loadCoachWeeklyStats.js` | coach Weekly Data Client |
 
 ## `ai/macro-recalibration/`
 
@@ -103,11 +103,11 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | File | What it does |
 |------|-------------|
 | `ai/tools/cleanupToolParams.js` | normalize Tool Params |
-| `ai/tools/coachToolUx.js` | Source module. |
-| `ai/tools/executeCoachTool.js` | tool Executor |
-| `ai/tools/parseDeleteLogRequest.js` | coach Delete Log Routing |
-| `ai/tools/parseUserMessageForTools.js` | infer Coach Tool Call Client |
-| `ai/tools/validateCoachToolProposal.js` | coach Tool Proposal Guards |
+| `ai/tools/chooseCoachActionUI.js` | Source module. |
+| `ai/tools/runCoachAction.js` | tool Executor |
+| `ai/tools/detectDeleteFoodRequest.js` | coach Delete Log Routing |
+| `ai/tools/findCoachRequestsInText.js` | infer Coach Tool Call Client |
+| `ai/tools/shouldShowCoachAction.js` | coach Tool Proposal Guards |
 
 ## `ai/trainer-messaging/`
 
@@ -132,17 +132,17 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `aiChat/chat-home/AIChatHomeScreen.jsx` | AIChat Home Screen. Feature module for Coach Connect. |
+| `aiChat/chat-home/StartCoachChatScreen.jsx` | AIChat Home Screen. Feature module for Coach Connect. |
 
 ## `aiChat/chat-thread/`
 
 | File | What it does |
 |------|-------------|
-| `aiChat/chat-thread/AIChatScreen.jsx` | AIChat Screen. Feature module for Coach Connect. |
+| `aiChat/chat-thread/ChatWithCoachScreen.jsx` | AIChat Screen. Feature module for Coach Connect. |
 | `aiChat/chat-thread/CoachPasteSheet.jsx` | Coach Paste Sheet. Feature module for Coach Connect. |
 | `aiChat/chat-thread/CoachWebSourceCards.jsx` | Source module. |
 | `aiChat/chat-thread/ToolConfirmationModal.jsx` | Tool Confirmation Modal. Feature module for Coach Connect. |
-| `aiChat/chat-thread/coachClipboard.js` | Source module. |
+| `aiChat/chat-thread/formatCoachMessageText.js` | Source module. |
 | `aiChat/chat-thread/coachQuickPrompts.js` | coach Category Prompts |
 | `aiChat/chat-thread/openAttachmentMenu.js` | show Coach Attach Menu |
 | `aiChat/chat-thread/pickAttachmentType.js` | coach Attachment Pickers |
@@ -169,46 +169,46 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `aiChat/persistence/saveCoachMessagesToFirestore.js` | ai Chat Persistence |
+| `aiChat/persistence/saveCoachMessages.js` | ai Chat Persistence |
 
 ## `aiChat/screens/`
 
 | File | What it does |
 |------|-------------|
-| `aiChat/screens/AIChatHomeScreen.jsx` | Screen component. |
+| `aiChat/screens/StartCoachChatScreen.jsx` | Screen component. |
 
 ## `aiChat/tool-modals/`
 
 | File | What it does |
 |------|-------------|
-| `aiChat/tool-modals/AdjustMacrosModal.jsx` | Adjust Macros Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/BookSessionModal.jsx` | Book Session Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/DeleteLogModal.jsx` | Delete Log Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogMoodModal.jsx` | Log Mood Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogNutritionModal.jsx` | Log Nutrition Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogRestDayModal.jsx` | Log Rest Day Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogSleepModal.jsx` | Log Sleep Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogStepsModal.jsx` | Log Steps Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/LogWaterModal.jsx` | Log Water Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/NotifyTrainerModal.jsx` | Notify Trainer Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/OpenWorkoutPlanModal.jsx` | Open Workout Plan Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/RateEnergyModal.jsx` | Rate Energy Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/RateWorkoutModal.jsx` | Rate Workout Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/UpdateGoalModal.jsx` | Update Goal Modal. Feature module for Coach Connect. |
-| `aiChat/tool-modals/UpdateWorkoutModal.jsx` | Update Workout Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/AdjustMacroTargetsSheet.jsx` | Adjust Macros Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/BookTraineeSessionSheet.jsx` | Book Session Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/ConfirmDeleteLogSheet.jsx` | Delete Log Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogMoodRatingSheet.jsx` | Log Mood Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogMealSheet.jsx` | Log Nutrition Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogRestDaySheet.jsx` | Log Rest Day Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogSleepHoursSheet.jsx` | Log Sleep Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogDailyStepsSheet.jsx` | Log Steps Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/LogWaterIntakeSheet.jsx` | Log Water Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/SendTrainerMessageSheet.jsx` | Notify Trainer Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/OpenWorkoutPlanSheet.jsx` | Open Workout Plan Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/RateEnergyLevelSheet.jsx` | Rate Energy Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/RateWorkoutFeelSheet.jsx` | Rate Workout Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/UpdateFitnessGoalSheet.jsx` | Update Goal Modal. Feature module for Coach Connect. |
+| `aiChat/tool-modals/UpdateWorkoutSessionSheet.jsx` | Update Workout Modal. Feature module for Coach Connect. |
 | `aiChat/tool-modals/toolModalHelpers.js` | tool Modal Shared. Feature module for Coach Connect. |
 
 ## `aiChat/toolModals/`
 
 | File | What it does |
 |------|-------------|
-| `aiChat/toolModals/GenerateDeloadModal.jsx` | Generate Deload Modal. Feature module for Coach Connect. |
+| `aiChat/toolModals/PlanDeloadWeekSheet.jsx` | Generate Deload Modal. Feature module for Coach Connect. |
 
 ## `aiChat/voice/`
 
 | File | What it does |
 |------|-------------|
-| `aiChat/voice/VoiceAIHomeScreen.jsx` | Voice AIHome Screen. Feature module for Coach Connect. |
+| `aiChat/voice/VoiceCoachScreen.jsx` | Voice AIHome Screen. Feature module for Coach Connect. |
 | `aiChat/voice/useVoiceToCoach.js` | React hook: use Coach Speech. Feature module for Coach Connect. |
 
 ## `app/`
@@ -235,52 +235,52 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 |------|-------------|
 | `assets/icons/weightlifting-competition.json` | Source module. |
 
-## `assets/lottie/`
+## `assets/animations/app-flows/`
 
 | File | What it does |
 |------|-------------|
-| `assets/lottie/Exercise for diet or health.json` | Source module. |
-| `assets/lottie/Guy talking to Robot _ AI Help.json` | Source module. |
-| `assets/lottie/certifications.json` | Source module. |
-| `assets/lottie/equipment.json` | Source module. |
-| `assets/lottie/experience-timeline.json` | Source module. |
-| `assets/lottie/fitness-experience.json` | Source module. |
-| `assets/lottie/fitness-goal.json` | Source module. |
-| `assets/lottie/injuries.json` | Source module. |
-| `assets/lottie/invite-code.json` | Source module. |
-| `assets/lottie/personal-info.json` | Source module. |
-| `assets/lottie/philosophy.json` | Source module. |
-| `assets/lottie/rates.json` | Source module. |
-| `assets/lottie/role-selection.json` | Source module. |
-| `assets/lottie/specialties.json` | Test or fixture file. |
-| `assets/lottie/trainer-code.json` | Source module. |
-| `assets/lottie/training-frequency.json` | Source module. |
+| `assets/animations/app-flows/Exercise for diet or health.json` | Source module. |
+| `assets/animations/app-flows/Guy talking to Robot _ AI Help.json` | Source module. |
+| `assets/animations/app-flows/certifications.json` | Source module. |
+| `assets/animations/app-flows/equipment.json` | Source module. |
+| `assets/animations/app-flows/experience-timeline.json` | Source module. |
+| `assets/animations/app-flows/fitness-experience.json` | Source module. |
+| `assets/animations/app-flows/fitness-goal.json` | Source module. |
+| `assets/animations/app-flows/injuries.json` | Source module. |
+| `assets/animations/app-flows/invite-code.json` | Source module. |
+| `assets/animations/app-flows/personal-info.json` | Source module. |
+| `assets/animations/app-flows/philosophy.json` | Source module. |
+| `assets/animations/app-flows/rates.json` | Source module. |
+| `assets/animations/app-flows/role-selection.json` | Source module. |
+| `assets/animations/app-flows/specialties.json` | Test or fixture file. |
+| `assets/animations/app-flows/trainer-code.json` | Source module. |
+| `assets/animations/app-flows/training-frequency.json` | Source module. |
 
-## `assets/Lotties for Anatrox/`
+## `assets/animations/legacy/`
 
 | File | What it does |
 |------|-------------|
-| `assets/Lotties for Anatrox/Artificial intelligence digital technology (1).json` | Source module. |
-| `assets/Lotties for Anatrox/Cloud robotics abstract.json` | Source module. |
-| `assets/Lotties for Anatrox/Fast food.json` | Source module. |
-| `assets/Lotties for Anatrox/Fitness.json` | Source module. |
-| `assets/Lotties for Anatrox/Food squeeze_With Burger and hot dog.json` | Source module. |
-| `assets/Lotties for Anatrox/Healthy food for diet & fitness.json` | Source module. |
-| `assets/Lotties for Anatrox/boxer lottie.json` | Source module. |
-| `assets/Lotties for Anatrox/fitness (1).json` | Source module. |
-| `assets/Lotties for Anatrox/food around the city.json` | Source module. |
-| `assets/Lotties for Anatrox/glass water.json` | Source module. |
-| `assets/Lotties for Anatrox/loading.json` | Source module. |
-| `assets/Lotties for Anatrox/sleep.json` | Source module. |
+| `assets/animations/legacy/Artificial intelligence digital technology (1).json` | Source module. |
+| `assets/animations/legacy/Cloud robotics abstract.json` | Source module. |
+| `assets/animations/legacy/Fast food.json` | Source module. |
+| `assets/animations/legacy/Fitness.json` | Source module. |
+| `assets/animations/legacy/Food squeeze_With Burger and hot dog.json` | Source module. |
+| `assets/animations/legacy/Healthy food for diet & fitness.json` | Source module. |
+| `assets/animations/legacy/boxer lottie.json` | Source module. |
+| `assets/animations/legacy/fitness (1).json` | Source module. |
+| `assets/animations/legacy/food around the city.json` | Source module. |
+| `assets/animations/legacy/glass water.json` | Source module. |
+| `assets/animations/legacy/loading.json` | Source module. |
+| `assets/animations/legacy/sleep.json` | Source module. |
 
 ## `auth/`
 
 | File | What it does |
 |------|-------------|
-| `auth/AuthScreen.js` | Auth Screen. Feature module for Coach Connect. |
-| `auth/ForgotPasswordScreen.js` | Forgot Password Screen. Feature module for Coach Connect. |
-| `auth/OnboardingScreen.js` | Onboarding Screen. Feature module for Coach Connect. |
-| `auth/authGateHelpers.js` | auth Gate Helpers |
+| `auth/LoginScreen.js` | Auth Screen. Feature module for Coach Connect. |
+| `auth/ResetPasswordScreen.jsx` | Forgot Password Screen. Feature module for Coach Connect. |
+| `auth/OnboardingWizardScreen.jsx` | Onboarding Screen. Feature module for Coach Connect. |
+| `auth/detectUserRole.js` | auth Gate Helpers |
 
 ## `client/components/`
 
@@ -294,7 +294,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | File | What it does |
 |------|-------------|
 | `client/dashboard/DashboardHeroCard.jsx` | Dashboard Hero Card. Feature module for Coach Connect. |
-| `client/dashboard/MyDashboardScreen.jsx` | My Dashboard Screen. Feature module for Coach Connect. |
+| `client/dashboard/TrainingDashboardScreen.jsx` | My Dashboard Screen. Feature module for Coach Connect. |
 | `client/dashboard/PremiumStatsSection.jsx` | Premium Stats Section. Feature module for Coach Connect. |
 | `client/dashboard/PremiumTrainerCard.jsx` | Premium Trainer Card. Feature module for Coach Connect. |
 
@@ -336,15 +336,15 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `client/marketplace/components/TrainerRequestConfirmModal.jsx` | Trainer Request Confirm Modal. Feature module for Coach Connect. |
 | `client/marketplace/components/TrainerRequestIntroModal.jsx` | Trainer Request Intro Modal. Feature module for Coach Connect. |
 | `client/marketplace/marketplaceFilters.js` | marketplace Filters |
-| `client/marketplace/screens/FindTrainerScreen.js` | Find Trainer Screen. Feature module for Coach Connect. |
-| `client/marketplace/screens/TrainerSearchScreen.js` | Trainer Search Screen. Feature module for Coach Connect. |
+| `client/marketplace/screens/BrowseTrainersScreen.jsx` | Find Trainer Screen. Feature module for Coach Connect. |
+| `client/marketplace/screens/SearchTrainersScreen.jsx` | Trainer Search Screen. Feature module for Coach Connect. |
 
 ## `client/messaging/`
 
 | File | What it does |
 |------|-------------|
-| `client/messaging/ConversationsListScreen.js` | Screen component. |
-| `client/messaging/MessagingScreen.js` | Screen component. |
+| `client/messaging/MyMessagesScreen.jsx` | Screen component. |
+| `client/messaging/ChatThreadScreen.jsx` | Screen component. |
 
 ## `client/navigation/`
 
@@ -360,22 +360,22 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `client/photo-gallery/PhotoGalleryScreen.js` | Screen component. |
+| `client/photo-gallery/MyProgressPhotosScreen.jsx` | Screen component. |
 
 ## `client/screens/`
 
 | File | What it does |
 |------|-------------|
-| `client/screens/MealPlanHomeScreen.js` | Meal Plan Home Screen. Feature module for Coach Connect. |
-| `client/screens/PlanViewerScreen.jsx` | Weekly plan viewer — gradient glass cards matching Training Agenda style. |
+| `client/screens/LogTodaysMealsScreen.jsx` | Meal Plan Home Screen. Feature module for Coach Connect. |
+| `client/screens/ViewMyWorkoutPlanScreen.jsx` | Weekly plan viewer — gradient glass cards matching Training Agenda style. |
 
 ## `client/settings/`
 
 | File | What it does |
 |------|-------------|
-| `client/settings/AccountProfileScreen.jsx` | Account Profile Screen. Feature module for Coach Connect. |
+| `client/settings/EditAccountScreen.jsx` | Account Profile Screen. Feature module for Coach Connect. |
 | `client/settings/DataStorageScreen.jsx` | Data Storage Screen. Feature module for Coach Connect. |
-| `client/settings/GoalsTargetsScreen.jsx` | Goals Targets Screen. Feature module for Coach Connect. |
+| `client/settings/EditFitnessGoalsScreen.jsx` | Goals Targets Screen. Feature module for Coach Connect. |
 | `client/settings/NotificationsSettingsScreen.jsx` | Notifications Settings Screen. Feature module for Coach Connect. |
 | `client/settings/PrivacySecurityScreen.jsx` | Privacy Security Screen. Feature module for Coach Connect. |
 | `client/settings/SocialSharingScreen.jsx` | Social Sharing Screen. Feature module for Coach Connect. |
@@ -385,13 +385,13 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `client/weekly-report/WeeklyReportScreen.jsx` | Screen component. |
+| `client/weekly-report/ViewWeekProgressReportScreen.jsx` | Screen component. |
 
 ## `client/workout-plans/`
 
 | File | What it does |
 |------|-------------|
-| `client/workout-plans/AIWorkoutPlansScreen.js` | Screen component. |
+| `client/workout-plans/BrowseSavedWorkoutsScreen.jsx` | Screen component. |
 
 ## `lib/`
 
@@ -457,8 +457,8 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `nutrition/food-details/FoodItem.js` | Food Item |
 | `nutrition/food-details/NutritionFactsScreen.jsx` | Screen component. |
 | `nutrition/food-details/calculateServingSize.js` | serving Math |
-| `nutrition/food-details/formatFoodBrand.js` | food Brand Display |
-| `nutrition/food-details/normalizeNutritionData.js` | nutrition Normalization |
+| `nutrition/food-details/cleanFoodBrandName.js` | food Brand Display |
+| `nutrition/food-details/fixFoodNutritionNumbers.js` | nutrition Normalization |
 | `nutrition/food-details/nutritionFactsModel.js` | Source module. |
 | `nutrition/food-details/parseNutritionLabel.js` | nutrition Facts Model |
 
@@ -469,11 +469,11 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `nutrition/food-search/ConfirmFoodSelectionSheet.jsx` | Food Confirm Sheet. Feature module for Coach Connect. |
 | `nutrition/food-search/FoodSearchScreen.js` | Food Search Screen. Feature module for Coach Connect. |
 | `nutrition/food-search/SearchQualityCard.jsx` | Food Search Accuracy Hero Card. Feature module for Coach Connect. |
-| `nutrition/food-search/foodSearchProvider.js` | Data/service layer: food Search Provider. Feature module for Coach Connect. |
-| `nutrition/food-search/formatFoodSearchTitle.js` | food Search Title |
+| `nutrition/food-search/searchFoodsService.js` | Data/service layer: food Search Provider. Feature module for Coach Connect. |
+| `nutrition/food-search/cleanFoodCardLabels.js` | food Search Title |
 | `nutrition/food-search/normalizeFoodQuery.js` | food Normalize |
-| `nutrition/food-search/rankFoodSearchResults.js` | Data/service layer: food Search Query Match. Feature module for Coach Connect. |
-| `nutrition/food-search/validateRestaurantResult.js` | restaurant Serper Quality |
+| `nutrition/food-search/sortBestFoodMatches.js` | Data/service layer: food Search Query Match. Feature module for Coach Connect. |
+| `nutrition/food-search/isReliableRestaurantFood.js` | restaurant Serper Quality |
 
 ## `nutrition/quick-add/`
 
@@ -491,21 +491,21 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `nutrition/settings/NutritionOnboardingScreen.jsx` | Nutrition Onboarding Screen. Feature module for Coach Connect. |
+| `nutrition/settings/NutritionOnboardingWizardScreen.jsxx` | Nutrition Onboarding Screen. Feature module for Coach Connect. |
 | `nutrition/settings/NutritionSettingsScreen.js` | Nutrition Settings Screen. Feature module for Coach Connect. |
 
 ## `profile/screens/`
 
 | File | What it does |
 |------|-------------|
-| `profile/screens/ProfileScreen.jsx` | Profile Screen. Feature module for Coach Connect. |
+| `client-app/profile/ViewMyViewMyViewMyViewMyProfileScreen.jsx` | Profile Screen. Feature module for Coach Connect. |
 
 ## `screens/settings/`
 
 | File | What it does |
 |------|-------------|
-| `screens/settings/ForgotPassword.js` | Forgot Password. Feature module for Coach Connect. |
-| `screens/settings/shared/useSettingsChrome.js` | use Settings Chrome. Feature module for Coach Connect. |
+| `settings/screens/ForgotPasswordFlowFlow.js` | Forgot Password. Feature module for Coach Connect. |
+| `settings/screens/useSettingsPageFrame.js` | use Settings Chrome. Feature module for Coach Connect. |
 
 ## `settings/`
 
@@ -522,7 +522,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | `settings/screens/BugReportScreen.jsx` | Bug Report Screen. Feature module for Coach Connect. |
 | `settings/screens/ChangePasswordScreen.jsx` | Change Password Screen. Feature module for Coach Connect. |
 | `settings/screens/ContactSupportScreen.jsx` | Contact Support Screen. Feature module for Coach Connect. |
-| `settings/screens/EditProfileScreen.jsx` | Edit Profile Screen. Feature module for Coach Connect. |
+| `settings/screens/EditViewMyViewMyViewMyProfileScreen.jsx` | Edit Profile Screen. Feature module for Coach Connect. |
 | `settings/screens/EmailPreferencesScreen.jsx` | Email Preferences Screen. Feature module for Coach Connect. |
 | `settings/screens/HelpFAQScreen.jsx` | Help FAQScreen. Feature module for Coach Connect. |
 | `settings/screens/PrivacyPolicyScreen.jsx` | Privacy Policy Screen. Feature module for Coach Connect. |
@@ -606,9 +606,9 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `shared/daily-metrics/dailyMetricsParse.cjs` | Source module. |
-| `shared/daily-metrics/getLatestWeight.js` | Data/service layer: latest Logged Weight. Feature module for Coach Connect. |
-| `shared/daily-metrics/rolloverDayAtMidnight.js` | Data/service layer: daily Dashboard Day Rollover. Feature module for Coach Connect. |
+| `shared/daily-metrics/parseUserDailyMetrics.js` | Source module. |
+| `shared/daily-metrics/getRecentWeight.js` | Data/service layer: latest Logged Weight. Feature module for Coach Connect. |
+| `shared/daily-metrics/archiveDailyMetricsAtMidnight.js` | Data/service layer: daily Dashboard Day Rollover. Feature module for Coach Connect. |
 | `shared/daily-metrics/saveDailyMetricsToFirestore.js` | Data/service layer: daily Metrics Service. Feature module for Coach Connect. |
 | `shared/daily-metrics/useLocalTodayDateKey.js` | React hook: use Local Today Date Key. Feature module for Coach Connect. |
 
@@ -653,8 +653,8 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `shared/messaging/ConversationsListScreen.js` | Conversations List Screen. Feature module for Coach Connect. |
-| `shared/messaging/MessagingScreen.js` | Trainer Messaging Screen. Feature module for Coach Connect. |
+| `shared/messaging/MyMessagesScreen.jsx` | Conversations List Screen. Feature module for Coach Connect. |
+| `shared/messaging/ChatThreadScreen.jsx` | Trainer Messaging Screen. Feature module for Coach Connect. |
 
 ## `shared/notes-files/`
 
@@ -668,14 +668,14 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 | File | What it does |
 |------|-------------|
 | `shared/notifications/manageNotifications.js` | Data/service layer: notifications Service. Feature module for Coach Connect. |
-| `shared/notifications/pushNotificationText.js` | push Copy |
+| `shared/notifications/buildPushNotificationText.js` | push Copy |
 | `shared/notifications/stripNotificationEmoji.js` | strip Notification Emoji |
 
 ## `shared/photo-gallery/`
 
 | File | What it does |
 |------|-------------|
-| `shared/photo-gallery/PhotoGalleryScreen.js` | Photo Gallery Screen. Feature module for Coach Connect. |
+| `shared/photo-gallery/MyProgressPhotosScreen.jsx` | Photo Gallery Screen. Feature module for Coach Connect. |
 
 ## `shared/services/`
 
@@ -724,13 +724,13 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `shared/weekly-report/WeeklyReportScreen.jsx` | Trainer Weekly Report Screen. Feature module for Coach Connect. |
+| `shared/weekly-report/ViewWeekProgressReportScreen.jsx` | Trainer Weekly Report Screen. Feature module for Coach Connect. |
 
 ## `shared/workout-plans/`
 
 | File | What it does |
 |------|-------------|
-| `shared/workout-plans/AIWorkoutPlansScreen.js` | AIWorkout Plans Screen. Feature module for Coach Connect. |
+| `shared/workout-plans/BrowseSavedWorkoutsScreen.jsx` | AIWorkout Plans Screen. Feature module for Coach Connect. |
 
 ## `shared/workout-profile/`
 
@@ -749,22 +749,22 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/client-detail/TrainerClientDetailScreen.jsx` | Trainer Client Detail Screen. Feature module for Coach Connect. |
+| `trainer/client-detail/ManageTraineeScreen.jsx` | Trainer Client Detail Screen. Feature module for Coach Connect. |
 
 ## `trainer/client-requests/`
 
 | File | What it does |
 |------|-------------|
-| `trainer/client-requests/ClientRequestsScreen.js` | Client Requests Screen. Feature module for Coach Connect. |
-| `trainer/client-requests/trainerPendingRequestsService.js` | Data/service layer: trainer Pending Requests Service. Feature module for Coach Connect. |
+| `trainer/client-requests/NewTraineeRequestsScreen.jsx` | Client Requests Screen. Feature module for Coach Connect. |
+| `trainer/client-requests/loadPendingTraineeRequests.js` | Data/service layer: trainer Pending Requests Service. Feature module for Coach Connect. |
 | `trainer/client-requests/useTrainerPendingRequests.js` | React hook: use Trainer Pending Requests. Feature module for Coach Connect. |
 
 ## `trainer/clients-list/`
 
 | File | What it does |
 |------|-------------|
-| `trainer/clients-list/TrainerClientsListScreen.jsx` | Trainer Clients List Screen. Feature module for Coach Connect. |
-| `trainer/clients-list/loadTrainerClientRoster.js` | Data/service layer: client CRMService. Feature module for Coach Connect. |
+| `trainer/clients-list/MyTraineesScreen.jsx` | Trainer Clients List Screen. Feature module for Coach Connect. |
+| `trainer/clients-list/loadMyTraineeRoster.js` | Data/service layer: client CRMService. Feature module for Coach Connect. |
 | `trainer/clients-list/useTrainerClients.js` | React hook: use Trainer Clients. Feature module for Coach Connect. |
 
 ## `trainer/components/`
@@ -779,8 +779,8 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/crm/formatClientName.js` | trainer Client Display Name |
-| `trainer/crm/resolveLinkedTrainerClients.js` | Filter CRM rows to active clients linked on users/{id}.trainerId and resolve display names. |
+| `trainer/crm/getTraineeDisplayName.js` | trainer Client Display Name |
+| `trainer/crm/loadMyLinkedTrainees.js` | Filter CRM rows to active clients linked on users/{id}.trainerId and resolve display names. |
 | `trainer/crm/trainerClientFirestorePaths.js` | Data/service layer: trainer Client Firestore Paths. Feature module for Coach Connect. |
 | `trainer/crm/trainerFirestoreErrors.js` | Data/service layer: trainer Firestore Errors. Feature module for Coach Connect. |
 
@@ -808,20 +808,20 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/hooks/use-sessions.js` | use sessions |
+| `trainer/hooks/useMyTrainingSessions.js` | use sessions |
 
 ## `trainer/marketplace/`
 
 | File | What it does |
 |------|-------------|
-| `trainer/marketplace/TrainerSearchScreen.js` | Screen component. |
+| `trainer/marketplace/SearchTrainersScreen.jsx` | Screen component. |
 
 ## `trainer/messaging/`
 
 | File | What it does |
 |------|-------------|
-| `trainer/messaging/ConversationsListScreen.js` | Screen component. |
-| `trainer/messaging/TrainerMessagingScreen.js` | Screen component. |
+| `trainer/messaging/MyMessagesScreen.jsx` | Screen component. |
+| `trainer/messaging/ChatWithTraineeScreen.jsx` | Screen component. |
 
 ## `trainer/navigation/`
 
@@ -849,7 +849,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/photo-gallery/PhotoGalleryScreen.js` | Screen component. |
+| `trainer/photo-gallery/MyProgressPhotosScreen.jsx` | Screen component. |
 
 ## `trainer/progress-tab/`
 
@@ -861,8 +861,8 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/screens/SessionFormScreen.jsx` | Session Form Screen. Feature module for Coach Connect. |
-| `trainer/screens/SessionSchedulingScreen.jsx` | Session Scheduling Screen. Feature module for Coach Connect. |
+| `trainer/screens/ScheduleTrainingSessionScreen.jsx` | Session Form Screen. Feature module for Coach Connect. |
+| `trainer/screens/BookTraineeSessionScreen.jsx` | Session Scheduling Screen. Feature module for Coach Connect. |
 
 ## `trainer/sessions/`
 
@@ -874,7 +874,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/weekly-report/TrainerWeeklyReportScreen.jsx` | Screen component. |
+| `trainer/weekly-report/TrainerViewWeekProgressReportScreen.jsx` | Screen component. |
 | `trainer/weekly-report/TrainerWeeklyReportSection.jsx` | Trainer Weekly Report Section. Feature module for Coach Connect. |
 | `trainer/weekly-report/WeeklyReportHeroCard.jsx` | Weekly Report Hero Card. Feature module for Coach Connect. |
 | `trainer/weekly-report/WeeklyReportPremium.jsx` | Weekly Report Premium |
@@ -883,7 +883,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `trainer/workout-plans/AIWorkoutPlansScreen.js` | Screen component. |
+| `trainer/workout-plans/BrowseSavedWorkoutsScreen.jsx` | Screen component. |
 | `trainer/workout-plans/ManualWorkoutPlanBuilderScreen.jsx` | Manual Workout Plan Builder Screen. Feature module for Coach Connect. |
 | `trainer/workout-plans/manualExerciseLibrarySeed.js` | manual Exercise Library Seed |
 | `trainer/workout-plans/manualWorkoutPlanService.js` | Data/service layer: manual Workout Plan Service. Feature module for Coach Connect. |
@@ -953,7 +953,7 @@ Each entry: what the file does. No rename advice. Firebase project ID stays `ana
 
 | File | What it does |
 |------|-------------|
-| `workouts/screens/WorkoutPlanGeneratorScreenUI.js` | Workout Plan Generator Screen UI. Feature module for Coach Connect. |
+| `workouts/screens/GenerateMyWorkoutPlanScreen.jsx` | Workout Plan Generator Screen UI. Feature module for Coach Connect. |
 
 ---
 

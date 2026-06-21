@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import PlanViewerScreen from '../../client/screens/PlanViewerScreen';
+import ViewMyWorkoutPlanScreen from '../../client-app/screens/ViewMyWorkoutPlanScreen';
 import WorkoutPlanPdfViewerModal from './WorkoutPlanPdfViewerModal';
 import { planViewerRefStyles } from './workoutPlanUiComponents';
 import {
@@ -199,7 +199,7 @@ export default function WorkoutPlanResult({
           onSettingsPress={onSettingsPress}
           showHeaderActions
         />
-        <PlanViewerScreen
+        <ViewMyWorkoutPlanScreen
           route={{
             params: {
               workoutPlan: workoutPlanRows,

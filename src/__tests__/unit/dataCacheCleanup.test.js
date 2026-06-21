@@ -28,11 +28,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 const mockClearPushTokensForUid = jest.fn(() => Promise.resolve());
 
-jest.mock('../../shared/notifications/manageNotifications', () => ({
+jest.mock('../../notifications/manageNotifications', () => ({
   clearPushTokensForUid: (...args) => mockClearPushTokensForUid(...args),
 }));
 
-jest.mock('../../app/config', () => ({
+jest.mock('../../app-start/config', () => ({
   auth: { currentUser: { uid: 'user-old' } },
 }));
 

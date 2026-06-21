@@ -100,7 +100,7 @@ console.log('Thread gap-fix static verification\n');
   assert('workout.js tracks planReadyPending', workout.includes('planReadyPending'));
   assert('workout.js has handleOpenReadyPlan', workout.includes('handleOpenReadyPlan'));
 
-  const main = read('src/client/navigation/ClientMainScreen.jsx');
+  const main = read('src/client-app/navigation/ClientMainScreen.jsx');
   assert('ClientMainScreen subscribes to session', main.includes('subscribeWorkoutGenerationSession'));
   assert('ClientMainScreen passes workoutTabBadge', main.includes('workoutTabBadge={workoutPlanReadyBadge}'));
 
@@ -111,8 +111,8 @@ console.log('Thread gap-fix static verification\n');
 
 // ─── 5. Vision client timeout 120s ──────────────────────────────────────────
 (function testVisionClientTimeout() {
-  const src = read('src/ai/chat-api/aiCoachServerService.js');
-  assert('aiCoachServerService TIMEOUT_MS_VISION is 120000', /TIMEOUT_MS_VISION\s*=\s*120000/.test(src));
+  const src = read('src/ai-coach/server-logic/chat-api/sendCoachMessageToServer.js');
+  assert('sendCoachMessageToServer TIMEOUT_MS_VISION is 120000', /TIMEOUT_MS_VISION\s*=\s*120000/.test(src));
   assert(
     'vision timeout used when attachments present',
     /hasImages\s*\?\s*TIMEOUT_MS_VISION/.test(src),
@@ -146,8 +146,8 @@ console.log('Thread gap-fix static verification\n');
   assert('Dockerfile copies food-details path', docker.includes('src/nutrition/food-details/'));
   assert('Dockerfile does not copy stale services path', !docker.includes('src/nutrition/services/'));
 
-  assert('PlanViewerScreen exists', fileExists('src/client/screens/PlanViewerScreen.jsx'));
-  const planViewer = read('src/client/screens/PlanViewerScreen.jsx');
+  assert('ViewMyWorkoutPlanScreen exists', fileExists('src/client-app/screens/ViewMyWorkoutPlanScreen.jsx'));
+  const planViewer = read('src/client-app/screens/ViewMyWorkoutPlanScreen.jsx');
   assert('PlanViewer uses gradient UI', planViewer.includes('LinearGradient'));
 
   const notes = read('src/shared/notes-files/manageNotesAndFiles.js');

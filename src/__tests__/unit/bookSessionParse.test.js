@@ -1,4 +1,4 @@
-const { parseCoachToolCalls } = require('../../shared/coach-tools/parseCoachToolCalls');
+const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');
 
 test('parses named-key bookSession payload', () => {
   const calls = parseCoachToolCalls(

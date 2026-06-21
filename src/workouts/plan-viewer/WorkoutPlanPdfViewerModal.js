@@ -30,7 +30,7 @@ import { WebView } from 'react-native-webview';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { addFile } from '../../shared/notes-files/manageNotesAndFiles';
-import { auth } from '../../app/config';
+import { auth } from '../../app-start/config';
 
 export default function WorkoutPlanPdfViewerModal({
   visible,

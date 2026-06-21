@@ -11,7 +11,7 @@
 // Trainer Migration Utility
 // Migrates existing trainers from users collection to trainers collection
 
-import { db } from '../app/config';
+import { db } from '../app-start/config';
 import { collection, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
 
 /**

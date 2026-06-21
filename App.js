@@ -9,10 +9,10 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
-import { ThemeProvider } from './src/shared/ui/ThemeContext';
-import AuthGate from './src/app/AuthGate';
+import { ThemeProvider } from './src/shared-ui/ThemeContext';
+import AuthGate from './src/app-start/AuthGate';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { configureNotifications } from './src/shared/notifications/manageNotifications';
+import { configureNotifications } from './src/notifications/manageNotifications';
 import { initMonitoring } from './src/shared/api/monitorAppHealth';
 import { AIProvider } from './src/shared/contexts/AIContext';
 

@@ -89,7 +89,7 @@ export default function CoachConnectHeader({
     onSettingsPress: onSettingsPressProp,
   });
 
-  const sideActionsVisible = showHeaderActions ?? !onBack;
+  const sideActionsVisible = showHeaderActions !== false;
 
   return (
     <BlurBackdropPlate

@@ -1,7 +1,7 @@
 /**
  * Dump trainer marketplace pricing as stored in Firestore vs what the app shows.
  *
- * Price resolution (same as TrainerSearchScreen.getTrainerPrice):
+ * Price resolution (same as SearchTrainersScreen.getTrainerPrice):
  *   price → pricing.perMonth → rate
  *
  * How it authenticates (first working path wins):
