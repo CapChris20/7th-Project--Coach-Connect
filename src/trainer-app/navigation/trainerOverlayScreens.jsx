@@ -14,7 +14,7 @@ import { useRoute } from '@react-navigation/native';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useTrainerAppShell } from './TrainerAppShellContext';
 import { buildNavigateFromShell } from '../../navigation/shellNavigate';
-import ViewMyViewMyProfileScreen from '../../client-app/profile/ViewMyViewMyProfileScreen';
+import ViewMyViewMyProfileScreen from '../../client-app/profile/ViewMyProfileScreen';
 import SettingsScreen from '../../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../../settings/screens/HelpFAQScreen';
 import TermsOfServiceScreen from '../../settings/screens/TermsOfServiceScreen';

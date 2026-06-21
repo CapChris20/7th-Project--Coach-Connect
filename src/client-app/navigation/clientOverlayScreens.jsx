@@ -12,7 +12,7 @@ import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useClientAppShell } from './ClientAppShellContext';
-import ViewMyViewMyProfileScreen from '../../client-app/profile/ViewMyViewMyProfileScreen';
+import ViewMyViewMyProfileScreen from '../../client-app/profile/ViewMyProfileScreen';
 import SettingsScreen from '../../settings/screens/SettingsScreen';
 import HelpFAQScreen from '../../settings/screens/HelpFAQScreen';
 import TermsOfServiceScreen from '../../settings/screens/TermsOfServiceScreen';

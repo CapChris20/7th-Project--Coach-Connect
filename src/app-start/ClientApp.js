@@ -117,8 +117,8 @@ function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals 
 
 import { subscribeToUnreadCount } from '../ai-coach/server-logic/chat-api/loadMoreCoachConversations';
 import { getOrCreateConversation, sendClientRequest } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
-import StartCoachChatScreen from '../chat-ui/chat-home/StartCoachChatScreen';
-import ChatWithCoachScreen from '../chat-ui/chat-thread/ChatWithCoachScreen';
+import StartCoachChatScreen from '../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
+import ChatWithCoachScreen from '../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import SearchTrainersScreen, { TrainerProfileSheet } from '../client-app/marketplace/screens/SearchTrainersScreen';
 import TrainingDashboardScreen from '../client-app/dashboard/TrainingDashboardScreen';
 import SettingsScreen from '../settings/screens/SettingsScreen';
@@ -138,7 +138,7 @@ import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
 import LogTodaysMealsScreen from '../client-app/screens/LogTodaysMealsScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
-import ViewMyViewMyProfileScreen from '../client-app/profile/ViewMyViewMyProfileScreen';
+import ViewMyProfileScreen from '../client-app/profile/ViewMyProfileScreen';
 import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
