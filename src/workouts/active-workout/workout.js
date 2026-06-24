@@ -44,7 +44,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Liquid } from '../../shared-ui/liquid/liquidTokens';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from '../plan-builder/workoutPlanBuilderFieldEditBody';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
@@ -2901,22 +2901,24 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   if (loading) {
     // Keep the bottom navbar visible so you can see tab highlight transitions.
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }} edges={SHELL_SAFE_AREA_EDGES}>
         {renderWorkoutChromeHeader()}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="small" color="#FF6B9D" />
         </View>
         {!hideBottomNav && (
-          <BottomNavBar
-            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-            onProfilePress={() => onNavigate && onNavigate('profile')}
-            onPlusPress={() => onNavigate && onNavigate('create')}
-            onVoicePress={() => onNavigate && onNavigate('voice')}
-            onWorkoutPress={() => onNavigate && onNavigate('workout')}
-            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-            onMessagesPress={() => onNavigate && onNavigate('messages')}
-            activeTabKey="workout"
-          />
+          <ShellBottomNavAnchor>
+            <BottomNavBar
+              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+              onProfilePress={() => onNavigate && onNavigate('profile')}
+              onPlusPress={() => onNavigate && onNavigate('create')}
+              onVoicePress={() => onNavigate && onNavigate('voice')}
+              onWorkoutPress={() => onNavigate && onNavigate('workout')}
+              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+              onMessagesPress={() => onNavigate && onNavigate('messages')}
+              activeTabKey="workout"
+            />
+          </ShellBottomNavAnchor>
         )}
       </SafeAreaView>
     );
@@ -2925,7 +2927,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   if (!onboardingData && !propPlan) {
     if (trainerRosterEmpty) {
       return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }} edges={SHELL_SAFE_AREA_EDGES}>
           {renderWorkoutChromeHeader()}
           <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
             <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>
@@ -2943,16 +2945,18 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             </TouchableOpacity>
           </View>
           {!hideBottomNav && (
-            <BottomNavBar
-              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              onProfilePress={() => onNavigate && onNavigate('profile')}
-              onPlusPress={() => onNavigate && onNavigate('create')}
-              onVoicePress={() => onNavigate && onNavigate('voice')}
-              onWorkoutPress={() => onNavigate && onNavigate('workout')}
-              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-              onMessagesPress={() => onNavigate && onNavigate('messages')}
-              activeTabKey="workout"
-            />
+            <ShellBottomNavAnchor>
+              <BottomNavBar
+                onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+                onProfilePress={() => onNavigate && onNavigate('profile')}
+                onPlusPress={() => onNavigate && onNavigate('create')}
+                onVoicePress={() => onNavigate && onNavigate('voice')}
+                onWorkoutPress={() => onNavigate && onNavigate('workout')}
+                onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+                onMessagesPress={() => onNavigate && onNavigate('messages')}
+                activeTabKey="workout"
+              />
+            </ShellBottomNavAnchor>
           )}
         </SafeAreaView>
       );
@@ -3043,7 +3047,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           {renderWorkoutChromeHeader({
             onBack: () => onBack?.(),
           })}
-          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top']}>
+          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={SHELL_SAFE_AREA_EDGES}>
             <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
             <Text style={[planViewerRefStyles.loaderText, { color: text, textAlign: 'center' }]}>
               Building your workout plan…
@@ -3060,7 +3064,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       if (readOnly && !viewerErrorDelayElapsed) {
         return (
           <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-            <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={['top']}>
+            <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={SHELL_SAFE_AREA_EDGES}>
               <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
               <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Loading your workout plan...</Text>
             </SafeAreaView>
@@ -3069,7 +3073,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       }
       return (
         <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+          <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
             <View style={planViewerRefStyles.errorContainer}>
               <MaterialCommunityIcons name="alert-circle" size={48} color={PLAN_BUILDER_COLORS.pink} />
               <Text style={[planViewerRefStyles.errorTitle, { color: text }]}>Error</Text>
@@ -3091,7 +3095,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     if (viewerEmpty) {
       return (
         <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+          <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
             <View style={[planViewerRefStyles.emptyContainer, { backgroundColor: surface }]}>
               <Ionicons name="fitness" size={48} color={PLAN_BUILDER_COLORS.cyan} />
               <Text style={[planViewerRefStyles.emptyTitle, { color: text }]}>No Plan Yet</Text>
@@ -3112,7 +3116,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
     return (
       <View style={{ flex: 1, backgroundColor: pvBg }}>
-        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
           <CoachConnectHeader
             title="Weekly Plan"
@@ -3181,16 +3185,20 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             </View>
           )}
         </SafeAreaView>
-        <BottomNavBar
-          onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-          onProfilePress={() => onNavigate && onNavigate('profile')}
-          onPlusPress={() => onNavigate && onNavigate('create')}
-          onVoicePress={() => onNavigate && onNavigate('voice')}
-          onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-          onWorkoutPress={() => onNavigate && onNavigate('workout')}
-          onMessagesPress={() => onNavigate && onNavigate('messages')}
-          activeTabKey="workout"
-        />
+        {!hideBottomNav && (
+          <ShellBottomNavAnchor>
+            <BottomNavBar
+              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+              onProfilePress={() => onNavigate && onNavigate('profile')}
+              onPlusPress={() => onNavigate && onNavigate('create')}
+              onVoicePress={() => onNavigate && onNavigate('voice')}
+              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+              onWorkoutPress={() => onNavigate && onNavigate('workout')}
+              onMessagesPress={() => onNavigate && onNavigate('messages')}
+              activeTabKey="workout"
+            />
+          </ShellBottomNavAnchor>
+        )}
       </View>
     );
   }
@@ -3352,7 +3360,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
   return (
     <View style={[styles.root, { backgroundColor: planBuilderBg }]}>
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       {renderWorkoutChromeHeader(
         hideBottomNav
@@ -4451,16 +4459,18 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       </Modal>
 
       {!hideBottomNav && (
-        <BottomNavBar
-          onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-          onProfilePress={() => onNavigate && onNavigate('profile')}
-          onPlusPress={() => onNavigate && onNavigate('create')}
-          onVoicePress={() => onNavigate && onNavigate('voice')}
-          onWorkoutPress={() => onNavigate && onNavigate('workout')}
-          onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-          onMessagesPress={() => onNavigate && onNavigate('messages')}
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+            onProfilePress={() => onNavigate && onNavigate('profile')}
+            onPlusPress={() => onNavigate && onNavigate('create')}
+            onVoicePress={() => onNavigate && onNavigate('voice')}
+            onWorkoutPress={() => onNavigate && onNavigate('workout')}
+            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+            onMessagesPress={() => onNavigate && onNavigate('messages')}
             activeTabKey="workout"
-        />
+          />
+        </ShellBottomNavAnchor>
       )}
     </SafeAreaView>
     </View>

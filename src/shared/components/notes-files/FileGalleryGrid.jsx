@@ -25,7 +25,7 @@ import {
   File as FileIcon,
   Image as ImageIcon,
 } from 'lucide-react-native';
-import { getFriendlyFileTitle } from '../../utils/formatFileSize';
+import { getFriendlyFileTitle } from '../../../shared-utils/formatFileSize';
 
 const PALETTES = ['cyan', 'pink', 'purple', 'orange'];
 

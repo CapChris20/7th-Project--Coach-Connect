@@ -9,6 +9,9 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
+import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
+import { CrimsonPro_400Regular, CrimsonPro_600SemiBold, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
 import { ThemeProvider } from './src/shared-ui/ThemeContext';
 import AuthGate from './src/app-start/AuthGate';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -26,6 +29,15 @@ export default function App() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_700Bold,
+    CrimsonPro_400Regular,
+    CrimsonPro_600SemiBold,
+    CrimsonPro_700Bold,
   });
 
   useEffect(() => {

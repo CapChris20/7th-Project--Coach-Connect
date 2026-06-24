@@ -17,6 +17,7 @@ import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import {
   getDailyGoals,
   getFoodLogsForDate,
@@ -29,7 +30,7 @@ import {
   upsertDailyGoals,
   getTopLoggedFoodNames,
 } from '../daily-log/logFoodToFirestore';
-import NutritionOnboardingWizardScreen from '../settings/NutritionOnboardingWizardScreen';
+import NutritionOnboardingWizardScreen from '../settings/NutritionOnboardingScreen';
 import NutritionScreen from './NutritionScreen';
 import NutritionFactsScreen from '../food-details/NutritionFactsScreen';
 import QuickAddNutrition from '../quick-add/QuickAddNutrition';
@@ -39,6 +40,8 @@ import NutritionSettingsScreen from '../settings/NutritionSettingsScreen';
 import EditServingModal from '../food-details/EditServingModal';
 
 import { useRef } from 'react';
+
+const flexScrollHost = { flex: 1, minHeight: 0 };
 
 export const NutritionContainer = ({
   onBack,
@@ -409,20 +412,22 @@ export const NutritionContainer = ({
 
   const screenBg = isDark ? '#0A0A0F' : '#F2F2F7';
   const bottomNavEl = hideBottomNav ? null : (
-    <BottomNavBar
-      onHomePress={onHomePress}
-      onPlusPress={onPlusPress}
-      onVoicePress={onVoicePress}
-      onNutritionPress={onNutritionPress}
-      onWorkoutPress={onWorkoutPress}
-      onMessagesPress={onMessagesPress}
-      activeTabKey="nutrition"
-    />
+    <ShellBottomNavAnchor>
+      <BottomNavBar
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        activeTabKey="nutrition"
+      />
+    </ShellBottomNavAnchor>
   );
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <View
           style={{
             flex: 1,
@@ -440,7 +445,7 @@ export const NutritionContainer = ({
 
   if (needsOnboarding) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Nutrition"
           skipTopSafeInset={true}
@@ -464,7 +469,7 @@ export const NutritionContainer = ({
   if (showFoodSearch) {
     const addFoodBg = isDark ? '#0A0A0F' : '#FFFFFF';
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Add Food"
           isDark={isDark}
@@ -473,9 +478,10 @@ export const NutritionContainer = ({
           onProfilePress={onProfilePress}
           onSettingsPress={onSettingsPress}
         />
-        <View style={{ flex: 1, minHeight: 0 }}>
+        <View style={flexScrollHost}>
           <FoodSearchScreen
             embedded
+            reserveShellBottomNav={hideBottomNav}
             mealType={activeMealType}
             onFoodSelected={handleFoodAdded}
             onClose={() => { setShowFoodSearch(false); setInitialSearchQuery(''); }}
@@ -506,7 +512,7 @@ export const NutritionContainer = ({
 
   if (showQuickAdd) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Quick Add"
           isDark={isDark}
@@ -515,7 +521,9 @@ export const NutritionContainer = ({
           onProfilePress={onProfilePress}
           onSettingsPress={onSettingsPress}
         />
+        <View style={flexScrollHost}>
         <QuickAddNutrition
+          reserveShellBottomNav={hideBottomNav}
           userId={uid}
           onLogFood={(entry) => {
             const num = (v) => {
@@ -542,6 +550,7 @@ export const NutritionContainer = ({
             handleFoodAdded(food, activeMealType);
           }}
         />
+        </View>
         {bottomNavEl}
       </SafeAreaView>
     );
@@ -549,7 +558,7 @@ export const NutritionContainer = ({
 
   if (showDailyFacts) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Daily Nutrition"
           isDark={isDark}
@@ -571,7 +580,7 @@ export const NutritionContainer = ({
 
   if (showNutritionSettings) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Goals"
           skipTopSafeInset
@@ -579,9 +588,10 @@ export const NutritionContainer = ({
           onProfilePress={onProfilePress}
           onSettingsPress={onSettingsPress}
         />
-        <View style={{ flex: 1, minHeight: 0 }}>
+        <View style={flexScrollHost}>
           <NutritionSettingsScreen
             embedded
+            reserveShellBottomNav={hideBottomNav}
             currentGoals={{
               calories: goals?.calories ?? 2000,
               proteinTarget: goals?.proteinTarget ?? 150,
@@ -599,7 +609,7 @@ export const NutritionContainer = ({
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
       <CoachConnectHeader
         title="Nutrition"
         isDark={isDark}
@@ -607,7 +617,9 @@ export const NutritionContainer = ({
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
       />
+      <View style={flexScrollHost}>
       <NutritionScreen
+        reserveShellBottomNav={hideBottomNav}
         consumed={consumed}
         goal={goal}
         burned={burned}
@@ -629,6 +641,7 @@ export const NutritionContainer = ({
         topFoodNames={topFoodNames}
         onQuickAdd={handleOpenQuickAdd}
       />
+      </View>
       <EditServingModal
         visible={!!editingLog}
         foodName={editingLog?.food_name ?? ''}

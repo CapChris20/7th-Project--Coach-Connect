@@ -17,7 +17,7 @@ import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto'
 import { getApiBase } from '../../shared/api/baseUrl';
 import { getAuth } from 'firebase/auth';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -227,11 +227,11 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
   });
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <CoachConnectHeader title="Report a bug" skipTopSafeInset onBack={onClose} />
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} {...FORM_SCROLL_PROPS}>
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
           <GradientCard borderColors={[ORANGE, PINK]} style={styles.heroOuter} innerStyle={styles.heroInner}>
             <GradientCard borderColors={[ORANGE, PINK]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>

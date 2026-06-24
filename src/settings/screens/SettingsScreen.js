@@ -36,7 +36,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useShellNavigate } from '../../navigation/shellNavigate';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAI, getAiToggleMeterHint } from '../../shared/contexts/AIContext';
@@ -229,6 +229,9 @@ export default function SettingsScreen({
   userData: userDataProp,
   trainerData: trainerDataProp,
   embedShellBottomNav = false,
+  platformSubscriptionStatus,
+  onRestorePurchases,
+  restorePurchasesLoading = false,
 }) {
   const onNavigate = useShellNavigate(onNavigateProp);
   const onBack = onBackProp || onClose;
@@ -458,7 +461,7 @@ export default function SettingsScreen({
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="SETTINGS"
           skipTopSafeInset
@@ -468,7 +471,7 @@ export default function SettingsScreen({
         />
         <ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
-          showsVerticalScrollIndicator={false}
+          {...FORM_SCROLL_PROPS}
         >
         <SectionHeader title="APPEARANCE" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -594,6 +597,47 @@ export default function SettingsScreen({
               >
                 <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
               </SettingsRow>
+            </View>
+          </>
+        ) : null}
+
+        {isTrainer && Platform.OS === 'ios' && platformSubscriptionStatus ? (
+          <>
+            <SectionHeader title="COACH CONNECT PRO" colors={colors} />
+            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <SettingsRow label="Platform subscription" colors={colors} leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}>
+                <PaymentStatusChip
+                  label={platformSubscriptionStatus}
+                  tone={
+                    platformSubscriptionStatus.includes('active') || platformSubscriptionStatus.includes('trial')
+                      ? 'success'
+                      : platformSubscriptionStatus.includes('Expired')
+                        ? 'error'
+                        : 'neutral'
+                  }
+                  colors={colors}
+                  isDark={isDark}
+                />
+              </SettingsRow>
+              {typeof onRestorePurchases === 'function' ? (
+                <>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <SettingsRow
+                    label="Restore purchases"
+                    onPress={() => {
+                      if (!restorePurchasesLoading) onRestorePurchases();
+                    }}
+                    colors={colors}
+                    leftIcon={<Ionicons name="refresh-outline" size={20} color={colors.textSecondary} />}
+                  >
+                    {restorePurchasesLoading ? (
+                      <Text style={[styles.rowValue, { color: colors.textSecondary }]}>Working…</Text>
+                    ) : (
+                      <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+                    )}
+                  </SettingsRow>
+                </>
+              ) : null}
             </View>
           </>
         ) : null}

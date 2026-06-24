@@ -23,7 +23,6 @@ import {
   StyleSheet,
   Platform,
   KeyboardAvoidingView,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Image,
@@ -792,8 +791,12 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 + embedBottomPad }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 + embedBottomPad }}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        scrollEventThrottle={16}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         {messagesForBubbles.length === 0 ? (
           <View style={{ paddingVertical: 48, alignItems: 'center' }}>
@@ -922,9 +925,9 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     return <View style={{ flex: 1 }}>{inner}</View>;
   }
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <View style={{ flex: 1 }}>
       <CoachConnectHeader title="Messages" isDark={isDark} skipTopSafeInset onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} />
       {inner}
-    </SafeAreaView>
+    </View>
   );
 }

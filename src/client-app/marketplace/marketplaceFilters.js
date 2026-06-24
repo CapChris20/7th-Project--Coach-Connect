@@ -134,6 +134,20 @@ export function trainerFirstName(name) {
   return n.split(/\s+/)[0] || n;
 }
 
+/** Human-readable label for stored enum/snake_case values (e.g. weight_loss → Weight Loss). */
+export function formatMarketplaceLabel(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(s)) {
+    return s
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return s;
+}
+
 export function gradColor(grad) {
   return BRAND[grad] ?? BRAND.pink;
 }
@@ -250,7 +264,9 @@ export function normalizeTrainer(raw, index = 0) {
     initials,
     location,
     mode: resolveMode(raw),
-    specialties: specialties.length ? specialties : ['General Fitness'],
+    specialties: specialties.length
+      ? specialties.map((spec) => formatMarketplaceLabel(spec))
+      : ['General Fitness'],
     price: price ?? 0,
     years,
     bio: bio || 'This coach is setting up their profile. Message them to learn more about their coaching style.',

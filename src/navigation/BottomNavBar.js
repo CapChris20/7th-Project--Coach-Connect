@@ -20,55 +20,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../shared-ui/ThemeContext';
 import { useMergedNavigation } from './AppNavigationContext';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
+import BrandGradientIcon from '../shared/components/icons/BrandGradientIcon';
+import MaskedBrandIonicon from '../shared/components/icons/MaskedBrandIonicon';
 import GradientGeminiNavIcon from '../shared/components/icons/GradientGeminiNavIcon';
 import { useAI } from '../shared/contexts/AIContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  BRAND_NAV_ICON_GRADIENT,
-  BRAND_NAV_ICON_GRADIENT_LOCATIONS,
-  BRAND_ICON_GRADIENT_START,
-  BRAND_ICON_GRADIENT_END,
-} from '../shared-ui/brandGradients';
 
 /** Logo-aligned vertical gradient for all tab icons (pink → purple → indigo). */
-const BrandGradientIcon = ({
-  name,
-  size = 36,
-  colors = BRAND_NAV_ICON_GRADIENT,
-  locations = BRAND_NAV_ICON_GRADIENT_LOCATIONS,
-  start = BRAND_ICON_GRADIENT_START,
-  end = BRAND_ICON_GRADIENT_END,
-}) => (
-  <MaskedView
-    style={{ width: size, height: size }}
-    maskElement={
-      <View
-        style={{
-          width: size,
-          height: size,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'transparent',
-        }}
-      >
-        <Ionicons name={name} size={size} color="#000" />
-      </View>
-    }
-  >
-    <LinearGradient
-      colors={colors}
-      locations={locations}
-      start={start}
-      end={end}
-      style={{ width: size, height: size }}
-    />
-  </MaskedView>
-);
-
 export default function BottomNavBar({
   onPlusPress: onPlusPressProp,
   onVoicePress: onVoicePressProp,
@@ -81,6 +42,8 @@ export default function BottomNavBar({
   activeTabKey: activeTabKeyProp,
   /** Pink dot on Workout tab when a background-generated plan is ready. */
   workoutTabBadge = false,
+  /** Override global theme for embedded editors (spreadsheet/document modals). */
+  appearanceIsDark,
 }) {
   const mergedNav = useMergedNavigation({
     onHomePress: onHomePressProp,
@@ -99,14 +62,15 @@ export default function BottomNavBar({
     onWorkoutPress,
     onMessagesPress,
   } = mergedNav;
-  const { colors, spacing, isDark } = useTheme();
+  const { colors, spacing, isDark: globalIsDark } = useTheme();
+  const isDark = appearanceIsDark !== undefined ? appearanceIsDark : globalIsDark;
   const insets = useSafeAreaInsets();
   const { aiEnabled } = useAI();
   const aiOn = aiEnabled === true;
 
   const NAV_BORDER = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)';
-  const NAV_LABEL = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.78)';
-  const NAV_LABEL_ACTIVE = colors.primary;
+  const NAV_LABEL = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)';
+  const NAV_LABEL_ACTIVE = isDark ? '#FFFFFF' : colors.primary;
   const INACTIVE_ICON_COLOR = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
 
   // Active state for UI polish: highlighted frosted pill + subtle transition.
@@ -157,15 +121,12 @@ export default function BottomNavBar({
 
   const styles = StyleSheet.create({
     container: {
-      flexDirection: 'row',
       borderTopWidth: 1,
       borderTopColor: NAV_BORDER,
       backgroundColor: isDark ? 'rgba(12,12,18,0.55)' : 'rgba(255,255,255,0.55)',
-      paddingBottom: insets.bottom,
-      paddingTop: spacing.sm,
       minHeight: 80 + insets.bottom,
-      alignItems: 'flex-start',
-      justifyContent: 'space-around',
+      alignItems: 'stretch',
+      justifyContent: 'flex-end',
       paddingHorizontal: 0,
       position: 'relative',
       zIndex: 100,
@@ -175,8 +136,6 @@ export default function BottomNavBar({
       shadowOpacity: 0.15,
       shadowRadius: 16,
       elevation: 24,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
     },
     navItem: {
       alignItems: 'center',
@@ -202,11 +161,13 @@ export default function BottomNavBar({
       color: NAV_LABEL,
       fontWeight: '600',
       letterSpacing: 0.3,
+      marginTop: 2,
     },
     navLabelBase: {
       fontSize: 10,
-      fontWeight: '600',
+      fontWeight: '700',
       letterSpacing: 0.3,
+      marginTop: 2,
     },
     plusButton: {
       width: 56,
@@ -269,13 +230,15 @@ export default function BottomNavBar({
 
   /** BlurBackdropPlate wraps children in an inner View; it must repeat the row flex from `styles.container` or tabs stack vertically. */
   const navPlateContentStyle = {
-    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'flex-start',
     alignSelf: 'stretch',
     position: 'relative',
     minWidth: 0,
+    paddingTop: spacing.sm,
+    paddingBottom: insets.bottom,
+    minHeight: 80 + insets.bottom,
   };
 
   const activate = (key, handler) => {
@@ -313,7 +276,7 @@ export default function BottomNavBar({
           </Animated.View>
 
           <View style={styles.navContent}>
-            <View style={styles.navIcon}>
+            <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
               <BrandGradientIcon name="home" size={36} />
             </View>
             <Text
@@ -346,8 +309,8 @@ export default function BottomNavBar({
           </Animated.View>
 
           <View style={styles.navContent}>
-            <View style={styles.navIcon}>
-              <BrandGradientIcon name="barbell" size={36} />
+            <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
+              <MaskedBrandIonicon name="barbell" size={36} />
               {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
             </View>
             <Text
@@ -380,7 +343,7 @@ export default function BottomNavBar({
           </Animated.View>
 
           <View style={styles.navContent}>
-            <View style={styles.navIcon}>
+            <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
               <BrandGradientIcon name="document-text" size={36} />
             </View>
             <Text
@@ -413,13 +376,14 @@ export default function BottomNavBar({
           </Animated.View>
 
           <View style={styles.navContent}>
-            <View style={styles.navIcon}>
+            <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
               <BrandGradientIcon name="restaurant" size={36} />
             </View>
             <Text
               style={[
                 styles.navLabelBase,
                 styles.navLabel,
+                activeKey === 'nutrition' && { fontWeight: '800' },
                 { color: activeKey === 'nutrition' ? NAV_LABEL_ACTIVE : NAV_LABEL },
               ]}
             >
@@ -459,7 +423,7 @@ export default function BottomNavBar({
         </Animated.View>
 
         <View style={styles.navContent}>
-          <View style={styles.navIcon}>
+          <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
             <BrandGradientIcon name="home" size={36} />
           </View>
           <Text
@@ -493,8 +457,8 @@ export default function BottomNavBar({
         </Animated.View>
 
         <View style={styles.navContent}>
-          <View style={styles.navIcon}>
-            <BrandGradientIcon name="barbell" size={36} />
+          <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
+            <MaskedBrandIonicon name="barbell" size={36} />
             {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
           </View>
           <Text
@@ -532,7 +496,7 @@ export default function BottomNavBar({
         </Animated.View>
 
         <View style={styles.navContent}>
-          <View style={styles.navIcon}>
+          <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
             <GradientGeminiNavIcon size={36} />
           </View>
           <Text
@@ -566,7 +530,7 @@ export default function BottomNavBar({
         </Animated.View>
 
         <View style={styles.navContent}>
-          <View style={styles.navIcon}>
+          <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
             <BrandGradientIcon name="restaurant" size={36} />
           </View>
           <Text

@@ -30,6 +30,7 @@ module.exports = {
           defaultChannel: 'default',
         }
       ],
+      'expo-iap',
       'expo-apple-authentication',
       [
         'expo-speech-recognition',
@@ -43,7 +44,7 @@ module.exports = {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.chrisshina.coachconnect',
+      bundleIdentifier: 'com.coachconnect',
       buildNumber: '1',
       usesAppleSignIn: true,
       infoPlist: {
@@ -74,7 +75,7 @@ module.exports = {
     },
     newArchEnabled: true,
     android: {
-      package: 'com.chrisshina.coachconnect',
+      package: 'com.coachconnect',
       versionCode: 1,
       permissions: ['CAMERA', 'RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'],
     },

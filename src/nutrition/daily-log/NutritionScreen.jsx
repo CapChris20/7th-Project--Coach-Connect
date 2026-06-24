@@ -11,11 +11,11 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
 import { useTheme } from '../../shared-ui/ThemeContext';
+import { useShellBottomNavInset, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 
 import NutritionDayPicker from './NutritionDayPicker';
 import { LoggedFoodCard } from '../components/premiumFoodCard';
@@ -810,9 +810,12 @@ export const NutritionScreen = ({
   datesWithLogs = [],
   onOpenDailyFacts,
   topFoodNames = [],
+  reserveShellBottomNav = false,
 }) => {
   const { isDark } = useTheme();
   const colors = useMemo(() => getColors(isDark), [isDark]);
+  const shellBottomPad = useShellBottomNavInset(16);
+  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 24;
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
   const solidCardBg = isDark ? '#0A0A0F' : '#FFFFFF';
@@ -820,8 +823,12 @@ export const NutritionScreen = ({
   const remainingKcal = Math.max(Math.round(goal - consumed), 0);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screenBg }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={screen.scroll} showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.screenBg }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[screen.scroll, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
 
         {/* Search, filter, theme, settings */}
         <View style={screen.searchBlock}>

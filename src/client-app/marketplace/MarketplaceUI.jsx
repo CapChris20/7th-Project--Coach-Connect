@@ -18,13 +18,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import MaskedView from '@react-native-masked-view/masked-view';
+import StableGradientText from '../../shared-ui/StableGradientText';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { BRAND, AURORA_GLOWS, MP_FONT, getTheme } from '../marketplaceFilters';
+import { BRAND, AURORA_GLOWS, MP_FONT, getTheme } from './marketplaceFilters';
 import { MarketplaceGlass } from './MarketplaceGlass';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 
@@ -71,15 +71,9 @@ export function GradientText({
 }) {
   const textStyle = [style, { fontFamily: style?.fontFamily || MP_FONT.displayBold }];
   return (
-    <MaskedView
-      maskElement={
-        <Text style={[textStyle, { color: '#000', backgroundColor: 'transparent' }]}>{children}</Text>
-      }
-    >
-      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-        <Text style={[textStyle, { opacity: 0 }]}>{children}</Text>
-      </LinearGradient>
-    </MaskedView>
+    <StableGradientText colors={colors} style={textStyle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+      {children}
+    </StableGradientText>
   );
 }
 

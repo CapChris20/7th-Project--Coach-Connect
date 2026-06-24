@@ -21,6 +21,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -54,6 +55,7 @@ const meals = [
 ];
 
 export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePress, onSettingsPress }) {
+  const scrollBottomPad = useModalScrollBottomPad(48);
   const { colors, spacing, isDark } = useTheme();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -305,7 +307,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <CoachConnectHeader
         title="Nutrition"
         isDark={isDark}
@@ -364,8 +366,8 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
 
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
       >
         {/* Date Selector - Matching Image Style */}
         <View style={styles.dateSelectorContainer}>
@@ -830,9 +832,7 @@ const createStyles = (spacing, colors, isDark) =>
     scrollView: {
       flex: 1,
     },
-    scrollContent: {
-      paddingBottom: 100,
-    },
+    scrollContent: {},
     dateSelectorContainer: {
       paddingHorizontal: 20,
       marginBottom: 24,

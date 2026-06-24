@@ -1,1 +1,1 @@
-export * from '../chat-thread/formatCoachMessageText';
+export * from '../chat-thread/coachClipboard';

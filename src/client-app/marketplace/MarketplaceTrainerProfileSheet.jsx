@@ -1,12 +1,5 @@
 /**
  * Marketplace Trainer Profile Sheet
- *
- * Purpose: UI screen or component: Marketplace Trainer Profile Sheet. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/marketplace
- * Key exports: TrainerProfileSheet
- *
- * @file-header
  */
 import React from 'react';
 import {
@@ -29,7 +22,7 @@ import {
   getTrainerPrice,
   normalizeTrainer,
   MP_FONT,
-} from '../marketplaceFilters';
+} from './marketplaceFilters';
 import {
   GlassCard,
   PrimaryButton,
@@ -75,12 +68,14 @@ export function TrainerProfileSheet({
   variant = 'marketplace',
   onMessage,
   embedded = false,
+  /** Extra bottom inset when a shell bottom nav overlays this sheet (0 when nav is hidden). */
+  shellBottomInset = 0,
 }) {
   const insets = useSafeAreaInsets();
   if (!trainer || (!embedded && !visible)) return null;
   if (embedded && !visible) return null;
 
-  const display = trainer._firebase || trainer.initials ? trainer : normalizeTrainer(trainer, 0);
+  const display = normalizeTrainer(trainer?._firebase || trainer, 0);
   const t = getTheme(isDark);
   const isConnected = variant === 'connected';
   const firstName = trainerFirstName(display.name || display.displayName);
@@ -90,7 +85,8 @@ export function TrainerProfileSheet({
   const showPrice = price != null && Number(price) > 0;
   const handleMessage = onMessage;
   const handleConnect = onConnect || onRequest;
-  const scrollBottomPad = PROFILE_FOOTER_H + (embedded ? 88 : insets.bottom) + 24;
+  const bottomInset = embedded ? shellBottomInset : insets.bottom;
+  const scrollBottomPad = PROFILE_FOOTER_H + bottomInset + 20;
 
   const footer = (
     <View
@@ -98,8 +94,8 @@ export function TrainerProfileSheet({
         s.profileFooter,
         {
           borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : t.border,
-          backgroundColor: isDark ? t.card : t.background,
-          paddingBottom: embedded ? 12 : 12 + insets.bottom,
+          backgroundColor: embedded ? 'transparent' : isDark ? t.card : t.background,
+          paddingBottom: embedded ? Math.max(bottomInset, 12) : 12 + insets.bottom,
         },
       ]}
     >
@@ -133,12 +129,20 @@ export function TrainerProfileSheet({
   );
 
   const body = (
-    <View style={[s.root, { backgroundColor: t.background }]}>
+    <View
+      style={[
+        s.root,
+        embedded ? s.rootEmbedded : null,
+        { backgroundColor: embedded ? 'transparent' : t.background },
+      ]}
+    >
       <ScrollView
         style={s.scroll}
         contentContainerStyle={[s.scrollContent, { paddingBottom: scrollBottomPad }]}
-        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
       >
         <View style={s.profileHero}>
           {photoUri ? (
@@ -168,6 +172,9 @@ export function TrainerProfileSheet({
           </View>
 
           <View style={[s.pillWrap, { marginTop: 14 }]}>
+            {isConnected ? (
+              <InfoPill icon="checkmark-circle" label="Your coach" t={t} active />
+            ) : null}
             {display.verified !== false ? (
               <InfoPill icon="shield-checkmark" label="Verified" t={t} active />
             ) : null}
@@ -258,7 +265,7 @@ export function TrainerProfileSheet({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={s.modalShell}>
+      <View style={[s.modalShell, { backgroundColor: t.background }]}>
         <View style={s.profileTop}>
           <Pressable onPress={onClose} style={[s.modalBackBtn, { borderColor: t.border }]}>
             <Ionicons name="chevron-back" size={22} color={t.foreground} />
@@ -274,6 +281,7 @@ export default TrainerProfileSheet;
 
 const s = StyleSheet.create({
   root: { flex: 1 },
+  rootEmbedded: { flexGrow: 1, minHeight: 0 },
   modalShell: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, gap: 14, paddingTop: 4 },
@@ -286,7 +294,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileHero: { alignItems: 'center', paddingBottom: 16, paddingTop: 4 },
+  profileHero: { alignItems: 'center', paddingBottom: 8, paddingTop: 0 },
   avatarBox: {
     width: 112,
     height: 112,

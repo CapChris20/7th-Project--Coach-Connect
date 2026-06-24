@@ -26,7 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { useTrainerAppShell } from '../navigation/TrainerAppShellContext';
 import { getClientInitials } from '../dashboard/trainerDashboardUi';
 
@@ -217,7 +217,7 @@ export default function PaymentsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
       <CoachConnectHeader
         title="PAYMENTS"
         skipTopSafeInset
@@ -228,7 +228,7 @@ export default function PaymentsScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
-        showsVerticalScrollIndicator={false}
+        {...FORM_SCROLL_PROPS}
       >
         {/* Section 1 — Payout Account */}
         <GlassCard isDark={isDark} colors={colors}>
@@ -373,19 +373,21 @@ export default function PaymentsScreen() {
         </GlassCard>
       </ScrollView>
 
-      <BottomNavBar
-        onHomePress={shell.handleHomePress}
-        onProfilePress={shell.openProfile}
-        onPlusPress={() => shell.handlePlusPress?.(shell.selectedClientIdFromDashboard)}
-        onVoicePress={shell.openVoiceAI}
-        onNutritionPress={shell.openNutrition}
-        onWorkoutPress={shell.openWorkoutPlan}
-        onMessagesPress={() => {
-          shell.setShowTrainerMessaging?.(false);
-          shell.setShowConversationsList?.(true);
-        }}
-        activeTabKey="home"
-      />
+      <ShellBottomNavAnchor>
+        <BottomNavBar
+          onHomePress={shell.handleHomePress}
+          onProfilePress={shell.openProfile}
+          onPlusPress={() => shell.handlePlusPress?.(shell.selectedClientIdFromDashboard)}
+          onVoicePress={shell.openVoiceAI}
+          onNutritionPress={shell.openNutrition}
+          onWorkoutPress={shell.openWorkoutPlan}
+          onMessagesPress={() => {
+            shell.setShowTrainerMessaging?.(false);
+            shell.setShowConversationsList?.(true);
+          }}
+          activeTabKey="home"
+        />
+      </ShellBottomNavAnchor>
 
       <Modal visible={!!rateModalClient} transparent animationType="slide" onRequestClose={() => setRateModalClient(null)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalRoot}>

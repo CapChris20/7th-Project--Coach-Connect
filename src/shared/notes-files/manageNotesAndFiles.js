@@ -33,7 +33,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { db, storage } from '../../app-start/config';
 import { postRemotePushNotify } from '../api/sendPushNotification';
-import { randomNotesSharedBody } from '../notifications/buildPushNotificationText';
+import { randomNotesSharedBody } from '../../notifications/buildPushNotificationText';
 
 const COLLECTION = 'notes_and_files';
 const DOCUMENTS_COLLECTION = 'documents';
@@ -92,6 +92,7 @@ function uriToBlob(uri) {
 }
 
 const xlsxExportTimers = new Map();
+const stubSyncTimers = new Map();
 
 function base64ToUploadBlob(base64, contentType) {
   const dataUri = `data:${contentType};base64,${base64}`;
@@ -128,6 +129,19 @@ function scheduleSpreadsheetXlsxExport(trainerId, docId, dataRows, docRef) {
       });
   }, 2500);
   xlsxExportTimers.set(key, timer);
+}
+
+/** Debounced client stub preview sync — avoids N Firestore reads/writes on every autosave keystroke. */
+function scheduleSharedStubSync(trainerId, documentId, overrides = {}) {
+  const key = `${trainerId}:${documentId}`;
+  if (stubSyncTimers.has(key)) clearTimeout(stubSyncTimers.get(key));
+  const timer = setTimeout(() => {
+    stubSyncTimers.delete(key);
+    void syncSharedTrainerDocStubs(trainerId, documentId, overrides).catch((e) => {
+      console.warn('saveTrainerSpreadsheet: stub sync skipped', e?.code || e?.message || e);
+    });
+  }, 1500);
+  stubSyncTimers.set(key, timer);
 }
 
 /**
@@ -503,7 +517,10 @@ export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml
 }
 
 // Save spreadsheet-style trainer document with rows/columns and xlsx export.
-export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, columnCount, rowCount, formats, colWidths, isFavorite }) {
+export async function saveTrainerSpreadsheet(
+  trainerId,
+  { id, title, rows, columnCount, rowCount, formats, colWidths, rowHeights, sheets, isFavorite, syncClientStubs = false },
+) {
   if (!db || !trainerId) throw new Error('Firestore or trainerId not ready');
 
   const safeTitle = (title || 'Spreadsheet').trim() || 'Spreadsheet';
@@ -524,6 +541,8 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
     rowCount: rCount,
     ...(formats && typeof formats === 'object' ? { formats } : {}),
     ...(colWidths && typeof colWidths === 'object' ? { colWidths } : {}),
+    ...(rowHeights && typeof rowHeights === 'object' ? { rowHeights } : {}),
+    ...(Array.isArray(sheets) && sheets.length ? { sheets } : {}),
     ...(typeof isFavorite === 'boolean' ? { isFavorite } : {}),
     updatedAt: serverTimestamp(),
   };
@@ -533,7 +552,9 @@ export async function saveTrainerSpreadsheet(trainerId, { id, title, rows, colum
     await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), sharedWith: [] }, { merge: true });
   } else {
     await setDoc(docRef, payload, { merge: true });
-    await syncSharedTrainerDocStubs(trainerId, docId, { title: safeTitle, rows: dataRows });
+    if (syncClientStubs) {
+      scheduleSharedStubSync(trainerId, docId, { title: safeTitle, rows: dataRows });
+    }
   }
 
   scheduleSpreadsheetXlsxExport(trainerId, docId, dataRows, docRef);

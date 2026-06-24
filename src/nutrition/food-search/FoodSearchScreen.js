@@ -43,6 +43,7 @@ import FoodCard from '../components/premiumFoodCard/FoodCard';
 import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
 import { auth } from '../../app-start/config';
 import { useTheme } from '../../shared-ui/ThemeContext';
+import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HERO_TOP_BORDER = ['#BE185D', '#C2410C'];
@@ -51,17 +52,18 @@ const HERO_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
 const HERO_CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 function getColors(isDark) {
+  const accent = '#C2410C';
+  const accentSoft = '#FDBA74';
+  const mutedMacro = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
   const shared = {
-    pink: '#FF6B9D',
-    orange: '#F97316',
-    cyan: '#64D2FF',
-    purple: '#8B5CF6',
-    hotPink: '#FF6B9D',
-    /**
-     * Border-only gradient: same family as the brand (cool violet → mauve → steel blue).
-     * Less saturated than accent purple/orange/cyan so frames don’t read as a hard rainbow.
-     */
-    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
+    accent,
+    accentSoft,
+    mutedMacro,
+    proteinAccent: accent,
+    carbsAccent: mutedMacro,
+    fatAccent: mutedMacro,
+    calAccent: accent,
+    borderGradient: isDark ? ['#3F3F46', '#52525B'] : ['#D4D4D8', '#E4E4E7'],
   };
   return isDark
     ? {
@@ -78,8 +80,6 @@ function getColors(isDark) {
       }
     : {
         ...shared,
-        // Slightly lift border stops on light backgrounds so the edge stays visible but soft
-        borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
         bg: '#FFFFFF',
         surface: '#F5F5F5',
         border: '#E5E5E5',
@@ -96,12 +96,15 @@ function getColors(isDark) {
 const DARK = {
   text: '#ffffff',
   textMuted: '#A6A6A6',
-  orange: '#F97316',
-  hotPink: '#FF6B9D',
-  purple: '#8B5CF6',
-  cyan: '#64D2FF',
+  accent: '#C2410C',
+  accentSoft: '#FDBA74',
+  mutedMacro: 'rgba(255,255,255,0.45)',
+  proteinAccent: '#C2410C',
+  carbsAccent: 'rgba(255,255,255,0.45)',
+  fatAccent: 'rgba(255,255,255,0.45)',
+  calAccent: '#C2410C',
   inputBg: '#1A1A24',
-  borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
+  borderGradient: ['#3F3F46', '#52525B'],
 };
 
 // Normalize into a "food" shape compatible with nutritionService.addFoodLog
@@ -256,7 +259,7 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
         <LinearGradient colors={bgGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={foodCardStyles.inner}>
           <View style={foodCardStyles.mainRow}>
             <View style={foodCardStyles.iconWrap}>
-              <Ionicons name="restaurant" size={18} color={c.cyan} />
+              <Ionicons name="restaurant-outline" size={18} color={labelMuted} />
             </View>
 
             <View style={foodCardStyles.body}>
@@ -289,14 +292,14 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
               ) : null}
 
               <View style={foodCardStyles.macroRow}>
-                <MacroPill label="Protein" value={item.protein} accent={c.pink} />
-                <MacroPill label="Carbs" value={item.carbs} accent={c.orange} />
-                <MacroPill label="Fat" value={item.fat} accent={c.cyan} />
+                <MacroPill label="Protein" value={item.protein} accent={c.proteinAccent} />
+                <MacroPill label="Carbs" value={item.carbs} accent={c.carbsAccent} />
+                <MacroPill label="Fat" value={item.fat} accent={c.fatAccent} />
               </View>
             </View>
 
             <View style={foodCardStyles.sideCol}>
-              <Text style={[foodCardStyles.calValue, { color: c.pink }]}>{item.calories}</Text>
+              <Text style={[foodCardStyles.calValue, { color: c.calAccent }]}>{item.calories}</Text>
               <Text style={[foodCardStyles.calLabel, { color: labelMuted }]}>CAL</Text>
               <TouchableOpacity onPress={handleAdd} disabled={adding} activeOpacity={0.88} style={foodCardStyles.addHit}>
                 <LinearGradient colors={HERO_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={foodCardStyles.addBtn}>
@@ -327,18 +330,14 @@ const QUICK_PICKS = [
 const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
   const c = colors || DARK;
   const bgGradient = isDark ? HERO_BG_DARK : HERO_BG_LIGHT;
-  const labelMuted = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.55)';
-  const subColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.62)';
-  const chipBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)';
+  const labelMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
+  const subColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.65)';
+  const chipBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)';
+  const chipBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
   const isNoResults = Boolean(query?.trim());
   const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
 
-  const accentColor = (key) => {
-    if (key === 'orange') return c.orange;
-    if (key === 'cyan') return c.cyan;
-    if (key === 'purple') return c.purple;
-    return c.pink;
-  };
+  const accentColor = () => c.accent || c.calAccent || '#C2410C';
 
   return (
     <View style={empty.wrap}>
@@ -347,7 +346,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
           empty.glow,
           Platform.select({
             ios: {
-              shadowColor: c.pink,
+              shadowColor: c.accent || '#C2410C',
               shadowOpacity: isDark ? 0.35 : 0.15,
               shadowRadius: 24,
               shadowOffset: { width: 0, height: 8 },
@@ -366,7 +365,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
           <LinearGradient colors={bgGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={empty.inner}>
             <View style={empty.iconRow}>
               <LinearGradient
-                colors={[c.pink, c.purple]}
+                colors={[c.accent || '#C2410C', c.accentSoft || '#FDBA74']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={empty.iconRing}
@@ -375,7 +374,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
                   <Ionicons
                     name={isNoResults ? 'search-outline' : 'sparkles-outline'}
                     size={28}
-                    color={c.pink}
+                    color={c.accent || '#C2410C'}
                   />
                 </View>
               </LinearGradient>
@@ -386,7 +385,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
             </Text>
 
             <BrandGradientStrokeText
-              fontSize={isNoResults ? 17 : 20}
+              fontSize={isNoResults ? 18 : 22}
               fontWeight="800"
               fillColor={titleFill}
               numberOfLines={2}
@@ -402,8 +401,31 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
             </Text>
 
             {!isNoResults ? (
+              <View style={empty.chipGrid}>
+                {QUICK_PICKS.map(({ label, icon, accentKey }) => (
+                  <Pressable
+                    key={label}
+                    style={empty.chipPressable}
+                    onPress={() => onSuggestionPress?.(label)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search ${label}`}
+                  >
+                    <View style={[empty.chipInner, { backgroundColor: chipBg, borderColor: chipBorder, borderWidth: 1 }]}>
+                      <View style={[empty.chipIcon, { backgroundColor: `${accentColor()}22` }]}>
+                        <Ionicons name={icon} size={16} color={accentColor()} />
+                      </View>
+                      <Text style={[empty.chipLabel, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]} numberOfLines={1}>
+                        {label}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            {!isNoResults ? (
               <View style={[empty.tipRow, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                <Ionicons name="keypad-outline" size={14} color={c.cyan} />
+                <Ionicons name="keypad-outline" size={14} color={labelMuted} />
                 <Text style={[empty.tipText, { color: labelMuted }]}>
                   Type at least 2 characters — we search as you type
                 </Text>
@@ -418,11 +440,9 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
 
 const empty = StyleSheet.create({
   wrap: {
-    flex: 1,
     paddingTop: 8,
-    paddingBottom: 16,
-    minHeight: 280,
-    justifyContent: 'center',
+    paddingBottom: 12,
+    width: '100%',
   },
   glow: {
     borderRadius: 22,
@@ -437,13 +457,13 @@ const empty = StyleSheet.create({
     width: '100%',
   },
   inner: {
-    paddingHorizontal: 18,
-    paddingTop: 22,
-    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 18,
     alignItems: 'center',
   },
   iconRow: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   iconRing: {
     width: 72,
@@ -463,20 +483,24 @@ const empty = StyleSheet.create({
   kicker: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.4,
-    marginBottom: 6,
+    letterSpacing: 1.6,
+    marginBottom: 8,
+    textAlign: 'center',
+    width: '100%',
   },
   title: {
     width: '100%',
     textAlign: 'center',
+    alignSelf: 'stretch',
   },
   subtitle: {
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 22,
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 18,
-    paddingHorizontal: 4,
+    marginTop: 8,
+    marginBottom: 16,
+    paddingHorizontal: 8,
+    maxWidth: 320,
   },
   chipGrid: {
     flexDirection: 'row',
@@ -484,6 +508,7 @@ const empty = StyleSheet.create({
     gap: 10,
     width: '100%',
     justifyContent: 'space-between',
+    marginBottom: 4,
   },
   chipPressable: {
     width: '48%',
@@ -511,6 +536,7 @@ const empty = StyleSheet.create({
   tipRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     marginTop: 16,
     paddingTop: 14,
@@ -518,10 +544,11 @@ const empty = StyleSheet.create({
     width: '100%',
   },
   tipText: {
-    flex: 1,
+    flexShrink: 1,
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '500',
+    textAlign: 'center',
   },
 });
 
@@ -534,10 +561,12 @@ const FoodSearchScreen = ({
   onClose,
   userId,
   embedded = false,
+  reserveShellBottomNav = false,
   initialQuery = '',
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const shellBottomPad = useShellBottomNavInset(16);
   const colors = useMemo(() => getColors(isDark), [isDark]);
 
   const mealType = useMemo(
@@ -660,7 +689,8 @@ const FoodSearchScreen = ({
     !loading &&
     ((hasSearched && results.length === 0) || (showBrowseIdle && !hasRecentHistory));
 
-  const listBottomPad = Math.max(insets.bottom, 12) + (embedded ? 16 : 32);
+  const listBottomPad =
+    Math.max(insets.bottom, 12) + (embedded ? 16 : 32) + (reserveShellBottomNav ? shellBottomPad : 0);
   const listData = showRecent ? recentFoods : showResults ? results : [];
   const listKey = showRecent ? 'recent' : 'results';
 
@@ -817,10 +847,10 @@ const FoodSearchScreen = ({
 
   return (
     <>
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, minHeight: 0, backgroundColor: embedded ? 'transparent' : colors.bg }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
+        style={{ flex: 1, minHeight: 0 }}
         keyboardVerticalOffset={embedded ? 0 : Math.max(insets.top, 12)}
       >
         <FlatList
@@ -830,6 +860,18 @@ const FoodSearchScreen = ({
           ListHeaderComponent={
             <View>
               {renderHeaderBlock()}
+              {showEmpty && !loading ? (
+                <EmptyState
+                  query={hasSearched ? query : ''}
+                  hint={hasSearched ? emptyHint : null}
+                  isDark={isDark}
+                  onSuggestionPress={(s) => {
+                    setQuery(s);
+                    handleSearch(s);
+                  }}
+                  colors={colors}
+                />
+              ) : null}
               {renderSectionTitle()}
             </View>
           }
@@ -840,28 +882,16 @@ const FoodSearchScreen = ({
               <FoodResultRow item={item} onAdd={handleAddFood} colors={colors} isDark={isDark} />
             )
           }
-          ListEmptyComponent={
-            showEmpty && !loading ? (
-              <EmptyState
-                query={hasSearched ? query : ''}
-                hint={hasSearched ? emptyHint : null}
-                isDark={isDark}
-                onSuggestionPress={(s) => {
-                  setQuery(s);
-                  handleSearch(s);
-                }}
-                colors={colors}
-              />
-            ) : null
-          }
+          ListEmptyComponent={null}
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingBottom: listBottomPad,
-            flexGrow: 1,
+            flexGrow: showEmpty && !loading ? 0 : 1,
           }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          scrollEventThrottle={16}
           nestedScrollEnabled
           alwaysBounceVertical
         />

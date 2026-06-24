@@ -10,6 +10,9 @@
  */
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
+import { getTheme } from '../marketplace/marketplaceFilters';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useClientAppShell } from './ClientAppShellContext';
 import ViewMyViewMyProfileScreen from '../../client-app/profile/ViewMyProfileScreen';
@@ -22,6 +25,9 @@ import BugReportScreen from '../../settings/screens/BugReportScreen';
 import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
 import SearchTrainersScreen, { TrainerProfileSheet } from '../marketplace/SearchTrainersScreen';
+import TrainerRequestConfirmModal from '../marketplace/TrainerRequestConfirmModal';
+import TrainerRequestIntroModal from '../marketplace/TrainerRequestIntroModal';
+import { useTrainerConnectFlow } from '../marketplace/useTrainerConnectFlow';
 import ViewWeekProgressReportScreen from '../../shared/screens/ViewWeekProgressReportScreen';
 import MyProgressPhotosScreen from '../../shared/screens/MyProgressPhotosScreen';
 import BrowseSavedWorkoutsScreen from '../../shared/screens/BrowseSavedWorkoutsScreen';
@@ -29,6 +35,20 @@ import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
 import StartCoachChatScreen from '../../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
 import ChatWithCoachScreen from '../../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import ClientShellBottomNav from './ClientShellBottomNav';
+import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+
+function trainerDocId(trainer) {
+  return trainer?.id || trainer?._firebase?.id || trainer?.uid || null;
+}
+
+function isConnectedCoachProfile(profileTrainer, trainerData, userData, hasTrainer) {
+  if (!hasTrainer) return false;
+  const profileId = trainerDocId(profileTrainer);
+  const connectedId =
+    trainerDocId(trainerData) ||
+    (userData?.trainerId ? String(userData.trainerId) : null);
+  return !!(profileId && connectedId && String(profileId) === String(connectedId));
+}
 
 let AICoachTestSuite = null;
 if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -44,12 +64,12 @@ function rootNavigateTests(shell) {
   rootNavigate('ClientAICoachTests');
 }
 
-function withNav(children, shell, { activeTabKey } = {}) {
+function withNav(children, shell, { activeTabKey, hideBottomNav = false } = {}) {
   return (
     <AppNavigationProvider {...shell.navProviderProps}>
       <View style={{ flex: 1 }}>
         {children}
-        <ClientShellBottomNav shell={shell} activeTabKey={activeTabKey} />
+        {hideBottomNav ? null : <ClientShellBottomNav shell={shell} activeTabKey={activeTabKey} />}
       </View>
     </AppNavigationProvider>
   );
@@ -182,11 +202,7 @@ export function ClientSearchTrainersScreen() {
       <SearchTrainersScreen
         onBack={s.rootGoBack}
         showBottomNav={false}
-        onSelectTrainer={(trainer) => {
-          s.setProfileTrainer(trainer);
-          s.rootGoBack();
-          s.openTrainerProfile();
-        }}
+        onRequestTrainer={s.requestTrainerConnection}
       />
       {s.addNotesFilesModalEl}
     </>,
@@ -196,22 +212,86 @@ export function ClientSearchTrainersScreen() {
 
 export function ClientTrainerViewMyViewMyProfileScreen() {
   const s = useClientAppShell();
-  useEffect(() => {
-    if (!s.profileTrainer) s.rootGoBack();
-  }, [s.profileTrainer, s.rootGoBack]);
+
+  const closeProfile = () => {
+    s.setProfileTrainer(null);
+    s.rootGoBack();
+  };
+
+  const connect = useTrainerConnectFlow({
+    onRequestTrainer: s.requestTrainerConnection,
+    onAfterSuccess: closeProfile,
+  });
+
   if (!s.profileTrainer) return null;
+
+  const isConnectedCoach = isConnectedCoachProfile(
+    s.profileTrainer,
+    s.trainerData,
+    s.userData,
+    s.hasTrainer,
+  );
+  const profileTitle =
+    s.profileTrainer?.name || s.profileTrainer?.displayName || 'Trainer profile';
+
+  const openCoachMessage = () => {
+    s.setSelectedTrainer(s.profileTrainer);
+    s.setProfileTrainer(null);
+    s.rootGoBack();
+    s.setShowTrainerMessaging(true);
+  };
+
+  const theme = getTheme(s.isDark);
+
   return withNav(
-    <>
-      <TrainerProfileSheet
-        embedded
-        visible
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={SHELL_SAFE_AREA_EDGES}>
+      <CoachConnectHeader
+        title={profileTitle}
         isDark={s.isDark}
-        trainer={s.profileTrainer}
-        onClose={s.rootGoBack}
+        skipTopSafeInset
+        onBack={closeProfile}
+        onProfilePress={s.openProfile}
+        onSettingsPress={s.openSettings}
+      />
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <TrainerProfileSheet
+          embedded
+          visible
+          isDark={s.isDark}
+          trainer={s.profileTrainer}
+          onClose={closeProfile}
+          variant={isConnectedCoach ? 'connected' : 'marketplace'}
+          onMessage={isConnectedCoach ? openCoachMessage : undefined}
+          onConnect={isConnectedCoach ? undefined : connect.openConnectFlow}
+          requesting={connect.requesting}
+          shellBottomInset={0}
+        />
+      </View>
+      <TrainerRequestConfirmModal
+        visible={!!connect.requestConfirmTrainer}
+        trainer={connect.requestConfirmTrainer?._firebase || connect.requestConfirmTrainer}
+        onCancel={connect.closeRequestConfirm}
+        onConfirm={connect.confirmSendRequest}
+        isDark={s.isDark}
+        busy={connect.requesting}
+      />
+      <TrainerRequestIntroModal
+        visible={!!connect.requestIntroTrainer}
+        trainerName={
+          connect.requestIntroTrainer?.name || connect.requestIntroTrainer?.displayName || 'Trainer'
+        }
+        messageDraft={connect.requestIntroDraft}
+        onChangeMessage={connect.setRequestIntroDraft}
+        onSkip={connect.completeFromIntro}
+        onSendMessage={connect.completeFromIntro}
+        onClose={connect.closeRequestIntro}
+        isDark={s.isDark}
+        busy={connect.requesting}
       />
       {s.addNotesFilesModalEl}
-    </>,
+    </SafeAreaView>,
     s,
+    { hideBottomNav: true },
   );
 }
 
@@ -225,6 +305,7 @@ export function ClientViewWeekProgressReportScreen() {
         clientName={s.userData?.firstName || s.user?.displayName || 'You'}
         isClientSelfView
         isDark={s.isDark}
+        reserveShellBottomNav
         onClose={s.rootGoBack}
         onHomePress={() => {
           s.rootGoBack();
@@ -363,6 +444,10 @@ export function ClientChatWithCoachScreen() {
           s.setAiChatState('home');
           s.rootGoBack();
         }}
+        onSessionSwitch={(session) =>
+          s.openAIChatSession({ sessionId: session.sessionId || session.id })
+        }
+        onNewChat={() => s.openAIChatSession({})}
         openAttachmentsOnMount={false}
         {...s.aiChatNavHandlers}
       />

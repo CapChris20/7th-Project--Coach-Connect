@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -135,11 +135,11 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
   }, [fade, rise]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <CoachConnectHeader title="Privacy Policy" skipTopSafeInset onBack={onClose} />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollContent} {...FORM_SCROLL_PROPS}>
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
           <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroOuter} innerStyle={styles.heroInner}>
             <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>

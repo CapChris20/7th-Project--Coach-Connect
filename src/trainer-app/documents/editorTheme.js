@@ -18,6 +18,9 @@ import {
   EDITOR_ACCENT_END,
 } from './editorGradients';
 
+/** DocFlow brand gradient — rose → purple → amber */
+export const DOC_FLOW_GRADIENT = ['#e11d48', '#9333ea', '#f59e0b'];
+
 export const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 32, 48];
 
 export const EDITOR_TEXT_COLORS = [
@@ -34,11 +37,13 @@ export const EDITOR_TEXT_COLORS = [
 
 export const EDITOR_HIGHLIGHT_COLORS = [
   'transparent',
-  '#FEF08A',
-  '#BBF7D0',
-  '#BFDBFE',
-  '#FBCFE8',
-  '#E9D5FF',
+  'rgba(254,240,138,0.45)',
+  'rgba(187,247,208,0.45)',
+  'rgba(191,219,254,0.45)',
+  'rgba(251,207,232,0.45)',
+  'rgba(233,213,255,0.45)',
+  'rgba(255,107,157,0.28)',
+  'rgba(147,51,234,0.28)',
 ];
 
 /** Shared light/dark tokens for document + spreadsheet editors. */
@@ -66,8 +71,10 @@ export function getEditorTheme(isDark) {
     textOnAccent: isDark ? '#0A0A0F' : '#FFFFFF',
     success: c.success,
     warning: c.warning,
-    selectionFill: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    selectionBorder: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.55)',
+    selectionFill: isDark ? 'rgba(224,64,138,0.18)' : 'rgba(212,41,122,0.12)',
+    selectionBorder: isDark ? '#E0408A' : '#D4297A',
+    sheetGradient: isDark ? ['#E0408A', '#9333EA'] : ['#E8367A', '#7C3AED'],
+    formulaGreen: isDark ? '#6EE7A0' : '#2D8A55',
     inputBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
     divider: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
     pageShadow: isDark

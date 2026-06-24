@@ -1,17 +1,9 @@
 /**
  * home Stat Gradients
- *
- * Purpose: home Stat Gradients — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: HOME_STAT_WORKOUT_GRADIENT, HOME_STAT_WATER_GRADIENT, HOME_STAT_SLEEP_GRADIENT, HOME_STAT_SORENESS_GRADIENT, HOME_STAT_ENERGY_GRADIENT, HOME_STAT_STRESS_GRADIENT, HOME_STAT_MOOD_GRADIENT, StatGradientText
- *
- * @file-header
  */
 import React from 'react';
 import { Text, View } from 'react-native';
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
+import StableGradientText from './StableGradientText';
 
 /** Today workout — gold + pink */
 export const HOME_STAT_WORKOUT_GRADIENT = ['#FBBF24', '#FB7185'];
@@ -34,20 +26,9 @@ const OUTLINE_RING = [
 ];
 
 export const StatGradientText = ({ children, style, colors, start, end, textProps }) => (
-  <MaskedView
-    style={{ alignSelf: 'center' }}
-    maskElement={
-      <Text {...textProps} style={[style, { backgroundColor: 'transparent' }]}>
-        {children}
-      </Text>
-    }
-  >
-    <LinearGradient colors={colors} start={start ?? { x: 0, y: 0 }} end={end ?? { x: 1, y: 0 }}>
-      <Text {...textProps} style={[style, { opacity: 0 }]}>
-        {children}
-      </Text>
-    </LinearGradient>
-  </MaskedView>
+  <StableGradientText style={style} colors={colors} start={start} end={end} textProps={textProps}>
+    {children}
+  </StableGradientText>
 );
 
 /** Solid fill (theme) with gradient ring drawn via offset gradient glyphs behind. */

@@ -13,6 +13,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet 
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
+import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { getRecentFoods } from '../daily-log/logFoodToFirestore';
 import { makeReadableFoodTitle } from '../food-search/makeReadableFoodTitle';
 
@@ -32,9 +33,10 @@ const defaultSuggestions = [
   'Oatmeal', 'Brown rice', 'Avocado', 'Eggs',
 ];
 
-export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions, userId }) {
+export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions, userId, reserveShellBottomNav = false }) {
   const { isDark, colors } = useTheme();
-  const screenBg = isDark ? colors?.background ?? '#0A0A0F' : colors?.background ?? '#F2F2F7';
+  const shellBottomPad = useShellBottomNavInset(16);
+  const screenBg = reserveShellBottomNav ? 'transparent' : isDark ? colors?.background ?? '#0A0A0F' : colors?.background ?? '#F2F2F7';
   const t = isDark
     ? {
         cardBg: '#14121A',
@@ -128,7 +130,8 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: screenBg }]}
+      style={[styles.container, { backgroundColor: screenBg, flex: 1 }]}
+      contentContainerStyle={{ paddingBottom: reserveShellBottomNav ? shellBottomPad : 24 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >

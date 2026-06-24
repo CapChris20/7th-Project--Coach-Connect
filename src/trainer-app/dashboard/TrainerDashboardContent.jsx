@@ -45,6 +45,7 @@ import TrainerWeeklyReportSection from '../weekly-report/TrainerWeeklyReportSect
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
 import CalendarTab from '../calendar-tab/TrainerCalendarTab';
+import { FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { isBenignTrainerClientFirestoreError } from '../crm/trainerFirestoreErrors';
 import {
   AuroraHeroBanner,
@@ -692,61 +693,95 @@ const DashboardContent = ({
 
   return (
     <>
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 4 }}>
+    <View style={{ flex: 1, minHeight: 0 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 4 }} {...FORM_SCROLL_PROPS}>
       <AuroraHeroBanner isDark={isDark} timeOfDay={timeOfDay} userName={userName} textColor={textColor} userId={trainerId} />
 
       {showPayoutNudge ? (
-        <View
+        <LinearGradient
+          colors={['#7C2D12', '#C2410C', '#9A3412']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
             marginTop: 8,
             marginBottom: 4,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(245,158,11,0.35)' : 'rgba(245,158,11,0.4)',
-            backgroundColor: isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.10)',
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
+            borderRadius: 12,
+            maxHeight: 80,
+            overflow: 'hidden',
           }}
         >
-          <Ionicons
-            name="wallet-outline"
-            size={18}
-            color={isDark ? 'rgba(255,255,255,0.85)' : 'rgba(26,10,46,0.75)'}
-          />
-          <Text style={{ flex: 1, color: textColor, fontSize: 13, fontWeight: '700' }}>
-            {stripeConnectStatus === 'pending'
-              ? 'Your payout account is being verified'
-              : 'Set up payouts to charge your clients'}
-          </Text>
-          {stripeConnectStatus === 'not_connected' && typeof onOpenPayments === 'function' ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              gap: 10,
+              minHeight: 56,
+              maxHeight: 80,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  letterSpacing: 1.1,
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.55)',
+                }}
+              >
+                Payments
+              </Text>
+              <Text
+                style={{
+                  marginTop: 2,
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: '#FED7AA',
+                }}
+                numberOfLines={2}
+              >
+                {stripeConnectStatus === 'pending'
+                  ? 'Payout verification in progress'
+                  : 'Complete payout setup to accept clients'}
+              </Text>
+            </View>
+            {typeof onOpenPayments === 'function' ? (
+              <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={onOpenPayments}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.22)',
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                  {stripeConnectStatus === 'pending' ? 'Manage' : 'Set Up'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={onOpenPayments}
+              accessibilityLabel="Dismiss payment setup reminder"
+              onPress={dismissPayoutNudge}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0,0,0,0.12)',
               }}
             >
-              <Text style={{ color: textColor, fontSize: 12, fontWeight: '800' }}>Set Up</Text>
+              <Ionicons name="close" size={15} color="rgba(255,255,255,0.42)" />
             </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            accessibilityLabel="Dismiss payout setup reminder"
-            onPress={dismissPayoutNudge}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons
-              name="close"
-              size={18}
-              color={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(26,10,46,0.45)'}
-            />
-          </TouchableOpacity>
-        </View>
+          </View>
+        </LinearGradient>
       ) : null}
 
       {/* Quote pill is now inside the hero banner */}
@@ -1206,6 +1241,7 @@ const DashboardContent = ({
         onSaved={() => { getTrainerDocuments(trainerId).then(setTrainerDocuments); setRefreshNotesAndFilesTrigger((t) => t + 1); }}
       />
     </ScrollView>
+    </View>
 
     <HoldToConfirmModal
       visible={!!removeClientHold}

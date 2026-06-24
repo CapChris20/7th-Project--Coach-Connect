@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
@@ -113,7 +113,7 @@ export default function WorkoutPlanResult({
     return (
       <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
         {renderWorkoutChromeHeader({ onBack: () => onBack?.() })}
-        <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
           <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
           <Text style={[planViewerRefStyles.loaderText, { color: text, textAlign: 'center' }]}>
             Building your workout plan…
@@ -121,7 +121,7 @@ export default function WorkoutPlanResult({
           <Text style={[planViewerRefStyles.loaderText, { color: muted, fontSize: 14, marginTop: 10, textAlign: 'center' }]}>
             You can go back — we will notify you when your plan is ready.
           </Text>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -130,16 +130,16 @@ export default function WorkoutPlanResult({
     if (readOnly && !viewerErrorDelayElapsed) {
       return (
         <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={['top']}>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
             <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Loading your workout plan...</Text>
-          </SafeAreaView>
+          </View>
         </View>
       );
     }
     return (
       <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={{ flex: 1 }}>
           <View style={planViewerRefStyles.errorContainer}>
             <MaterialCommunityIcons name="alert-circle" size={48} color={PLAN_BUILDER_COLORS.pink} />
             <Text style={[planViewerRefStyles.errorTitle, { color: text }]}>Error</Text>
@@ -153,7 +153,7 @@ export default function WorkoutPlanResult({
               <Text style={planViewerRefStyles.errorButtonText}>Go Back</Text>
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -161,7 +161,7 @@ export default function WorkoutPlanResult({
   if (viewerEmpty) {
     return (
       <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={{ flex: 1 }}>
           <View style={[planViewerRefStyles.emptyContainer, { backgroundColor: surface }]}>
             <Ionicons name="fitness" size={48} color={PLAN_BUILDER_COLORS.cyan} />
             <Text style={[planViewerRefStyles.emptyTitle, { color: text }]}>No Plan Yet</Text>
@@ -175,14 +175,14 @@ export default function WorkoutPlanResult({
               <Text style={planViewerRefStyles.emptyButtonText}>Go Back</Text>
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: pvBg }}>
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <View style={{ flex: 1 }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
         <CoachConnectHeader
           title="Weekly Plan"
@@ -212,6 +212,7 @@ export default function WorkoutPlanResult({
               onSubViewActiveChange: (active) => {
                 planSubViewActiveRef.current = !!active;
               },
+              reserveShellBottomNav: true,
             },
           }}
         />
@@ -252,17 +253,19 @@ export default function WorkoutPlanResult({
             </TouchableOpacity>
           </View>
         ) : null}
-      </SafeAreaView>
-      <BottomNavBar
-        onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-        onProfilePress={() => onNavigate && onNavigate('profile')}
-        onPlusPress={() => onNavigate && onNavigate('create')}
-        onVoicePress={() => onNavigate && onNavigate('voice')}
-        onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-        onWorkoutPress={() => onNavigate && onNavigate('workout')}
-        onMessagesPress={() => onNavigate && onNavigate('messages')}
-        activeTabKey="workout"
-      />
+      </View>
+      <ShellBottomNavAnchor>
+        <BottomNavBar
+          onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+          onProfilePress={() => onNavigate && onNavigate('profile')}
+          onPlusPress={() => onNavigate && onNavigate('create')}
+          onVoicePress={() => onNavigate && onNavigate('voice')}
+          onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+          onWorkoutPress={() => onNavigate && onNavigate('workout')}
+          onMessagesPress={() => onNavigate && onNavigate('messages')}
+          activeTabKey="workout"
+        />
+      </ShellBottomNavAnchor>
     </View>
   );
 }

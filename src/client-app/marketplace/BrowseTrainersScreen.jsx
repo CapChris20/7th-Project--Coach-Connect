@@ -21,13 +21,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import TrainerCard from './TrainerCard';
+import { FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import {
   GlassCard,
   GlassPanel,
   Pill,
   FilterGradientButton,
 } from './MarketplaceUI';
-import { BRAND, MP_FONT, QUICK_SPECIALTIES, getTheme } from '../marketplaceFilters';
+import { BRAND, MP_FONT, QUICK_SPECIALTIES, getTheme } from './marketplaceFilters';
 
 /** Matches ClientApp AI Coach `HeroWelcomeCard` / home hero banner shell (static border). */
 const HERO_BORDER_DARK = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF6B9D'];
@@ -108,7 +109,7 @@ export function BrowseTrainersScreen({
         <ScrollView
           style={s.flex}
           contentContainerStyle={s.listScroll}
-          showsVerticalScrollIndicator={false}
+          {...FORM_SCROLL_PROPS}
         >
           <WelcomeHero isDark={isDark} />
 

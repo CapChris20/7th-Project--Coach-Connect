@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, getDocs } from 'firebase/firestore';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { db } from '../../app-start/config';
 import { WeeklyReportScrollBody, getWRTheme } from '../../trainer-app/weekly-report/WeeklyReportPremium';
 
@@ -105,8 +106,10 @@ export default function TrainerViewWeekProgressReportScreen({
   onMessagesPress,
   onProfilePress,
   onSettingsPress,
+  reserveShellBottomNav = false,
 }) {
   const insets = useSafeAreaInsets();
+  const shellBottomPad = useShellBottomNavInset(16);
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
@@ -152,12 +155,13 @@ export default function TrainerViewWeekProgressReportScreen({
     [reports, selectedDocId]
   );
 
-  const scrollBottomPad = 100 + insets.bottom;
+  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 100 + insets.bottom;
+  const showInlineBottomNav = !reserveShellBottomNav;
   const theme = getWRTheme(isDark);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <SafeAreaView style={styles.safeTop} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeTop} edges={SHELL_SAFE_AREA_EDGES}>
         <CoachConnectHeader
           title="Weekly Report"
           isDark={isDark}
@@ -191,10 +195,9 @@ export default function TrainerViewWeekProgressReportScreen({
           </View>
         ) : (
           <ScrollView
-            style={styles.scroll}
+            style={[styles.scroll, { minHeight: 0 }]}
             contentContainerStyle={{ paddingBottom: scrollBottomPad }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+            {...FORM_SCROLL_PROPS}
           >
             <WeeklyReportScrollBody
               report={selectedReport}
@@ -204,16 +207,20 @@ export default function TrainerViewWeekProgressReportScreen({
           </ScrollView>
         )}
 
-        <BottomNavBar
-          activeTabKey="home"
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          onProfilePress={onProfilePress}
-        />
+        {showInlineBottomNav ? (
+          <ShellBottomNavAnchor>
+            <BottomNavBar
+              activeTabKey="home"
+              onHomePress={onHomePress}
+              onPlusPress={onPlusPress}
+              onVoicePress={onVoicePress}
+              onNutritionPress={onNutritionPress}
+              onWorkoutPress={onWorkoutPress}
+              onMessagesPress={onMessagesPress}
+              onProfilePress={onProfilePress}
+            />
+          </ShellBottomNavAnchor>
+        ) : null}
       </SafeAreaView>
     </View>
   );
@@ -221,7 +228,7 @@ export default function TrainerViewWeekProgressReportScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  safeTop: { flex: 1 },
+  safeTop: { flex: 1, minHeight: 0 },
   weekBar: {
     flexDirection: 'row',
     alignItems: 'center',

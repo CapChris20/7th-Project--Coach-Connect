@@ -13,6 +13,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
+import ProgressHeroMetricCard from './ProgressHeroMetricCard';
 import {
   GradientOutlineText,
   HOME_STAT_ENERGY_GRADIENT,
@@ -289,218 +290,62 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
 
   return (
     <View style={{ paddingTop: 4 }}>
-      {/* WEIGHT — hero */}
-      <View style={{ marginTop: 10 }}>
-        <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 2 }}>
-          <LinearGradient
-            colors={isDark ? ['#1a1a24', '#0f0f14'] : ['#FFFFFF', '#F9FAFB']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ borderRadius: 20, padding: 18 }}
-          >
-            <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '800', letterSpacing: 2 }}>WEIGHT</Text>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: subtleLabelColor, fontSize: 12, marginBottom: 6 }}>Before</Text>
-                <Text style={{ fontSize: 40, fontWeight: '900', color: 'rgba(192,132,252,0.95)', letterSpacing: -1 }}>
-                  {hasBefore ? parsedBefore : '—'}
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
+        <ProgressHeroMetricCard
+          isDark={isDark}
+          icon="scale-outline"
+          metric={hasCurrent ? `${currentWeight}` : '—'}
+          label="Weight"
+          footer={
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: subtleLabelColor }}>
+                {hasBefore ? `Was ${parsedBefore} lbs` : 'No baseline yet'}
+              </Text>
+              {diff != null ? (
+                <Text style={{ fontSize: 11, fontWeight: '700', color: diffColor, marginTop: 2 }}>
+                  {diffDir} {Math.abs(diff)} lbs
                 </Text>
-              </View>
-
-              <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingBottom: 6 }}>
-                <Text style={{ fontSize: 22, fontWeight: '900', color: diffColor }}>{diffDir}</Text>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: diffColor, marginTop: 4 }}>
-                  {diff == null ? '—' : `${Math.abs(diff)} lbs`}
+              ) : null}
+              {bodyFat ? (
+                <Text style={{ fontSize: 10, fontWeight: '600', color: mutedColor, marginTop: 4 }}>
+                  Body fat {bodyFat}%
                 </Text>
-              </View>
-
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={{ color: subtleLabelColor, fontSize: 12, marginBottom: 6 }}>Current</Text>
-                <Text style={{ fontSize: 40, fontWeight: '900', color: '#06B6D4', letterSpacing: -1 }}>
-                  {hasCurrent ? currentWeight : '—'}
-                </Text>
-              </View>
+              ) : null}
             </View>
-
-            {bodyFat ? (
-              <View style={{ marginTop: 14, alignSelf: 'flex-start' }}>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,107,157,0.35)', backgroundColor: 'rgba(255,107,157,0.10)' }}>
-                  <Text style={{ color: isDark ? 'rgba(255,255,255,0.7)' : '#0B1220', fontSize: 11, fontWeight: '700' }}>Body Fat: {bodyFat}%</Text>
-                </View>
-              </View>
-            ) : null}
-          </LinearGradient>
-        </LinearGradient>
-      </View>
-
-      {/* TODAY'S WORKOUT — hero (read-only) */}
-      <View style={{ marginTop: 16 }}>
-        <LinearGradient
-          colors={['#E91E63', '#FF6B9D', '#C084FC']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 22,
-            padding: 2,
-            overflow: 'hidden',
-            ...(Platform.OS === 'ios' && {
-              shadowColor: '#a855f7',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.2,
-              shadowRadius: 12,
-            }),
-            elevation: 4,
-          }}
-        >
-          <View style={{ borderRadius: 20, overflow: 'hidden' }}>
-            {/* Left accent rail */}
-            <LinearGradient
-              colors={['#E91E63', '#FF6B9D']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, zIndex: 4 }}
-            />
-
-            {/* Rich background */}
-            <LinearGradient
-              colors={isDark ? ['#1A1F2E', '#0F1419'] : ['#FFFFFF', '#F9FAFB']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{ borderRadius: 20, overflow: 'hidden', minHeight: 132 }}
-            >
-              {/* Subtle texture */}
-              <LinearGradient
-                colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ ...StyleSheet.absoluteFillObject, opacity: 0.55 }}
-              />
-
-              <View style={{ padding: 20 }}>
-                <Text style={{ color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(75,85,99,1)', fontSize: 11, fontWeight: '800', letterSpacing: 2 }}>
-                  TODAY&apos;S WORKOUT
+          }
+        />
+        <ProgressHeroMetricCard
+          isDark={isDark}
+          icon="barbell-outline"
+          metric={
+            hasWorkoutToday
+              ? workoutExercises.length > 0
+                ? String(workoutExercises.length)
+                : '✓'
+              : '—'
+          }
+          label="Today's Workout"
+          footer={
+            hasWorkoutToday ? (
+              <View>
+                <Text
+                  style={{ fontSize: 11, fontWeight: '700', color: isDark ? 'rgba(255,255,255,0.82)' : '#0A0A0F' }}
+                  numberOfLines={2}
+                >
+                  {resolvedWorkoutTitle}
                 </Text>
-
-                {hasWorkoutToday ? (
-                  <>
-                    <Text style={{ fontSize: 26, fontWeight: '900', color: isDark ? '#FFFFFF' : '#020617', marginTop: 10 }} numberOfLines={2}>
-                      {resolvedWorkoutTitle}
-                    </Text>
-                    {workoutExercises.length > 0 ? (
-                      <>
-                        <View
-                          style={{
-                            alignSelf: 'flex-start',
-                            marginTop: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 999,
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
-                            borderWidth: 1,
-                            borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(209,213,219,1)',
-                          }}
-                        >
-                          <Text style={{ color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(55,65,81,1)', fontSize: 12, fontWeight: '700' }}>
-                            {workoutExercises.length} exercise{workoutExercises.length === 1 ? '' : 's'}
-                          </Text>
-                        </View>
-
-                        {/* Preview first few exercises with sets × reps */}
-                        <View style={{ marginTop: 10, gap: 6 }}>
-                          {workoutExercises.slice(0, 3).map((ex, idx) => {
-                            const name = ex && (ex.exerciseName || ex.name || ex.label || '');
-                            const setsArr = Array.isArray(ex?.sets) ? ex.sets : [];
-                            const setsCount = setsArr.length;
-                            const firstSet = setsArr[0] || {};
-                            const repsVal =
-                              firstSet.reps != null && String(firstSet.reps).trim() !== ''
-                                ? String(firstSet.reps).trim()
-                                : null;
-                            let meta = '';
-                            if (setsCount && repsVal) {
-                              meta = `${setsCount}×${repsVal}`;
-                            } else if (setsCount) {
-                              meta = `${setsCount} set${setsCount === 1 ? '' : 's'}`;
-                            }
-
-                            return (
-                              <View key={`${name || 'exercise'}_${idx}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                                <LinearGradient
-                                  colors={['rgba(233,30,99,0.9)', 'rgba(255,107,157,0.85)', 'rgba(192,132,252,0.85)']}
-                                  start={{ x: 0, y: 0 }}
-                                  end={{ x: 1, y: 1 }}
-                                  style={{ width: 6, height: 6, borderRadius: 3, marginTop: 6 }}
-                                />
-                                <View style={{ flex: 1 }}>
-                                  <Text
-                                    style={{
-                                      color: isDark ? 'rgba(249,250,251,0.96)' : 'rgba(17,24,39,0.95)',
-                                      fontSize: 15,
-                                      fontWeight: '700',
-                                    }}
-                                    numberOfLines={1}
-                                  >
-                                    {name || 'Exercise'}
-                                  </Text>
-                                  {!!meta && (
-                                    <Text
-                                      style={{
-                                        color: isDark ? 'rgba(156,163,175,0.95)' : 'rgba(75,85,99,1)',
-                                        fontSize: 11,
-                                        marginTop: 1,
-                                      }}
-                                      numberOfLines={1}
-                                    >
-                                      {meta}
-                                    </Text>
-                                  )}
-                                </View>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </>
-                    ) : (
-                      <Text
-                        style={{
-                          color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(107,114,128,1)',
-                          fontSize: 13,
-                          marginTop: 10,
-                        }}
-                      >
-                        Logged today
-                      </Text>
-                    )}
-                  </>
-                ) : (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', height: 120, marginTop: 6 }}>
-                    <LottieView source={require('../../assets/animations/legacy/boxer lottie.json')} autoPlay loop style={{ width: 90, height: 90 }} />
-                    <Text
-                      style={{
-                        color: isDark ? 'rgba(255,255,255,0.68)' : 'rgba(107,114,128,1)',
-                        fontSize: 14,
-                        marginTop: 8,
-                      }}
-                    >
-                      No workout logged
-                    </Text>
-                  </View>
-                )}
-
-                {/* Subtle right-side lottie accent (even when data exists) */}
-                <View pointerEvents="none" style={{ position: 'absolute', right: 10, top: 14, opacity: 0.6 }}>
-                  <LottieView
-                    source={require('../../assets/animations/legacy/boxer lottie.json')}
-                    autoPlay
-                    loop
-                    style={{ width: 52, height: 52 }}
-                  />
-                </View>
+                {workoutExercises.length > 0 ? (
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: mutedColor, marginTop: 4 }} numberOfLines={1}>
+                    {workoutExercises[0]?.name || workoutExercises[0]?.exerciseName || ''}
+                    {workoutExercises.length > 1 ? ` +${workoutExercises.length - 1} more` : ''}
+                  </Text>
+                ) : null}
               </View>
-            </LinearGradient>
-          </View>
-        </LinearGradient>
+            ) : (
+              <Text style={{ fontSize: 11, fontWeight: '600', color: mutedColor }}>No workout logged</Text>
+            )
+          }
+        />
       </View>
 
       {/* SLEEP & WATER — 2-col with bars */}

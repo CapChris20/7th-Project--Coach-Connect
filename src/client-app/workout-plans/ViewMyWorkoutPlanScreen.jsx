@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { FORM_SCROLL_PROPS, useModalScrollBottomPad, useShellBottomNavInset } from "../../navigation/bottomNavMetrics";
 
 const CTA_GRAD = ["#9D174D", "#B45309"];
 const TOKENS = {
@@ -471,6 +472,7 @@ function SubViewHeader({ onBack, grad, shortLabel, title, subtitle, isDark, back
 }
 
 function DayDetailScreen({ day, onBack, onOpenExercise, isDark, dayIndex = 0 }) {
+  const scrollBottomPad = useModalScrollBottomPad(48);
   const accent = resolveAccent(day.focusColor, day, dayIndex);
   const { title: sessionName, subtitle } = sessionTitleLines(day);
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
@@ -488,7 +490,10 @@ function DayDetailScreen({ day, onBack, onOpenExercise, isDark, dayIndex = 0 }) 
         subtitle={subtitle}
         isDark={isDark}
       />
-      <ScrollView contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.detailScroll, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
         <Text style={[styles.detailCount, { color: text }]}>{(day.exercises || []).length} exercises</Text>
         <Text style={[styles.detailHint, { color: tertiary }]}>Tap any exercise for coaching cues.</Text>
         <View style={{ gap: 10, marginTop: 16 }}>
@@ -513,6 +518,7 @@ function DayDetailScreen({ day, onBack, onOpenExercise, isDark, dayIndex = 0 }) 
 }
 
 function RecoveryDayDetailScreen({ day, items, onBack, onOpenSegment, isDark, grad }) {
+  const scrollBottomPad = useModalScrollBottomPad(48);
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
   const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
   const innerBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
@@ -528,7 +534,10 @@ function RecoveryDayDetailScreen({ day, items, onBack, onOpenSegment, isDark, gr
         subtitle={displayName}
         isDark={isDark}
       />
-      <ScrollView contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.detailScroll, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
         <Text style={[styles.detailCount, { color: text }]}>{items.length} recovery focus areas</Text>
         <Text style={[styles.detailHint, { color: tertiary }]}>Tap any item for full guidance.</Text>
         <View style={{ gap: 10, marginTop: 16 }}>
@@ -559,6 +568,7 @@ function RecoveryDayDetailScreen({ day, items, onBack, onOpenSegment, isDark, gr
 }
 
 function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeIndex, isDark }) {
+  const scrollBottomPad = useModalScrollBottomPad(40);
   const exercises = day?.exercises || [];
   const ex = exerciseIndex != null ? exercises[exerciseIndex] : null;
   const accent = resolveAccent(day?.focusColor, day);
@@ -608,7 +618,10 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
             <Text style={[styles.sheetTitle, { color: text }]}>{ex.name}</Text>
           </View>
 
-          <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[styles.sheetBody, { paddingBottom: scrollBottomPad }]}
+            {...FORM_SCROLL_PROPS}
+          >
             <View style={styles.statRow}>
               {[
                 ["SETS", sets],
@@ -697,6 +710,7 @@ function splitDetailIntoSteps(detail) {
 }
 
 function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChangeIndex, isDark, grad }) {
+  const scrollBottomPad = useModalScrollBottomPad(40);
   const item = segmentIndex != null ? items[segmentIndex] : null;
   const hasPrev = segmentIndex > 0;
   const hasNext = segmentIndex < items.length - 1;
@@ -743,7 +757,10 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
             <Text style={[styles.sheetTitle, { color: text }]}>{item.label}</Text>
           </View>
 
-          <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[styles.sheetBody, { paddingBottom: scrollBottomPad }]}
+            {...FORM_SCROLL_PROPS}
+          >
             <View style={styles.statRow}>
               <View style={[styles.statBox, { backgroundColor: isDark ? TOKENS.rowDark : TOKENS.rowLight, borderColor: borderC }]}>
                 <Text style={[styles.statLabel, { color: tertiary }]}>TYPE</Text>
@@ -808,6 +825,10 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
 }
 
 export default function ViewMyWorkoutPlanScreen({ route }) {
+  const shellBottomPad = useShellBottomNavInset(16);
+  const reserveShellBottomNav = route?.params?.reserveShellBottomNav === true;
+  const modalScrollBottomPad = useModalScrollBottomPad(56);
+  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : modalScrollBottomPad;
   const colorScheme = useColorScheme();
   const systemIsDark = colorScheme === "dark";
   const isDarkOverride = route?.params?.isDarkOverride;
@@ -930,7 +951,10 @@ export default function ViewMyWorkoutPlanScreen({ route }) {
 
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
         <PlanSummaryCard title={heroTitle} weeksRemaining={weeksRemaining} focus={focusSummary} isDark={isDark} />
 
         {!!overview.trim() && (
@@ -991,7 +1015,7 @@ export default function ViewMyWorkoutPlanScreen({ route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 120, paddingHorizontal: 16, paddingTop: 8 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
   topStripe: { height: 2, width: "100%", opacity: 0.92 },
   summaryInner: { padding: 18, paddingTop: 14 },
   summaryLabel: {
@@ -1092,7 +1116,7 @@ const styles = StyleSheet.create({
   subTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3 },
   subSubtitle: { fontSize: 13, marginTop: 3, fontWeight: "600", lineHeight: 18 },
   detailRoot: { flex: 1 },
-  detailScroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 },
+  detailScroll: { paddingHorizontal: 16, paddingTop: 8 },
   detailCount: { fontSize: 22, fontWeight: "900", letterSpacing: -0.3 },
   detailHint: { fontSize: 13, marginTop: 6, fontWeight: "600" },
   listRowInner: {
@@ -1111,7 +1135,7 @@ const styles = StyleSheet.create({
   sheetCounterText: { fontSize: 12, fontWeight: "800", color: "#FFFFFF", letterSpacing: 0.6 },
   sheetKicker: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, marginBottom: 6, textTransform: "uppercase" },
   sheetTitle: { fontSize: 24, fontWeight: "900", lineHeight: 30, letterSpacing: -0.4 },
-  sheetBody: { paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4, gap: 20 },
+  sheetBody: { paddingHorizontal: 20, paddingTop: 4, gap: 20 },
   statRow: { flexDirection: "row", gap: 8 },
   statBox: {
     flex: 1,

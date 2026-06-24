@@ -35,6 +35,10 @@ export default function BrandGradientStrokeText({
   const stroke = strokeWidth ?? Math.max(1, Math.round(fontSize * 0.065));
   const [size, setSize] = useState(null);
   const gradId = useMemo(() => `brandStroke${++gradIdCounter}`, []);
+  const flatStyle = StyleSheet.flatten(style) || {};
+  const centered = textAnchor === 'middle' || flatStyle.textAlign === 'center';
+  const anchor = centered ? 'middle' : textAnchor;
+  const fullWidth = flatStyle.width === '100%' || flatStyle.alignSelf === 'stretch';
 
   const baseTextStyle = useMemo(
     () => ({
@@ -57,15 +61,17 @@ export default function BrandGradientStrokeText({
   const svgW = size ? Math.ceil(size.width) + pad * 2 : 0;
   const svgH = size ? Math.ceil(size.height) + stroke * 2 : Math.ceil(fontSize * 1.35);
   const baselineY = fontSize + stroke * 0.5;
-  const x = textAnchor === 'end' && svgW ? svgW - pad : pad;
+  const x = anchor === 'middle' && svgW ? svgW / 2 : anchor === 'end' && svgW ? svgW - pad : pad;
 
   return (
     <View
       style={[
         styles.wrap,
-        textAnchor === 'end' && styles.wrapEnd,
+        centered && (fullWidth ? styles.wrapCenterFull : styles.wrapCenter),
+        !centered && anchor === 'end' && styles.wrapEnd,
         style,
       ]}
+      collapsable={false}
     >
       <Text
         style={[baseTextStyle, styles.measure]}
@@ -77,7 +83,11 @@ export default function BrandGradientStrokeText({
       >
         {text}
       </Text>
-      {size && svgW > 0 ? (
+      {!size || svgW <= 0 ? (
+        <Text style={[baseTextStyle, { color: fillColor }]} numberOfLines={numberOfLines}>
+          {text}
+        </Text>
+      ) : (
         <Svg width={svgW} height={svgH} style={styles.svg}>
           <Defs>
             <SvgGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -88,7 +98,7 @@ export default function BrandGradientStrokeText({
           <SvgText
             x={x}
             y={baselineY}
-            textAnchor={textAnchor}
+            textAnchor={anchor}
             fontSize={fontSize}
             fontWeight={fontWeight}
             letterSpacing={letterSpacing}
@@ -103,7 +113,7 @@ export default function BrandGradientStrokeText({
           <SvgText
             x={x}
             y={baselineY}
-            textAnchor={textAnchor}
+            textAnchor={anchor}
             fontSize={fontSize}
             fontWeight={fontWeight}
             letterSpacing={letterSpacing}
@@ -112,7 +122,7 @@ export default function BrandGradientStrokeText({
             {text}
           </SvgText>
         </Svg>
-      ) : null}
+      )}
     </View>
   );
 }
@@ -121,6 +131,14 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'relative',
     alignSelf: 'flex-start',
+  },
+  wrapCenter: {
+    alignSelf: 'center',
+  },
+  wrapCenterFull: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    width: '100%',
   },
   wrapEnd: {
     alignSelf: 'flex-end',

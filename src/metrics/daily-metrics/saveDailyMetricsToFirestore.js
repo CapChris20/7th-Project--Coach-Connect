@@ -20,7 +20,7 @@ const {
   trackingMirrorFromLogs,
   parseDailyMetricsFromSnapshots,
   buildWorkoutLogHydration,
-} = require('./parseUserDailyMetrics.js');
+} = require('./parseUserDailyMetrics');
 
 export { getLocalDateKey as getClientDateKey };
 export { parseDailyMetricsFromSnapshots, buildWorkoutLogHydration };

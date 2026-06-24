@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import MaskedView from '@react-native-masked-view/masked-view';
+import StableGradientText from '../../shared-ui/StableGradientText';
 import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
@@ -303,11 +303,9 @@ const GlassCard = ({ children, style, isDark, borderVariant }) => {
 // GRADIENT TEXT
 // ─────────────────────────────────────────────
 const GradientText = ({ children, style, colors = ACCENT }) => (
-  <MaskedView maskElement={<Text style={[style, { backgroundColor: 'transparent' }]}>{children}</Text>}>
-    <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-      <Text style={[style, { opacity: 0 }]}>{children}</Text>
-    </LinearGradient>
-  </MaskedView>
+  <StableGradientText style={style} colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+    {children}
+  </StableGradientText>
 );
 
 // Hero banner: Welcome message + logo gradient + daily quote pill.

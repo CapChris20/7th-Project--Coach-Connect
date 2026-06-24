@@ -32,11 +32,11 @@ function getPasswordResetActionCodeSettings() {
     handleCodeInApp: false,
   };
   if (Platform.OS === 'ios') {
-    settings.iOS = { bundleId: 'com.chrisshina.coachconnect' };
+    settings.iOS = { bundleId: 'com.coachconnect' };
   }
   if (Platform.OS === 'android') {
     settings.android = {
-      packageName: 'com.chrisshina.coachconnect',
+      packageName: 'com.coachconnect',
       installApp: true,
       minimumVersion: '1',
     };

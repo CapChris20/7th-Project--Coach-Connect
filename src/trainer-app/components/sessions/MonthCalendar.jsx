@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
@@ -37,10 +37,24 @@ const COLORS = {
 
 const toKey = (d) => d.toISOString().slice(0, 10);
 
-export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme = 'dark', borderless = false }) => {
+export const MonthCalendar = ({
+  sessions = [],
+  selectedDate,
+  onSelectDate,
+  onMonthChange,
+  theme = 'dark',
+  borderless = false,
+  accentColor,
+  cardBg,
+}) => {
   const colors = COLORS[theme] || COLORS.dark;
+  const accent = accentColor || colors.primary;
   const selected = selectedDate ? new Date(String(selectedDate).slice(0, 10) + 'T12:00:00') : null;
   const [cursor, setCursor] = useState(() => selected || new Date());
+
+  useEffect(() => {
+    onMonthChange?.(cursor);
+  }, [cursor, onMonthChange]);
 
   const year = cursor.getFullYear();
   const month0 = cursor.getMonth();
@@ -73,9 +87,9 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
         styles.card,
         borderless && styles.cardBorderless,
         {
-          backgroundColor: borderless ? 'transparent' : colors.surface,
-          borderColor: colors.glassBorder,
-          borderWidth: borderless ? 0 : 1,
+          backgroundColor: borderless ? (cardBg || 'transparent') : colors.surface,
+          borderColor: accent,
+          borderWidth: borderless ? 0 : 2,
         },
       ]}
     >
@@ -119,8 +133,8 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
                 style={[
                   styles.cell,
                   styles.dayBtn,
-                  isSelected && { backgroundColor: colors.primary },
-                  !isSelected && hasSession && { backgroundColor: colors.primaryLight },
+                  isSelected && { backgroundColor: accent },
+                  !isSelected && hasSession && { backgroundColor: `${accent}22` },
                 ]}
                 activeOpacity={0.85}
               >
@@ -131,7 +145,7 @@ export const MonthCalendar = ({ sessions = [], selectedDate, onSelectDate, theme
                   <View
                     style={[
                       styles.dot,
-                      { backgroundColor: isSelected ? 'white' : colors.primary },
+                      { backgroundColor: isSelected ? 'white' : accent },
                     ]}
                   />
                 ) : (

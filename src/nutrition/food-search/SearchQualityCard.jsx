@@ -8,8 +8,8 @@
  *
  * @file-header
  */
-import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -30,12 +30,13 @@ const FEATURES = [
  * Hero disclaimer for food search — matches DashboardHeroCard / marketplace heroes.
  */
 export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
+  const [expanded, setExpanded] = useState(false);
   const bgGradient = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.55)';
+  const labelColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.55)';
   const headlineColor = isDark ? '#FFFFFF' : INK;
-  const subheadColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.6)';
-  const pillBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
-  const pillText = isDark ? '#FFFFFF' : INK;
+  const subheadColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.65)';
+  const pillBg = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.06)';
+  const pillText = isDark ? 'rgba(255,255,255,0.92)' : INK;
 
   return (
     <View
@@ -57,26 +58,33 @@ export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
             end={{ x: 0, y: 1 }}
             style={styles.inner}
           >
-            <View style={styles.headerRow}>
-              <Text style={[styles.label, { color: labelColor }]}>Nutrition data</Text>
-              <Ionicons name="shield-checkmark-outline" size={22} color={CYAN} />
-            </View>
+            <Pressable
+              onPress={() => setExpanded((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={expanded ? 'Collapse accuracy info' : 'Expand accuracy info'}
+            >
+              <View style={styles.headerRow}>
+                <View style={styles.headerTextCol}>
+                  <Text style={[styles.label, { color: labelColor }]}>Nutrition data</Text>
+                  <Text style={[styles.headline, { color: headlineColor }]}>
+                    Verify before you log
+                  </Text>
+                </View>
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={CYAN} />
+              </View>
+            </Pressable>
 
-            <Text style={[styles.headline, { color: headlineColor }]}>
-              We aim for accuracy — please verify
-            </Text>
-
-            <Text style={[styles.subhead, { color: subheadColor }]}>
-              Coach Connect pulls calories, protein, carbs, and fat from trusted databases and
-              restaurant sources. Menus and labels change often, so numbers can be off. If
-              something looks wrong, double-check the serving size or edit the entry after you
-              log it.
-            </Text>
+            {expanded ? (
+              <Text style={[styles.subhead, { color: subheadColor }]}>
+                Numbers come from trusted food databases and restaurant menus. Labels change often,
+                so double-check serving sizes or edit entries after logging.
+              </Text>
+            ) : null}
 
             <View style={styles.pillsRow}>
               {FEATURES.map(({ icon, label }) => (
                 <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
-                  <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
+                  <Ionicons name={icon} size={13} color={CYAN} style={styles.pillIcon} />
                   <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
                     {label}
                   </Text>
@@ -92,8 +100,8 @@ export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 12,
   },
   cardShadow: {
     borderRadius: 20,
@@ -116,57 +124,60 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   inner: {
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  headerTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   label: {
-    flex: 1,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginRight: 8,
+    letterSpacing: 1.1,
   },
   headline: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 24,
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
   },
   subhead: {
-    marginTop: 8,
+    marginTop: 10,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     lineHeight: 19,
   },
   pillsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 14,
+    marginTop: 12,
   },
   pill: {
     flexGrow: 1,
     flexBasis: '22%',
-    minWidth: 72,
-    height: 36,
+    minWidth: 74,
+    minHeight: 34,
     borderRadius: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 5,
   },
   pillIcon: {
     marginTop: 0,
   },
   pillText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

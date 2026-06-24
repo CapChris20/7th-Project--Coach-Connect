@@ -14,9 +14,9 @@ import {
 
 function microGradientForKey(key, np) {
   const cycle = np.microGradients || [
-    brandGradients.gold,
-    brandGradients.orange,
-    brandGradients.pink,
+    brandGradients.muted,
+    brandGradients.muted,
+    brandGradients.muted,
   ];
   const order = ['fiber', 'saturatedFat', 'cholesterol', 'sugar', 'sodium', 'potassium'];
   const idx = order.indexOf(key);
@@ -198,8 +198,8 @@ export default function NutritionFactsSection({
         <View style={[styles.panelInner, { backgroundColor: np.panelBg }]}>
           <LinearGradient
             colors={[
-              pillBackgroundGradient(brandGradients.gold, { strong: true })[0],
-              pillBackgroundGradient(brandGradients.pink, { strong: true })[1],
+              pillBackgroundGradient(brandGradients.accent, { strong: true })[0],
+              pillBackgroundGradient(brandGradients.muted, { strong: true })[1],
               'transparent',
             ]}
             start={{ x: 0, y: 0 }}

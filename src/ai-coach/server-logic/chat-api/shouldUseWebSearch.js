@@ -11,8 +11,8 @@
 /**
  * AI Coach web-search routing (client). Keep in sync with server/lib/coachWebSearch.js.
  */
-import { shouldRouteToPerplexity } from '../perplexityService.js';
-import { shouldIncludeWeeklyContextInCoachPrompt } from '../context/buildCoachPromptData.js';
+import { shouldRouteToPerplexity } from '../perplexityService';
+import { shouldIncludeWeeklyContextInCoachPrompt } from '../context/buildCoachPromptData';
 
 /** User wants their CoachConnect logs — not a public web lookup. */
 export function isPersonalDataLookup(userText) {

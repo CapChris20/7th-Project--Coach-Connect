@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../app-start/config';
+import { logSnapshotError } from '../../shared/services/firestoreListenerUtils';
 import { useLocalTodayDateKey } from '../../metrics/daily-metrics/useLocalTodayDateKey';
 import {
   archiveDailyDashboardDay,
@@ -130,10 +131,14 @@ export function useClientHomeDailyMetrics(userId, {
       })
       .catch(() => {});
 
-    const unsubLogs = onSnapshot(logsRef, (snap) => {
-      logsSnap = snap;
-      apply();
-    });
+    const unsubLogs = onSnapshot(
+      logsRef,
+      (snap) => {
+        logsSnap = snap;
+        apply();
+      },
+      (err) => logSnapshotError(err, 'Client dailyLogs listener:'),
+    );
 
     return () => {
       try {

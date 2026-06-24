@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore';
 import { getUserData } from '../trainer-messaging/sendTrainerNotification';
 import { getDocsWithIndexFallback, sortDocsByMillis } from '../../../shared/firestore/firestorePagedQuery';
+import { logSnapshotError } from '../../../shared/services/firestoreListenerUtils';
 
 export const CONVERSATIONS_PAGE_SIZE = 40;
 
@@ -255,7 +256,9 @@ export function subscribeToUnreadCount(userId, callback) {
 
   let unsubscribeFunctions = [];
 
-  const conversationsUnsubscribe = onSnapshot(conversationsQuery, async (conversationsSnapshot) => {
+  const conversationsUnsubscribe = onSnapshot(
+    conversationsQuery,
+    async (conversationsSnapshot) => {
     unsubscribeFunctions.forEach((unsub) => unsub());
     unsubscribeFunctions = [];
 
@@ -277,16 +280,23 @@ export function subscribeToUnreadCount(userId, callback) {
             where('conversationId', '==', conversationId),
             limit(100),
           );
-          const unsub = onSnapshot(messagesQuery, (messagesSnapshot) => {
-            let unreadCount = 0;
-            messagesSnapshot.forEach((docSnap) => {
-              const messageData = docSnap.data();
-              if (messageData.senderId !== userId && messageData.read === false) {
-                unreadCount++;
-              }
-            });
-            resolve(unreadCount);
-          });
+          const unsub = onSnapshot(
+            messagesQuery,
+            (messagesSnapshot) => {
+              let unreadCount = 0;
+              messagesSnapshot.forEach((docSnap) => {
+                const messageData = docSnap.data();
+                if (messageData.senderId !== userId && messageData.read === false) {
+                  unreadCount++;
+                }
+              });
+              resolve(unreadCount);
+            },
+            (err) => {
+              logSnapshotError(err, 'subscribeToUnreadCount messages:');
+              resolve(0);
+            },
+          );
           unsubscribeFunctions.push(unsub);
         }),
     );
@@ -298,7 +308,12 @@ export function subscribeToUnreadCount(userId, callback) {
       console.error('❌ Error counting unread messages:', error);
       callback(0);
     }
-  });
+  },
+    (err) => {
+      logSnapshotError(err, 'subscribeToUnreadCount conversations:');
+      callback(0);
+    },
+  );
 
   return () => {
     conversationsUnsubscribe();
@@ -317,7 +332,9 @@ export function subscribeToUnreadByConversation(userId, callback) {
   let unreadByConv = {};
   let messageUnsubscribes = [];
 
-  const conversationsUnsubscribe = onSnapshot(q, (conversationsSnapshot) => {
+  const conversationsUnsubscribe = onSnapshot(
+    q,
+    (conversationsSnapshot) => {
     messageUnsubscribes.forEach((unsub) => unsub());
     messageUnsubscribes = [];
     const convIds = [];
@@ -334,18 +351,27 @@ export function subscribeToUnreadByConversation(userId, callback) {
         where('conversationId', '==', conversationId),
         limit(100),
       );
-      const unsub = onSnapshot(messagesQuery, (messagesSnapshot) => {
-        let count = 0;
-        messagesSnapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          if (d.senderId !== userId && d.read === false) count++;
-        });
-        unreadByConv[conversationId] = count;
-        callback({ ...unreadByConv });
-      });
+      const unsub = onSnapshot(
+        messagesQuery,
+        (messagesSnapshot) => {
+          let count = 0;
+          messagesSnapshot.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d.senderId !== userId && d.read === false) count++;
+          });
+          unreadByConv[conversationId] = count;
+          callback({ ...unreadByConv });
+        },
+        (err) => logSnapshotError(err, 'subscribeToUnreadByConversation messages:'),
+      );
       messageUnsubscribes.push(unsub);
     });
-  });
+  },
+    (err) => {
+      logSnapshotError(err, 'subscribeToUnreadByConversation conversations:');
+      callback({});
+    },
+  );
 
   return () => {
     conversationsUnsubscribe();

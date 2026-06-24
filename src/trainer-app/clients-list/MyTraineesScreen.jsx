@@ -16,13 +16,14 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { httpsCallable } from 'firebase/functions';
@@ -62,6 +63,7 @@ const ClientsListScreen = ({
   onMessagesPress,
   isDark = true,
 }) => {
+  const scrollBottomPad = useShellBottomNavInset(24);
   const [deletePending, setDeletePending] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   const swipeRefs = useRef(new Map());
@@ -259,9 +261,9 @@ const ClientsListScreen = ({
     </View>
   ) : (
     <ScrollView
-      contentContainerStyle={{ paddingTop: 8, paddingBottom: 120, paddingHorizontal: 16 }}
-      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingTop: 8, paddingBottom: scrollBottomPad, paddingHorizontal: 16 }}
       nestedScrollEnabled
+      {...FORM_SCROLL_PROPS}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingHorizontal: 2 }}>
         <Text
@@ -501,7 +503,7 @@ const ClientsListScreen = ({
       onMessagesPress={onMessagesPress}
     >
       <LinearGradient colors={isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
-        <SafeAreaView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
           <CoachConnectHeader
             title="Clients"
             skipTopSafeInset
@@ -510,14 +512,16 @@ const ClientsListScreen = ({
             onSettingsPress={onSettingsPress}
           />
           {listContent}
-          <BottomNavBar
-            onHomePress={onHomePress}
-            onPlusPress={onPlusPress}
-            onVoicePress={onVoicePress}
-            onNutritionPress={onNutritionPress}
-            onWorkoutPress={onWorkoutPress}
-            onMessagesPress={onMessagesPress}
-          />
+          <ShellBottomNavAnchor>
+            <BottomNavBar
+              onHomePress={onHomePress}
+              onPlusPress={onPlusPress}
+              onVoicePress={onVoicePress}
+              onNutritionPress={onNutritionPress}
+              onWorkoutPress={onWorkoutPress}
+              onMessagesPress={onMessagesPress}
+            />
+          </ShellBottomNavAnchor>
           {removeModal}
         </SafeAreaView>
       </LinearGradient>

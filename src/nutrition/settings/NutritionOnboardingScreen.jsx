@@ -398,7 +398,13 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        keyboardDismissMode="on-drag"
+        scrollEventThrottle={16}
+      >
         <View style={favS.chipsWrap}>
           {foods.map((food, i) => (
             <View key={i} style={[macroS.card, favS.chipCard]}>

@@ -24,6 +24,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FORM_SCROLL_PROPS, SHELL_SAFE_AREA_EDGES, useModalScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
@@ -1362,10 +1363,11 @@ function WeeklyReportCard({ report, metricTiles, onOpen, isDark = true }) {
 
 export function WeeklyReportDetailModal({ report, visible, onClose, isDark = true, clientName = '' }) {
   const theme = getWRTheme(isDark);
+  const scrollBottomPad = useModalScrollBottomPad(56);
   return (
     <Modal visible={visible} animationType="fade" transparent={false} onRequestClose={onClose}>
       <View style={[styles.modalContent, { backgroundColor: theme.bg }]}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top', 'left', 'right']}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={SHELL_SAFE_AREA_EDGES}>
           <TouchableOpacity
             style={[styles.closeButton, { backgroundColor: theme.badge, borderColor: theme.border }]}
             onPress={onClose}
@@ -1374,9 +1376,8 @@ export function WeeklyReportDetailModal({ report, visible, onClose, isDark = tru
             <Text style={[styles.closeButtonText, { color: theme.textSecondary }]}>×</Text>
           </TouchableOpacity>
           <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+            {...FORM_SCROLL_PROPS}
           >
             <WeeklyReportScrollBody report={report} isDark={isDark} clientName={clientName} />
           </ScrollView>
@@ -1433,7 +1434,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   scrollPad: { paddingHorizontal: SPACE.screen },
-  scrollContent: { paddingTop: 56, paddingBottom: 64 },
+  scrollContent: { paddingTop: 56 },
   modalContent: { flex: 1 },
   emptyWrap: { paddingVertical: 32, paddingHorizontal: SPACE.screen },
   sectionBlock: {

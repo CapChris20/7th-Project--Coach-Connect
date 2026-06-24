@@ -20,7 +20,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Platform,
@@ -42,7 +41,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 import GradientChatBubblesIcon from '../shared/components/icons/GradientChatBubblesIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, FORM_SCROLL_PROPS } from '../navigation/bottomNavMetrics';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -569,7 +568,8 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
           data={filteredConversations}
           keyExtractor={(item) => item.id}
           renderItem={renderRow}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 32 + embedBottomPad, flexGrow: 1 }}
+          contentContainerStyle={{ paddingTop: 16, paddingBottom: 48 + embedBottomPad, flexGrow: 1 }}
+          {...FORM_SCROLL_PROPS}
           ListFooterComponent={
             hasMoreConversations ? (
               <TouchableOpacity
@@ -624,7 +624,7 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
     return <View style={{ flex: 1 }}>{inner}</View>;
   }
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <View style={{ flex: 1 }}>
       <CoachConnectHeader
         title="Messages"
         isDark={isDark}
@@ -634,6 +634,6 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
         onSettingsPress={onSettingsPress}
       />
       {inner}
-    </SafeAreaView>
+    </View>
   );
 }

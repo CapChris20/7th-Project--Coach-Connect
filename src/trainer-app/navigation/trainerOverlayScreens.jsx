@@ -9,7 +9,7 @@
  * @file-header
  */
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useTrainerAppShell } from './TrainerAppShellContext';
@@ -22,14 +22,15 @@ import PrivacyPolicyScreen from '../../settings/screens/PrivacyPolicyScreen';
 import ContactSupportScreen from '../../settings/screens/ContactSupportScreen';
 import BugReportScreen from '../../settings/screens/BugReportScreen';
 import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
-import SearchTrainersScreen from '../screens/SearchTrainersScreen';
+import SearchTrainersScreen from '../../client-app/marketplace/SearchTrainersScreen';
 import VoiceCoachScreen from '../../ai-coach/chat-ui/voice/VoiceCoachScreen';
 import ChatWithCoachScreen from '../../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
-import TrainerViewWeekProgressReportScreen from '../screens/TrainerViewWeekProgressReportScreen';
+import TrainerViewWeekProgressReportScreen from '../../shared/weekly-report/ViewWeekProgressReportScreen';
 import ManualWorkoutPlanBuilderScreen from '../workout-plans/ManualWorkoutPlanBuilderScreen';
 import PaymentsScreen from '../payments/PaymentsScreen';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import { useSubscription } from '../../subscription/SubscriptionProvider';
 
 function withNav(children, shell) {
   return <AppNavigationProvider {...shell.navProviderProps}>{children}</AppNavigationProvider>;
@@ -45,6 +46,8 @@ export function TrainerViewMyViewMyProfileScreen() {
       onboardingData={s.trainerProfileDoc || {}}
       onNavigate={s.onNavigate}
       onProfileSaved={s.refreshTrainerUserDoc}
+      onOpenPayments={s.openPayments}
+      trainerClientCount={s.clients?.length ?? 0}
     />,
     s,
   );
@@ -53,7 +56,38 @@ export function TrainerViewMyViewMyProfileScreen() {
 export function TrainerSettingsScreen() {
   const s = useTrainerAppShell();
   const onNavigate = buildNavigateFromShell(s);
-  return withNav(<SettingsScreen userRole="trainer" onClose={s.rootGoBack} onNavigate={onNavigate} />, s);
+  const subscriptionProps = useTrainerPlatformSubscriptionSettings();
+  return withNav(
+    <SettingsScreen
+      userRole="trainer"
+      onClose={s.rootGoBack}
+      onNavigate={onNavigate}
+      {...subscriptionProps}
+    />,
+    s,
+  );
+}
+
+function useTrainerPlatformSubscriptionSettings() {
+  const { accessState, restorePurchases, actionLoading, firestoreSubscription } = useSubscription();
+
+  if (Platform.OS !== 'ios') {
+    return {};
+  }
+
+  const statusLabel = (() => {
+    if (accessState.access === 'free_trial') return 'Free trial active';
+    if (accessState.access === 'active') return 'Pro — active';
+    if (accessState.access === 'expired') return 'Expired';
+    return 'No active subscription';
+  })();
+
+  return {
+    platformSubscriptionStatus: statusLabel,
+    platformSubscriptionProductId: firestoreSubscription?.productId || null,
+    onRestorePurchases: restorePurchases,
+    restorePurchasesLoading: actionLoading,
+  };
 }
 
 export function TrainerHelpFAQScreen() {
@@ -139,6 +173,11 @@ export function TrainerVoiceAIScreen() {
         userId={s.user?.uid}
         prefill={s.aiChatState.prefill}
         sessionId={s.aiChatState.sessionId}
+        enableHistorySidebar
+        onSessionSwitch={(session) =>
+          s.openAIChatSession({ sessionId: session.sessionId || session.id })
+        }
+        onNewChat={() => s.openAIChatSession({})}
         onBack={() => s.setAiChatState('home')}
         onHomePress={() => {
           s.handleHomePress();

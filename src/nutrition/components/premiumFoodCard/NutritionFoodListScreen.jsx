@@ -8,6 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES } from '../../../navigation/bottomNavMetrics';
 import { Search } from 'lucide-react-native';
 import FoodCard from './FoodCard';
 import { colors, fonts } from './theme';
@@ -54,7 +55,7 @@ export default function NutritionFoodListScreen({ foods, totalCalories }) {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={SHELL_SAFE_AREA_EDGES}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.eyebrow}>{formatTodayHeader()}</Text>

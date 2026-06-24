@@ -2765,7 +2765,8 @@ Examples:
           <View style={styles.stepContainer}>
             <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
             <Text style={[H.subtitle, { color: ot.textSecondary }]}>
-              Subscription tiers and in-app billing are coming soon. You can set client rates from your profile later.
+              Coach Connect Pro is $59.99/month with a 3-day free trial (Apple in-app purchase). Finish availability
+              below — you can start your trial from the trainer dashboard after setup.
             </Text>
 
             <View
@@ -2796,8 +2797,8 @@ Examples:
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: ot.textPrimary }}>CoachConnect subscription</Text>
                   <Text style={{ fontSize: 13, color: ot.textSecondary, marginTop: 4, lineHeight: 18 }}>
-                    Trainer and client plans will use Apple and Google in-app purchase. No payment is required to finish setup
-                    today.
+                    Unlimited clients, AI workouts, nutrition, progress dashboard, and coaching chat. Billed through
+                    Apple after your free trial.
                   </Text>
                 </View>
               </View>

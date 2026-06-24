@@ -1,21 +1,19 @@
 /**
- * Premium food card design tokens — gold, dark orange, dark pink palette.
+ * Premium food card design tokens — muted grayscale + warm accent.
  */
 
 export const brandGradients = {
-  /** Dark gold → bright gold */
-  gold: ['#A67C00', '#FFD86B'],
-  /** Dark orange → warm orange */
-  orange: ['#C2410C', '#FF8C42'],
-  /** Dark pink → vivid pink */
-  pink: ['#9D174D', '#FF3D8A'],
+  accent: ['#9A3412', '#C2410C'],
+  muted: ['#6B7280', '#9CA3AF'],
+  good: ['#15803D', '#22C55E'],
+  warn: ['#B91C1C', '#EF4444'],
 };
 
-/** Macro mapping: carbs = gold, protein = orange, fat = pink */
+/** Macro mapping: protein = accent; carbs/fat = muted gray */
 export const gradients = {
-  carbs: brandGradients.gold,
-  protein: brandGradients.orange,
-  fat: brandGradients.pink,
+  carbs: brandGradients.muted,
+  protein: brandGradients.accent,
+  fat: brandGradients.muted,
 };
 
 export const colors = {
@@ -59,9 +57,9 @@ export function pillBackgroundGradient(stops, { strong = false } = {}) {
   return [hexToRgba(stops[0], a0), hexToRgba(stops[1], a1)];
 }
 
-const borderStops = [brandGradients.gold[1], brandGradients.orange[1], brandGradients.pink[1]];
-const titleGradient = [brandGradients.gold[0], brandGradients.pink[1]];
-const ruleGradient = [brandGradients.orange[0], brandGradients.pink[1]];
+const borderStops = [brandGradients.accent[0], brandGradients.muted[1]];
+const titleGradient = brandGradients.accent;
+const ruleGradient = brandGradients.accent;
 
 /** Opaque, high-contrast palette for the expanded nutrition facts panel. */
 export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
@@ -69,8 +67,8 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
     borderStops,
     titleGradient,
     ruleGradient,
-    breakdownGradient: brandGradients.orange,
-    microGradients: [brandGradients.gold, brandGradients.orange, brandGradients.pink],
+    breakdownGradient: brandGradients.accent,
+    microGradients: [brandGradients.muted, brandGradients.muted, brandGradients.muted],
   };
 
   // Light mode — warm cream panel, dark text (not a dark box on pink meals)
@@ -79,13 +77,13 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
       ...sharedAccents,
       panelBg: '#FFFBF5',
       tileBg: '#FFFFFF',
-      tileBorder: hexToRgba(brandGradients.pink[0], 0.14),
+      tileBorder: hexToRgba(brandGradients.muted[0], 0.22),
       trackBg: 'rgba(10,10,15,0.08)',
       text: '#0A0A0F',
       textMuted: '#5C4A42',
       textSubtle: '#8A7268',
-      badgeBg: hexToRgba(brandGradients.gold[0], 0.12),
-      badgeBorder: hexToRgba(brandGradients.orange[0], 0.22),
+      badgeBg: hexToRgba(brandGradients.accent[0], 0.10),
+      badgeBorder: hexToRgba(brandGradients.accent[0], 0.18),
       iconOnGradient: '#FFFFFF',
     };
   }
@@ -95,13 +93,13 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
       ...sharedAccents,
       panelBg: '#14110F',
       tileBg: '#1E1916',
-      tileBorder: hexToRgba(brandGradients.orange[0], 0.22),
+      tileBorder: hexToRgba(brandGradients.muted[0], 0.22),
       trackBg: 'rgba(255,255,255,0.12)',
       text: '#FFFFFF',
       textMuted: 'rgba(255,255,255,0.82)',
       textSubtle: 'rgba(255,255,255,0.58)',
-      badgeBg: hexToRgba(brandGradients.gold[0], 0.18),
-      badgeBorder: hexToRgba(brandGradients.pink[0], 0.28),
+      badgeBg: hexToRgba(brandGradients.accent[0], 0.18),
+      badgeBorder: hexToRgba(brandGradients.accent[0], 0.28),
       iconOnGradient: '#FFFFFF',
     };
   }
@@ -110,12 +108,12 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
     ...sharedAccents,
     panelBg: '#181410',
     tileBg: '#221E1A',
-    tileBorder: hexToRgba(brandGradients.gold[0], 0.2),
+    tileBorder: hexToRgba(brandGradients.muted[0], 0.2),
     trackBg: 'rgba(255,255,255,0.1)',
     text: colors.foreground,
     textMuted: colors.mutedForeground,
     textSubtle: colors.subtle,
-    badgeBg: hexToRgba(brandGradients.orange[0], 0.15),
+    badgeBg: hexToRgba(brandGradients.accent[0], 0.15),
     badgeBorder: colors.borderStrong,
     iconOnGradient: '#FFFFFF',
   };

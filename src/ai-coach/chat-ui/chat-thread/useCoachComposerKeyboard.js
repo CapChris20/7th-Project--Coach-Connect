@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT } from '../../../navigation/bottomNavMetrics';
 
 /** CoachConnectHeader content row (below status bar padding). */
 const HEADER_BODY_HEIGHT = 68;

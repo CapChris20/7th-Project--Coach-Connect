@@ -15,10 +15,11 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -32,6 +33,7 @@ const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 
 export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSettingsPress, onClientAdded, embedInLayout }) {
   const { isDark } = useTheme();
+  const listBottomPad = useEmbeddedScrollBottomPad(32);
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = useTrainerPendingRequests(trainerUid);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -138,8 +140,8 @@ export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSe
           data={requests}
           renderItem={renderRequestItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
+          {...FORM_SCROLL_PROPS}
         />
       )}
 
@@ -174,7 +176,7 @@ export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSe
     );
   }
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0a0a1a' : '#f5f3ff' }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0a0a1a' : '#f5f3ff' }]} edges={SHELL_SAFE_AREA_EDGES}>
       {screenHeader}
       {requestsBody}
     </SafeAreaView>
@@ -246,7 +248,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 20, fontWeight: '900', marginBottom: 10, textAlign: 'center', letterSpacing: -0.35 },
   emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 21, maxWidth: 320 },
-  listContent: { padding: 16, paddingBottom: 40 },
+  listContent: { padding: 16 },
   requestCard: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -11,8 +11,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../../ui/ThemeContext';
-import dailyQuotesData from '../../daily-quotes/dailyQuotesList.json';
+import { useTheme } from '../../../shared-ui/ThemeContext';
+import dailyQuotesData from '../../../metrics/daily-quotes/dailyQuotesList.json';
 
 /** Curated quotes from `dailyQuotesList.json` (nutrition, training, discipline). */
 const quotes = Array.isArray(dailyQuotesData?.quotes) ? dailyQuotesData.quotes : [];

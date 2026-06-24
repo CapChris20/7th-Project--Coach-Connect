@@ -30,7 +30,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>coachconnect</string>
-          <string>com.chrisshina.coachconnect</string>
+          <string>com.coachconnect</string>
           <string>com.googleusercontent.apps.421005574501-5aogoduc19mlcgk0g259vsque3s8foap</string>
         </array>
       </dict>

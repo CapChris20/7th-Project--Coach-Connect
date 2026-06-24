@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.chrisshina.coachconnect'
+    namespace 'com.coachconnect'
     defaultConfig {
-        applicationId 'com.chrisshina.coachconnect'
+        applicationId 'com.coachconnect'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -12,7 +12,7 @@ import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
-import { getGlass } from '../marketplaceFilters';
+import { getGlass } from './marketplaceFilters';
 
 /**
  * Frosted glass panel — blur backdrop + translucent tint + soft top-lit border (web .glass-card).

@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../utils/formatFileSize';
+import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../shared-utils/formatFileSize';
 
 /** Dark orange → dark purple accent gradient */
 const ORANGE_PURPLE_GRAD = ['#C2410C', '#4C1D95'];

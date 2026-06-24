@@ -20,6 +20,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Animated,
   Alert,
+  Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -33,6 +34,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
@@ -47,17 +49,21 @@ import { serverTimestamp } from 'firebase/firestore';
 import logger from '../../../shared/api/logErrorToServer';
 import { db } from '../../../app-start/config';
 import {
+  deleteAiChatSession,
   loadAiChatMessages,
   persistAiChatSession,
   restoreChatMessagesFromSaved,
   upsertAiChatMessages,
 } from '../persistence/saveCoachMessages';
+import CoachChatHistorySidebar from '../components/CoachChatHistorySidebar';
+import { useCoachChatSessions } from '../hooks/useCoachChatSessions';
 import { useCoachComposerInput } from './useCoachComposerInput';
 import CoachPasteSheet from './CoachPasteSheet';
 import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
+import BottomNavBar from '../../../navigation/BottomNavBar';
+import { ShellBottomNavAnchor } from '../../../navigation/bottomNavMetrics';
 import { useTheme } from '../../../shared-ui/ThemeContext';
-import { coachPlainText, copyCoachText } from './formatCoachMessageText';
+import { coachPlainText, copyCoachText } from '../lib/formatCoachMessageText';
 import { loadCoachContextEnhanced } from '../../server-logic/context/loadCoachPersonalContext';
 import { sendCoachMessageWithRetry } from '../../server-logic/chat-api/sendCoachMessageToServer';
 import ToolConfirmationModal from './ToolConfirmationModal';
@@ -1075,7 +1081,12 @@ export default function ChatWithCoachScreen({
   onSettingsPress,
   onNutritionDataChanged,
   hideBottomNav = false,
+  enableHistorySidebar = false,
+  onSessionSwitch,
+  onNewChat,
 }) {
+  const insets = useSafeAreaInsets();
+  const isWideLayout = Dimensions.get('window').width >= 768;
   const { keyboardVisible, composerBottomPad, listBottomPad, keyboardVerticalOffset } =
     useCoachComposerKeyboard({ hideBottomNav });
   const { isDark } = useTheme();
@@ -1114,6 +1125,9 @@ export default function ChatWithCoachScreen({
   const [pendingToolCall, setPendingToolCall] = useState(null);
   const [pendingToolMessageId, setPendingToolMessageId] = useState(null);
   const [toolExecuting, setToolExecuting] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(!isWideLayout);
+  const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false);
+  const coachSessions = useCoachChatSessions(userId);
   const featureTimers = useRef([]);
 
   const trainerId = trainerIdProp || userProfile?.trainerId || userProfile?.trainer?.id || null;
@@ -1580,6 +1594,42 @@ export default function ChatWithCoachScreen({
 
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
+  const handleDeleteSession = (session) => {
+    const sid = session?.sessionId || session?.id;
+    if (!db || !userId || !sid) return;
+    Alert.alert('Delete chat?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteAiChatSession(userId, sid);
+            if (sid === sessionId && onNewChat) onNewChat();
+          } catch (err) {
+            logger?.error?.('deleteAiChatSession failed', err);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleSessionPress = (session) => {
+    const sid = session?.sessionId || session?.id;
+    if (!sid || sid === sessionId) return;
+    setHistoryOverlayOpen(false);
+    onSessionSwitch?.(session);
+  };
+
+  const handleSidebarNewChat = () => {
+    setHistoryOverlayOpen(false);
+    if (onNewChat) {
+      onNewChat();
+      return;
+    }
+    onBack?.();
+  };
+
   const buildPills = () => {
     const historyText = messages.map((m) => (m.role === 'user' ? m.text : '')).join(' | ').toLowerCase();
     const goal = String(userProfile?.primaryGoal || userProfile?.goal || '').toLowerCase();
@@ -1621,13 +1671,51 @@ export default function ChatWithCoachScreen({
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg }}>
+    <View style={{ flex: 1, backgroundColor: t.bg, flexDirection: 'row' }}>
+      {enableHistorySidebar ? (
+        <CoachChatHistorySidebar
+          mode="docked"
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+          sessions={coachSessions}
+          activeSessionId={sessionId}
+          onSessionPress={handleSessionPress}
+          onDeleteSession={handleDeleteSession}
+          onNewChat={handleSidebarNewChat}
+          isDark={isDark}
+          insets={insets}
+        />
+      ) : null}
+
+      <View style={{ flex: 1, minWidth: 0 }}>
       <CoachConnectHeader
-        title="AI Coach"
         isDark={isDark}
         onBack={onBack}
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
+        headerLeft={
+          !enableHistorySidebar ? (
+            <TouchableOpacity
+              onPress={() => setHistoryOverlayOpen(true)}
+              activeOpacity={0.88}
+              accessibilityLabel="Chat history"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              }}
+            >
+              <Ionicons name="time-outline" size={18} color={isDark ? '#FF6B9D' : '#BE185D'} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0A0A0F' }}>History</Text>
+            </TouchableOpacity>
+          ) : null
+        }
       />
 
       <KeyboardAvoidingView
@@ -1638,7 +1726,7 @@ export default function ChatWithCoachScreen({
         {messages.length === 0 && !typing ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <LottieView
-              source={require('../../assets/animations/legacy/Cloud robotics abstract.json')}
+              source={require('../../../assets/animations/legacy/Cloud robotics abstract.json')}
               autoPlay
               loop
               style={{ width: 100, height: 100 }}
@@ -1690,6 +1778,7 @@ export default function ChatWithCoachScreen({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="always"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            scrollEventThrottle={16}
             removeClippedSubviews={false}
             onContentSizeChange={scrollToBottom}
             ListFooterComponent={
@@ -1883,17 +1972,38 @@ export default function ChatWithCoachScreen({
       />
 
       {!hideBottomNav && !keyboardVisible ? (
-        <BottomNavBar
-          onHomePress={onHomePress || (() => {})}
-          onPlusPress={onPlusPress || (() => {})}
-          onVoicePress={onVoicePress || (() => {})}
-          onNutritionPress={onNutritionPress || (() => {})}
-          onWorkoutPress={onWorkoutPress || (() => {})}
-          onMessagesPress={onMessagesPress || (() => {})}
-          onProfilePress={onProfilePress || (() => {})}
-          activeTabKey="ai"
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={onHomePress || (() => {})}
+            onPlusPress={onPlusPress || (() => {})}
+            onVoicePress={onVoicePress || (() => {})}
+            onNutritionPress={onNutritionPress || (() => {})}
+            onWorkoutPress={onWorkoutPress || (() => {})}
+            onMessagesPress={onMessagesPress || (() => {})}
+            onProfilePress={onProfilePress || (() => {})}
+            activeTabKey="ai"
+          />
+        </ShellBottomNavAnchor>
+      ) : null}
+
+      {!enableHistorySidebar ? (
+        <CoachChatHistorySidebar
+          mode="overlay"
+          open={historyOverlayOpen}
+          onClose={() => setHistoryOverlayOpen(false)}
+          sessions={coachSessions}
+          activeSessionId={sessionId}
+          onSessionPress={(session) => {
+            setHistoryOverlayOpen(false);
+            handleSessionPress(session);
+          }}
+          onDeleteSession={handleDeleteSession}
+          onNewChat={handleSidebarNewChat}
+          isDark={isDark}
+          insets={insets}
         />
       ) : null}
+      </View>
     </View>
   );
 }

@@ -246,3 +246,24 @@ export const useSessions = () => {
   };
 };
 
+/** Thin aliases for session form screens */
+export function useCreateTrainingSession() {
+  const { addSession } = useSessions();
+  return addSession;
+}
+
+export function useUpdateTrainingSession() {
+  const { updateSession } = useSessions();
+  return updateSession;
+}
+
+export function useDeleteTrainingSession() {
+  const { deleteSession } = useSessions();
+  return deleteSession;
+}
+
+export function useGetTrainingSession() {
+  const { getSession, sessions } = useSessions();
+  return useCallback((sessionId) => getSession(sessionId), [getSession, sessions]);
+}
+

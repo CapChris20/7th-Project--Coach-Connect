@@ -14,7 +14,6 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -35,10 +34,13 @@ import {
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
 } from '../chat-thread/pickAttachmentType';
-import { collection, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { deleteAiChatSession } from '../persistence/saveCoachMessages';
+import CoachChatHistorySidebar from '../components/CoachChatHistorySidebar';
+import { useCoachChatSessions } from '../hooks/useCoachChatSessions';
 import { db } from '../../../app-start/config';
-import BottomNavBar from '../../navigation/BottomNavBar';
+import BottomNavBar from '../../../navigation/BottomNavBar';
+import { ShellBottomNavAnchor } from '../../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
 import { useTheme } from '../../../shared-ui/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
@@ -57,7 +59,7 @@ import {
 } from '../../../shared-ui/homeStatGradients';
 import { getClientDateKey } from '../../../shared-utils/dateKeys';
 import { calculateMacroTotals, getFoodLogsForDate } from '../../../nutrition/daily-log/logFoodToFirestore';
-import { parseDailyMetricsFromSnapshots } from '../../../metrics/daily-metrics/parseUserDailyMetrics.js';
+import { parseDailyMetricsFromSnapshots } from '../../../metrics/daily-metrics/parseUserDailyMetrics';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
@@ -66,7 +68,6 @@ const CTA_GRADIENT = AI_COACH_UI.gradient.ctaWarm;
 const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
 const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 const HERO_INNER = AI_COACH_UI.heroInner;
-const SIDEBAR_WIDTH = Math.min(320, SW * 0.86);
 
 // Action shortcuts — generic openers (Log / Web / My Data / Photo).
 const COACH_ACTIONS = [
@@ -891,234 +892,6 @@ const HeroWelcomeCard = ({
   );
 };
 
-const toSessionDateLabel = (d) => {
-  try {
-    const date = d?.toDate?.() instanceof Date ? d.toDate() : d instanceof Date ? d : null;
-    if (!date) return '';
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  } catch {
-    return '';
-  }
-};
-
-function formatSessionDisplayTitle(title) {
-  let s = String(title || 'Chat')
-    .replace(/\{[\s\S]*?\}/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!s) s = 'Chat';
-  if (s.length <= 48) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Chat';
-  const slice = s.slice(0, 48);
-  const lastSpace = slice.lastIndexOf(' ');
-  const cut = (lastSpace > 10 ? slice.slice(0, lastSpace) : slice)
-    .replace(/[-–—]\s*$/, '')
-    .replace(/\s+\d+$/, '')
-    .trim();
-  return cut || 'Chat';
-}
-
-function groupSessionsForSidebar(sessions) {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfWeek = startOfToday - 6 * 86400000;
-  const groups = [
-    { key: 'today', label: 'Today', items: [] },
-    { key: 'week', label: 'This Week', items: [] },
-    { key: 'earlier', label: 'Earlier', items: [] },
-  ];
-  (sessions || []).forEach((s) => {
-    const ms = s.updatedAtMs || 0;
-    if (ms >= startOfToday) groups[0].items.push(s);
-    else if (ms >= startOfWeek) groups[1].items.push(s);
-    else groups[2].items.push(s);
-  });
-  return groups.filter((g) => g.items.length > 0);
-}
-
-// ─── Sidebar (slides from left) ───────────────────────────────────────────────
-function Sidebar({ open, onClose, sessions, onSessionPress, onDeleteSession, isDark, insets }) {
-  const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
-
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: open ? 0 : -SIDEBAR_WIDTH,
-      duration: 280,
-      useNativeDriver: true,
-    }).start();
-  }, [open, slideAnim]);
-
-  const t = isDark ? DARK : LIGHT;
-  const labelColor = t.textMuted;
-  const titleColor = t.textPrimary;
-  const metaColor = isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.45)';
-  const panelBg = isDark ? DARK.sidebarBg : '#F5F5F7';
-
-  if (!open) return null;
-
-  return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1 }}>
-        <TouchableOpacity
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.62)' }]}
-          activeOpacity={1}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close chat history"
-        />
-        <Animated.View
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: SIDEBAR_WIDTH,
-            transform: [{ translateX: slideAnim }],
-            backgroundColor: panelBg,
-            borderRightWidth: 1,
-            borderRightColor: t.sidebarBorder || t.border,
-            zIndex: 2,
-            elevation: 24,
-            shadowColor: '#000',
-            shadowOpacity: 0.35,
-            shadowRadius: 16,
-            shadowOffset: { width: 4, height: 0 },
-          }}
-        >
-          <LinearGradient
-            colors={BORDER_SUBTLE}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ height: 2 }}
-          />
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                paddingTop: (insets?.top || 0) + 12,
-                paddingHorizontal: 18,
-                paddingBottom: 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <View>
-                <Text style={{ color: labelColor, fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>
-                  AI Coach
-                </Text>
-                <Text style={{ color: titleColor, fontSize: 20, fontWeight: '800', marginTop: 2 }}>Chat History</Text>
-              </View>
-              <TouchableOpacity
-                onPress={onClose}
-                hitSlop={8}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                }}
-              >
-                <Ionicons name="close" size={20} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 + (insets?.bottom || 0) }}
-              showsVerticalScrollIndicator={false}
-            >
-              {sessions.length === 0 ? (
-                <View
-                  style={{
-                    marginTop: 40,
-                    padding: 20,
-                    borderRadius: 16,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                  }}
-                >
-                  <Ionicons name="time-outline" size={26} color="rgba(255,255,255,0.55)" style={{ marginBottom: 10 }} />
-                  <Text style={{ color: titleColor, fontSize: 15, fontWeight: '700' }}>No history yet</Text>
-                  <Text style={{ color: metaColor, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
-                    Start a conversation below — your history will show up here.
-                  </Text>
-                </View>
-              ) : (
-                groupSessionsForSidebar(sessions).map((group) => (
-                  <View key={group.key} style={{ marginBottom: 18 }}>
-                    <Text
-                      style={{
-                        color: labelColor,
-                        fontSize: 11,
-                        fontWeight: '800',
-                        letterSpacing: 0.9,
-                        textTransform: 'uppercase',
-                        marginBottom: 8,
-                        paddingHorizontal: 4,
-                      }}
-                    >
-                      {group.label}
-                    </Text>
-                    {group.items.map((s, i) => (
-                      <TouchableOpacity
-                        key={s.id}
-                        onPress={() => {
-                          onSessionPress(s);
-                          onClose();
-                        }}
-                        activeOpacity={0.82}
-                      >
-                        <View
-                          style={{
-                            paddingVertical: 12,
-                            paddingHorizontal: 4,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 10,
-                          }}
-                        >
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ color: titleColor, fontSize: 14, fontWeight: '600' }} numberOfLines={2} ellipsizeMode="tail">
-                              {formatSessionDisplayTitle(s.title)}
-                            </Text>
-                            <Text style={{ color: metaColor, fontSize: 11, marginTop: 3 }}>{s.date}</Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              if (e?.stopPropagation) e.stopPropagation();
-                              onDeleteSession?.(s);
-                            }}
-                            activeOpacity={0.7}
-                            hitSlop={8}
-                            style={{ padding: 4 }}
-                          >
-                            <Ionicons name="trash-outline" size={16} color={metaColor} style={{ opacity: 0.45 }} />
-                          </TouchableOpacity>
-                        </View>
-                        {i < group.items.length - 1 ? (
-                          <View
-                            style={{
-                              height: StyleSheet.hairlineWidth,
-                              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                            }}
-                          />
-                        ) : null}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))
-              )}
-            </ScrollView>
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function StartCoachChatScreen({
   userId,
@@ -1140,7 +913,7 @@ export default function StartCoachChatScreen({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputText, setInputText] = useState('');
   const [attachments, setAttachments] = useState([]);
-  const [sessions, setSessions] = useState([]);
+  const sessions = useCoachChatSessions(userId);
   const [userData, setUserData] = useState(null);
   const [dailyMetrics, setDailyMetrics] = useState(null);
   const [nutritionToday, setNutritionToday] = useState(null);
@@ -1229,46 +1002,6 @@ export default function StartCoachChatScreen({
       },
     ]);
   };
-
-  useEffect(() => {
-    if (!db || !userId) {
-      setSessions([]);
-      return undefined;
-    }
-
-    const q = query(
-      collection(db, 'users', userId, 'aiChats'),
-      orderBy('updatedAt', 'desc'),
-      limit(25)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const next = snap.docs.map((d) => {
-          const data = d.data() || {};
-          return {
-            id: d.id,
-            sessionId: data.sessionId || d.id,
-            title: data.title || 'Chat',
-            lastUserMessage: typeof data.lastUserMessage === 'string' ? data.lastUserMessage : '',
-            lastAssistantMessage: typeof data.lastAssistantMessage === 'string' ? data.lastAssistantMessage : '',
-            date: toSessionDateLabel(data.updatedAt) || toSessionDateLabel(data.createdAt) || '',
-            updatedAtMs:
-              data.updatedAt?.toDate?.()?.getTime?.() ||
-              data.createdAt?.toDate?.()?.getTime?.() ||
-              0,
-          };
-        });
-        setSessions(next);
-      },
-      () => {
-        setSessions([]);
-      }
-    );
-
-    return () => unsub();
-  }, [userId]);
 
   useEffect(() => {
     if (!db || !userId) {
@@ -1436,13 +1169,12 @@ export default function StartCoachChatScreen({
       {/* Header (fixed) */}
       <Animated.View style={{ opacity: headerOpacity, zIndex: 30 }}>
         <CoachConnectHeader
-          title="AI Coach"
           isDark={isDark}
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
           headerLeft={
             <ChatHistoryHeaderButton compact isDark={isDark} onPress={() => setSidebarOpen(true)} />
           }
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
         />
         {onOpenTestSuite ? (
           <View
@@ -1521,7 +1253,7 @@ export default function StartCoachChatScreen({
               }}
             >
               <LottieView
-                source={require('../../assets/animations/legacy/Cloud robotics abstract.json')}
+                source={require('../../../assets/animations/legacy/Cloud robotics abstract.json')}
                 autoPlay
                 loop
                 style={{ width: '100%', height: '100%' }}
@@ -1733,27 +1465,34 @@ export default function StartCoachChatScreen({
         </Animated.View>
       </KeyboardAvoidingView>
 
-      <Sidebar
+      <CoachChatHistorySidebar
+        mode="overlay"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         sessions={sessions}
         onSessionPress={onSessionPress}
         onDeleteSession={handleDeleteSession}
+        onNewChat={() => {
+          setSidebarOpen(false);
+          onStartChat?.({});
+        }}
         isDark={isDark}
         insets={insets}
       />
 
       {!hideBottomNav && !keyboardVisible ? (
-        <BottomNavBar
-          onHomePress={onHomePress || (() => {})}
-          onPlusPress={onPlusPress || (() => {})}
-          onVoicePress={onVoicePress || (() => {})}
-          onNutritionPress={onNutritionPress || (() => {})}
-          onWorkoutPress={onWorkoutPress || (() => {})}
-          onMessagesPress={onMessagesPress || (() => {})}
-          onProfilePress={onProfilePress || (() => {})}
-          activeTabKey="ai"
-        />
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={onHomePress || (() => {})}
+            onPlusPress={onPlusPress || (() => {})}
+            onVoicePress={onVoicePress || (() => {})}
+            onNutritionPress={onNutritionPress || (() => {})}
+            onWorkoutPress={onWorkoutPress || (() => {})}
+            onMessagesPress={onMessagesPress || (() => {})}
+            onProfilePress={onProfilePress || (() => {})}
+            activeTabKey="ai"
+          />
+        </ShellBottomNavAnchor>
       ) : null}
     </Animated.View>
   );

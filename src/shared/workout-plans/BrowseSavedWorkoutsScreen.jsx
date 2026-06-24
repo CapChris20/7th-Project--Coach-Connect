@@ -15,12 +15,13 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Platform,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -917,7 +918,10 @@ export default function BrowseSavedWorkoutsScreen({
   const ScreenRoot = embedInLayout ? View : SafeAreaView;
 
   return (
-    <ScreenRoot style={[styles.container, { backgroundColor: theme.bg }]}>
+    <ScreenRoot
+      style={[styles.container, { backgroundColor: theme.bg }]}
+      {...(embedInLayout ? {} : { edges: SHELL_SAFE_AREA_EDGES })}
+    >
       {!embedInLayout ? (
         <CoachConnectHeader
           title=""

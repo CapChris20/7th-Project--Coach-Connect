@@ -40,6 +40,7 @@ export function EditorTitleField({
     >
       <TextInput
         ref={inputRef}
+        testID="doc-title-input"
         value={value}
         onChangeText={onChangeText}
         onFocus={onFocus}

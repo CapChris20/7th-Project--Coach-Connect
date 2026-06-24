@@ -33,7 +33,7 @@ import {
   SESSION_TYPES,
   SORT_OPTIONS,
   getTheme,
-} from '../marketplaceFilters';
+} from './marketplaceFilters';
 import { Pill, PrimaryButton, SecondaryButton, SectionLabel } from './MarketplaceUI';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

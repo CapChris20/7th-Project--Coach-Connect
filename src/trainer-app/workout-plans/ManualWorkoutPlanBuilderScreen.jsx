@@ -29,6 +29,7 @@ import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import {
   newLocalId,
   saveManualPlanDraft,
@@ -370,7 +371,7 @@ export default function ManualWorkoutPlanBuilderScreen({
   const c = useMemo(() => getBuilderPalette(isDark), [isDark]);
   const styles = useMemo(() => createBuilderStyles(c), [c]);
   const themeValue = useMemo(() => ({ c, styles }), [c, styles]);
-  const scrollBottomPad = Math.max(insets.bottom, 16) + 20;
+  const scrollBottomPad = useEmbeddedScrollBottomPad(32);
 
   const [step, setStep] = useState(1);
   const [planName, setPlanName] = useState('');
@@ -780,7 +781,7 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   return (
     <BuilderThemeContext.Provider value={themeValue}>
-    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <LinearGradient colors={c.topGlow} style={styles.topGlow} pointerEvents="none" />
         {renderCoachHeader()}
@@ -798,9 +799,8 @@ export default function ManualWorkoutPlanBuilderScreen({
 
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollPad}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scrollPad, { paddingBottom: scrollBottomPad }]}
+          {...FORM_SCROLL_PROPS}
         >
           {step === 1 && (
             <>
@@ -1053,7 +1053,13 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <Ionicons name="close" size={22} color={c.textPrimary} />
               </TouchableOpacity>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: scrollBottomPad }}
+              scrollEventThrottle={16}
+              keyboardDismissMode="on-drag"
+            >
             <FieldLabel>Search library</FieldLabel>
             <FormField style={{ marginBottom: 8 }}>
               <View style={styles.searchRow}>

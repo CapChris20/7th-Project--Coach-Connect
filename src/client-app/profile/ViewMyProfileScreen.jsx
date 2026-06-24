@@ -25,7 +25,6 @@ import {
   Pressable,
   Animated,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../../app-start/config';
@@ -34,7 +33,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
 import {
   PROFILE_ROW_ICON_SIZE,
@@ -62,6 +61,11 @@ import {
   ClipboardList,
   Video,
   Sparkles,
+  Star,
+  Users,
+  Wallet,
+  Link2,
+  AtSign,
 } from 'lucide-react-native';
 import {
   formatOnboardingDisplay,
@@ -69,15 +73,15 @@ import {
   formatDaysPerWeek,
 } from '../../shared-utils/formatOnboardingDisplay';
 
-/** Unified profile chrome — purple → pink only (no rainbow section/card colors). */
+/** Unified profile chrome — CoachConnect warm accent (dark pink → dark orange). */
 const PROFILE = {
-  purple: '#9333EA',
-  pink: '#DB2777',
-  violet: '#7C3AED',
-  violetSoft: '#C4B5FD',
-  icon: '#A78BFA',
-  borderGradient: ['#9333EA', '#DB2777'],
-  lineGradient: ['#9333EA', '#DB2777', 'transparent'],
+  purple: '#BE185D',
+  pink: '#C2410C',
+  violet: '#9A3412',
+  violetSoft: '#FDBA74',
+  icon: '#FDBA74',
+  borderGradient: ['#BE185D', '#C2410C'],
+  lineGradient: ['#BE185D', '#C2410C', 'transparent'],
 };
 
 const DARK = {
@@ -239,12 +243,20 @@ function SectionTitle({ title, lineColors, theme }) {
   );
 }
 
-function ProfileHero({ kicker, name, handle, headline, photoURL, uploading, onPressPhoto, theme, isDark }) {
+function ProfileHero({ kicker, name, handle, headline, photoURL, uploading, onPressPhoto, onEditPress, theme, isDark }) {
   const ring = 188;
   const inner = 176;
   return (
     <View style={styles.heroWrap}>
-      <Text style={[styles.heroKicker, { color: theme.muted }]}>{kicker}</Text>
+      <View style={styles.heroTopRow}>
+        <Text style={[styles.heroKicker, { color: theme.muted, flex: 1 }]}>{kicker}</Text>
+        {onEditPress ? (
+          <Pressable onPress={onEditPress} style={[styles.heroEditBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)' }]}>
+            <Pencil size={14} color={PROFILE.violetSoft} strokeWidth={2.2} />
+            <Text style={[styles.heroEditText, { color: theme.text }]}>Edit</Text>
+          </Pressable>
+        ) : null}
+      </View>
       <View style={styles.heroPhotoWrap}>
         <LinearGradient
           colors={PROFILE.borderGradient}
@@ -424,6 +436,83 @@ function SessionCard({ Icon, label, title, subtitle, theme, isDark }) {
   );
 }
 
+function TrainerStatTile({ Icon, value, label, theme, isDark }) {
+  return (
+    <View
+      style={[
+        styles.statTile,
+        {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+        },
+      ]}
+    >
+      <Icon size={16} color={PROFILE.violetSoft} strokeWidth={2} />
+      <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: theme.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function TrainerStatsStrip({ clientCount, years, rating, theme, isDark }) {
+  return (
+    <View style={styles.statsRow}>
+      <TrainerStatTile Icon={Users} value={clientCount ?? '—'} label="Clients" theme={theme} isDark={isDark} />
+      <TrainerStatTile Icon={Calendar} value={years ?? '—'} label="Years" theme={theme} isDark={isDark} />
+      <TrainerStatTile Icon={Star} value={rating ?? 'New'} label="Rating" theme={theme} isDark={isDark} />
+    </View>
+  );
+}
+
+function TrainerPaymentCard({ status, onPress, theme, isDark }) {
+  const label =
+    status === 'active'
+      ? 'Payouts active'
+      : status === 'pending'
+        ? 'Verification in progress'
+        : 'Complete payout setup';
+  const cta = status === 'active' ? 'Manage' : 'Set Up';
+  return (
+    <Pressable onPress={onPress} disabled={!onPress}>
+      <LinearGradient colors={['#7C2D12', '#C2410C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.paymentCard}>
+        <View style={styles.paymentCardInner}>
+          <Wallet size={18} color="#FDBA74" strokeWidth={2} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.paymentKicker}>PAYMENTS</Text>
+            <Text style={styles.paymentStatus}>{label}</Text>
+          </View>
+          {onPress ? (
+            <View style={styles.paymentCta}>
+              <Text style={styles.paymentCtaText}>{cta}</Text>
+            </View>
+          ) : null}
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+function TrainerContactRow({ label, value, Icon, onPress, editable, theme, isDark }) {
+  const row = (
+    <View style={[styles.contactRow, { borderBottomColor: theme.border }]}>
+      <Icon size={16} color={PROFILE.violetSoft} strokeWidth={2} />
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[styles.infoLabel, { color: theme.muted }]}>{label}</Text>
+        <Text style={[styles.contactValue, { color: theme.text }]} numberOfLines={2}>
+          {value || '—'}
+        </Text>
+      </View>
+      {editable ? <EditPencilBtn isDark={isDark} /> : null}
+    </View>
+  );
+  if (!editable || !onPress) return row;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
+      {row}
+    </Pressable>
+  );
+}
+
 function GradientSwitch({ value, onValueChange }) {
   return (
     <Pressable onPress={() => onValueChange(!value)} hitSlop={8}>
@@ -500,6 +589,8 @@ export function ViewMyViewMyProfileScreen({
   userData,
   onboardingData,
   onProfileSaved,
+  onOpenPayments,
+  trainerClientCount,
 }) {
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
@@ -656,6 +747,8 @@ export function ViewMyViewMyProfileScreen({
     }
     if (key === 'location') return String(trainerDoc?.location || '').trim();
     if (key === 'trainerProfileBio') return String(trainerDoc?.trainerProfileBio || '').trim();
+    if (key === 'instagram') return String(trainerDoc?.instagram || trainerDoc?.instagramHandle || '').trim();
+    if (key === 'website') return String(trainerDoc?.website || trainerDoc?.websiteUrl || '').trim();
     if (key === 'trainingPhilosophy') return String(trainerDoc?.trainingPhilosophy || '').trim();
     if (key === 'primaryGoal') return String(onboardingData?.primaryGoal || '').trim();
     if (key === 'fitnessLevel') return String(onboardingData?.fitnessLevel || '').trim();
@@ -725,7 +818,7 @@ export function ViewMyViewMyProfileScreen({
           .filter(Boolean);
         payload.equipmentAccess = parts.length ? parts : null;
         payload.equipment = parts.length ? parts.join(', ') : null;
-      } else if (editKey === 'location' || editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy') {
+      } else if (editKey === 'location' || editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' || editKey === 'instagram' || editKey === 'website') {
         payload[editKey] = raw === '' ? null : raw;
       } else {
         payload[editKey] = raw === '' ? null : raw;
@@ -823,12 +916,18 @@ export function ViewMyViewMyProfileScreen({
   const philosophyText = String(trainerDoc?.trainingPhilosophy || '').trim();
   const availabilityTitle = formatAvailability(trainerDoc?.trainerAvailabilityStatus);
   const sessionTitle = String(trainerDoc?.sessionType || '—').trim() || '—';
+  const stripeStatus = trainerDoc?.stripeConnectStatus || 'not_connected';
+  const trainerYearsStat = formatYearsCoaching(trainerDoc?.yearsExperience);
+  const trainerRatingStat =
+    trainerDoc?.averageRating != null ? Number(trainerDoc.averageRating).toFixed(1) : null;
+  const instagram = String(trainerDoc?.instagram || trainerDoc?.instagramHandle || '').trim();
+  const website = String(trainerDoc?.website || trainerDoc?.websiteUrl || '').trim();
   const profileKicker = isTrainer ? 'TRAINER PROFILE' : 'YOUR PROFILE';
   const sectionLine = PROFILE.lineGradient;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <View style={{ flex: 1 }}>
         <CoachConnectHeader
           title="Profile"
           skipTopSafeInset
@@ -838,8 +937,8 @@ export function ViewMyViewMyProfileScreen({
         />
 
         <ScrollView
-          showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
+          {...FORM_SCROLL_PROPS}
         >
           <Animated.View
             style={{
@@ -855,6 +954,7 @@ export function ViewMyViewMyProfileScreen({
               photoURL={photoURL}
               uploading={uploading}
               onPressPhoto={pickAndUploadPhoto}
+              onEditPress={isTrainer ? () => openEdit('trainerProfileBio', 'PUBLIC BIO', trainerDoc?.trainerProfileBio || '') : undefined}
               theme={theme}
               isDark={isDark}
             />
@@ -862,11 +962,28 @@ export function ViewMyViewMyProfileScreen({
 
           {isTrainer ? (
             <>
+              <TrainerStatsStrip
+                clientCount={trainerClientCount ?? trainerDoc?.clientCount ?? '—'}
+                years={trainerYearsStat}
+                rating={trainerRatingStat}
+                theme={theme}
+                isDark={isDark}
+              />
+
+              <View style={{ marginBottom: 20 }}>
+                <TrainerPaymentCard
+                  status={stripeStatus}
+                  onPress={typeof onOpenPayments === 'function' ? onOpenPayments : undefined}
+                  theme={theme}
+                  isDark={isDark}
+                />
+              </View>
+
               <Animated.View style={{ opacity: personalAnim, transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="PROFESSIONAL INFO" lineColors={sectionLine} theme={theme} />
-                <View style={styles.sectionBody}>
+                <SectionTitle title="PROFILE" lineColors={sectionLine} theme={theme} />
+                <ProfileSettingsCard theme={theme} isDark={isDark}>
                   {trainerProfessionalPills.map((item) => (
-                    <InfoField
+                    <ProfileRow
                       key={item.key}
                       label={item.label}
                       value={item.value}
@@ -874,14 +991,15 @@ export function ViewMyViewMyProfileScreen({
                       onPress={item.readOnly ? undefined : () => openEdit(item.key, item.label, item.value)}
                       theme={theme}
                       isDark={isDark}
-                      LeadingIcon={item.key === 'location' ? MapPin : null}
+                      LeadingIcon={item.Icon}
+                      showDivider={item.key !== 'trainerProfileBio'}
                     />
                   ))}
-                </View>
+                </ProfileSettingsCard>
               </Animated.View>
 
               <Animated.View style={{ opacity: trainingAnim, transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="CREDENTIALS" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="SPECIALTIES & CERTIFICATIONS" lineColors={sectionLine} theme={theme} />
                 <View style={styles.credRow}>
                   <CredentialPill
                     Icon={Medal}
@@ -916,6 +1034,35 @@ export function ViewMyViewMyProfileScreen({
                   theme={theme}
                   isDark={isDark}
                 />
+
+                <SectionTitle title="CONTACT & SOCIAL" lineColors={sectionLine} theme={theme} />
+                <ProfileSettingsCard theme={theme} isDark={isDark}>
+                  <TrainerContactRow
+                    label="INSTAGRAM"
+                    value={instagram ? (instagram.startsWith('@') ? instagram : `@${instagram}`) : 'Add your handle'}
+                    Icon={AtSign}
+                    editable
+                    onPress={() => openEdit('instagram', 'INSTAGRAM', instagram)}
+                    theme={theme}
+                    isDark={isDark}
+                  />
+                  <TrainerContactRow
+                    label="WEBSITE"
+                    value={website || 'Add your website'}
+                    Icon={Link2}
+                    editable
+                    onPress={() => openEdit('website', 'WEBSITE', website)}
+                    theme={theme}
+                    isDark={isDark}
+                  />
+                  <TrainerContactRow
+                    label="EMAIL"
+                    value={String(email || '—')}
+                    Icon={Mail}
+                    theme={theme}
+                    isDark={isDark}
+                  />
+                </ProfileSettingsCard>
                 <View style={{ height: 8 }} />
               </Animated.View>
 
@@ -1016,7 +1163,7 @@ export function ViewMyViewMyProfileScreen({
             </Pressable>
           </Animated.View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
 
       <Modal visible={!!editKey} transparent animationType="fade" onRequestClose={closeEdit}>
         <Pressable style={styles.editBackdrop} onPress={closeEdit} />
@@ -1065,15 +1212,17 @@ export function ViewMyViewMyProfileScreen({
       </Modal>
 
       {!embedShellBottomNav ? (
-      <BottomNavBar
-        onHomePress={nav.home}
-        onPlusPress={nav.create}
-        onVoicePress={nav.ai}
-        onNutritionPress={nav.nutrition}
-        onWorkoutPress={nav.workout}
-        onMessagesPress={nav.messages}
-        onProfilePress={nav.profile}
-      />
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={nav.home}
+            onPlusPress={nav.create}
+            onVoicePress={nav.ai}
+            onNutritionPress={nav.nutrition}
+            onWorkoutPress={nav.workout}
+            onMessagesPress={nav.messages}
+            onProfilePress={nav.profile}
+          />
+        </ShellBottomNavAnchor>
       ) : null}
     </View>
   );
@@ -1083,13 +1232,22 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 140 },
 
-  heroWrap: { alignItems: 'center', paddingTop: 8, paddingBottom: 28, marginBottom: 8 },
+  heroWrap: { alignItems: 'center', paddingTop: 8, paddingBottom: 28, marginBottom: 8, width: '100%' },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 12, paddingHorizontal: 4 },
+  heroEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  heroEditText: { fontSize: 13, fontWeight: '700' },
   heroKicker: {
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 2,
     textTransform: 'uppercase',
-    marginBottom: 20,
   },
   heroPhotoWrap: { position: 'relative', marginBottom: 18 },
   heroPhotoInner: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
@@ -1133,6 +1291,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     maxWidth: 340,
   },
+
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  statTile: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  statLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+
+  paymentCard: { borderRadius: 14, overflow: 'hidden' },
+  paymentCardInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
+  paymentKicker: { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: 'rgba(255,255,255,0.55)' },
+  paymentStatus: { fontSize: 13, fontWeight: '700', color: '#FED7AA', marginTop: 2 },
+  paymentCta: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  paymentCtaText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  contactValue: { fontSize: 15, fontWeight: '600', marginTop: 2 },
 
   sectionTitleRow: {
     flexDirection: 'row',

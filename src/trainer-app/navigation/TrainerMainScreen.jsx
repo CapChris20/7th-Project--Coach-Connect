@@ -11,23 +11,24 @@
 import React from 'react';
 import {
   Alert,
-  SafeAreaView,
   StatusBar,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import ChatWithTraineeScreen from '../screens/ChatWithTraineeScreen';
-import MyMessagesScreen from '../screens/MyMessagesScreen';
+import ChatWithTraineeScreen from '../../messaging/ChatThreadScreen';
+import MyMessagesScreen from '../../messaging/MyMessagesScreen';
 import NewTraineeRequestsScreen from '../client-requests/NewTraineeRequestsScreen';
 import ClientsListScreen from '../clients-list/MyTraineesScreen';
 import DashboardContent from '../dashboard/TrainerDashboardContent';
-import MyProgressPhotosScreen from '../screens/MyProgressPhotosScreen';
-import BrowseSavedWorkoutsScreen from '../screens/BrowseSavedWorkoutsScreen';
+import MyProgressPhotosScreen from '../../shared/screens/MyProgressPhotosScreen';
+import BrowseSavedWorkoutsScreen from '../../shared/screens/BrowseSavedWorkoutsScreen';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
 import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
@@ -35,22 +36,16 @@ import SpreadsheetEditorModal from '../documents/SpreadsheetEditorModal';
 import DocumentEditorModal from '../documents/DocumentEditorModal';
 import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../dashboard/trainerDashboardUi';
 import { useTrainerAppShell } from './TrainerAppShellContext';
+import TrainerSubscriptionGate from '../../subscription/TrainerSubscriptionGate';
+import SubscriptionTrialBanner from '../../subscription/SubscriptionTrialBanner';
 
 export default function TrainerMainScreen() {
   const s = useTrainerAppShell();
-  const headerTitle = s.showClientsList
-    ? 'Clients'
-    : s.showTrainerMessaging
-      ? 'Messages'
-      : s.showConversationsList
-        ? 'Messages'
-        : s.showClientRequests
-          ? 'Client Requests'
-          : 'COACHCONNECT';
-
   return (
-    <LinearGradient colors={s.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
-      <SafeAreaView style={{ flex: 1 }}>
+    <TrainerSubscriptionGate onOpenSettings={s.openSettings}>
+      <LinearGradient colors={s.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
+        <SubscriptionTrialBanner />
+      <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
         <StatusBar barStyle={s.isDark ? 'light-content' : 'dark-content'} />
         {!s.showWorkoutGenerator &&
           !s.showPlanViewer &&
@@ -61,7 +56,6 @@ export default function TrainerMainScreen() {
           !s.showAIWorkouts &&
           !s.showPhotoGallery && (
           <CoachConnectHeader
-            title={headerTitle}
             isDark={s.isDark}
             skipTopSafeInset
             onBack={s.showClientsList ? () => s.setShowClientsList(false) : undefined}
@@ -290,14 +284,16 @@ export default function TrainerMainScreen() {
         )}
 
         {!s.showWorkoutGenerator && !s.showPlanViewer && (
-          <BottomNavBar
-            onHomePress={s.handleHomePress}
-            onPlusPress={s.handlePlusPress}
-            onVoicePress={s.openVoiceAI}
-            onNutritionPress={() => { s.openNutrition(); }}
-            onWorkoutPress={() => { s.openWorkoutPlan(); }}
-            onMessagesPress={(clientId) => { s.setSelectedClientIdForMessages(clientId); s.setShowTrainerMessaging(false); s.setShowConversationsList(true); }}
-          />
+          <ShellBottomNavAnchor>
+            <BottomNavBar
+              onHomePress={s.handleHomePress}
+              onPlusPress={s.handlePlusPress}
+              onVoicePress={s.openVoiceAI}
+              onNutritionPress={() => { s.openNutrition(); }}
+              onWorkoutPress={() => { s.openWorkoutPlan(); }}
+              onMessagesPress={(clientId) => { s.setSelectedClientIdForMessages(clientId); s.setShowTrainerMessaging(false); s.setShowConversationsList(true); }}
+            />
+          </ShellBottomNavAnchor>
         )}
 
         <AddNotesFilesModal
@@ -377,5 +373,6 @@ export default function TrainerMainScreen() {
         />
       </SafeAreaView>
     </LinearGradient>
+    </TrainerSubscriptionGate>
   );
 }

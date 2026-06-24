@@ -15,9 +15,10 @@ import { EditorGradientDot } from './editorGradients';
 export default function EditorStatusPill({ status, theme }) {
   const map = {
     idle: { label: 'Draft', color: theme.textMuted, gradient: false },
-    saved: { label: 'Saved', color: theme.success, gradient: false },
+    saved: { label: 'All changes saved', color: theme.success, gradient: false },
     saving: { label: 'Saving…', color: theme.warning, gradient: false },
-    unsaved: { label: 'Unsaved', color: null, gradient: true },
+    unsaved: { label: 'Edited', color: null, gradient: true },
+    offline: { label: 'Saved locally', color: '#f59e0b', gradient: false },
   };
   const { label, color, gradient } = map[status] || map.idle;
   return (

@@ -116,8 +116,8 @@ function getActionCodeSettings() {
     handleCodeInApp: false,
   };
 
-  const iosBundle = process.env.PASSWORD_RESET_IOS_BUNDLE_ID || 'com.chrisshina.coachconnect';
-  const androidPackage = process.env.PASSWORD_RESET_ANDROID_PACKAGE || 'com.chrisshina.coachconnect';
+  const iosBundle = process.env.PASSWORD_RESET_IOS_BUNDLE_ID || 'com.coachconnect';
+  const androidPackage = process.env.PASSWORD_RESET_ANDROID_PACKAGE || 'com.coachconnect';
   if (iosBundle) settings.iOS = { bundleId: iosBundle };
   if (androidPackage) {
     settings.android = {

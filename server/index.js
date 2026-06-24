@@ -92,6 +92,7 @@ const { createTokenBucketLimiter } = require('./middleware/tokenBucketRateLimit'
 const { registerDevRoutes } = require('./routes/devRoutes');
 const { registerMarketplaceRoutes } = require('./routes/marketplaceRoutes');
 const { registerAuthRoutes } = require('./routes/authRoutes');
+const { registerSubscriptionRoutes } = require('./routes/subscriptionRoutes');
 const { renderPasswordResetPageHtml } = require('./lib/passwordResetPage');
 const { mergeUserDailyMetrics } = require('./lib/dailyMetricsServer');
 const { executeDeleteLogServer } = require('./lib/coachDeleteLog');
@@ -2495,6 +2496,7 @@ registerNutritionSearchRoutes(app, routeDeps);
 registerAuthRoutes(app);
 registerDevRoutes(app, routeDeps);
 registerMarketplaceRoutes(app);
+registerSubscriptionRoutes(app, routeDeps);
 
 app.get('/reset-password', (req, res) => {
   try {

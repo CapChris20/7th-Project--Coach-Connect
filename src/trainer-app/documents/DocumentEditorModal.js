@@ -20,7 +20,6 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -28,8 +27,10 @@ import {
   ScrollView,
   Pressable,
   Share,
+  Keyboard,
 } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -39,6 +40,7 @@ import { db } from '../../app-start/config';
 import ShareDocumentModal from './ShareDocumentModal';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import EditorStatusPill from './EditorStatusPill';
 import {
   EditorIconButton,
@@ -53,7 +55,6 @@ import {
   getEditorTheme,
 } from './editorTheme';
 import {
-  EditorGradientBar,
   EditorGradientPill,
 } from './editorGradients';
 
@@ -109,48 +110,118 @@ function Divider({ theme }) {
   return <View style={[styles.divider, { backgroundColor: theme.divider }]} />;
 }
 
+function GlyphButton({ label, active, disabled, onPress, theme, style }) {
+  return (
+    <ToolButton
+      theme={theme}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      icon={
+        <Text
+          style={[
+            styles.toolGlyph,
+            { color: active ? theme.text : theme.textMuted },
+            style,
+          ]}
+        >
+          {label}
+        </Text>
+      }
+    />
+  );
+}
+
+function IonTool({ name, active, disabled, onPress, theme, size = 17 }) {
+  return (
+    <ToolButton
+      theme={theme}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      icon={<Ionicons name={name} size={size} color={active ? theme.text : theme.textMuted} />}
+    />
+  );
+}
+
 function buildEditorHtml2({ theme, initialHtml }) {
   const pageBg = theme.pageBg;
   const canvasBg = theme.canvasBg;
   const fg = theme.text;
   const subtle = theme.border;
-  const accent = theme.accent;
+  const accent = theme.selectionBorder;
+  const linkColor = theme.selectionBorder;
   const codeBg = theme.inputBg;
+  const pageShadow = theme.pageShadow
+    ? '0 4px 24px rgba(0,0,0,0.08)'
+    : '0 1px 0 rgba(255,255,255,0.04)';
 
   return `<!doctype html>
 <html>
   <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <style>
-      html, body { margin:0; padding:0; background:${canvasBg}; color:${fg}; height:100%; }
-      body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: ${canvasBg};
+        color: ${fg};
+        min-height: 100%;
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        padding: 8px 0 48px;
+      }
       .page {
-        margin:12px 10px 24px;
-        background:${pageBg};
-        border:1px solid ${subtle};
-        border-radius:10px;
-        min-height:calc(100vh - 48px);
-        box-shadow:${theme.pageShadow ? '0 4px 24px rgba(0,0,0,0.08)' : 'none'};
+        margin: 0 auto;
+        max-width: 100%;
+        width: calc(100% - 16px);
+        background: ${pageBg};
+        border: 1px solid ${subtle};
+        border-radius: 10px;
+        min-height: calc(100vh - 16px);
+        box-shadow: ${pageShadow};
       }
-      .wrap { padding:28px 20px 48px; min-height:100%; box-sizing:border-box; }
+      .wrap {
+        padding: 40px 28px 64px;
+        min-height: 100%;
+      }
+      @media (max-width: 600px) {
+        .wrap { padding: 28px 20px 56px; }
+      }
       #editor {
-        outline:none;
-        min-height:320px;
-        caret-color:${accent};
-        font-size:16px;
-        line-height:1.65;
-        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+        outline: none;
+        min-height: 480px;
+        caret-color: ${accent};
+        font-size: 16px;
+        line-height: 1.65;
+        color: ${fg};
+        font-family: inherit;
       }
-      h1 { font-size:32px; line-height:1.25; margin:0 0 12px; font-weight:800; font-family:inherit; }
-      h2 { font-size:24px; line-height:1.3; margin:20px 0 8px; font-weight:800; font-family:inherit; }
-      h3 { font-size:18px; line-height:1.35; margin:16px 0 6px; font-weight:700; font-family:inherit; }
-      p, li { font-size:16px; line-height:1.65; margin:0 0 8px; }
-      ul, ol { padding-left:22px; margin:8px 0 12px; }
-      blockquote { margin:12px 0; padding:10px 12px; border-left:3px solid ${accent}; background:${codeBg}; border-radius:8px; font-style:italic; opacity:0.9; }
-      code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:${codeBg}; padding:2px 6px; border-radius:6px; font-size:13px; }
-      pre { background:${codeBg}; border:1px solid ${subtle}; border-radius:10px; padding:12px; overflow:auto; }
-      a { color:${theme.formula}; text-decoration:none; }
-      img { max-width:100%; border-radius:8px; border:1px solid ${subtle}; }
+      #editor:empty:before {
+        content: 'Start typing…';
+        color: ${theme.textMuted};
+        pointer-events: none;
+      }
+      h1 { font-size: 28px; line-height: 1.25; margin: 0 0 12px; font-weight: 800; font-family: inherit; }
+      h2 { font-size: 22px; line-height: 1.3; margin: 18px 0 8px; font-weight: 800; font-family: inherit; }
+      h3 { font-size: 18px; line-height: 1.35; margin: 14px 0 6px; font-weight: 700; font-family: inherit; }
+      p, li { font-size: 16px; line-height: 1.65; margin: 0 0 8px; }
+      ul, ol { padding-left: 22px; margin: 8px 0 12px; }
+      ul.checklist { list-style: none; padding-left: 8px; }
+      ul.checklist li { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+      ul.checklist input { margin-top: 4px; accent-color: ${accent}; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+      td, th { border: 1px solid ${subtle}; padding: 8px 10px; min-width: 48px; }
+      th { background: ${codeBg}; font-weight: 700; }
+      hr { border: none; border-top: 1px solid ${subtle}; margin: 16px 0; }
+      blockquote { margin: 12px 0; padding: 10px 12px; border-left: 3px solid ${accent}; background: ${codeBg}; border-radius: 8px; font-style: italic; opacity: 0.92; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: ${codeBg}; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+      pre { background: ${codeBg}; border: 1px solid ${subtle}; border-radius: 10px; padding: 12px; overflow: auto; }
+      a { color: ${linkColor}; text-decoration: none; }
+      img { max-width: 100%; border-radius: 8px; border: 1px solid ${subtle}; }
     </style>
   </head>
   <body>
@@ -170,6 +241,7 @@ function buildEditorHtml2({ theme, initialHtml }) {
       };
       const isActive = (cmd) => { try { return document.queryCommandState(cmd); } catch(e) { return false; } };
       const queryAlign = () => {
+        if (isActive('justifyFull')) return 'justify';
         if (isActive('justifyCenter')) return 'center';
         if (isActive('justifyRight')) return 'right';
         return 'left';
@@ -191,17 +263,20 @@ function buildEditorHtml2({ theme, initialHtml }) {
         const sel = window.getSelection();
         if (!sel || !sel.anchorNode) return { quote:false, pre:false, ul:false, ol:false, link:false };
         let n = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
-        let quote=false, pre=false, ul=false, ol=false, link=false;
+        let quote=false, pre=false, ul=false, ol=false, link=false, checkbox=false;
         while (n && n !== editor) {
           const tag = (n.tagName || '').toLowerCase();
           if (tag === 'blockquote') quote = true;
           if (tag === 'pre') pre = true;
-          if (tag === 'ul') ul = true;
+          if (tag === 'ul') {
+            ul = true;
+            if (n.classList && n.classList.contains('checklist')) checkbox = true;
+          }
           if (tag === 'ol') ol = true;
           if (tag === 'a') link = true;
           n = n.parentElement;
         }
-        return { quote, pre, ul, ol, link };
+        return { quote, pre, ul, ol, link, checkbox };
       };
       const sendState = () => {
         const h = activeHeading();
@@ -214,8 +289,9 @@ function buildEditorHtml2({ theme, initialHtml }) {
           alignLeft: queryAlign() === 'left',
           alignCenter: queryAlign() === 'center',
           alignRight: queryAlign() === 'right',
+          alignJustify: queryAlign() === 'justify',
           h1: h === 1, h2: h === 2, h3: h === 3,
-          ul: b.ul, ol: b.ol, quote: b.quote, code: b.pre, link: b.link,
+          ul: b.ul && !b.checkbox, ol: b.ol, checkbox: b.checkbox, quote: b.quote, code: b.pre, link: b.link,
           canUndo: true, canRedo: true,
           ...counts(),
         });
@@ -262,8 +338,16 @@ function buildEditorHtml2({ theme, initialHtml }) {
             if (name === 'alignLeft') return exec('justifyLeft');
             if (name === 'alignCenter') return exec('justifyCenter');
             if (name === 'alignRight') return exec('justifyRight');
+            if (name === 'alignJustify') return exec('justifyFull');
             if (name === 'blockquote') return exec('formatBlock', 'BLOCKQUOTE');
             if (name === 'codeblock') return exec('formatBlock', 'PRE');
+            if (name === 'divider') return exec('insertHorizontalRule');
+            if (name === 'table') {
+              return exec('insertHTML', '<table><tbody><tr><th>Header</th><th>Header</th></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table>');
+            }
+            if (name === 'checkbox') {
+              return exec('insertHTML', '<ul class="checklist"><li><input type="checkbox" /> <span>Task item</span></li></ul>');
+            }
             if (name === 'bold') return exec('bold');
             if (name === 'italic') return exec('italic');
             if (name === 'underline') return exec('underline');
@@ -320,14 +404,15 @@ export default function DocumentEditorModal({
   const [titleFocused, setTitleFocused] = useState(false);
   const [toolState, setToolState] = useState({
     bold: false, italic: false, underline: false, strike: false,
-    alignLeft: true, alignCenter: false, alignRight: false,
-    h1: false, h2: false, h3: false, ul: false, ol: false,
+    alignLeft: true, alignCenter: false, alignRight: false, alignJustify: false,
+    h1: false, h2: false, h3: false, ul: false, ol: false, checkbox: false,
     quote: false, code: false, link: false, canUndo: true, canRedo: true,
   });
 
   const [showShare, setShowShare] = useState(false);
   const [picker, setPicker] = useState(null); // 'fontSize' | 'textColor' | 'highlight' | null
   const [prompt, setPrompt] = useState({ visible: false, kind: null, value: '' });
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const isEditorDark = editorThemeMode === 'dark';
   const theme = useMemo(() => getEditorTheme(isEditorDark), [isEditorDark]);
@@ -336,6 +421,17 @@ export default function DocumentEditorModal({
     () => buildEditorHtml2({ theme, initialHtml: EMPTY_HTML }),
     [theme],
   );
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -349,6 +445,20 @@ export default function DocumentEditorModal({
   useEffect(() => {
     if (visible) setEditorThemeMode(isDark ? 'dark' : 'light');
   }, [visible, isDark]);
+
+  useEffect(() => {
+    setTextColor(isEditorDark ? '#FFFFFF' : '#0A0A0F');
+  }, [isEditorDark]);
+
+  useEffect(() => {
+    if (!visible || loading) return;
+    const html = lastUpdateHtml.current || EMPTY_HTML;
+    setTimeout(() => {
+      try {
+        webRef.current?.postMessage(JSON.stringify({ type: 'SET_HTML', payload: { html } }));
+      } catch (_) {}
+    }, 200);
+  }, [isEditorDark, visible, loading]);
 
   useEffect(() => {
     if (!visible) return;
@@ -404,8 +514,12 @@ export default function DocumentEditorModal({
   }, [visible, documentId, trainerId]);
 
   const postCmd = useCallback((name, value) => {
+    const msg = JSON.stringify({ type: 'CMD', payload: { name, value } });
     try {
-      webRef.current?.postMessage(JSON.stringify({ type: 'CMD', payload: { name, value } }));
+      webRef.current?.postMessage(msg);
+    } catch (_) {}
+    try {
+      webRef.current?.injectJavaScript?.(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(msg)} })); true;`);
     } catch (_) {}
   }, []);
 
@@ -462,7 +576,8 @@ export default function DocumentEditorModal({
             ...prev,
             bold: !!p.bold, italic: !!p.italic, underline: !!p.underline, strike: !!p.strike,
             alignLeft: !!p.alignLeft, alignCenter: !!p.alignCenter, alignRight: !!p.alignRight,
-            h1: !!p.h1, h2: !!p.h2, h3: !!p.h3, ul: !!p.ul, ol: !!p.ol,
+            alignJustify: !!p.alignJustify,
+            h1: !!p.h1, h2: !!p.h2, h3: !!p.h3, ul: !!p.ul, ol: !!p.ol, checkbox: !!p.checkbox,
             quote: !!p.quote, code: !!p.code, link: !!p.link,
             canUndo: p.canUndo !== false, canRedo: p.canRedo !== false,
           }));
@@ -581,13 +696,52 @@ export default function DocumentEditorModal({
     ]);
   };
 
+  const openStyleMenu = () => {
+    Alert.alert('Text style', undefined, [
+      { text: 'Normal', onPress: () => postCmd('heading', 0) },
+      { text: 'Title', onPress: () => postCmd('heading', 1) },
+      { text: 'Subtitle', onPress: () => postCmd('heading', 2) },
+      { text: 'Heading', onPress: () => postCmd('heading', 3) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const openFileMenu = () => {
+    Alert.alert('File', undefined, [
+      { text: 'Export', onPress: handleExportPdf },
+      { text: 'Duplicate', onPress: handleDuplicate },
+      { text: 'Delete', style: 'destructive', onPress: handleDelete },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const openEditMenu = () => {
+    Alert.alert('Edit', undefined, [
+      { text: 'Undo', onPress: () => postCmd('undo') },
+      { text: 'Redo', onPress: () => postCmd('redo') },
+      { text: 'Clear formatting', onPress: () => postCmd('clear') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const openInsertMenu = () => {
+    Alert.alert('Insert', undefined, [
+      { text: 'Link', onPress: () => setPrompt({ visible: true, kind: 'link', value: 'https://' }) },
+      { text: 'Image', onPress: () => setPrompt({ visible: true, kind: 'image', value: '' }) },
+      { text: 'Bulleted list', onPress: () => postCmd('ul') },
+      { text: 'Numbered list', onPress: () => postCmd('ol') },
+      { text: 'Quote', onPress: () => postCmd('blockquote') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const nav = trainerNavChrome;
   const iconColor = (active) => (active ? theme.text : theme.textMuted);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: theme.canvasBg }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.canvasBg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.canvasBg }} edges={SHELL_SAFE_AREA_EDGES}>
           {nav ? (
             <CoachConnectHeader
               title="Document"
@@ -625,12 +779,7 @@ export default function DocumentEditorModal({
             <View style={styles.metaRow}>
               <EditorStatusPill status={status} theme={theme} />
               <View style={{ flex: 1 }} />
-              <EditorIconButton
-                icon="share-outline"
-                onPress={handleSharePress}
-                theme={theme}
-                accessibilityLabel="Share"
-              />
+              <EditorIconButton icon="share-outline" onPress={handleSharePress} theme={theme} accessibilityLabel="Share" />
               <EditorIconButton
                 icon={favorite ? 'star' : 'star-outline'}
                 onPress={() => setFavorite((v) => !v)}
@@ -644,60 +793,77 @@ export default function DocumentEditorModal({
                 theme={theme}
                 accessibilityLabel="Toggle theme"
               />
+              <EditorIconButton icon="ellipsis-vertical" onPress={openMoreMenu} theme={theme} accessibilityLabel="More options" />
             </View>
           </View>
 
-          <View style={{ flex: 1 }}>
-            <View
-              style={[
-                styles.editorCard,
-                {
-                  backgroundColor: theme.canvasBg,
-                  borderColor: theme.border,
-                  ...(theme.pageShadow || {}),
-                },
-              ]}
-            >
-              <View style={[styles.toolbar, { borderBottomColor: theme.border, backgroundColor: theme.toolbarBg }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow}>
-                  <ToolButton theme={theme} active={toolState.bold} onPress={() => postCmd('bold')} icon={<Text style={[styles.toolText, { color: iconColor(toolState.bold), fontWeight: '800' }]}>B</Text>} />
-                  <ToolButton theme={theme} active={toolState.italic} onPress={() => postCmd('italic')} icon={<Text style={[styles.toolText, { color: iconColor(toolState.italic), fontStyle: 'italic', fontWeight: '700' }]}>I</Text>} />
-                  <ToolButton theme={theme} active={toolState.underline} onPress={() => postCmd('underline')} icon={<Text style={[styles.toolText, { color: iconColor(toolState.underline), textDecorationLine: 'underline', fontWeight: '700' }]}>U</Text>} />
-                  <ToolButton theme={theme} active={toolState.strike} onPress={() => postCmd('strike')} icon={<Text style={[styles.toolText, { color: iconColor(toolState.strike), textDecorationLine: 'line-through', fontWeight: '700' }]}>S</Text>} />
-                  <Divider theme={theme} />
-                  <ToolButton
-                    theme={theme}
-                    active={picker === 'fontSize'}
-                    onPress={() => setPicker((p) => (p === 'fontSize' ? null : 'fontSize'))}
-                    icon={<Text style={[styles.toolText, { color: theme.textMuted, fontWeight: '700' }]}>{fontSize}</Text>}
-                  />
-                  <ToolButton
-                    theme={theme}
-                    active={picker === 'textColor'}
-                    onPress={() => setPicker((p) => (p === 'textColor' ? null : 'textColor'))}
-                    icon={<View style={[styles.colorSwatch, { backgroundColor: textColor === '#FFFFFF' && !isEditorDark ? theme.text : textColor, borderColor: theme.border }]} />}
-                  />
-                  <ToolButton
-                    theme={theme}
-                    active={picker === 'highlight'}
-                    onPress={() => setPicker((p) => (p === 'highlight' ? null : 'highlight'))}
-                    icon={
-                      <View style={[styles.colorSwatch, { backgroundColor: highlightColor === 'transparent' ? theme.inputBg : highlightColor, borderColor: theme.border }]}>
-                        <EditorGradientBar style={{ position: 'absolute', bottom: 2, left: 4, right: 4 }} />
-                      </View>
-                    }
-                  />
-                  <Divider theme={theme} />
-                  <ToolButton theme={theme} active={toolState.alignLeft} onPress={() => postCmd('alignLeft')} icon={<MaterialIcons name="format-align-left" size={18} color={iconColor(toolState.alignLeft)} />} />
-                  <ToolButton theme={theme} active={toolState.alignCenter} onPress={() => postCmd('alignCenter')} icon={<MaterialIcons name="format-align-center" size={18} color={iconColor(toolState.alignCenter)} />} />
-                  <ToolButton theme={theme} active={toolState.alignRight} onPress={() => postCmd('alignRight')} icon={<MaterialIcons name="format-align-right" size={18} color={iconColor(toolState.alignRight)} />} />
-                  <Divider theme={theme} />
-                  <ToolButton theme={theme} active={toolState.link} onPress={() => setPrompt({ visible: true, kind: 'link', value: 'https://' })} icon={<Ionicons name="link-outline" size={18} color={iconColor(toolState.link)} />} />
-                  <ToolButton theme={theme} active={false} onPress={() => setPrompt({ visible: true, kind: 'image', value: '' })} icon={<Ionicons name="image-outline" size={18} color={theme.textMuted} />} />
-                  <Divider theme={theme} />
-                  <ToolButton theme={theme} active={false} disabled={!toolState.canUndo} onPress={() => postCmd('undo')} icon={<Ionicons name="arrow-undo-outline" size={18} color={theme.textMuted} />} />
-                  <ToolButton theme={theme} active={false} disabled={!toolState.canRedo} onPress={() => postCmd('redo')} icon={<Ionicons name="arrow-redo-outline" size={18} color={theme.textMuted} />} />
-                </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.menuStrip, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+            {[
+              { label: 'File', onPress: openFileMenu },
+              { label: 'Edit', onPress: openEditMenu },
+              { label: 'Insert', onPress: openInsertMenu },
+              { label: 'Format', onPress: openStyleMenu },
+            ].map(({ label, onPress }) => (
+              <TouchableOpacity key={label} onPress={onPress} style={styles.menuChip}>
+                <Text style={[styles.menuChipText, { color: theme.text }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <View style={[styles.toolbar, { borderBottomColor: theme.border, backgroundColor: theme.toolbarBg }]}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.toolbarScroll}
+                contentContainerStyle={styles.toolbarRow}
+                keyboardShouldPersistTaps="handled"
+              >
+                <GlyphButton theme={theme} label="B" active={toolState.bold} onPress={() => postCmd('bold')} style={{ fontWeight: '800' }} />
+                <GlyphButton theme={theme} label="I" active={toolState.italic} onPress={() => postCmd('italic')} style={{ fontStyle: 'italic', fontWeight: '700' }} />
+                <GlyphButton theme={theme} label="U" active={toolState.underline} onPress={() => postCmd('underline')} style={{ textDecorationLine: 'underline', fontWeight: '700' }} />
+                <Divider theme={theme} />
+                <GlyphButton theme={theme} label="H1" active={toolState.h1} onPress={() => postCmd('heading', 1)} style={{ fontSize: 11, fontWeight: '800' }} />
+                <GlyphButton theme={theme} label="H2" active={toolState.h2} onPress={() => postCmd('heading', 2)} style={{ fontSize: 11, fontWeight: '800' }} />
+                <GlyphButton theme={theme} label="H3" active={toolState.h3} onPress={() => postCmd('heading', 3)} style={{ fontSize: 11, fontWeight: '700' }} />
+                <ToolButton
+                  theme={theme}
+                  active={picker === 'fontSize'}
+                  onPress={() => setPicker((p) => (p === 'fontSize' ? null : 'fontSize'))}
+                  icon={<Text style={[styles.toolGlyph, { color: theme.textMuted, fontWeight: '700' }]}>{fontSize}</Text>}
+                />
+                <Divider theme={theme} />
+                <GlyphButton theme={theme} label="L" active={toolState.alignLeft} onPress={() => postCmd('alignLeft')} />
+                <GlyphButton theme={theme} label="C" active={toolState.alignCenter} onPress={() => postCmd('alignCenter')} />
+                <GlyphButton theme={theme} label="R" active={toolState.alignRight} onPress={() => postCmd('alignRight')} />
+                <GlyphButton theme={theme} label="J" active={toolState.alignJustify} onPress={() => postCmd('alignJustify')} />
+                <Divider theme={theme} />
+                <ToolButton
+                  theme={theme}
+                  active={picker === 'textColor'}
+                  onPress={() => setPicker((p) => (p === 'textColor' ? null : 'textColor'))}
+                  icon={<Ionicons name="text-outline" size={17} color={iconColor(picker === 'textColor')} />}
+                />
+                <ToolButton
+                  theme={theme}
+                  active={picker === 'highlight'}
+                  onPress={() => setPicker((p) => (p === 'highlight' ? null : 'highlight'))}
+                  icon={<Ionicons name="color-fill-outline" size={17} color={iconColor(picker === 'highlight')} />}
+                />
+                <Divider theme={theme} />
+                <IonTool theme={theme} name="list-outline" active={toolState.ul} onPress={() => postCmd('ul')} />
+                <IonTool theme={theme} name="reorder-four-outline" active={toolState.ol} onPress={() => postCmd('ol')} />
+                <IonTool theme={theme} name="checkbox-outline" active={toolState.checkbox} onPress={() => postCmd('checkbox')} />
+                <Divider theme={theme} />
+                <IonTool theme={theme} name="link-outline" active={toolState.link} onPress={() => setPrompt({ visible: true, kind: 'link', value: 'https://' })} />
+                <IonTool theme={theme} name="image-outline" active={false} onPress={() => setPrompt({ visible: true, kind: 'image', value: '' })} />
+                <IonTool theme={theme} name="remove-outline" active={false} onPress={() => postCmd('divider')} />
+                <IonTool theme={theme} name="grid-outline" active={false} onPress={() => postCmd('table')} />
+                <Divider theme={theme} />
+                <IonTool theme={theme} name="brush-outline" active={false} onPress={() => postCmd('clear')} />
+                <IonTool theme={theme} name="arrow-undo-outline" active={false} disabled={!toolState.canUndo} onPress={() => postCmd('undo')} />
+                <IonTool theme={theme} name="arrow-redo-outline" active={false} disabled={!toolState.canRedo} onPress={() => postCmd('redo')} />
+              </ScrollView>
                 {picker === 'fontSize' ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
                     {FONT_SIZES.map((size) => (
@@ -728,7 +894,16 @@ export default function DocumentEditorModal({
                       <TouchableOpacity
                         key={color}
                         onPress={() => { setTextColor(color); postCmd('foreColor', color); setPicker(null); }}
-                        style={[styles.colorSwatch, { backgroundColor: color, borderColor: theme.border, width: 28, height: 28 }]}
+                        style={[
+                          styles.colorSwatch,
+                          {
+                            backgroundColor: color,
+                            borderColor: textColor === color ? theme.selectionBorder : theme.border,
+                            borderWidth: textColor === color ? 2 : 1,
+                            width: 28,
+                            height: 28,
+                          },
+                        ]}
                       />
                     ))}
                   </ScrollView>
@@ -746,30 +921,32 @@ export default function DocumentEditorModal({
                 ) : null}
               </View>
 
-              <View style={{ flex: 1 }}>
-                {loading ? (
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <ActivityIndicator size="large" color={theme.accent} />
-                  </View>
-                ) : (
-                  <WebView
-                    ref={webRef}
-                    originWhitelist={['*']}
-                    style={{ flex: 1, backgroundColor: theme.canvasBg }}
-                    source={{ html: editorHtml }}
-                    onMessage={handleWebMessage}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    keyboardDisplayRequiresUserAction={false}
-                    hideKeyboardAccessoryView
-                  />
-                )}
-              </View>
+            <View style={{ flex: 1, minHeight: 0, backgroundColor: theme.canvasBg }}>
+              {loading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color={theme.selectionBorder} />
+                </View>
+              ) : (
+                <WebView
+                  key={isEditorDark ? 'editor-dark' : 'editor-light'}
+                  ref={webRef}
+                  originWhitelist={['*']}
+                  style={{ flex: 1, backgroundColor: theme.canvasBg }}
+                  source={{ html: editorHtml }}
+                  onMessage={handleWebMessage}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  keyboardDisplayRequiresUserAction={false}
+                  hideKeyboardAccessoryView
+                  nestedScrollEnabled
+                  scrollEnabled
+                />
+              )}
             </View>
 
-            <View style={[styles.statusBar, { borderTopColor: theme.border }]}>
-              <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                {counts.words} {counts.words === 1 ? 'word' : 'words'} · {counts.chars} {counts.chars === 1 ? 'character' : 'characters'} · Last saved {formatEditorSavedAgo(lastSaved)}
+            <View style={[styles.statusBar, { borderTopColor: theme.border, backgroundColor: theme.toolbarBg }]}>
+              <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                {counts.words} words · Saved {formatEditorSavedAgo(lastSaved)}
               </Text>
             </View>
           </View>
@@ -827,17 +1004,19 @@ export default function DocumentEditorModal({
             }}
           />
 
-          {nav ? (
-            <BottomNavBar
-              appearanceIsDark={isEditorDark}
-              activeTabKey={nav.activeTabKey || 'files'}
-              onHomePress={nav.onHomePress}
-              onPlusPress={nav.onPlusPress}
-              onVoicePress={nav.onVoicePress}
-              onNutritionPress={nav.onNutritionPress}
-              onWorkoutPress={nav.onWorkoutPress}
-              onMessagesPress={nav.onMessagesPress}
-            />
+          {nav && !keyboardVisible ? (
+            <ShellBottomNavAnchor>
+              <BottomNavBar
+                appearanceIsDark={isEditorDark}
+                activeTabKey={nav.activeTabKey || 'files'}
+                onHomePress={nav.onHomePress}
+                onPlusPress={nav.onPlusPress}
+                onVoicePress={nav.onVoicePress}
+                onNutritionPress={nav.onNutritionPress}
+                onWorkoutPress={nav.onWorkoutPress}
+                onMessagesPress={nav.onMessagesPress}
+              />
+            </ShellBottomNavAnchor>
           ) : null}
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -846,38 +1025,45 @@ export default function DocumentEditorModal({
 }
 
 const styles = StyleSheet.create({
-  backRow: {
-    paddingHorizontal: 6,
-    paddingTop: 4,
-  },
+  backRow: { paddingHorizontal: 6, paddingTop: 4 },
   titleSection: {
     paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    gap: 8,
+    marginTop: 8,
+    gap: 4,
+  },
+  menuStrip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    maxHeight: 36,
+  },
+  menuChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  menuChipText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  editorCard: {
-    flex: 1,
-    marginHorizontal: 0,
-    marginTop: 0,
-    overflow: 'hidden',
-  },
-  toolbar: { borderBottomWidth: StyleSheet.hairlineWidth },
-  toolbarRow: { paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center', gap: 4 },
+  toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0, flexShrink: 0 },
+  toolbarScroll: { flexGrow: 0 },
+  toolbarRow: { paddingHorizontal: 6, paddingVertical: 5, alignItems: 'center', gap: 1, flexGrow: 0 },
   toolBtn: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  toolGlyph: { fontSize: 13 },
   toolText: { fontSize: 14 },
   divider: { width: 1, height: 20, marginHorizontal: 4 },
   colorSwatch: { width: 20, height: 20, borderRadius: 999, borderWidth: 1 },
@@ -885,8 +1071,8 @@ const styles = StyleSheet.create({
   pickerChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   pickerChipInner: { paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' },
   statusBar: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   promptOverlay: {

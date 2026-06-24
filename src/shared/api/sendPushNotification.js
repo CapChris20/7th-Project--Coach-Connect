@@ -14,7 +14,7 @@
  */
 import { getApiBaseCandidates } from './baseUrl';
 import { getApiAuthHeaders } from './getAuthHeaders';
-import { stripNotificationEmoji } from '../notifications/stripNotificationEmoji';
+import { stripNotificationEmoji } from '../../notifications/stripNotificationEmoji';
 
 /**
  * @param {object} p

@@ -1,12 +1,5 @@
 /**
- * Gradient Gemini Nav Icon
- *
- * Purpose: Gradient Gemini Nav Icon — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: GradientGeminiNavIcon
- *
- * @file-header
+ * Google Gemini mark — filled with the brand gradient (original nav icon).
  */
 import React from 'react';
 import { View, Image } from 'react-native';
@@ -17,9 +10,8 @@ import {
   BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   BRAND_ICON_GRADIENT_START,
   BRAND_ICON_GRADIENT_END,
-} from '../../ui/brandGradients';
+} from '../../../shared-ui/brandGradients';
 
-/** Google Gemini mark — filled with the same brand gradient as other tab icons (`BrandGradientIcon`). */
 const GEMINI_MARK = require('../../../assets/icons/google_gemini.png');
 
 export default function GradientGeminiNavIcon({
@@ -33,6 +25,7 @@ export default function GradientGeminiNavIcon({
   return (
     <MaskedView
       style={{ width: size, height: size }}
+      collapsable={false}
       maskElement={
         <View
           style={{

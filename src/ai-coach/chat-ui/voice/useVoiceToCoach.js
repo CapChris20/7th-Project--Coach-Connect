@@ -15,12 +15,13 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 import {
-  ExpoSpeechRecognitionModule,
+  getExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
+} from './speechRecognitionSafe';
 
 /** expo-speech-recognition v3 returns a boolean; older builds may return a Promise. */
 async function resolveRecognitionAvailable() {
+  const ExpoSpeechRecognitionModule = getExpoSpeechRecognitionModule();
   if (!ExpoSpeechRecognitionModule?.isRecognitionAvailable) return false;
   try {
     const result = ExpoSpeechRecognitionModule.isRecognitionAvailable();
@@ -83,7 +84,7 @@ export function useCoachSpeech({ onFinalTranscript, onPartialTranscript } = {}) 
   useEffect(
     () => () => {
       try {
-        ExpoSpeechRecognitionModule?.abort?.();
+        getExpoSpeechRecognitionModule()?.abort?.();
       } catch (_) {
         /* ignore */
       }
@@ -129,6 +130,7 @@ export function useCoachSpeech({ onFinalTranscript, onPartialTranscript } = {}) 
   });
 
   const toggleListen = useCallback(async () => {
+    const ExpoSpeechRecognitionModule = getExpoSpeechRecognitionModule();
     if (!ExpoSpeechRecognitionModule) {
       Alert.alert(
         'Voice typing',
@@ -224,6 +226,6 @@ export function useCoachSpeech({ onFinalTranscript, onPartialTranscript } = {}) 
     speak,
     stopSpeaking,
     sttAvailable,
-    hasSttModule: Boolean(ExpoSpeechRecognitionModule),
+    hasSttModule: Boolean(getExpoSpeechRecognitionModule()),
   };
 }

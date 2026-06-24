@@ -53,7 +53,7 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
 
 const GRADIENT_PRIMARY = ['#C1265A', '#D84315'];
 const GRADIENT_CARD_BORDER = ['#C1265A', '#663399'];
@@ -525,7 +525,7 @@ export default function MyProgressPhotosScreen({
   const gridBottomPad = insets.bottom + 24 + (reserveShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       {useShellHeader ? (
         <CoachConnectHeader
           title="Progress Photos"

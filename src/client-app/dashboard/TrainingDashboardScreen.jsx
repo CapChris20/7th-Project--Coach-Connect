@@ -54,6 +54,7 @@ import {
 import { useWorkoutLog } from './useWorkoutLog';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
 import PremiumTrainerCard from './PremiumTrainerCard';
 import PremiumStatsSection, { GradientBorderShell } from './PremiumStatsSection';
@@ -1562,6 +1563,7 @@ export const TrainingDashboardScreen = ({
 }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const shellBottomPad = useShellBottomNavInset(24);
   const t = isDark ? DARK : LIGHT;
   const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;
   const handleViewProfile = typeof onPressViewProfile === 'function' ? onPressViewProfile : onPressMessage;
@@ -1964,10 +1966,9 @@ export const TrainingDashboardScreen = ({
         contentContainerStyle={[
           screen.scroll,
           embedInLayout && { paddingTop: 16 },
-          // BottomNavBar in ClientApp/TrainerApp overlays the bottom; ensure last cards aren't clipped.
-          embedInLayout && { paddingBottom: 80 + insets.bottom + 24 },
+          { paddingBottom: embedInLayout ? 80 + insets.bottom + 24 : shellBottomPad },
         ]}
-        showsVerticalScrollIndicator={false}
+        {...FORM_SCROLL_PROPS}
       >
         {displayBanner?.text ? (
           <View

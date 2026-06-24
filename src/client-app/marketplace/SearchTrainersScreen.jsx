@@ -21,6 +21,8 @@ import TrainerRequestIntroModal from './TrainerRequestIntroModal';
 import BrowseTrainersScreen from './BrowseTrainersScreen';
 import FilterModal from './FilterModal';
 import { TrainerProfileSheet } from './MarketplaceTrainerProfileSheet';
+import { showTrainerRequestSentAlert } from './useTrainerConnectFlow';
+import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import {
   DEFAULT_FILTERS,
   filterTrainers,
@@ -49,6 +51,7 @@ const SearchTrainersScreen = ({
 }) => {
   const headerBack = onBack ?? onClose;
   const theme = getTheme(isDark);
+  const shellNavInset = useShellBottomNavInset(0);
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -61,13 +64,6 @@ const SearchTrainersScreen = ({
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
   const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
-  const [requestToast, setRequestToast] = useState('');
-
-  useEffect(() => {
-    if (!requestToast) return undefined;
-    const t = setTimeout(() => setRequestToast(''), 2800);
-    return () => clearTimeout(t);
-  }, [requestToast]);
 
   useEffect(() => {
     const load = async () => {
@@ -187,12 +183,10 @@ const SearchTrainersScreen = ({
       try {
         const customIntro = String(requestIntroDraft || '').trim();
         await onRequestTrainer(raw, { clientIntro: customIntro || undefined });
-        closeProfile();
         setRequestConfirmTrainer(null);
         setRequestIntroTrainer(null);
         setRequestIntroDraft('');
-        const nm = raw.displayName || raw.name || 'your coach';
-        setRequestToast(`Request sent to ${nm}! They'll respond soon.`);
+        showTrainerRequestSentAlert(raw, () => closeProfile());
       } catch (e) {
         console.error('Trainer request failed:', e);
         Alert.alert('Request failed', e?.message || 'Please try again.');
@@ -220,7 +214,7 @@ const SearchTrainersScreen = ({
   const headerBackHandler = profileOpen ? closeProfile : headerBack;
 
   return (
-    <SafeAreaView style={[s.shell, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[s.shell, { backgroundColor: theme.background }]} edges={SHELL_SAFE_AREA_EDGES}>
       {showHeader !== false ? (
         <View style={s.headerWrap}>
           <CoachConnectHeader
@@ -245,6 +239,7 @@ const SearchTrainersScreen = ({
           onConnect={(t) => openConnectFlow(t)}
           isDark={isDark}
           requesting={requesting}
+          shellBottomInset={showBottomNav !== false ? shellNavInset : 0}
         />
       ) : (
         <BrowseTrainersScreen
@@ -292,35 +287,20 @@ const SearchTrainersScreen = ({
         busy={requesting}
       />
 
-      {requestToast ? (
-        <View style={s.toastWrap} pointerEvents="none">
-          <View
-            style={[
-              s.toastInner,
-              {
-                backgroundColor: isDark ? 'rgba(18,18,24,0.96)' : 'rgba(255,255,255,0.96)',
-                borderColor: isDark ? 'rgba(240,107,168,0.35)' : 'rgba(240,107,168,0.4)',
-              },
-            ]}
-          >
-            <Text style={{ color: isDark ? '#fff' : '#0A0A0F', fontWeight: '700', textAlign: 'center' }}>
-              {requestToast}
-            </Text>
-          </View>
-        </View>
-      ) : null}
       </View>
 
       {showBottomNav !== false ? (
-        <BottomNavBar
-          onHomePress={onHomePress}
-          onPlusPress={onPlusPress}
-          onVoicePress={onVoicePress}
-          onNutritionPress={onNutritionPress}
-          onWorkoutPress={onWorkoutPress}
-          onMessagesPress={onMessagesPress}
-          onProfilePress={onProfilePress}
-        />
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={onHomePress}
+            onPlusPress={onPlusPress}
+            onVoicePress={onVoicePress}
+            onNutritionPress={onNutritionPress}
+            onWorkoutPress={onWorkoutPress}
+            onMessagesPress={onMessagesPress}
+            onProfilePress={onProfilePress}
+          />
+        </ShellBottomNavAnchor>
       ) : null}
     </SafeAreaView>
   );
@@ -330,22 +310,6 @@ const s = StyleSheet.create({
   shell: { flex: 1 },
   headerWrap: {},
   body: { flex: 1, position: 'relative' },
-  toastWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 12,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  toastInner: {
-    maxWidth: '92%',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
 });
 
 export { TrainerProfileSheet };

@@ -45,7 +45,6 @@ import {
 
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import MaskedView from '@react-native-masked-view/masked-view';
 import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
@@ -185,6 +184,7 @@ import ViewWeekProgressReportScreen from '../shared/screens/ViewWeekProgressRepo
 import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/active-workout/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/active-workout/workout';
 import { clearAllUserData } from '../utils/clearDataOnLogout';
+import { logSnapshotError, isFirestorePermissionDenied } from '../shared/services/firestoreListenerUtils';
 
 const CARD_GAP = 16;
 /** Kept for any layout/style references; prefer useWindowDimensions() inside components for live width. */
@@ -575,9 +575,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           console.warn('trainer_client_links listener handler:', e?.message || e);
         }
       },
-      (err) => {
-        console.warn('trainer_client_links listener:', err?.code || err?.message || err);
-      }
+      (err) => logSnapshotError(err, 'trainer_client_links listener:'),
     );
 
     return () => {
@@ -776,7 +774,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           setNotesAndFiles([]);
         }
       },
-      (err) => console.error('Client notes_and_files listener:', err),
+      (err) => logSnapshotError(err, 'Client notes_and_files listener:'),
     );
     return () => {
       try {
@@ -819,7 +817,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         applySnap(snap);
       },
       (err) => {
-        console.error('Client pending sessions listener:', err);
+        logSnapshotError(err, 'Client pending sessions listener:');
+        if (isFirestorePermissionDenied(err)) {
+          setPendingSessions([]);
+          return;
+        }
         const msg = String(err?.message || '');
         const needsIndex =
           err?.code === 'failed-precondition' ||
@@ -1101,6 +1103,27 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     closeCoachingPayment();
   }, [closeCoachingPayment]);
 
+  const requestTrainerConnection = useCallback(
+    async (trainer, { clientIntro } = {}) => {
+      const clientId = user?.uid;
+      const trainerId = trainer?.id || trainer?.uid;
+      if (!clientId) throw new Error('Please log in first.');
+      if (!trainerId) throw new Error('Trainer not found.');
+      if (trainerData?.id && String(trainerData.id) !== String(trainerId)) {
+        throw new Error('You already have a coach. Open your dashboard to message them.');
+      }
+      const conversationId = await getOrCreateConversation(clientId, trainerId);
+      await sendClientRequest(conversationId, clientId, clientIntro || '', {
+        clientName: userData?.firstName || user?.displayName || 'Client',
+        clientGoals: onboardingData?.goal || onboardingData?.primaryGoal || 'Not specified',
+        clientExperienceLevel: onboardingData?.fitnessLevel || onboardingData?.experience || 'Beginner',
+        clientEquipment: onboardingData?.equipment || onboardingData?.availableEquipment || 'Not specified',
+        clientLimitations: onboardingData?.injuries || onboardingData?.limitations || 'None',
+      });
+    },
+    [user?.uid, user?.displayName, userData, onboardingData, trainerData?.id],
+  );
+
     // Main home screen render — use shared app loading screen (same as AuthGate / entire app)
   if (loading) {
     return <AppLoadingScreen isDark={isDark} />;
@@ -1380,6 +1403,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     onRefresh,
     rootGoBack,
     applyFromSnapshots,
+    requestTrainerConnection,
     setSoreness,
     setEnergyLevel,
     setStressLevel,

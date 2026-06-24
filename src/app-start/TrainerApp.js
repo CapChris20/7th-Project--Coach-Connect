@@ -54,7 +54,6 @@ import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
 import LottieView from 'lottie-react-native';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
 import HoldToConfirmModal from '../shared/components/modals/HoldToConfirmModal';
-import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Path, Polyline } from 'react-native-svg';
 import {
   doc,
@@ -73,9 +72,9 @@ import {
 import CoachConnectHeader from "../shared/components/shell/CoachConnectHeader";
 import BottomNavBar from "../navigation/BottomNavBar";
 import { AppNavigationProvider } from "../navigation/AppNavigationContext";
-import SearchTrainersScreen from '../trainer-app/screens/SearchTrainersScreen';
-import ChatWithTraineeScreen from "../trainer-app/screens/ChatWithTraineeScreen";
-import MyMessagesScreen from "../trainer-app/screens/MyMessagesScreen";
+import SearchTrainersScreen from '../client-app/marketplace/SearchTrainersScreen';
+import ChatWithTraineeScreen from "../messaging/ChatThreadScreen";
+import MyMessagesScreen from "../messaging/MyMessagesScreen";
 import VoiceCoachScreen from "../ai-coach/chat-ui/voice/VoiceCoachScreen";
 import ChatWithCoachScreen from "../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen";
 import NutritionContainer from "../nutrition/daily-log/NutritionContainer";
@@ -87,7 +86,7 @@ import ContactSupportScreen from "../settings/screens/ContactSupportScreen";
 import BugReportScreen from "../settings/screens/BugReportScreen";
 import WorkoutPlanGeneratorScreen from "../workouts/active-workout/workout";
 import NewTraineeRequestsScreen from "../trainer-app/client-requests/NewTraineeRequestsScreen";
-import BookTraineeSessionScreen from "../trainer-app/screens/BookTraineeSessionScreen";
+import BookTraineeSessionScreen from "../trainer-app/sessions/BookTraineeSessionScreen";
 import ScheduleTrainingSessionScreen from "../trainer-app/screens/ScheduleTrainingSessionScreen";
 import { useTrainerClients } from "../trainer-app/clients-list/useTrainerClients";
 import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer-app/crm/getTraineeDisplayName";
@@ -134,13 +133,13 @@ import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
 import RemoveTrainerSheet from "../shared/components/modals/RemoveTrainerSheet";
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/daily-log/logFoodToFirestore";
-import MyProgressPhotosScreen from "../trainer-app/screens/MyProgressPhotosScreen";
-import BrowseSavedWorkoutsScreen from "../trainer-app/screens/BrowseSavedWorkoutsScreen";
+import MyProgressPhotosScreen from "../shared/screens/MyProgressPhotosScreen";
+import BrowseSavedWorkoutsScreen from "../shared/screens/BrowseSavedWorkoutsScreen";
 import ManualWorkoutPlanBuilderScreen from "../trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen";
 import GradientChatBubblesIcon from "../shared/components/icons/GradientChatBubblesIcon";
 import FileGalleryGrid from "../shared/components/notes-files/FileGalleryGrid";
 import TrainerWeeklyReportSection from "../trainer-app/weekly-report/TrainerWeeklyReportSection";
-import TrainerViewWeekProgressReportScreen from "../trainer-app/screens/TrainerViewWeekProgressReportScreen";
+import TrainerViewWeekProgressReportScreen from "../shared/weekly-report/ViewWeekProgressReportScreen";
 import FilesNotesHeroCard from "../shared/components/FilesNotesHeroCard";
 import FilesNotesSectionPremium from "../shared/components/notes-files/FilesNotesSectionPremium";
 import ProgressTab from '../trainer-app/progress-tab/TrainerProgressTab';
@@ -163,6 +162,7 @@ import {
   TABS,
 } from '../trainer-app/dashboard/trainerDashboardUi';
 import { isBenignTrainerClientFirestoreError } from '../trainer-app/crm/trainerFirestoreErrors';
+import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
 import {
   fetchTrainerClientDoc,
   fetchTrainerClientRoster,
@@ -915,7 +915,9 @@ export async function checkWeeklyDataAvailability(userId) {
 export default function TrainerApp({ user }) {
   return (
     <TrainerStylesProvider>
-      <TrainerAppContent user={user} />
+      <SubscriptionProvider userId={user?.uid}>
+        <TrainerAppContent user={user} />
+      </SubscriptionProvider>
     </TrainerStylesProvider>
   );
 }

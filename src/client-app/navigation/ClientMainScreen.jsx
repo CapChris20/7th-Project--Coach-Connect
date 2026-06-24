@@ -33,6 +33,7 @@ import MyMessagesScreen from '../../messaging/MyMessagesScreen';
 import TrainingDashboardScreen from '../dashboard/TrainingDashboardScreen';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import {
   readWorkoutGenerationSession,
   subscribeWorkoutGenerationSession,
@@ -215,7 +216,7 @@ export default function ClientMainScreen() {
     <AppNavigationProvider {...navProviderProps}>
     <SafeAreaView
       style={[styles.safeArea, !isDark ? styles.safeAreaLight : styles.safeAreaDark]}
-      edges={['left', 'right']}
+      edges={SHELL_SAFE_AREA_EDGES}
     >
       <StatusBar barStyle={!isDark ? 'dark-content' : 'light-content'} />
       <View style={{ flex: 1 }}>
@@ -230,9 +231,8 @@ export default function ClientMainScreen() {
           onSettingsPress={() => openSettings()}
         />
       ) : showConversationsList ? (
-        <SafeAreaView
+        <View
           style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
-          edges={['top']}
         >
           <MyMessagesScreen
             embedInLayout
@@ -241,11 +241,10 @@ export default function ClientMainScreen() {
             onProfilePress={() => openProfile()}
             onSettingsPress={() => openSettings()}
           />
-        </SafeAreaView>
+        </View>
       ) : showMyDashboard ? (
         <View style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}>
-          <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-            <CoachConnectHeader
+          <CoachConnectHeader
               title="Dashboard"
               skipTopSafeInset
               onBack={() => setShowMyDashboard(false)}
@@ -359,12 +358,10 @@ export default function ClientMainScreen() {
                 openNutrition();
               }}
             />
-          </SafeAreaView>
         </View>
       ) : showNotesFiles ? (
-        <SafeAreaView
+        <View
           style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
-          edges={['top']}
         >
           <CoachConnectHeader
             title="Notes & Files"
@@ -376,8 +373,10 @@ export default function ClientMainScreen() {
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: 130 }}
-            showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
           >
             <FilesNotesSectionPremium
               items={notesAndFiles}
@@ -396,7 +395,7 @@ export default function ClientMainScreen() {
               onUploadPress={() => setShowAddNotesFilesModal(true)}
             />
           </ScrollView>
-        </SafeAreaView>
+        </View>
       ) : mainTab === CLIENT_MAIN_TABS.nutrition ? (
         <NutritionContainer
           hideBottomNav
@@ -444,6 +443,10 @@ export default function ClientMainScreen() {
             onBack={() => {
               setAiChatState('home');
             }}
+            onSessionSwitch={(session) =>
+              openAIChatSession({ sessionId: session.sessionId || session.id })
+            }
+            onNewChat={() => openAIChatSession({})}
             openAttachmentsOnMount={false}
             {...aiChatNavHandlers}
           />
@@ -459,7 +462,7 @@ export default function ClientMainScreen() {
           />
         )
       ) : (
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <View style={{ flex: 1 }}>
         <CoachConnectHeader
           isDark={isDark}
           skipTopSafeInset
@@ -492,6 +495,8 @@ export default function ClientMainScreen() {
         style={styles.scrollView}
         contentContainerStyle={{ paddingBottom: 130, paddingTop: 6 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={!isDark ? '#000' : '#fff'} />}
+        scrollEventThrottle={16}
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         <AuroraHeroBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
@@ -639,7 +644,7 @@ export default function ClientMainScreen() {
 
         {/* Trainer shared + notes are rendered inside FilesNotesSectionPremium */}
       </ScrollView>
-      </SafeAreaView>
+      </View>
       )}
       </View>
 
@@ -729,13 +734,13 @@ export default function ClientMainScreen() {
         />
       )}
       {isMainFocused && !hideBottomNav ? (
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 200 }}>
-        <BottomNavBar
-          {...navProviderProps}
-          activeTabKey={mainTabActiveKey}
-          workoutTabBadge={workoutPlanReadyBadge}
-        />
-      </View>
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            {...navProviderProps}
+            activeTabKey={mainTabActiveKey}
+            workoutTabBadge={workoutPlanReadyBadge}
+          />
+        </ShellBottomNavAnchor>
       ) : null}
     </SafeAreaView>
     </AppNavigationProvider>

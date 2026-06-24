@@ -41,6 +41,7 @@ import ShareDocumentModal from '../documents/ShareDocumentModal';
 import RemoveTrainerSheet from '../../shared/components/modals/RemoveTrainerSheet';
 import CalendarTab from '../calendar-tab/TrainerCalendarTab';
 import { isBenignTrainerClientFirestoreError } from '../crm/trainerFirestoreErrors';
+import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import {
   GlassCard,
   TabPills,
@@ -56,6 +57,7 @@ import {
 
 const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainerName, getTrainerEditorNavChrome }) => {
   const { isDark } = useTrainerTheme();
+  const scrollBottomPad = useEmbeddedScrollBottomPad(48);
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
 
@@ -425,7 +427,12 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
         clientId={client?.id}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40, gap: 16, paddingHorizontal: 16, paddingTop: 16 }}>
+      <View style={{ flex: 1, minHeight: 0 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: scrollBottomPad, gap: 16, paddingHorizontal: 16, paddingTop: 16 }}
+        {...FORM_SCROLL_PROPS}
+      >
 
         {/* ── Client Info Card ── */}
         <GlassCard isDark={isDark} style={{ padding: 16, borderRadius: 16, borderColor: CARD_BORDER_PINK_ORANGE }}>
@@ -479,12 +486,8 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
           <View>
             {activeTab === 'Sessions' && (
               <CalendarTab
-                isDark={isDark}
-                clientData={clientData}
-                trainerId={trainerId}
                 clientId={client?.id}
                 clientName={client?.name || 'Client'}
-                trainerName={trainerName}
               />
             )}
             {activeTab === 'Notes & Files' && (
@@ -525,6 +528,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
 
         <View style={{ height: 60 }} />
       </ScrollView>
+      </View>
 
       <PdfViewerModal
         visible={pdfViewer.visible}

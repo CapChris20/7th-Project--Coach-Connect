@@ -24,7 +24,7 @@ import {
   View,
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import MaskedView from '@react-native-masked-view/masked-view';
+import StableGradientText from '../../shared-ui/StableGradientText';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 import { getClientDateKey } from '../../shared-utils/dateKeys';
 import {
@@ -601,14 +601,14 @@ const GreetingSection = ({ userName = "User", theme, isDark }) => {
         <Text style={[styles.greetingTitle, { color: dark ? '#FFFFFF' : '#111827' }]}>
           Good {getAuroraHeroGreeting()},
         </Text>
-        <MaskedView
-          style={{ marginLeft: 6 }}
-          maskElement={<Text style={[styles.greetingTitle, { color: dark ? '#FFFFFF' : '#111827' }]}>{userName}!</Text>}
+        <StableGradientText
+          style={[styles.greetingTitle, { marginLeft: 6 }]}
+          colors={['#FF6B9D', '#C084FC']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <LinearGradient colors={['#FF6B9D', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            <Text style={[styles.greetingTitle, { opacity: 0 }]}>{userName}!</Text>
-          </LinearGradient>
-        </MaskedView>
+          {userName}!
+        </StableGradientText>
       </View>
     </View>
   );

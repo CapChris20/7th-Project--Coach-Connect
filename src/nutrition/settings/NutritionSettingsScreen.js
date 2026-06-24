@@ -29,6 +29,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
+import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
 
 const PINK = '#BE185D';
 const PINK_SOFT = '#FF6B9D';
@@ -127,11 +128,14 @@ export default function NutritionSettingsScreen({
   currentGoals = {},
   /** Parent renders CoachConnectHeader + bottom nav (NutritionContainer). */
   embedded = false,
+  reserveShellBottomNav = false,
 }) {
   const { isDark } = useTheme();
   const palette = useMemo(() => getPalette(isDark), [isDark]);
   const insets = useSafeAreaInsets();
-  const scrollBottomPad = Math.max(insets.bottom, 16) + (embedded ? 12 : 32);
+  const shellBottomPad = useShellBottomNavInset(16);
+  const scrollBottomPad =
+    Math.max(insets.bottom, 16) + (embedded ? 12 : 32) + (reserveShellBottomNav ? shellBottomPad : 0);
 
   const [calories, setCalories] = useState(String(currentGoals.calories ?? 2000));
   const [protein, setProtein] = useState(String(currentGoals.proteinTarget ?? 150));
@@ -292,11 +296,11 @@ export default function NutritionSettingsScreen({
   );
 
   if (embedded) {
-    return <View style={[s.root, { backgroundColor: palette.bg }]}>{body}</View>;
+    return <View style={[s.root, s.rootEmbedded]}>{body}</View>;
   }
 
   return (
-    <SafeAreaView style={[s.root, { backgroundColor: palette.bg }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[s.root, { backgroundColor: palette.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <View style={[s.standaloneHeader, { borderBottomColor: palette.panelBorder }]}>
         <TouchableOpacity onPress={onClose} style={s.standaloneBack} hitSlop={12}>
@@ -312,6 +316,7 @@ export default function NutritionSettingsScreen({
 
 const s = StyleSheet.create({
   root: { flex: 1 },
+  rootEmbedded: { flex: 1, minHeight: 0, backgroundColor: 'transparent' },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
