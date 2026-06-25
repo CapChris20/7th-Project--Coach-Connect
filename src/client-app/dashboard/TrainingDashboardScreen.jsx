@@ -2183,35 +2183,81 @@ export const TrainingDashboardScreen = ({
 
         {/* Trainer card */}
         {trainer ? (
-          <View style={screen.trainerCardWrapper}>
-            <PremiumTrainerCard
-              isDark={isDark}
-              accent="purple"
-              trainer={{
-                name: trainerName,
-                specialty: trainerTitle || trainerSpecialties.join(' · ') || 'Certified Trainer',
-                location: trainerLocation || 'Remote',
-                avatarUrl: trainer?.photoURL || trainer?.avatarUrl,
-                rating: typeof trainer?.rating === 'number' ? trainer.rating : undefined,
-                clients:
-                  typeof trainer?.clientCount === 'number'
-                    ? trainer.clientCount
-                    : typeof trainer?.clients === 'number'
-                      ? trainer.clients
-                      : undefined,
-                experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
-              }}
-              onPressCard={onPressMessage}
-              onPressSecondaryCTA={handleViewProfile}
-              onPressCTA={onPressMessage}
-              ctaLabel="Message"
-              secondaryCtaLabel="View Profile"
-              onPressPayment={showCoachingPaymentOnCard ? handleOpenPayment : undefined}
-              paymentButtonLabel={coachingPaymentButtonLabel}
-              paymentRateLabel={coachingRateLabel ? `${coachingRateLabel}/mo` : trainerPricingLine || null}
-              paymentStatusLabel={coachingPaymentStatusLabel}
-              paymentStatusTone={coachingPaymentStatusTone}
-            />
+          <View style={trainerSectionStyles.section}>
+            <GradientBorderShell isDark={isDark}>
+              <View style={trainerSectionStyles.inner}>
+                <View style={trainerSectionStyles.headerRow}>
+                  <View
+                    style={[
+                      trainerSectionStyles.headerIcon,
+                      {
+                        borderColor: isDark ? 'rgba(192,132,252,0.28)' : 'rgba(192,132,252,0.22)',
+                        backgroundColor: isDark ? 'rgba(192,132,252,0.12)' : 'rgba(192,132,252,0.08)',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="person-circle-outline" size={22} color="#C084FC" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        trainerSectionStyles.eyebrow,
+                        { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)' },
+                      ]}
+                    >
+                      YOUR TRAINER
+                    </Text>
+                    <Text
+                      style={[
+                        trainerSectionStyles.headerTitle,
+                        { color: isDark ? '#FFFFFF' : '#0F172A' },
+                      ]}
+                    >
+                      Your trainer card
+                    </Text>
+                    <Text
+                      style={[
+                        trainerSectionStyles.headerSubtitle,
+                        { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)' },
+                      ]}
+                    >
+                      Message, view profile, and manage coaching from here.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={trainerSectionStyles.cardSlot}>
+                  <PremiumTrainerCard
+                    isDark={isDark}
+                    accent="purple"
+                    trainer={{
+                      name: trainerName,
+                      specialty: trainerTitle || trainerSpecialties.join(' · ') || 'Certified Trainer',
+                      location: trainerLocation || 'Remote',
+                      avatarUrl: trainer?.photoURL || trainer?.avatarUrl,
+                      rating: typeof trainer?.rating === 'number' ? trainer.rating : undefined,
+                      clients:
+                        typeof trainer?.clientCount === 'number'
+                          ? trainer.clientCount
+                          : typeof trainer?.clients === 'number'
+                            ? trainer.clients
+                            : undefined,
+                      experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
+                    }}
+                    onPressCard={onPressMessage}
+                    onPressSecondaryCTA={handleViewProfile}
+                    onPressCTA={onPressMessage}
+                    ctaLabel="Message"
+                    secondaryCtaLabel="View Profile"
+                    onPressPayment={showCoachingPaymentOnCard ? handleOpenPayment : undefined}
+                    paymentButtonLabel={coachingPaymentButtonLabel}
+                    paymentRateLabel={coachingRateLabel ? `${coachingRateLabel}/mo` : trainerPricingLine || null}
+                    paymentStatusLabel={coachingPaymentStatusLabel}
+                    paymentStatusTone={coachingPaymentStatusTone}
+                  />
+                </View>
+              </View>
+            </GradientBorderShell>
           </View>
         ) : (
           <TouchableOpacity
@@ -2504,7 +2550,6 @@ const screen = StyleSheet.create({
   backButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   backLabel: { fontSize: 16, fontWeight: '600' },
   scroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 44 },
-  trainerCardWrapper: { marginTop: 12, marginBottom: 20, borderRadius: 20 },
 
   bentoGrid: { gap: 12 },
   bentoRow1: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
@@ -2597,6 +2642,50 @@ const trainerCardStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   removeBtnText: { fontSize: 11, fontWeight: '700' },
+});
+
+const trainerSectionStyles = StyleSheet.create({
+  section: {
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  inner: {
+    gap: 14,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    marginTop: 2,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  cardSlot: {
+    marginTop: 2,
+  },
 });
 
 const emptyTrainerStyles = StyleSheet.create({

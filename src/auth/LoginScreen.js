@@ -44,6 +44,7 @@ import { uploadProfileImage } from '../shared/firestore/storageHelpers';
 import LottieView from 'lottie-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import LiquidBackground from '../shared-ui/liquid/LiquidBackground';
 import LiquidBackgroundLight from '../shared-ui/liquid/LiquidBackgroundLight';
 import LiquidGlassCard from '../shared-ui/liquid/LiquidGlassCard';
@@ -52,7 +53,10 @@ import LiquidGradientButton from '../shared-ui/liquid/LiquidGradientButton';
 import { Liquid } from '../shared-ui/liquid/liquidTokens';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BrandLogo from '../shared/components/brand/BrandLogo';
 import { cachePendingSignupProfile } from './detectUserRole';
+import OnboardingPreviewScreen from './OnboardingPreviewScreen';
+import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -84,6 +88,13 @@ function getGoogleIosOAuthRedirectUri(iosClientId) {
   const prefix = String(iosClientId).replace(/\.apps\.googleusercontent\.com$/i, '').trim();
   if (!prefix) return undefined;
   return `com.googleusercontent.apps.${prefix}:/oauthredirect`;
+}
+
+function buildAppleDisplayName(appleCredential) {
+  const fullName = appleCredential?.fullName;
+  if (!fullName) return null;
+  const parts = [fullName.givenName, fullName.familyName].filter(Boolean);
+  return parts.length ? parts.join(' ') : null;
 }
 
 /** Auth + onboarding CTA (dark pink → dark orange) */
@@ -441,6 +452,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [focusedField, setFocusedField] = useState(null);
   const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
+  const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
 
   // Auth screen local theme state, synced with ThemeContext (so Welcome + Sign Up match)
   const [isDarkLanding, setIsDarkLanding] = useState(isDark);
@@ -1089,6 +1101,15 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       });
       return;
     }
+    if (!auth || !db) {
+      setErrorModal({ title: 'Error', message: 'Firebase is not initialized.' });
+      return;
+    }
+
+    const setLoading = mode === 'signup' ? setSignupLoading : setLoginLoading;
+    setIsLoadingApple(true);
+    setLoading(true);
+
     try {
       const available = await AppleAuthentication.isAvailableAsync();
       if (!available) {
@@ -1098,18 +1119,162 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         });
         return;
       }
-      // NOTE: Full Apple auth → Firebase wiring not implemented yet.
-      // This prevents a dead button while keeping the UI you asked for.
-      setErrorModal({
-        title: 'Apple Sign-In',
-        message: mode === 'signup' ? 'Coming soon for Sign Up.' : 'Coming soon for Sign In.',
+
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+
+      const appleResult = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
       });
+
+      if (!appleResult?.identityToken) {
+        throw new Error('No identity token received from Apple');
+      }
+
+      const provider = new OAuthProvider('apple.com');
+      const firebaseCredential = provider.credential({
+        idToken: appleResult.identityToken,
+        rawNonce,
+      });
+      const userCredential = await signInWithCredential(auth, firebaseCredential);
+
+      const appleDisplayName = buildAppleDisplayName(appleResult);
+      if (appleDisplayName && !userCredential.user.displayName) {
+        try {
+          await updateProfile(userCredential.user, { displayName: appleDisplayName });
+        } catch (profileErr) {
+          console.warn('Apple updateProfile displayName:', profileErr?.message || profileErr);
+        }
+      }
+
+      const resolvedName =
+        appleDisplayName ||
+        userCredential.user.displayName ||
+        'User';
+      const resolvedEmail = userCredential.user.email || appleResult.email || '';
+
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      const userDoc = await getDoc(userRef);
+
+      if (mode === 'signup') {
+        if (!userDoc.exists()) {
+          await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
+          await setDoc(userRef, {
+            uid: userCredential.user.uid,
+            name: resolvedName,
+            email: resolvedEmail,
+            onboardingCompleted: false,
+            createdAt: new Date().toISOString(),
+            authProvider: 'apple',
+            photoURL: userCredential.user.photoURL || null,
+          });
+          console.log('New user created with Apple sign-up:', resolvedEmail || userCredential.user.uid, 'Role:', role);
+        } else {
+          const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
+          if (!roleOk) return;
+          await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
+          console.log('Existing user signed in with Apple:', resolvedEmail || userCredential.user.uid);
+        }
+
+        if (onSignupSuccess) {
+          onSignupSuccess(userCredential.user, role);
+        }
+        return;
+      }
+
+      if (userDoc.exists()) {
+        const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
+        if (!roleOk) return;
+
+        const existing = userDoc.data() || {};
+        const explicitlyIncomplete =
+          existing.onboardingCompleted === false ||
+          existing.onboardingCompleted === 'false' ||
+          existing.onboardingCompleted === 0;
+        const createdMs = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
+        const recentAccount =
+          Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
+        const recentAppleWithoutOnboarding =
+          existing.authProvider === 'apple' &&
+          !existing.onboardingCompletedAt &&
+          existing.onboardingCompleted !== true &&
+          existing.onboardingCompleted !== 'true' &&
+          existing.onboardingCompleted !== 1 &&
+          recentAccount;
+
+        if (explicitlyIncomplete || recentAppleWithoutOnboarding) {
+          if (recentAppleWithoutOnboarding && !explicitlyIncomplete) {
+            await setDoc(userRef, { onboardingCompleted: false }, { merge: true });
+          }
+          if (onSignupSuccess) {
+            onSignupSuccess(userCredential.user, existing.role || role);
+            return;
+          }
+        }
+      }
+
+      if (!userDoc.exists()) {
+        await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
+        await setDoc(userRef, {
+          uid: userCredential.user.uid,
+          email: resolvedEmail,
+          name: resolvedName,
+          onboardingCompleted: false,
+          title: 'Coach Connect Invite Code',
+          createdAt: new Date().toISOString(),
+          authProvider: 'apple',
+          photoURL: null,
+        });
+        console.log('New user created via Apple sign-in — routing to onboarding');
+        if (onSignupSuccess) {
+          onSignupSuccess(userCredential.user, role);
+          return;
+        }
+      } else {
+        await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
+      }
+
+      console.log('Apple sign-in successful:', resolvedEmail || userCredential.user.uid);
+      if (onLoginSuccess) {
+        onLoginSuccess(userCredential.user);
+      }
     } catch (e) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
       console.error('Apple auth error:', e);
+      let errorMessage = mode === 'signup'
+        ? 'Failed to sign up with Apple. '
+        : 'Failed to sign in with Apple. ';
+
+      if (e?.code === 'auth/account-exists-with-different-credential') {
+        errorMessage += 'An account already exists with this email. Try email/password or the other sign-in method.';
+      } else if (e?.code === 'auth/operation-not-allowed') {
+        errorMessage += 'Apple Sign-In is not enabled. Enable it in Firebase Console > Authentication > Sign-in methods.';
+      } else {
+        errorMessage += e?.message || 'Please try again.';
+      }
+
       setErrorModal({
-        title: 'Apple Sign-In Error',
-        message: e?.message || 'Something went wrong.',
+        title: mode === 'signup' ? 'Apple Sign-Up Failed' : 'Apple Sign-In Failed',
+        message: errorMessage,
+        retryText: 'Try again',
+        onRetry: () => {
+          setErrorModal(null);
+          void handleAppleAuth({ mode });
+        },
       });
+    } finally {
+      setIsLoadingApple(false);
+      setSignupLoading(false);
+      setLoginLoading(false);
     }
   };
 
@@ -1173,29 +1338,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
           }}
         >
-          <Text
-            style={{
-              fontSize: 38,
-              fontWeight: '900',
-              letterSpacing: 3,
-              textAlign: 'center',
-              color: t.heading,
-            }}
-          >
-            COACH
-          </Text>
-          <Text
-            style={{
-              fontSize: 38,
-              fontWeight: '900',
-              letterSpacing: 3,
-              textAlign: 'center',
-              marginTop: -2,
-              color: '#FF6B9D',
-            }}
-          >
-            CONNECT
-          </Text>
+          <BrandLogo width={200} style={{ marginBottom: 4 }} />
 
           <View
             style={{
@@ -1368,6 +1511,18 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             </Text>
           </TouchableOpacity>
         </View>
+
+        {__DEV__ ? (
+          <TouchableOpacity
+            onPress={() => setShowOnboardingPreview(true)}
+            activeOpacity={0.75}
+            style={{ marginTop: 20, paddingVertical: 10, paddingHorizontal: 16 }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FF6B9D', textAlign: 'center' }}>
+              Preview onboarding steps (dev)
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </RNAnimated.View>
   );
@@ -1643,7 +1798,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={signupStyles.logo}>COACH CONNECT</Text>
+            <BrandLogo width={148} style={{ marginBottom: 8 }} />
             <Text style={signupStyles.subtitle}>Create Your Account</Text>
           </View>
 
@@ -1889,9 +2044,9 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[signupStyles.appleButton, signupLoading && { opacity: 0.6 }]}
+                style={[signupStyles.appleButton, (signupLoading || isLoadingApple) && { opacity: 0.6 }]}
                 onPress={() => handleAppleAuth({ mode: 'signup' })}
-                disabled={signupLoading}
+                disabled={signupLoading || isLoadingApple}
               >
                 <Image source={appleLogo} style={signupStyles.appleIcon} />
                 
@@ -2252,17 +2407,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 <Ionicons name="chevron-back" size={20} color={t.heading} />
               </TouchableOpacity>
 
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  letterSpacing: 4,
-                  textTransform: 'uppercase',
-                  color: t.wordmark,
-                }}
-              >
-                CoachConnect
-              </Text>
+              <BrandLogo width={108} />
 
               <TouchableOpacity
                 onPress={toggleTheme}
@@ -2473,6 +2618,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               <TouchableOpacity
                 onPress={onApple}
                 activeOpacity={0.8}
+                disabled={signupLoading || isLoadingApple}
                 style={{
                   flex: 1,
                   height: 52,
@@ -2484,6 +2630,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   justifyContent: 'center',
                   flexDirection: 'row',
                   gap: 8,
+                  opacity: signupLoading || isLoadingApple ? 0.6 : 1,
                 }}
               >
                 <Image
@@ -2504,6 +2651,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               <TouchableOpacity
                 onPress={onGoogle}
                 activeOpacity={0.8}
+                disabled={signupLoading || isLoadingGoogle}
                 style={{
                   flex: 1,
                   height: 52,
@@ -2622,17 +2770,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 <Ionicons name="chevron-back" size={20} color={t.heading} />
               </TouchableOpacity>
 
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  letterSpacing: 4,
-                  textTransform: 'uppercase',
-                  color: t.wordmark,
-                }}
-              >
-                CoachConnect
-              </Text>
+              <BrandLogo width={108} />
 
               <TouchableOpacity
                 onPress={toggleTheme}
@@ -2850,6 +2988,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               <TouchableOpacity
                 onPress={onApple}
                 activeOpacity={0.8}
+                disabled={loginLoading || isLoadingApple}
                 style={{
                   flex: 1,
                   height: 52,
@@ -2861,6 +3000,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   justifyContent: 'center',
                   flexDirection: 'row',
                   gap: 8,
+                  opacity: loginLoading || isLoadingApple ? 0.6 : 1,
                 }}
               >
                 <Image
@@ -2944,6 +3084,10 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   // ==================== MAIN RENDER ====================
+  if (showOnboardingPreview) {
+    return <OnboardingPreviewScreen onClose={() => setShowOnboardingPreview(false)} />;
+  }
+
   return (
     <>
       {currentView === 'welcome'

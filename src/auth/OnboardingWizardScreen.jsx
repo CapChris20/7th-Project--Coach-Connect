@@ -49,6 +49,8 @@ import { getApiBaseCandidates } from '../shared/api/baseUrl';
 import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
 import { useAI } from '../shared/contexts/AIContext';
 import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
+import { TrainerSubscriptionOnboardingStep } from '../shared/components/onboarding/TrainerSubscriptionOnboardingStep';
+import { useSubscription } from '../subscription/SubscriptionProvider';
 import ExerciseDislikePicker from '../workouts/exercise-library/ExerciseDislikePicker';
 import LottieView from 'lottie-react-native';
 import LiquidBackground from '../shared-ui/liquid/LiquidBackground';
@@ -81,6 +83,11 @@ import {
   TRAINER_ONBOARDING_GRADIENT,
   ONBOARDING_ACCENT,
   ONBOARDING_ACCENT_SOFT,
+  brandGradients,
+  gradients,
+  pillBackgroundGradient,
+  onboardingOptionGradient,
+  IconGradientWrap,
   getOnboardingUiTokens,
   OnboardingPrimaryButton,
 } from '../shared/components/onboarding/onboardingAiDeps';
@@ -152,10 +159,12 @@ export function SelectionCard({
   description,
   variant = 'full',
   t,
+  accentGradient,
 }) {
   const bg = selected ? t.cardSelectedBg : t.cardBg;
   const border = selected ? t.cardSelectedBorder : t.cardBorder;
-  const iconColor = selected ? ONBOARDING_ACCENT : t.textSecondary;
+  const gradient = accentGradient || ONBOARDING_BRAND_GRADIENT;
+  const iconColor = selected ? gradient[1] : gradient[0];
   const hasIcon = !!(iconSource || iconName);
 
   if (variant === 'grid') {
@@ -177,7 +186,9 @@ export function SelectionCard({
         }}
       >
         {hasIcon ? (
-          <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} grid />
+          <IconGradientWrap gradient={gradient} selected={selected} size={40} radius={10}>
+            <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} grid />
+          </IconGradientWrap>
         ) : null}
         <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, textAlign: 'center' }}>{label}</Text>
         {selected ? (
@@ -207,18 +218,9 @@ export function SelectionCard({
         }}
       >
         {hasIcon ? (
-          <View
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              backgroundColor: ONBOARDING_ACCENT_SOFT,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={ONBOARDING_ACCENT} large />
-          </View>
+          <IconGradientWrap gradient={gradient} selected={selected} size={48} radius={24}>
+            <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} large />
+          </IconGradientWrap>
         ) : null}
         <Text style={{ fontSize: 16, fontWeight: '700', color: t.textPrimary }}>{label}</Text>
         {description ? (
@@ -246,19 +248,9 @@ export function SelectionCard({
       }}
     >
       {hasIcon ? (
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            backgroundColor: ONBOARDING_ACCENT_SOFT,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 12,
-          }}
-        >
-          <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={ONBOARDING_ACCENT} row />
-        </View>
+        <IconGradientWrap gradient={gradient} selected={selected} size={40} radius={10} style={{ marginRight: 12 }}>
+          <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} row />
+        </IconGradientWrap>
       ) : null}
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15, fontWeight: '600', color: t.textPrimary }}>{label}</Text>
@@ -494,8 +486,9 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
   const set = new Set(selectedValues || []);
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-      {options.map((o) => {
+      {options.map((o, index) => {
         const on = set.has(o.value);
+        const gradient = o.accentGradient || onboardingOptionGradient(index);
         return (
           <TouchableOpacity
             key={o.value}
@@ -508,11 +501,28 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
               marginRight: 8,
               marginBottom: 8,
               borderWidth: 1.5,
-              borderColor: on ? t.cardSelectedBorder : t.cardBorder,
-              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
+              borderColor: on ? 'transparent' : t.cardBorder,
+              backgroundColor: on ? 'transparent' : t.cardBg,
+              overflow: 'hidden',
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary }}>{o.label}</Text>
+            {on ? (
+              <>
+                <LinearGradient
+                  colors={gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3 }}
+                />
+                <LinearGradient
+                  colors={pillBackgroundGradient(gradient, { strong: true })}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              </>
+            ) : null}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: on ? gradient[1] : t.textPrimary }}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -543,12 +553,13 @@ export function onboardingGridHalfWidth() {
 }
 // --- end inlined onboarding UI primitives ---
 
-// Liquid Glass accent tints (subtle, iOS-like)
+// Liquid Glass accent tints — food-card macro hues
 const GLASS_TINTS = {
-  cyan: '#64D2FF',
-  violet: '#C1265A',
-  magenta: '#FF2D55',
-  orange: '#FF9F0A',
+  cyan: brandGradients.cyanPurple[0],
+  violet: brandGradients.cyanPurple[1],
+  magenta: brandGradients.orangePink[1],
+  orange: brandGradients.orangePink[0],
+  gold: brandGradients.goldPink[0],
 };
 
 const getClientStepTint = (step, section) => {
@@ -580,10 +591,11 @@ const GRADIENTS = {
   tealBlue: ['#14B8A6', '#3B82F6'],
   indigoPurple: ['#6366F1', '#8B5CF6'],
   greenBlue: ['#10B981', '#3B82F6'],
-  orangeRed: ['#F97316', '#DC2626'],
+  orangeRed: gradients.protein,
   green: ['#10B981', '#059669'],
-  purplePink: ['#A855F7', '#EC4899'],
-  goldAmber: ['#F59E0B', '#D97706'],
+  purplePink: gradients.calories,
+  goldPink: gradients.carbs,
+  goldAmber: brandGradients.goldPink,
   success: ['#10B981', '#059669'],
   disabled: ['#CBD5E0', '#E2E8F0'],
 };
@@ -1380,19 +1392,15 @@ Examples:
         </Text>
 
         <TouchableOpacity activeOpacity={0.88} onPress={setYes} style={rowCard(choice === 'yes')}>
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              backgroundColor: ONBOARDING_ACCENT_SOFT,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12,
-            }}
+          <IconGradientWrap
+            gradient={onboardingOptionGradient(0)}
+            selected={choice === 'yes'}
+            size={40}
+            radius={10}
+            style={{ marginRight: 12 }}
           >
-            <Ionicons name="key-outline" size={20} color={ONBOARDING_ACCENT} />
-          </View>
+            <Ionicons name="key-outline" size={20} color={choice === 'yes' ? onboardingOptionGradient(0)[1] : onboardingOptionGradient(0)[0]} />
+          </IconGradientWrap>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: t.textPrimary }}>Yes, I have a trainer code</Text>
           </View>
@@ -1459,19 +1467,15 @@ Examples:
         ) : null}
 
         <TouchableOpacity activeOpacity={0.88} onPress={setNo} style={rowCard(choice === 'no')}>
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              backgroundColor: ONBOARDING_ACCENT_SOFT,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 12,
-            }}
+          <IconGradientWrap
+            gradient={onboardingOptionGradient(1)}
+            selected={choice === 'no'}
+            size={40}
+            radius={10}
+            style={{ marginRight: 12 }}
           >
-            <Ionicons name="barbell-outline" size={20} color={ONBOARDING_ACCENT} />
-          </View>
+            <Ionicons name="barbell-outline" size={20} color={choice === 'no' ? onboardingOptionGradient(1)[1] : onboardingOptionGradient(1)[0]} />
+          </IconGradientWrap>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: t.textPrimary }}>{'No, I\u2019ll train independently'}</Text>
             <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>
@@ -1492,17 +1496,25 @@ function normalizeOnboardingRole(roleProp, routeRole) {
   return s === 'trainer' ? 'trainer' : 'client';
 }
 
-export default function OnboardingWizardScreen({ route, onComplete, role: roleProp }) {
+export default function OnboardingWizardScreen({
+  route,
+  onComplete,
+  role: roleProp,
+  previewMode = false,
+  previewInitialStep = 1,
+  onPreviewClose,
+}) {
   const { colors, typography, spacing, isDark: contextIsDark = true } = useTheme();
   const insets = useSafeAreaInsets();
   const [isDark, setIsDark] = useState(contextIsDark);
   const [role, setRole] = useState(() => normalizeOnboardingRole(roleProp, route?.params?.role));
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(previewMode ? previewInitialStep : 1);
   /** Step 1 height field — feet'in" text while typing (e.g. 5'11"). */
   const [heightDraft, setHeightDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const { setAIFromOnboarding } = useAI();
+  const { accessState: trainerSubscriptionAccess } = useSubscription();
   const [onboardingData, setOnboardingData] = useState({
     // Client fields - Basic Info
     weight: null, // in kg or lbs
@@ -1627,9 +1639,14 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
   // Generate unique invite code for trainers (final step)
   useEffect(() => {
     if (role === 'trainer' && currentStep === 7 && !inviteCode) {
+      if (previewMode) {
+        setInviteCode('DEM-O12');
+        setOnboardingData((prev) => ({ ...prev, inviteCode: 'DEM-O12' }));
+        return;
+      }
       generateInviteCode();
     }
-  }, [role, currentStep]);
+  }, [role, currentStep, previewMode]);
 
   useEffect(() => {
     if (!(role === 'trainer' && currentStep === 7)) return;
@@ -1658,7 +1675,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
   }, [role, currentStep, inviteBorderRotation, inviteBorderPulse]);
 
   // Get total steps based on role
-  const totalSteps = role === 'client' ? 9 : 7;
+  const totalSteps = role === 'client' ? 9 : 8;
 
   /** CTA gradient for onboarding Continue */
   const getStepGradient = () => ONBOARDING_CTA_GRADIENT;
@@ -1969,6 +1986,9 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
           return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
         case 7:
           return true; // Auto-generated code
+        case 8:
+          if (Platform.OS !== 'ios') return true;
+          return trainerSubscriptionAccess?.hasFullAccess === true;
         default:
           return false;
       }
@@ -1999,6 +2019,10 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
   };
 
   const handleLogout = async () => {
+    if (previewMode) {
+      onPreviewClose?.();
+      return;
+    }
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out and return to the login screen?',
@@ -2025,6 +2049,10 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
   };
 
   const handleFinish = async (overrideData = null) => {
+    if (previewMode) {
+      Alert.alert('Preview mode', 'Onboarding would finish here — nothing was saved.');
+      return;
+    }
     if (!auth?.currentUser) {
       Alert.alert('Error', 'You must be logged in to save onboarding data.');
       if (onComplete) onComplete();
@@ -2177,6 +2205,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
         'Availability & session format',
         'Almost done!',
         'Your client invite code',
+        'Coach Connect Pro',
       ];
       return titles[currentStep - 1];
     }
@@ -2246,10 +2275,10 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             />
             <OnboardingSectionLabel text="GENDER" t={ot} />
             {[
-              { id: 'male', label: 'Male', icon: 'man-outline' },
-              { id: 'female', label: 'Female', icon: 'woman-outline' },
-              { id: 'other', label: 'Other', icon: 'person-outline' },
-              { id: 'prefer_not_to_say', label: 'Prefer not to say', icon: 'ellipsis-horizontal-circle-outline' },
+              { id: 'male', label: 'Male', icon: 'man-outline', accentGradient: onboardingOptionGradient(0) },
+              { id: 'female', label: 'Female', icon: 'woman-outline', accentGradient: onboardingOptionGradient(1) },
+              { id: 'other', label: 'Other', icon: 'person-outline', accentGradient: onboardingOptionGradient(2) },
+              { id: 'prefer_not_to_say', label: 'Prefer not to say', icon: 'ellipsis-horizontal-circle-outline', accentGradient: onboardingOptionGradient(3) },
             ].map((g) => (
               <SelectionCard
                 key={g.id}
@@ -2259,6 +2288,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                 iconSource={getOnboardingIconSource(g.id)}
                 iconName={g.icon}
                 label={g.label}
+                accentGradient={g.accentGradient}
               />
             ))}
           </View>
@@ -2271,9 +2301,9 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
             <View style={{ marginTop: 12 }}>
               {[
-                { id: 'beginner', label: 'Beginner', desc: 'New to working out', icon: 'leaf-outline' },
-                { id: 'intermediate', label: 'Intermediate', desc: 'Work out regularly', icon: 'trending-up-outline' },
-                { id: 'advanced', label: 'Advanced', desc: 'Experienced athlete', icon: 'flash-outline' },
+                { id: 'beginner', label: 'Beginner', desc: 'New to working out', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
+                { id: 'intermediate', label: 'Intermediate', desc: 'Work out regularly', icon: 'trending-up-outline', accentGradient: onboardingOptionGradient(1) },
+                { id: 'advanced', label: 'Advanced', desc: 'Experienced athlete', icon: 'flash-outline', accentGradient: onboardingOptionGradient(2) },
               ].map((l) => (
                 <SelectionCard
                   key={l.id}
@@ -2284,6 +2314,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                   iconName={l.icon}
                   label={l.label}
                   description={l.desc}
+                  accentGradient={l.accentGradient}
                 />
               ))}
             </View>
@@ -2301,12 +2332,12 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
             <View style={{ marginTop: 12 }}>
               {[
-                { value: 'lose_fat', label: 'Lose Fat', icon: 'trending-down-outline' },
-                { value: 'build_muscle', label: 'Build Muscle', icon: 'barbell-outline' },
-                { value: 'maintain_health', label: 'Maintain Health', icon: 'heart-outline' },
-                { value: 'athletic_performance', label: 'Athletic Performance', icon: 'flash-outline' },
-                { value: 'improve_mental_health', label: 'Improve Mental Health', icon: 'sunny-outline' },
-                { value: 'build_habits', label: 'Build Consistency & Habits', icon: 'calendar-outline' },
+                { value: 'lose_fat', label: 'Lose Fat', icon: 'trending-down-outline', accentGradient: onboardingOptionGradient(0) },
+                { value: 'build_muscle', label: 'Build Muscle', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(1) },
+                { value: 'maintain_health', label: 'Maintain Health', icon: 'heart-outline', accentGradient: onboardingOptionGradient(2) },
+                { value: 'athletic_performance', label: 'Athletic Performance', icon: 'flash-outline', accentGradient: onboardingOptionGradient(3) },
+                { value: 'improve_mental_health', label: 'Improve Mental Health', icon: 'sunny-outline', accentGradient: onboardingOptionGradient(4) },
+                { value: 'build_habits', label: 'Build Consistency & Habits', icon: 'calendar-outline', accentGradient: onboardingOptionGradient(5) },
               ].map((item) => {
                 const goalsArray = Array.isArray(onboardingData.goals) ? onboardingData.goals : [];
                 const selected = goalsArray.includes(item.value);
@@ -2325,6 +2356,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                     }}
                     iconName={item.icon}
                     label={item.label}
+                    accentGradient={item.accentGradient}
                   />
                 );
               })}
@@ -2340,8 +2372,8 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 10 }}>
               {[
-                { value: 'full_gym', label: 'Full Gym', icon: 'fitness-outline' },
-                { value: 'dumbbells', label: 'Dumbbells', icon: 'barbell-outline' },
+                { value: 'full_gym', label: 'Full Gym', icon: 'fitness-outline', accentGradient: onboardingOptionGradient(0) },
+                { value: 'dumbbells', label: 'Dumbbells', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(1) },
               ].map((e) => (
                 <SelectionCard
                   key={e.value}
@@ -2352,13 +2384,14 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                   iconSource={getOnboardingIconSource(e.value)}
                   iconName={e.icon}
                   label={e.label}
+                  accentGradient={e.accentGradient}
                 />
               ))}
             </View>
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
               {[
-                { value: 'resistance_bands', label: 'Resistance Bands', icon: 'infinite-outline' },
-                { value: 'pull_up_bar', label: 'Pull-up Bar', icon: 'move-outline' },
+                { value: 'resistance_bands', label: 'Resistance Bands', icon: 'infinite-outline', accentGradient: onboardingOptionGradient(2) },
+                { value: 'pull_up_bar', label: 'Pull-up Bar', icon: 'move-outline', accentGradient: onboardingOptionGradient(3) },
               ].map((e) => (
                 <SelectionCard
                   key={e.value}
@@ -2369,6 +2402,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                   iconSource={getOnboardingIconSource(e.value)}
                   iconName={e.icon}
                   label={e.label}
+                  accentGradient={e.accentGradient}
                 />
               ))}
             </View>
@@ -2381,6 +2415,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                 iconSource={getOnboardingIconSource('bodyweight')}
                 iconName="body-outline"
                 label="Bodyweight Only"
+                accentGradient={onboardingOptionGradient(4)}
               />
             </View>
             {Array.isArray(onboardingData.equipmentAccess) && onboardingData.equipmentAccess.includes('bodyweight') ? (
@@ -2390,9 +2425,9 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             ) : null}
             <OnboardingSectionLabel text="WHERE DO YOU PREFER TO TRAIN?" t={ot} style={{ marginTop: 8 }} />
             {[
-              { value: 'home', label: 'Home', icon: 'home-outline', desc: 'Work out from the comfort of your home' },
-              { value: 'gym', label: 'Gym', icon: 'barbell-outline', desc: 'Access to a full range of gym equipment' },
-              { value: 'both', label: 'Both', icon: 'shuffle-outline', desc: 'Flexible, combining home and gym' },
+              { value: 'home', label: 'Home', icon: 'home-outline', desc: 'Work out from the comfort of your home', accentGradient: onboardingOptionGradient(0) },
+              { value: 'gym', label: 'Gym', icon: 'barbell-outline', desc: 'Access to a full range of gym equipment', accentGradient: onboardingOptionGradient(1) },
+              { value: 'both', label: 'Both', icon: 'shuffle-outline', desc: 'Flexible, combining home and gym', accentGradient: onboardingOptionGradient(2) },
             ].map((l) => (
               <SelectionCard
                 key={l.value}
@@ -2402,6 +2437,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                 iconName={l.icon}
                 label={l.label}
                 description={l.desc}
+                accentGradient={l.accentGradient}
               />
             ))}
           </View>
@@ -2422,10 +2458,10 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
             </Text>
             <OnboardingSectionLabel text="PREFERRED WORKOUT TIME" t={ot} />
             {[
-              { value: 'morning', label: 'Morning', icon: 'sunny-outline', desc: '5am – 12pm' },
-              { value: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', desc: '12pm – 5pm' },
-              { value: 'evening', label: 'Evening', icon: 'moon-outline', desc: '5pm – 10pm' },
-              { value: 'no_preference', label: 'No preference', icon: 'time-outline', desc: 'Anytime works' },
+              { value: 'morning', label: 'Morning', icon: 'sunny-outline', desc: '5am – 12pm', accentGradient: onboardingOptionGradient(0) },
+              { value: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', desc: '12pm – 5pm', accentGradient: onboardingOptionGradient(1) },
+              { value: 'evening', label: 'Evening', icon: 'moon-outline', desc: '5pm – 10pm', accentGradient: onboardingOptionGradient(2) },
+              { value: 'no_preference', label: 'No preference', icon: 'time-outline', desc: 'Anytime works', accentGradient: onboardingOptionGradient(3) },
             ].map((item) => (
               <SelectionCard
                 key={item.value}
@@ -2435,6 +2471,7 @@ export default function OnboardingWizardScreen({ route, onComplete, role: rolePr
                 iconName={item.icon}
                 label={item.label}
                 description={item.desc}
+                accentGradient={item.accentGradient}
               />
             ))}
           </View>
@@ -2635,13 +2672,13 @@ Examples:
             <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
             <View style={{ marginTop: 16 }}>
               {[
-                { value: 'NASM-CPT', label: 'NASM-CPT' },
-                { value: 'ACE', label: 'ACE' },
-                { value: 'ISSA', label: 'ISSA' },
-                { value: 'ACSM', label: 'ACSM' },
-                { value: 'NSCA-CPT', label: 'NSCA-CPT' },
-                { value: 'Other', label: 'Other' },
-                { value: 'None', label: 'No formal certification' },
+                { value: 'NASM-CPT', label: 'NASM-CPT', icon: 'medal-outline', accentGradient: onboardingOptionGradient(0) },
+                { value: 'ACE', label: 'ACE', icon: 'ribbon-outline', accentGradient: onboardingOptionGradient(1) },
+                { value: 'ISSA', label: 'ISSA', icon: 'school-outline', accentGradient: onboardingOptionGradient(2) },
+                { value: 'ACSM', label: 'ACSM', icon: 'fitness-outline', accentGradient: onboardingOptionGradient(3) },
+                { value: 'NSCA-CPT', label: 'NSCA-CPT', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(4) },
+                { value: 'Other', label: 'Other', icon: 'create-outline', accentGradient: onboardingOptionGradient(5) },
+                { value: 'None', label: 'No formal certification', icon: 'person-outline', accentGradient: onboardingOptionGradient(0) },
               ].map((item) => (
                 <SelectionCard
                   key={item.value}
@@ -2653,11 +2690,12 @@ Examples:
                       setOnboardingData((prev) => ({ ...prev, certificationOther: '' }));
                     }
                   }}
-                  iconName="ribbon-outline"
+                  iconName={item.icon}
                   label={item.label}
                   description={
                     item.value === 'None' ? 'You have experience but no formal certification.' : undefined
                   }
+                  accentGradient={item.accentGradient}
                 />
               ))}
             </View>
@@ -2693,19 +2731,20 @@ Examples:
             <Text style={[H.subtitle, { color: ot.textSecondary }]}>Tell clients how long you've been coaching.</Text>
             <View style={{ marginTop: 16 }}>
               {[
-                { value: 'less_than_1', label: 'Less than 1 year' },
-                { value: '1_2', label: '1–2 years' },
-                { value: '3_5', label: '3–5 years' },
-                { value: '6_10', label: '6–10 years' },
-                { value: '10_plus', label: '10+ years' },
+                { value: 'less_than_1', label: 'Less than 1 year', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
+                { value: '1_2', label: '1–2 years', icon: 'time-outline', accentGradient: onboardingOptionGradient(1) },
+                { value: '3_5', label: '3–5 years', icon: 'trending-up-outline', accentGradient: onboardingOptionGradient(2) },
+                { value: '6_10', label: '6–10 years', icon: 'star-outline', accentGradient: onboardingOptionGradient(3) },
+                { value: '10_plus', label: '10+ years', icon: 'trophy-outline', accentGradient: onboardingOptionGradient(4) },
               ].map((item) => (
                 <SelectionCard
                   key={item.value}
                   t={ot}
                   selected={onboardingData.yearsExperience === item.value}
                   onPress={() => handleSelect('yearsExperience', item.value)}
-                  iconName="hourglass-outline"
+                  iconName={item.icon}
                   label={item.label}
+                  accentGradient={item.accentGradient}
                 />
               ))}
             </View>
@@ -2763,46 +2802,9 @@ Examples:
       case 5:
         return (
           <View style={styles.stepContainer}>
+            {trainerLottie}
             <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>
-              Coach Connect Pro is $59.99/month with a 3-day free trial (Apple in-app purchase). Finish availability
-              below — you can start your trial from the trainer dashboard after setup.
-            </Text>
-
-            <View
-              style={{
-                marginTop: 20,
-                marginBottom: 8,
-                borderWidth: 1.5,
-                borderColor: ot.cardBorder,
-                borderRadius: 14,
-                padding: 16,
-                backgroundColor: ot.cardBg,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    backgroundColor: ONBOARDING_ACCENT_SOFT,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 12,
-                  }}
-                >
-                  <Ionicons name="pricetag-outline" size={20} color={ONBOARDING_ACCENT} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: ot.textPrimary }}>CoachConnect subscription</Text>
-                  <Text style={{ fontSize: 13, color: ot.textSecondary, marginTop: 4, lineHeight: 18 }}>
-                    Unlimited clients, AI workouts, nutrition, progress dashboard, and coaching chat. Billed through
-                    Apple after your free trial.
-                  </Text>
-                </View>
-              </View>
-            </View>
+            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Set how clients can book with you.</Text>
 
             <OnboardingSectionLabel text="AVAILABILITY" t={ot} />
             <SelectionCard
@@ -2812,6 +2814,7 @@ Examples:
               iconName="checkmark-circle-outline"
               label="Available now"
               description="Accepting new clients"
+              accentGradient={onboardingOptionGradient(0)}
             />
             <SelectionCard
               t={ot}
@@ -2820,6 +2823,7 @@ Examples:
               iconName="time-outline"
               label="Waitlist"
               description="Currently full — adding to waitlist"
+              accentGradient={onboardingOptionGradient(1)}
             />
 
             <OnboardingSectionLabel text="SESSION TYPE" t={ot} />
@@ -2830,6 +2834,7 @@ Examples:
               iconName="videocam-outline"
               label="Remote"
               description="Online sessions only"
+              accentGradient={onboardingOptionGradient(2)}
             />
             <SelectionCard
               t={ot}
@@ -2838,6 +2843,7 @@ Examples:
               iconName="location-outline"
               label="In-person"
               description="Local sessions"
+              accentGradient={onboardingOptionGradient(3)}
             />
             <SelectionCard
               t={ot}
@@ -2846,6 +2852,7 @@ Examples:
               iconName="shuffle-outline"
               label="Both"
               description="Remote and in-person"
+              accentGradient={onboardingOptionGradient(4)}
             />
           </View>
         );
@@ -2968,6 +2975,18 @@ Examples:
         );
       }
 
+      case 8:
+        return (
+          <View style={styles.stepContainer}>
+            <TrainerSubscriptionOnboardingStep
+              isDark={isDark}
+              currentStep={currentStep}
+              totalSteps={totalSteps}
+              onComplete={() => handleFinish()}
+            />
+          </View>
+        );
+
       default:
         return null;
     }
@@ -2975,14 +2994,15 @@ Examples:
 
   const dynamicStyles = getStyles(isDark);
   const ot = getOnboardingUiTokens(isDark);
-  const hideBottomNav = role === 'client' && currentStep === 9;
+  const hideBottomNav = (role === 'client' && currentStep === 9) || (role === 'trainer' && currentStep === 8);
   const onboardingFooterPadTop = 12;
   const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
   const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
   const scrollBottomPad = onboardingFooterBarHeight + 28;
+  const ScreenRoot = previewMode ? View : SafeAreaView;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+    <ScreenRoot style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -3075,7 +3095,7 @@ Examples:
             >
               {loading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 56 }}>
-                  <ActivityIndicator size="small" color="#C1265A" />
+                  <ActivityIndicator size="small" color={ONBOARDING_ACCENT} />
                 </View>
               ) : (
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
@@ -3113,7 +3133,7 @@ Examples:
           )}
         </KeyboardAvoidingView>
       </View>
-    </SafeAreaView>
+    </ScreenRoot>
   );
 }
 

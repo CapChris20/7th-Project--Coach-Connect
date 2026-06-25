@@ -4,23 +4,77 @@
  * Purpose: onboarding Ai Deps — Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/shared
- * Key exports: getOnboardingUiTokens, OnboardingPrimaryButton, ONBOARDING_CTA_GRADIENT, ONBOARDING_BRAND_GRADIENT, TRAINER_ONBOARDING_GRADIENT, ONBOARDING_ACCENT, ONBOARDING_ACCENT_SOFT
+ * Key exports: getOnboardingUiTokens, OnboardingPrimaryButton, IconGradientWrap, ONBOARDING_CTA_GRADIENT, onboardingOptionGradient
  *
  * @file-header
  */
 /**
  * Shared onboarding tokens + primary CTA only.
- * Used by AIOptInStep (avoids circular import with OnboardingWizardScreen.jsx).
+ * Uses the same macro gradients as premium food cards (theme.js).
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  brandGradients,
+  gradients,
+  pillBackgroundGradient,
+  hexToRgba,
+} from '../../../nutrition/components/premiumFoodCard/theme';
 
-export const ONBOARDING_CTA_GRADIENT = ['#C1265A', '#D84315'];
+export { brandGradients, gradients, pillBackgroundGradient, hexToRgba };
+
+/** Same rotating set as food-card macros + calories */
+export const ONBOARDING_OPTION_GRADIENTS = [
+  gradients.protein,
+  gradients.carbs,
+  gradients.fat,
+  gradients.calories,
+];
+
+export const onboardingOptionGradient = (index) =>
+  ONBOARDING_OPTION_GRADIENTS[Math.abs(index) % ONBOARDING_OPTION_GRADIENTS.length];
+
+export const ONBOARDING_CTA_GRADIENT = gradients.protein;
 export const ONBOARDING_BRAND_GRADIENT = ONBOARDING_CTA_GRADIENT;
-export const TRAINER_ONBOARDING_GRADIENT = ONBOARDING_CTA_GRADIENT;
-export const ONBOARDING_ACCENT = '#C1265A';
-export const ONBOARDING_ACCENT_SOFT = 'rgba(193, 38, 90, 0.15)';
+export const TRAINER_ONBOARDING_GRADIENT = gradients.carbs;
+export const ONBOARDING_ACCENT = brandGradients.orangePink[1];
+export const ONBOARDING_ACCENT_SOFT = hexToRgba(brandGradients.orangePink[1], 0.15);
+
+/** Food-card style icon well — thin gradient accent + soft pill fill */
+export function IconGradientWrap({ gradient, selected, size, radius, style, children }) {
+  const stops = gradient || ONBOARDING_BRAND_GRADIENT;
+  const bg = pillBackgroundGradient(stops, { strong: selected });
+  return (
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: radius,
+          overflow: 'hidden',
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        style,
+      ]}
+    >
+      <LinearGradient
+        colors={stops}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3 }}
+      />
+      <LinearGradient
+        colors={bg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>{children}</View>
+    </View>
+  );
+}
 
 export function getOnboardingUiTokens(isDark) {
   return isDark
@@ -28,7 +82,7 @@ export function getOnboardingUiTokens(isDark) {
         bg: '#0A0A0F',
         cardBg: 'rgba(255,255,255,0.04)',
         cardBorder: 'rgba(255,255,255,0.08)',
-        cardSelectedBg: 'rgba(233, 78, 173, 0.12)',
+        cardSelectedBg: hexToRgba(brandGradients.orangePink[1], 0.12),
         cardSelectedBorder: ONBOARDING_ACCENT,
         textPrimary: '#FFFFFF',
         textSecondary: 'rgba(255,255,255,0.5)',
@@ -46,7 +100,7 @@ export function getOnboardingUiTokens(isDark) {
         bg: '#F5F5F7',
         cardBg: '#FFFFFF',
         cardBorder: '#E5E7EB',
-        cardSelectedBg: 'rgba(233, 78, 173, 0.1)',
+        cardSelectedBg: hexToRgba(brandGradients.orangePink[1], 0.1),
         cardSelectedBorder: ONBOARDING_ACCENT,
         textPrimary: '#0A0A0F',
         textSecondary: '#6B7280',

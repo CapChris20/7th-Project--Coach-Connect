@@ -1,19 +1,32 @@
 /**
- * Premium food card design tokens — muted grayscale + warm accent.
+ * Premium food card design tokens — Coach Connect macro palette.
  */
 
 export const brandGradients = {
-  accent: ['#9A3412', '#C2410C'],
-  muted: ['#6B7280', '#9CA3AF'],
-  good: ['#15803D', '#22C55E'],
-  warn: ['#B91C1C', '#EF4444'],
+  /** dark orange → pink */
+  orangePink: ['#9A3412', '#FF3D8A'],
+  /** dark orange → purple */
+  orangePurple: ['#9A3412', '#8B5CF6'],
+  /** gold → pink */
+  goldPink: ['#A67C00', '#FF6B9D'],
+  /** cyan → purple */
+  cyanPurple: ['#0891B2', '#8B5CF6'],
 };
 
-/** Macro mapping: protein = accent; carbs/fat = muted gray */
+/** Macro mapping — full stops for accents (dots, thin bars) */
 export const gradients = {
-  carbs: brandGradients.muted,
-  protein: brandGradients.accent,
-  fat: brandGradients.muted,
+  protein: brandGradients.orangePink,
+  carbs: brandGradients.goldPink,
+  fat: brandGradients.cyanPurple,
+  calories: brandGradients.orangePurple,
+};
+
+/** Same hues, pulled back for large surfaces (less neon on dark UI) */
+export const gradientsSoft = {
+  protein: ['#9A3412', '#BE185D'],
+  carbs: ['#8B6914', '#B84D6F'],
+  fat: ['#0E7490', '#6D28D9'],
+  calories: ['#9A3412', '#7C3AED'],
 };
 
 export const colors = {
@@ -52,39 +65,47 @@ export function hexToRgba(hex, alpha) {
 
 /** Pill background: 135° gradient at 14% → 10% opacity — never full saturation. */
 export function pillBackgroundGradient(stops, { strong = false } = {}) {
-  const a0 = strong ? 0.28 : 0.14;
-  const a1 = strong ? 0.2 : 0.1;
+  const a0 = strong ? 0.2 : 0.1;
+  const a1 = strong ? 0.14 : 0.06;
   return [hexToRgba(stops[0], a0), hexToRgba(stops[1], a1)];
 }
 
-const borderStops = [brandGradients.accent[0], brandGradients.muted[1]];
-const titleGradient = brandGradients.accent;
-const ruleGradient = brandGradients.accent;
+/** Single accent at low alpha — icon wells, badges */
+export function accentTint(hex, alpha = 0.14) {
+  return hexToRgba(hex, alpha);
+}
+
+const titleGradient = gradientsSoft.orangePink;
+const ruleColor = hexToRgba(brandGradients.orangePurple[1], 0.28);
 
 /** Opaque, high-contrast palette for the expanded nutrition facts panel. */
 export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
   const sharedAccents = {
-    borderStops,
     titleGradient,
-    ruleGradient,
-    breakdownGradient: brandGradients.accent,
-    microGradients: [brandGradients.muted, brandGradients.muted, brandGradients.muted],
+    ruleColor,
+    breakdownGradient: gradientsSoft.orangePink,
+    microGradients: [
+      gradientsSoft.carbs,
+      gradientsSoft.protein,
+      gradientsSoft.fat,
+      gradientsSoft.calories,
+    ],
   };
 
-  // Light mode — warm cream panel, dark text (not a dark box on pink meals)
   if (embedded && !isDark) {
     return {
       ...sharedAccents,
       panelBg: '#FFFBF5',
+      panelBorder: hexToRgba(brandGradients.orangePink[0], 0.12),
       tileBg: '#FFFFFF',
-      tileBorder: hexToRgba(brandGradients.muted[0], 0.22),
-      trackBg: 'rgba(10,10,15,0.08)',
+      tileBorder: hexToRgba(brandGradients.orangePink[0], 0.1),
+      trackBg: 'rgba(10,10,15,0.06)',
       text: '#0A0A0F',
       textMuted: '#5C4A42',
       textSubtle: '#8A7268',
-      badgeBg: hexToRgba(brandGradients.accent[0], 0.10),
-      badgeBorder: hexToRgba(brandGradients.accent[0], 0.18),
-      iconOnGradient: '#FFFFFF',
+      badgeBg: hexToRgba(brandGradients.goldPink[0], 0.08),
+      badgeBorder: hexToRgba(brandGradients.orangePurple[0], 0.14),
+      iconOnGradient: brandGradients.orangePink[0],
     };
   }
 
@@ -92,30 +113,32 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
     return {
       ...sharedAccents,
       panelBg: '#14110F',
-      tileBg: '#1E1916',
-      tileBorder: hexToRgba(brandGradients.muted[0], 0.22),
-      trackBg: 'rgba(255,255,255,0.12)',
-      text: '#FFFFFF',
-      textMuted: 'rgba(255,255,255,0.82)',
-      textSubtle: 'rgba(255,255,255,0.58)',
-      badgeBg: hexToRgba(brandGradients.accent[0], 0.18),
-      badgeBorder: hexToRgba(brandGradients.accent[0], 0.28),
-      iconOnGradient: '#FFFFFF',
+      panelBorder: 'rgba(255,255,255,0.1)',
+      tileBg: '#1A1714',
+      tileBorder: 'rgba(255,255,255,0.08)',
+      trackBg: 'rgba(255,255,255,0.08)',
+      text: '#F4F2EF',
+      textMuted: 'rgba(255,255,255,0.68)',
+      textSubtle: 'rgba(255,255,255,0.45)',
+      badgeBg: 'rgba(255,255,255,0.06)',
+      badgeBorder: 'rgba(255,255,255,0.1)',
+      iconOnGradient: '#E8B4C8',
     };
   }
 
   return {
     ...sharedAccents,
     panelBg: '#181410',
-    tileBg: '#221E1A',
-    tileBorder: hexToRgba(brandGradients.muted[0], 0.2),
-    trackBg: 'rgba(255,255,255,0.1)',
+    panelBorder: 'rgba(255,255,255,0.1)',
+    tileBg: '#1E1B18',
+    tileBorder: 'rgba(255,255,255,0.08)',
+    trackBg: 'rgba(255,255,255,0.08)',
     text: colors.foreground,
     textMuted: colors.mutedForeground,
     textSubtle: colors.subtle,
-    badgeBg: hexToRgba(brandGradients.accent[0], 0.15),
-    badgeBorder: colors.borderStrong,
-    iconOnGradient: '#FFFFFF',
+    badgeBg: 'rgba(255,255,255,0.06)',
+    badgeBorder: 'rgba(255,255,255,0.1)',
+    iconOnGradient: '#E8B4C8',
   };
 }
 

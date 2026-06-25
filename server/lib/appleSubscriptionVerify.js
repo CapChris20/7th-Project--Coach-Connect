@@ -1,5 +1,5 @@
 const EXPECTED_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.coachconnect';
-const EXPECTED_PRODUCT_ID = process.env.APPLE_SUBSCRIPTION_PRODUCT_ID || 'com.coachconnect.pro.monthly';
+const EXPECTED_PRODUCT_ID = process.env.APPLE_SUBSCRIPTION_PRODUCT_ID || 'com.coachconnect.month';
 
 /**
  * Decode a JWS (header.payload.signature) without signature verification.

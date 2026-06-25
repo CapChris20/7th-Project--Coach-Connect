@@ -40,6 +40,8 @@ import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
 import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
 import { HOME_STAT_SLEEP_GRADIENT } from '../../shared-ui/homeStatGradients';
 import FoodCard from '../components/premiumFoodCard/FoodCard';
+import GradientText from '../components/premiumFoodCard/GradientText';
+import { gradients, brandGradients } from '../components/premiumFoodCard/theme';
 import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
 import { auth } from '../../app-start/config';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -52,18 +54,17 @@ const HERO_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
 const HERO_CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 function getColors(isDark) {
-  const accent = '#C2410C';
-  const accentSoft = '#FDBA74';
-  const mutedMacro = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
   const shared = {
-    accent,
-    accentSoft,
-    mutedMacro,
-    proteinAccent: accent,
-    carbsAccent: mutedMacro,
-    fatAccent: mutedMacro,
-    calAccent: accent,
-    borderGradient: isDark ? ['#3F3F46', '#52525B'] : ['#D4D4D8', '#E4E4E7'],
+    pink: brandGradients.orangePink[1],
+    orange: brandGradients.orangePink[0],
+    purple: brandGradients.orangePurple[1],
+    cyan: brandGradients.cyanPurple[0],
+    gold: brandGradients.goldPink[0],
+    proteinGradient: gradients.protein,
+    carbsGradient: gradients.carbs,
+    fatGradient: gradients.fat,
+    calGradient: gradients.calories,
+    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
   };
   return isDark
     ? {
@@ -80,6 +81,7 @@ function getColors(isDark) {
       }
     : {
         ...shared,
+        borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
         bg: '#FFFFFF',
         surface: '#F5F5F5',
         border: '#E5E5E5',
@@ -96,15 +98,16 @@ function getColors(isDark) {
 const DARK = {
   text: '#ffffff',
   textMuted: '#A6A6A6',
-  accent: '#C2410C',
-  accentSoft: '#FDBA74',
-  mutedMacro: 'rgba(255,255,255,0.45)',
-  proteinAccent: '#C2410C',
-  carbsAccent: 'rgba(255,255,255,0.45)',
-  fatAccent: 'rgba(255,255,255,0.45)',
-  calAccent: '#C2410C',
+  pink: brandGradients.orangePink[1],
+  orange: brandGradients.orangePink[0],
+  purple: brandGradients.orangePurple[1],
+  cyan: brandGradients.cyanPurple[0],
+  proteinGradient: gradients.protein,
+  carbsGradient: gradients.carbs,
+  fatGradient: gradients.fat,
+  calGradient: gradients.calories,
   inputBg: '#1A1A24',
-  borderGradient: ['#3F3F46', '#52525B'],
+  borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
 };
 
 // Normalize into a "food" shape compatible with nutritionService.addFoodLog
@@ -227,9 +230,17 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
     setAdding(false);
   };
 
-  const MacroPill = ({ label, value, accent }) => (
+  const MacroPill = ({ label, value, gradientStops }) => (
     <View style={[foodCardStyles.macroPill, { backgroundColor: pillBg }]}>
-      <Text style={[foodCardStyles.macroPillLabel, { color: accent }]}>{label}</Text>
+      <LinearGradient
+        colors={gradientStops}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={foodCardStyles.macroPillAccent}
+      />
+      <GradientText colors={gradientStops} style={foodCardStyles.macroPillLabel}>
+        {label}
+      </GradientText>
       <Text style={[foodCardStyles.macroPillValue, { color: pillText }]}>{value}g</Text>
     </View>
   );
@@ -292,14 +303,16 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
               ) : null}
 
               <View style={foodCardStyles.macroRow}>
-                <MacroPill label="Protein" value={item.protein} accent={c.proteinAccent} />
-                <MacroPill label="Carbs" value={item.carbs} accent={c.carbsAccent} />
-                <MacroPill label="Fat" value={item.fat} accent={c.fatAccent} />
+                <MacroPill label="Protein" value={item.protein} gradientStops={c.proteinGradient} />
+                <MacroPill label="Carbs" value={item.carbs} gradientStops={c.carbsGradient} />
+                <MacroPill label="Fat" value={item.fat} gradientStops={c.fatGradient} />
               </View>
             </View>
 
             <View style={foodCardStyles.sideCol}>
-              <Text style={[foodCardStyles.calValue, { color: c.calAccent }]}>{item.calories}</Text>
+              <GradientText colors={c.calGradient} style={foodCardStyles.calValue}>
+                {item.calories}
+              </GradientText>
               <Text style={[foodCardStyles.calLabel, { color: labelMuted }]}>CAL</Text>
               <TouchableOpacity onPress={handleAdd} disabled={adding} activeOpacity={0.88} style={foodCardStyles.addHit}>
                 <LinearGradient colors={HERO_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={foodCardStyles.addBtn}>
@@ -337,7 +350,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
   const isNoResults = Boolean(query?.trim());
   const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
 
-  const accentColor = () => c.accent || c.calAccent || '#C2410C';
+  const accentColor = () => c.purple || brandGradients.orangePurple[1];
 
   return (
     <View style={empty.wrap}>
@@ -973,12 +986,20 @@ const foodCardStyles = StyleSheet.create({
     marginTop: 10,
   },
   macroPill: {
-    flexDirection: 'row',
+    overflow: 'hidden',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingTop: 6,
+    paddingBottom: 5,
     borderRadius: 8,
+  },
+  macroPillAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
   },
   macroPillLabel: {
     fontSize: 10,

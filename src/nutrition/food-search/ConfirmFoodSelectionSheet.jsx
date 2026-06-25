@@ -226,7 +226,7 @@ export default function FoodConfirmSheet({
                 </Text>
               </View>
               <View style={styles.calHeroRight}>
-                <GradientText colors={gradients.carbs} style={styles.calHeroValue}>
+                <GradientText colors={gradients.calories} style={styles.calHeroValue}>
                   {macros.calories}
                 </GradientText>
                 <Text style={styles.calHeroSuffix}> KCAL</Text>

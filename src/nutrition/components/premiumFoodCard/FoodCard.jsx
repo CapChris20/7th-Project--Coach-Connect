@@ -226,7 +226,7 @@ export default function FoodCard({
               </IconAction>
             </View>
             <View style={styles.calRow}>
-              <GradientText colors={gradients.carbs} style={styles.calValue}>
+              <GradientText colors={gradients.calories} style={styles.calValue}>
                 {Math.round(Number(food?.calories) || 0)}
               </GradientText>
               <Text style={[styles.calSuffix, { color: palette.subtle }]}> kcal</Text>

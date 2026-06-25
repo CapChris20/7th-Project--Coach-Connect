@@ -14,7 +14,7 @@ describe('appleSubscriptionVerify', () => {
     const now = new Date('2026-06-24T12:00:00.000Z');
     const sub = buildSubscriptionFromTransaction(
       {
-        productId: 'com.coachconnect.pro.monthly',
+        productId: 'com.coachconnect.month',
         bundleId: 'com.coachconnect',
         transactionId: 'tx1',
         originalTransactionId: 'tx1',
@@ -32,11 +32,11 @@ describe('appleSubscriptionVerify', () => {
 
   it('decodes JWS payload', () => {
     const jws = makeJws({
-      productId: 'com.coachconnect.pro.monthly',
+      productId: 'com.coachconnect.month',
       bundleId: 'com.coachconnect',
       expiresDate: Date.now() + 10000,
     });
     const payload = decodeJwsPayload(jws);
-    expect(payload.productId).toBe('com.coachconnect.pro.monthly');
+    expect(payload.productId).toBe('com.coachconnect.month');
   });
 });

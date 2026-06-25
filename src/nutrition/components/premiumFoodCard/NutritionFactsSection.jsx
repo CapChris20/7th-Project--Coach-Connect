@@ -2,21 +2,21 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Leaf, Droplets, Heart, Sparkles, Waves, Zap } from 'lucide-react-native';
-import GradientText from './GradientText';
 import {
   gradients,
-  brandGradients,
+  gradientsSoft,
   radii,
   fonts,
-  pillBackgroundGradient,
+  accentTint,
   getNutritionPanelPalette,
 } from './theme';
 
 function microGradientForKey(key, np) {
   const cycle = np.microGradients || [
-    brandGradients.muted,
-    brandGradients.muted,
-    brandGradients.muted,
+    brandGradients.goldPink,
+    brandGradients.orangePink,
+    brandGradients.cyanPurple,
+    brandGradients.orangePurple,
   ];
   const order = ['fiber', 'saturatedFat', 'cholesterol', 'sugar', 'sodium', 'potassium'];
   const idx = order.indexOf(key);
@@ -33,24 +33,19 @@ const MICRO_CONFIG = [
 ];
 
 const MACRO_LEGEND = [
-  { key: 'carbs', label: 'Carbs', gradient: gradients.carbs },
-  { key: 'protein', label: 'Protein', gradient: gradients.protein },
-  { key: 'fat', label: 'Fat', gradient: gradients.fat },
+  { key: 'carbs', label: 'Carbs', gradient: gradients.carbs, soft: gradientsSoft.carbs },
+  { key: 'protein', label: 'Protein', gradient: gradients.protein, soft: gradientsSoft.protein },
+  { key: 'fat', label: 'Fat', gradient: gradients.fat, soft: gradientsSoft.fat },
 ];
 
-function MacroLegendChip({ label, grams, pct, gradientStops, np }) {
-  const bg = pillBackgroundGradient(gradientStops, { strong: true });
-
+function MacroLegendChip({ label, grams, pct, softStops, np }) {
   return (
     <View style={[styles.legendChip, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
-      <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.legendChipRow}>
-        <LinearGradient colors={gradientStops} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.legendDot} />
+        <LinearGradient colors={softStops} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.legendDot} />
         <Text style={[styles.legendLabel, { color: np.textMuted }]}>{label}</Text>
       </View>
-      <GradientText colors={gradientStops} style={styles.legendGrams}>
-        {Math.round(Number(grams) || 0)}g
-      </GradientText>
+      <Text style={[styles.legendGrams, { color: np.text }]}>{Math.round(Number(grams) || 0)}g</Text>
       <Text style={[styles.legendPct, { color: np.textSubtle }]}>{Math.round(Number(pct) || 0)}% of cals</Text>
     </View>
   );
@@ -60,9 +55,9 @@ function CompositionBar({ percents, np }) {
   const { carbs = 0, protein = 0, fat = 0 } = percents || {};
   const total = carbs + protein + fat || 1;
   const segments = [
-    { flex: carbs / total, colors: gradients.carbs },
-    { flex: protein / total, colors: gradients.protein },
-    { flex: fat / total, colors: gradients.fat },
+    { flex: carbs / total, colors: gradientsSoft.carbs },
+    { flex: protein / total, colors: gradientsSoft.protein },
+    { flex: fat / total, colors: gradientsSoft.fat },
   ].filter((s) => s.flex > 0.001);
 
   return (
@@ -87,7 +82,7 @@ function MicroStatTile({ config, data, np }) {
   const raw = Number(data?.value);
   if (!Number.isFinite(raw) || raw <= 0) return null;
 
-  const gradient = microGradientForKey(config.key, np);
+  const softGradient = microGradientForKey(config.key, np);
   const unit = data?.unit || 'g';
   const dvPct = config.dailyValue
     ? Math.min(999, Math.round((raw / config.dailyValue) * 100))
@@ -96,14 +91,14 @@ function MicroStatTile({ config, data, np }) {
 
   return (
     <View style={[styles.microTile, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
-      <LinearGradient
-        colors={gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.microIconRing}
+      <View
+        style={[
+          styles.microIconRing,
+          { backgroundColor: accentTint(softGradient[1], 0.14) },
+        ]}
       >
-        <Icon size={14} color={np.iconOnGradient} strokeWidth={2.4} />
-      </LinearGradient>
+        <Icon size={14} color={softGradient[1]} strokeWidth={2.2} />
+      </View>
 
       <View style={styles.microTileBody}>
         <Text style={[styles.microTileLabel, { color: np.textMuted }]}>{config.label}</Text>
@@ -112,23 +107,21 @@ function MicroStatTile({ config, data, np }) {
           <Text style={[styles.microTileUnit, { color: np.textMuted }]}>{unit}</Text>
         </View>
         {dvPct != null ? (
-          <LinearGradient
-            colors={pillBackgroundGradient(gradient, { strong: true })}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.dvBadge}
-          >
-            <GradientText colors={gradient} style={styles.dvBadgeText}>
+          <View style={[styles.dvBadge, { backgroundColor: accentTint(softGradient[1], 0.1), borderColor: accentTint(softGradient[1], 0.22) }]}>
+            <Text style={[styles.dvBadgeText, { color: softGradient[1] }]}>
               {dvPct}% DV
-            </GradientText>
-          </LinearGradient>
+            </Text>
+          </View>
         ) : null}
         <View style={[styles.microBarTrack, { backgroundColor: np.trackBg }]}>
-          <LinearGradient
-            colors={gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.microBarFill, { width: `${Math.max(barPct, 8)}%` }]}
+          <View
+            style={[
+              styles.microBarFill,
+              {
+                width: `${Math.max(barPct, 8)}%`,
+                backgroundColor: accentTint(softGradient[1], 0.55),
+              },
+            ]}
           />
         </View>
       </View>
@@ -163,9 +156,7 @@ export default function NutritionFactsSection({
   return (
     <View style={styles.root}>
       <View style={styles.breakdownHeader}>
-        <GradientText colors={np.breakdownGradient} style={styles.breakdownTitle}>
-          Calorie breakdown
-        </GradientText>
+        <Text style={[styles.breakdownTitle, { color: np.text }]}>Calorie breakdown</Text>
         {serving ? (
           <Text style={[styles.breakdownServing, { color: np.textSubtle }]} numberOfLines={1}>
             {serving}
@@ -176,60 +167,35 @@ export default function NutritionFactsSection({
       <CompositionBar percents={macroPercents} np={np} />
 
       <View style={styles.legendRow}>
-        {MACRO_LEGEND.map(({ key, label, gradient }) => (
+        {MACRO_LEGEND.map(({ key, label, gradient, soft }) => (
           <MacroLegendChip
             key={key}
             label={label}
             grams={key === 'carbs' ? carbs : key === 'protein' ? protein : fat}
             pct={macroPercents[key]}
-            gradientStops={gradient}
+            softStops={soft}
             np={np}
           />
         ))}
       </View>
 
-      <View style={styles.panelShell}>
-        <LinearGradient
-          colors={np.borderStops}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.panelBorder}
-        />
-        <View style={[styles.panelInner, { backgroundColor: np.panelBg }]}>
-          <LinearGradient
-            colors={[
-              pillBackgroundGradient(brandGradients.accent, { strong: true })[0],
-              pillBackgroundGradient(brandGradients.muted, { strong: true })[1],
-              'transparent',
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.panelWash}
-            pointerEvents="none"
-          />
-
+      <View style={[styles.panelShell, { borderColor: np.panelBorder, backgroundColor: np.panelBg }]}>
+        <View style={styles.panelInner}>
           <View style={styles.panelHeader}>
             <View style={styles.panelHeaderText}>
-              <GradientText colors={np.titleGradient} style={styles.panelTitle}>
-                Nutrition Facts
-              </GradientText>
+              <Text style={[styles.panelTitle, { color: np.text }]}>Nutrition Facts</Text>
               <Text style={[styles.panelSubtitle, { color: np.textMuted }]}>
                 Per logged serving
               </Text>
             </View>
             <View style={[styles.panelBadge, { backgroundColor: np.badgeBg, borderColor: np.badgeBorder }]}>
-              <Text style={[styles.panelBadgeText, { color: np.text }]}>
+              <Text style={[styles.panelBadgeText, { color: np.textMuted }]}>
                 {visibleMicros.length} tracked
               </Text>
             </View>
           </View>
 
-          <LinearGradient
-            colors={np.ruleGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.panelRule}
-          />
+          <View style={[styles.panelRule, { backgroundColor: np.ruleColor }]} />
 
           {visibleMicros.length > 0 ? (
             <View style={styles.microGrid}>
@@ -283,10 +249,10 @@ const styles = StyleSheet.create({
   },
   compositionTrack: {
     flexDirection: 'row',
-    height: 10,
+    height: 8,
     borderRadius: 999,
     overflow: 'hidden',
-    gap: 3,
+    gap: 2,
   },
   compositionSegment: {
     height: '100%',
@@ -336,22 +302,13 @@ const styles = StyleSheet.create({
   },
   panelShell: {
     borderRadius: radii.chip + 6,
+    borderWidth: 1,
     overflow: 'hidden',
   },
-  panelBorder: {
-    ...StyleSheet.absoluteFillObject,
-  },
   panelInner: {
-    margin: 2,
-    borderRadius: radii.chip + 4,
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 14,
-    overflow: 'hidden',
-  },
-  panelWash: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.45,
   },
   panelHeader: {
     flexDirection: 'row',
@@ -386,8 +343,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
   },
   panelRule: {
-    height: 3,
-    borderRadius: 2,
+    height: 1,
+    borderRadius: 1,
     marginBottom: 14,
   },
   microGrid: {
@@ -442,10 +399,10 @@ const styles = StyleSheet.create({
   dvBadge: {
     alignSelf: 'flex-start',
     borderRadius: 7,
+    borderWidth: 1,
     paddingHorizontal: 7,
     paddingVertical: 3,
     marginTop: 6,
-    overflow: 'hidden',
   },
   dvBadgeText: {
     fontSize: 10,

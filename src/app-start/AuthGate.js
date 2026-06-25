@@ -22,6 +22,7 @@ import React, { useState, useEffect } from 'react';
 import LoginScreen from '../auth/LoginScreen';
 import ResetPasswordScreen from '../auth/ResetPasswordScreen';
 import OnboardingWizardScreen from '../auth/OnboardingWizardScreen';
+import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
 import TrainerApp from './TrainerApp';
 import ClientApp from './ClientApp';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
@@ -346,26 +347,28 @@ export default function AuthGate() {
   // Show onboarding if needed
   if (showOnboarding) {
     return (
-      <OnboardingWizardScreen
-        role={normalizeAppRole(userRole)}
-        onComplete={(chosenRole, updateData) => {
-          if (chosenRole) setUserRole(normalizeAppRole(chosenRole));
-          if (updateData) setUserData(updateData);
-          if (user?.uid && chosenRole) {
-            const r = normalizeAppRole(chosenRole);
-            AsyncStorage.setItem(
-              getProfileCacheKey(user.uid),
-              JSON.stringify({
-                uid: user.uid,
-                ...(updateData || {}),
-                role: r,
-                onboardingCompleted: true,
-              })
-            ).catch(() => {});
-          }
-          setShowOnboarding(false);
-        }}
-      />
+      <SubscriptionProvider userId={user?.uid || null}>
+        <OnboardingWizardScreen
+          role={normalizeAppRole(userRole)}
+          onComplete={(chosenRole, updateData) => {
+            if (chosenRole) setUserRole(normalizeAppRole(chosenRole));
+            if (updateData) setUserData(updateData);
+            if (user?.uid && chosenRole) {
+              const r = normalizeAppRole(chosenRole);
+              AsyncStorage.setItem(
+                getProfileCacheKey(user.uid),
+                JSON.stringify({
+                  uid: user.uid,
+                  ...(updateData || {}),
+                  role: r,
+                  onboardingCompleted: true,
+                })
+              ).catch(() => {});
+            }
+            setShowOnboarding(false);
+          }}
+        />
+      </SubscriptionProvider>
     );
   }
 

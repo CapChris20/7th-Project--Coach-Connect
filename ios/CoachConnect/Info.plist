@@ -9,7 +9,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>CoachConnect</string>
+    <string>Coach Connect</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -31,7 +31,12 @@
         <array>
           <string>coachconnect</string>
           <string>com.coachconnect</string>
-          <string>com.googleusercontent.apps.421005574501-5aogoduc19mlcgk0g259vsque3s8foap</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>exp+anatrox-app</string>
         </array>
       </dict>
     </array>
@@ -43,21 +48,39 @@
     <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
-      <key>NSAllowsArbitraryLoads</key>
-      <false/>
-      <key>NSAllowsLocalNetworking</key>
-      <true/>
+      <key>NSExceptionDomains</key>
+      <dict>
+        <key>localhost</key>
+        <dict>
+          <key>NSExceptionAllowsInsecureHTTPLoads</key>
+          <true/>
+          <key>NSIncludesSubdomains</key>
+          <true/>
+        </dict>
+        <key>127.0.0.1</key>
+        <dict>
+          <key>NSExceptionAllowsInsecureHTTPLoads</key>
+          <true/>
+          <key>NSIncludesSubdomains</key>
+          <true/>
+        </dict>
+        <key>192.168.0.178</key>
+        <dict>
+          <key>NSExceptionAllowsInsecureHTTPLoads</key>
+          <true/>
+          <key>NSIncludesSubdomains</key>
+          <true/>
+        </dict>
+      </dict>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>CoachConnect uses your camera to upload progress photos.</string>
+    <string>Allow Coach Connect to access your camera for progress photos and barcode scanning.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Coach Connect uses the microphone so you can talk to your AI Coach.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Coach Connect uses speech recognition to turn your voice into messages for your AI Coach.</string>
+    <string>Allow Coach Connect to use the microphone so you can talk to your AI Coach.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>CoachConnect accesses your photo library to upload progress photos and profile pictures.</string>
-    <key>NSUserNotificationsUsageDescription</key>
-    <string>CoachConnect sends you workout reminders and updates from your trainer.</string>
+    <string>Allow Coach Connect to access your photos to add images to chats.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Allow Coach Connect to transcribe your voice for AI Coach messages.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
     <key>UILaunchStoryboardName</key>
@@ -75,8 +98,15 @@
       <string>UIInterfaceOrientationPortrait</string>
       <string>UIInterfaceOrientationPortraitUpsideDown</string>
     </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+      <string>UIInterfaceOrientationLandscapeLeft</string>
+      <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
     <key>UIUserInterfaceStyle</key>
-    <string>Automatic</string>
+    <string>Light</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
   </dict>

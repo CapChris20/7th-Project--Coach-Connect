@@ -1,3 +1,5 @@
+source 'https://cdn.cocoapods.org/'
+
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
@@ -59,53 +61,5 @@ target 'CoachConnect' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
-
-    # expo-constants uses `bash -l -c` with an unquoted path — breaks when the repo path has spaces.
-    installer.pods_project.targets.each do |target|
-      target.shell_script_build_phases.each do |phase|
-        script = phase.shell_script
-        next if script.nil? || script.empty?
-        next unless script.include?('get-app-config-ios.sh')
-
-        phase.shell_script = <<~'SCRIPT'
-          set -eo pipefail
-          export PROJECT_ROOT="${PROJECT_ROOT:-"$PODS_ROOT/../.."}"
-          bash "$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh"
-        SCRIPT
-      end
-    end
-
-    # Xcode 15+ script sandbox blocks CocoaPods "[CP] Copy Pods Resources" from writing resources-to-copy-*.txt
-    installer.pods_project.build_configurations.each do |bc|
-      bc.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-    end
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |bc|
-        bc.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-      end
-    end
-    installer.aggregate_targets.each do |aggregate_target|
-      aggregate_target.user_project.native_targets.each do |target|
-        target.build_configurations.each do |bc|
-          bc.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-        end
-      end
-      aggregate_target.user_project.build_configurations.each do |bc|
-        bc.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
-      end
-    end
-
-    # [CP] Copy Pods Resources writes under Pods/; Xcode script sandbox still blocks that on some setups.
-    resources_sh = File.join(installer.sandbox.root, 'Target Support Files/Pods-CoachConnect/Pods-CoachConnect-resources.sh')
-    if File.exist?(resources_sh)
-      contents = File.read(resources_sh)
-      unless contents.include?('TARGET_TEMP_DIR}/resources-to-copy')
-        contents = contents.gsub(
-          'RESOURCES_TO_COPY=${PODS_ROOT}/resources-to-copy-${TARGETNAME}.txt',
-          'RESOURCES_TO_COPY="${TARGET_TEMP_DIR}/resources-to-copy-${TARGETNAME}.txt"'
-        )
-        File.write(resources_sh, contents)
-      end
-    end
   end
 end

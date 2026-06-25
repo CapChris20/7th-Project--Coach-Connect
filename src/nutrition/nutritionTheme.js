@@ -9,24 +9,29 @@
  * @file-header
  */
 import { BRAND_NAV_ICON_GRADIENT } from '../shared-ui/brandGradients';
+import { gradients, brandGradients } from './components/premiumFoodCard/theme';
 
-export const NUT_CALORIES_GRADIENT = ['#6D28D9', '#C2410C'];
-export const NUT_ACTION_GRADIENT = ['#6D28D9', '#C2410C'];
+/** dark orange → purple */
+export const NUT_CALORIES_GRADIENT = gradients.calories;
 
+/** dark orange → pink */
+export const NUT_ACTION_GRADIENT = brandGradients.orangePink;
+
+/** Same macro palette as premium food cards */
 export const NUT_MACRO_GRADIENTS = {
-  protein: ['#FF6B9D', '#DB2777'],
-  carbs: ['#FBBF24', '#F97316'],
-  fat: ['#22D3EE', '#06B6D4'],
+  protein: gradients.protein,
+  carbs: gradients.carbs,
+  fat: gradients.fat,
 };
 
 export const NUT_MACRO_RING_GRADIENTS = {
-  Protein: NUT_MACRO_GRADIENTS.protein,
-  Carbs: NUT_MACRO_GRADIENTS.carbs,
-  Fat: NUT_MACRO_GRADIENTS.fat,
-  Fiber: ['#BE185D', '#C2410C'],
-  Sugar: ['#FF6B9D', '#F97316'],
-  Sodium: ['#E94EAD', '#A348D0'],
-  Potassium: ['#A348D0', '#6B3AD9'],
+  Protein: gradients.protein,
+  Carbs: gradients.carbs,
+  Fat: gradients.fat,
+  Fiber: brandGradients.goldPink,
+  Sugar: brandGradients.orangePink,
+  Sodium: brandGradients.cyanPurple,
+  Potassium: brandGradients.orangePurple,
 };
 
 export const NUT_SECTION_GRADIENT = BRAND_NAV_ICON_GRADIENT;
@@ -36,7 +41,7 @@ export function gradientForNutrientLabel(label) {
 }
 
 export const NUT_FOOD_MACRO_BAR_GRADIENTS = {
-  protein: ['#FF6B9D', '#A348D0'],
-  carbs: ['#F5C842', '#F97316'],
-  fat: ['#22D3EE', '#6B3AD9'],
+  protein: gradients.protein,
+  carbs: gradients.carbs,
+  fat: gradients.fat,
 };

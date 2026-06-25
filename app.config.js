@@ -14,6 +14,12 @@ module.exports = {
     orientation: 'portrait',
     userInterfaceStyle: 'light',
     scheme: 'coachconnect',
+    icon: './assets/icon.png',
+    splash: {
+      image: './assets/splash.png',
+      resizeMode: 'contain',
+      backgroundColor: '#000000',
+    },
     plugins: [
       ['expo-camera', { cameraPermission: 'Allow Coach Connect to access your camera for progress photos and barcode scanning.' }],
       ['expo-image-picker', {
@@ -46,6 +52,9 @@ module.exports = {
       supportsTablet: true,
       bundleIdentifier: 'com.coachconnect',
       buildNumber: '1',
+      /** Apple Developer Team — required for device builds & IAP. */
+      appleTeamId: 'PFTT3AW4H3',
+      icon: './assets/icon.png',
       usesAppleSignIn: true,
       infoPlist: {
         NSCameraUsageDescription: 'This app uses the camera for progress photos and barcode scanning.',
@@ -77,6 +86,11 @@ module.exports = {
     android: {
       package: 'com.coachconnect',
       versionCode: 1,
+      icon: './assets/icon.png',
+      adaptiveIcon: {
+        foregroundImage: './assets/icon.png',
+        backgroundColor: '#000000',
+      },
       permissions: ['CAMERA', 'RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'],
     },
     extra: {
