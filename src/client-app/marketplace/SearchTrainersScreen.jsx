@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, documentId } from 'firebase/firestore';
 import { db, storage } from '../../app-start/config';
 import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared-utils/getTrainerProfileMedia';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -30,12 +30,72 @@ import {
   getTheme,
 } from './marketplaceFilters';
 
+const MARKETPLACE_PAGE_SIZE = 30;
+
+async function enrichTrainersFromUsers(trainersList) {
+  const userMap = new Map();
+  const ids = trainersList.map((t) => t.id).filter(Boolean);
+  for (let i = 0; i < ids.length; i += 30) {
+    const chunk = ids.slice(i, i + 30);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users'), where(documentId(), 'in', chunk)),
+      );
+      snap.docs.forEach((d) => userMap.set(d.id, d.data() || {}));
+    } catch (_) {
+      /* fallback per-trainer below */
+    }
+  }
+
+  return Promise.all(
+    trainersList.map(async (t) => {
+      let merged = { ...t };
+      const ud = userMap.get(t.id);
+      if (ud) {
+        const fromUser =
+          ud.photoURL || ud.photoUrl || ud.profilePhoto || ud.avatarUrl || ud.photo || null;
+        const picked =
+          trainerPhotoUri(merged) ||
+          (fromUser ? String(fromUser).trim() : null) ||
+          merged.photoURL ||
+          merged.photoUrl ||
+          null;
+        merged = {
+          ...merged,
+          photoURL: picked || null,
+          displayName: merged.displayName || ud.displayName || ud.name || merged.name || null,
+          name: merged.name || ud.name || ud.displayName || merged.displayName || null,
+        };
+      } else {
+        try {
+          const us = await getDoc(doc(db, 'users', t.id));
+          if (us.exists()) {
+            const fallback = us.data() || {};
+            merged = {
+              ...merged,
+              name: merged.name || fallback.name || fallback.displayName || merged.displayName,
+              displayName: merged.displayName || fallback.displayName || fallback.name,
+            };
+          }
+        } catch (_) {
+          /* keep trainer doc */
+        }
+      }
+      const normalizedUrl = trainerPhotoUri(merged);
+      if (normalizedUrl && !merged.photoURL) merged = { ...merged, photoURL: normalizedUrl };
+      return resolveTrainerPhotoWithStorageFallback(merged, storage);
+    }),
+  );
+}
+
 const SearchTrainersScreen = ({
   onClose,
   onBack,
   title = 'Find a Trainer',
   showHeader = true,
   showBottomNav = true,
+  /** When false, this screen skips its own nav but parent shell still shows BottomNavBar. */
+  reserveShellBottomNav = false,
   onViewProfile,
   onRequestTrainer,
   onSelectTrainer,
@@ -52,6 +112,8 @@ const SearchTrainersScreen = ({
   const headerBack = onBack ?? onClose;
   const theme = getTheme(isDark);
   const shellNavInset = useShellBottomNavInset(0);
+  const profileShellInset =
+    showBottomNav !== false || reserveShellBottomNav ? shellNavInset : 0;
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -64,6 +126,8 @@ const SearchTrainersScreen = ({
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
   const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
+  const [visibleCount, setVisibleCount] = useState(MARKETPLACE_PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -81,38 +145,9 @@ const SearchTrainersScreen = ({
           const snap = await getDocs(q);
           snap.docs.forEach((d) => data.push({ id: d.id, ...d.data() }));
         }
-        data = await Promise.all(
-          data.map(async (t) => {
-            let merged = { ...t };
-            try {
-              const us = await getDoc(doc(db, 'users', t.id));
-              if (us.exists()) {
-                const ud = us.data() || {};
-                const fromUser =
-                  ud.photoURL || ud.photoUrl || ud.profilePhoto || ud.avatarUrl || ud.photo || null;
-                const picked =
-                  trainerPhotoUri(merged) ||
-                  (fromUser ? String(fromUser).trim() : null) ||
-                  merged.photoURL ||
-                  merged.photoUrl ||
-                  null;
-                merged = {
-                  ...merged,
-                  photoURL: picked || null,
-                  displayName: merged.displayName || ud.displayName || ud.name || merged.name || null,
-                  name: merged.name || ud.name || ud.displayName || merged.displayName || null,
-                };
-              }
-            } catch (_) {
-              /* keep trainer doc */
-            }
-            const normalizedUrl = trainerPhotoUri(merged);
-            if (normalizedUrl && !merged.photoURL) merged = { ...merged, photoURL: normalizedUrl };
-            return merged;
-          })
-        );
-        data = await Promise.all(data.map((t) => resolveTrainerPhotoWithStorageFallback(t, storage)));
+        data = await enrichTrainersFromUsers(data);
         setTrainers(data);
+        setVisibleCount(MARKETPLACE_PAGE_SIZE);
       } catch (e) {
         console.error('SearchTrainersScreen load error:', e);
       } finally {
@@ -131,6 +166,22 @@ const SearchTrainersScreen = ({
     () => filterTrainers(normalized, filters, { query: search, quickSpecialty }),
     [normalized, filters, search, quickSpecialty]
   );
+
+  const visibleTrainers = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount],
+  );
+
+  const loadMoreTrainers = () => {
+    if (loadingMore || visibleCount >= filtered.length) return;
+    setLoadingMore(true);
+    setVisibleCount((c) => Math.min(c + MARKETPLACE_PAGE_SIZE, filtered.length));
+    setLoadingMore(false);
+  };
+
+  useEffect(() => {
+    setVisibleCount(MARKETPLACE_PAGE_SIZE);
+  }, [filters, search, quickSpecialty]);
 
   const openProfile = (trainer) => {
     setProfileTrainer(trainer);
@@ -239,12 +290,15 @@ const SearchTrainersScreen = ({
           onConnect={(t) => openConnectFlow(t)}
           isDark={isDark}
           requesting={requesting}
-          shellBottomInset={showBottomNav !== false ? shellNavInset : 0}
+          shellBottomInset={profileShellInset}
         />
       ) : (
         <BrowseTrainersScreen
-          trainers={filtered}
+          trainers={visibleTrainers}
           loading={loading}
+          loadingMore={loadingMore}
+          hasMore={visibleCount < filtered.length}
+          onLoadMore={loadMoreTrainers}
           isDark={isDark}
           filters={filters}
           search={search}

@@ -8,13 +8,14 @@ import {
 import { useSubscription } from './SubscriptionProvider';
 import TrainerProSubscriptionOffer from './TrainerProSubscriptionOffer';
 
-export default function TrainerSubscriptionPaywallScreen({ onOpenSettings }) {
+export default function TrainerSubscriptionPaywallScreen({ onOpenSettings, onOpenTerms, onOpenPrivacy }) {
   const { isDark } = useTheme();
   const {
     actionLoading,
     lastError,
     clearError,
     startFreeTrial,
+    restorePurchases,
     storeProduct,
     connected,
   } = useSubscription();
@@ -45,8 +46,11 @@ export default function TrainerSubscriptionPaywallScreen({ onOpenSettings }) {
       actionLoading={actionLoading}
       lastError={lastError}
       onPrimary={handleCta}
+      onRestore={restorePurchases}
       onContactSupport={handleContactSupport}
       onOpenSettings={onOpenSettings}
+      onOpenTerms={onOpenTerms}
+      onOpenPrivacy={onOpenPrivacy}
       connected={Platform.OS !== 'ios' || connected}
     />
   );

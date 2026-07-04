@@ -72,6 +72,7 @@ import {
   formatEquipmentFromProfile,
   formatDaysPerWeek,
 } from '../../shared-utils/formatOnboardingDisplay';
+import { resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
 
 /** Unified profile chrome — CoachConnect warm accent (dark pink → dark orange). */
 const PROFILE = {
@@ -623,21 +624,27 @@ export function ViewMyViewMyProfileScreen({
     ]).start();
   }, [heroAnim, personalAnim, trainingAnim, accountAnim]);
 
+  const trainerDoc = useMemo(() => ({ ...(userData || {}), ...(onboardingData || {}) }), [userData, onboardingData]);
+
+  const clientProfile = useMemo(
+    () => resolveClientProfileFields(userData, onboardingData),
+    [userData, onboardingData],
+  );
+  const profileDoc = isTrainer ? trainerDoc : clientProfile;
+
   const displayName = useMemo(() => {
     const u = auth?.currentUser;
     const first = userData?.firstName ? String(userData.firstName).trim() : '';
     const last = userData?.lastName ? String(userData.lastName).trim() : '';
     const fromUser = `${first} ${last}`.trim();
-    const fromDoc = String(onboardingData?.name || '').trim();
+    const fromDoc = String(clientProfile?.name || onboardingData?.name || '').trim();
     return (fromUser || fromDoc || String(u?.displayName || '').trim() || 'Your Profile').trim();
-  }, [userData?.firstName, userData?.lastName, onboardingData?.name]);
+  }, [userData?.firstName, userData?.lastName, clientProfile?.name, onboardingData?.name]);
 
   const handle = useMemo(() => {
     const raw = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w_]/g, '');
     return `@${raw || 'coachconnect'}`;
   }, [displayName]);
-
-  const trainerDoc = useMemo(() => ({ ...(userData || {}), ...(onboardingData || {}) }), [userData, onboardingData]);
 
   const profileHeadline = useMemo(() => {
     if (isTrainer) {
@@ -646,10 +653,10 @@ export function ViewMyViewMyProfileScreen({
       if (b) return b;
       return 'Add a short public line about who you are — it appears on your profile.';
     }
-    const g = String(onboardingData?.primaryGoal || '').trim();
+    const g = String(clientProfile?.primaryGoal || '').trim();
     if (g) return formatOnboardingDisplay(g, '');
     return 'Keep your details current for a tailored experience.';
-  }, [isTrainer, trainerDoc?.trainerProfileBio, onboardingData?.primaryGoal]);
+  }, [isTrainer, trainerDoc?.trainerProfileBio, clientProfile?.primaryGoal, onboardingData?.primaryGoal]);
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -737,28 +744,28 @@ export function ViewMyViewMyProfileScreen({
   };
 
   const getEditSeedForKey = (key) => {
-    if (key === 'height') return parseHeightForProfile(onboardingData?.height).editSeed;
+    if (key === 'height') return parseHeightForProfile(profileDoc?.height).editSeed;
     if (key === 'name') {
       const first = userData?.firstName != null ? String(userData.firstName).trim() : '';
       const last = userData?.lastName != null ? String(userData.lastName).trim() : '';
       const combined = `${first} ${last}`.trim();
       if (combined) return combined;
-      return String(onboardingData?.name || '').trim();
+      return String(profileDoc?.name || '').trim();
     }
     if (key === 'location') return String(trainerDoc?.location || '').trim();
     if (key === 'trainerProfileBio') return String(trainerDoc?.trainerProfileBio || '').trim();
     if (key === 'instagram') return String(trainerDoc?.instagram || trainerDoc?.instagramHandle || '').trim();
     if (key === 'website') return String(trainerDoc?.website || trainerDoc?.websiteUrl || '').trim();
     if (key === 'trainingPhilosophy') return String(trainerDoc?.trainingPhilosophy || '').trim();
-    if (key === 'primaryGoal') return String(onboardingData?.primaryGoal || '').trim();
-    if (key === 'fitnessLevel') return String(onboardingData?.fitnessLevel || '').trim();
+    if (key === 'primaryGoal') return String(profileDoc?.primaryGoal || '').trim();
+    if (key === 'fitnessLevel') return String(profileDoc?.fitnessLevel || '').trim();
     if (key === 'daysPerWeek') {
-      return onboardingData?.daysPerWeek != null ? String(onboardingData.daysPerWeek) : '';
+      return profileDoc?.daysPerWeek != null ? String(profileDoc.daysPerWeek) : '';
     }
     if (key === 'equipment') {
-      const arr = onboardingData?.equipmentAccess;
+      const arr = profileDoc?.equipmentAccess;
       if (Array.isArray(arr) && arr.length) return arr.join(', ');
-      return String(onboardingData?.equipment || '').trim();
+      return String(profileDoc?.equipment || '').trim();
     }
     return '';
   };
@@ -858,15 +865,15 @@ export function ViewMyViewMyProfileScreen({
     };
   }, [onNavigate, onHomePress, onPlusPress, onVoicePress, onNutritionPress, onWorkoutPress, onMessagesPress, onProfilePress]);
 
-  const email = auth?.currentUser?.email || onboardingData?.email || '—';
+  const email = auth?.currentUser?.email || clientProfile?.email || onboardingData?.email || '—';
 
   const personalData = [
     { key: 'name', Icon: User, value: displayName || '—', label: 'Full name' },
     { key: 'email', Icon: Mail, value: String(email || '—'), label: 'Email', readOnly: true },
-    { key: 'age', profileIconId: 'age', value: onboardingData?.age != null ? String(onboardingData.age) : '—', label: 'Age' },
-    { key: 'height', profileIconId: 'height', value: formatHeight(onboardingData?.height), label: 'Height' },
-    { key: 'weight', profileIconId: 'weight', value: formatWeight(onboardingData?.weight), label: 'Weight' },
-    { key: 'gender', profileIconId: 'gender', value: formatGender(onboardingData?.gender), label: 'Gender' },
+    { key: 'age', profileIconId: 'age', value: clientProfile?.age != null ? String(clientProfile.age) : '—', label: 'Age' },
+    { key: 'height', profileIconId: 'height', value: formatHeight(clientProfile?.height), label: 'Height' },
+    { key: 'weight', profileIconId: 'weight', value: formatWeight(clientProfile?.weight), label: 'Weight' },
+    { key: 'gender', profileIconId: 'gender', value: formatGender(clientProfile?.gender), label: 'Gender' },
   ];
 
   const trainingPreferences = [
@@ -874,25 +881,25 @@ export function ViewMyViewMyProfileScreen({
       key: 'primaryGoal',
       profileIconId: 'goal',
       label: 'Primary goal',
-      value: formatOnboardingDisplay(onboardingData?.primaryGoal),
+      value: formatOnboardingDisplay(clientProfile?.primaryGoal),
     },
     {
       key: 'fitnessLevel',
       profileIconId: 'fitnessLevel',
       label: 'Fitness level',
-      value: formatOnboardingDisplay(onboardingData?.fitnessLevel),
+      value: formatOnboardingDisplay(clientProfile?.fitnessLevel),
     },
     {
       key: 'daysPerWeek',
       profileIconId: 'frequency',
       label: 'Training frequency',
-      value: formatDaysPerWeek(onboardingData?.daysPerWeek),
+      value: formatDaysPerWeek(clientProfile?.daysPerWeek),
     },
     {
       key: 'equipment',
       profileIconId: 'equipment',
       label: 'Equipment',
-      value: formatEquipmentFromProfile(onboardingData),
+      value: formatEquipmentFromProfile(clientProfile),
     },
   ];
 
@@ -1103,7 +1110,7 @@ export function ViewMyViewMyProfileScreen({
                       iconColor={PROFILE.icon}
                       LeadingIcon={item.Icon}
                       profileIconId={item.profileIconId}
-                      onboardingData={onboardingData}
+                      onboardingData={profileDoc}
                       showDivider={idx < personalData.length - 1}
                     />
                   ))}
@@ -1125,7 +1132,7 @@ export function ViewMyViewMyProfileScreen({
                       iconColor={PROFILE.icon}
                       LeadingIcon={item.Icon}
                       profileIconId={item.profileIconId}
-                      onboardingData={onboardingData}
+                      onboardingData={profileDoc}
                       showDivider={idx < trainingPreferences.length - 1}
                     />
                   ))}

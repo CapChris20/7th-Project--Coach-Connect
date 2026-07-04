@@ -114,7 +114,7 @@ function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals 
 }
 
 
-import { subscribeToUnreadCount } from '../ai-coach/server-logic/chat-api/loadMoreCoachConversations';
+import { subscribeToUnreadCount, rebuildUnreadIndexForUser } from '../ai-coach/server-logic/chat-api/loadMoreCoachConversations';
 import { getOrCreateConversation, sendClientRequest } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
 import StartCoachChatScreen from '../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
 import ChatWithCoachScreen from '../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
@@ -142,6 +142,7 @@ import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
 import DocumentViewerModal from '../shared/components/notes-files/DocumentViewerModal';
+import { ClientPaymentModal } from '../components/ClientPaymentModal';
 import EmbedWebViewModal from '../shared/components/notes-files/EmbedWebViewModal';
 import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components/notes-files/FileGalleryGrid';
 import MediaViewerModal from '../shared/components/notes-files/MediaViewerModal';
@@ -397,9 +398,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     });
   }, [user?.uid]);
 
-  // Subscribe to unread message count
+  // Subscribe to unread message count (single Firestore listener)
   useEffect(() => {
     if (!user || !user.uid) return;
+
+    rebuildUnreadIndexForUser(user.uid).catch(() => {});
 
     const unsubscribe = subscribeToUnreadCount(user.uid, (count) => {
       setUnreadMessageCount(count);
@@ -1098,11 +1101,6 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     return tr.displayName || tr.name || 'Your trainer';
   }, [trainerData]);
 
-  const handleConfirmCoachingPayment = useCallback(() => {
-    console.log('[ClientApp] handleConfirmCoachingPayment placeholder');
-    closeCoachingPayment();
-  }, [closeCoachingPayment]);
-
   const requestTrainerConnection = useCallback(
     async (trainer, { clientIntro } = {}) => {
       const clientId = user?.uid;
@@ -1445,81 +1443,14 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               borderColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: 18, fontWeight: '800', textAlign: 'center', color: colors.text, marginBottom: 16 }}>
-              Coaching Payment
-            </Text>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <LinearGradient
-                colors={['#FF6B9D', '#C084FC']}
-                style={{ width: 48, height: 48, borderRadius: 24, padding: 2 }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    borderRadius: 22,
-                    overflow: 'hidden',
-                    backgroundColor: isDark ? colors.background : colors.surface,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {trainerPhotoUri(trainerData) ? (
-                    <Image source={{ uri: trainerPhotoUri(trainerData) }} style={{ width: 44, height: 44 }} />
-                  ) : (
-                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>
-                      {String(coachingTrainerName || '?').trim().charAt(0).toUpperCase()}
-                    </Text>
-                  )}
-                </View>
-              </LinearGradient>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>
-                  {coachingTrainerName}
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '700', marginTop: 2 }}>
-                  {coachingRateLabel ? `${coachingRateLabel}/mo` : '—'}
-                </Text>
-              </View>
-            </View>
-
-            <View
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: isDark ? colors.surfaceSecondary : colors.surfaceSecondary,
-                padding: 14,
-                marginBottom: 12,
+            <ClientPaymentModal
+              trainerId={trainerData?.id || trainerData?.uid || userData?.trainerId || ''}
+              trainerName={coachingTrainerName}
+              onClose={closeCoachingPayment}
+              onSuccess={() => {
+                onRefetchUserData?.();
               }}
-            >
-              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
-                Payment method — coming soon
-              </Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 13, opacity: 0.85 }}>
-                Stripe card input will appear here.
-              </Text>
-            </View>
-
-            <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: 16 }}>
-              {coachingRateLabel
-                ? `You will be charged ${coachingRateLabel}/mo on the same date each month`
-                : 'You will be charged monthly on the same date each month'}
-            </Text>
-
-            <TouchableOpacity activeOpacity={0.92} onPress={handleConfirmCoachingPayment}>
-              <LinearGradient
-                colors={['#FF6B9D', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{ borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginBottom: 8 }}
-              >
-                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>Confirm</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ paddingVertical: 14, alignItems: 'center' }} onPress={closeCoachingPayment}>
-              <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: '600' }}>Cancel</Text>
-            </TouchableOpacity>
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>

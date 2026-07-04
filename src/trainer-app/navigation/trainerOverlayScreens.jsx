@@ -31,6 +31,7 @@ import ManualWorkoutPlanBuilderScreen from '../workout-plans/ManualWorkoutPlanBu
 import PaymentsScreen from '../payments/PaymentsScreen';
 import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
 import { useSubscription } from '../../subscription/SubscriptionProvider';
+import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../../subscription/constants';
 
 function withNav(children, shell) {
   return <AppNavigationProvider {...shell.navProviderProps}>{children}</AppNavigationProvider>;
@@ -71,7 +72,7 @@ export function TrainerSettingsScreen() {
 function useTrainerPlatformSubscriptionSettings() {
   const { accessState, restorePurchases, actionLoading, firestoreSubscription } = useSubscription();
 
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS !== 'ios' || !TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) {
     return {};
   }
 

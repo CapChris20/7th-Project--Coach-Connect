@@ -11,7 +11,7 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { getTheme } from '../marketplace/marketplaceFilters';
 import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
 import { useClientAppShell } from './ClientAppShellContext';
@@ -55,7 +55,9 @@ if (typeof __DEV__ !== 'undefined' && __DEV__) {
   AICoachTestSuite = require('../../ai-coach/chat-ui/AICoachTestSuite').default;
 }
 import { doc, getDoc } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../app-start/config';
+import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
 import { rootNavigate } from '../../navigation/navigationRef';
 import { buildNavigateFromShell } from '../../navigation/shellNavigate';
 
@@ -92,7 +94,13 @@ export function ClientViewMyViewMyProfileScreen() {
             s.onRefetchUserData?.();
             if (s.user?.uid && db) {
               const snap = await getDoc(doc(db, 'users', s.user.uid));
-              if (snap.exists()) s.setOnboardingData(snap.data());
+              const cached = await loadCachedOnboardingProfile(s.user.uid, AsyncStorage);
+              const merged = resolveClientProfileFields(
+                cached,
+                snap.exists() ? snap.data() : null,
+                s.userData,
+              );
+              s.setOnboardingData(merged);
             }
           } catch (e) {
             console.warn('ViewMyViewMyProfileScreen refresh after save:', e?.message);
@@ -116,6 +124,7 @@ export function ClientSettingsScreen() {
         userData={s.userData}
         trainerData={s.trainerData}
         embedShellBottomNav
+        onOpenCoachingPayment={s.openCoachingPayment}
       />
       {s.addNotesFilesModalEl}
     </>,
@@ -202,6 +211,7 @@ export function ClientSearchTrainersScreen() {
       <SearchTrainersScreen
         onBack={s.rootGoBack}
         showBottomNav={false}
+        reserveShellBottomNav
         onRequestTrainer={s.requestTrainerConnection}
       />
       {s.addNotesFilesModalEl}
@@ -212,6 +222,7 @@ export function ClientSearchTrainersScreen() {
 
 export function ClientTrainerViewMyViewMyProfileScreen() {
   const s = useClientAppShell();
+  const shellBottomInset = useShellBottomNavInset(12);
 
   const closeProfile = () => {
     s.setProfileTrainer(null);
@@ -264,7 +275,7 @@ export function ClientTrainerViewMyViewMyProfileScreen() {
           onMessage={isConnectedCoach ? openCoachMessage : undefined}
           onConnect={isConnectedCoach ? undefined : connect.openConnectFlow}
           requesting={connect.requesting}
-          shellBottomInset={0}
+          shellBottomInset={shellBottomInset}
         />
       </View>
       <TrainerRequestConfirmModal
@@ -291,7 +302,6 @@ export function ClientTrainerViewMyViewMyProfileScreen() {
       {s.addNotesFilesModalEl}
     </SafeAreaView>,
     s,
-    { hideBottomNav: true },
   );
 }
 

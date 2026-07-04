@@ -44,7 +44,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Liquid } from '../../shared-ui/liquid/liquidTokens';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from '../plan-builder/workoutPlanBuilderFieldEditBody';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
@@ -1795,6 +1795,8 @@ export default function WorkoutPlanGeneratorScreen({
   const theme = useTheme();
   const { isDark, toggleTheme } = theme;
   const insets = useSafeAreaInsets();
+  const shellBottomInset = useShellBottomNavInset(12);
+  const stickyCtaFooterPad = shellBottomInset;
   const { aiEnabled, loading: aiPrefLoading } = useAI();
   const aiOn = aiEnabled === true;
   const aiPrefReady = !aiPrefLoading && aiEnabled !== null;
@@ -1854,7 +1856,10 @@ export default function WorkoutPlanGeneratorScreen({
 
   // Plan generation limit (server-enforced; usage synced from Firestore + API responses)
   const [workoutGenUsage, setWorkoutGenUsage] = useState(null);
-  const plansUsedThisMonth = Number(workoutGenUsage?.generations_used) || 0;
+  const plansUsedThisMonth = Math.max(
+    Number(workoutGenUsage?.generations_used) || 0,
+    generatedPlan && (generatedPlan.planText || generatedPlan.structuredPlan) ? 1 : 0,
+  );
   const planGenerationLimit = Number(workoutGenUsage?.generations_limit) || PLAN_LIMIT_TOTAL;
   const plansRemaining = Math.max(0, planGenerationLimit - plansUsedThisMonth);
   const nextResetDate = useMemo(() => {
@@ -1866,7 +1871,8 @@ export default function WorkoutPlanGeneratorScreen({
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const uid = profileSubjectUid || auth.currentUser?.uid;
+      // Plan limits are per authenticated user (not the profile subject when a coach is viewing).
+      const uid = auth.currentUser?.uid;
       if (!uid) return;
       const usage = await resolveWorkoutGenerationUsage(uid, { generatedPlan });
       if (mounted) setWorkoutGenUsage(usage);
@@ -1874,7 +1880,7 @@ export default function WorkoutPlanGeneratorScreen({
     return () => {
       mounted = false;
     };
-  }, [profileSubjectUid, generatedPlan?.generatedAt, generatedPlan?.id]);
+  }, [generatedPlan?.generatedAt, generatedPlan?.id]);
 
   // Trainer-request UI state (AI disabled path)
   const [requestText, setRequestText] = useState('');
@@ -2022,7 +2028,8 @@ export default function WorkoutPlanGeneratorScreen({
   const fetchWorkoutPlanFromServer = async (data, subjectUserId) => {
     const uid = subjectUserId || auth.currentUser?.uid;
     const { text, usage } = await requestWorkoutPlanFromApi(data, uid);
-    const merged = await resolveWorkoutGenerationUsage(uid, { apiUsage: usage, justGenerated: true });
+    const usageUid = auth.currentUser?.uid || uid;
+    const merged = await resolveWorkoutGenerationUsage(usageUid, { apiUsage: usage, justGenerated: true });
     setWorkoutGenUsage(merged);
     return text;
   };
@@ -2973,9 +2980,130 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const textSecondary = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.6)';
   const stickyCtaVisible =
     aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan) && !isCoachViewingClientProfile;
-  const bottomNavPad = BOTTOM_NAV_BAR_HEIGHT + insets.bottom;
-  const stickyCtaBottom = bottomNavPad + 12;
-  const stickyCtaExtraScrollPad = stickyCtaVisible ? bottomNavPad + 86 : bottomNavPad + 20;
+
+  const renderStickyPlanCta = () => (
+    <View
+      style={[
+        styles.stickyCtaFooter,
+        { paddingBottom: stickyCtaFooterPad },
+      ]}
+    >
+      <View
+        style={[
+          styles.stickyCtaCard,
+          {
+            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+            backgroundColor: isDark ? 'rgba(10,10,18,0.65)' : 'rgba(255,255,255,0.88)',
+          },
+        ]}
+      >
+        {!isCoachViewingClientProfile ? (
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
+              textAlign: 'center',
+              marginBottom: 10,
+            }}
+          >
+            {plansUsedThisMonth} of {planGenerationLimit} plans used this month
+            {plansRemaining <= 0
+              ? ` · Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}`
+              : ''}
+          </Text>
+        ) : null}
+        {generatedPlan ? (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => setShowFullPlan(true)}
+              style={{ flex: 1, height: 56, borderRadius: 16, overflow: 'hidden' }}
+            >
+              <LinearGradient
+                colors={['#BE185D', '#C2410C']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+              >
+                <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>Open Plan</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={handleRegeneratePlan}
+              disabled={isGenerating}
+              style={{
+                flex: 1,
+                height: 56,
+                borderRadius: 16,
+                overflow: 'hidden',
+                opacity: isGenerating ? 0.7 : 1,
+              }}
+            >
+              <LinearGradient
+                colors={['#BE185D', '#C2410C']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: 14.5,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 10,
+                    backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+                  }}
+                >
+                  <Ionicons name="sparkles" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+                  <Text style={{ color: isDark ? '#FFFFFF' : '#0A0A0F', fontSize: 16, fontWeight: '900' }}>
+                    {isGenerating ? 'Generating…' : 'Generate New'}
+                  </Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => {
+                if (plansRemaining <= 0) {
+                  Alert.alert(
+                    'Monthly limit reached',
+                    `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+                  );
+                  return;
+                }
+                generateWorkoutPlan();
+              }}
+              disabled={isGenerating}
+              style={{ height: 56, borderRadius: 16, overflow: 'hidden', opacity: isGenerating ? 0.7 : 1 }}
+            >
+              <LinearGradient
+                colors={['#BE185D', '#C2410C']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+              >
+                <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>
+                  {isGenerating ? 'Generating…' : 'Generate Plan'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
 
   // Full-screen viewer mode (no editor UI).
   if (generatedPlan && (readOnly || showFullPlan)) {
@@ -3131,22 +3259,25 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               }
             }}
           />
-          <ViewMyWorkoutPlanScreen
-            route={{
-              params: {
-                workoutPlan: workoutPlanRows,
-                overview: overviewText,
-                isDarkOverride: isDark,
-                weeksRemaining: planViewerWeeks,
-                focusSummary: planViewerFocus,
-                planHeroTitle: planHeroTitle,
-                subViewBackRef: planSubViewBackRef,
-                onSubViewActiveChange: (active) => {
-                  planSubViewActiveRef.current = !!active;
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <ViewMyWorkoutPlanScreen
+              route={{
+                params: {
+                  workoutPlan: workoutPlanRows,
+                  overview: overviewText,
+                  isDarkOverride: isDark,
+                  weeksRemaining: planViewerWeeks,
+                  focusSummary: planViewerFocus,
+                  planHeroTitle: planHeroTitle,
+                  reserveShellBottomNav: readOnly || !generatedPlan,
+                  subViewBackRef: planSubViewBackRef,
+                  onSubViewActiveChange: (active) => {
+                    planSubViewActiveRef.current = !!active;
+                  },
                 },
-              },
-            }}
-          />
+              }}
+            />
+          </View>
           <WorkoutPlanPdfViewerModal
             visible={showPdfViewer}
             pdfLocalUri={pdfLocalUri}
@@ -3159,7 +3290,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             }}
           />
           {!readOnly && generatedPlan && (
-            <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: shellBottomInset }}>
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={handleAddToCollection}
@@ -3490,12 +3621,14 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
       <View style={{ flex: 1, minHeight: 0, position: 'relative' }}>
       {activeTab === 'plans' ? (
+        <>
         <ScrollView
           ref={scrollViewRef}
           style={styles.scrollView}
           contentContainerStyle={{
+            flexGrow: 1,
             paddingTop: 14,
-            paddingBottom: 32 + insets.bottom + stickyCtaExtraScrollPad,
+            paddingBottom: stickyCtaVisible ? 20 : shellBottomInset + 20,
             paddingHorizontal: 0,
           }}
           showsVerticalScrollIndicator={false}
@@ -3657,58 +3790,88 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               style={{
                 borderRadius: 22,
                 padding: 18,
-                minHeight: 210,
-                flexDirection: 'row',
                 backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
+                overflow: 'hidden',
               }}
             >
-              <View style={{ flex: 1.35, paddingRight: 12, justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 22, fontWeight: '800', color: lovableText }}>
-                  {`${heroGreeting}${userNameForHero ? `, ${userNameForHero}` : ''}!`}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+                <View style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+                  <Text style={{ fontSize: 22, fontWeight: '800', color: lovableText, lineHeight: 28 }}>
+                    {`${heroGreeting}${userNameForHero ? `, ${userNameForHero}` : ''}!`}
+                  </Text>
 
-                <View style={{ marginTop: 10 }}>
+                  <View style={{ marginTop: 14 }}>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '900',
+                        letterSpacing: 1.2,
+                        textTransform: 'uppercase',
+                        color: lovableMuted,
+                      }}
+                    >
+                      Welcome to
+                    </Text>
+                    <LinearGradient
+                      colors={['#BE185D', '#C2410C']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{ width: 44, height: 2, borderRadius: 1, marginTop: 6 }}
+                    />
+                  </View>
+
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: 28,
                       fontWeight: '900',
-                      letterSpacing: 1,
-                      textTransform: 'uppercase',
-                      color: lovableMuted,
+                      color: '#FF6B9D',
+                      marginTop: 10,
+                      lineHeight: 34,
+                      flexShrink: 1,
                     }}
                   >
-                    Welcome to
+                    {heroGoal === '—' ? 'Build Muscle' : heroGoal}
                   </Text>
-                  <View style={{ width: 44, height: 2, borderRadius: 1, backgroundColor: '#FF6B9D', marginTop: 6 }} />
+
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: lovableMuted,
+                      marginTop: 8,
+                      lineHeight: 19,
+                    }}
+                  >
+                    {heroLevel === '—' ? 'Intermediate' : heroLevel}
+                    {heroPersonal !== '—' ? ` • ${heroPersonal}` : ''}
+                  </Text>
                 </View>
 
-                <Text style={{ fontSize: 34, fontWeight: '900', color: lovableText, marginTop: 10 }} numberOfLines={1}>
-                  {heroGoal === '—' ? 'Build Muscle' : heroGoal}
-                </Text>
-
-                <Text style={{ fontSize: 13, fontWeight: '700', color: lovableMuted, marginTop: 8 }}>
-                  {heroLevel === '—' ? 'Intermediate' : heroLevel}
-                  {heroPersonal !== '—' ? ` • ${heroPersonal}` : ''}
-                </Text>
-
-                {/* Removed fake quote block */}
-              </View>
-
-              <View style={{ flex: 0.65, justifyContent: 'center', alignItems: 'center' }}>
-                <View
+                <LinearGradient
+                  colors={['#BE185D', '#C2410C']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                   style={{
-                    width: 118,
-                    height: 118,
-                    borderRadius: 59,
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
+                    width: 76,
+                    height: 76,
+                    borderRadius: 22,
+                    padding: 2,
+                    flexShrink: 0,
+                    marginTop: 4,
                   }}
                 >
-                  <MaterialCommunityIcons name="trophy" size={60} color="#FF6B9D" />
-                </View>
+                  <View
+                    style={{
+                      flex: 1,
+                      borderRadius: 20,
+                      backgroundColor: isDark ? '#121018' : '#FFFFFF',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <MaterialCommunityIcons name="trophy" size={38} color="#FF6B9D" />
+                  </View>
+                </LinearGradient>
               </View>
             </View>
           </LinearGradient>
@@ -4213,6 +4376,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             );
           })()}
       </ScrollView>
+      {stickyCtaVisible ? renderStickyPlanCta() : null}
+        </>
       ) : (
         <WorkoutExerciseLibraryTab
           isDark={isDark}
@@ -4222,124 +4387,20 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       )}
       </View>
 
-      {stickyCtaVisible ? (
-        <View pointerEvents="box-none" style={[styles.stickyCtaWrap, { bottom: stickyCtaBottom }]}>
-          <View
-            style={[
-              styles.stickyCtaCard,
-              {
-                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
-                backgroundColor: isDark ? 'rgba(10,10,18,0.65)' : 'rgba(255,255,255,0.88)',
-              },
-            ]}
-          >
-            {!isCoachViewingClientProfile ? (
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
-                  textAlign: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                {plansUsedThisMonth} of {planGenerationLimit} plans used this month
-                {plansRemaining <= 0
-                  ? ` · Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}`
-                  : ''}
-              </Text>
-            ) : null}
-            {generatedPlan ? (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity
-                  activeOpacity={0.92}
-                  onPress={() => setShowFullPlan(true)}
-                  style={{ flex: 1, height: 56, borderRadius: 16, overflow: 'hidden' }}
-                >
-                  <LinearGradient
-                    colors={['#BE185D', '#C2410C']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
-                  >
-                    <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>Open Plan</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.92}
-                  onPress={handleRegeneratePlan}
-                  disabled={isGenerating}
-                  style={{
-                    flex: 1,
-                    height: 56,
-                    borderRadius: 16,
-                    overflow: 'hidden',
-                    opacity: isGenerating ? 0.7 : 1,
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#BE185D', '#C2410C']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{ flex: 1, padding: 1.5, borderRadius: 16 }}
-                  >
-                    <View
-                      style={{
-                        flex: 1,
-                        borderRadius: 14.5,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'row',
-                        gap: 10,
-                        backgroundColor: isDark ? '#0D1117' : '#FFFFFF',
-                        borderWidth: 1,
-                        borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
-                      }}
-                    >
-                      <Ionicons name="sparkles" size={18} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-                      <Text style={{ color: isDark ? '#FFFFFF' : '#0A0A0F', fontSize: 16, fontWeight: '900' }}>
-                        {isGenerating ? 'Generating…' : 'Generate New'}
-                      </Text>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                <TouchableOpacity
-                  activeOpacity={0.92}
-                  onPress={() => {
-                    if (plansRemaining <= 0) {
-                      Alert.alert(
-                        'Monthly limit reached',
-                        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
-                      );
-                      return;
-                    }
-                    generateWorkoutPlan();
-                  }}
-                  disabled={isGenerating}
-                  style={{ height: 56, borderRadius: 16, overflow: 'hidden', opacity: isGenerating ? 0.7 : 1 }}
-                >
-                  <LinearGradient
-                    colors={['#BE185D', '#C2410C']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
-                  >
-                    <Ionicons name="sparkles" size={18} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>
-                      {isGenerating ? 'Generating…' : 'Generate Plan'}
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      ) : null}
+      {!hideBottomNav && (
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+            onProfilePress={() => onNavigate && onNavigate('profile')}
+            onPlusPress={() => onNavigate && onNavigate('create')}
+            onVoicePress={() => onNavigate && onNavigate('voice')}
+            onWorkoutPress={() => onNavigate && onNavigate('workout')}
+            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+            onMessagesPress={() => onNavigate && onNavigate('messages')}
+            activeTabKey="workout"
+          />
+        </ShellBottomNavAnchor>
+      )}
 
       <WorkoutPlanPdfViewerModal
         visible={showPdfViewer}
@@ -4458,20 +4519,6 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         </KeyboardAvoidingView>
       </Modal>
 
-      {!hideBottomNav && (
-        <ShellBottomNavAnchor>
-          <BottomNavBar
-            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-            onProfilePress={() => onNavigate && onNavigate('profile')}
-            onPlusPress={() => onNavigate && onNavigate('create')}
-            onVoicePress={() => onNavigate && onNavigate('voice')}
-            onWorkoutPress={() => onNavigate && onNavigate('workout')}
-            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-            onMessagesPress={() => onNavigate && onNavigate('messages')}
-            activeTabKey="workout"
-          />
-        </ShellBottomNavAnchor>
-      )}
     </SafeAreaView>
     </View>
   );
@@ -4484,12 +4531,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  stickyCtaWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+  stickyCtaFooter: {
     paddingHorizontal: 16,
-    zIndex: 20,
+    paddingTop: 8,
+    flexShrink: 0,
   },
   stickyCtaCard: {
     borderRadius: 18,

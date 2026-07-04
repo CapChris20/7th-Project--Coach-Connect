@@ -1,8 +1,6 @@
 import React, { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import WheelPicker from '@quidone/react-native-wheel-picker';
-import { LinearGradient } from 'expo-linear-gradient';
-import { DARK_PINK, SESSION_GRADIENT } from '../../sessions/sessionSchedulingTheme';
 
 const ITEM_HEIGHT = 40;
 const VISIBLE_COUNT = 5;
@@ -12,8 +10,9 @@ export default function SessionWheelPicker({
   value,
   onValueChanged,
   flex = 1,
-  activeTextColor = DARK_PINK,
-  inactiveTextColor = 'rgba(255,255,255,0.5)',
+  activeTextColor = '#FFFFFF',
+  inactiveTextColor = '#888888',
+  selectedBandColor = 'rgba(255, 107, 157, 0.15)',
 }) {
   const renderItem = useCallback(
     ({ item, itemTextStyle }) => {
@@ -38,15 +37,10 @@ export default function SessionWheelPicker({
   const renderOverlay = useCallback(
     () => (
       <View style={styles.overlayWrap} pointerEvents="none">
-        <LinearGradient
-          colors={[`${SESSION_GRADIENT[0]}22`, `${SESSION_GRADIENT[1]}18`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.overlayGradient}
-        />
+        <View style={[styles.overlayGradient, { backgroundColor: selectedBandColor }]} />
       </View>
     ),
-    [],
+    [selectedBandColor],
   );
 
   return (
@@ -85,7 +79,7 @@ const styles = StyleSheet.create({
     height: ITEM_HEIGHT,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: `${DARK_PINK}66`,
+    borderColor: 'rgba(255, 107, 157, 0.25)',
   },
   overlayItem: { backgroundColor: 'transparent' },
 });

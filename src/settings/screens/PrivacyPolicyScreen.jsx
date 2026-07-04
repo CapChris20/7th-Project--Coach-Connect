@@ -227,7 +227,18 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>8. Your privacy rights and requests</Text>
+            <Text style={styles.sectionTitle}>8. Subscriptions and payments (Coach Connect Pro)</Text>
+            <Text style={styles.sectionText}>
+              If you subscribe to Coach Connect Pro as a trainer, Apple processes payment through your Apple ID.
+              We receive subscription status from Apple (such as product identifier, transaction identifiers, trial or
+              active status, and renewal dates) to unlock trainer features and show your subscription status in the app.
+              We do not receive your full payment card number from Apple. You can manage or cancel in iOS Settings →
+              Apple ID → Subscriptions.
+            </Text>
+          </PolicySectionCard>
+
+          <PolicySectionCard styles={styles}>
+            <Text style={styles.sectionTitle}>9. Your privacy rights and requests</Text>
             <Text style={styles.sectionText}>
               Depending on where you live, you may have rights to access, correct, delete, or export personal
               information, to object to or restrict certain processing, or to withdraw consent where processing was based
@@ -241,7 +252,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>9. Security</Text>
+            <Text style={styles.sectionTitle}>10. Security</Text>
             <Text style={styles.sectionText}>
               We use reasonable technical and organizational measures to protect personal information. No online service
               can guarantee perfect security. Help protect your account by using a strong password and keeping your device
@@ -250,7 +261,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>10. Retention</Text>
+            <Text style={styles.sectionTitle}>11. Retention</Text>
             <Text style={styles.sectionText}>
               We keep information for as long as your account is active and as needed to operate Coach Connect, resolve
               disputes, enforce agreements, and meet legal obligations. After account deletion, some information may
@@ -259,7 +270,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>11. Your in-app choices</Text>
+            <Text style={styles.sectionTitle}>12. Your in-app choices</Text>
             <Text style={styles.sectionText}>
               You can adjust notification preferences in the app and your device settings, turn optional AI features off
               in Settings, and use Delete account if you want to leave. The Privacy and data rights item in Settings
@@ -268,7 +279,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>12. Children</Text>
+            <Text style={styles.sectionTitle}>13. Children</Text>
             <Text style={styles.sectionText}>
               Coach Connect is not directed at children under 13, and we do not knowingly collect personal information
               from children under 13. If you believe we have collected information from a child under 13, contact us and
@@ -277,7 +288,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>13. Changes to this policy</Text>
+            <Text style={styles.sectionTitle}>14. Changes to this policy</Text>
             <Text style={styles.sectionText}>
               We may update this policy from time to time. When we do, we will change the “Last updated” date at the top.
               If changes are material, we may also provide a notice in the app or by email where appropriate.
@@ -285,7 +296,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>14. Contact</Text>
+            <Text style={styles.sectionTitle}>15. Contact</Text>
             <Text style={styles.sectionText}>
               Questions about this policy or your data: email us at the address below or use Contact Support in Settings.
             </Text>

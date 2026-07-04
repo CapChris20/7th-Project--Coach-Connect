@@ -68,7 +68,7 @@ const {
   normalizeAppRole,
   profileNeedsOnboarding,
   isLikelyNewFirebaseUser,
-} = require('../../app-start/AuthGate');
+} = require('../../auth/detectUserRole');
 
 function firebaseUserWithSignInGap(createdMsAgo, lastSignInMsAgo = createdMsAgo) {
   const now = Date.now();

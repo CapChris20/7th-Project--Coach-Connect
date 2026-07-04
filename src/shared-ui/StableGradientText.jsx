@@ -65,11 +65,17 @@ export default function StableGradientText({
     );
   }
 
+  const textLines = text.split('\n');
+  const isMultiline = textLines.length > 1;
+
   const centered = align === 'center';
   const anchor = centered ? 'middle' : align === 'right' ? 'end' : 'start';
-  const svgH = size ? Math.ceil(size.height) : Math.ceil(lineHeight || fontSize * 1.25);
+  const lineHeightPx = lineHeight || fontSize * 1.12;
+  const svgH = size
+    ? Math.ceil(size.height)
+    : Math.ceil(isMultiline ? textLines.length * lineHeightPx : lineHeight || fontSize * 1.25);
   const svgW = size ? Math.ceil(size.width) : 0;
-  const baselineY = fontSize + (svgH - fontSize) * 0.8;
+  const baselineY = fontSize + (lineHeightPx - fontSize) * 0.35;
   const x = anchor === 'middle' && svgW ? svgW / 2 : anchor === 'end' && svgW ? svgW : 0;
   const ready = size && svgW > 0;
 
@@ -77,8 +83,9 @@ export default function StableGradientText({
     <View
       style={[
         styles.wrap,
-        flatStyle.alignSelf ? { alignSelf: flatStyle.alignSelf } : null,
         centered ? styles.wrapCenter : null,
+        flatStyle.alignSelf ? { alignSelf: flatStyle.alignSelf } : null,
+        flatStyle.width ? { width: flatStyle.width } : null,
       ]}
       collapsable={false}
     >
@@ -116,18 +123,21 @@ export default function StableGradientText({
               ))}
             </SvgGradient>
           </Defs>
-          <SvgText
-            x={x}
-            y={baselineY}
-            textAnchor={anchor}
-            fontSize={fontSize}
-            fontWeight={fontWeight}
-            letterSpacing={letterSpacing}
-            fontFamily={fontFamily}
-            fill={`url(#${gradId})`}
-          >
-            {text}
-          </SvgText>
+          {textLines.map((line, index) => (
+            <SvgText
+              key={`${line}-${index}`}
+              x={x}
+              y={baselineY + index * lineHeightPx}
+              textAnchor={anchor}
+              fontSize={fontSize}
+              fontWeight={fontWeight}
+              letterSpacing={letterSpacing}
+              fontFamily={fontFamily}
+              fill={`url(#${gradId})`}
+            >
+              {line}
+            </SvgText>
+          ))}
         </Svg>
       )}
     </View>

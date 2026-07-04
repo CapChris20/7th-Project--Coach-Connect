@@ -220,7 +220,6 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
   const showBrand = shouldShowFoodBrandSubtitle(foodTitle, brand);
   const bgGradient = isDark ? HERO_BG_DARK : HERO_BG_LIGHT;
   const labelMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
-  const pillBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
   const pillText = isDark ? '#FFFFFF' : '#0A0A0F';
   const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
 
@@ -230,20 +229,17 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
     setAdding(false);
   };
 
-  const MacroPill = ({ label, value, gradientStops }) => (
-    <View style={[foodCardStyles.macroPill, { backgroundColor: pillBg }]}>
-      <LinearGradient
-        colors={gradientStops}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={foodCardStyles.macroPillAccent}
-      />
-      <GradientText colors={gradientStops} style={foodCardStyles.macroPillLabel}>
-        {label}
-      </GradientText>
-      <Text style={[foodCardStyles.macroPillValue, { color: pillText }]}>{value}g</Text>
-    </View>
-  );
+  const MacroStat = ({ label, value }) => {
+    const grams = Math.round(Number(value) || 0);
+    return (
+      <View style={foodCardStyles.macroItem}>
+        <Text style={[foodCardStyles.macroLabel, { color: labelMuted }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[foodCardStyles.macroValue, { color: pillText }]}>{grams}g</Text>
+      </View>
+    );
+  };
 
   return (
     <View
@@ -274,15 +270,13 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
             </View>
 
             <View style={foodCardStyles.body}>
-              <BrandGradientStrokeText
-                fontSize={15}
-                fontWeight="800"
-                fillColor={titleFill}
+              <Text
+                style={[foodCardStyles.title, { color: titleFill }]}
                 numberOfLines={2}
-                style={foodCardStyles.title}
+                ellipsizeMode="tail"
               >
                 {foodTitle}
-              </BrandGradientStrokeText>
+              </Text>
 
               {showBrand ? (
                 <Text style={[foodCardStyles.brand, { color: labelMuted }]} numberOfLines={1}>
@@ -303,14 +297,14 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
               ) : null}
 
               <View style={foodCardStyles.macroRow}>
-                <MacroPill label="Protein" value={item.protein} gradientStops={c.proteinGradient} />
-                <MacroPill label="Carbs" value={item.carbs} gradientStops={c.carbsGradient} />
-                <MacroPill label="Fat" value={item.fat} gradientStops={c.fatGradient} />
+                <MacroStat label="Protein" value={item.protein} />
+                <MacroStat label="Carbs" value={item.carbs} />
+                <MacroStat label="Fat" value={item.fat} />
               </View>
             </View>
 
             <View style={foodCardStyles.sideCol}>
-              <GradientText colors={c.calGradient} style={foodCardStyles.calValue}>
+              <GradientText colors={c.calGradient} style={foodCardStyles.calValue} numberOfLines={1}>
                 {item.calories}
               </GradientText>
               <Text style={[foodCardStyles.calLabel, { color: labelMuted }]}>CAL</Text>
@@ -943,6 +937,7 @@ const foodCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+    overflow: 'hidden',
   },
   iconWrap: {
     width: 36,
@@ -952,14 +947,17 @@ const foodCardStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
+    flexShrink: 0,
   },
   body: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 4,
+    overflow: 'hidden',
   },
   title: {
-    width: '100%',
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
   },
   brand: {
     fontSize: 11,
@@ -981,44 +979,37 @@ const foodCardStyles = StyleSheet.create({
   },
   macroRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
     marginTop: 10,
+    gap: 10,
   },
-  macroPill: {
-    overflow: 'hidden',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 8,
-    paddingTop: 6,
-    paddingBottom: 5,
-    borderRadius: 8,
+  macroItem: {
+    flex: 1,
+    minWidth: 0,
   },
-  macroPillAccent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-  },
-  macroPillLabel: {
+  macroLabel: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
-  macroPillValue: {
-    fontSize: 12,
+  macroValue: {
+    fontSize: 13,
     fontWeight: '700',
+    marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   sideCol: {
     alignItems: 'flex-end',
-    minWidth: 56,
+    flexShrink: 0,
+    width: 64,
     paddingTop: 2,
   },
   calValue: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '900',
     letterSpacing: -0.5,
+    maxWidth: 64,
+    textAlign: 'right',
   },
   calLabel: {
     fontSize: 9,

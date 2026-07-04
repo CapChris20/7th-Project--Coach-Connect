@@ -60,9 +60,55 @@ async function verifyFirebaseIdToken(req) {
 
 async function purgeUserFirestore(uid) {
   const userRef = db.collection('users').doc(uid);
-  // Admin SDK recursive delete removes doc + all nested subcollections.
-  // Uses BulkWriter under the hood for scale.
   await db.recursiveDelete(userRef);
+
+  // Marketplace trainer profile
+  try {
+    await db.collection('trainers').doc(uid).delete();
+  } catch (_) {
+    /* ignore */
+  }
+
+  // Conversations where user participates
+  const convSnap = await db
+    .collection('conversations')
+    .where('participants', 'array-contains', uid)
+    .limit(200)
+    .get();
+  for (const convDoc of convSnap.docs) {
+    const msgs = await db.collection('messages').where('conversationId', '==', convDoc.id).limit(500).get();
+    const batch = db.batch();
+    msgs.docs.forEach((m) => batch.delete(m.ref));
+    batch.delete(convDoc.ref);
+    await batch.commit();
+  }
+
+  // Trainer-client CRM links
+  const asTrainer = await db.collection('trainer_clients').doc(uid).listCollections();
+  for (const sub of asTrainer) {
+    const clients = await sub.get();
+    const batch = db.batch();
+    clients.docs.forEach((c) => batch.delete(c.ref));
+    await batch.commit();
+  }
+  await db.collection('trainer_clients').doc(uid).delete().catch(() => {});
+
+  const linkSnap = await db
+    .collection('trainer_client_links')
+    .where('clientId', '==', uid)
+    .limit(50)
+    .get();
+  for (const linkDoc of linkSnap.docs) {
+    await linkDoc.ref.delete();
+  }
+  const trainerLinks = await db
+    .collection('trainer_client_links')
+    .where('trainerId', '==', uid)
+    .limit(50)
+    .get();
+  for (const linkDoc of trainerLinks.docs) {
+    await linkDoc.ref.delete();
+  }
 }
 
 async function purgeUserStorage(uid) {
@@ -640,47 +686,39 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
   }
 
   const wins = [];
-  if (nLogged === 7) wins.push('Perfect week: 7/7 check-ins logged.');
-  else if (nLogged >= 5) wins.push(`${nLogged}/7 check-ins — strong logging habit.`);
-  if (highWaterDays >= 4) wins.push(`Hydration: ${highWaterDays} days at 64+ oz.`);
-  if (workoutDays >= 4) wins.push(`${workoutDays} training days recorded this week.`);
+  if (nLogged === 7) wins.push('Perfect week — 7/7 check-ins logged.');
+  else if (nLogged >= 5) wins.push(`${nLogged}/7 check-ins — strong logging streak.`);
+  if (highWaterDays >= 4) wins.push(`${highWaterDays} days hit 64+ oz water.`);
+  if (workoutDays >= 3) wins.push(`${workoutDays} training days on the board.`);
   const goodSleep = sleepVals.filter((x) => x.n >= 7).length;
-  if (goodSleep >= 3) wins.push(`${goodSleep} nights at 7+ h sleep on logged days.`);
+  if (goodSleep >= 3) wins.push(`${goodSleep} nights at 7+ hours sleep.`);
   const avgE = parseMetricNumber(avgEnergy);
-  if (avgE != null && avgE >= 3.5) wins.push(`Average energy ${avgEnergy}/5 — steady readiness signal.`);
-  while (wins.length < 4) {
-    wins.push('Consistency builds clarity: partial logs still help your coach spot patterns.');
-  }
+  if (avgE != null && avgE >= 3.5) wins.push(`Energy averaged ${avgEnergy}/8 — solid readiness.`);
 
   const cons = [];
-  if (nLogged < 7) cons.push(`Fill in ${7 - nLogged} missing day(s) to remove blind spots in trends.`);
+  if (nLogged < 5) cons.push(`Only ${nLogged}/7 days logged — gaps hide the full picture.`);
+  else if (nLogged < 7) cons.push(`${7 - nLogged} open day(s) left blank this week.`);
   const avgSlp = parseMetricNumber(avgSleep);
   if (avgSlp != null && avgSlp < 7) {
-    cons.push(`Average sleep under 7 h (${avgSleep} h) — prioritize wind-down and consistency.`);
+    cons.push(`Sleep averaged ${avgSleep} h — under the 7 h target.`);
   }
   if (waterVals.length && highWaterDays < 3) {
-    cons.push('Hydration gaps: fewer than 3 days hit the 64 oz target.');
+    cons.push(`Hydration landed 64+ oz on just ${highWaterDays} day(s).`);
   }
   if (workoutDays <= 2 && nLogged >= 4) {
-    cons.push('Training volume on the lower side — confirm planned rest vs missed sessions.');
+    cons.push(`Only ${workoutDays} training day(s) logged — confirm rest vs missed work.`);
   }
-  while (cons.length < 3) {
-    cons.push('Pick one metric (sleep, water, or steps) to improve measurably next week.');
+  if (stepVals.length === 0 && nLogged >= 3) {
+    cons.push('Steps missing most days — movement trends stay invisible.');
   }
 
   const pros = [];
-  pros.push(
-    nLogged >= 5 ? `Reliable data trail: ${nLogged} check-ins give trustworthy averages.` : 'Every logged day improves report accuracy.',
-  );
-  if (workoutDays > 0) pros.push('Training entries give your coach context on load and recovery.');
-  pros.push(
-    highWaterDays >= 3 ? 'Solid hydration attention on multiple days.' : 'Hydration fields are ready when you fill them.',
-  );
-  pros.push(`Energy tracking averaged ${avgEnergy}/5 across entries (where logged).`);
-  pros.push('Auto report uses the same numbers you already log — no manual recap needed.');
-  while (pros.length < 4) {
-    pros.push('Keep capturing notes; context pairs well with metrics.');
-  }
+  if (nLogged >= 6) pros.push(`${nLogged}/7 check-ins — your averages are trustworthy.`);
+  else if (nLogged >= 4) pros.push(`${nLogged}/7 check-ins — enough data to spot patterns.`);
+  if (workoutDays >= 2) pros.push(`${workoutDays} workout day(s) captured with exercise detail.`);
+  if (highWaterDays >= 3) pros.push(`${highWaterDays} days cleared 64+ oz water.`);
+  if (goodSleep >= 2) pros.push(`${goodSleep} nights logged at 7+ hours sleep.`);
+  if (avgE != null && avgE >= 4) pros.push(`Energy held ${avgEnergy}/8 across logged days.`);
 
   const focus = [];
   focus.push('Log every day next week to unlock day-by-day comparisons.');
@@ -703,7 +741,7 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
     summary: summary.trim(),
     trends: trends.slice(0, 6),
     pros: pros.slice(0, 5),
-    cons: cons.slice(0, 4),
+    cons: cons.slice(0, 5),
     wins: wins.slice(0, 5),
     focus: focus.slice(0, 5),
     signOff,
@@ -1358,3 +1396,38 @@ exports.createNotification = onCall(async (request) => {
 
 // Day-14 macro recalibration (6 AM America/Detroit)
 Object.assign(exports, require('./macroRecalibrationFunction'));
+
+/** Increment denormalized unread count when a new message is created. */
+exports.onMessageCreatedUpdateUnread = onDocumentCreated('messages/{messageId}', async (event) => {
+  const message = event.data?.data();
+  if (!message) return;
+  const { conversationId, senderId, read } = message;
+  if (!conversationId || !senderId || read === true) return;
+
+  try {
+    const convSnap = await db.collection('conversations').doc(conversationId).get();
+    if (!convSnap.exists) return;
+    const participants = convSnap.data()?.participants || [];
+    const recipientId = participants.find((id) => id && id !== senderId);
+    if (!recipientId) return;
+
+    const indexRef = db.collection('users').doc(recipientId).collection('unreadCount').doc('index');
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(indexRef);
+      const data = snap.exists ? snap.data() || {} : {};
+      const prevConv = Number(data.conversations?.[conversationId] || 0);
+      const conversations = { ...(data.conversations || {}), [conversationId]: prevConv + 1 };
+      tx.set(
+        indexRef,
+        {
+          total: Number(data.total || 0) + 1,
+          conversations,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+  } catch (e) {
+    logger.warn('onMessageCreatedUpdateUnread failed', e?.message || e);
+  }
+});

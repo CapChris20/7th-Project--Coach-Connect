@@ -98,6 +98,19 @@ export async function loadAiChatMessages(userId, sessionId) {
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
+export async function loadAiChatSessionMeta(userId, sessionId) {
+  if (!db || !userId || !sessionId) return null;
+  const snap = await getDoc(sessionRef(userId, sessionId));
+  if (!snap.exists()) return null;
+  const data = snap.data() || {};
+  return {
+    title: typeof data.title === 'string' ? data.title : '',
+    lastUserMessage: typeof data.lastUserMessage === 'string' ? data.lastUserMessage : '',
+    lastAssistantMessage:
+      typeof data.lastAssistantMessage === 'string' ? data.lastAssistantMessage : '',
+  };
+}
+
 export function restoreChatMessagesFromSaved(saved = []) {
   return (Array.isArray(saved) ? saved : [])
     .map((m, idx) => ({

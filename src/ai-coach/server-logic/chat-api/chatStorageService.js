@@ -13,6 +13,7 @@
 // NOW USER-SPECIFIC - each user has their own isolated chats!
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../../../app-start/config';
+import { generateCreativeChatTitle } from './generateCreativeChatTitle';
 
 // Get user-specific storage keys
 function getChatsStorageKey(userId) {
@@ -149,10 +150,14 @@ export async function saveChat(chat, userId = null) {
     if (!chat.title || chat.title === 'New Chat') {
       const firstUserMessage = chat.messages.find(m => m.role === 'user');
       if (firstUserMessage) {
-        const title = firstUserMessage.content.slice(0, 50).trim();
+        const fallback = firstUserMessage.content.slice(0, 50).trim() || 'New Chat';
+        const title = await generateCreativeChatTitle(
+          chat.messages.map((m) => ({ role: m.role, content: m.content })),
+          fallback,
+        );
         const chatIndex = chats.findIndex(c => c.id === chat.id);
         if (chatIndex >= 0) {
-          chats[chatIndex].title = title || 'New Chat';
+          chats[chatIndex].title = title || fallback;
         }
       }
     }
@@ -231,7 +236,11 @@ export async function updateChatMessages(chatId, messages, userId = null) {
     if (!chat.title || chat.title === 'New Chat') {
       const firstUserMessage = messages.find(m => m.role === 'user');
       if (firstUserMessage) {
-        chat.title = firstUserMessage.content.slice(0, 50).trim() || 'New Chat';
+        const fallback = firstUserMessage.content.slice(0, 50).trim() || 'New Chat';
+        chat.title = await generateCreativeChatTitle(
+          messages.map((m) => ({ role: m.role, content: m.content })),
+          fallback,
+        );
       }
     }
     

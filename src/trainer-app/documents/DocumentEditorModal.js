@@ -29,7 +29,7 @@ import {
   Share,
   Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -38,20 +38,17 @@ import { deleteDoc, doc } from 'firebase/firestore';
 import { saveTrainerDocument, getTrainerDocument } from '../../shared/notes-files/manageNotesAndFiles';
 import { db } from '../../app-start/config';
 import ShareDocumentModal from './ShareDocumentModal';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
-import EditorStatusPill from './EditorStatusPill';
+import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
 import {
   EditorIconButton,
-  EditorTitleField,
+  EditorInlineTitle,
   DEFAULT_SAVE_TITLE_DOCUMENT,
 } from './EditorHeaderActions';
 import {
   EDITOR_HIGHLIGHT_COLORS,
   EDITOR_TEXT_COLORS,
   FONT_SIZES,
-  formatEditorSavedAgo,
   getEditorTheme,
 } from './editorTheme';
 import {
@@ -145,16 +142,15 @@ function IonTool({ name, active, disabled, onPress, theme, size = 17 }) {
 }
 
 function buildEditorHtml2({ theme, initialHtml }) {
-  const pageBg = theme.pageBg;
-  const canvasBg = theme.canvasBg;
-  const fg = theme.text;
-  const subtle = theme.border;
+  const pageBg = theme.printPageBg || '#FFFFFF';
+  const canvasBg = theme.printCanvasBg || '#E8EAED';
+  const fg = theme.printPageText || '#202124';
+  const subtle = 'rgba(60,64,67,0.2)';
   const accent = theme.selectionBorder;
-  const linkColor = theme.selectionBorder;
-  const codeBg = theme.inputBg;
-  const pageShadow = theme.pageShadow
-    ? '0 4px 24px rgba(0,0,0,0.08)'
-    : '0 1px 0 rgba(255,255,255,0.04)';
+  const linkColor = '#1A73E8';
+  const codeBg = '#F1F3F4';
+  const pageShadow = '0 1px 2px rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15)';
+  const pageMuted = theme.printPageMuted || '#5F6368';
 
   return `<!doctype html>
 <html>
@@ -171,38 +167,42 @@ function buildEditorHtml2({ theme, initialHtml }) {
         -webkit-text-size-adjust: 100%;
       }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-        padding: 8px 0 48px;
+        font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        padding: 20px 14px 48px;
       }
       .page {
-        margin: 0 auto;
-        max-width: 100%;
-        width: calc(100% - 16px);
+        margin: 0 auto 24px;
+        width: calc(100% - 4px);
+        max-width: 816px;
         background: ${pageBg};
-        border: 1px solid ${subtle};
-        border-radius: 10px;
-        min-height: calc(100vh - 16px);
+        min-height: calc((100vw - 28px) * 1.294);
         box-shadow: ${pageShadow};
+        border-radius: 0;
+        border: none;
+        padding: 72px 56px 80px;
       }
-      .wrap {
-        padding: 40px 28px 64px;
-        min-height: 100%;
-      }
+      .page:last-child { margin-bottom: 0; }
       @media (max-width: 600px) {
-        .wrap { padding: 28px 20px 56px; }
+        body { padding: 16px 12px 40px; }
+        .page {
+          width: 100%;
+          padding: 56px 40px 64px;
+          min-height: calc((100vw - 24px) * 1.294);
+        }
       }
       #editor {
         outline: none;
-        min-height: 480px;
+        min-height: calc((100vw - 28px) * 1.294 - 136px);
         caret-color: ${accent};
-        font-size: 16px;
-        line-height: 1.65;
+        font-size: 11pt;
+        line-height: 1.5;
         color: ${fg};
         font-family: inherit;
+        word-break: break-word;
       }
       #editor:empty:before {
         content: 'Start typing…';
-        color: ${theme.textMuted};
+        color: ${pageMuted};
         pointer-events: none;
       }
       h1 { font-size: 28px; line-height: 1.25; margin: 0 0 12px; font-weight: 800; font-family: inherit; }
@@ -225,7 +225,7 @@ function buildEditorHtml2({ theme, initialHtml }) {
     </style>
   </head>
   <body>
-    <div class="page"><div class="wrap"><div id="editor" contenteditable="true">${initialHtml || EMPTY_HTML}</div></div></div>
+    <div class="page"><div id="editor" contenteditable="true">${initialHtml || EMPTY_HTML}</div></div>
     <script>
       const editor = document.getElementById('editor');
       const post = (type, payload) => {
@@ -416,6 +416,7 @@ export default function DocumentEditorModal({
 
   const isEditorDark = editorThemeMode === 'dark';
   const theme = useMemo(() => getEditorTheme(isEditorDark), [isEditorDark]);
+  const insets = useSafeAreaInsets();
 
   const editorHtml = useMemo(
     () => buildEditorHtml2({ theme, initialHtml: EMPTY_HTML }),
@@ -679,17 +680,23 @@ export default function DocumentEditorModal({
     setShowShare(true);
   };
 
-  const handleAddPress = () => {
-    Alert.alert('Add to document', undefined, [
-      { text: 'Link', onPress: () => setPrompt({ visible: true, kind: 'link', value: 'https://' }) },
-      { text: 'Image', onPress: () => setPrompt({ visible: true, kind: 'image', value: '' }) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
 
   const openMoreMenu = () => {
-    Alert.alert('Document options', undefined, [
+    Alert.alert('Document', undefined, [
       { text: 'Rename', onPress: handleRename },
+      {
+        text: favorite ? 'Remove favorite' : 'Add favorite',
+        onPress: () => setFavorite((v) => !v),
+      },
+      {
+        text: isEditorDark ? 'Light mode' : 'Dark mode',
+        onPress: () => setEditorThemeMode((t) => (t === 'dark' ? 'light' : 'dark')),
+      },
+      {
+        text: `Word count (${counts.words} words)`,
+        onPress: () => Alert.alert('Word count', `${counts.words} words · ${counts.chars} characters`),
+      },
+      { text: 'Export', onPress: handleExportPdf },
       { text: 'Duplicate', onPress: handleDuplicate },
       { text: 'Delete', style: 'destructive', onPress: handleDelete },
       { text: 'Cancel', style: 'cancel' },
@@ -702,24 +709,6 @@ export default function DocumentEditorModal({
       { text: 'Title', onPress: () => postCmd('heading', 1) },
       { text: 'Subtitle', onPress: () => postCmd('heading', 2) },
       { text: 'Heading', onPress: () => postCmd('heading', 3) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const openFileMenu = () => {
-    Alert.alert('File', undefined, [
-      { text: 'Export', onPress: handleExportPdf },
-      { text: 'Duplicate', onPress: handleDuplicate },
-      { text: 'Delete', style: 'destructive', onPress: handleDelete },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const openEditMenu = () => {
-    Alert.alert('Edit', undefined, [
-      { text: 'Undo', onPress: () => postCmd('undo') },
-      { text: 'Redo', onPress: () => postCmd('redo') },
-      { text: 'Clear formatting', onPress: () => postCmd('clear') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
@@ -738,217 +727,185 @@ export default function DocumentEditorModal({
   const nav = trainerNavChrome;
   const iconColor = (active) => (active ? theme.text : theme.textMuted);
 
+  const renderFormatToolbar = () => (
+    <View style={styles.formatDock}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={styles.toolbarRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <ToolButton
+          theme={theme}
+          active={picker === 'fontSize' || toolState.h1 || toolState.h2 || toolState.h3}
+          onPress={openStyleMenu}
+          icon={<Text style={[styles.toolGlyph, { color: theme.textMuted, fontWeight: '700' }]}>Aa</Text>}
+        />
+        <GlyphButton theme={theme} label="B" active={toolState.bold} onPress={() => postCmd('bold')} style={{ fontWeight: '800' }} />
+        <GlyphButton theme={theme} label="I" active={toolState.italic} onPress={() => postCmd('italic')} style={{ fontStyle: 'italic', fontWeight: '700' }} />
+        <GlyphButton theme={theme} label="U" active={toolState.underline} onPress={() => postCmd('underline')} style={{ textDecorationLine: 'underline', fontWeight: '700' }} />
+        <Divider theme={theme} />
+        <ToolButton
+          theme={theme}
+          active={picker === 'textColor'}
+          onPress={() => setPicker((p) => (p === 'textColor' ? null : 'textColor'))}
+          icon={<Ionicons name="text-outline" size={17} color={iconColor(picker === 'textColor')} />}
+        />
+        <ToolButton
+          theme={theme}
+          active={picker === 'highlight'}
+          onPress={() => setPicker((p) => (p === 'highlight' ? null : 'highlight'))}
+          icon={<Ionicons name="color-fill-outline" size={17} color={iconColor(picker === 'highlight')} />}
+        />
+        <Divider theme={theme} />
+        <IonTool theme={theme} name="list-outline" active={toolState.ul} onPress={() => postCmd('ul')} />
+        <IonTool theme={theme} name="reorder-four-outline" active={toolState.ol} onPress={() => postCmd('ol')} />
+        <IonTool theme={theme} name="link-outline" active={toolState.link} onPress={() => setPrompt({ visible: true, kind: 'link', value: 'https://' })} />
+        <IonTool theme={theme} name="image-outline" active={false} onPress={() => setPrompt({ visible: true, kind: 'image', value: '' })} />
+        <IonTool theme={theme} name="add-outline" active={false} onPress={openInsertMenu} />
+      </ScrollView>
+      {picker === 'fontSize' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {FONT_SIZES.map((size) => (
+            fontSize === size ? (
+              <EditorGradientPill key={size} style={styles.pickerChip} radius={8}>
+                <TouchableOpacity
+                  onPress={() => { setFontSize(size); postCmd('fontSize', size); setPicker(null); }}
+                  style={styles.pickerChipInner}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>{size}</Text>
+                </TouchableOpacity>
+              </EditorGradientPill>
+            ) : (
+              <TouchableOpacity
+                key={size}
+                onPress={() => { setFontSize(size); postCmd('fontSize', size); setPicker(null); }}
+                style={styles.pickerChip}
+              >
+                <Text style={{ color: theme.textMuted, fontWeight: '700', fontSize: 12 }}>{size}</Text>
+              </TouchableOpacity>
+            )
+          ))}
+        </ScrollView>
+      ) : null}
+      {picker === 'textColor' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {EDITOR_TEXT_COLORS.map((color) => (
+            <TouchableOpacity
+              key={color}
+              onPress={() => { setTextColor(color); postCmd('foreColor', color); setPicker(null); }}
+              style={[
+                styles.colorSwatch,
+                {
+                  backgroundColor: color,
+                  borderColor: textColor === color ? theme.selectionBorder : theme.border,
+                  borderWidth: textColor === color ? 2 : 1,
+                  width: 28,
+                  height: 28,
+                },
+              ]}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      {picker === 'highlight' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {EDITOR_HIGHLIGHT_COLORS.map((color) => (
+            <TouchableOpacity
+              key={color}
+              onPress={() => { setHighlightColor(color); postCmd('hiliteColor', color === 'transparent' ? 'transparent' : color); setPicker(null); }}
+              style={[styles.colorSwatch, { backgroundColor: color === 'transparent' ? theme.inputBg : color, borderColor: theme.border, width: 28, height: 28 }]}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: theme.canvasBg }}>
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.canvasBg }} edges={SHELL_SAFE_AREA_EDGES}>
-          {nav ? (
-            <CoachConnectHeader
-              title="Document"
-              skipTopSafeInset
-              appearanceIsDark={isEditorDark}
-              onBack={handleBackPress}
-              onProfilePress={nav.onProfilePress}
-              onSettingsPress={nav.onSettingsPress}
-            />
-          ) : (
-            <View style={[styles.backRow, { backgroundColor: theme.headerBg }]}>
-              <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
-                <Ionicons name="chevron-back" size={20} color={theme.text} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={[styles.titleSection, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-            <EditorTitleField
-              inputRef={titleInputRef}
-              value={title}
-              onChangeText={(t) => {
-                setTitle(t);
-                setStatus('unsaved');
-                if (saveTimer.current) clearTimeout(saveTimer.current);
-                saveTimer.current = setTimeout(() => {
-                  queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
-                }, 600);
-              }}
-              onFocus={() => setTitleFocused(true)}
-              onBlur={() => setTitleFocused(false)}
-              focused={titleFocused}
-              theme={theme}
-            />
-            <View style={styles.metaRow}>
-              <EditorStatusPill status={status} theme={theme} />
-              <View style={{ flex: 1 }} />
-              <EditorIconButton icon="share-outline" onPress={handleSharePress} theme={theme} accessibilityLabel="Share" />
-              <EditorIconButton
-                icon={favorite ? 'star' : 'star-outline'}
-                onPress={() => setFavorite((v) => !v)}
+          <View style={[styles.gdocsTopBar, { paddingTop: insets.top + 6, backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+            <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12} accessibilityLabel="Back">
+              <Ionicons name="chevron-back" size={22} color={theme.text} />
+            </TouchableOpacity>
+            <View style={styles.gdocsTitleWrap}>
+              <EditorInlineTitle
+                inputRef={titleInputRef}
+                value={title}
+                onChangeText={(t) => {
+                  setTitle(t);
+                  setStatus('unsaved');
+                  if (saveTimer.current) clearTimeout(saveTimer.current);
+                  saveTimer.current = setTimeout(() => {
+                    queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
+                  }, 600);
+                }}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => setTitleFocused(false)}
+                focused={titleFocused}
                 theme={theme}
-                active={favorite}
-                accessibilityLabel="Favorite"
               />
-              <EditorIconButton
-                icon={isEditorDark ? 'sunny-outline' : 'moon-outline'}
-                onPress={() => setEditorThemeMode((t) => (t === 'dark' ? 'light' : 'dark'))}
-                theme={theme}
-                accessibilityLabel="Toggle theme"
-              />
-              <EditorIconButton icon="ellipsis-vertical" onPress={openMoreMenu} theme={theme} accessibilityLabel="More options" />
             </View>
+            <TouchableOpacity
+              onPress={() => postCmd('undo')}
+              disabled={!toolState.canUndo}
+              style={[styles.headerBtn, { opacity: toolState.canUndo ? 1 : 0.35 }]}
+              accessibilityLabel="Undo"
+            >
+              <Ionicons name="arrow-undo-outline" size={20} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => postCmd('redo')}
+              disabled={!toolState.canRedo}
+              style={[styles.headerBtn, { opacity: toolState.canRedo ? 1 : 0.35 }]}
+              accessibilityLabel="Redo"
+            >
+              <Ionicons name="arrow-redo-outline" size={20} color={theme.text} />
+            </TouchableOpacity>
+            <EditorIconButton icon="share-outline" onPress={handleSharePress} theme={theme} accessibilityLabel="Share" />
+            <EditorIconButton icon="ellipsis-vertical" onPress={openMoreMenu} theme={theme} accessibilityLabel="More options" />
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.menuStrip, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-            {[
-              { label: 'File', onPress: openFileMenu },
-              { label: 'Edit', onPress: openEditMenu },
-              { label: 'Insert', onPress: openInsertMenu },
-              { label: 'Format', onPress: openStyleMenu },
-            ].map(({ label, onPress }) => (
-              <TouchableOpacity key={label} onPress={onPress} style={styles.menuChip}>
-                <Text style={[styles.menuChipText, { color: theme.text }]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <View style={{ flex: 1, minHeight: 0 }}>
-            <View style={[styles.toolbar, { borderBottomColor: theme.border, backgroundColor: theme.toolbarBg }]}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.toolbarScroll}
-                contentContainerStyle={styles.toolbarRow}
-                keyboardShouldPersistTaps="handled"
-              >
-                <GlyphButton theme={theme} label="B" active={toolState.bold} onPress={() => postCmd('bold')} style={{ fontWeight: '800' }} />
-                <GlyphButton theme={theme} label="I" active={toolState.italic} onPress={() => postCmd('italic')} style={{ fontStyle: 'italic', fontWeight: '700' }} />
-                <GlyphButton theme={theme} label="U" active={toolState.underline} onPress={() => postCmd('underline')} style={{ textDecorationLine: 'underline', fontWeight: '700' }} />
-                <Divider theme={theme} />
-                <GlyphButton theme={theme} label="H1" active={toolState.h1} onPress={() => postCmd('heading', 1)} style={{ fontSize: 11, fontWeight: '800' }} />
-                <GlyphButton theme={theme} label="H2" active={toolState.h2} onPress={() => postCmd('heading', 2)} style={{ fontSize: 11, fontWeight: '800' }} />
-                <GlyphButton theme={theme} label="H3" active={toolState.h3} onPress={() => postCmd('heading', 3)} style={{ fontSize: 11, fontWeight: '700' }} />
-                <ToolButton
-                  theme={theme}
-                  active={picker === 'fontSize'}
-                  onPress={() => setPicker((p) => (p === 'fontSize' ? null : 'fontSize'))}
-                  icon={<Text style={[styles.toolGlyph, { color: theme.textMuted, fontWeight: '700' }]}>{fontSize}</Text>}
-                />
-                <Divider theme={theme} />
-                <GlyphButton theme={theme} label="L" active={toolState.alignLeft} onPress={() => postCmd('alignLeft')} />
-                <GlyphButton theme={theme} label="C" active={toolState.alignCenter} onPress={() => postCmd('alignCenter')} />
-                <GlyphButton theme={theme} label="R" active={toolState.alignRight} onPress={() => postCmd('alignRight')} />
-                <GlyphButton theme={theme} label="J" active={toolState.alignJustify} onPress={() => postCmd('alignJustify')} />
-                <Divider theme={theme} />
-                <ToolButton
-                  theme={theme}
-                  active={picker === 'textColor'}
-                  onPress={() => setPicker((p) => (p === 'textColor' ? null : 'textColor'))}
-                  icon={<Ionicons name="text-outline" size={17} color={iconColor(picker === 'textColor')} />}
-                />
-                <ToolButton
-                  theme={theme}
-                  active={picker === 'highlight'}
-                  onPress={() => setPicker((p) => (p === 'highlight' ? null : 'highlight'))}
-                  icon={<Ionicons name="color-fill-outline" size={17} color={iconColor(picker === 'highlight')} />}
-                />
-                <Divider theme={theme} />
-                <IonTool theme={theme} name="list-outline" active={toolState.ul} onPress={() => postCmd('ul')} />
-                <IonTool theme={theme} name="reorder-four-outline" active={toolState.ol} onPress={() => postCmd('ol')} />
-                <IonTool theme={theme} name="checkbox-outline" active={toolState.checkbox} onPress={() => postCmd('checkbox')} />
-                <Divider theme={theme} />
-                <IonTool theme={theme} name="link-outline" active={toolState.link} onPress={() => setPrompt({ visible: true, kind: 'link', value: 'https://' })} />
-                <IonTool theme={theme} name="image-outline" active={false} onPress={() => setPrompt({ visible: true, kind: 'image', value: '' })} />
-                <IonTool theme={theme} name="remove-outline" active={false} onPress={() => postCmd('divider')} />
-                <IonTool theme={theme} name="grid-outline" active={false} onPress={() => postCmd('table')} />
-                <Divider theme={theme} />
-                <IonTool theme={theme} name="brush-outline" active={false} onPress={() => postCmd('clear')} />
-                <IonTool theme={theme} name="arrow-undo-outline" active={false} disabled={!toolState.canUndo} onPress={() => postCmd('undo')} />
-                <IonTool theme={theme} name="arrow-redo-outline" active={false} disabled={!toolState.canRedo} onPress={() => postCmd('redo')} />
-              </ScrollView>
-                {picker === 'fontSize' ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-                    {FONT_SIZES.map((size) => (
-                      fontSize === size ? (
-                        <EditorGradientPill key={size} style={styles.pickerChip} radius={8}>
-                          <TouchableOpacity
-                            onPress={() => { setFontSize(size); postCmd('fontSize', size); setPicker(null); }}
-                            style={styles.pickerChipInner}
-                          >
-                            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>{size}</Text>
-                          </TouchableOpacity>
-                        </EditorGradientPill>
-                      ) : (
-                        <TouchableOpacity
-                          key={size}
-                          onPress={() => { setFontSize(size); postCmd('fontSize', size); setPicker(null); }}
-                          style={styles.pickerChip}
-                        >
-                          <Text style={{ color: theme.textMuted, fontWeight: '700', fontSize: 12 }}>{size}</Text>
-                        </TouchableOpacity>
-                      )
-                    ))}
-                  </ScrollView>
-                ) : null}
-                {picker === 'textColor' ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-                    {EDITOR_TEXT_COLORS.map((color) => (
-                      <TouchableOpacity
-                        key={color}
-                        onPress={() => { setTextColor(color); postCmd('foreColor', color); setPicker(null); }}
-                        style={[
-                          styles.colorSwatch,
-                          {
-                            backgroundColor: color,
-                            borderColor: textColor === color ? theme.selectionBorder : theme.border,
-                            borderWidth: textColor === color ? 2 : 1,
-                            width: 28,
-                            height: 28,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : null}
-                {picker === 'highlight' ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-                    {EDITOR_HIGHLIGHT_COLORS.map((color) => (
-                      <TouchableOpacity
-                        key={color}
-                        onPress={() => { setHighlightColor(color); postCmd('hiliteColor', color === 'transparent' ? 'transparent' : color); setPicker(null); }}
-                        style={[styles.colorSwatch, { backgroundColor: color === 'transparent' ? theme.inputBg : color, borderColor: theme.border, width: 28, height: 28 }]}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : null}
+          <View style={{ flex: 1, minHeight: 0, backgroundColor: theme.printCanvasBg }}>
+            {loading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.printCanvasBg }}>
+                <ActivityIndicator size="large" color={theme.selectionBorder} />
               </View>
+            ) : (
+              <WebView
+                key={isEditorDark ? 'editor-dark' : 'editor-light'}
+                ref={webRef}
+                originWhitelist={['*']}
+                style={{ flex: 1, backgroundColor: theme.printCanvasBg }}
+                source={{ html: editorHtml }}
+                onMessage={handleWebMessage}
+                javaScriptEnabled
+                domStorageEnabled
+                keyboardDisplayRequiresUserAction={false}
+                hideKeyboardAccessoryView
+                nestedScrollEnabled
+                scrollEnabled
+              />
+            )}
+          </View>
 
-            <View style={{ flex: 1, minHeight: 0, backgroundColor: theme.canvasBg }}>
-              {loading ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color={theme.selectionBorder} />
-                </View>
-              ) : (
-                <WebView
-                  key={isEditorDark ? 'editor-dark' : 'editor-light'}
-                  ref={webRef}
-                  originWhitelist={['*']}
-                  style={{ flex: 1, backgroundColor: theme.canvasBg }}
-                  source={{ html: editorHtml }}
-                  onMessage={handleWebMessage}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  keyboardDisplayRequiresUserAction={false}
-                  hideKeyboardAccessoryView
-                  nestedScrollEnabled
-                  scrollEnabled
-                />
-              )}
-            </View>
-
-            <View style={[styles.statusBar, { borderTopColor: theme.border, backgroundColor: theme.toolbarBg }]}>
-              <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                {counts.words} words · Saved {formatEditorSavedAgo(lastSaved)}
-              </Text>
-            </View>
+          <View style={[styles.bottomChrome, { backgroundColor: theme.toolbarBg, borderTopColor: theme.border }]}>
+            {renderFormatToolbar()}
+            {nav && !keyboardVisible ? (
+              <BottomNavBar
+                appearanceIsDark={isEditorDark}
+                activeTabKey={nav.activeTabKey || 'files'}
+                onHomePress={nav.onHomePress}
+                onPlusPress={nav.onPlusPress}
+                onVoicePress={nav.onVoicePress}
+                onNutritionPress={nav.onNutritionPress}
+                onWorkoutPress={nav.onWorkoutPress}
+                onMessagesPress={nav.onMessagesPress}
+              />
+            ) : null}
           </View>
 
           {prompt.visible && (
@@ -1004,20 +961,6 @@ export default function DocumentEditorModal({
             }}
           />
 
-          {nav && !keyboardVisible ? (
-            <ShellBottomNavAnchor>
-              <BottomNavBar
-                appearanceIsDark={isEditorDark}
-                activeTabKey={nav.activeTabKey || 'files'}
-                onHomePress={nav.onHomePress}
-                onPlusPress={nav.onPlusPress}
-                onVoicePress={nav.onVoicePress}
-                onNutritionPress={nav.onNutritionPress}
-                onWorkoutPress={nav.onWorkoutPress}
-                onMessagesPress={nav.onMessagesPress}
-              />
-            </ShellBottomNavAnchor>
-          ) : null}
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
@@ -1025,41 +968,38 @@ export default function DocumentEditorModal({
 }
 
 const styles = StyleSheet.create({
-  backRow: { paddingHorizontal: 6, paddingTop: 4 },
-  titleSection: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  metaRow: {
+  gdocsTopBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
+    alignItems: 'flex-start',
+    paddingHorizontal: 8,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 4,
   },
-  menuStrip: {
+  gdocsTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 2,
+    justifyContent: 'center',
+  },
+  headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  bottomChrome: {
     flexGrow: 0,
     flexShrink: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    maxHeight: 36,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    zIndex: 10,
   },
-  menuChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  formatDock: {
+    minHeight: 44,
+    flexGrow: 0,
+    flexShrink: 0,
   },
-  menuChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  headerBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0, flexShrink: 0 },
   toolbarScroll: { flexGrow: 0 },
-  toolbarRow: { paddingHorizontal: 6, paddingVertical: 5, alignItems: 'center', gap: 1, flexGrow: 0 },
+  toolbarRow: { paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', gap: 2, flexGrow: 0, minHeight: 44 },
   toolBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1070,11 +1010,6 @@ const styles = StyleSheet.create({
   pickerRow: { paddingHorizontal: 10, paddingBottom: 8, gap: 8, alignItems: 'center' },
   pickerChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   pickerChipInner: { paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', justifyContent: 'center' },
-  statusBar: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
   promptOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',

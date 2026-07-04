@@ -33,6 +33,8 @@ RAW="$(curl -sf --max-time 25 "$HEALTH_URL" 2>/dev/null)" || {
 
 YOUTUBE_RAW="$(curl -sf --max-time 25 "$YOUTUBE_HEALTH_URL" 2>/dev/null)" || YOUTUBE_RAW='{}'
 WORKOUT_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/workout/generate" -H "Content-Type: application/json" -d '{}' || true)"
+SUBSCRIPTION_VERIFY_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/subscription/apple/verify" -H "Content-Type: application/json" -d '{}' || true)"
+STRIPE_CREATE_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/stripe/create-account" -H "Content-Type: application/json" -d '{}' || true)"
 
 node -e "
 const raw = process.argv[1];
@@ -59,6 +61,20 @@ if (!youtubeOk) {
 if (workoutStatus === '404') {
   fail('POST /api/workout/generate returned 404 — stale Cloud Run revision is missing workout route');
 }
+const subscriptionVerifyStatus = String(process.argv[4] || '');
+const stripeCreateStatus = String(process.argv[5] || '');
+if (subscriptionVerifyStatus === '404') {
+  fail('POST /api/subscription/apple/verify returned 404 — stale Cloud Run revision is missing IAP subscription routes');
+}
+if (stripeCreateStatus === '404') {
+  fail('POST /api/stripe/create-account returned 404 — stale Cloud Run revision is missing Stripe Connect routes');
+}
+if (stripeCreateStatus !== '401' && stripeCreateStatus !== '400') {
+  fail('POST /api/stripe/create-account returned ' + stripeCreateStatus + ' — expected 401 (no auth) or 400 (bad body)');
+}
+if (subscriptionVerifyStatus !== '401' && subscriptionVerifyStatus !== '400') {
+  fail('POST /api/subscription/apple/verify returned ' + subscriptionVerifyStatus + ' — expected 401 (no auth) or 400 (missing token)');
+}
 if (!h.supportEmailReady) {
   console.warn('⚠️  supportEmailReady is false — tickets save to Firestore, but email to coachconnect0@gmail.com needs RESEND_API_KEY or SMTP_*.');
   console.warn('    Add to .env and run ./scripts/syncCloudRunEnv.sh for inbox email delivery.');
@@ -67,5 +83,7 @@ console.log('✅ Production API OK');
 console.log('   deepseek:', h.deepseek, '| perplexity:', h.perplexity, '| serper:', h.serper, '| youtube:', youtubeOk);
 console.log('   aiCoachReady:', h.aiCoachReady, '| firebaseAdmin:', h.firebaseAdmin);
 console.log('   workoutRouteStatus:', workoutStatus || 'unknown');
+console.log('   subscriptionVerifyRouteStatus:', subscriptionVerifyStatus || 'unknown');
+console.log('   stripeCreateRouteStatus:', stripeCreateStatus || 'unknown');
 console.log('   supportEmailReady:', h.supportEmailReady, '| supportInbox:', h.supportInbox || '(default coachconnect0@gmail.com)');
-" "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS"
+" "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS" "$SUBSCRIPTION_VERIFY_STATUS" "$STRIPE_CREATE_STATUS"

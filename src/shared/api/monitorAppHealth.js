@@ -35,7 +35,14 @@ export function initMonitoring() {
   initialized = true;
 
   const dsn = getClientDsn();
-  if (!dsn) return;
+  const isProd = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+
+  if (!dsn && isProd && !__DEV__) {
+    // eslint-disable-next-line no-console
+    console.error('[ERROR] EXPO_PUBLIC_SENTRY_DSN is required in production builds');
+  } else if (!dsn) {
+    return;
+  }
 
   try {
     // eslint-disable-next-line global-require

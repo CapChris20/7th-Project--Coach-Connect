@@ -12,20 +12,24 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://coachconnect-api-421005574501.us-central1.run.app",
-        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3"
+        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3",
+        "EXPO_PUBLIC_TRAINER_IAP_ENABLED": "false"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3"
+        "EXPO_PUBLIC_API_BASE_URL": "https://coachconnect-api-421005574501.us-central1.run.app",
+        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3",
+        "EXPO_PUBLIC_TRAINER_IAP_ENABLED": "true"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://coachconnect-api-421005574501.us-central1.run.app",
-        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3"
+        "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3",
+        "EXPO_PUBLIC_TRAINER_IAP_ENABLED": "true"
       }
     }
   },

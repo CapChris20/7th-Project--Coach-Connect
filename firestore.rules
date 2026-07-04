@@ -20,6 +20,13 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == trainerId;
     }
 
+    // Client → trainer coaching payments (server writes only)
+    match /payments/{paymentId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.client_id || request.auth.uid == resource.data.trainer_id);
+      allow write: if false;
+    }
+
     // Users collection
     match /users/{userId} {
       // SECURITY: user docs are private by default.
@@ -43,12 +50,12 @@ service cloud.firestore {
       // Writes: owner profile fields; trainer may set only trainerId on a client doc (marketplace accept).
       allow create: if request.auth != null
         && request.auth.uid == userId
-        && !request.resource.data.keys().hasAny(['trainerId', 'role', 'linked']);
+        && !request.resource.data.keys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier']);
       allow delete: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (
         (
           request.auth.uid == userId &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'role', 'linked'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier'])
         ) ||
         (
           request.auth.uid != userId &&
@@ -86,6 +93,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/macroHistory/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Denormalized unread message badge (users/{uid}/unreadCount/index)
+    match /users/{userId}/unreadCount/{docId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 

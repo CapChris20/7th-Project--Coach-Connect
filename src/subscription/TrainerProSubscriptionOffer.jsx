@@ -17,10 +17,10 @@ import {
 } from '../shared/components/onboarding/onboardingAiDeps';
 import {
   TRAINER_SUBSCRIPTION_BENEFITS,
-  TRAINER_SUBSCRIPTION_LEGAL,
   TRAINER_SUBSCRIPTION_PRICE_LABEL,
   TRAINER_SUBSCRIPTION_TRIAL_LABEL,
 } from './constants';
+import SubscriptionLegalFooter from './SubscriptionLegalFooter';
 
 const SUBSCRIPTION_HERO = require('../assets/icons/digital-gift-card-abstract-concept-illustration.png');
 
@@ -46,6 +46,8 @@ export default function TrainerProSubscriptionOffer({
   onRestore,
   onOpenSettings,
   onContactSupport,
+  onOpenTerms,
+  onOpenPrivacy,
   connected = true,
 }) {
   const t = getOnboardingUiTokens(isDark);
@@ -128,7 +130,13 @@ export default function TrainerProSubscriptionOffer({
           </View>
         ) : null}
 
-        <Text style={[styles.legal, { color: t.textSecondary }]}>{TRAINER_SUBSCRIPTION_LEGAL}</Text>
+        <SubscriptionLegalFooter
+          textColor={t.textSecondary}
+          linkColor="#FF6B9D"
+          priceLine={subtitle}
+          onOpenTerms={onOpenTerms}
+          onOpenPrivacy={onOpenPrivacy}
+        />
 
         <View style={styles.buttonContainer}>
           {actionLoading ? (

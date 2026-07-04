@@ -155,34 +155,40 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
     },
     {
       num: '08',
-      title: 'Payments',
+      title: 'Coach Connect Pro (trainers)',
       body:
-        'If you sell or buy through an app store, that platform’s rules apply. Only rely on paid features that are actually live in your build—your organization should confirm what billing is enabled in production.',
+        'Trainers may subscribe to Coach Connect Pro through Apple In-App Purchase (auto-renewing monthly subscription, currently $59.99/month with a 3-day free trial where offered). Payment is charged to your Apple ID. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. You can manage or cancel in iOS Settings → Apple ID → Subscriptions. Refunds are handled by Apple under its policies.',
     },
     {
       num: '09',
+      title: 'Other payments',
+      body:
+        'Client payments to a human coach (outside the trainer platform subscription) may use separate flows such as Stripe when enabled. Those transactions are subject to the payment provider’s terms.',
+    },
+    {
+      num: '10',
       title: 'Content you upload',
       body:
         'You’re responsible for photos, files, and messages you send. Don’t upload what you don’t have rights to share.',
     },
     {
-      num: '10',
+      num: '11',
       title: 'Changes',
       body: 'We may change features to improve safety, reliability, or the experience.',
     },
     {
-      num: '11',
+      num: '12',
       title: 'Disclaimer',
       body: 'The app is provided as available. We don’t guarantee it will always be error-free or uninterrupted.',
     },
     {
-      num: '12',
+      num: '13',
       title: 'Limitation of liability',
       body:
         'To the extent allowed by law, we’re not liable for indirect damages from using the app. Have counsel tune this for your country or state.',
     },
     {
-      num: '13',
+      num: '14',
       title: 'Contact',
       body: contactLine,
     },

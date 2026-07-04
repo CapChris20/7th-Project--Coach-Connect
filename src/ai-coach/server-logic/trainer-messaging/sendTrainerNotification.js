@@ -28,6 +28,10 @@ import {
   runTransaction,
   deleteField,
 } from 'firebase/firestore';
+import {
+  incrementUnreadForRecipient,
+  clearUnreadForConversation,
+} from '../../../messaging/unreadCountIndex';
 import { getDocsWithIndexFallback } from '../../../shared/firestore/firestorePagedQuery';
 import { postRemotePushNotify } from '../../../shared/api/sendPushNotification';
 import { randomClientRequestTitle } from '../../../notifications/buildPushNotificationText';
@@ -194,6 +198,7 @@ export async function sendMessage(conversationId, senderId, messageText) {
       const recipientId = conversationData?.participants?.find((id) => id !== senderId);
 
       if (recipientId) {
+        await incrementUnreadForRecipient(recipientId, conversationId);
         const senderData = await getUserData(senderId);
         const senderName = senderData?.name || senderData?.firstName || 'Someone';
 
@@ -583,6 +588,7 @@ export async function markMessagesAsRead(conversationId, userId) {
 
     if (updatePromises.length > 0) {
       await Promise.all(updatePromises);
+      await clearUnreadForConversation(userId, conversationId, updatePromises.length);
     }
   } catch (error) {
     console.error('Error marking messages as read:', error);
@@ -672,92 +678,9 @@ export async function getUnreadMessageCount(userId) {
 }
 
 /**
- * Subscribe to unread message count changes for a user
- * @param {string} userId - The user's ID
- * @param {Function} callback - Callback function to receive unread count
- * @returns {Function} Unsubscribe function
+ * @deprecated Use loadMoreCoachConversations.subscribeToUnreadCount or messaging/unreadCountIndex.
  */
-export function subscribeToUnreadCount(userId, callback) {
-  // Subscribe to all conversations for the user
-  const conversationsRef = collection(db, 'conversations');
-  const conversationsQuery = query(
-    conversationsRef,
-    where('participants', 'array-contains', userId)
-  );
-
-  let unsubscribeFunctions = [];
-
-  const conversationsUnsubscribe = onSnapshot(conversationsQuery, async (conversationsSnapshot) => {
-    // Clean up previous message listeners
-    unsubscribeFunctions.forEach(unsub => unsub());
-    unsubscribeFunctions = [];
-
-    let totalUnread = 0;
-    let completedQueries = 0;
-    const totalConversations = conversationsSnapshot.size;
-
-    if (totalConversations === 0) {
-      callback(0);
-      return;
-    }
-
-    // For each conversation, count unread messages
-    conversationsSnapshot.forEach((convDoc) => {
-      const conversationId = convDoc.id;
-      const messagesRef = collection(db, 'messages');
-      // Only query by conversationId to avoid index requirement
-      const messagesQuery = query(
-        messagesRef,
-        where('conversationId', '==', conversationId)
-      );
-
-      const unsubscribe = onSnapshot(messagesQuery, async () => {
-        // Recalculate total by querying all conversations
-        let newTotal = 0;
-        completedQueries = 0;
-        
-        conversationsSnapshot.forEach(async (conv) => {
-          const convId = conv.id;
-          const msgsRef = collection(db, 'messages');
-          const msgsQuery = query(
-            msgsRef,
-            where('conversationId', '==', convId)
-          );
-          
-          try {
-            const msgsSnapshot = await getDocs(msgsQuery);
-            // Filter in JavaScript
-            msgsSnapshot.forEach((doc) => {
-              const messageData = doc.data();
-              if (messageData.senderId !== userId && messageData.read === false) {
-                newTotal++;
-              }
-            });
-            
-            completedQueries++;
-            if (completedQueries === totalConversations) {
-              callback(newTotal);
-            }
-          } catch (error) {
-            console.error('Error counting unread:', error);
-            completedQueries++;
-            if (completedQueries === totalConversations) {
-              callback(newTotal);
-            }
-          }
-        });
-      });
-
-      unsubscribeFunctions.push(unsubscribe);
-    });
-  });
-
-  // Return cleanup function
-  return () => {
-    conversationsUnsubscribe();
-    unsubscribeFunctions.forEach(unsub => unsub());
-  };
-}
+export { subscribeToUnreadCount } from '../../../messaging/unreadCountIndex';
 
 /** How long after `typingAt` we hide the “typing…” UI without a new pulse. */
 export const TYPING_UI_STALE_MS = 4500;

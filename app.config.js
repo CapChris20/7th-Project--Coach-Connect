@@ -39,6 +39,12 @@ module.exports = {
       'expo-iap',
       'expo-apple-authentication',
       [
+        '@stripe/stripe-react-native',
+        {
+          merchantIdentifier: 'merchant.com.coachconnect',
+        },
+      ],
+      [
         'expo-speech-recognition',
         {
           microphonePermission:
@@ -56,7 +62,13 @@ module.exports = {
       appleTeamId: 'PFTT3AW4H3',
       icon: './assets/icon.png',
       usesAppleSignIn: true,
+      entitlements: {
+        'aps-environment':
+          process.env.EAS_BUILD_PROFILE === 'development' ? 'development' : 'production',
+      },
       infoPlist: {
+        // Export compliance: app only uses HTTPS/TLS via iOS (Firebase, API, etc.) — no custom crypto.
+        ITSAppUsesNonExemptEncryption: false,
         NSCameraUsageDescription: 'This app uses the camera for progress photos and barcode scanning.',
         NSMicrophoneUsageDescription: 'This app uses the microphone so you can talk to your AI Coach.',
         NSSpeechRecognitionUsageDescription:
@@ -113,6 +125,8 @@ module.exports = {
       googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
       googleAndroidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+      /** Stripe publishable key (test/live). Secret key stays server-only. */
+      stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     },
   },
 };

@@ -42,7 +42,11 @@ import SubscriptionTrialBanner from '../../subscription/SubscriptionTrialBanner'
 export default function TrainerMainScreen() {
   const s = useTrainerAppShell();
   return (
-    <TrainerSubscriptionGate onOpenSettings={s.openSettings}>
+    <TrainerSubscriptionGate
+      onOpenSettings={s.openSettings}
+      onOpenTerms={s.openTerms}
+      onOpenPrivacy={s.openPrivacy}
+    >
       <LinearGradient colors={s.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
         <SubscriptionTrialBanner />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
@@ -176,6 +180,7 @@ export default function TrainerMainScreen() {
             stripeConnectStatus={s.trainerProfileDoc?.stripeConnectStatus || 'not_connected'}
             onOpenPayments={s.openPayments}
             appSessionId={s.appSessionId}
+            userEmail={s.user?.email || ''}
             onOpenDocumentEditor={({ documentId = null } = {}) => {
               s.setDocumentEditor({ visible: true, documentId: documentId || null });
             }}

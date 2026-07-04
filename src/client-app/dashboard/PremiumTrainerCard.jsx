@@ -15,12 +15,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
 const ACCENTS = {
-  pink: '#FF6B9D',
-  purple: '#C084FC',
-  cyan: '#64D2FF',
-  orange: '#F97316',
+  pink: '#BE185D',
+  purple: '#BE185D',
+  cyan: '#C2410C',
+  orange: '#C2410C',
   green: '#10B981',
 };
+
+/** Dark pink → dark orange brand CTA */
+const BRAND_CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 const glass = (isDark) => ({
   bg: isDark ? 'rgba(12,10,28,0.96)' : 'rgba(255,255,255,0.97)',
@@ -41,6 +44,7 @@ export default function PremiumTrainerCard({
   onPressSecondaryCTA,
   onPressPayment,
   paymentButtonLabel = 'Manage Coaching Payment',
+  paymentButtonShortLabel = 'Pay',
   paymentRateLabel,
   paymentStatusLabel,
   paymentStatusTone = 'neutral',
@@ -150,107 +154,110 @@ export default function PremiumTrainerCard({
             {/* Divider */}
             <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
 
-            {/* CTA row */}
+            {/* CTA row — Profile | Message | Pay (when linked) */}
             <View style={styles.ctaRow}>
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={onPressSecondaryCTA}
-                style={[styles.secondaryBtn, {
+                style={[styles.tertiaryBtn, {
                   borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
                   backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                 }]}
               >
-                <Ionicons name="person-circle-outline" size={18} color={t.text} />
-                <Text style={[styles.secondaryText, { color: t.text }]}>{secondaryCtaLabel}</Text>
+                <Ionicons name="person-circle-outline" size={17} color={t.text} />
+                <Text style={[styles.tertiaryText, { color: t.text }]} numberOfLines={1}>
+                  Profile
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity activeOpacity={0.9} onPress={onPressCTA} style={styles.primaryBtnWrap}>
-                <LinearGradient colors={[a, '#FF6B9D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryBtn}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryText}>{ctaLabel}</Text>
+                <LinearGradient
+                  colors={BRAND_CTA_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryBtn}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={17} color="#FFFFFF" />
+                  <Text style={styles.primaryText} numberOfLines={1}>{ctaLabel}</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            </View>
 
-            {typeof onPressPayment === 'function' ? (
-              <>
-                <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', marginTop: 14 }]} />
-                {(paymentRateLabel || paymentStatusLabel) ? (
-                  <View style={styles.paymentMetaRow}>
-                    {paymentRateLabel ? (
-                      <Text style={[styles.paymentRate, { color: t.text }]}>{paymentRateLabel}</Text>
-                    ) : null}
-                    {paymentStatusLabel ? (
-                      <View
-                        style={[
-                          styles.paymentStatusChip,
-                          {
-                            backgroundColor:
-                              paymentStatusTone === 'success'
-                                ? isDark
-                                  ? 'rgba(48,209,88,0.15)'
-                                  : 'rgba(48,209,88,0.12)'
-                                : paymentStatusTone === 'warning'
-                                  ? isDark
-                                    ? 'rgba(255,159,10,0.15)'
-                                    : 'rgba(255,159,10,0.12)'
-                                  : paymentStatusTone === 'error'
-                                    ? isDark
-                                      ? 'rgba(255,59,48,0.15)'
-                                      : 'rgba(255,59,48,0.12)'
-                                    : isDark
-                                      ? 'rgba(255,255,255,0.08)'
-                                      : 'rgba(0,0,0,0.06)',
-                            borderColor:
-                              paymentStatusTone === 'success'
-                                ? 'rgba(48,209,88,0.35)'
-                                : paymentStatusTone === 'warning'
-                                  ? 'rgba(255,159,10,0.35)'
-                                  : paymentStatusTone === 'error'
-                                    ? 'rgba(255,59,48,0.35)'
-                                    : isDark
-                                      ? 'rgba(255,255,255,0.12)'
-                                      : 'rgba(0,0,0,0.08)',
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.paymentStatusText,
-                            {
-                              color:
-                                paymentStatusTone === 'success'
-                                  ? ACCENTS.green
-                                  : paymentStatusTone === 'warning'
-                                    ? ACCENTS.orange
-                                    : paymentStatusTone === 'error'
-                                      ? '#FF453A'
-                                      : t.muted,
-                            },
-                          ]}
-                        >
-                          {paymentStatusLabel}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
+              {typeof onPressPayment === 'function' ? (
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={onPressPayment}
-                  style={[
-                    styles.paymentBtn,
-                    {
-                      borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                    },
-                  ]}
+                  style={[styles.tertiaryBtn, {
+                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  }]}
                 >
-                  <Ionicons name="card-outline" size={18} color={a} />
-                  <Text style={[styles.paymentBtnText, { color: t.text }]}>{paymentButtonLabel}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={t.dim} />
+                  <Ionicons name="card-outline" size={17} color={a} />
+                  <Text style={[styles.tertiaryText, { color: t.text }]} numberOfLines={1}>
+                    {paymentButtonShortLabel}
+                  </Text>
                 </TouchableOpacity>
-              </>
+              ) : null}
+            </View>
+
+            {(paymentRateLabel || paymentStatusLabel) && typeof onPressPayment === 'function' ? (
+              <View style={styles.paymentMetaRow}>
+                {paymentRateLabel ? (
+                  <Text style={[styles.paymentRate, { color: t.muted }]}>{paymentRateLabel}</Text>
+                ) : null}
+                {paymentStatusLabel ? (
+                  <View
+                    style={[
+                      styles.paymentStatusChip,
+                      {
+                        backgroundColor:
+                          paymentStatusTone === 'success'
+                            ? isDark
+                              ? 'rgba(48,209,88,0.15)'
+                              : 'rgba(48,209,88,0.12)'
+                            : paymentStatusTone === 'warning'
+                              ? isDark
+                                ? 'rgba(255,159,10,0.15)'
+                                : 'rgba(255,159,10,0.12)'
+                              : paymentStatusTone === 'error'
+                                ? isDark
+                                  ? 'rgba(255,59,48,0.15)'
+                                  : 'rgba(255,59,48,0.12)'
+                                : isDark
+                                  ? 'rgba(255,255,255,0.08)'
+                                  : 'rgba(0,0,0,0.06)',
+                        borderColor:
+                          paymentStatusTone === 'success'
+                            ? 'rgba(48,209,88,0.35)'
+                            : paymentStatusTone === 'warning'
+                              ? 'rgba(255,159,10,0.35)'
+                              : paymentStatusTone === 'error'
+                                ? 'rgba(255,59,48,0.35)'
+                                : isDark
+                                  ? 'rgba(255,255,255,0.12)'
+                                  : 'rgba(0,0,0,0.08)',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paymentStatusText,
+                        {
+                          color:
+                            paymentStatusTone === 'success'
+                              ? ACCENTS.green
+                              : paymentStatusTone === 'warning'
+                                ? ACCENTS.orange
+                                : paymentStatusTone === 'error'
+                                  ? '#FF453A'
+                                  : t.muted,
+                        },
+                      ]}
+                    >
+                      {paymentStatusLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             ) : null}
           </View>
         </View>
@@ -299,7 +306,20 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 12, fontWeight: '800' },
   divider: { height: 1, marginTop: 16, marginBottom: 14, borderRadius: 1 },
-  ctaRow: { flexDirection: 'row', gap: 10 },
+  ctaRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
+  tertiaryBtn: {
+    flex: 1,
+    minWidth: 0,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  tertiaryText: { fontSize: 11, fontWeight: '800' },
   secondaryBtn: {
     flex: 1,
     height: 48,
@@ -311,25 +331,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   secondaryText: { fontSize: 13, fontWeight: '900' },
-  primaryBtnWrap: { flex: 1 },
+  primaryBtnWrap: { flex: 1.15, minWidth: 0 },
   primaryBtn: {
     height: 48,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 4,
+    paddingHorizontal: 4,
   },
-  primaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  primaryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
   paymentMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    marginTop: 12,
-    marginBottom: 10,
+    marginTop: 10,
   },
-  paymentRate: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
+  paymentRate: { fontSize: 12, fontWeight: '700' },
   paymentStatusChip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -337,15 +357,4 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   paymentStatusText: { fontSize: 11, fontWeight: '800' },
-  paymentBtn: {
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  paymentBtnText: { flex: 1, fontSize: 13, fontWeight: '900', textAlign: 'center' },
 });

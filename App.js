@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
@@ -14,14 +14,45 @@ import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fo
 import { CrimsonPro_400Regular, CrimsonPro_600SemiBold, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
 import { ThemeProvider } from './src/shared-ui/ThemeContext';
 import AuthGate from './src/app-start/AuthGate';
+import { AppStripeProvider } from './src/shared/payments/AppStripeProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureNotifications } from './src/notifications/manageNotifications';
 import { initMonitoring } from './src/shared/api/monitorAppHealth';
 import { AIProvider } from './src/shared/contexts/AIContext';
+import { SubscriptionProvider } from './src/subscription/SubscriptionProvider';
+import OnboardingSnapshotRunner from './src/auth/OnboardingSnapshotRunner';
 
 initMonitoring();
 
+function useOnboardingSnapshotAutoStart() {
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (!__DEV__ || active) return undefined;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:9876/ping', { method: 'GET' });
+        if (!cancelled && res.ok) setActive(true);
+      } catch {
+        /* capture server not running */
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [active]);
+
+  return [active, setActive];
+}
+
 export default function App() {
+  const [snapshotCapture, setSnapshotCapture] = useOnboardingSnapshotAutoStart();
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold,
@@ -41,23 +72,21 @@ export default function App() {
   });
 
   useEffect(() => {
-    configureNotifications();
+    try {
+      configureNotifications();
+    } catch (e) {
+      if (__DEV__) console.warn('[notifications] configureNotifications failed:', e?.message || e);
+    }
   }, []);
 
   useEffect(() => {
     const prevHandler = global?.ErrorUtils?.getGlobalHandler?.();
     if (global?.ErrorUtils?.setGlobalHandler) {
       global.ErrorUtils.setGlobalHandler((error, isFatal) => {
-        try {
-          console.error('🌋 Global error handler:', {
-            name: error?.name,
-            message: error?.message,
-            isFatal,
-            stack: error?.stack,
-          });
-        } catch (_) {
-          /* ignore */
-        }
+        const message = error?.message || (error != null ? String(error) : 'unknown error');
+        const name = error?.name || 'Error';
+        console.error(`🌋 Global error handler [${name}]: ${message}`);
+        if (error?.stack) console.error(error.stack);
         if (typeof prevHandler === 'function') prevHandler(error, isFatal);
       });
     }
@@ -71,13 +100,31 @@ export default function App() {
     );
   }
 
+  if (snapshotCapture && __DEV__) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <AIProvider>
+              <SubscriptionProvider userId={null}>
+                <OnboardingSnapshotRunner onDone={() => setSnapshotCapture(false)} />
+              </SubscriptionProvider>
+            </AIProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AIProvider>
-            <AuthGate />
-          </AIProvider>
+          <AppStripeProvider>
+            <AIProvider>
+              <AuthGate />
+            </AIProvider>
+          </AppStripeProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

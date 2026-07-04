@@ -9,8 +9,10 @@
  * @file-header
  */
 import { useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { getLocalDateKey } from '../../shared-utils/getLocalDay';
+import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
 import { parseDailyMetricsFromSnapshots } from '../../metrics/daily-metrics/saveDailyMetricsToFirestore';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../../nutrition/daily-log/logFoodToFirestore';
 import { fetchWorkoutHistory, getActiveWorkout } from '../../workouts/active-workout/workoutService';
@@ -110,22 +112,40 @@ export function useClientHomeBootstrap({
         // Process user data (even if failed, set defaults to prevent infinite loading)
         if (userDoc && userDoc.exists()) {
           const userDocData = userDoc.data();
-          setOnboardingData(userDocData);
-          setUserWeight(userDocData.weight);
-          setGoalProgress(typeof userDocData.goalProgress === 'number' ? userDocData.goalProgress : null);
-          
-          const storedCalories = userDocData.calorieTarget ?? userDocData.calorie_target ?? userDocData.nutrition?.calories;
+          let cachedProfile = null;
+          try {
+            cachedProfile = await loadCachedOnboardingProfile(user.uid, AsyncStorage);
+          } catch {
+            /* optional local merge */
+          }
+          const mergedProfile = resolveClientProfileFields(cachedProfile, userDocData);
+          setOnboardingData(mergedProfile);
+          setUserWeight(mergedProfile.weight);
+          setGoalProgress(typeof mergedProfile.goalProgress === 'number' ? mergedProfile.goalProgress : null);
+
+          const storedCalories =
+            mergedProfile.calorieTarget ?? mergedProfile.calorie_target ?? mergedProfile.nutrition?.calories;
           if (typeof storedCalories === 'number' && storedCalories > 0) {
             setCalorieGoal(Math.round(storedCalories));
           }
           console.log(`✅ User data processed (${(Date.now() - startTime)}ms)`);
         } else {
           console.log(`⚠️ No user data found, using defaults (${(Date.now() - startTime)}ms)`);
-          // Set default values to prevent UI issues
-          setOnboardingData({});
-          setUserWeight(null);
-          setGoalProgress(null);
-          setCalorieGoal(2000); // Default calorie goal
+          let cachedProfile = null;
+          try {
+            cachedProfile = await loadCachedOnboardingProfile(user.uid, AsyncStorage);
+          } catch {
+            /* optional local merge */
+          }
+          const mergedProfile = resolveClientProfileFields(cachedProfile);
+          setOnboardingData(mergedProfile);
+          if (mergedProfile?.weight != null) setUserWeight(mergedProfile.weight);
+          setGoalProgress(
+            typeof mergedProfile?.goalProgress === 'number' ? mergedProfile.goalProgress : null,
+          );
+          if (!(typeof mergedProfile?.calorieTarget === 'number' && mergedProfile.calorieTarget > 0)) {
+            setCalorieGoal(2000);
+          }
         }
 
         // RESTORE: Get nutrition goals

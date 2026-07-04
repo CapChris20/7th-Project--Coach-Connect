@@ -3,6 +3,7 @@ const {
   pickCategoryPrompt,
   buildHourlySpotlightSuggestions,
   buildHourlyCanHelpWith,
+  buildHourlyCoachActions,
   CAN_HELP_WITH_ITEMS,
 } = require('../../ai-coach/chat-ui/chat-thread/coachQuickPrompts');
 
@@ -22,5 +23,21 @@ describe('coach category prompts', () => {
 
     const help = buildHourlyCanHelpWith({ now });
     expect(help).toHaveLength(CAN_HELP_WITH_ITEMS.length);
+
+    const webNow = pickCategoryPrompt('web', { now });
+    const webLater = pickCategoryPrompt('web', { now: now + 60 * 60 * 1000 });
+    expect(typeof webNow).toBe('string');
+    expect(webNow.length).toBeGreaterThan(3);
+
+    const actions = buildHourlyCoachActions(
+      [
+        { id: 'web', starter: 'static' },
+        { id: 'log', starter: 'static' },
+      ],
+      { now },
+    );
+    expect(actions[0].starter).not.toBe('static');
+    expect(actions[1].starter).not.toBe('static');
+    expect(pickCategoryPrompt('web', { now })).toBe(actions[0].starter);
   });
 });

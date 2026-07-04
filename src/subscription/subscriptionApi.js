@@ -1,5 +1,5 @@
 import { auth } from '../app-start/config';
-import { getApiBaseCandidates } from '../shared/api/baseUrl';
+import { getResilientApiBases } from '../shared/api/baseUrl';
 
 async function getIdToken() {
   const user = auth?.currentUser;
@@ -13,7 +13,7 @@ async function getIdToken() {
  */
 async function postSubscription(action, body) {
   const token = await getIdToken();
-  const bases = getApiBaseCandidates();
+  const bases = getResilientApiBases();
   let lastError = null;
 
   for (const base of bases) {

@@ -75,7 +75,7 @@ export function accentTint(hex, alpha = 0.14) {
   return hexToRgba(hex, alpha);
 }
 
-const titleGradient = gradientsSoft.orangePink;
+const titleGradient = brandGradients.orangePink;
 const ruleColor = hexToRgba(brandGradients.orangePurple[1], 0.28);
 
 /** Opaque, high-contrast palette for the expanded nutrition facts panel. */
@@ -83,12 +83,12 @@ export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
   const sharedAccents = {
     titleGradient,
     ruleColor,
-    breakdownGradient: gradientsSoft.orangePink,
+    breakdownGradient: brandGradients.orangePink,
     microGradients: [
-      gradientsSoft.carbs,
-      gradientsSoft.protein,
-      gradientsSoft.fat,
-      gradientsSoft.calories,
+      brandGradients.goldPink,
+      brandGradients.orangePink,
+      brandGradients.cyanPurple,
+      brandGradients.orangePurple,
     ],
   };
 

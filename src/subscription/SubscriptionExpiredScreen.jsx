@@ -4,7 +4,7 @@ import { useTheme } from '../shared-ui/ThemeContext';
 import { useSubscription } from './SubscriptionProvider';
 import TrainerProSubscriptionOffer from './TrainerProSubscriptionOffer';
 
-export default function SubscriptionExpiredScreen({ onOpenSettings }) {
+export default function SubscriptionExpiredScreen({ onOpenSettings, onOpenTerms, onOpenPrivacy }) {
   const { isDark } = useTheme();
   const { actionLoading, lastError, clearError, startFreeTrial, restorePurchases } = useSubscription();
 
@@ -22,6 +22,8 @@ export default function SubscriptionExpiredScreen({ onOpenSettings }) {
       onPrimary={handleResubscribe}
       onRestore={restorePurchases}
       onOpenSettings={onOpenSettings}
+      onOpenTerms={onOpenTerms}
+      onOpenPrivacy={onOpenPrivacy}
       onContactSupport={() => Linking.openURL('mailto:coachconnect0@gmail.com')}
     />
   );

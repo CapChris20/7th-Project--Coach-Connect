@@ -9,7 +9,7 @@
     "ios": "bash ./scripts/setupIosDeviceBuild.sh",
     "ios:run": "bash ./scripts/checkIosSigning.sh && bash ./scripts/iosPodInstall.sh && npx expo run:ios --device \"Coach Connect iPhone\"",
     "ios:pods": "bash ./scripts/iosPodInstall.sh",
-    "prebuild:ios": "npx expo prebuild --platform ios --clean && bash ./scripts/iosPodInstall.sh",
+    "prebuild:ios": "npx expo prebuild --platform ios --clean && bash ./scripts/patchReactNativeTurboModuleIos26.sh && bash ./scripts/iosPodInstall.sh",
     "build:dev": "eas build --profile development --platform ios",
     "web": "npx expo start --web",
     "server": "NODE_ENV=development AI_COACH_ENFORCE_LIMITS=0 node server/index.js",
@@ -24,6 +24,8 @@
     "test:food-search": "node ./scripts/testFoodSearchAccuracy.js",
     "test:food-search:smoke": "node ./scripts/testFoodSearchAccuracy.js --smoke --verbose",
     "test:security": "node ./scripts/testSecurityFixes.js",
+    "test:firestore-rules": "bash ./scripts/runFirestoreRulesJest.sh",
+    "test:payments": "node ./scripts/runPaymentTests.js",
     "test:component-imports": "node ./scripts/checkComponentImports.js",
     "fix:imports": "node ./scripts/fixRelativeImports.js && node ./scripts/fixAllBrokenImports.js --fix && node ./scripts/restoreAssetExtensions.js && node ./scripts/verifyRelativeImports.js",
     "verify:imports": "node ./scripts/verifyRelativeImports.js",
@@ -50,19 +52,24 @@
     "test:thread-gap-fixes:vision-live": "node ./scripts/testCoachVisionGapFixes.js --live",
     "test:thread-gap-fixes:suite": "bash ./scripts/runThreadGapFixSuite.sh",
     "api:verify": "bash ./scripts/verifyProductionApi.sh",
+    "test:iap": "node ./scripts/testIapDevBuild.js",
+    "test:iap:live": "node ./scripts/testIapDevBuild.js --live",
     "api:sync-env": "bash ./scripts/syncCloudRunEnv.sh",
     "api:deploy": "bash ./server/deploy.sh",
     "prerelease": "bash ./scripts/preReleaseCheck.sh",
     "build:production": "bash ./scripts/preReleaseCheck.sh && eas build --profile production",
+    "eas:env:sync": "bash ./scripts/syncEasEnv.sh",
     "inspect:trainer-prices": "node ./scripts/inspectTrainerMarketplacePrices.js",
     "gen:errors": "node ./scripts/generateErrorList.js",
     "gen:onboarding-icons": "node ./scripts/generateOnboardingIconRegistry.mjs",
+    "snapshot:onboarding": "node ./scripts/captureOnboardingSnapshots.mjs",
     "gen:codebase-guide": "node ./scripts/appendSrcInventoryToGuide.mjs",
     "print:google-oauth": "node ./scripts/printGoogleOAuthClientIds.js",
     "restore:user": "node ./scripts/restoreUserByEmail.js",
     "lint": "eslint \"src/**/*.{js,jsx}\"",
     "lint:fix": "eslint \"src/**/*.{js,jsx}\" --fix",
-    "lint:ci": "eslint \"src/**/*.{js,jsx}\" --max-warnings 10000"
+    "lint:ci": "eslint \"src/**/*.{js,jsx}\" --max-warnings 10000",
+    "postinstall": "bash ./scripts/patchReactNativeTurboModuleIos26.sh"
   },
   "dependencies": {
     "@10play/tentap-editor": "^1.0.1",
@@ -86,6 +93,7 @@
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
+    "@stripe/stripe-react-native": "0.50.3",
     "@tradle/react-native-http": "^2.0.1",
     "assert": "^2.1.0",
     "axios": "^1.6.2",
@@ -189,7 +197,8 @@
   "jest": {
     "testEnvironment": "node",
     "roots": [
-      "<rootDir>/src/__tests__"
+      "<rootDir>/src/__tests__",
+      "<rootDir>/server/__tests__"
     ],
     "testMatch": [
       "**/*.test.js"
@@ -213,8 +222,22 @@
     },
     "collectCoverageFrom": [
       "src/**/*.{js,jsx}",
-      "!src/**/__tests__/**"
-    ]
+      "server/**/*.js",
+      "!src/**/__tests__/**",
+      "!server/**/__tests__/**"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/test/"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 20,
+        "functions": 20,
+        "branches": 15,
+        "statements": 20
+      }
+    }
   },
   "expo": {
     "doctor": {

@@ -1,0 +1,19 @@
+[
+  { "role": "client", "step": 1, "title": "Tell us about yourself", "file": "client-step-01-tell-us-about-yourself" },
+  { "role": "client", "step": 2, "title": "What's your fitness experience?", "file": "client-step-02-what-s-your-fitness-experience" },
+  { "role": "client", "step": 3, "title": "What's your main goal?", "file": "client-step-03-what-s-your-main-goal" },
+  { "role": "client", "step": 4, "title": "What equipment do you have access to?", "file": "client-step-04-what-equipment-do-you-have-access-to" },
+  { "role": "client", "step": 5, "title": "How many days per week can you train?", "file": "client-step-05-how-many-days-per-week-can-you-train" },
+  { "role": "client", "step": 6, "title": "Any injuries or limitations?", "file": "client-step-06-any-injuries-or-limitations" },
+  { "role": "client", "step": 7, "title": "Do you have a trainer?", "file": "client-step-07-do-you-have-a-trainer" },
+  { "role": "client", "step": 8, "title": "Describe Your Situation", "file": "client-step-08-describe-your-situation" },
+  { "role": "client", "step": 9, "title": "AI-Powered Features", "file": "client-step-09-ai-powered-features" },
+  { "role": "trainer", "step": 1, "title": "What certifications do you have?", "file": "trainer-step-01-what-certifications-do-you-have" },
+  { "role": "trainer", "step": 2, "title": "How long have you been training clients?", "file": "trainer-step-02-how-long-have-you-been-training-clients" },
+  { "role": "trainer", "step": 3, "title": "What are your specialties?", "file": "trainer-step-03-what-are-your-specialties" },
+  { "role": "trainer", "step": 4, "title": "Describe your training philosophy", "file": "trainer-step-04-describe-your-training-philosophy" },
+  { "role": "trainer", "step": 5, "title": "Availability & session format", "file": "trainer-step-05-availability-session-format" },
+  { "role": "trainer", "step": 6, "title": "Almost done!", "file": "trainer-step-06-almost-done" },
+  { "role": "trainer", "step": 7, "title": "Your client invite code", "file": "trainer-step-07-your-client-invite-code" },
+  { "role": "trainer", "step": 8, "title": "Coach Connect Pro", "file": "trainer-step-08-coach-connect-pro" }
+]

@@ -85,11 +85,39 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   const raw = String(text || '');
   const user = String(userMessage || '').trim();
 
-  if (isInformationalUserMessage(user)) return null;
+  if (isInformationalUserMessage(user) && !userExplicitlyRequestsAction(user)) return null;
 
   const combined = `${user}\n${raw}`.toLowerCase();
 
   if (isToolOutcomeMessage(raw)) return null;
+
+  // Coach asked to confirm — infer the dashboard log from the user's message.
+  if (/\b(tap confirm|confirm in the app|confirm action)\b/i.test(raw) && user) {
+    const stepsOnly = user.match(/(\d[\d,]*)\s*steps?/i);
+    if (stepsOnly && userWantsExplicitDashboardLog(user, 'steps')) {
+      return normalizeToolCall({
+        name: 'logSteps',
+        params: { step_count: Number(String(stepsOnly[1]).replace(/,/g, '')) },
+        reasoning: 'Log steps on your dashboard.',
+      });
+    }
+    const sleepOnly = user.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)(?:\s+of\s+sleep)?/i);
+    if (sleepOnly && userWantsExplicitDashboardLog(user, 'sleep')) {
+      return normalizeToolCall({
+        name: 'logSleep',
+        params: { hours: Number(sleepOnly[1]) },
+        reasoning: 'Log sleep on your dashboard.',
+      });
+    }
+    const waterOnly = user.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i);
+    if (waterOnly && userWantsExplicitDashboardLog(user, 'water')) {
+      return normalizeToolCall({
+        name: 'logWater',
+        params: { amount_oz: Number(waterOnly[1]) },
+        reasoning: 'Log water intake.',
+      });
+    }
+  }
 
   const parsed = parseCoachToolCalls(raw);
   if (parsed.length) {
@@ -126,7 +154,9 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
     });
   }
 
-  const sleepMatch = combined.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/i);
+  const sleepMatch =
+    combined.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/i) ||
+    combined.match(/(?:log|add)\s+(?:in\s+)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
   if (user && userWantsExplicitDashboardLog(user, 'sleep') && (sleepMatch || /\blog\s*sleep/i.test(combined))) {
     return normalizeToolCall({
       name: 'logSleep',

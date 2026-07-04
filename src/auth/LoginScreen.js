@@ -55,10 +55,6 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BrandLogo from '../shared/components/brand/BrandLogo';
 import { cachePendingSignupProfile } from './detectUserRole';
-import OnboardingPreviewScreen from './OnboardingPreviewScreen';
-import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
-
-WebBrowser.maybeCompleteAuthSession();
 
 /**
  * expo-auth-session Google: tokens may be camelCase on `authentication`, snake_case on `params`,
@@ -449,11 +445,18 @@ function SocialGlassButton({
 export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotPasswordFlowPress }) {
   const { colors, typography, spacing, isDark, themeMode = 'dark', toggleTheme: toggleThemeContext } = useTheme();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    try {
+      WebBrowser.maybeCompleteAuthSession();
+    } catch (_) {
+      /* non-fatal — defer avoids TurboModule crash during cold start on iOS 26 */
+    }
+  }, []);
+
   const [focusedField, setFocusedField] = useState(null);
   const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
-  const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
-
   // Auth screen local theme state, synced with ThemeContext (so Welcome + Sign Up match)
   const [isDarkLanding, setIsDarkLanding] = useState(isDark);
   const bgAnim = useRef(new RNAnimated.Value(1)).current;
@@ -1338,7 +1341,29 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
           }}
         >
-          <BrandLogo width={200} style={{ marginBottom: 4 }} />
+          <Text
+            style={{
+              fontSize: 38,
+              fontWeight: '900',
+              letterSpacing: 3,
+              textAlign: 'center',
+              color: t.heading,
+            }}
+          >
+            COACH
+          </Text>
+          <Text
+            style={{
+              fontSize: 38,
+              fontWeight: '900',
+              letterSpacing: 3,
+              textAlign: 'center',
+              marginTop: -2,
+              color: '#FF6B9D',
+            }}
+          >
+            CONNECT
+          </Text>
 
           <View
             style={{
@@ -1511,18 +1536,6 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             </Text>
           </TouchableOpacity>
         </View>
-
-        {__DEV__ ? (
-          <TouchableOpacity
-            onPress={() => setShowOnboardingPreview(true)}
-            activeOpacity={0.75}
-            style={{ marginTop: 20, paddingVertical: 10, paddingHorizontal: 16 }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FF6B9D', textAlign: 'center' }}>
-              Preview onboarding steps (dev)
-            </Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
     </RNAnimated.View>
   );
@@ -3084,10 +3097,6 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   // ==================== MAIN RENDER ====================
-  if (showOnboardingPreview) {
-    return <OnboardingPreviewScreen onClose={() => setShowOnboardingPreview(false)} />;
-  }
-
   return (
     <>
       {currentView === 'welcome'

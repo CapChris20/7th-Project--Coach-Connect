@@ -8,38 +8,42 @@
  *
  * @file-header
  */
-/**
- * Shared onboarding tokens + primary CTA only.
- * Uses the same macro gradients as premium food cards (theme.js).
- */
 import React from 'react';
 import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  brandGradients,
-  gradients,
-  pillBackgroundGradient,
+  FOOD_CARD_BRAND,
+  FOOD_CARD_MACRO_GRADIENTS,
+  ONBOARDING_PALETTE,
+  ONBOARDING_OPTION_GRADIENTS,
+  ONBOARDING_CTA_GRADIENT,
+  ONBOARDING_BRAND_GRADIENT,
+  TRAINER_ONBOARDING_GRADIENT,
+  ONBOARDING_ACCENT,
+  ONBOARDING_ACCENT_SOFT,
+  ONBOARDING_GLASS_TINTS,
+  onboardingOptionGradient,
   hexToRgba,
-} from '../../../nutrition/components/premiumFoodCard/theme';
+  pillBackgroundGradient,
+} from './onboardingThemeTokens';
 
-export { brandGradients, gradients, pillBackgroundGradient, hexToRgba };
-
-/** Same rotating set as food-card macros + calories */
-export const ONBOARDING_OPTION_GRADIENTS = [
-  gradients.protein,
-  gradients.carbs,
-  gradients.fat,
-  gradients.calories,
-];
-
-export const onboardingOptionGradient = (index) =>
-  ONBOARDING_OPTION_GRADIENTS[Math.abs(index) % ONBOARDING_OPTION_GRADIENTS.length];
-
-export const ONBOARDING_CTA_GRADIENT = gradients.protein;
-export const ONBOARDING_BRAND_GRADIENT = ONBOARDING_CTA_GRADIENT;
-export const TRAINER_ONBOARDING_GRADIENT = gradients.carbs;
-export const ONBOARDING_ACCENT = brandGradients.orangePink[1];
-export const ONBOARDING_ACCENT_SOFT = hexToRgba(brandGradients.orangePink[1], 0.15);
+export {
+  FOOD_CARD_BRAND,
+  FOOD_CARD_BRAND as brandGradients,
+  FOOD_CARD_MACRO_GRADIENTS,
+  FOOD_CARD_MACRO_GRADIENTS as gradients,
+  ONBOARDING_PALETTE,
+  ONBOARDING_GLASS_TINTS,
+  ONBOARDING_OPTION_GRADIENTS,
+  ONBOARDING_CTA_GRADIENT,
+  ONBOARDING_BRAND_GRADIENT,
+  TRAINER_ONBOARDING_GRADIENT,
+  ONBOARDING_ACCENT,
+  ONBOARDING_ACCENT_SOFT,
+  onboardingOptionGradient,
+  hexToRgba,
+  pillBackgroundGradient,
+};
 
 /** Food-card style icon well — thin gradient accent + soft pill fill */
 export function IconGradientWrap({ gradient, selected, size, radius, style, children }) {
@@ -60,12 +64,6 @@ export function IconGradientWrap({ gradient, selected, size, radius, style, chil
       ]}
     >
       <LinearGradient
-        colors={stops}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3 }}
-      />
-      <LinearGradient
         colors={bg}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -82,7 +80,7 @@ export function getOnboardingUiTokens(isDark) {
         bg: '#0A0A0F',
         cardBg: 'rgba(255,255,255,0.04)',
         cardBorder: 'rgba(255,255,255,0.08)',
-        cardSelectedBg: hexToRgba(brandGradients.orangePink[1], 0.12),
+        cardSelectedBg: hexToRgba(ONBOARDING_PALETTE.pink, 0.12),
         cardSelectedBorder: ONBOARDING_ACCENT,
         textPrimary: '#FFFFFF',
         textSecondary: 'rgba(255,255,255,0.5)',
@@ -100,7 +98,7 @@ export function getOnboardingUiTokens(isDark) {
         bg: '#F5F5F7',
         cardBg: '#FFFFFF',
         cardBorder: '#E5E7EB',
-        cardSelectedBg: hexToRgba(brandGradients.orangePink[1], 0.1),
+        cardSelectedBg: hexToRgba(ONBOARDING_PALETTE.pink, 0.1),
         cardSelectedBorder: ONBOARDING_ACCENT,
         textPrimary: '#0A0A0F',
         textSecondary: '#6B7280',
@@ -116,10 +114,6 @@ export function getOnboardingUiTokens(isDark) {
       };
 }
 
-/**
- * @param {'inline' | 'footer'} [variant] — `inline` keeps vertical margins for use inside scroll content.
- *   `footer` removes margins for the fixed onboarding bottom bar (avoids overlap with scroll content).
- */
 export function OnboardingPrimaryButton({
   disabled = false,
   onPress,

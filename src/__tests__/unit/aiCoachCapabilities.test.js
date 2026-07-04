@@ -205,6 +205,12 @@ describe('offline — delete log, personal data, tool inference', () => {
       const sleepInfer = inferCoachToolCall('log my sleep as 7.5 hours', {});
       expect(sleepInfer?.name).toBe('logSleep');
     });
+
+    it('infer logSleep from "log in 10 hours of sleep"', () => {
+      const sleepInfer = inferCoachToolCall('log in 10 hours of sleep', {});
+      expect(sleepInfer?.name).toBe('logSleep');
+      expect(sleepInfer?.params?.hours).toBe(10);
+    });
   });
 
   describe('parseCoachToolCalls', () => {

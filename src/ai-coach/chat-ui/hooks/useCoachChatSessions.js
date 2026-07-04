@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../../app-start/config';
+import { needsCreativeTitle } from '../../server-logic/chat-api/chatTitleUtils';
+import { refreshStaleChatSessionTitles } from '../../server-logic/chat-api/refreshStaleChatSessionTitles';
 
 export function toSessionDateLabel(d) {
   try {
@@ -87,6 +89,21 @@ export function useCoachChatSessions(userId, { max = 50 } = {}) {
 
     return () => unsub();
   }, [userId, max]);
+
+  const staleSessionKey = useMemo(
+    () =>
+      sessions
+        .filter((s) => needsCreativeTitle(s.title, s.lastUserMessage))
+        .map((s) => s.id)
+        .join(','),
+    [sessions],
+  );
+
+  useEffect(() => {
+    if (!userId || !staleSessionKey) return undefined;
+    refreshStaleChatSessionTitles(userId, sessions);
+    return undefined;
+  }, [userId, staleSessionKey, sessions]);
 
   return sessions;
 }

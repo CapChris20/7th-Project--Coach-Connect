@@ -32,7 +32,8 @@ import {
 } from './MarketplaceUI';
 import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
-const PROFILE_FOOTER_H = 88;
+/** Sticky footer row (Message + Connect) — used for scroll padding. */
+const PROFILE_FOOTER_H = 96;
 
 const FEATURES = [
   { label: 'Custom workouts', icon: 'barbell-outline', color: BRAND.pink },
@@ -85,8 +86,8 @@ export function TrainerProfileSheet({
   const showPrice = price != null && Number(price) > 0;
   const handleMessage = onMessage;
   const handleConnect = onConnect || onRequest;
-  const bottomInset = embedded ? shellBottomInset : insets.bottom;
-  const scrollBottomPad = PROFILE_FOOTER_H + bottomInset + 20;
+  const shellNavClearance = embedded ? Math.max(0, shellBottomInset) : 0;
+  const scrollBottomPad = PROFILE_FOOTER_H + 28 + shellNavClearance;
 
   const footer = (
     <View
@@ -95,7 +96,7 @@ export function TrainerProfileSheet({
         {
           borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : t.border,
           backgroundColor: embedded ? 'transparent' : isDark ? t.card : t.background,
-          paddingBottom: embedded ? Math.max(bottomInset, 12) : 12 + insets.bottom,
+          paddingBottom: embedded ? Math.max(12, shellNavClearance) : 12 + insets.bottom,
         },
       ]}
     >
@@ -133,7 +134,9 @@ export function TrainerProfileSheet({
       style={[
         s.root,
         embedded ? s.rootEmbedded : null,
-        { backgroundColor: embedded ? 'transparent' : t.background },
+        {
+          backgroundColor: embedded ? 'transparent' : t.background,
+        },
       ]}
     >
       <ScrollView
@@ -281,7 +284,7 @@ export default TrainerProfileSheet;
 
 const s = StyleSheet.create({
   root: { flex: 1 },
-  rootEmbedded: { flexGrow: 1, minHeight: 0 },
+  rootEmbedded: { flex: 1, minHeight: 0 },
   modalShell: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, gap: 14, paddingTop: 4 },
@@ -371,5 +374,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     borderTopWidth: 1,
+    marginTop: 'auto',
+    marginHorizontal: 0,
   },
 });

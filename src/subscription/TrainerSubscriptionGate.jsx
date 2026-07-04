@@ -3,15 +3,16 @@ import { ActivityIndicator, Platform, View, StyleSheet } from 'react-native';
 import { useSubscription } from './SubscriptionProvider';
 import TrainerSubscriptionPaywallScreen from './TrainerSubscriptionPaywallScreen';
 import SubscriptionExpiredScreen from './SubscriptionExpiredScreen';
+import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from './constants';
 
 /**
  * Gates trainer app content by platform subscription state.
  * iOS only — other platforms pass through (Android IAP not in scope).
  */
-export default function TrainerSubscriptionGate({ children, onOpenSettings }) {
+export default function TrainerSubscriptionGate({ children, onOpenSettings, onOpenTerms, onOpenPrivacy }) {
   const { firestoreLoading, accessState } = useSubscription();
 
-  if (Platform.OS !== 'ios') {
+  if (!TRAINER_PLATFORM_SUBSCRIPTION_ENABLED || Platform.OS !== 'ios') {
     return children;
   }
 
@@ -24,11 +25,23 @@ export default function TrainerSubscriptionGate({ children, onOpenSettings }) {
   }
 
   if (accessState.access === 'no_subscription') {
-    return <TrainerSubscriptionPaywallScreen onOpenSettings={onOpenSettings} />;
+    return (
+      <TrainerSubscriptionPaywallScreen
+        onOpenSettings={onOpenSettings}
+        onOpenTerms={onOpenTerms}
+        onOpenPrivacy={onOpenPrivacy}
+      />
+    );
   }
 
   if (accessState.access === 'expired') {
-    return <SubscriptionExpiredScreen onOpenSettings={onOpenSettings} />;
+    return (
+      <SubscriptionExpiredScreen
+        onOpenSettings={onOpenSettings}
+        onOpenTerms={onOpenTerms}
+        onOpenPrivacy={onOpenPrivacy}
+      />
+    );
   }
 
   return children;

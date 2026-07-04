@@ -49,8 +49,12 @@ import { getApiBaseCandidates } from '../shared/api/baseUrl';
 import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
 import { useAI } from '../shared/contexts/AIContext';
 import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
-import { TrainerSubscriptionOnboardingStep } from '../shared/components/onboarding/TrainerSubscriptionOnboardingStep';
+import {
+  TrainerSubscriptionOnboardingStep,
+  TrainerSubscriptionCtaFooter,
+} from '../shared/components/onboarding/TrainerSubscriptionOnboardingStep';
 import { useSubscription } from '../subscription/SubscriptionProvider';
+import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../subscription/constants';
 import ExerciseDislikePicker from '../workouts/exercise-library/ExerciseDislikePicker';
 import LottieView from 'lottie-react-native';
 import LiquidBackground from '../shared-ui/liquid/LiquidBackground';
@@ -78,13 +82,14 @@ import lottieTrainer4 from '../assets/animations/app-flows/philosophy';
 import lottieTrainer5 from '../assets/animations/app-flows/rates';
 import lottieTrainer6 from '../assets/animations/app-flows/invite-code';
 import {
+  FOOD_CARD_MACRO_GRADIENTS,
+  ONBOARDING_GLASS_TINTS,
+  ONBOARDING_PALETTE,
   ONBOARDING_CTA_GRADIENT,
   ONBOARDING_BRAND_GRADIENT,
   TRAINER_ONBOARDING_GRADIENT,
   ONBOARDING_ACCENT,
   ONBOARDING_ACCENT_SOFT,
-  brandGradients,
-  gradients,
   pillBackgroundGradient,
   onboardingOptionGradient,
   IconGradientWrap,
@@ -554,13 +559,7 @@ export function onboardingGridHalfWidth() {
 // --- end inlined onboarding UI primitives ---
 
 // Liquid Glass accent tints — food-card macro hues
-const GLASS_TINTS = {
-  cyan: brandGradients.cyanPurple[0],
-  violet: brandGradients.cyanPurple[1],
-  magenta: brandGradients.orangePink[1],
-  orange: brandGradients.orangePink[0],
-  gold: brandGradients.goldPink[0],
-};
+const GLASS_TINTS = ONBOARDING_GLASS_TINTS;
 
 const getClientStepTint = (step, section) => {
   // Keep backgrounds unchanged; tint only the glass surfaces.
@@ -591,11 +590,11 @@ const GRADIENTS = {
   tealBlue: ['#14B8A6', '#3B82F6'],
   indigoPurple: ['#6366F1', '#8B5CF6'],
   greenBlue: ['#10B981', '#3B82F6'],
-  orangeRed: gradients.protein,
+  orangeRed: FOOD_CARD_MACRO_GRADIENTS.protein,
   green: ['#10B981', '#059669'],
-  purplePink: gradients.calories,
-  goldPink: gradients.carbs,
-  goldAmber: brandGradients.goldPink,
+  purplePink: FOOD_CARD_MACRO_GRADIENTS.calories,
+  goldPink: FOOD_CARD_MACRO_GRADIENTS.carbs,
+  goldAmber: ['#A67C00', '#9A3412'],
   success: ['#10B981', '#059669'],
   disabled: ['#CBD5E0', '#E2E8F0'],
 };
@@ -619,7 +618,6 @@ const LOTTIE_ANIMATIONS = {
   'trainer-5': lottieTrainer5,
   'trainer-6': lottieTrainer5,
   'trainer-7': lottieTrainer6,
-  'trainer-8': lottieClient1,
 };
 
 /** Large Lottie layout for client onboarding `StepLottie` */
@@ -1515,6 +1513,8 @@ export default function OnboardingWizardScreen({
   const [loading, setLoading] = useState(false);
   const { setAIFromOnboarding } = useAI();
   const { accessState: trainerSubscriptionAccess } = useSubscription();
+  // Paywall plan selected on trainer step 8 (annual is the recommended default).
+  const [trainerPlanId, setTrainerPlanId] = useState('pro_annual');
   const [onboardingData, setOnboardingData] = useState({
     // Client fields - Basic Info
     weight: null, // in kg or lbs
@@ -1978,16 +1978,16 @@ export default function OnboardingWizardScreen({
         case 3:
           return onboardingData.specialties.length > 0;
         case 4:
-          return true;
+          return true; // Training philosophy — optional
         case 5:
-          // Day 5: in-app subscription / rate card deferred — only availability + session format required
+          // Availability + session format required
           return !!onboardingData.trainerAvailabilityStatus && !!onboardingData.sessionType;
         case 6:
           return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
         case 7:
-          return true; // Auto-generated code
+          return true; // Auto-generated invite code
         case 8:
-          if (Platform.OS !== 'ios') return true;
+          if (!TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) return true;
           return trainerSubscriptionAccess?.hasFullAccess === true;
         default:
           return false;
@@ -2179,7 +2179,7 @@ export default function OnboardingWizardScreen({
     if (role === 'client') {
       return currentStep === 6 || currentStep === 7; // Injuries and Trainer Code (steps 8-9 are required)
     }
-    return false;
+    return currentStep === 4; // Training philosophy optional
   };
 
   const getStepTitle = () => {
@@ -2980,9 +2980,8 @@ Examples:
           <View style={styles.stepContainer}>
             <TrainerSubscriptionOnboardingStep
               isDark={isDark}
-              currentStep={currentStep}
-              totalSteps={totalSteps}
-              onComplete={() => handleFinish()}
+              selectedPlanId={trainerPlanId}
+              onSelectPlan={setTrainerPlanId}
             />
           </View>
         );
@@ -2994,11 +2993,14 @@ Examples:
 
   const dynamicStyles = getStyles(isDark);
   const ot = getOnboardingUiTokens(isDark);
-  const hideBottomNav = (role === 'client' && currentStep === 9) || (role === 'trainer' && currentStep === 8);
+  const hideBottomNav = (role === 'client' && currentStep === 9)
+    || (role === 'trainer' && currentStep === 8);
+  const isTrainerPaywallStep = role === 'trainer' && currentStep === 8;
   const onboardingFooterPadTop = 12;
   const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
   const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
-  const scrollBottomPad = onboardingFooterBarHeight + 28;
+  // Paywall footer is taller (CTA + price/restore row below it).
+  const scrollBottomPad = onboardingFooterBarHeight + (isTrainerPaywallStep ? 60 : 28);
   const ScreenRoot = previewMode ? View : SafeAreaView;
 
   return (
@@ -3080,6 +3082,16 @@ Examples:
 
             {role === 'client' ? renderClientStep() : renderTrainerStep()}
           </ScrollView>
+
+          {/* Trainer step 8: sticky paywall CTA (FitFlow-style fixed footer) */}
+          {isTrainerPaywallStep ? (
+            <TrainerSubscriptionCtaFooter
+              isDark={isDark}
+              selectedPlanId={trainerPlanId}
+              onComplete={() => handleFinish()}
+              bottomInset={onboardingFooterPadBottom}
+            />
+          ) : null}
 
           {/* Bottom bar: symmetric layout so Continue stays screen-centered; safe-area + no extra button margins */}
           {hideBottomNav ? null : (

@@ -826,7 +826,7 @@ export const NutritionScreen = ({
     <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.screenBg }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[screen.scroll, { paddingBottom: scrollBottomPad }]}
+        contentContainerStyle={[screen.scroll, { flexGrow: 1, paddingBottom: scrollBottomPad }]}
         {...FORM_SCROLL_PROPS}
       >
 

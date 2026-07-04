@@ -7,13 +7,17 @@ function registerAICoachRoutes(app, deps) {
     executeTool,
     parseToolCalls,
     stripToolJsonFromReply,
+    callClaudeCoach,
+    sharedRateLimit,
   } = deps;
 
-  app.post('/api/ai-coach', verifyFirebaseBearerToken, (req, res) =>
+  const rateLimitMw = sharedRateLimit || ((_req, _res, next) => next());
+
+  app.post('/api/ai-coach', verifyFirebaseBearerToken, rateLimitMw, (req, res) =>
     handleAICoachRequest(req, res),
   );
 
-  app.post('/api/ai-coach/web-search', verifyFirebaseBearerToken, (req, res) =>
+  app.post('/api/ai-coach/web-search', verifyFirebaseBearerToken, rateLimitMw, (req, res) =>
     handleAICoachRequest(req, res, { forceWebSearch: true }),
   );
 
@@ -49,6 +53,32 @@ function registerAICoachRoutes(app, deps) {
         message: 'Failed to execute tool',
         data: { error: e?.message || String(e) },
       });
+    }
+  });
+
+  app.post('/api/ai-coach/chat-title', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      const message = String(req.body?.message || '').trim();
+      if (!message) return res.status(400).json({ error: 'message is required' });
+      if (!callClaudeCoach) return res.status(503).json({ error: 'AI provider unavailable' });
+
+      const title = await callClaudeCoach({
+        systemPrompt:
+          'You write ultra-short fitness chat titles. Reply with only the title (3-5 words, optional one emoji). No quotes.',
+        messages: [{ role: 'user', content: message }],
+        maxTokens: 60,
+        timeoutMs: 12000,
+      });
+
+      const cleaned = String(title || '')
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 56);
+
+      return res.json({ title: cleaned || 'Chat' });
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Failed to generate title' });
     }
   });
 

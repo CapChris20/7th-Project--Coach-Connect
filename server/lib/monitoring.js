@@ -11,7 +11,14 @@ function initServerMonitoring() {
   initialized = true;
 
   const dsn = String(process.env.SENTRY_DSN || '').trim();
-  if (!dsn) return;
+  const isProd = process.env.NODE_ENV === 'production' && !!process.env.K_SERVICE;
+
+  if (!dsn && isProd) {
+    logger.error('SENTRY_DSN is required in production Cloud Run — errors will not be tracked');
+  } else if (!dsn) {
+    logger.warn('Sentry not configured; set SENTRY_DSN for crash reporting');
+    return;
+  }
 
   try {
     const Sentry = require('@sentry/node');

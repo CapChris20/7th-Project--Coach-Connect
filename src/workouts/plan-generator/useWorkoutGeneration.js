@@ -34,7 +34,7 @@ export function useWorkoutGeneration({ profileSubjectUid, readOnly, onHydratePla
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const uid = profileSubjectUid || auth.currentUser?.uid;
+      const uid = auth.currentUser?.uid;
       if (!uid) return;
       const usage = await resolveWorkoutGenerationUsage(uid);
       if (mounted) setWorkoutGenUsage(usage);
@@ -42,7 +42,7 @@ export function useWorkoutGeneration({ profileSubjectUid, readOnly, onHydratePla
     return () => {
       mounted = false;
     };
-  }, [profileSubjectUid]);
+  }, []);
 
   useEffect(() => {
     const uid = profileSubjectUid || auth.currentUser?.uid;

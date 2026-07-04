@@ -129,10 +129,14 @@ async function testAuthRequiredRoutes() {
     ['GET', '/api/food/search?query=chicken', null],
     ['POST', '/api/food/barcode', { barcode: '1234567890123' }],
     ['POST', '/api/nutrition/restaurant', { query: 'chipotle bowl' }],
+    ['POST', '/api/nutrition/search', { foodName: 'egg' }],
     ['GET', '/api/fatigue/test-user-id', null],
     ['GET', '/api/youtube/search?q=squat', null],
     ['POST', '/api/log-error', { message: 'test error' }],
     ['POST', '/api/workout/generate', { onboardingData: { daysPerWeek: 3 } }],
+    ['POST', '/api/trainers', { name: 'Test Trainer' }],
+    ['PUT', '/api/trainers/trainer123', { name: 'Hacked' }],
+    ['DELETE', '/api/trainers/trainer123', null],
   ];
 
   for (const [method, route, body] of cases) {

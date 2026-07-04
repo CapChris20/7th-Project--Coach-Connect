@@ -112,6 +112,7 @@ function SpreadsheetGridRow({
                   multiline
                   scrollEnabled={false}
                   onChangeText={onCellDraftChange}
+                  onBlur={() => onCellEditCommit(0, 0)}
                   onSubmitEditing={() => onCellEditCommit(1, 0)}
                   style={[styles.cellInput, inputStyle]}
                   autoCapitalize="none"

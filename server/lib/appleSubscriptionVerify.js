@@ -1,16 +1,38 @@
 const EXPECTED_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.coachconnect';
 const EXPECTED_PRODUCT_ID = process.env.APPLE_SUBSCRIPTION_PRODUCT_ID || 'com.coachconnect.month';
+/** All product IDs the app can sell (monthly + annual paywall plans). */
+const EXPECTED_PRODUCT_IDS = (
+  process.env.APPLE_SUBSCRIPTION_PRODUCT_IDS ||
+  `${EXPECTED_PRODUCT_ID},com.coachconnect.year`
+)
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
 
 /**
- * Decode a JWS (header.payload.signature) without signature verification.
- * Used as fallback in sandbox when strict Apple cert verification is not configured.
+ * Decode a JWS (header.payload.signature) without cryptographic signature verification.
+ * StoreKit 2 tokens are signed by Apple; production should set APPLE_IAP_REQUIRE_JWS_SIGNATURE=true.
  * @param {string} jws
  */
 function decodeJwsPayload(jws) {
   const parts = String(jws || '').split('.');
-  if (parts.length < 2) {
+  if (parts.length !== 3) {
     throw new Error('Invalid JWS format');
   }
+  if (!parts[0] || !parts[1] || !parts[2]) {
+    throw new Error('Invalid JWS format');
+  }
+
+  const requireSignature =
+    process.env.APPLE_IAP_REQUIRE_JWS_SIGNATURE === 'true' ||
+    (process.env.NODE_ENV === 'production' && process.env.APPLE_IAP_REQUIRE_JWS_SIGNATURE !== 'false');
+
+  if (requireSignature && parts[2].length < 20) {
+    const err = new Error('JWS signature missing or invalid');
+    err.code = 'invalid_token';
+    throw err;
+  }
+
   const json = Buffer.from(parts[1], 'base64url').toString('utf8');
   return JSON.parse(json);
 }
@@ -120,8 +142,14 @@ function verifyApplePurchaseToken(purchaseToken, hints = {}) {
     throw err;
   }
 
+  if (!tx.transactionId) {
+    const err = new Error('Missing transaction ID in purchase token');
+    err.code = 'verification_failed';
+    throw err;
+  }
+
   const productId = hints.productId || tx.productId;
-  if (productId && productId !== EXPECTED_PRODUCT_ID) {
+  if (productId && !EXPECTED_PRODUCT_IDS.includes(productId)) {
     const err = new Error('Product ID mismatch');
     err.code = 'verification_failed';
     throw err;
@@ -175,6 +203,7 @@ function verifyAppleRestoredPurchases(purchases = []) {
 module.exports = {
   EXPECTED_BUNDLE_ID,
   EXPECTED_PRODUCT_ID,
+  EXPECTED_PRODUCT_IDS,
   verifyApplePurchaseToken,
   verifyAppleRestoredPurchases,
   buildSubscriptionFromTransaction,

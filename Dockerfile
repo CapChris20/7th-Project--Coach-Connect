@@ -8,9 +8,9 @@ RUN cd server && npm install --omit=dev
 
 COPY server/ ./server/
 COPY src/shared/ ./src/shared/
-COPY src/ai/tools/ ./src/ai/tools/
-COPY src/nutrition/food-search/ ./src/nutrition/food-search/
-COPY src/nutrition/food-details/ ./src/nutrition/food-details/
+COPY src/ai-coach/ ./src/ai-coach/
+COPY src/nutrition/ ./src/nutrition/
+COPY src/metrics/daily-metrics/ ./src/metrics/daily-metrics/
 COPY config/pushNotificationCopy.json ./config/pushNotificationCopy.json
 
 ENV PORT=8080

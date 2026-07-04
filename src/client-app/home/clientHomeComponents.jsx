@@ -316,13 +316,25 @@ const TopStatsRow = ({
     if (workoutType) workoutType = workoutType.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   }
   let displayWorkoutType = workoutType;
-  if (workoutType) {
-    const parts = String(workoutType).split(/\s+/);
-    if (parts.length >= 2) {
-      const [first, ...rest] = parts;
-      displayWorkoutType = `${first}\n${rest.join(' ')}`;
-    }
-  }
+  const workoutFontSize = (() => {
+    if (!displayWorkoutType) return 34;
+    const maxWidth = Math.max(96, cardWidth - 28);
+    const len = String(displayWorkoutType).length;
+    let size = 34;
+    while (size > 20 && len * size * 0.52 > maxWidth) size -= 2;
+    return size;
+  })();
+  const workoutTextStyle = [
+    styles.statGradientNumber,
+    styles.statGradientWorkoutText,
+    {
+      fontWeight: '800',
+      fontSize: workoutFontSize,
+      lineHeight: workoutFontSize + 4,
+      width: '100%',
+      alignSelf: 'stretch',
+    },
+  ];
   const isRestDay = workoutType === 'Rest Day';
 
   const border = colors?.border ?? (isDark ? '#38383A' : '#E5E5E7');
@@ -358,7 +370,7 @@ const TopStatsRow = ({
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText
                       enabled={!isDark}
-                      style={[styles.statGradientNumber, styles.statGradientWorkoutText, { fontWeight: '800' }]}
+                      style={workoutTextStyle}
                       align="center"
                       numberOfLines={2}
                     >
@@ -366,7 +378,7 @@ const TopStatsRow = ({
                     </LightModeOutlineText>
                     <StatGradientText
                       textProps={{ numberOfLines: 2 }}
-                      style={[styles.statGradientNumber, styles.statGradientWorkoutText, { fontWeight: '800' }]}
+                      style={workoutTextStyle}
                       colors={HOME_STAT_WORKOUT_GRADIENT}
                     >
                       {displayWorkoutType}
@@ -1020,7 +1032,7 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   if (macros) {
     allNutrients.push(...(macros || []).map(m => {
       // Extract numeric value from string like "25g"
-      const numericValue = parseFloat(m.value.replace(/[^\d.]/g, ''));
+      const numericValue = parseFloat(String(m.value ?? '').replace(/[^\d.]/g, ''));
       return {
         ...m,
         value: numericValue,
@@ -1058,8 +1070,8 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
       }
       
       // Extract numeric value from string like "25g" or "2300mg"
-      const numericValue = parseFloat(n.value.replace(/[^\d.]/g, ''));
-      const unit = n.value.includes('mg') ? 'mg' : 'g';
+      const numericValue = parseFloat(String(n.value ?? '').replace(/[^\d.]/g, ''));
+      const unit = String(n.value ?? '').includes('mg') ? 'mg' : 'g';
       
       allNutrients.push({
         label: n.label,

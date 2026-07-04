@@ -1,20 +1,41 @@
-Timestamp: 2026-06-25T00:53:13.036Z
-Command: jest --runInBand --testPathPattern=appleSubscriptionVerify --passWithNoTests
-Exit code: 0
-npm warn Unknown env config "devdir". This will stop working in the next major version of npm.
-watchman warning:  Recrawled this watch 1 time, most recently because:
+Timestamp: 2026-07-04T03:44:07.603Z
+Command: jest --runInBand --testPathPattern=ClientPaymentModal
+Exit code: 1
+watchman warning:  Recrawled this watch 3 times, most recently because:
 MustScanSubDirs UserDroppedTo resolve, please review the information on
 https://facebook.github.io/watchman/docs/troubleshooting.html#recrawl
 To clear this warning, run:
 `watchman watch-del '/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect' ; watchman watch-project '/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect'`
 
-PASS src/__tests__/unit/appleSubscriptionVerify.test.js
-  appleSubscriptionVerify
-    ✓ maps trial offer to free_trial status (12 ms)
-    ✓ decodes JWS payload
+FAIL src/__tests__/ClientPaymentModal.test.js
+  ● Test suite failed to run
 
-Test Suites: 1 passed, 1 total
-Tests:       2 passed, 2 total
+    Cannot find module './sweet/setUpJsLogger.fx' from 'node_modules/expo-modules-core/src/index.ts'
+
+    Require stack:
+      node_modules/expo-modules-core/src/index.ts
+      node_modules/expo-constants/build/Constants.js
+      src/shared/payments/stripeNativeStatus.js
+      src/components/ClientPaymentModal.jsx
+      src/__tests__/ClientPaymentModal.test.js
+
+      2 |  * Detect whether Stripe native (CardField / useStripe) is usable in this build.
+      3 |  */
+    > 4 | import Constants from 'expo-constants';
+        | ^
+      5 |
+      6 | let stripeModule = null;
+      7 | let loadError = null;
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.require (node_modules/expo-modules-core/src/index.ts:1:1)
+      at Object.require (node_modules/expo-constants/src/Constants.ts:10:1)
+      at Object.require (src/shared/payments/stripeNativeStatus.js:4:1)
+      at Object.require (src/components/ClientPaymentModal.jsx:24:1)
+      at Object.require (src/__tests__/ClientPaymentModal.test.js:62:32)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
 Snapshots:   0 total
-Time:        3.924 s
-Ran all test suites matching /appleSubscriptionVerify/i.
+Time:        3.826 s
+Ran all test suites matching /ClientPaymentModal/i.

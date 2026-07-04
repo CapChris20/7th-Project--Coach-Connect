@@ -12,6 +12,7 @@ for attempt in $(seq 1 "$max_attempts"); do
   echo "→ pod install (attempt ${attempt}/${max_attempts})"
   if pod install --repo-update; then
     echo "✓ CocoaPods installed"
+    bash "$ROOT/scripts/patchReactNativeTurboModuleIos26.sh"
     exit 0
   fi
   echo "⚠ pod install failed; clearing partial ReactNativeDependencies headers and retrying..."

@@ -29,10 +29,18 @@ import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 import { useTrainerAppShell } from '../navigation/TrainerAppShellContext';
 import { getClientInitials } from '../dashboard/trainerDashboardUi';
+import { resolveStripeStatus } from '../../shared/api/stripeConnectApi';
+import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
+import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
+import {
+  HowPaymentsWorkSection,
+  EarningsDashboardPreview,
+} from '../../shared/payments/PaymentEducationSections';
+import { auth } from '../../app-start/config';
 
 const ACCENT_PINK = '#BE185D';
 const ACCENT_ORANGE = '#C2410C';
-const PLATFORM_FEE_RATE = 0.05;
+const PLATFORM_FEE_RATE = 0.1;
 
 function formatUsdFromCents(cents) {
   const n = Number(cents);
@@ -142,7 +150,8 @@ export default function PaymentsScreen() {
   const clients = shell.clients || [];
   const profile = shell.trainerProfileDoc || {};
 
-  const stripeConnectStatus = profile.stripeConnectStatus || 'not_connected';
+  const stripeConnectStatus = resolveStripeStatus(profile);
+  const stripeAccountId = profile.stripeAccountId || '';
   const grossCents = Number(profile.earningsGrossCents) || 0;
   const feesCents = Number(profile.earningsPlatformFeesCents) || Math.round(grossCents * PLATFORM_FEE_RATE);
   const netCents = Number(profile.earningsNetCents) || Math.max(0, grossCents - feesCents);
@@ -178,13 +187,21 @@ export default function PaymentsScreen() {
     setRateModalClient(client);
   }, []);
 
+  const stripeConnect = useStripeConnectFlow({
+    email: auth?.currentUser?.email || profile.email || '',
+    onActive: () => {
+      shell.refetchTrainerProfile?.();
+    },
+  });
+
   const handleConnectBank = useCallback(() => {
-    console.log('[PaymentsScreen] handleConnectBank placeholder');
-  }, []);
+    if (stripeConnect.error) stripeConnect.retry();
+    else stripeConnect.startConnect();
+  }, [stripeConnect]);
 
   const handleManageBank = useCallback(() => {
-    console.log('[PaymentsScreen] handleManageBank placeholder');
-  }, []);
+    stripeConnect.startConnect();
+  }, [stripeConnect]);
 
   const handleSetClientRate = useCallback((clientId, amountInCents) => {
     console.log('[PaymentsScreen] handleSetClientRate placeholder', { clientId, amountInCents });
@@ -216,6 +233,8 @@ export default function PaymentsScreen() {
     return <StatusChip label="Not connected" tone="neutral" colors={colors} isDark={isDark} />;
   };
 
+  const bankMask = stripeAccountId ? `****${String(stripeAccountId).slice(-4)}` : null;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
       <CoachConnectHeader
@@ -240,8 +259,21 @@ export default function PaymentsScreen() {
           {stripeConnectStatus === 'not_connected' ? (
             <>
               <Text style={[styles.bodyText, { color: mutedColor }]}>
-                Connect your bank account to receive payments from your clients
+                Connect your bank account to receive in-app payments from clients. You keep 90% of each
+                payment; payouts typically arrive in 2–5 business days.
               </Text>
+              <View style={{ marginVertical: 12 }}>
+                <HowPaymentsWorkSection
+                  compact
+                  textColor={textColor}
+                  mutedColor={mutedColor}
+                />
+                <EarningsDashboardPreview
+                  textColor={textColor}
+                  mutedColor={mutedColor}
+                  borderColor={isDark ? 'rgba(255,255,255,0.1)' : colors.border}
+                />
+              </View>
               <TouchableOpacity activeOpacity={0.92} onPress={handleConnectBank} style={styles.primaryBtnOuter}>
                 <LinearGradient
                   colors={[ACCENT_PINK, ACCENT_ORANGE]}
@@ -257,6 +289,7 @@ export default function PaymentsScreen() {
 
           {stripeConnectStatus === 'pending' ? (
             <Text style={[styles.bodyText, { color: mutedColor }]}>
+              {bankMask ? `Bank account: ${bankMask}. ` : ''}
               Stripe is verifying your account. This usually takes 1-2 business days.
             </Text>
           ) : null}
@@ -264,6 +297,7 @@ export default function PaymentsScreen() {
           {stripeConnectStatus === 'active' ? (
             <>
               <Text style={[styles.bodyText, { color: mutedColor }]}>
+                {bankMask ? `Bank account: ${bankMask}. ` : ''}
                 Payouts are sent automatically every 2 business days by Stripe
               </Text>
               <TouchableOpacity
@@ -291,7 +325,7 @@ export default function PaymentsScreen() {
             <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(grossCents)}</Text>
           </View>
           <View style={styles.earningsRow}>
-            <Text style={[styles.earningsLabel, { color: mutedColor }]}>Platform fees (5%)</Text>
+            <Text style={[styles.earningsLabel, { color: mutedColor }]}>Platform fees (10%)</Text>
             <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(feesCents)}</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border }]} />
@@ -461,6 +495,15 @@ export default function PaymentsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <StripeConnectWebViewModal
+        visible={!!stripeConnect.webViewUrl}
+        url={stripeConnect.webViewUrl}
+        title="Connect with Stripe"
+        isDark={isDark}
+        onClose={() => stripeConnect.closeWebView({ userClosed: true })}
+        onComplete={stripeConnect.handleWebViewComplete}
+      />
     </SafeAreaView>
   );
 }

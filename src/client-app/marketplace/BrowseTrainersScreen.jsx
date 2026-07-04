@@ -13,6 +13,7 @@ import {
   View,
   Text,
   TextInput,
+  FlatList,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
@@ -80,6 +81,9 @@ function WelcomeHero({ isDark }) {
 export function BrowseTrainersScreen({
   trainers = [],
   loading = false,
+  loadingMore = false,
+  hasMore = false,
+  onLoadMore,
   isDark = true,
   filters,
   search,
@@ -106,54 +110,65 @@ export function BrowseTrainersScreen({
 
   return (
     <LinearGradient colors={screenGrad} style={s.flex}>
-        <ScrollView
-          style={s.flex}
-          contentContainerStyle={s.listScroll}
-          {...FORM_SCROLL_PROPS}
-        >
-          <WelcomeHero isDark={isDark} />
+      <FlatList
+        style={s.flex}
+        contentContainerStyle={s.listScroll}
+        data={trainers}
+        keyExtractor={(tr) => String(tr.id)}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={8}
+        onEndReached={() => {
+          if (!loading && !loadingMore && hasMore) onLoadMore?.();
+        }}
+        onEndReachedThreshold={0.35}
+        ListHeaderComponent={
+          <>
+            <WelcomeHero isDark={isDark} />
 
-          <GlassPanel
-            isDark={isDark}
-            borderRadius={16}
-            contentWrapperStyle={s.searchRow}
-            contentStyle={s.searchInner}
-          >
-            <Ionicons name="search" size={18} color={t.mutedForeground} />
-            <TextInput
-              value={search}
-              onChangeText={onSearchChange}
-              placeholder="Search trainers, cities…"
-              placeholderTextColor={t.mutedForeground}
-              style={[s.searchInput, { color: t.foreground }]}
-            />
-            <FilterGradientButton onPress={() => onOpenFilters?.()} />
-          </GlassPanel>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.quickPills}>
-            {QUICK_SPECIALTIES.map((spec) => (
-              <Pill
-                key={spec}
-                label={spec}
-                active={quickSpecialty === spec}
-                onPress={() => onQuickSpecialtyChange?.(spec)}
-                t={t}
-                isDark={isDark}
+            <GlassPanel
+              isDark={isDark}
+              borderRadius={16}
+              contentWrapperStyle={s.searchRow}
+              contentStyle={s.searchInner}
+            >
+              <Ionicons name="search" size={18} color={t.mutedForeground} />
+              <TextInput
+                value={search}
+                onChangeText={onSearchChange}
+                placeholder="Search trainers, cities…"
+                placeholderTextColor={t.mutedForeground}
+                style={[s.searchInput, { color: t.foreground }]}
               />
-            ))}
-          </ScrollView>
+              <FilterGradientButton onPress={() => onOpenFilters?.()} />
+            </GlassPanel>
 
-          <View style={s.listHeader}>
-            <Text style={[s.listCount, { color: t.foreground }]}>
-              {trainers.length} trainer{trainers.length === 1 ? '' : 's'}
-            </Text>
-            <Pressable onPress={() => onOpenFilters?.()} style={s.sortRow} hitSlop={8}>
-              <Text style={{ color: t.mutedForeground, fontSize: 13, fontWeight: '600' }}>{filters.sort}</Text>
-              <Ionicons name="chevron-down" size={14} color={t.mutedForeground} style={{ marginLeft: 2 }} />
-            </Pressable>
-          </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.quickPills}>
+              {QUICK_SPECIALTIES.map((spec) => (
+                <Pill
+                  key={spec}
+                  label={spec}
+                  active={quickSpecialty === spec}
+                  onPress={() => onQuickSpecialtyChange?.(spec)}
+                  t={t}
+                  isDark={isDark}
+                />
+              ))}
+            </ScrollView>
 
-          {trainers.length === 0 ? (
+            <View style={s.listHeader}>
+              <Text style={[s.listCount, { color: t.foreground }]}>
+                {trainers.length} trainer{trainers.length === 1 ? '' : 's'}
+              </Text>
+              <Pressable onPress={() => onOpenFilters?.()} style={s.sortRow} hitSlop={8}>
+                <Text style={{ color: t.mutedForeground, fontSize: 13, fontWeight: '600' }}>{filters.sort}</Text>
+                <Ionicons name="chevron-down" size={14} color={t.mutedForeground} style={{ marginLeft: 2 }} />
+              </Pressable>
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          !loading ? (
             <GlassCard t={t} isDark={isDark} contentStyle={{ padding: 32, alignItems: 'center' }}>
               <Ionicons name="search-outline" size={40} color={t.mutedForeground} style={{ marginBottom: 12 }} />
               <Text style={{ color: t.foreground, fontWeight: '800', fontSize: 16 }}>
@@ -163,20 +178,27 @@ export function BrowseTrainersScreen({
                 Try adjusting specialty or price range.
               </Text>
             </GlassCard>
-          ) : (
-            trainers.map((tr) => (
-              <TrainerCard
-                key={tr.id}
-                trainer={tr}
-                t={t}
-                isDark={isDark}
-                onMessage={onMessage}
-                onConnect={onConnect}
-                onViewProfile={onViewProfile}
-              />
-            ))
-          )}
-        </ScrollView>
+          ) : null
+        }
+        renderItem={({ item: tr }) => (
+          <TrainerCard
+            trainer={tr}
+            t={t}
+            isDark={isDark}
+            onMessage={onMessage}
+            onConnect={onConnect}
+            onViewProfile={onViewProfile}
+          />
+        )}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={s.footerLoader}>
+              <ActivityIndicator size="small" color={BRAND.pink} />
+            </View>
+          ) : null
+        }
+        {...FORM_SCROLL_PROPS}
+      />
     </LinearGradient>
   );
 }
@@ -186,6 +208,7 @@ export default BrowseTrainersScreen;
 const s = StyleSheet.create({
   flex: { flex: 1 },
   listScroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 16, paddingTop: 8 },
+  footerLoader: { paddingVertical: 16, alignItems: 'center' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroOuter: {
     marginBottom: 4,

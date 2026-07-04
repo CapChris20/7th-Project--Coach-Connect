@@ -2,25 +2,27 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Leaf, Droplets, Heart, Sparkles, Waves, Zap } from 'lucide-react-native';
+import GradientText from './GradientText';
 import {
+  brandGradients,
   gradients,
-  gradientsSoft,
   radii,
   fonts,
-  accentTint,
+  pillBackgroundGradient,
   getNutritionPanelPalette,
 } from './theme';
 
-function microGradientForKey(key, np) {
-  const cycle = np.microGradients || [
-    brandGradients.goldPink,
-    brandGradients.orangePink,
-    brandGradients.cyanPurple,
-    brandGradients.orangePurple,
-  ];
-  const order = ['fiber', 'saturatedFat', 'cholesterol', 'sugar', 'sodium', 'potassium'];
-  const idx = order.indexOf(key);
-  return cycle[(idx >= 0 ? idx : 0) % cycle.length];
+const MICRO_GRADIENT_MAP = {
+  fiber: brandGradients.goldPink,
+  saturatedFat: brandGradients.orangePink,
+  cholesterol: brandGradients.orangePurple,
+  sugar: brandGradients.goldPink,
+  sodium: brandGradients.orangePink,
+  potassium: brandGradients.cyanPurple,
+};
+
+function microGradientForKey(key) {
+  return MICRO_GRADIENT_MAP[key] || brandGradients.orangePink;
 }
 
 const MICRO_CONFIG = [
@@ -33,16 +35,16 @@ const MICRO_CONFIG = [
 ];
 
 const MACRO_LEGEND = [
-  { key: 'carbs', label: 'Carbs', gradient: gradients.carbs, soft: gradientsSoft.carbs },
-  { key: 'protein', label: 'Protein', gradient: gradients.protein, soft: gradientsSoft.protein },
-  { key: 'fat', label: 'Fat', gradient: gradients.fat, soft: gradientsSoft.fat },
+  { key: 'carbs', label: 'Carbs', gradient: gradients.carbs },
+  { key: 'protein', label: 'Protein', gradient: gradients.protein },
+  { key: 'fat', label: 'Fat', gradient: gradients.fat },
 ];
 
-function MacroLegendChip({ label, grams, pct, softStops, np }) {
+function MacroLegendChip({ label, grams, pct, gradientStops, np }) {
   return (
     <View style={[styles.legendChip, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
       <View style={styles.legendChipRow}>
-        <LinearGradient colors={softStops} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.legendDot} />
+        <LinearGradient colors={gradientStops} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.legendDot} />
         <Text style={[styles.legendLabel, { color: np.textMuted }]}>{label}</Text>
       </View>
       <Text style={[styles.legendGrams, { color: np.text }]}>{Math.round(Number(grams) || 0)}g</Text>
@@ -55,9 +57,9 @@ function CompositionBar({ percents, np }) {
   const { carbs = 0, protein = 0, fat = 0 } = percents || {};
   const total = carbs + protein + fat || 1;
   const segments = [
-    { flex: carbs / total, colors: gradientsSoft.carbs },
-    { flex: protein / total, colors: gradientsSoft.protein },
-    { flex: fat / total, colors: gradientsSoft.fat },
+    { flex: carbs / total, colors: gradients.carbs },
+    { flex: protein / total, colors: gradients.protein },
+    { flex: fat / total, colors: gradients.fat },
   ].filter((s) => s.flex > 0.001);
 
   return (
@@ -82,7 +84,7 @@ function MicroStatTile({ config, data, np }) {
   const raw = Number(data?.value);
   if (!Number.isFinite(raw) || raw <= 0) return null;
 
-  const softGradient = microGradientForKey(config.key, np);
+  const gradient = microGradientForKey(config.key);
   const unit = data?.unit || 'g';
   const dvPct = config.dailyValue
     ? Math.min(999, Math.round((raw / config.dailyValue) * 100))
@@ -91,14 +93,14 @@ function MicroStatTile({ config, data, np }) {
 
   return (
     <View style={[styles.microTile, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
-      <View
-        style={[
-          styles.microIconRing,
-          { backgroundColor: accentTint(softGradient[1], 0.14) },
-        ]}
+      <LinearGradient
+        colors={gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.microIconRing}
       >
-        <Icon size={14} color={softGradient[1]} strokeWidth={2.2} />
-      </View>
+        <Icon size={14} color="#FFFFFF" strokeWidth={2.2} />
+      </LinearGradient>
 
       <View style={styles.microTileBody}>
         <Text style={[styles.microTileLabel, { color: np.textMuted }]}>{config.label}</Text>
@@ -107,21 +109,23 @@ function MicroStatTile({ config, data, np }) {
           <Text style={[styles.microTileUnit, { color: np.textMuted }]}>{unit}</Text>
         </View>
         {dvPct != null ? (
-          <View style={[styles.dvBadge, { backgroundColor: accentTint(softGradient[1], 0.1), borderColor: accentTint(softGradient[1], 0.22) }]}>
-            <Text style={[styles.dvBadgeText, { color: softGradient[1] }]}>
+          <LinearGradient
+            colors={pillBackgroundGradient(gradient, { strong: true })}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.dvBadge}
+          >
+            <GradientText colors={gradient} style={styles.dvBadgeText}>
               {dvPct}% DV
-            </Text>
-          </View>
+            </GradientText>
+          </LinearGradient>
         ) : null}
         <View style={[styles.microBarTrack, { backgroundColor: np.trackBg }]}>
-          <View
-            style={[
-              styles.microBarFill,
-              {
-                width: `${Math.max(barPct, 8)}%`,
-                backgroundColor: accentTint(softGradient[1], 0.55),
-              },
-            ]}
+          <LinearGradient
+            colors={gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.microBarFill, { width: `${Math.max(barPct, 8)}%` }]}
           />
         </View>
       </View>
@@ -167,13 +171,13 @@ export default function NutritionFactsSection({
       <CompositionBar percents={macroPercents} np={np} />
 
       <View style={styles.legendRow}>
-        {MACRO_LEGEND.map(({ key, label, gradient, soft }) => (
+        {MACRO_LEGEND.map(({ key, label, gradient }) => (
           <MacroLegendChip
             key={key}
             label={label}
             grams={key === 'carbs' ? carbs : key === 'protein' ? protein : fat}
             pct={macroPercents[key]}
-            softStops={soft}
+            gradientStops={gradient}
             np={np}
           />
         ))}
@@ -183,7 +187,9 @@ export default function NutritionFactsSection({
         <View style={styles.panelInner}>
           <View style={styles.panelHeader}>
             <View style={styles.panelHeaderText}>
-              <Text style={[styles.panelTitle, { color: np.text }]}>Nutrition Facts</Text>
+              <GradientText colors={np.titleGradient} style={styles.panelTitle}>
+                Nutrition Facts
+              </GradientText>
               <Text style={[styles.panelSubtitle, { color: np.textMuted }]}>
                 Per logged serving
               </Text>
@@ -195,7 +201,12 @@ export default function NutritionFactsSection({
             </View>
           </View>
 
-          <View style={[styles.panelRule, { backgroundColor: np.ruleColor }]} />
+          <LinearGradient
+            colors={brandGradients.orangePurple}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.panelRule}
+          />
 
           {visibleMicros.length > 0 ? (
             <View style={styles.microGrid}>
@@ -343,9 +354,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
   },
   panelRule: {
-    height: 1,
+    height: 2,
     borderRadius: 1,
     marginBottom: 14,
+    opacity: 0.85,
   },
   microGrid: {
     flexDirection: 'row',
@@ -399,10 +411,10 @@ const styles = StyleSheet.create({
   dvBadge: {
     alignSelf: 'flex-start',
     borderRadius: 7,
-    borderWidth: 1,
     paddingHorizontal: 7,
     paddingVertical: 3,
     marginTop: 6,
+    overflow: 'hidden',
   },
   dvBadgeText: {
     fontSize: 10,

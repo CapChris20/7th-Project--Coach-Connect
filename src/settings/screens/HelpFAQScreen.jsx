@@ -55,6 +55,35 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const FAQ_SECTIONS = [
   {
     type: 'heading',
+    title: 'Payments & billing',
+  },
+  {
+    question: 'How much do trainers earn and when?',
+    answer:
+      'For in-app client payments, you receive 90% of each charge. Coach Connect keeps a 10% platform fee. Stripe sends payouts to your linked bank account, typically within 2–5 business days. See Earnings & payouts in Settings or the Payments tab for history.',
+  },
+  {
+    question: 'Why not just use Venmo?',
+    answer:
+      'You can arrange Venmo outside the app, but Coach Connect payments give you automatic bank deposits, a permanent dashboard history (great for taxes), professional records, and less chasing clients for payment.',
+  },
+  {
+    question: 'Do I have to use Coach Connect payments?',
+    answer:
+      'No, but you lose automatic payouts and clear records that make running a coaching business easier.',
+  },
+  {
+    question: 'Is a client payment the same as Coach Connect Pro?',
+    answer:
+      'No. Client coaching payments are one-time charges from clients to you. Coach Connect Pro is a separate monthly trainer subscription for platform features.',
+  },
+  {
+    question: 'How do clients pay their coach?',
+    answer:
+      'Linked clients tap Pay on the dashboard or use Settings → Billing → Add payment method. Payments are processed securely by Stripe and saved in payment history.',
+  },
+  {
+    type: 'heading',
     title: 'Using the app',
   },
   {
@@ -96,11 +125,6 @@ const FAQ_SECTIONS = [
     question: 'How do trainers manage multiple clients?',
     answer:
       'Through the trainer tools: client list, messaging, scheduling, requests, and per-client areas like notes, nutrition views, progress, and workout plans.',
-  },
-  {
-    question: 'How much do trainers earn and when?',
-    answer:
-      'Coach Connect doesn’t run trainer paychecks in the app. Earnings and payout timing are whatever you arrange outside the app (your business, invoicing, etc.), unless you add billing later.',
   },
   {
     question: 'Can trainers set their own prices?',

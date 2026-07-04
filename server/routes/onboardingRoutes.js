@@ -1,6 +1,7 @@
 /** Onboarding API (invite codes, complete) */
 const admin = require('firebase-admin');
 const { writeTrainerClientLinks } = require('../lib/onboardingCompleteLinks');
+const { sanitizeOnboardingData } = require('../lib/onboardingSanitize');
 
 function registerOnboardingRoutes(app, deps) {
   const { verifyFirebaseBearerToken } = deps;
@@ -85,6 +86,8 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
       return res.status(400).json({ error: 'Missing onboardingData.' });
     }
 
+    const { sanitized: safeOnboardingData } = sanitizeOnboardingData(onboardingData, { uid });
+
     const db = admin.firestore();
     const usersRef = db.collection('users');
     const trainersRef = db.collection('trainers');
@@ -94,14 +97,14 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
     const existing = existingSnap.exists ? existingSnap.data() : {};
 
     const updateData = {
-      ...onboardingData,
+      ...safeOnboardingData,
       role: resolvedRole,
       onboardingCompleted: true,
       onboardingCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    const weight = onboardingData?.weight;
+    const weight = safeOnboardingData?.weight;
     if (
       (existing?.startingWeight == null || existing?.startingWeight === '') &&
       weight != null &&
@@ -117,7 +120,7 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
       const userForMarketplace = await usersRef.doc(uid).get();
       const uPub = userForMarketplace.exists ? userForMarketplace.data() : {};
 
-      const yearsExperience = onboardingData?.yearsExperience || null;
+      const yearsExperience = safeOnboardingData?.yearsExperience || null;
       const experienceMap = {
         less_than_1: 0,
         '1_2': 2,
@@ -127,59 +130,59 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
       };
       const experience = experienceMap[yearsExperience] ?? 0;
 
-      const certifications = Array.isArray(onboardingData?.certifications)
-        ? onboardingData.certifications
-        : onboardingData?.certifications || [];
+      const certifications = Array.isArray(safeOnboardingData?.certifications)
+        ? safeOnboardingData.certifications
+        : safeOnboardingData?.certifications || [];
 
-      const specialties = Array.isArray(onboardingData?.specialties)
-        ? onboardingData.specialties
-        : onboardingData?.specialties || [];
+      const specialties = Array.isArray(safeOnboardingData?.specialties)
+        ? safeOnboardingData.specialties
+        : safeOnboardingData?.specialties || [];
 
       const specialty =
         specialties?.[0] ||
-        (Array.isArray(onboardingData?.specializations)
-          ? onboardingData.specializations?.[0]
+        (Array.isArray(safeOnboardingData?.specializations)
+          ? safeOnboardingData.specializations?.[0]
           : '') ||
         '';
 
-      const sessionType = onboardingData?.sessionType || 'Both';
+      const sessionType = safeOnboardingData?.sessionType || 'Both';
 
       const trainerDocData = {
         uid,
         name:
-          onboardingData?.name ||
-          onboardingData?.firstName ||
+          safeOnboardingData?.name ||
+          safeOnboardingData?.firstName ||
           displayName ||
           'Trainer',
         // Marketplace is read by clients; they cannot read users/{trainerId} — mirror public photo on trainers/*.
         photoURL:
           uPub.photoURL ||
           uPub.photoUrl ||
-          onboardingData?.photoURL ||
-          onboardingData?.photoUrl ||
+          safeOnboardingData?.photoURL ||
+          safeOnboardingData?.photoUrl ||
           null,
-        avatarUrl: uPub.avatarUrl || onboardingData?.avatarUrl || null,
+        avatarUrl: uPub.avatarUrl || safeOnboardingData?.avatarUrl || null,
         displayName: uPub.displayName || displayName || null,
-        location: onboardingData?.location || '',
+        location: safeOnboardingData?.location || '',
         specialties,
         bio:
-          onboardingData?.trainerProfileBio ||
-          onboardingData?.bio ||
-          onboardingData?.trainingPhilosophy ||
+          safeOnboardingData?.trainerProfileBio ||
+          safeOnboardingData?.bio ||
+          safeOnboardingData?.trainingPhilosophy ||
           null,
         certifications,
-        rate: onboardingData?.pricing?.perSession || null,
-        pricing: onboardingData?.pricing || {},
+        rate: safeOnboardingData?.pricing?.perSession || null,
+        pricing: safeOnboardingData?.pricing || {},
         yearsExperience,
         experience,
         available: true,
         // Normalize for marketplace cards + profile UI
         specialty,
-        price: onboardingData?.pricing?.perMonth ?? onboardingData?.pricing?.perSession ?? null,
+        price: safeOnboardingData?.pricing?.perMonth ?? safeOnboardingData?.pricing?.perSession ?? null,
         reviewCount: 0,
         rating: 0,
         availability:
-          onboardingData?.trainerAvailabilityStatus === 'waitlist' ? 'Waitlist' : 'Available',
+          safeOnboardingData?.trainerAvailabilityStatus === 'waitlist' ? 'Waitlist' : 'Available',
         sessionType,
         isRemote: sessionType === 'Remote',
         experienceRange: yearsExperience,
@@ -188,9 +191,9 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
         clients: 0,
         sessions: 0,
         availableDays: [true, true, true, true, true, false, false],
-        offerFreeConsultation: onboardingData?.offerFreeConsultation || false,
-        flexiblePricingAvailable: onboardingData?.flexiblePricingAvailable || false,
-        inviteCode: onboardingData?.inviteCode || null,
+        offerFreeConsultation: safeOnboardingData?.offerFreeConsultation || false,
+        flexiblePricingAvailable: safeOnboardingData?.flexiblePricingAvailable || false,
+        inviteCode: safeOnboardingData?.inviteCode || null,
         onboardingCompleted: true,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -200,8 +203,8 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
     }
 
     // Link client to trainer via trainerId (we do it directly with Admin SDK).
-    if (resolvedRole === 'client' && onboardingData?.trainerId) {
-      const trainerId = String(onboardingData.trainerId);
+    if (resolvedRole === 'client' && safeOnboardingData?.trainerId) {
+      const trainerId = String(safeOnboardingData.trainerId);
       const trainerDoc = await usersRef.doc(trainerId).get();
       if (!trainerDoc.exists || trainerDoc.data()?.role !== 'trainer') {
         return res.json({ success: true, linked: false, reason: 'Invalid trainerId' });

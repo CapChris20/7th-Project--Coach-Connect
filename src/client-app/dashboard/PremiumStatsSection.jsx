@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 const BORDER_GRADIENT = ['#06B6D4', '#C084FC', '#FF6B9D'];
+/** Dark pink → dark orange — trainer card shell and CTAs */
+export const TRAINER_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
 
 const CC = {
   bg: '#0A0A0F',
@@ -41,16 +43,16 @@ const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-export const GradientBorderShell = ({ isDark, children, style }) => (
+export const GradientBorderShell = ({ isDark, children, style, borderColors = BORDER_GRADIENT }) => (
   <LinearGradient
-    colors={BORDER_GRADIENT}
+    colors={borderColors}
     start={{ x: 0, y: 0 }}
     end={{ x: 1, y: 1 }}
     style={[
       {
         borderRadius: 22,
         padding: 1.5,
-        shadowColor: '#C084FC',
+        shadowColor: borderColors[0] || '#BE185D',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: isDark ? 0.35 : 0.22,
         shadowRadius: 18,

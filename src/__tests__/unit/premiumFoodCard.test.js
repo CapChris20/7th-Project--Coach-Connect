@@ -27,8 +27,8 @@ describe('premiumFoodCard', () => {
 
   it('uses low-opacity pill gradient stops', () => {
     const bg = pillBackgroundGradient(gradients.carbs);
-    expect(bg[0]).toBe(hexToRgba('#A67C00', 0.14));
-    expect(bg[1]).toBe(hexToRgba('#FFD86B', 0.1));
+    expect(bg[0]).toBe(hexToRgba('#A67C00', 0.1));
+    expect(bg[1]).toBe(hexToRgba('#FF6B9D', 0.06));
   });
 
   it('demo food matches mockup macros', () => {
@@ -45,9 +45,9 @@ describe('premiumFoodCard', () => {
 
   it('nutrition panel uses brand colors and light mode is not a dark box', () => {
     const dark = getNutritionPanelPalette(true, { embedded: true });
-    expect(dark.panelBg).toMatch(/^#/);
-    expect(dark.text).toBe('#FFFFFF');
-    expect(dark.borderStops).toEqual(['#FFD86B', '#FF8C42', '#FF3D8A']);
+    expect(dark.panelBg).toBe('#14110F');
+    expect(dark.text).toBe('#F4F2EF');
+    expect(dark.breakdownGradient).toEqual(['#9A3412', '#FF3D8A']);
 
     const light = getNutritionPanelPalette(false, { embedded: true });
     expect(light.text).toBe('#0A0A0F');

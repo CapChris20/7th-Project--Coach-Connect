@@ -239,7 +239,8 @@ export function ScheduleTrainingSessionScreen(props = {}) {
 
       <View style={[styles.formCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
         <FormRow label="Client" mutedColor={colors.label} borderColor={colors.divider}>
-          <Text style={[styles.readOnlyField, { color: DARK_PINK }]}>{clientName}</Text>
+          <Text style={[styles.readOnlyField, { color: '#FFFFFF' }]}>{clientName}</Text>
+          <View style={styles.clientNameUnderline} />
         </FormRow>
 
         <FormRow label="Date" mutedColor={colors.label} borderColor={colors.divider}>
@@ -419,9 +420,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   readOnlyField: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     paddingVertical: 4,
+  },
+  clientNameUnderline: {
+    height: 2,
+    backgroundColor: '#FF6B9D',
+    marginTop: 8,
+    width: '30%',
   },
   wheelRow: {
     flexDirection: 'row',

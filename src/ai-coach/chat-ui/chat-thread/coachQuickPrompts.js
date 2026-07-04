@@ -4,7 +4,7 @@
  * Purpose: coach Category Prompts — Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/aiChat
- * Key exports: getCoachHourSlot, pickCategoryPrompt, buildHourlySpotlightSuggestions, buildHourlyCanHelpWith, CAN_HELP_WITH_ITEMS
+ * Key exports: getCoachHourSlot, pickCategoryPrompt, buildHourlySpotlightSuggestions, buildHourlyCanHelpWith, buildHourlyCoachActions, CAN_HELP_WITH_ITEMS
  *
  * @file-header
  */
@@ -16,7 +16,7 @@
 const MS_PER_HOUR = 60 * 60 * 1000;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
 
-const CATEGORY_OFFSET = { train: 0, fuel: 11, recover: 23, web: 37 };
+const CATEGORY_OFFSET = { train: 0, fuel: 11, recover: 23, web: 37, log: 5, data: 19, photo: 29 };
 
 const TRAIN_PROMPTS = [
   'Dial in my training plan for this week',
@@ -64,6 +64,32 @@ const WEB_PROMPTS = [
   'Compare full-body vs PPL for busy schedules — what does evidence favor?',
   'Search the web: safest way to increase training volume over time',
   'What does research say about meal timing around workouts?',
+];
+
+const LOG_PROMPTS = [
+  'Can you log data for me?',
+  'Log my steps for today',
+  'Can you log that I slept 8 hours last night?',
+  'Track my water intake for today',
+  'Can you log my mood for today?',
+  'Log my weight for this morning',
+  'Can you record my protein intake for today?',
+];
+
+const DATA_PROMPTS = [
+  'Can you show me my data and context?',
+  'Review my macros and workouts from this week',
+  'How am I tracking against my goals right now?',
+  'Show me my training and nutrition trends',
+  'What patterns do you see in my recent logs?',
+  'Summarize my week — sleep, food, and workouts',
+];
+
+const PHOTO_PROMPTS = [
+  'Can you analyze a photo for me?',
+  'Check my form in this photo and give coaching cues',
+  'Give me physique feedback from this progress photo',
+  'What should I improve based on this gym photo?',
 ];
 
 export const CAN_HELP_WITH_ITEMS = [
@@ -335,6 +361,10 @@ export function pickCategoryPrompt(categoryId, { userData, sessions, now = Date.
     fuel: mergePromptPool(FUEL_PROMPTS, buildContextualFuelPrompts(ctx)),
     recover: mergePromptPool(RECOVER_PROMPTS, buildContextualRecoverPrompts(ctx)),
     web: mergePromptPool(WEB_PROMPTS, buildContextualWebPrompts(ctx)),
+    log: LOG_PROMPTS,
+    tools: LOG_PROMPTS,
+    data: DATA_PROMPTS,
+    photo: PHOTO_PROMPTS,
   };
   const pool = pools[categoryId] || TRAIN_PROMPTS;
   const offset = CATEGORY_OFFSET[categoryId] || 0;
@@ -353,27 +383,60 @@ export function buildHourlySpotlightSuggestions({
   const ctx = buildRichCoachContext({ userData, sessions, dailyMetrics, nutritionToday });
   const personalized = buildPersonalizedPromptPool(ctx);
 
-  if (personalized.length >= 4) {
-    return rotatePool(personalized, hourSlot, daySeed, 8);
-  }
-
-  const fallback = [
-    ...personalized,
+  const hourlyPicks = [
     pickCategoryPrompt('train', { userData, sessions, now }),
     pickCategoryPrompt('fuel', { userData, sessions, now }),
     pickCategoryPrompt('recover', { userData, sessions, now }),
     pickCategoryPrompt('web', { userData, sessions, now }),
-  ];
-  return rotatePool(fallback, hourSlot, daySeed, 8);
+  ].filter(Boolean);
+
+  const combined = mergePromptPool(personalized, hourlyPicks);
+  return rotatePool(combined, hourSlot, daySeed, 8);
 }
 
-export function buildHourlyCanHelpWith({ now = Date.now() } = {}) {
+const CAN_HELP_CATEGORY_MAP = {
+  tools: 'log',
+  web: 'web',
+  data: 'data',
+  photo: 'photo',
+  train: 'train',
+  recover: 'recover',
+};
+
+export function buildHourlyCanHelpWith({ userData, sessions, now = Date.now() } = {}) {
   const hourSlot = getCoachHourSlot(now);
-  const items = [...CAN_HELP_WITH_ITEMS];
+  const items = CAN_HELP_WITH_ITEMS.map((item) => {
+    const categoryId = CAN_HELP_CATEGORY_MAP[item.id];
+    if (!categoryId) return item;
+    const prompt = pickCategoryPrompt(categoryId, { userData, sessions, now }) || item.prompt;
+    return { ...item, prompt };
+  });
   const start = hourSlot % items.length;
   const rotated = [];
   for (let i = 0; i < items.length; i += 1) {
     rotated.push(items[(start + i) % items.length]);
   }
   return rotated;
+}
+
+const COACH_ACTION_CATEGORY_MAP = {
+  log: 'log',
+  web: 'web',
+  data: 'data',
+};
+
+/**
+ * Hourly-rotating starters for the "What do you need?" action orbs.
+ * Photo opens the camera — its starter is unused.
+ */
+export function buildHourlyCoachActions(
+  actions = [],
+  { userData, sessions, now = Date.now() } = {},
+) {
+  return (actions || []).map((action) => {
+    const categoryId = COACH_ACTION_CATEGORY_MAP[action.id];
+    if (!categoryId) return action;
+    const starter = pickCategoryPrompt(categoryId, { userData, sessions, now }) || action.starter;
+    return { ...action, starter };
+  });
 }

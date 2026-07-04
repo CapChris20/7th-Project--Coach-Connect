@@ -81,6 +81,15 @@ else
   echo "    Add RESEND_API_KEY=re_... or Gmail SMTP (see server/supportEmail.js) then re-run this script."
 fi
 
+# Stripe (Connect + client payments). Secret key is server-only; publishable key optional on Cloud Run.
+if [ -n "${STRIPE_SECRET_KEY:-}" ]; then
+  VARS+=",STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}"
+  echo "ℹ️  STRIPE_SECRET_KEY will sync — Stripe server API calls enabled on Cloud Run."
+else
+  echo "⚠️  No STRIPE_SECRET_KEY in .env — Stripe payment routes will not work on Cloud Run."
+fi
+[ -n "${STRIPE_PUBLISHABLE_KEY:-}" ] && VARS+=",STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}"
+
 echo "Updating Cloud Run env vars (not including FIREBASE_SERVICE_ACCOUNT — set that in Console as JSON)..."
 gcloud config set project "$PROJECT_ID" 2>/dev/null
 gcloud run services update "$SERVICE_NAME" \

@@ -16,7 +16,7 @@
  * Replaces: VoiceChatWithCoachScreen.jsx
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Animated,
   Alert,
@@ -51,10 +51,17 @@ import { db } from '../../../app-start/config';
 import {
   deleteAiChatSession,
   loadAiChatMessages,
+  loadAiChatSessionMeta,
   persistAiChatSession,
   restoreChatMessagesFromSaved,
   upsertAiChatMessages,
 } from '../persistence/saveCoachMessages';
+import { generateCreativeChatTitle } from '../../server-logic/chat-api/generateCreativeChatTitle';
+import {
+  buildCreativeTitleLocal,
+  deriveChatTitle,
+  needsCreativeTitle,
+} from '../../server-logic/chat-api/chatTitleUtils';
 import CoachChatHistorySidebar from '../components/CoachChatHistorySidebar';
 import { useCoachChatSessions } from '../hooks/useCoachChatSessions';
 import { useCoachComposerInput } from './useCoachComposerInput';
@@ -70,7 +77,7 @@ import ToolConfirmationModal from './ToolConfirmationModal';
 import { runCoachAction, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../server-logic/tools/runCoachAction';
 import { inferToolCallFromCoachMessage } from '../../server-logic/tools/findCoachRequestsInText';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
-import { useCoachComposerKeyboard } from './useCoachComposerKeyboard';
+import { useCoachComposerKeyboard, COACH_COMPOSER_TEXT_INPUT_PROPS } from './useCoachComposerKeyboard';
 import { shouldShowWebSearchUI } from '../../server-logic/chat-api/shouldUseWebSearch';
 import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../../shared/accessibility/a11yProps';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
@@ -405,69 +412,6 @@ function toTitleCase(s) {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
-}
-
-function deriveChatTitle(firstUserText) {
-  const raw = String(firstUserText || '').trim();
-  if (!raw) return 'Chat';
-
-  const t = raw.toLowerCase();
-
-  // Common patterns: "what is X", "explain X", "how do I X"
-  const patterns = [
-    /^(what is|what's|whats)\s+(.+)\??$/i,
-    /^explain\s+(.+)\??$/i,
-    /^define\s+(.+)\??$/i,
-    /^how do i\s+(.+)\??$/i,
-    /^how to\s+(.+)\??$/i,
-    /^can i\s+(.+)\??$/i,
-    /^should i\s+(.+)\??$/i,
-  ];
-  for (const re of patterns) {
-    const m = raw.match(re);
-    if (m && (m[2] || m[1])) {
-      const candidate = (m[2] || m[1] || '').trim();
-      const cleaned = candidate
-        .replace(/^go on the web and\s+/i, '')
-        .replace(/^google\s+/i, '')
-        .replace(/^(about|for)\s+/i, '')
-        .replace(/\s+/g, ' ')
-        .replace(/["'.!?]+$/g, '')
-        .slice(0, 48);
-      if (cleaned) return toTitleCase(cleaned);
-    }
-  }
-
-  // Fitness/nutrition topic keywords → nicer titles
-  const topicMap = [
-    { key: 'skinny fat', title: 'Skinny Fat' },
-    { key: 'recomp', title: 'Body Recomposition' },
-    { key: 'recomposition', title: 'Body Recomposition' },
-    { key: 'body recomp', title: 'Body Recomposition' },
-    { key: 'zero sugar', title: 'Zero Sugar Drinks' },
-    { key: 'diet soda', title: 'Diet Soda' },
-    { key: 'energy drink', title: 'Energy Drinks' },
-    { key: 'preworkout', title: 'Pre-Workout' },
-    { key: 'pre-workout', title: 'Pre-Workout' },
-    { key: 'creatine', title: 'Creatine' },
-    { key: 'protein', title: 'Protein Intake' },
-    { key: 'macros', title: 'Macros' },
-    { key: 'calories', title: 'Calories' },
-    { key: 'cut', title: 'Cutting' },
-    { key: 'bulk', title: 'Bulking' },
-  ];
-  for (const { key, title } of topicMap) {
-    if (t.includes(key)) return title;
-  }
-
-  // Fallback: strip filler words and shorten
-  const cleaned = raw
-    .replace(/[^\w\s%-]/g, ' ')
-    .replace(/\b(please|pls|hey|hi|hello|ok|okay|so|like|just|really|actually|basically|google|web|search)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 48);
-  return cleaned ? toTitleCase(cleaned) : 'Chat';
 }
 
 // ─── Feature explanation cards (inline in AI messages) ────────────────────────
@@ -1093,6 +1037,7 @@ export default function ChatWithCoachScreen({
   const t = isDark ? DARK : LIGHT;
   const flatListRef = useRef(null);
   const prefillSent = useRef(false);
+  const sessionTitleRef = useRef(null);
   const mountAttachmentsRef = useRef(Array.isArray(initialAttachments) ? initialAttachments : []);
 
   const [messages, setMessages] = useState([]);
@@ -1167,11 +1112,28 @@ export default function ChatWithCoachScreen({
     if (!db || !userId) return;
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
     const lastAi = [...msgs].reverse().find((m) => m.role === 'ai');
+    const hasAiReply = Boolean(lastAi);
+
+    let title = extraMeta.title || sessionTitleRef.current;
+
+    if (!hasAiReply) {
+      title = title && !needsCreativeTitle(title, lastUser?.text) ? title : 'New Chat';
+    } else if (!title || title === 'New Chat' || needsCreativeTitle(title, lastUser?.text)) {
+      const convo = msgs
+        .filter((m) => m.role === 'user' || m.role === 'ai')
+        .map((m) => ({ role: m.role, content: m.text }));
+      const fallback =
+        buildCreativeTitleLocal(lastUser?.text, lastAi?.text) ||
+        deriveChatTitle(lastUser?.text || '');
+      title = await generateCreativeChatTitle(convo, fallback, userId);
+      sessionTitleRef.current = title;
+    }
+
     await persistAiChatSession(userId, sessionId, {
       messages: msgs,
       meta: {
         sessionId,
-        title: extraMeta.title || deriveChatTitle(lastUser?.text || ''),
+        title,
         lastUserMessage: lastUser?.text || '',
         lastAssistantMessage: lastAi?.text || '',
         ...extraMeta,
@@ -1237,6 +1199,9 @@ export default function ChatWithCoachScreen({
     }
 
     setToolExecuting(true);
+    if (__DEV__) {
+      console.log('[coach-tool] Confirm tapped:', merged.name, merged.params);
+    }
     try {
       const result = await runCoachAction({
         userId,
@@ -1371,7 +1336,13 @@ export default function ChatWithCoachScreen({
         return;
       }
       try {
-        const saved = await loadAiChatMessages(userId, initialSessionId);
+        const [saved, meta] = await Promise.all([
+          loadAiChatMessages(userId, initialSessionId),
+          loadAiChatSessionMeta(userId, initialSessionId),
+        ]);
+        if (meta?.title && !needsCreativeTitle(meta.title, meta.lastUserMessage)) {
+          sessionTitleRef.current = meta.title;
+        }
         const restored = restoreChatMessagesFromSaved(saved)
           .map((m) => {
             if (m.role !== 'ai') return m;
@@ -1508,7 +1479,7 @@ export default function ChatWithCoachScreen({
       setMessages(finalMessages);
 
       if (resolvedTool) {
-        if (shouldAutoExecuteCoachTool(resolvedTool)) {
+        if (shouldAutoExecuteCoachTool(resolvedTool, { userText: text.trim() })) {
           handleToolConfirm({}, resolvedTool, { inline: true, messageId: aiMsg.id });
         } else if (shouldAutoOpenCoachToolModal(resolvedTool, { fromServer: !!coachResponse?.toolCall, userText: text.trim() })) {
           openToolModal(resolvedTool, aiMsg.id);
@@ -1670,6 +1641,25 @@ export default function ChatWithCoachScreen({
     ];
   };
 
+  const messagesWithContext = useMemo(() => {
+    let lastUserText = '';
+    return messages.map((m, index) => {
+      if (m.role === 'user') lastUserText = m.text || '';
+      const threadMessages = messages.slice(0, index + 1).map((row) => ({
+        role: row.role === 'ai' ? 'assistant' : 'user',
+        text: row.text || '',
+        content: row.text || '',
+      }));
+      return {
+        ...m,
+        lastUserText,
+        threadMessages,
+        isLastAssistant:
+          m.role === 'ai' && index === messages.length - 1 && !typing && !toolExecuting,
+      };
+    });
+  }, [messages, typing, toolExecuting]);
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, flexDirection: 'row' }}>
       {enableHistorySidebar ? (
@@ -1736,39 +1726,26 @@ export default function ChatWithCoachScreen({
         ) : (
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={messagesWithContext}
             accessibilityLabel="Coach conversation messages"
             keyExtractor={(m) => m.id}
-            renderItem={({ item, index }) => {
-              let lastUserText = '';
-              for (let i = index - 1; i >= 0; i -= 1) {
-                if (messages[i]?.role === 'user') {
-                  lastUserText = messages[i].text || '';
-                  break;
-                }
-              }
-              const threadMessages = messages.slice(0, index + 1).map((m) => ({
-                role: m.role === 'ai' ? 'assistant' : 'user',
-                text: m.text || '',
-                content: m.text || '',
-              }));
-              const isLastAssistant =
-                item.role === 'ai' && index === messages.length - 1 && !typing && !toolExecuting;
-              return (
-                <MessageBubble
-                  message={item}
-                  t={t}
-                  isDark={isDark}
-                  onToolPress={openToolModal}
-                  lastUserText={lastUserText}
-                  threadMessages={threadMessages}
-                  toolModalVisible={toolModalVisible}
-                  showFollowUps={isLastAssistant}
-                  onFollowUpPress={sendMessage}
-                  userProfile={userProfile}
-                />
-              );
-            }}
+            initialNumToRender={20}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            renderItem={({ item }) => (
+              <MessageBubble
+                message={item}
+                t={t}
+                isDark={isDark}
+                onToolPress={openToolModal}
+                lastUserText={item.lastUserText}
+                threadMessages={item.threadMessages}
+                toolModalVisible={toolModalVisible}
+                showFollowUps={item.isLastAssistant}
+                onFollowUpPress={sendMessage}
+                userProfile={userProfile}
+              />
+            )}
             style={{ flex: 1 }}
             contentContainerStyle={{
               paddingHorizontal: 16,
@@ -1876,6 +1853,7 @@ export default function ChatWithCoachScreen({
             </TouchableOpacity>
             <TextInput
               ref={composerInputRef}
+              {...COACH_COMPOSER_TEXT_INPUT_PROPS}
               style={{
                 flex: 1,
                 minWidth: 0,

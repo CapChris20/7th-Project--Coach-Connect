@@ -55,6 +55,8 @@ import {
   getClientInitials,
   getClientRosterStats,
 } from './trainerDashboardUi';
+import { PaymentSetupPopup } from '../../components/PaymentSetupPopup';
+import { shouldShowPaymentSetupPopup } from '../../shared/payments/paymentSetupPrompt';
 
 const DashboardContent = ({
   isDark,
@@ -82,6 +84,7 @@ const DashboardContent = ({
   stripeConnectStatus = 'not_connected',
   onOpenPayments,
   appSessionId,
+  userEmail = '',
 }) => {
   const { width: screenW } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState('Progress');
@@ -101,8 +104,34 @@ const DashboardContent = ({
   const [clientUnreadCount, setClientUnreadCount] = useState(0);
   const [removeClientHold, setRemoveClientHold] = useState(null);
   const [payoutNudgeDismissed, setPayoutNudgeDismissed] = useState(false);
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
+  const [paymentPopupStripeAccountId, setPaymentPopupStripeAccountId] = useState('');
 
   const PAYOUT_NUDGE_KEY = '@coachconnect_payout_nudge_dismissed_session';
+
+  useEffect(() => {
+    if (!trainerId) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', trainerId));
+        if (cancelled || !snap.exists()) return;
+        const user = snap.data() || {};
+        setPaymentPopupStripeAccountId(user.stripeAccountId || '');
+        if (shouldShowPaymentSetupPopup(user)) {
+          setShowPaymentPopup(true);
+        }
+      } catch (e) {
+        console.warn('PaymentSetupPopup eligibility check failed:', e?.message || e);
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trainerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +163,7 @@ const DashboardContent = ({
   }, [appSessionId]);
 
   const showPayoutNudge =
-    !payoutNudgeDismissed && stripeConnectStatus !== 'active';
+    !payoutNudgeDismissed && stripeConnectStatus !== 'active' && !showPaymentPopup;
 
   const textColor = isDark ? '#ffffff' : '#1a0a2e';
   const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
@@ -388,7 +417,7 @@ const DashboardContent = ({
           
           const todayKey = getDateKey();
           let nutritionLogs = [], nutritionTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-          let nutritionGoals = { proteinTarget: 200, carbsTarget: 300, fatTarget: 80 };
+          let nutritionGoals = { proteinTarget: 150, carbsTarget: 250, fatTarget: 70, calories: 2000 };
           try {
             nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
             nutritionTotals = calculateMacroTotals(nutritionLogs);
@@ -396,11 +425,18 @@ const DashboardContent = ({
             if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
             if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
             if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
+            if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
           } catch (_) {}
           
           if (effectCancelled) return;
 
           const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
+          const calorieGoal =
+            userData.calorieTarget ??
+            userData.calorie_target ??
+            userData.dailyCalories ??
+            nutritionGoals.calories ??
+            2000;
           
           setClientData({
             beforeWeight: userData.startingWeight ?? userData.weight ?? currentClient.startingWeight ?? currentClient.weight ?? null,
@@ -411,9 +447,10 @@ const DashboardContent = ({
               carbs: nutritionTotals.carbs || 0, fat: nutritionTotals.fat || 0,
               fiber: nutritionTotals.fiber || 0, sugar: nutritionTotals.sugar || 0,
               sodium: nutritionTotals.sodium || 0, potassium: nutritionTotals.potassium || 0,
-              proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? 200,
-              carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? 300,
-              fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? 80,
+              proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? 150,
+              carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? 250,
+              fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? 70,
+              caloriesGoal: calorieGoal,
               micros: currentClient.micros || [], foods: foodNames,
             },
             calendar: {
@@ -518,9 +555,10 @@ const DashboardContent = ({
                 sugar: 0,
                 sodium: 0,
                 potassium: 0,
-                proteinGoal: 200,
-                carbsGoal: 300,
-                fatGoal: 80,
+                proteinGoal: 150,
+                carbsGoal: 250,
+                fatGoal: 70,
+                caloriesGoal: 2000,
                 micros: currentClient?.micros || [],
                 foods: [],
               },
@@ -578,9 +616,10 @@ const DashboardContent = ({
               sugar: 0,
               sodium: 0,
               potassium: 0,
-              proteinGoal: 200,
-              carbsGoal: 300,
-              fatGoal: 80,
+              proteinGoal: 150,
+              carbsGoal: 250,
+              fatGoal: 70,
+              caloriesGoal: 2000,
               micros: currentClient?.micros || [],
               foods: [],
             },
@@ -1281,6 +1320,14 @@ const DashboardContent = ({
         Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
       }}
     />
+    {showPaymentPopup ? (
+      <PaymentSetupPopup
+        visible={showPaymentPopup}
+        onClose={() => setShowPaymentPopup(false)}
+        userEmail={userEmail}
+        stripeAccountId={paymentPopupStripeAccountId}
+      />
+    ) : null}
     </>
   );
 };

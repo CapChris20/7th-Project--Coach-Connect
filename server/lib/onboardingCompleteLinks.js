@@ -1,6 +1,7 @@
 /**
  * Server-side trainer–client link writes (extracted from onboardingRoutes).
  */
+const { sanitizeOnboardingData } = require('./onboardingSanitize');
 async function writeTrainerClientLinks(db, trainerId, clientId, { serverTimestamp, merge = true } = {}) {
   const ts = serverTimestamp();
   await db
@@ -43,8 +44,9 @@ async function applyOnboardingCompleteServer({
   existingUser = {},
 }) {
   const usersRef = db.collection('users');
+  const { sanitized: safeOnboardingData } = sanitizeOnboardingData(onboardingData, { uid });
   const updateData = {
-    ...onboardingData,
+    ...safeOnboardingData,
     role: finalRole,
     onboardingCompleted: true,
     onboardingCompletedAt: serverTimestamp(),
@@ -53,17 +55,17 @@ async function applyOnboardingCompleteServer({
 
   if (
     (existingUser?.startingWeight == null || existingUser?.startingWeight === '') &&
-    onboardingData?.weight != null &&
-    onboardingData.weight !== ''
+    safeOnboardingData?.weight != null &&
+    safeOnboardingData.weight !== ''
   ) {
-    updateData.startingWeight = onboardingData.weight;
+    updateData.startingWeight = safeOnboardingData.weight;
   }
 
   await usersRef.doc(uid).set(updateData, { merge: true });
 
   let linked = false;
-  if (finalRole === 'client' && onboardingData?.trainerId) {
-    const trainerId = String(onboardingData.trainerId);
+  if (finalRole === 'client' && safeOnboardingData?.trainerId) {
+    const trainerId = String(safeOnboardingData.trainerId);
     const trainerDoc = await usersRef.doc(trainerId).get();
     if (!trainerDoc.exists || trainerDoc.data()?.role !== 'trainer') {
       return { success: true, linked: false, reason: 'Invalid trainerId', role: finalRole };

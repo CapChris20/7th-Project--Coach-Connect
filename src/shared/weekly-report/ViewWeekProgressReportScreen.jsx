@@ -1,30 +1,39 @@
 /**
- * Trainer Weekly Report Screen
+ * Weekly Report Screen
  *
- * Purpose: UI screen or component: Trainer Weekly Report Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: formatChipRange, TrainerViewWeekProgressReportScreen
- *
- * @file-header
+ * Loads `users/{clientId}/weeklySummaries` from Firestore and renders the premium
+ * weekly report UI from mapped client check-in data.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, StyleSheet, Text, View, Alert, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, getDocs } from 'firebase/firestore';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
-import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
 import { db } from '../../app-start/config';
-import { WeeklyReportScrollBody, getWRTheme } from '../../trainer-app/weekly-report/WeeklyReportPremium';
+import CoachConnectHeader from '../components/shell/CoachConnectHeader';
+import BottomNavBar from '../../navigation/BottomNavBar';
+import {
+  useShellBottomNavInset,
+  SHELL_SAFE_AREA_EDGES,
+  ShellBottomNavAnchor,
+} from '../../navigation/bottomNavMetrics';
+import {
+  parseDayNote,
+  parseStructuredDayNote,
+  formatDateRange,
+} from '../../trainer-app/weekly-report/WeeklyReportPremium';
+import { WeeklyReportThemeProvider } from './theme/WeeklyReportThemeContext';
+import { mapFirestoreReportsToWeeks, formatDayForShare } from './data/mapFirestoreReport';
+import { fetchNutritionByDayForRange } from './data/fetchWeekNutrition';
+import {
+  fetchDailyLogsByDayForRange,
+  workoutsFromDailyLog,
+} from './data/fetchWeekDailyLogs';
+import { WeeklyReportScreenBody } from './WeeklyReportScreenBody';
+import { WeeklyReportEmptyState } from './components/WeeklyReportEmptyState';
 
 export function formatChipRange(weekStart, weekEnd) {
   const ws = String(weekStart || '').trim();
@@ -37,62 +46,9 @@ export function formatChipRange(weekStart, weekEnd) {
   return `${a} – ${b}`;
 }
 
-function CompactWeekSelector({ reports, selectedId, onSelect, isDark }) {
-  const t = getWRTheme(isDark);
-  const idx = reports.findIndex((r) => r.id === selectedId);
-  const safeIdx = idx >= 0 ? idx : 0;
-  const current = reports[safeIdx];
-  const canPrev = safeIdx < reports.length - 1;
-  const canNext = safeIdx > 0;
-  const label = current ? formatChipRange(current.weekStart, current.weekEnd) : '—';
+const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, formatDateRange };
 
-  const goPrev = () => {
-    if (!canPrev) return;
-    onSelect(reports[safeIdx + 1].id);
-  };
-
-  const goNext = () => {
-    if (!canNext) return;
-    onSelect(reports[safeIdx - 1].id);
-  };
-
-  const disabledColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.2)';
-
-  return (
-    <View style={[styles.weekBar, { backgroundColor: t.weekBarBg }]}>
-      <TouchableOpacity
-        onPress={goPrev}
-        disabled={!canPrev}
-        hitSlop={12}
-        style={styles.weekNavBtn}
-        accessibilityLabel="Previous week"
-      >
-        <Ionicons name="chevron-back" size={22} color={canPrev ? t.textSecondary : disabledColor} />
-      </TouchableOpacity>
-
-      <View style={[styles.weekPill, { backgroundColor: t.weekPillBg }]}>
-        <Text style={[styles.weekPillText, { color: t.textPrimary }]} numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        onPress={goNext}
-        disabled={!canNext}
-        hitSlop={12}
-        style={styles.weekNavBtn}
-        accessibilityLabel="Next week"
-      >
-        <Ionicons name="chevron-forward" size={22} color={canNext ? t.textSecondary : disabledColor} />
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-/**
- * Full-screen weekly report: header, compact week selector, scrollable report body, bottom nav.
- */
-export default function TrainerViewWeekProgressReportScreen({
+export default function ViewWeekProgressReportScreen({
   clientId,
   clientName = '',
   isClientSelfView = false,
@@ -108,15 +64,21 @@ export default function TrainerViewWeekProgressReportScreen({
   onSettingsPress,
   reserveShellBottomNav = false,
 }) {
-  const insets = useSafeAreaInsets();
   const shellBottomPad = useShellBottomNavInset(16);
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState([]);
-  const [selectedDocId, setSelectedDocId] = useState(null);
+  const [weekIndex, setWeekIndex] = useState(0);
+
+  const [nutritionByDay, setNutritionByDay] = useState({});
+  const [dailyLogsByDay, setDailyLogsByDay] = useState({});
+  const [clientMeta, setClientMeta] = useState({});
 
   const load = useCallback(async () => {
     if (!clientId || !db) {
       setReports([]);
+      setNutritionByDay({});
+      setDailyLogsByDay({});
+      setClientMeta({});
       setLoading(false);
       return;
     }
@@ -132,15 +94,35 @@ export default function TrainerViewWeekProgressReportScreen({
           weekEnd: r.weekEnd || r.weekEnd,
         }))
         .sort((a, b) => String(b.weekStart).localeCompare(String(a.weekStart)));
+
+      let nutrition = {};
+      let dailyLogs = {};
+      let meta = {};
+      if (rows.length > 0) {
+        const oldest = rows[rows.length - 1].weekStart;
+        const newestEnd = rows[0].weekEnd || rows[0].weekStart;
+        const userSnap = await getDoc(doc(db, 'users', clientId));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        meta = {
+          daysPerWeek: userData?.onboardingData?.daysPerWeek ?? userData?.daysPerWeek ?? null,
+        };
+        [nutrition, dailyLogs] = await Promise.all([
+          fetchNutritionByDayForRange(clientId, oldest, newestEnd),
+          fetchDailyLogsByDayForRange(clientId, oldest, newestEnd),
+        ]);
+      }
+
       setReports(rows);
-      setSelectedDocId((prev) => {
-        if (prev && rows.some((r) => r.id === prev)) return prev;
-        return rows[0]?.id ?? null;
-      });
+      setNutritionByDay(nutrition);
+      setDailyLogsByDay(dailyLogs);
+      setClientMeta(meta);
+      setWeekIndex(0);
     } catch (e) {
-      console.warn('[TrainerViewWeekProgressReportScreen] load failed', e?.message || e);
+      console.warn('[ViewWeekProgressReportScreen] load failed', e?.message || e);
       setReports([]);
-      setSelectedDocId(null);
+      setNutritionByDay({});
+      setDailyLogsByDay({});
+      setClientMeta({});
     } finally {
       setLoading(false);
     }
@@ -150,113 +132,158 @@ export default function TrainerViewWeekProgressReportScreen({
     load();
   }, [load]);
 
-  const selectedReport = useMemo(
-    () => reports.find((r) => r.id === selectedDocId) || reports[0] || null,
-    [reports, selectedDocId]
+  const weeks = useMemo(
+    () =>
+      mapFirestoreReportsToWeeks(
+        reports,
+        REPORT_PARSERS,
+        nutritionByDay,
+        dailyLogsByDay,
+        workoutsFromDailyLog,
+        clientMeta,
+      ),
+    [reports, nutritionByDay, dailyLogsByDay, clientMeta],
   );
 
-  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 100 + insets.bottom;
+  const activeWeek = weeks[weekIndex] || null;
+  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 32;
   const showInlineBottomNav = !reserveShellBottomNav;
-  const theme = getWRTheme(isDark);
+
+  const handleExport = useCallback(async () => {
+    if (!activeWeek) return;
+    const dayRows = (activeWeek.days || [])
+      .map((d) => `<li>${formatDayForShare(d)}</li>`)
+      .join('');
+    const listHtml = (items) =>
+      items?.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>` : '<p><em>None logged.</em></p>';
+
+    const html = `
+      <html><body style="font-family: -apple-system, sans-serif; padding: 24px;">
+        <h1>Weekly Report</h1>
+        <p><strong>${activeWeek.label}</strong>${clientName ? ` — ${clientName}` : ''}</p>
+        <ul>
+          <li>Avg sleep: ${activeWeek.stats.display.sleep}h</li>
+          <li>Avg water: ${activeWeek.stats.display.water}oz</li>
+          <li>Avg steps: ${activeWeek.stats.display.steps}</li>
+          <li>Avg calories: ${activeWeek.stats.display.calories} cal</li>
+          ${activeWeek.stats.workoutDaysLogged ? `<li>Workout days: ${activeWeek.stats.workoutDaysLogged}</li>` : ''}
+        </ul>
+        ${activeWeek.summary ? `<h2>Week summary</h2><p>${activeWeek.summary}</p>` : ''}
+        <h2>Daily breakdown</h2>
+        <ul>${dayRows}</ul>
+        <h2>Weekly trends</h2>
+        ${listHtml(activeWeek.trends)}
+        <h2>Pros & wins</h2>
+        ${listHtml(activeWeek.pros)}
+        <h2>Cons / areas to improve</h2>
+        ${listHtml(activeWeek.cons)}
+        <h2>What to focus on</h2>
+        ${listHtml(activeWeek.focus)}
+        ${activeWeek.signOff ? `<p><em>${activeWeek.signOff}</em></p>` : ''}
+      </body></html>`;
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export weekly report' });
+      } else {
+        Alert.alert('Export ready', 'PDF saved — sharing is not available on this device.');
+      }
+    } catch (e) {
+      console.warn('[ViewWeekProgressReportScreen] export failed', e?.message || e);
+      Alert.alert('Export failed', 'Could not create PDF for this report.');
+    }
+  }, [activeWeek, clientName]);
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.bg }]}>
-      <SafeAreaView style={styles.safeTop} edges={SHELL_SAFE_AREA_EDGES}>
-        <CoachConnectHeader
-          title="Weekly Report"
-          isDark={isDark}
-          skipTopSafeInset
-          onBack={onClose}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
-
-        {!loading && reports.length > 0 ? (
-          <CompactWeekSelector
-            reports={reports}
-            selectedId={selectedReport?.id || selectedDocId}
-            onSelect={setSelectedDocId}
-            isDark={isDark}
+    <WeeklyReportThemeProvider initialMode={isDark ? 'dark' : 'light'}>
+      <View style={styles.root}>
+        <SafeAreaView style={styles.safeTop} edges={SHELL_SAFE_AREA_EDGES}>
+          <CoachConnectHeader
+            title="Weekly Report"
+            skipTopSafeInset
+            appearanceIsDark={isDark}
+            onBack={onClose}
+            onProfilePress={onProfilePress}
+            onSettingsPress={onSettingsPress}
+            headerLeft={
+              onClose ? (
+                <TouchableOpacity
+                  onPress={onClose}
+                  activeOpacity={0.85}
+                  accessibilityLabel="Go back"
+                  style={styles.headerBack}
+                  hitSlop={12}
+                >
+                  <Ionicons
+                    name="chevron-back"
+                    size={22}
+                    color={isDark ? '#FFFFFF' : '#0A0A0F'}
+                  />
+                  <Text style={[styles.headerBackText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
+                    Weekly Report
+                  </Text>
+                </TouchableOpacity>
+              ) : null
+            }
           />
-        ) : null}
 
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={theme.cyan} size="large" />
-            <Text style={[styles.hint, { color: theme.textLabel }]}>Loading reports…</Text>
+          <View style={styles.content}>
+            {loading ? (
+              <View style={styles.centered}>
+                <ActivityIndicator color="#ff6b35" size="large" />
+                <Text style={styles.hint}>Loading reports…</Text>
+              </View>
+            ) : weeks.length === 0 ? (
+              <WeeklyReportEmptyState isClientSelfView={isClientSelfView} />
+            ) : (
+              <WeeklyReportScreenBody
+                weeks={weeks}
+                weekIndex={weekIndex}
+                onWeekIndexChange={setWeekIndex}
+                clientName={clientName}
+                onExport={handleExport}
+                contentBottomPad={scrollBottomPad}
+              />
+            )}
           </View>
-        ) : reports.length === 0 ? (
-          <View style={styles.centered}>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              {isClientSelfView
-                ? 'No weekly reports yet. Check-ins will generate your first recap.'
-                : 'No weekly reports saved for this client yet.'}
-            </Text>
-          </View>
-        ) : (
-          <ScrollView
-            style={[styles.scroll, { minHeight: 0 }]}
-            contentContainerStyle={{ paddingBottom: scrollBottomPad }}
-            {...FORM_SCROLL_PROPS}
-          >
-            <WeeklyReportScrollBody
-              report={selectedReport}
-              isDark={isDark}
-              clientName={clientName}
-            />
-          </ScrollView>
-        )}
 
-        {showInlineBottomNav ? (
-          <ShellBottomNavAnchor>
-            <BottomNavBar
-              activeTabKey="home"
-              onHomePress={onHomePress}
-              onPlusPress={onPlusPress}
-              onVoicePress={onVoicePress}
-              onNutritionPress={onNutritionPress}
-              onWorkoutPress={onWorkoutPress}
-              onMessagesPress={onMessagesPress}
-              onProfilePress={onProfilePress}
-            />
-          </ShellBottomNavAnchor>
-        ) : null}
-      </SafeAreaView>
-    </View>
+          {showInlineBottomNav ? (
+            <ShellBottomNavAnchor>
+              <BottomNavBar
+                activeTabKey="home"
+                onHomePress={onHomePress}
+                onPlusPress={onPlusPress}
+                onVoicePress={onVoicePress}
+                onNutritionPress={onNutritionPress}
+                onWorkoutPress={onWorkoutPress}
+                onMessagesPress={onMessagesPress}
+                onProfilePress={onProfilePress}
+              />
+            </ShellBottomNavAnchor>
+          ) : null}
+        </SafeAreaView>
+      </View>
+    </WeeklyReportThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a0a0f' },
   safeTop: { flex: 1, minHeight: 0 },
-  weekBar: {
+  content: { flex: 1, minHeight: 0 },
+  headerBack: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 56,
+    gap: 4,
+    paddingVertical: 6,
+    paddingRight: 8,
+    maxWidth: '100%',
   },
-  weekNavBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerBackText: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
-  weekPill: {
-    flex: 1,
-    marginHorizontal: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  weekPillText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  scroll: { flex: 1 },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -264,6 +291,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     minHeight: 200,
   },
-  hint: { marginTop: 12, fontSize: 13, fontWeight: '500' },
-  emptyText: { fontSize: 15, textAlign: 'center', lineHeight: 22, fontWeight: '500' },
+  hint: { marginTop: 12, fontSize: 13, fontWeight: '500', color: '#b4b4c0' },
+  emptyText: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+    color: '#b4b4c0',
+  },
 });

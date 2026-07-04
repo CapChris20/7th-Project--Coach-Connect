@@ -18,13 +18,8 @@
  * - Routes authenticated users to TrainerApp or ClientApp based on role
  */
 
-import React, { useState, useEffect } from 'react';
-import LoginScreen from '../auth/LoginScreen';
-import ResetPasswordScreen from '../auth/ResetPasswordScreen';
-import OnboardingWizardScreen from '../auth/OnboardingWizardScreen';
+import React, { Suspense, useState, useEffect } from 'react';
 import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
-import TrainerApp from './TrainerApp';
-import ClientApp from './ClientApp';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import { auth, db } from './config';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -42,6 +37,19 @@ import {
   normalizeAppRole,
   profileNeedsOnboarding,
 } from '../auth/detectUserRole';
+import { resolveClientProfileFields } from '../shared-utils/resolveClientProfileFields';
+
+/** Lazy-loaded shells — avoids pulling heavy native modules (Reanimated, Lottie, OAuth, etc.) at cold start. */
+const LoginScreen = React.lazy(() => import('../auth/LoginScreen'));
+const ResetPasswordScreen = React.lazy(() => import('../auth/ResetPasswordScreen'));
+const OnboardingWizardScreen = React.lazy(() => import('../auth/OnboardingWizardScreen'));
+const TrainerApp = React.lazy(() => import('./TrainerApp'));
+const ClientApp = React.lazy(() => import('./ClientApp'));
+
+function AuthScreenSuspense({ children }) {
+  return <Suspense fallback={<AppLoadingScreen isDark />}>{children}</Suspense>;
+}
+
 export { normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser };
 
 /**
@@ -52,35 +60,27 @@ async function mergeLocalOnboardingTruth(uid, firestoreProfile) {
   if (!uid || !firestoreProfile || typeof firestoreProfile !== 'object') {
     return firestoreProfile;
   }
-  const base = { ...firestoreProfile };
+  let cached = null;
   try {
     const keys = [`onboarding_data_${uid}`, getProfileCacheKey(uid)];
     for (const key of keys) {
       const raw = await AsyncStorage.getItem(key);
       if (!raw) continue;
-      let loc;
       try {
-        loc = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          cached = parsed;
+          break;
+        }
       } catch {
         continue;
-      }
-      const done =
-        loc?.onboardingCompleted === true ||
-        loc?.onboardingCompleted === 'true' ||
-        loc?.onboardingCompleted === 1 ||
-        !!loc?.onboardingCompletedAt;
-      if (done) {
-        return {
-          ...base,
-          onboardingCompleted: true,
-          onboardingCompletedAt: loc.onboardingCompletedAt || base.onboardingCompletedAt || null,
-        };
       }
     }
   } catch (_) {
     /* ignore */
   }
-  return base;
+  if (!cached) return firestoreProfile;
+  return resolveClientProfileFields(cached, firestoreProfile);
 }
 
 export default function AuthGate() {
@@ -275,9 +275,13 @@ export default function AuthGate() {
 
   // Show auth screens if user is not logged in
   if (!user) {
+    if (authLoading) {
+      return <AppLoadingScreen isDark />;
+    }
     if (showForgotPasswordFlow) {
       return (
-        <ResetPasswordScreen
+        <AuthScreenSuspense>
+          <ResetPasswordScreen
           initialEmail={forgotPasswordEmail}
           navigation={{
             navigate: () => {
@@ -290,10 +294,12 @@ export default function AuthGate() {
             },
           }}
         />
+        </AuthScreenSuspense>
       );
     }
     return (
-      <LoginScreen
+      <AuthScreenSuspense>
+        <LoginScreen
         onSignupSuccess={(userData, role) => {
           setUser(userData);
           const r = normalizeAppRole(role);
@@ -336,6 +342,7 @@ export default function AuthGate() {
           setShowForgotPasswordFlow(true);
         }}
       />
+      </AuthScreenSuspense>
     );
   }
 
@@ -348,7 +355,8 @@ export default function AuthGate() {
   if (showOnboarding) {
     return (
       <SubscriptionProvider userId={user?.uid || null}>
-        <OnboardingWizardScreen
+        <AuthScreenSuspense>
+          <OnboardingWizardScreen
           role={normalizeAppRole(userRole)}
           onComplete={(chosenRole, updateData) => {
             if (chosenRole) setUserRole(normalizeAppRole(chosenRole));
@@ -368,13 +376,18 @@ export default function AuthGate() {
             setShowOnboarding(false);
           }}
         />
+        </AuthScreenSuspense>
       </SubscriptionProvider>
     );
   }
 
   // User is authenticated - route to appropriate app based on role
   if (normalizeAppRole(userRole) === 'trainer') {
-    return <TrainerApp user={user} />;
+    return (
+      <AuthScreenSuspense>
+        <TrainerApp user={user} />
+      </AuthScreenSuspense>
+    );
   }
 
   // Refetch user data (e.g. after trainerId reconciliation in ClientApp)
@@ -393,5 +406,9 @@ export default function AuthGate() {
     userData && typeof userData === 'object'
       ? { ...userData, role: normalizeAppRole(userData.role ?? userRole) }
       : { uid: user?.uid, role: 'client' };
-  return <ClientApp user={user} userData={clientPayload} onRefetchUserData={refetchUserData} />;
+  return (
+    <AuthScreenSuspense>
+      <ClientApp user={user} userData={clientPayload} onRefetchUserData={refetchUserData} />
+    </AuthScreenSuspense>
+  );
 }

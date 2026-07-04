@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../subscription/constants';
 import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
 import OnboardingWizardScreen from './OnboardingWizardScreen';
 

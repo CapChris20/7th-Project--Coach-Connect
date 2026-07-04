@@ -41,6 +41,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAI, getAiToggleMeterHint } from '../../shared/contexts/AIContext';
 import HoldToConfirmModal from '../../shared/components/modals/HoldToConfirmModal';
+import { resolveStripeStatus } from '../../shared/api/stripeConnectApi';
+import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
+import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
+import {
+  TRAINER_CLIENT_MESSAGE_RECOMMENDED,
+  TRAINER_CLIENT_MESSAGE_VENMO_WARNING,
+} from '../../shared/payments/paymentEducationCopy';
+import { useClientPaymentHistory } from '../../shared/payments/useClientPaymentHistory';
 
 /** Settings UI — dark pink → dark orange gradient (no purple). */
 const ACCENT_PINK = '#BE185D';
@@ -211,14 +219,20 @@ function formatMonthlyRateLabel(rate) {
 
 function payoutChipLabel(status) {
   if (status === 'active') return 'Active';
-  if (status === 'pending') return 'Pending';
+  if (status === 'pending' || status === 'pending_verification') return 'Pending';
   return 'Not connected';
 }
 
 function payoutChipTone(status) {
   if (status === 'active') return 'success';
-  if (status === 'pending') return 'warning';
+  if (status === 'pending' || status === 'pending_verification') return 'warning';
   return 'neutral';
+}
+
+function maskStripeAccountId(accountId) {
+  const id = String(accountId || '').trim();
+  if (!id) return '—';
+  return `****${id.slice(-4)}`;
 }
 
 export default function SettingsScreen({
@@ -232,6 +246,7 @@ export default function SettingsScreen({
   platformSubscriptionStatus,
   onRestorePurchases,
   restorePurchasesLoading = false,
+  onOpenCoachingPayment,
 }) {
   const onNavigate = useShellNavigate(onNavigateProp);
   const onBack = onBackProp || onClose;
@@ -248,14 +263,41 @@ export default function SettingsScreen({
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
   const [resolvedUserRole, setResolvedUserRole] = useState(userRoleProp || null);
   const [stripeConnectStatus, setStripeConnectStatus] = useState('not_connected');
+  const [stripeAccountId, setStripeAccountId] = useState('');
   const [monthlyRate, setMonthlyRate] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('inactive');
 
-  const userRole = userRoleProp || resolvedUserRole || 'client';
-  const isTrainer = userRole === 'trainer';
-
   const auth = getAuth();
   const user = auth.currentUser;
+
+  const userRole = userRoleProp || resolvedUserRole || 'client';
+  const isTrainer = userRole === 'trainer';
+  const clientCoachName =
+    trainerDataProp?.name || trainerDataProp?.displayName || trainerDataProp?.firstName || 'Coach';
+  const { rows: clientPaymentHistory, loading: clientPaymentHistoryLoading } = useClientPaymentHistory(
+    !isTrainer ? user?.uid : null,
+    clientCoachName,
+  );
+  const resolvedStripeStatus = resolveStripeStatus({
+    stripeStatus: stripeConnectStatus,
+    stripeConnectStatus,
+    stripeAccountId,
+  });
+
+  const stripeConnect = useStripeConnectFlow({
+    email: user?.email || userDataProp?.email || '',
+    onActive: async () => {
+      setStripeConnectStatus('active');
+      if (user?.uid) {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setStripeAccountId(data.stripeAccountId || '');
+          setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || 'active');
+        }
+      }
+    },
+  });
 
   useEffect(() => {
     if (user) {
@@ -264,7 +306,8 @@ export default function SettingsScreen({
         if (docSnap.exists()) {
           const data = docSnap.data();
           setResolvedUserRole((prev) => userRoleProp || data.role || prev || 'client');
-          setStripeConnectStatus(data.stripeConnectStatus || 'not_connected');
+          setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || 'not_connected');
+          setStripeAccountId(data.stripeAccountId || '');
           setMonthlyRate(data.monthlyRate ?? null);
           setPaymentStatus(data.paymentStatus || 'inactive');
           setWorkoutReminders(data.workoutReminder?.enabled || false);
@@ -570,10 +613,144 @@ export default function SettingsScreen({
 
         {showTimePicker && <DateTimePicker value={reminderTime} mode={'time'} is24Hour={true} display="default" onChange={onTimeChange} />}
 
+        {!isTrainer && (userDataProp?.trainerId || trainerDataProp?.id) ? (
+          <>
+            <SectionHeader title="BILLING" colors={colors} />
+            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <SettingsRow
+                label="Coaching payment"
+                colors={colors}
+                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
+              >
+                <PaymentStatusChip
+                  label={clientBillingLabel}
+                  tone={clientBillingTone}
+                  colors={colors}
+                  isDark={isDark}
+                />
+              </SettingsRow>
+              {typeof onOpenCoachingPayment === 'function' ? (
+                <>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                    <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
+                      Add or update the card you use to pay your coach. This is not a bank payout account — clients pay by card.
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={onOpenCoachingPayment}
+                      style={{ marginTop: 12 }}
+                    >
+                      <LinearGradient
+                        colors={['#FF6B9D', '#C084FC']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+                          {(paymentStatus || userDataProp?.paymentStatus) === 'active'
+                            ? 'UPDATE PAYMENT METHOD'
+                            : 'ADD PAYMENT METHOD'}
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                    <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 8 }]}>
+                      Payment history
+                    </Text>
+                    {clientPaymentHistoryLoading ? (
+                      <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>Loading…</Text>
+                    ) : clientPaymentHistory.length === 0 ? (
+                      <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
+                        No payments yet. Completed payments appear here with date, amount, and status.
+                      </Text>
+                    ) : (
+                      clientPaymentHistory.map((row) => (
+                        <View
+                          key={row.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 8,
+                            borderTopWidth: StyleSheet.hairlineWidth,
+                            borderTopColor: colors.border,
+                          }}
+                        >
+                          <Text style={{ width: 52, fontSize: 12, color: colors.textSecondary }}>{row.date}</Text>
+                          <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }} numberOfLines={1}>
+                            {row.coach}
+                          </Text>
+                          <Text style={{ width: 52, fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right' }}>
+                            ${row.amount % 1 === 0 ? row.amount : row.amount.toFixed(2)}
+                          </Text>
+                          <Text
+                            style={{
+                              width: 78,
+                              fontSize: 11,
+                              fontWeight: '800',
+                              textAlign: 'right',
+                              color: row.status === 'Completed' ? colors.success : colors.warning,
+                            }}
+                          >
+                            {row.status}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+
         {isTrainer ? (
           <>
             <SectionHeader title="PAYMENTS & PAYOUTS" colors={colors} />
             <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <SettingsRow
+                label="Payment Settings"
+                colors={colors}
+                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
+              >
+                <PaymentStatusChip
+                  label={payoutChipLabel(resolvedStripeStatus)}
+                  tone={payoutChipTone(resolvedStripeStatus)}
+                  colors={colors}
+                  isDark={isDark}
+                />
+              </SettingsRow>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
+                  Bank account: {maskStripeAccountId(stripeAccountId)}
+                </Text>
+                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13, marginTop: 4 }]}>
+                  Status: {payoutChipLabel(resolvedStripeStatus)}
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    if (stripeConnect.error) stripeConnect.retry();
+                    else stripeConnect.startConnect();
+                  }}
+                  style={{ marginTop: 12 }}
+                >
+                  <LinearGradient
+                    colors={['#FF6B9D', '#C084FC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+                      {resolvedStripeStatus === 'active' ? 'UPDATE BANK ACCOUNT' : 'CONNECT WITH STRIPE'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <SettingsRow
                 label="Payout account"
                 onPress={() => go('payments')}
@@ -581,8 +758,8 @@ export default function SettingsScreen({
                 leftIcon={<Ionicons name="wallet-outline" size={20} color={colors.textSecondary} />}
               >
                 <PaymentStatusChip
-                  label={payoutChipLabel(stripeConnectStatus)}
-                  tone={payoutChipTone(stripeConnectStatus)}
+                  label={payoutChipLabel(resolvedStripeStatus)}
+                  tone={payoutChipTone(resolvedStripeStatus)}
                   colors={colors}
                   isDark={isDark}
                 />
@@ -597,6 +774,35 @@ export default function SettingsScreen({
               >
                 <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
               </SettingsRow>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 6 }]}>
+                  Tell clients how to pay you
+                </Text>
+                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, marginBottom: 8 }]}>
+                  Recommended message (copy and send in chat):
+                </Text>
+                <View
+                  style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? 'rgba(48,209,88,0.1)' : 'rgba(48,209,88,0.08)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(48,209,88,0.25)' : 'rgba(48,209,88,0.2)',
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, color: colors.text, lineHeight: 18 }}>
+                    {TRAINER_CLIENT_MESSAGE_RECOMMENDED}
+                  </Text>
+                </View>
+                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, marginBottom: 6 }]}>
+                  If a client asks about Venmo:
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.warning || '#F59E0B', lineHeight: 17 }}>
+                  {TRAINER_CLIENT_MESSAGE_VENMO_WARNING}
+                </Text>
+              </View>
             </View>
           </>
         ) : null}
@@ -740,6 +946,15 @@ export default function SettingsScreen({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <StripeConnectWebViewModal
+        visible={!!stripeConnect.webViewUrl}
+        url={stripeConnect.webViewUrl}
+        title="Connect with Stripe"
+        isDark={isDark}
+        onClose={() => stripeConnect.closeWebView({ userClosed: true })}
+        onComplete={stripeConnect.handleWebViewComplete}
+      />
 
       <HoldToConfirmModal
         visible={showDeleteHoldModal}

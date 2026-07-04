@@ -44,10 +44,11 @@ import { ShellBottomNavAnchor } from '../../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
 import { useTheme } from '../../../shared-ui/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
-import { useCoachComposerKeyboard } from '../chat-thread/useCoachComposerKeyboard';
+import { useCoachComposerKeyboard, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../chat-thread/useCoachComposerKeyboard';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 import {
   buildHourlyCanHelpWith,
+  buildHourlyCoachActions,
   buildHourlySpotlightSuggestions,
   getCoachHourSlot,
 } from '../chat-thread/coachQuickPrompts';
@@ -919,13 +920,15 @@ export default function StartCoachChatScreen({
   const [nutritionToday, setNutritionToday] = useState(null);
   const [hourSlot, setHourSlot] = useState(getCoachHourSlot());
 
-  const canHelpItems = buildHourlyCanHelpWith({ now: hourSlot * 60 * 60 * 1000 });
+  const promptNow = hourSlot * 60 * 60 * 1000;
+  const canHelpItems = buildHourlyCanHelpWith({ userData, sessions, now: promptNow });
+  const coachActions = buildHourlyCoachActions(COACH_ACTIONS, { userData, sessions, now: promptNow });
   const suggestions = buildHourlySpotlightSuggestions({
     userData,
     sessions,
     dailyMetrics,
     nutritionToday,
-    now: hourSlot * 60 * 60 * 1000,
+    now: promptNow,
   });
 
   const t = isDark ? DARK : LIGHT;
@@ -1211,7 +1214,11 @@ export default function StartCoachChatScreen({
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: listBottomPad, paddingHorizontal: 16 }}
+          contentContainerStyle={{
+            flexGrow: keyboardVisible ? 0 : 1,
+            paddingBottom: listBottomPad,
+            paddingHorizontal: 16,
+          }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1295,7 +1302,7 @@ export default function StartCoachChatScreen({
                   What do you need?
                 </Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-                  {COACH_ACTIONS.map((action) => (
+                  {coachActions.map((action) => (
                     <CoachActionOrb
                       key={action.id}
                       action={action}
@@ -1396,6 +1403,7 @@ export default function StartCoachChatScreen({
               <Ionicons name="add-circle-outline" size={26} color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight} />
             </TouchableOpacity>
             <TextInput
+              {...COACH_COMPOSER_TEXT_INPUT_PROPS}
               style={{
                 flex: 1,
                 minWidth: 0,

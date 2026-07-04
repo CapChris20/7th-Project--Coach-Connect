@@ -422,14 +422,32 @@ async function executeDeleteLogClient(userId, params) {
 }
 
 async function executeLogSleepClient(userId, params) {
+  if (!userId || !db) {
+    return { success: false, message: 'Could not save sleep — please sign in and try again.' };
+  }
   const hours = Number(params?.hours ?? params?.sleepHours);
   if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
     return { success: false, message: 'Invalid sleep hours (use 0.5–24)' };
   }
   const dateKey = String(params?.date || getClientDateKey()).trim();
-  await saveDashboardSleepHours(userId, hours, dateKey);
-  await logAiCoachAction(userId, 'logSleep', { hours, date: dateKey });
-  return { success: true, message: `Logged ${hours} hours of sleep on your dashboard.` };
+  if (__DEV__) {
+    console.log('[coach-tool] Executing logSleep:', { userId, hours, dateKey });
+  }
+  try {
+    await Promise.all([
+      setDoc(
+        doc(db, 'users', userId, 'sleep_logs', dateKey),
+        { hours, date: dateKey, logged_at: serverTimestamp() },
+        { merge: true },
+      ),
+      saveDashboardSleepHours(userId, hours, dateKey),
+    ]);
+    await logAiCoachAction(userId, 'logSleep', { hours, date: dateKey });
+    return { success: true, message: `Logged ${hours} hours of sleep on your dashboard.` };
+  } catch (error) {
+    console.error('[coach-tool] logSleep failed:', error);
+    return { success: false, message: error?.message || 'Failed to log sleep' };
+  }
 }
 
 async function executeAdjustMacrosClient(userId, params) {
@@ -521,12 +539,12 @@ async function executeAdjustMacrosClient(userId, params) {
 }
 
 async function executeLogWaterClient(userId, params) {
-  const amount_oz = Number(params?.amount_oz);
+  const amount_oz = Number(params?.amount_oz ?? params?.amountOz ?? params?.amount);
   if (!Number.isFinite(amount_oz) || amount_oz <= 0) {
     throw new Error('Water amount must be greater than 0 ounces');
   }
-  
-  const dateKey = getClientDateKey();
+
+  const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'water_logs', dateKey),
@@ -545,12 +563,12 @@ async function executeLogWaterClient(userId, params) {
 }
 
 async function executeLogStepsClient(userId, params) {
-  const step_count = Number(params?.step_count);
+  const step_count = Number(params?.step_count ?? params?.steps);
   if (!Number.isFinite(step_count) || step_count < 0) {
     throw new Error('Step count must be 0 or greater');
   }
 
-  const dateKey = getClientDateKey();
+  const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'step_logs', dateKey),
@@ -574,7 +592,7 @@ async function executeRateEnergyClient(userId, params) {
     throw new Error('Energy rating must be between 1 and 10');
   }
   
-  const dateKey = getClientDateKey();
+  const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'energy_logs', dateKey),
@@ -602,7 +620,7 @@ async function executeLogMoodClient(userId, params) {
     throw new Error(`Mood must be one of: ${validMoods.join(', ')}`);
   }
   
-  const dateKey = getClientDateKey();
+  const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'mood_logs', dateKey),
@@ -714,12 +732,72 @@ export async function runCoachAction({
     };
   }
 
-  // Nutrition logs always write on-device (correct local date + same path as Nutrition tab).
+  // Nutrition + dashboard metrics write on-device (local date + same paths as Home / Nutrition).
   if (normalized.name === 'logNutrition') {
     try {
       return await executeLogNutritionClient(userId, params);
     } catch (e) {
       return { success: false, message: e?.message || 'Failed to log nutrition' };
+    }
+  }
+
+  if (normalized.name === 'logSleep') {
+    try {
+      return await executeLogSleepClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log sleep' };
+    }
+  }
+
+  if (normalized.name === 'logWater') {
+    try {
+      return await executeLogWaterClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log water' };
+    }
+  }
+
+  if (normalized.name === 'logSteps') {
+    try {
+      return await executeLogStepsClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log steps' };
+    }
+  }
+
+  if (normalized.name === 'rateEnergy') {
+    try {
+      return await executeRateEnergyClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log energy' };
+    }
+  }
+
+  if (normalized.name === 'logMood') {
+    try {
+      return await executeLogMoodClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log mood' };
+    }
+  }
+
+  if (normalized.name === 'logRestDay') {
+    try {
+      return await executeLogRestDayClient(userId, params);
+    } catch (e) {
+      const serverResult = await executeToolViaServer(userId, serverCall);
+      if (serverResult.success) return serverResult;
+      return { success: false, message: e?.message || serverResult.message || 'Failed to log rest day' };
     }
   }
 
@@ -754,14 +832,6 @@ export async function runCoachAction({
   if (serverResult.success) return serverResult;
 
   // Client fallbacks for when server is unreachable (network issues only)
-  if (normalized.name === 'logSleep') {
-    try {
-      return await executeLogSleepClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log sleep' };
-    }
-  }
-
   if (normalized.name === 'adjustMacroTargets') {
     try {
       return await executeAdjustMacrosClient(userId, params);
@@ -770,51 +840,11 @@ export async function runCoachAction({
     }
   }
 
-  if (normalized.name === 'logWater') {
-    try {
-      return await executeLogWaterClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log water' };
-    }
-  }
-
-  if (normalized.name === 'logSteps') {
-    try {
-      return await executeLogStepsClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log steps' };
-    }
-  }
-
-  if (normalized.name === 'rateEnergy') {
-    try {
-      return await executeRateEnergyClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log energy' };
-    }
-  }
-
-  if (normalized.name === 'logMood') {
-    try {
-      return await executeLogMoodClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log mood' };
-    }
-  }
-
   if (normalized.name === 'rateWorkout') {
     try {
       return await executeRateWorkoutClient(userId, params);
     } catch (e) {
       return { success: false, message: e?.message || 'Failed to rate workout' };
-    }
-  }
-
-  if (normalized.name === 'logRestDay') {
-    try {
-      return await executeLogRestDayClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log rest day' };
     }
   }
 

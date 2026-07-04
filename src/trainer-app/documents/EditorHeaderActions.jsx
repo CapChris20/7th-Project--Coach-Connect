@@ -19,6 +19,42 @@ export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
 export const DEFAULT_SAVE_TITLE_DOCUMENT = 'Document';
 export const DEFAULT_SAVE_TITLE_SPREADSHEET = 'Spreadsheet';
 
+export function EditorInlineTitle({
+  value,
+  onChangeText,
+  onFocus,
+  onBlur,
+  focused,
+  theme,
+  placeholder = EDITOR_NAME_PLACEHOLDER,
+  inputRef,
+}) {
+  return (
+    <TextInput
+      ref={inputRef}
+      testID="doc-title-input"
+      value={value}
+      onChangeText={onChangeText}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      placeholder={placeholder}
+      placeholderTextColor={theme.textMuted}
+      selectTextOnFocus={Boolean(String(value || '').trim())}
+      returnKeyType="done"
+      autoCorrect={false}
+      autoCapitalize="sentences"
+      numberOfLines={1}
+      style={[
+        titleStyles.inlineInput,
+        {
+          color: theme.text,
+          borderBottomColor: focused ? theme.selectionBorder : 'transparent',
+        },
+      ]}
+    />
+  );
+}
+
 export function EditorTitleField({
   value,
   onChangeText,
@@ -127,6 +163,13 @@ export function EditorIconButton({ icon, onPress, theme, active, accessibilityLa
 }
 
 const titleStyles = StyleSheet.create({
+  inlineInput: {
+    fontSize: 17,
+    fontWeight: '600',
+    paddingVertical: 6,
+    paddingHorizontal: 0,
+    borderBottomWidth: 2,
+  },
   input: {
     flex: 1,
     fontSize: 18,

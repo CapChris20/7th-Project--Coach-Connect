@@ -206,7 +206,7 @@ function toolAlignsWithUserMessage(guarded, userText) {
     rateWorkout: /\b(workout|session|training)\b/,
     adjustMacroTargets: /\b(calor|macro|goal|target|protein|carb|fat|kcal)\b/,
     logRestDay: /\b(rest)\b/,
-    logSteps: /\b(steps?)\b/,
+    logSteps: /\b(steps?|walked)\b/,
     rateEnergy: /\b(energy|fatigue)\b/,
     logMood: /\b(mood|feel|feeling)\b/,
     deleteLog: /\b(delete|remove|clear|undo)\b/,
@@ -221,7 +221,7 @@ const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put)\b/i;
 const DASHBOARD_METRIC_PATTERNS = {
   sleep: /\b(sleep|slept|hours?|hrs?)\b/i,
   water: /\b(water|oz|ounce|hydrat|drank)\b/i,
-  steps: /\b(steps?|step count)\b/i,
+  steps: /\b(steps?|step count|walked)\b/i,
   energy: /\b(energy|fatigue)\b/i,
   mood: /\b(mood|feel|feeling)\b/i,
   workout: /\b(workout|trained|lifting|session)\b/i,
@@ -252,6 +252,11 @@ function userWantsExplicitDashboardLog(userText, metric) {
 function isInformationalUserMessage(userText) {
   const raw = String(userText || '').trim();
   if (!raw) return false;
+  // "Can u log 15000 steps" is an action request, not a generic question.
+  if (EXPLICIT_LOG_RE.test(raw)) return false;
+  if (/\b(delete|remove|clear|undo)\b/.test(raw) && /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(raw)) {
+    return false;
+  }
   if (/\?$/.test(raw)) return true;
   if (/\b(too much|too little|too many|good for me|should i)\b/i.test(raw)) return true;
   if (
@@ -271,11 +276,11 @@ function isValidCoachToolProposal(rawCall, userText) {
   const guarded = guardCoachToolProposal(rawCall);
   if (!guarded) return false;
 
-  if (isInformationalUserMessage(userText)) return false;
-
   if (userExplicitlyRequestsAction(userText)) {
     return toolAlignsWithUserMessage(guarded, userText);
   }
+
+  if (isInformationalUserMessage(userText)) return false;
 
   return false;
 }

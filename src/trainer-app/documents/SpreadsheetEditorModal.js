@@ -561,13 +561,25 @@ export default function SpreadsheetEditorModal({
     commitEditRef.current = commitEdit;
   }, [commitEdit]);
 
+  const formulaDebounceRef = useRef(null);
+
   const onFormulaChange = useCallback(
     (v) => {
       editDraftRef.current = v;
-      setEditDraft(v);
+      if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current);
+      formulaDebounceRef.current = setTimeout(() => {
+        setEditDraft(v);
+      }, 500);
       if (!editing) startEdit(selection.focus.r, selection.focus.c, v, 'formula');
     },
     [editing, selection.focus.c, selection.focus.r, startEdit],
+  );
+
+  useEffect(
+    () => () => {
+      if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current);
+    },
+    [],
   );
 
   const onCellDraftChange = useCallback((v) => {

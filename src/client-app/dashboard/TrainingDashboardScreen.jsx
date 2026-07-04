@@ -57,7 +57,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
 import PremiumTrainerCard from './PremiumTrainerCard';
-import PremiumStatsSection, { GradientBorderShell } from './PremiumStatsSection';
+import PremiumStatsSection, { GradientBorderShell, TRAINER_BORDER_GRADIENT } from './PremiumStatsSection';
 import QuickActionCard from '../../shared/components/home/QuickActionCard';
 import {
   HOME_STAT_WORKOUT_GRADIENT,
@@ -1563,7 +1563,7 @@ export const TrainingDashboardScreen = ({
 }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const shellBottomPad = useShellBottomNavInset(24);
+  const shellBottomPad = useShellBottomNavInset(embedInLayout ? 40 : 24);
   const t = isDark ? DARK : LIGHT;
   const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;
   const handleViewProfile = typeof onPressViewProfile === 'function' ? onPressViewProfile : onPressMessage;
@@ -1883,17 +1883,23 @@ export const TrainingDashboardScreen = ({
 
   const displayBanner = paymentBanner || banner;
 
-  const showCoachingPaymentOnCard =
-    trainer &&
-    coachingPaymentStatus !== 'inactive' &&
-    !!(coachingRateLabel || (coachingMonthlyRate != null && Number(coachingMonthlyRate) > 0));
+  const showCoachingPaymentOnCard = !!trainer;
 
   const coachingPaymentButtonLabel =
     coachingPaymentStatus === 'past_due'
       ? 'Update Payment'
       : coachingPaymentStatus === 'active'
         ? 'Manage Coaching Payment'
-        : 'Set Up Payment';
+        : coachingPaymentStatus === 'payment_required'
+          ? 'Set Up Payment'
+          : 'Pay';
+
+  const coachingPaymentShortLabel =
+    coachingPaymentStatus === 'past_due'
+      ? 'Update'
+      : coachingPaymentStatus === 'active'
+        ? 'Payment'
+        : 'Pay';
 
   const coachingPaymentStatusLabel =
     coachingPaymentStatus === 'active'
@@ -1966,7 +1972,7 @@ export const TrainingDashboardScreen = ({
         contentContainerStyle={[
           screen.scroll,
           embedInLayout && { paddingTop: 16 },
-          { paddingBottom: embedInLayout ? 80 + insets.bottom + 24 : shellBottomPad },
+          { paddingBottom: shellBottomPad },
         ]}
         {...FORM_SCROLL_PROPS}
       >
@@ -2013,9 +2019,6 @@ export const TrainingDashboardScreen = ({
             style={{ borderRadius: 24, padding: 2 }}
           >
             <View style={{ borderRadius: 22, padding: 18, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', overflow: 'hidden' }}>
-              {/* Ambient glow */}
-              <View style={{ position: 'absolute', top: -50, right: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: '#FF6B9D', opacity: 0.06 }} />
-
               {/* Two-column: text left, icon right */}
               <View style={{ flexDirection: 'row', minHeight: 150 }}>
                 <View style={{ flex: 1.3, paddingRight: 12, justifyContent: 'space-between' }}>
@@ -2184,19 +2187,19 @@ export const TrainingDashboardScreen = ({
         {/* Trainer card */}
         {trainer ? (
           <View style={trainerSectionStyles.section}>
-            <GradientBorderShell isDark={isDark}>
+            <GradientBorderShell isDark={isDark} borderColors={TRAINER_BORDER_GRADIENT}>
               <View style={trainerSectionStyles.inner}>
                 <View style={trainerSectionStyles.headerRow}>
                   <View
                     style={[
                       trainerSectionStyles.headerIcon,
                       {
-                        borderColor: isDark ? 'rgba(192,132,252,0.28)' : 'rgba(192,132,252,0.22)',
-                        backgroundColor: isDark ? 'rgba(192,132,252,0.12)' : 'rgba(192,132,252,0.08)',
+                        borderColor: isDark ? 'rgba(190,24,93,0.28)' : 'rgba(190,24,93,0.22)',
+                        backgroundColor: isDark ? 'rgba(194,65,12,0.14)' : 'rgba(194,65,12,0.08)',
                       },
                     ]}
                   >
-                    <Ionicons name="person-circle-outline" size={22} color="#C084FC" />
+                    <Ionicons name="person-circle-outline" size={22} color="#BE185D" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
@@ -2229,7 +2232,7 @@ export const TrainingDashboardScreen = ({
                 <View style={trainerSectionStyles.cardSlot}>
                   <PremiumTrainerCard
                     isDark={isDark}
-                    accent="purple"
+                    accent="orange"
                     trainer={{
                       name: trainerName,
                       specialty: trainerTitle || trainerSpecialties.join(' · ') || 'Certified Trainer',
@@ -2251,6 +2254,7 @@ export const TrainingDashboardScreen = ({
                     secondaryCtaLabel="View Profile"
                     onPressPayment={showCoachingPaymentOnCard ? handleOpenPayment : undefined}
                     paymentButtonLabel={coachingPaymentButtonLabel}
+                    paymentButtonShortLabel={coachingPaymentShortLabel}
                     paymentRateLabel={coachingRateLabel ? `${coachingRateLabel}/mo` : trainerPricingLine || null}
                     paymentStatusLabel={coachingPaymentStatusLabel}
                     paymentStatusTone={coachingPaymentStatusTone}
@@ -2265,7 +2269,7 @@ export const TrainingDashboardScreen = ({
             onPress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
             activeOpacity={0.92}
           >
-            <GradientBorderShell isDark={isDark}>
+            <GradientBorderShell isDark={isDark} borderColors={TRAINER_BORDER_GRADIENT}>
               <View style={emptyTrainerStyles.content}>
                 <View style={emptyTrainerStyles.row}>
                   <View
@@ -2685,6 +2689,7 @@ const trainerSectionStyles = StyleSheet.create({
   },
   cardSlot: {
     marginTop: 2,
+    marginBottom: 4,
   },
 });
 

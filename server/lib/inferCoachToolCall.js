@@ -22,8 +22,8 @@ function parseSleepHoursFromMessage(text) {
   const patterns = [
     /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
     /sleep(?:ed)?\s*(?:for\s*|as\s*)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/,
-    /(?:put|add|log)\s+(?:that\s+)?(?:i\s+)?slept\s+(?:for\s*)?(\d+(?:\.\d+)?)/,
-    /(?:put|add|log)\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
+    /(?:put|add|log)\s+(?:in\s+)?(?:that\s+)?(?:i\s+)?slept\s+(?:for\s*)?(\d+(?:\.\d+)?)/,
+    /(?:put|add|log)\s+(?:in\s+)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
     /(?:put|add|log)\s+my\s+sleep\s+as\s+(\d+(?:\.\d+)?)/,
   ];
   for (const re of patterns) {
