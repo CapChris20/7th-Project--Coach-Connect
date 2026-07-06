@@ -6,6 +6,34 @@ const {
   formatLimitMessage,
   WORKOUT_GENERATION_LIMIT,
 } = require('../lib/workoutGenerationLimit');
+const {
+  buildWorkoutSystemPrompt,
+  buildWorkoutUserPrompt,
+  flattenOnboardingData,
+  resolveDaysPerWeek,
+} = require('../lib/workoutPlanPrompt');
+
+async function mergeWorkoutProfileFromFirestore(targetUid, clientOnboarding = {}) {
+  let merged = flattenOnboardingData(clientOnboarding || {});
+  if (!admin.apps.length) {
+    const days = resolveDaysPerWeek(merged);
+    if (days != null) merged.daysPerWeek = days;
+    return merged;
+  }
+
+  try {
+    const snap = await admin.firestore().collection('users').doc(targetUid).get();
+    if (snap.exists) {
+      merged = { ...merged, ...flattenOnboardingData(snap.data() || {}) };
+    }
+  } catch (e) {
+    console.warn('[workout] profile merge failed:', e?.message || e);
+  }
+
+  const days = resolveDaysPerWeek(merged);
+  if (days != null) merged.daysPerWeek = days;
+  return merged;
+}
 
 function registerWorkoutRoutes(app, deps) {
   const {
@@ -14,8 +42,6 @@ function registerWorkoutRoutes(app, deps) {
     resolveAnthropicKey,
     callDeepSeekChat,
     callClaudeCoach,
-    buildWorkoutSystemPrompt,
-    buildWorkoutUserPrompt,
     isTrainerOfClient,
     serverTs,
   } = deps;
@@ -114,8 +140,10 @@ Day 2: Pull
       }
     }
 
-    const systemPrompt = buildWorkoutSystemPrompt();
-    const userPrompt = buildWorkoutUserPrompt(onboardingData || {});
+    const profile = await mergeWorkoutProfileFromFirestore(targetUid, onboardingData || {});
+    const daysPerWeek = resolveDaysPerWeek(profile);
+    const systemPrompt = buildWorkoutSystemPrompt({ daysPerWeek });
+    const userPrompt = buildWorkoutUserPrompt(profile);
 
     const text = await callClaudeCoach({
       apiKey,

@@ -41,8 +41,10 @@ import * as Notifications from 'expo-notifications';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { auth, db } from '../../app-start/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { Liquid } from '../../shared-ui/liquid/liquidTokens';
+import StableGradientText from '../../shared-ui/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../shared-ui/brandGradients';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -89,6 +91,7 @@ import {
   clearWorkoutPlanReadyBadge,
   subscribeWorkoutGenerationSession,
 } from '../plan-generator/workoutPlanGenerationSession';
+import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
 
 export {
   WORKOUT_GENERATION_LIMIT,
@@ -268,7 +271,7 @@ const LOVABLE_PILLS = [
   { key: 'frequency', label: 'Frequency', helper: 'weekly sessions', icon: 'calendar-outline' },
   { key: 'trainingEnvironment', label: 'Environment', helper: 'training place', icon: 'navigate-outline' },
   { key: 'preferredWorkoutTime', label: 'Workout time', helper: 'preferred time', icon: 'time-outline' },
-  { key: 'exercisesDislike', label: 'Avoid', helper: 'exercise dislikes', icon: 'close-circle-outline' },
+  { key: 'exercisesDislike', label: 'Prefer', helper: 'exercise preferences', icon: 'heart-outline' },
   { key: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline' },
   { key: 'supplementsCurrentlyTaking', label: 'Supplements', helper: 'currently taking', icon: 'star-outline' },
   { key: 'currentStressLevel', label: 'Stress', helper: 'current level', icon: 'water-outline' },
@@ -336,8 +339,8 @@ const WORKOUT_BUILDER_ROW_META = {
     color: PLAN_BUILDER_COLORS.orange,
   },
   exercisesDislike: {
-    label: 'Workouts Disliked',
-    placeholder: 'Anything you want to avoid',
+    label: 'Exercises Preferred',
+    placeholder: 'Exercises you would prefer',
     multiline: false,
     icon: 'close-circle-outline',
     iconLib: 'ion',
@@ -1790,6 +1793,8 @@ export default function WorkoutPlanGeneratorScreen({
   plan: propPlan,
   readOnly = false,
   hideBottomNav = false,
+  /** When true, trainer can generate/regenerate plans for a linked client (AI Workouts flow). */
+  coachCanGeneratePlans = false,
   route,
 }) {
   const theme = useTheme();
@@ -1815,6 +1820,8 @@ export default function WorkoutPlanGeneratorScreen({
       ),
     [profileSubjectUid]
   );
+
+  const coachPlanGenerationBlocked = isCoachViewingClientProfile && !coachCanGeneratePlans;
 
   // State
   const [onboardingData, setOnboardingData] = useState(null);
@@ -2068,7 +2075,7 @@ export default function WorkoutPlanGeneratorScreen({
         if (db) {
           const userSnap = await getDoc(doc(db, 'users', subjectUid));
           if (userSnap.exists()) {
-            loadedData = userSnap.data();
+            loadedData = normalizeClientProfileFields(userSnap.data());
             if (!cancelled) {
               await AsyncStorage.setItem(key, JSON.stringify(loadedData));
               setOnboardingData(loadedData);
@@ -2078,7 +2085,7 @@ export default function WorkoutPlanGeneratorScreen({
         if (!loadedData) {
           const data = await AsyncStorage.getItem(key);
           if (data) {
-            loadedData = JSON.parse(data);
+            loadedData = normalizeClientProfileFields(JSON.parse(data));
             if (!cancelled) setOnboardingData(loadedData);
           } else if (isCoach) {
             if (!cancelled) setOnboardingData({});
@@ -2240,6 +2247,25 @@ export default function WorkoutPlanGeneratorScreen({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when subject client or roster flag changes
   }, [userId, trainerRosterEmpty, propPlan]);
+
+  // Keep onboarding pills in sync when the client updates profile in Firestore.
+  useEffect(() => {
+    const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+    if (!subjectUid || !db || propPlan || readOnly || trainerRosterEmpty) return undefined;
+
+    const key = `onboarding_data_${subjectUid}`;
+    const unsub = onSnapshot(
+      doc(db, 'users', subjectUid),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = normalizeClientProfileFields(snap.data());
+        setOnboardingData(data);
+        AsyncStorage.setItem(key, JSON.stringify(data)).catch(() => {});
+      },
+      () => {},
+    );
+    return () => unsub();
+  }, [userId, propPlan, readOnly, trainerRosterEmpty]);
 
   // Aura pulse (processing state)
   useEffect(() => {
@@ -2411,7 +2437,7 @@ export default function WorkoutPlanGeneratorScreen({
 
   // Generate workout plan
   const generateWorkoutPlan = async () => {
-    if (isCoachViewingClientProfile) {
+    if (coachPlanGenerationBlocked) {
       Alert.alert(
         'Open AI Workouts',
         'To generate a plan for this client, go to Home, select them on your roster, then use Quick actions → AI Workouts. Plans are saved to their library there.'
@@ -2455,7 +2481,20 @@ export default function WorkoutPlanGeneratorScreen({
 
     try {
       const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
-      const rawText = await fetchWorkoutPlanFromServer(onboardingData, subjectUid);
+      let profileForGen = onboardingData;
+      if (db && subjectUid) {
+        try {
+          const freshSnap = await getDoc(doc(db, 'users', subjectUid));
+          if (freshSnap.exists()) {
+            profileForGen = normalizeClientProfileFields(freshSnap.data());
+            ui(() => setOnboardingData(profileForGen));
+            await AsyncStorage.setItem(`onboarding_data_${subjectUid}`, JSON.stringify(profileForGen));
+          }
+        } catch (_) {
+          /* use cached onboarding */
+        }
+      }
+      const rawText = await fetchWorkoutPlanFromServer(profileForGen, subjectUid);
 
       if (rawText) {
         console.log(
@@ -2618,7 +2657,7 @@ export default function WorkoutPlanGeneratorScreen({
   };
 
   const handleRegeneratePlan = () => {
-    if (isCoachViewingClientProfile) {
+    if (coachPlanGenerationBlocked) {
       Alert.alert(
         'Open AI Workouts',
         'Regenerate plans for clients from Home → select client → AI Workouts.'
@@ -2716,7 +2755,7 @@ CLIENT PROFILE:
 - Environment: ${data.trainingEnvironment || "Gym"}
 - Session Duration: ${data.preferredWorkoutTime || "60 minutes"}
 - Injuries/Limitations: ${data.injuries || "None"}
-- Exercises to Avoid: ${(data.exercisesDislike || "").trim() || "None"}
+- Preferred Exercises (prioritize when possible): ${(data.exercisesDislike || "").trim() || "No specific preferences"}
 - Sleep: ${data.sleepQuality || "7-8 hours"}
 - Stress Level: ${data.currentStressLevel || "Moderate"}
 
@@ -3537,18 +3576,28 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           style={[
             styles.generatingInlineBanner,
             {
-              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-              backgroundColor: isDark ? 'rgba(255,107,157,0.14)' : 'rgba(100,210,255,0.12)',
+              borderColor: isDark ? 'rgba(190,24,93,0.35)' : 'rgba(194,65,12,0.28)',
+              backgroundColor: isDark ? 'rgba(26,10,46,0.92)' : 'rgba(255,247,237,0.95)',
+              overflow: 'hidden',
             },
           ]}
         >
-          <ActivityIndicator size="small" color={isDark ? '#64D2FF' : '#FF6B9D'} />
+          <LinearGradient
+            colors={['#BE185D', '#C2410C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.generatingBannerStripe}
+          />
+          <View style={styles.generatingBannerIconWrap}>
+            <ActivityIndicator size="small" color={isDark ? '#FDBA74' : '#BE185D'} />
+          </View>
           <View style={styles.generatingInlineBannerTextCol}>
             <Text style={[styles.generatingInlineBannerTitle, { color: textPrimary }]}>Building your plan</Text>
-            <Text style={[styles.generatingInlineBannerSub, { color: textSecondary }]} numberOfLines={3}>
+            <Text style={[styles.generatingInlineBannerSub, { color: textSecondary }]} numberOfLines={2}>
               {GENERATING_MESSAGES[generatingMessageIndex]}
-              {'\n'}
-              Switch tabs or tap Home anytime — generation continues in the background.
+            </Text>
+            <Text style={[styles.generatingInlineBannerHint, { color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.5)' }]}>
+              Feel free to browse other tabs — we&apos;ll badge Workout when it&apos;s ready.
             </Text>
           </View>
         </View>
@@ -3820,18 +3869,18 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                     />
                   </View>
 
-                  <Text
+                  <StableGradientText
+                    colors={HERO_TITLE_TEXT_GRADIENT}
                     style={{
                       fontSize: 28,
                       fontWeight: '900',
-                      color: '#FF6B9D',
                       marginTop: 10,
                       lineHeight: 34,
-                      flexShrink: 1,
                     }}
+                    numberOfLines={2}
                   >
                     {heroGoal === '—' ? 'Build Muscle' : heroGoal}
-                  </Text>
+                  </StableGradientText>
 
                   <Text
                     style={{
@@ -4132,7 +4181,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
               {
                 title: 'Recovery & Extras',
                 items: [
-                  { id: 'exercisesDislike', label: 'Avoid', helper: 'exercise dislikes', icon: 'close-circle-outline', value: displayForFieldKey('exercisesDislike'), editKey: 'exercisesDislike' },
+                  { id: 'exercisesDislike', label: 'Prefer', helper: 'exercise preferences', icon: 'heart-outline', value: displayForFieldKey('exercisesDislike'), editKey: 'exercisesDislike' },
                   { id: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline', value: displayForFieldKey('injuries'), editKey: 'injuries' },
                   { id: 'supplements', label: 'Supplements', helper: 'currently taking', icon: 'star-outline', value: displayForFieldKey('supplementsCurrentlyTaking'), editKey: 'supplementsCurrentlyTaking' },
                   { id: 'stress', label: 'Stress', helper: 'current level', icon: 'water-outline', value: displayForFieldKey('currentStressLevel'), editKey: 'currentStressLevel' },
@@ -5466,6 +5515,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
   },
+  generatingBannerStripe: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  generatingBannerIconWrap: {
+    width: 28,
+    alignItems: 'center',
+    paddingTop: 2,
+  },
   generatingInlineBannerTextCol: {
     flex: 1,
     minWidth: 0,
@@ -5479,6 +5542,12 @@ const styles = StyleSheet.create({
   generatingInlineBannerSub: {
     fontSize: 13,
     lineHeight: 19,
+    fontFamily: 'System',
+  },
+  generatingInlineBannerHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
     fontFamily: 'System',
   },
   loadingOverlay: {

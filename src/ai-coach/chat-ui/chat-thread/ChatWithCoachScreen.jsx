@@ -23,7 +23,6 @@ import {
   Dimensions,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -95,8 +94,7 @@ import {
 } from '../../server-logic/tools/chooseCoachActionUI';
 import CoachWebSourceCards from '../chat-thread/CoachWebSourceCards';
 import CoachFormattedReply from '../components/CoachFormattedReply';
-import CoachFollowUpBubbles from '../components/CoachFollowUpBubbles';
-import { prepareCoachReplyForDisplay, buildContextualFollowUps } from '../lib/coachFollowUpPrompts';
+import { prepareCoachReplyForDisplay } from '../lib/coachFollowUpPrompts';
 import {
   logCoachUserMessage,
   logCoachAssistantMessage,
@@ -978,22 +976,6 @@ function MessageBubble({
         renderContent()
       )}
       <CoachWebSourceCards message={message} isDark={isDark} />
-      {showFollowUps && !message.isError ? (
-        <CoachFollowUpBubbles
-          prompts={
-            Array.isArray(message.followUpPrompts) && message.followUpPrompts.length
-              ? message.followUpPrompts
-              : buildContextualFollowUps({
-                  userMessage: lastUserText,
-                  assistantReply: displayText,
-                  searchedWeb: message.searchedWeb === true,
-                  userProfile,
-                })
-          }
-          onPress={onFollowUpPress}
-          isDark={isDark}
-        />
-      ) : null}
       {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
         <ToolActionChip message={message} onPress={onToolPress} t={t} userMessage={lastUserText} />
       ) : null}
@@ -1031,7 +1013,7 @@ export default function ChatWithCoachScreen({
 }) {
   const insets = useSafeAreaInsets();
   const isWideLayout = Dimensions.get('window').width >= 768;
-  const { keyboardVisible, composerBottomPad, listBottomPad, keyboardVerticalOffset } =
+  const { keyboardVisible, composerKeyboardPad, listBottomPad } =
     useCoachComposerKeyboard({ hideBottomNav });
   const { isDark } = useTheme();
   const t = isDark ? DARK : LIGHT;
@@ -1477,6 +1459,11 @@ export default function ChatWithCoachScreen({
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
+      // Drop the loading pill immediately — don't wait for Firestore persist.
+      setTyping(false);
+      setSearchingWeb(false);
+      clearFeatureTimers();
+      setActiveFeatureCards([]);
 
       if (resolvedTool) {
         if (shouldAutoExecuteCoachTool(resolvedTool, { userText: text.trim() })) {
@@ -1708,12 +1695,8 @@ export default function ChatWithCoachScreen({
         }
       />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-      >
-        {messages.length === 0 && !typing ? (
+      <View style={{ flex: 1 }}>
+        {messages.length === 0 && !typing && !keyboardVisible ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <LottieView
               source={require('../../../assets/animations/legacy/Cloud robotics abstract.json')}
@@ -1771,7 +1754,7 @@ export default function ChatWithCoachScreen({
           style={{
             paddingHorizontal: 16,
             paddingTop: attachments.length > 0 ? 10 : 8,
-            paddingBottom: composerBottomPad,
+            paddingBottom: composerKeyboardPad,
             borderTopWidth: StyleSheet.hairlineWidth,
             borderTopColor: t.inputBarBorder,
             backgroundColor: t.inputBarBg,
@@ -1926,7 +1909,7 @@ export default function ChatWithCoachScreen({
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <CoachPasteSheet
         visible={pasteSheetVisible}

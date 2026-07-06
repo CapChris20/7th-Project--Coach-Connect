@@ -20,6 +20,7 @@ import { formatWorkoutLimitResetLabel } from '../plan-generator/trackWorkoutGene
 const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
 
 import { buildWorkoutOnboardingPayload } from './workoutOnboardingPayload';
+import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
 
 export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
   const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
@@ -104,11 +105,11 @@ export async function loadOnboardingAndPlanArtifacts({ userId, propPlan } = {}) 
   let onboardingData = null;
   if (db) {
     const userSnap = await getDoc(doc(db, 'users', subjectUid));
-    if (userSnap.exists()) onboardingData = userSnap.data();
+    if (userSnap.exists()) onboardingData = normalizeClientProfileFields(userSnap.data());
   }
   if (!onboardingData) {
     const cached = await AsyncStorage.getItem(`onboarding_data_${subjectUid}`);
-    if (cached) onboardingData = JSON.parse(cached);
+    if (cached) onboardingData = normalizeClientProfileFields(JSON.parse(cached));
   }
   let plan = propPlan || null;
   if (!plan) {

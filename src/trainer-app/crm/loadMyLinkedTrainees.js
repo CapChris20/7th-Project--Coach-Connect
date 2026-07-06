@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../app-start/config';
 import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from '../crm/getTraineeDisplayName';
+import { mergeTrainerClientProfile } from '../../shared-utils/mergeTrainerClientProfile';
 
 function isCrmRowInactive(c) {
   if (!c || c.archived === true) return true;
@@ -87,7 +88,12 @@ export async function loadMyLinkedTrainees(trainerUid, rawRows) {
         }
       }
 
-      linked.push({ ...c, name: resolvedName, photoURL });
+      linked.push(
+        mergeTrainerClientProfile(
+          { ...c, name: resolvedName, photoURL },
+          ud,
+        ),
+      );
     } catch (_) {
       /* skip row */
     }

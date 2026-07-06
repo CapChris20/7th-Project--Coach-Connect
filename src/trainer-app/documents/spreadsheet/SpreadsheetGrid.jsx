@@ -49,6 +49,7 @@ const SpreadsheetGrid = memo(
       displayCache,
       colWidths,
       rowHeights,
+      dimRevision = 0,
       selection,
       editing,
       editSeed,
@@ -159,11 +160,35 @@ const SpreadsheetGrid = memo(
 
     const rowData = useMemo(() => Array.from({ length: ROWS }, (_, i) => i), []);
 
-    const listExtra = useMemo(
-      () =>
-        `${selection.focus.r},${selection.focus.c},${editing?.r ?? ''},${editing?.c ?? ''},${editVia ?? ''},${editSeed ?? ''}`,
-      [editSeed, editVia, editing?.c, editing?.r, selection.focus.c, selection.focus.r],
-    );
+    const listExtra = useMemo(() => {
+      const er = editing?.r ?? -1;
+      const ec = editing?.c ?? -1;
+      const rh = rowHeights?.[er] ?? DEFAULT_ROW_HEIGHT;
+      const cw = colWidths?.[ec] ?? DEFAULT_COL_WIDTH;
+      return [
+        selection.focus.r,
+        selection.focus.c,
+        er,
+        ec,
+        editVia ?? '',
+        editSeed ?? '',
+        dimRevision,
+        rh,
+        cw,
+        JSON.stringify(rowHeights?.[er]),
+        JSON.stringify(colWidths?.[ec]),
+      ].join('|');
+    }, [
+      colWidths,
+      dimRevision,
+      editSeed,
+      editVia,
+      editing?.c,
+      editing?.r,
+      rowHeights,
+      selection.focus.c,
+      selection.focus.r,
+    ]);
 
     return (
       <ScrollView
@@ -214,10 +239,10 @@ const SpreadsheetGrid = memo(
             keyExtractor={(r) => `row-${r}`}
             renderItem={renderRow}
             initialNumToRender={14}
-            maxToRenderPerBatch={8}
-            windowSize={6}
-            updateCellsBatchingPeriod={50}
-            removeClippedSubviews
+            maxToRenderPerBatch={12}
+            windowSize={8}
+            updateCellsBatchingPeriod={16}
+            removeClippedSubviews={!editing}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             nestedScrollEnabled

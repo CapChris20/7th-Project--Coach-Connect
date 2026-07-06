@@ -71,7 +71,7 @@ export default function WorkoutProfilePillGrid({
     {
       title: 'Recovery & Extras',
       items: [
-        { id: 'exercisesDislike', label: 'Avoid', helper: 'exercise dislikes', icon: 'close-circle-outline', value: dfk('exercisesDislike'), editKey: 'exercisesDislike' },
+        { id: 'exercisesDislike', label: 'Prefer', helper: 'exercise preferences', icon: 'heart-outline', value: dfk('exercisesDislike'), editKey: 'exercisesDislike' },
         { id: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline', value: dfk('injuries'), editKey: 'injuries' },
         { id: 'supplements', label: 'Supplements', helper: 'currently taking', icon: 'star-outline', value: dfk('supplementsCurrentlyTaking'), editKey: 'supplementsCurrentlyTaking' },
         { id: 'stress', label: 'Stress', helper: 'current level', icon: 'water-outline', value: dfk('currentStressLevel'), editKey: 'currentStressLevel' },

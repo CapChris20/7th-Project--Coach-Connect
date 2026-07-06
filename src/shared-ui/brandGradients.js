@@ -18,3 +18,6 @@ export const BRAND_NAV_ICON_GRADIENT_LOCATIONS = [0, 0.5, 1];
 
 export const BRAND_ICON_GRADIENT_START = { x: 0.5, y: 0 };
 export const BRAND_ICON_GRADIENT_END = { x: 0.5, y: 1 };
+
+/** Dark pink → dark orange for hero titles and accent text. */
+export const HERO_TITLE_TEXT_GRADIENT = ['#BE185D', '#C2410C'];

@@ -371,7 +371,12 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
   };
 
   return (
-    <View style={[step.container, { paddingBottom: footerPadBottom }]}>
+    <KeyboardAvoidingView
+      style={[step.container, { paddingBottom: footerPadBottom }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+    >
+      <View style={{ flex: 1 }}>
       <View style={{ position: 'relative', marginBottom: 32 }}>
         <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
           <Text style={step.linkText}>← Back</Text>
@@ -427,7 +432,8 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
           <Text style={step.gradBtnText}>Finish Setup</Text>
         </LinearGradient>
       </TouchableOpacity>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -512,20 +512,12 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
             }}
           >
             {on ? (
-              <>
-                <LinearGradient
-                  colors={gradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3 }}
-                />
-                <LinearGradient
-                  colors={pillBackgroundGradient(gradient, { strong: true })}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFillObject}
-                />
-              </>
+              <LinearGradient
+                colors={pillBackgroundGradient(gradient, { strong: true })}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
             ) : null}
             <Text style={{ fontSize: 13, fontWeight: '600', color: on ? gradient[1] : t.textPrimary }}>{o.label}</Text>
           </TouchableOpacity>
@@ -2506,9 +2498,10 @@ export default function OnboardingWizardScreen({
                 thumbColor={COLORS.white}
               />
             </View>
-            <OnboardingSectionLabel text="EXERCISES YOU DISLIKE (RECOMMENDED)" t={ot} />
+            <OnboardingSectionLabel text="EXERCISES YOU WOULD PREFER (RECOMMENDED)" t={ot} />
             <ExerciseDislikePicker
               t={ot}
+              intent="prefer"
               value={onboardingData.exercisesDislike || ''}
               onChange={(next) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: next }))}
               animatePills
@@ -3234,8 +3227,6 @@ const getStyles = (isDark = true) => ({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.8)',
-    borderTopWidth: 1,
-    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
   },
   backButtonCircle: {
     width: 44,
@@ -3573,8 +3564,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     backgroundColor: 'rgba(250, 250, 250, 0.95)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   backButton: {
     width: 44,

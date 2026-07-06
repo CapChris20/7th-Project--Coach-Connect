@@ -1,5 +1,5 @@
 /**
- * Post-signup payment setup modal (Option B) — shown on trainer dashboard, not during onboarding.
+ * Post-signup payment setup modal — shown on trainer dashboard, not during onboarding.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -9,12 +9,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  Animated,
-  Pressable,
   ScrollView,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStripeConnectFlow } from '../shared/payments/useStripeConnectFlow';
 import { StripeConnectWebViewModal } from '../shared/payments/StripeConnectWebViewModal';
 import { dismissPaymentSetupPopup } from '../shared/payments/paymentSetupPrompt';
@@ -27,13 +28,24 @@ import {
 import { auth } from '../app-start/config';
 
 const PENDING_DONE_MS = 30000;
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const COLORS = {
+  overlay: 'rgba(0,0,0,0.94)',
+  card: '#111118',
+  cardBorder: 'rgba(255,255,255,0.08)',
+  text: '#FFFFFF',
+  textMuted: 'rgba(255,255,255,0.62)',
+  accent: '#FF3D8A',
+  accentSoft: 'rgba(255,61,138,0.14)',
+};
 
 export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId = '' }) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [pendingTimedOut, setPendingTimedOut] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const pendingTimerRef = useRef(null);
 
   const email = String(userEmail || auth?.currentUser?.email || '').trim();
@@ -41,7 +53,6 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
   const stripeConnect = useStripeConnectFlow({
     email,
     onActive: () => {
-      console.log('✅ Account verified!');
       setStatus('success');
       setLoading(false);
       setErrorMessage(null);
@@ -49,33 +60,14 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
   });
 
   useEffect(() => {
-    if (!visible) {
-      fadeAnim.setValue(0);
-      return;
-    }
-    console.log('🎯 PaymentSetupPopup: Showing popup');
-    console.log('User email:', email || '(none)');
-    console.log('Stripe account:', stripeAccountId || 'none');
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, email, stripeAccountId, fadeAnim]);
-
-  useEffect(() => {
     if (stripeConnect.phase === 'connecting') {
       setStatus('connecting');
       setLoading(true);
       setErrorMessage(null);
-      console.log('🔄 Creating Stripe account...');
-      console.log('Opening Stripe onboarding form...');
     } else if (stripeConnect.phase === 'pending') {
       setStatus('verifying');
       setLoading(true);
       setErrorMessage(null);
-      console.log('🔍 Checking Stripe status...');
-      console.log('Status: pending_verification');
     } else if (stripeConnect.phase === 'active') {
       setStatus('success');
       setLoading(false);
@@ -122,13 +114,9 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
   }, [stripeConnect]);
 
   const handleMaybeLater = useCallback(async () => {
-    console.log('✖️ Popup dismissed');
     try {
       const uid = auth?.currentUser?.uid;
-      if (uid) {
-        await dismissPaymentSetupPopup(uid);
-        console.log('Dismissal saved to Firestore');
-      }
+      if (uid) await dismissPaymentSetupPopup(uid);
     } catch (e) {
       console.warn('Failed to save payment popup dismissal:', e?.message || e);
     }
@@ -145,108 +133,136 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
     stripeConnect.retry();
   }, [stripeConnect]);
 
-  const styles = useMemo(() => makeStyles(), []);
-
   const showInitialButtons = !status || status === 'error';
   const showConnecting = status === 'connecting';
   const showVerifying = status === 'verifying' && !pendingTimedOut;
   const showPendingDone = status === 'verifying' && pendingTimedOut;
   const showSuccess = status === 'success';
 
+  const maxCardHeight = useMemo(
+    () => SCREEN_HEIGHT - insets.top - insets.bottom - 32,
+    [insets.top, insets.bottom],
+  );
+
   if (!visible) return null;
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="none" onRequestClose={handleMaybeLater}>
-        <Pressable style={styles.overlay} onPress={handleMaybeLater}>
-          <Animated.View style={[styles.overlayInner, { opacity: fadeAnim }]}>
-            <Pressable onPress={(e) => e.stopPropagation?.()}>
-              <View style={styles.card}>
-                <ScrollView
-                  style={styles.scroll}
-                  contentContainerStyle={styles.scrollContent}
-                  showsVerticalScrollIndicator={false}
-                  bounces={false}
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        onRequestClose={handleMaybeLater}
+      >
+        <View style={styles.overlay}>
+          <View
+            style={[
+              styles.card,
+              {
+                maxHeight: maxCardHeight,
+                marginTop: Math.max(insets.top, 16),
+                marginBottom: Math.max(insets.bottom, 16),
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={handleMaybeLater}
+              accessibilityLabel="Close"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="close" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.iconWrap}>
+                <LinearGradient
+                  colors={['#FF8C42', '#FF3D8A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.iconGradient}
                 >
-                <View style={styles.iconWrap}>
-                  <Ionicons name="wallet-outline" size={40} color="#FF1493" />
-                </View>
+                  <Ionicons name="wallet" size={28} color="#FFFFFF" />
+                </LinearGradient>
+              </View>
 
-                <Text style={styles.title}>Ready to Get Paid?</Text>
-                <Text style={styles.subtitle}>
-                  Receive payments from clients directly to your bank account
+              <Text style={styles.title}>Ready to get paid?</Text>
+              <Text style={styles.subtitle}>
+                Connect Stripe once and receive client payments directly to your bank.
+              </Text>
+
+              {showInitialButtons ? (
+                <>
+                  <HowPaymentsWorkSection
+                    textColor={COLORS.text}
+                    mutedColor={COLORS.textMuted}
+                  />
+                  <EarningsDashboardPreview
+                    textColor={COLORS.text}
+                    mutedColor={COLORS.textMuted}
+                    borderColor={COLORS.cardBorder}
+                    surfaceColor="rgba(255,255,255,0.04)"
+                  />
+                  <VenmoComparisonSection
+                    textColor={COLORS.text}
+                    mutedColor={COLORS.textMuted}
+                    borderColor={COLORS.cardBorder}
+                  />
+                  <TrainerPaymentFaqSnippet
+                    textColor={COLORS.text}
+                    mutedColor={COLORS.textMuted}
+                  />
+                </>
+              ) : (
+                <Text style={styles.body}>
+                  Trainers with verified accounts receive payouts in 2–5 business days. Setup
+                  usually takes under 2 minutes.
                 </Text>
+              )}
 
+              {showConnecting ? (
+                <View style={styles.statusBlock}>
+                  <ActivityIndicator size="large" color={COLORS.accent} />
+                  <Text style={styles.statusText}>Opening secure Stripe form…</Text>
+                </View>
+              ) : null}
+
+              {showVerifying ? (
+                <View style={styles.statusBlock}>
+                  <ActivityIndicator size="large" color="#A78BFA" />
+                  <Text style={styles.statusText}>Verifying account (can take up to 24 hours)…</Text>
+                </View>
+              ) : null}
+
+              {showPendingDone ? (
+                <View style={styles.statusBlock}>
+                  <Text style={styles.statusText}>Verification in progress. Check back soon.</Text>
+                </View>
+              ) : null}
+
+              {showSuccess ? (
+                <View style={styles.statusBlock}>
+                  <Ionicons name="checkmark-circle" size={48} color="#34D399" />
+                  <Text style={styles.successTitle}>Account verified</Text>
+                  <Text style={styles.statusText}>You&apos;re ready to receive payments.</Text>
+                </View>
+              ) : null}
+
+              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            </ScrollView>
+
+            {showInitialButtons || showPendingDone || showSuccess ? (
+              <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom > 0 ? 0 : 8, 4) }]}>
                 {showInitialButtons ? (
                   <>
-                    <HowPaymentsWorkSection />
-                    <EarningsDashboardPreview />
-                    <VenmoComparisonSection />
-                    <TrainerPaymentFaqSnippet />
-                  </>
-                ) : (
-                  <Text style={styles.body}>
-                    Trainers with verified accounts receive payouts in 2–5 business days. Set up takes
-                    less than 2 minutes.
-                  </Text>
-                )}
-
-                {showConnecting ? (
-                  <View style={styles.statusBlock}>
-                    <ActivityIndicator size="large" color="#FF1493" />
-                    <Text style={styles.statusText}>Opening secure form...</Text>
-                  </View>
-                ) : null}
-
-                {showVerifying ? (
-                  <View style={styles.statusBlock}>
-                    <ActivityIndicator size="large" color="#A78BFA" />
-                    <Text style={styles.statusText}>Verifying account (up to 24 hours)...</Text>
-                  </View>
-                ) : null}
-
-                {showPendingDone ? (
-                  <View style={styles.statusBlock}>
-                    <Text style={styles.statusText}>
-                      Verification in progress. Check back soon.
-                    </Text>
-                    <TouchableOpacity activeOpacity={0.9} onPress={handleDone} style={styles.primaryWrap}>
-                      <LinearGradient
-                        colors={['#FF1493', '#A78BFA']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.primaryBtn}
-                      >
-                        <Text style={styles.primaryText}>DONE</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-
-                {showSuccess ? (
-                  <View style={styles.statusBlock}>
-                    <Text style={styles.successEmoji}>✅</Text>
-                    <Text style={styles.successTitle}>Account verified!</Text>
-                    <Text style={styles.statusText}>You're ready to receive payments</Text>
-                    <TouchableOpacity activeOpacity={0.9} onPress={handleDone} style={styles.primaryWrap}>
-                      <LinearGradient
-                        colors={['#FF1493', '#A78BFA']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.primaryBtn}
-                      >
-                        <Text style={styles.primaryText}>DONE</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-
-                {errorMessage ? (
-                  <Text style={styles.errorText}>{errorMessage}</Text>
-                ) : null}
-
-                {showInitialButtons ? (
-                  <View style={styles.actions}>
                     <TouchableOpacity
                       activeOpacity={0.9}
                       onPress={status === 'error' ? handleRetry : handleSetupNow}
@@ -254,7 +270,7 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
                       style={styles.primaryWrap}
                     >
                       <LinearGradient
-                        colors={['#FF1493', '#A78BFA']}
+                        colors={['#FF8C42', '#FF3D8A']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.primaryBtn}
@@ -263,26 +279,31 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
                           <ActivityIndicator color="#FFFFFF" />
                         ) : (
                           <Text style={styles.primaryText}>
-                            {status === 'error' ? 'TRY AGAIN' : 'SET UP NOW'}
+                            {status === 'error' ? 'Try again' : 'Set up payments'}
                           </Text>
                         )}
                       </LinearGradient>
                     </TouchableOpacity>
-
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      onPress={handleMaybeLater}
-                      style={styles.secondaryBtn}
-                    >
-                      <Text style={styles.secondaryText}>MAYBE LATER</Text>
+                    <TouchableOpacity activeOpacity={0.85} onPress={handleMaybeLater} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryText}>Maybe later</Text>
                     </TouchableOpacity>
-                  </View>
-                ) : null}
-                </ScrollView>
+                  </>
+                ) : (
+                  <TouchableOpacity activeOpacity={0.9} onPress={handleDone} style={styles.primaryWrap}>
+                    <LinearGradient
+                      colors={['#FF8C42', '#FF3D8A']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.primaryBtn}
+                    >
+                      <Text style={styles.primaryText}>Done</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
               </View>
-            </Pressable>
-          </Animated.View>
-        </Pressable>
+            ) : null}
+          </View>
+        </View>
       </Modal>
 
       <StripeConnectWebViewModal
@@ -297,122 +318,147 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
   );
 }
 
-function makeStyles() {
-  return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.65)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-    },
-    overlayInner: {
-      width: '100%',
-      alignItems: 'center',
-    },
-    card: {
-      width: '90%',
-      maxWidth: 400,
-      maxHeight: '88%',
-      backgroundColor: 'rgba(255,255,255,0.05)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 24,
-      padding: 24,
-    },
-    scroll: { flexGrow: 0 },
-    scrollContent: { alignItems: 'center', paddingBottom: 8 },
-    iconWrap: {
-      width: 72,
-      height: 72,
-      borderRadius: 20,
-      backgroundColor: 'rgba(255,20,147,0.12)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 20,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '800',
-      color: '#FFFFFF',
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    subtitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.65)',
-      textAlign: 'center',
-      marginBottom: 12,
-      lineHeight: 20,
-    },
-    body: {
-      fontSize: 13,
-      color: 'rgba(255,255,255,0.55)',
-      textAlign: 'center',
-      lineHeight: 19,
-      marginBottom: 24,
-    },
-    statusBlock: {
-      alignItems: 'center',
-      marginBottom: 16,
-      gap: 12,
-      width: '100%',
-    },
-    statusText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.65)',
-      textAlign: 'center',
-    },
-    successEmoji: {
-      fontSize: 36,
-    },
-    successTitle: {
-      fontSize: 18,
-      fontWeight: '800',
-      color: '#FFFFFF',
-      textAlign: 'center',
-    },
-    errorText: {
-      color: '#FF453A',
-      fontSize: 14,
-      fontWeight: '600',
-      textAlign: 'center',
-      marginBottom: 12,
-    },
-    actions: {
-      width: '100%',
-    },
-    primaryWrap: {
-      width: '100%',
-      marginBottom: 12,
-    },
-    primaryBtn: {
-      height: 56,
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '800',
-      letterSpacing: 0.3,
-    },
-    secondaryBtn: {
-      height: 48,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'transparent',
-    },
-    secondaryText: {
-      color: 'rgba(255,255,255,0.55)',
-      fontSize: 16,
-      fontWeight: '700',
-    },
-  });
-}
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: COLORS.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.45,
+        shadowRadius: 32,
+      },
+      android: { elevation: 24 },
+    }),
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scroll: {
+    flexShrink: 1,
+  },
+  scrollContent: {
+    paddingTop: 28,
+    paddingHorizontal: 22,
+    paddingBottom: 12,
+    alignItems: 'center',
+  },
+  iconWrap: {
+    marginBottom: 18,
+  },
+  iconGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+    paddingHorizontal: 4,
+  },
+  body: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 16,
+  },
+  statusBlock: {
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 12,
+    width: '100%',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  footer: {
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.cardBorder,
+    backgroundColor: COLORS.card,
+  },
+  primaryWrap: {
+    width: '100%',
+    marginBottom: 10,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  primaryBtn: {
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryBtn: {
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryText: {
+    color: COLORS.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+});

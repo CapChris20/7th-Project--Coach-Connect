@@ -52,6 +52,9 @@ import {
   GRADIENT_NUTRITION_FAT,
   GRADIENT_CALENDAR,
 } from '../dashboard/trainerDashboardUi';
+import {
+  resolveTrainerProgressCurrentWeight,
+} from './resolveTrainerProgressWeight';
 
 
 const metricValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
@@ -78,15 +81,11 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
     log.dashboard_weight != null && log.dashboard_weight !== ''
       ? Number(log.dashboard_weight)
       : null;
-  const lastLoggedWeight =
-    latestLoggedWeight != null && latestLoggedWeight !== ''
-      ? Number(latestLoggedWeight)
-      : null;
-  const currentWeight = Number.isFinite(todayWeight)
-    ? todayWeight
-    : Number.isFinite(lastLoggedWeight)
-      ? lastLoggedWeight
-      : null;
+  const currentWeight = resolveTrainerProgressCurrentWeight({
+    todayDashboardWeight: todayWeight,
+    latestLoggedWeight,
+    profileWeight: clientData?.profileWeight ?? clientData?.currentWeight,
+  });
 
   const parsedBefore = beforeWeight != null && beforeWeight !== '' ? Number(beforeWeight) : null;
   const hasBefore = Number.isFinite(parsedBefore);

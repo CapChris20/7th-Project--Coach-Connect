@@ -54,7 +54,7 @@ export const CLIENT_STEPS = [
     title: 'Any injuries or limitations?',
     subtitle: "We'll help you work around them safely",
     type: 'textarea',
-    options: ['Injuries field', 'Exercises you dislike', 'Supplements'],
+    options: ['Injuries field', 'Exercises you would prefer', 'Supplements'],
   },
   {
     step: 7,

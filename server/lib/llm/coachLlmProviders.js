@@ -7,6 +7,7 @@ const { isAiCoachLimitsEnforced } = require('../aiCoachRateLimit');
 const { resolveAiCoachDailyLimit } = require('../aiCoachRateLimit');
 const { serperOrganicSearch } = require('../serperWebSearch');
 const { COACH_VOICE_DIRECTIVE, COACH_WEB_SEARCH_FORMAT } = require('../coachVoice');
+const { filterFitnessWebSources, stripWebSearchPrefix } = require('../coachWebSearch');
 const { stripNotificationEmoji: pushStripNotificationEmoji } = require('../../pushHelpers');
 const logger = require('../logger');
 

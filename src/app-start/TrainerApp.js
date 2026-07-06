@@ -90,6 +90,7 @@ import BookTraineeSessionScreen from "../trainer-app/sessions/BookTraineeSession
 import ScheduleTrainingSessionScreen from "../trainer-app/screens/ScheduleTrainingSessionScreen";
 import { useTrainerClients } from "../trainer-app/clients-list/useTrainerClients";
 import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer-app/crm/getTraineeDisplayName";
+import { mergeTrainerClientProfile } from "../shared-utils/mergeTrainerClientProfile";
 import { useTrainerPendingRequests } from "../trainer-app/client-requests/useTrainerPendingRequests";
 import {
   configureNotifications,
@@ -445,24 +446,29 @@ export async function getTrainerClients(trainerId) {
             continue;
           }
           const crmNameRaw = String(client.name || '').trim();
-          client.name = resolveTrainerClientDisplayName(client, d);
-          client.photoURL = client.photoURL || d.photoURL || null;
+          const resolvedName = resolveTrainerClientDisplayName(client, d);
+          const mergedClient = mergeTrainerClientProfile(
+            { ...client, name: resolvedName, photoURL: client.photoURL || d.photoURL || null },
+            d,
+          );
           if (
-            client.name &&
-            !isGenericClientDisplayName(client.name) &&
+            mergedClient.name &&
+            !isGenericClientDisplayName(mergedClient.name) &&
             isGenericClientDisplayName(crmNameRaw)
           ) {
             try {
               await setDoc(
                 doc(db, `trainer_clients/${trainerId}/clients/${client.id}`),
-                { name: client.name, updatedAt: serverTimestamp() },
+                { name: mergedClient.name, updatedAt: serverTimestamp() },
                 { merge: true }
               );
             } catch (_) {
               /* ignore */
             }
           }
-          validClients.push(client);
+          validClients.push(mergedClient);
+        } else {
+          validClients.push(mergeTrainerClientProfile(client, {}));
         }
       } catch (_) {
         /* skip */

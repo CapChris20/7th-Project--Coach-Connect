@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import Markdown from 'react-native-markdown-display';
 import { stripCoachToolJsonFromReply } from '../../tools/parseCoachToolCalls';
 import { stripInlineWebCitations } from '../lib/formatCoachMessageText';
-import { buildCoachMarkdownStyles, preprocessCoachCitations } from '../lib/coachMarkdownStyles';
+import { buildCoachMarkdownStyles, preprocessWebSearchLayout } from '../lib/coachMarkdownStyles';
 import CoachWebSearchReply from './CoachWebSearchReply';
 
 export default function CoachFormattedReply({ text, isDark = true, isWebSearch = false }) {
@@ -12,7 +12,7 @@ export default function CoachFormattedReply({ text, isDark = true, isWebSearch =
 
   const body = useMemo(() => {
     const cleaned = stripInlineWebCitations(stripCoachToolJsonFromReply(String(text || '')));
-    return preprocessCoachCitations(cleaned);
+    return cleaned;
   }, [text]);
 
   const styles = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);

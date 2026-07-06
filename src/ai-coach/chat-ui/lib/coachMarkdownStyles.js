@@ -10,8 +10,6 @@ export function buildCoachMarkdownStyles(isDark) {
   const text = isDark ? 'rgba(255,255,255,0.92)' : '#0A0A0F';
   const muted = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.72)';
   const heading = isDark ? '#FFFFFF' : '#0A0A0F';
-  const citeBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
-  const citeBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)';
 
   return {
     body: { color: text, fontSize: 15, lineHeight: 24 },
@@ -45,18 +43,12 @@ export function buildCoachMarkdownStyles(isDark) {
     bullet_list: { marginBottom: 10, marginTop: 4 },
     ordered_list: { marginBottom: 10, marginTop: 4 },
     list_item: { color: muted, fontSize: 15, lineHeight: 24, marginBottom: 8 },
-    bullet_list_icon: { color: isDark ? '#C084FC' : '#9333EA', fontSize: 15, lineHeight: 24 },
+    bullet_list_icon: { color: isDark ? AI_COACH_UI.pink : '#BE185D', fontSize: 15, lineHeight: 24 },
     link: {
-      color: isDark ? 'rgba(255,255,255,0.88)' : '#334155',
-      fontSize: 11,
-      fontWeight: '700',
-      backgroundColor: citeBg,
-      borderColor: citeBorder,
-      borderWidth: 1,
-      borderRadius: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      overflow: 'hidden',
+      color: isDark ? AI_COACH_UI.purple : '#9333EA',
+      fontSize: 14,
+      fontWeight: '600',
+      textDecorationLine: 'underline',
     },
     hr: { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', height: 1, marginVertical: 12 },
   };

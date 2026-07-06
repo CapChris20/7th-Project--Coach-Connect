@@ -389,6 +389,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
               textPrimary: ui.text,
               textSecondary: ui.muted,
             }}
+            intent="prefer"
             value={onboardingData.exercisesDislike || ''}
             onChange={(next) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: next }))}
             animatePills

@@ -396,9 +396,19 @@ const formatClientHeightDisplay = (h) => {
   return typeof h === 'string' && h.trim() ? h.trim() : null;
 };
 
+const resolveClientGoalRaw = (client) => {
+  const raw =
+    client?.primaryGoal ||
+    client?.goal ||
+    (Array.isArray(client?.goals) ? client.goals[0] : client?.goals) ||
+    '';
+  return String(raw).replace(/_/g, ' ').trim();
+};
+
 const getClientSubtext = (client) => {
   const parts = [];
-  if (client.goals || client.primaryGoal) parts.push((client.goals || client.primaryGoal || '').replace(/_/g, ' '));
+  const goalLabel = resolveClientGoalRaw(client);
+  if (goalLabel) parts.push(goalLabel);
   if (client.age) parts.push(`${client.age}y`);
   if (client.weight) parts.push(`${client.weight} lbs`);
   const heightLabel = formatClientHeightDisplay(client.height);
@@ -408,7 +418,7 @@ const getClientSubtext = (client) => {
 
 /** Structured fields for roster “profile” cards (not the old one-line chip). */
 const getClientRosterStats = (client) => {
-  const rawGoal = (client.goals || client.primaryGoal || '').replace(/_/g, ' ').trim();
+  const rawGoal = resolveClientGoalRaw(client);
   const goal =
     rawGoal.length > 0
       ? rawGoal.replace(/\b\w/g, (c) => c.toUpperCase())

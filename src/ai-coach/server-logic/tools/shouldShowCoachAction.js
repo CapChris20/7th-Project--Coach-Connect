@@ -249,9 +249,17 @@ function userWantsExplicitDashboardLog(userText, metric) {
   return pattern ? pattern.test(raw) : false;
 }
 
+function isPoliteActionRequest(raw) {
+  if (!/^(can|could|would)\s+you\b/i.test(raw)) return false;
+  return /\b(adjust|set|change|update|log|track|record|add|delete|remove|open|book|notify|fix|increase|decrease|raise|lower)\b/i.test(
+    raw,
+  );
+}
+
 function isInformationalUserMessage(userText) {
   const raw = String(userText || '').trim();
   if (!raw) return false;
+  if (isPoliteActionRequest(raw)) return false;
   // "Can u log 15000 steps" is an action request, not a generic question.
   if (EXPLICIT_LOG_RE.test(raw)) return false;
   if (/\b(delete|remove|clear|undo)\b/.test(raw) && /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(raw)) {
@@ -259,6 +267,8 @@ function isInformationalUserMessage(userText) {
   }
   if (/\?$/.test(raw)) return true;
   if (/\b(too much|too little|too many|good for me|should i)\b/i.test(raw)) return true;
+  if (/\b(on the web|online|on the internet)\b/i.test(raw)) return true;
+  if (/\blook up\b/i.test(raw) && /\b(web|online|internet|google)\b/i.test(raw)) return true;
   if (
     /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
       raw,

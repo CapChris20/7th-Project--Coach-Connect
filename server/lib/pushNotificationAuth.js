@@ -17,16 +17,6 @@ async function isTrainerOfClient(db, trainerUid, clientUid) {
   }
 }
 
-function parseConvParticipants(conversationId) {
-  const id = String(conversationId || '');
-  const m = id.match(/^conv_([^_]+)_(.+)$/);
-  if (!m) return null;
-  return [m[1], m[2]];
-}
-
-/**
- * @returns {Promise<boolean>}
- */
 async function assertCanSendPushNotification(db, requesterUid, { recipientId, senderId, conversationId }) {
   const requester = String(requesterUid || '').trim();
   const recipient = String(recipientId || '').trim();
@@ -46,10 +36,6 @@ async function assertCanSendPushNotification(db, requesterUid, { recipientId, se
       if (Array.isArray(participants) && participants.includes(requester) && participants.includes(recipient)) {
         return true;
       }
-    }
-    const parsed = parseConvParticipants(conversationId);
-    if (parsed && parsed.includes(requester) && parsed.includes(recipient)) {
-      return true;
     }
   }
 

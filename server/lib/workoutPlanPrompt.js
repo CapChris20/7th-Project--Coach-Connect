@@ -2,9 +2,50 @@
  * Workout plan generation prompts (server-side only — keeps Claude key off client).
  */
 
+function flattenOnboardingData(data) {
+  const d = data && typeof data === 'object' ? { ...data } : {};
+  if (d.onboardingData && typeof d.onboardingData === 'object' && !Array.isArray(d.onboardingData)) {
+    const { onboardingData, ...rest } = d;
+    return { ...onboardingData, ...rest };
+  }
+  return d;
+}
+
+/** Resolve weekly training days from profile (supports legacy field names). */
+function resolveDaysPerWeek(data) {
+  const d = flattenOnboardingData(data);
+  const raw = d.daysPerWeek ?? d.frequency ?? d.workoutsPerWeek;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  return rounded >= 1 && rounded <= 7 ? rounded : null;
+}
+
+/** Legacy Firestore key is `exercisesDislike`; values are exercises the client wants to prioritize. */
+function getPreferredExercisesList(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  return String(d.exercisesPrefer || d.exercisesDislike || '').trim();
+}
+
+function buildExercisePreferenceBlock(data) {
+  const list = getPreferredExercisesList(data);
+  if (!list) return '';
+
+  return `
+PREFERRED EXERCISES — INCLUDE WHEN POSSIBLE (this is NOT a ban list):
+Client wants these movements in the plan: ${list}
+
+Rules:
+- These are exercises the client LIKES and WANTS. Never treat them as exclusions or injuries.
+- Include each preferred exercise on at least one training day when equipment and split allow.
+- Prefer the listed movement or a close, sensible variant (same pattern / muscle emphasis).
+- Only omit a preferred exercise if injuries or limitations above explicitly forbid it.`;
+}
+
 function buildExerciseExclusionBlock(data) {
   const d = data && typeof data === 'object' ? data : {};
-  const parts = [d.exercisesDislike, d.injuries, d.situationDescription]
+  const parts = [d.injuries, d.situationDescription]
     .map((s) => String(s || '').trim())
     .filter(Boolean);
   if (!parts.length) return '';
@@ -12,7 +53,7 @@ function buildExerciseExclusionBlock(data) {
   const combined = parts.join(' | ');
   return `
 EXERCISE EXCLUSIONS — NON-NEGOTIABLE (highest priority; overrides variety and defaults):
-Client banned / avoid list: ${combined}
+Client banned / avoid list (injuries/limitations only — NOT preferred exercises): ${combined}
 
 Enforcement rules:
 - NEVER prescribe any banned movement or a close variant (same pattern, muscle line, or common alias).
@@ -25,7 +66,27 @@ Enforcement rules:
 - If unsure whether a name is too similar to a banned move, pick a different exercise.`;
 }
 
-function buildWorkoutSystemPrompt() {
+function buildTrainingFrequencyBlock(data) {
+  const days = resolveDaysPerWeek(data);
+  if (days == null) return '';
+
+  const restDays = 7 - days;
+  return `
+TRAINING SCHEDULE — NON-NEGOTIABLE:
+- Client trains EXACTLY ${days} day(s) per week — not ${days + 1}, not ${Math.max(1, days - 1)}.
+- The plan array has 7 calendar days (Monday–Sunday).
+- EXACTLY ${days} day(s): "rest": false with 3–5 exercises each.
+- EXACTLY ${restDays} day(s): "rest": true with recoveryActivities[] and NO exercises.
+- Before returning JSON, count days where rest:false — it MUST equal ${days}.`;
+}
+
+function buildWorkoutSystemPrompt({ daysPerWeek } = {}) {
+  const resolvedDays = resolveDaysPerWeek({ daysPerWeek });
+  const trainingFreqRule =
+    resolvedDays != null
+      ? `${13}. TRAINING FREQUENCY (NON-NEGOTIABLE): Exactly ${resolvedDays} training days (rest:false) and exactly ${7 - resolvedDays} rest days (rest:true) in the 7-day Mon–Sun plan. Never exceed ${resolvedDays} training days.\n`
+      : `${13}. TRAINING FREQUENCY: Honor the client's requested training days per week from the user message. The 7-day plan must split training vs rest days to match that number exactly.\n`;
+
   return `You are an expert strength and conditioning coach. Generate a complete 7-day personalized workout plan.
 
 RESPONSE FORMAT:
@@ -76,7 +137,7 @@ CRITICAL RULES:
 10. Training days: set "rest": false, INCLUDE exercises array
 11. NO repetition: do NOT reuse the same exact sentence/phrase across different exercises (especially in notes/tips). Avoid generic filler.
 12. You MUST include a top-level "overview" string (2–4 sentences). Make it specific to the user's goal and the week's split.
-
+${trainingFreqRule}
 COACHING CONTENT REQUIREMENTS (VERY IMPORTANT):
 
 EXERCISE notes (single string per exercise):
@@ -109,9 +170,14 @@ RULES FOR recoveryActivities:
 }
 
 function buildWorkoutUserPrompt(data) {
-  const d = data && typeof data === 'object' ? data : {};
+  const d = flattenOnboardingData(data);
+  const daysPerWeek = resolveDaysPerWeek(d);
+  const preferred = getPreferredExercisesList(d);
+  const preferenceBlock = buildExercisePreferenceBlock(d);
   const exclusionBlock = buildExerciseExclusionBlock(d);
-  return `Create a ${d.daysPerWeek || 5}-day per week personalized workout plan for a client:
+  const frequencyBlock = buildTrainingFrequencyBlock(d);
+  const trainingDaysLabel = daysPerWeek != null ? daysPerWeek : 'the requested number of';
+  return `Create a ${trainingDaysLabel}-day per week personalized workout plan for a client:
 
 CLIENT PROFILE:
 - Age: ${d.age || 'Not specified'}
@@ -119,17 +185,23 @@ CLIENT PROFILE:
 - Goal: ${d.primaryGoal || 'General fitness'}
 - Equipment: ${(d.equipmentAccess || []).join(', ') || 'Bodyweight only'}
 - Environment: ${d.trainingEnvironment || 'Gym'}
+- Training Days Per Week: ${daysPerWeek != null ? daysPerWeek : 'Not specified — ask is invalid; use profile if present'}
 - Session Duration: ${d.preferredWorkoutTime || '60 minutes'}
 - Injuries/Limitations: ${d.injuries || 'None'}
-- Exercises to Avoid: ${(d.exercisesDislike || '').trim() || 'None'}
+- Preferred Exercises (include in plan when possible): ${preferred || 'No specific preferences'}
 - Sleep: ${d.sleepQuality || '7-8 hours'}
 - Stress Level: ${d.currentStressLevel || 'Moderate'}
-${exclusionBlock}
-Generate the complete 7-day JSON plan NOW. Return ONLY JSON. Honor every exclusion above — zero banned movements in the final plan.`;
+${frequencyBlock}${preferenceBlock}${exclusionBlock}
+Generate the complete 7-day JSON plan NOW. Return ONLY JSON. Honor injury/limitation exclusions only — preferred exercises must appear in the plan when feasible.`;
 }
 
 module.exports = {
   buildWorkoutSystemPrompt,
   buildWorkoutUserPrompt,
   buildExerciseExclusionBlock,
+  buildExercisePreferenceBlock,
+  buildTrainingFrequencyBlock,
+  getPreferredExercisesList,
+  resolveDaysPerWeek,
+  flattenOnboardingData,
 };

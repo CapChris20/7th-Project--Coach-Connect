@@ -52,22 +52,9 @@ service cloud.firestore {
         && request.auth.uid == userId
         && !request.resource.data.keys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier']);
       allow delete: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (
-        (
-          request.auth.uid == userId &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier'])
-        ) ||
-        (
-          request.auth.uid != userId &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['trainerId']) &&
-          request.resource.data.trainerId == request.auth.uid &&
-          (
-            !('trainerId' in resource.data) ||
-            resource.data.trainerId == null ||
-            resource.data.trainerId == request.auth.uid
-          )
-        )
-      );
+      allow update: if request.auth != null &&
+        request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier']);
     }
 
     // Current workout plan (users/{uid}/workoutPlan/current) — client owns; linked trainer can read
@@ -83,8 +70,13 @@ service cloud.firestore {
     }
 
     // AI Chat Coach sessions (users/{uid}/aiChats/{sessionId}) — user can read/write own
+    // Per-message docs live in messages/ subcollection (saveCoachMessages.js).
     match /users/{userId}/aiChats/{sessionId} {
       allow read, list, create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      match /messages/{messageId} {
+        allow read, list, create, update, delete: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Macro targets + history (AI Coach day-14 recalibration)

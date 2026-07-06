@@ -133,5 +133,16 @@
     "Shared something new in Notes & Files.",
     "New note or file for you in CoachConnect.",
     "Check Notes & Files for an update."
+  ],
+  "clientRequestAcceptedTitles": [
+    "{{trainerName}} accepted your request",
+    "You're connected with {{trainerName}}",
+    "Request accepted by {{trainerName}}",
+    "{{trainerName}} is now your coach"
+  ],
+  "clientRequestAcceptedBodies": [
+    "{{trainerName}} added you as a client — your dashboard is ready.",
+    "You're all set. Open CoachConnect to meet your coach.",
+    "Welcome aboard. Tap to see your new training home."
   ]
 }

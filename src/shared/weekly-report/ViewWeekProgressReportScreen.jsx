@@ -146,8 +146,9 @@ export default function ViewWeekProgressReportScreen({
   );
 
   const activeWeek = weeks[weekIndex] || null;
-  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 32;
   const showInlineBottomNav = !reserveShellBottomNav;
+  const scrollBottomPad =
+    reserveShellBottomNav || showInlineBottomNav ? shellBottomPad + 24 : 32;
 
   const handleExport = useCallback(async () => {
     if (!activeWeek) return;

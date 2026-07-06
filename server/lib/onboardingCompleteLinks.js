@@ -2,8 +2,12 @@
  * Server-side trainer–client link writes (extracted from onboardingRoutes).
  */
 const { sanitizeOnboardingData } = require('./onboardingSanitize');
-async function writeTrainerClientLinks(db, trainerId, clientId, { serverTimestamp, merge = true } = {}) {
+async function writeTrainerClientLinks(db, trainerId, clientId, { serverTimestamp, merge = true, profileSnapshot = {} } = {}) {
   const ts = serverTimestamp();
+  const snapshot =
+    profileSnapshot && typeof profileSnapshot === 'object' && !Array.isArray(profileSnapshot)
+      ? profileSnapshot
+      : {};
   await db
     .collection('trainer_clients')
     .doc(trainerId)
@@ -14,6 +18,7 @@ async function writeTrainerClientLinks(db, trainerId, clientId, { serverTimestam
         id: clientId,
         joinedAt: ts,
         status: 'active',
+        ...snapshot,
       },
       { merge },
     );
@@ -71,7 +76,29 @@ async function applyOnboardingCompleteServer({
       return { success: true, linked: false, reason: 'Invalid trainerId', role: finalRole };
     }
 
-    await writeTrainerClientLinks(db, trainerId, uid, { serverTimestamp, merge: true });
+    await writeTrainerClientLinks(db, trainerId, uid, {
+      serverTimestamp,
+      merge: true,
+      profileSnapshot: {
+        name: displayName || safeOnboardingData.name || null,
+        email: safeOnboardingData.email || null,
+        weight: safeOnboardingData.weight ?? null,
+        startingWeight: updateData.startingWeight ?? safeOnboardingData.weight ?? null,
+        height: safeOnboardingData.height ?? null,
+        age: safeOnboardingData.age ?? null,
+        gender: safeOnboardingData.gender || null,
+        goals: safeOnboardingData.primaryGoal || safeOnboardingData.goals || null,
+        fitnessLevel: safeOnboardingData.fitnessLevel || null,
+        equipmentAccess: Array.isArray(safeOnboardingData.equipmentAccess)
+          ? safeOnboardingData.equipmentAccess
+          : [],
+        daysPerWeek: safeOnboardingData.daysPerWeek ?? null,
+        injuries: safeOnboardingData.injuries ?? null,
+        exercisesDislike: safeOnboardingData.exercisesDislike || null,
+        preferredWorkoutTime: safeOnboardingData.preferredWorkoutTime || null,
+        trainingEnvironment: safeOnboardingData.trainingEnvironment || null,
+      },
+    });
     linked = true;
   }
 

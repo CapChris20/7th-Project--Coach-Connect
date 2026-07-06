@@ -695,6 +695,17 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           setShowTrainerSharedFilesModal(true);
           return;
         }
+        if (type === 'client_request_accepted') {
+          onRefetchUserData?.();
+          rootGoBack();
+          rootGoBack();
+          rootGoBack();
+          setAiChatState(null);
+          setShowTrainerMessaging(false);
+          setShowConversationsList(false);
+          setShowMyDashboard(true);
+          return;
+        }
         if (type !== 'message') {
           rootGoBack();
           setShowMyDashboard(false);

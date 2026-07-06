@@ -21,6 +21,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { DailyQuotePill } from './DailyQuoteCard';
 import HeroCardBackGlow from './HeroCardBackGlow';
+import StableGradientText from '../../../shared-ui/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../../shared-ui/brandGradients';
 
 /** Dark purple → dark orange — Today/time card icon accent. */
 export const TODAY_CARD_TOP_STRIPE = ['#6D28D9', '#C2410C'];
@@ -216,15 +218,22 @@ export default function AuroraHeroBanner({
   return (
     <HeroGradientFrame isDark={isDark} layout={layout}>
       <View style={{ marginBottom: layout === 'trainer' ? 6 : 4, alignItems: 'center' }}>
-        <Text
-          style={[
-            styles.greetingTitle,
-            { color: greetingColor, textAlign: 'center', fontWeight: layout === 'trainer' ? '900' : '800' },
-          ]}
-        >
-          Good {period},{' '}
-          <Text style={{ color: '#FF6B9D', fontWeight: layout === 'trainer' ? '900' : '800' }}>{firstName}!</Text>
-        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
+          <Text
+            style={[
+              styles.greetingTitle,
+              { color: greetingColor, textAlign: 'center', fontWeight: layout === 'trainer' ? '900' : '800' },
+            ]}
+          >
+            Good {period},{' '}
+          </Text>
+          <StableGradientText
+            colors={HERO_TITLE_TEXT_GRADIENT}
+            style={{ fontWeight: layout === 'trainer' ? '900' : '800', fontSize: layout === 'trainer' ? 22 : 20 }}
+          >
+            {firstName}!
+          </StableGradientText>
+        </View>
       </View>
 
       <View
@@ -239,14 +248,19 @@ export default function AuroraHeroBanner({
               WELCOME TO
             </Text>
             <LinearGradient
-              colors={['#FF6B9D', '#C084FC']}
+              colors={HERO_TITLE_TEXT_GRADIENT}
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              end={{ x: 1, y: 0 }}
               style={styles.welcomeUnderline}
             />
           </View>
 
-          <Text style={[styles.heroTitle, { fontSize: titleSize, color: '#FF6B9D' }]}>Coach Connect</Text>
+          <StableGradientText
+            colors={HERO_TITLE_TEXT_GRADIENT}
+            style={[styles.heroTitle, { fontSize: titleSize }]}
+          >
+            Coach Connect
+          </StableGradientText>
 
           <Text style={[styles.heroTagline, { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)' }]}>
             YOUR TRAINER-CLIENT RELATIONSHIP GETS BETTER WITH CC

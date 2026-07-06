@@ -27,7 +27,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../app-start/config';
-import { getDateKey } from '../../shared-utils/dateKeys';
+import { getProfileDateKey } from '../../shared-utils/dateKeys';
+import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';
 import {
   getTrainerDocuments,
   filterTrainerDocumentsForClient,
@@ -96,16 +97,25 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
   }, [trainerId]);
 
   // Real-time dailyLog listener
+  const clientTodayKey = useMemo(
+    () => getProfileDateKey({
+      ...(client || {}),
+      timezone: clientData?.profileTimezone,
+      timeZone: clientData?.profileTimezone,
+    }),
+    [client, clientData?.profileTimezone],
+  );
+
   useEffect(() => {
     if (!client?.id || !db) { setTodayDailyLog(null); return; }
-    const dateKey = getDateKey();
+    const dateKey = clientTodayKey;
     const unsubscribe = onSnapshot(
       doc(db, 'users', client.id, 'dailyLogs', dateKey),
       (snap) => setTodayDailyLog(snap.exists() ? snap.data() : null),
       () => setTodayDailyLog(null)
     );
     return () => unsubscribe();
-  }, [client?.id]);
+  }, [client?.id, clientTodayKey]);
 
   // Fetch all client data
   useEffect(() => {
@@ -164,39 +174,29 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             notesAndFiles = await getNotesAndFiles(client.id);
           } catch (_) {}
 
-          // Fetch nutrition data
-          const nutritionQuery = query(collection(db, 'users', client.id, 'nutrition'));
-          const nutritionSnapshot = await getDocs(nutritionQuery);
-          const nutritionLogs = nutritionSnapshot.docs.map(doc => doc.data());
-          
-          // Fetch training days
           const trainingQuery = query(collection(db, 'users', client.id, 'trainingDays'));
           const trainingSnapshot = await getDocs(trainingQuery);
-          const trainingDays = trainingSnapshot.docs.map(doc => doc.data());
-          
-          // Fetch goals
-          let goals = {};
+          const trainingDays = trainingSnapshot.docs.map((d) => d.data());
+
+          // Fetch nutrition data (nutrition_logs — same path clients use when logging food)
+          const todayKey = clientTodayKey;
+          const nutritionLogs = await getFoodLogsForDate(client.id, todayKey);
+          const macroTotals = calculateMacroTotals(nutritionLogs);
+          let nutritionGoals = { proteinTarget: 150, carbsTarget: 250, fatTarget: 70, calories: 2000 };
           try {
-            const goalsDoc = await getDoc(doc(db, 'users', client.id, 'goals', 'nutrition'));
-            const g = goalsDoc.data();
-            if (g?.caloriesTarget != null) goals.caloriesTarget = g.caloriesTarget;
-            if (g?.proteinTarget != null) goals.proteinTarget = g.proteinTarget;
-            if (g?.carbsTarget != null) goals.carbsTarget = g.carbsTarget;
-            if (g?.fatTarget != null) goals.fatTarget = g.fatTarget;
+            const goalsData = await getDailyGoals(client.id);
+            if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
+            if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
+            if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
+            if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
           } catch (_) {}
           
           if (effectCancelled) return;
 
           const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
-          const macroTotals = nutritionLogs.reduce((acc, log) => {
-            acc.calories += log.calories || 0;
-            acc.protein += log.protein || 0;
-            acc.carbs += log.carbs || 0;
-            acc.fat += log.fat || 0;
-            return acc;
-          }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
           
           setClientData({
+            profileTimezone: userData.timezone || userData.timeZone || userData?.workoutReminder?.timeZone || null,
             beforeWeight: userData.startingWeight ?? userData.weight ?? clientDocData.startingWeight ?? clientDocData.weight ?? null,
             currentWeight: userData.weight ?? clientDocData.weight ?? null,
             trainingDays,
@@ -207,8 +207,11 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
               carbs: macroTotals.carbs,
               fat: macroTotals.fat,
               foods: foodNames,
-              micros: nutritionLogs.filter(l => l.micros).flatMap(l => l.micros || []).filter(Boolean),
-              ...goals,
+              micros: nutritionLogs.filter((l) => l.micros).flatMap((l) => l.micros || []).filter(Boolean),
+              proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? 150,
+              carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? 250,
+              fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? 70,
+              caloriesGoal: userData.calorieTarget ?? userData.calorie_target ?? nutritionGoals.calories ?? 2000,
             },
             calendar: clientDocData.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
             notesAndFiles,
@@ -260,14 +263,14 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
     
     unsubscribers.push(userUnsub);
     
-    // Listen to nutrition changes
+    // Listen to nutrition changes (nutrition_logs collection)
     const nutritionUnsub = onSnapshot(
-      query(collection(db, 'users', client.id, 'nutrition')),
+      query(collection(db, 'nutrition_logs'), where('user_id', '==', client.id)),
       async () => {
-        // Re-fetch nutrition data when it changes
         try {
-          const nutritionSnapshot = await getDocs(query(collection(db, 'users', client.id, 'nutrition')));
-          const nutritionLogs = nutritionSnapshot.docs.map(doc => doc.data());
+          const todayKey = clientTodayKey;
+          const nutritionLogs = await getFoodLogsForDate(client.id, todayKey);
+          const macroTotals = calculateMacroTotals(nutritionLogs);
           
           if (effectCancelled) return;
 
@@ -275,13 +278,6 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             if (!prev) return prev;
             
             const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
-            const macroTotals = nutritionLogs.reduce((acc, log) => {
-              acc.calories += log.calories || 0;
-              acc.protein += log.protein || 0;
-              acc.carbs += log.carbs || 0;
-              acc.fat += log.fat || 0;
-              return acc;
-            }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
             
             return {
               ...prev,
@@ -292,7 +288,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
                 carbs: macroTotals.carbs,
                 fat: macroTotals.fat,
                 foods: foodNames,
-                micros: nutritionLogs.filter(l => l.micros).flatMap(l => l.micros || []).filter(Boolean),
+                micros: nutritionLogs.filter((l) => l.micros).flatMap((l) => l.micros || []).filter(Boolean),
               }
             };
           });
@@ -359,7 +355,7 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
       effectCancelled = true;
       unsubscribers.forEach(unsub => unsub());
     };
-  }, [client?.id, trainerId]);
+  }, [client?.id, trainerId, clientTodayKey]);
 
   const openRemoveClientMenu = () => {
     const sheetTitle = 'Remove client?';

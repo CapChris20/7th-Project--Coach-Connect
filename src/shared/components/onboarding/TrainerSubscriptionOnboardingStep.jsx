@@ -417,7 +417,6 @@ export function TrainerSubscriptionCtaFooter({
         {
           paddingBottom: bottomInset,
           backgroundColor: isDark ? 'rgba(10,10,15,0.92)' : 'rgba(255,255,255,0.92)',
-          borderTopColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
         },
       ]}
     >
@@ -732,7 +731,6 @@ const styles = StyleSheet.create({
     right: 0,
     paddingTop: 12,
     paddingHorizontal: 20,
-    borderTopWidth: 1,
   },
   footerLoading: {
     height: 56,

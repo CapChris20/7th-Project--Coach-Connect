@@ -25,7 +25,6 @@ import { BlurView } from 'expo-blur';
 import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
 import BrandGradientIcon from '../shared/components/icons/BrandGradientIcon';
 import MaskedBrandIonicon from '../shared/components/icons/MaskedBrandIonicon';
-import GradientGeminiNavIcon from '../shared/components/icons/GradientGeminiNavIcon';
 import { useAI } from '../shared/contexts/AIContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -310,7 +309,7 @@ export default function BottomNavBar({
 
           <View style={styles.navContent}>
             <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
-              <MaskedBrandIonicon name="barbell" size={36} />
+              <BrandGradientIcon name="barbell" size={36} />
               {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
             </View>
             <Text
@@ -458,7 +457,7 @@ export default function BottomNavBar({
 
         <View style={styles.navContent}>
           <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
-            <MaskedBrandIonicon name="barbell" size={36} />
+            <BrandGradientIcon name="barbell" size={36} />
             {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
           </View>
           <Text
@@ -497,7 +496,7 @@ export default function BottomNavBar({
 
         <View style={styles.navContent}>
           <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
-            <GradientGeminiNavIcon size={36} />
+            <MaskedBrandIonicon name="sparkles" size={36} />
           </View>
           <Text
             style={[

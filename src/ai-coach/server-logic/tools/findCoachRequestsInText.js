@@ -14,6 +14,7 @@
  */
 import { parseCoachToolCalls } from '../../tools/parseCoachToolCalls';
 import { normalizeToolCall } from './runCoachAction';
+import { shouldUseWebAuto } from '../chat-api/shouldUseWebSearch';
 import {
   userWantsDeleteLog,
   inferDeleteLogParams,
@@ -84,6 +85,8 @@ export { isToolOutcomeMessage };
 export function inferToolCallFromCoachMessage(text, userMessage = '') {
   const raw = String(text || '');
   const user = String(userMessage || '').trim();
+
+  if (user && shouldUseWebAuto(user)) return null;
 
   if (isInformationalUserMessage(user) && !userExplicitlyRequestsAction(user)) return null;
 

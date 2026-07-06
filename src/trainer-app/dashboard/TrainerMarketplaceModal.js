@@ -17,6 +17,41 @@ import { syncClientDataFromUsers } from '../clients-list/loadMyTraineeRoster';
 import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared-ui/ThemeContext';
+import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
+import {
+  randomClientRequestAcceptedTitle,
+  randomClientRequestAcceptedBody,
+} from '../../notifications/buildPushNotificationText';
+
+/**
+ * Notify the client that their request was accepted. Best-effort — never blocks the accept flow.
+ */
+async function notifyClientRequestAccepted({ clientUid, trainerUid, conversationId, messageId }) {
+  try {
+    if (!clientUid || !trainerUid) return;
+    let trainerName = 'Your coach';
+    try {
+      const tSnap = await getDoc(doc(db, 'users', trainerUid));
+      if (tSnap.exists()) {
+        const d = tSnap.data() || {};
+        trainerName = d.displayName || d.name || d.firstName || trainerName;
+      }
+    } catch (_) {
+      /* keep default trainerName */
+    }
+    void postRemotePushNotify({
+      recipientId: clientUid,
+      senderName: randomClientRequestAcceptedTitle(trainerName),
+      messageText: randomClientRequestAcceptedBody(trainerName),
+      senderId: trainerUid,
+      conversationId: conversationId || '',
+      messageId: messageId || '',
+      notificationType: 'client_request_accepted',
+    });
+  } catch (e) {
+    console.warn('Client accept push skipped:', e?.message || e);
+  }
+}
 
 // Helper function to format database keys
 function formatDisplayValue(value) {
@@ -111,11 +146,12 @@ const TrainerMarketplaceModal = ({
           status: 'accepted',
           responseTimestamp: serverTimestamp(),
         });
+        let ackConversationId = req.conversationId || null;
         if (!isConnectionRequest) {
           try {
-            const conversationId = await getOrCreateConversation(req.clientUid, trainerUid);
+            ackConversationId = await getOrCreateConversation(req.clientUid, trainerUid);
             await sendMessage(
-              conversationId,
+              ackConversationId,
               trainerUid,
               requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN
                 ? "Got your workout plan request — I'll build your program and follow up soon."
@@ -125,6 +161,12 @@ const TrainerMarketplaceModal = ({
             console.warn('Acknowledgment message skipped:', msgErr?.message || msgErr);
           }
         }
+        await notifyClientRequestAccepted({
+          clientUid: req.clientUid,
+          trainerUid,
+          conversationId: ackConversationId,
+          messageId: req.messageId,
+        });
         onClientAdded(req);
         onClose();
         setAcceptBusy(false);
@@ -155,6 +197,13 @@ const TrainerMarketplaceModal = ({
       } catch (syncErr) {
         console.warn('Could not sync full client data:', syncErr?.message);
       }
+
+      await notifyClientRequestAccepted({
+        clientUid: req.clientUid,
+        trainerUid,
+        conversationId,
+        messageId: req.messageId,
+      });
 
       onClientAdded(req);
       onClose();

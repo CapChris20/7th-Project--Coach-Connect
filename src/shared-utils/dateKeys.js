@@ -28,4 +28,23 @@ export function getDateKey(timeZone = DEFAULT_TZ) {
   return new Date().toLocaleDateString('en-CA', { timeZone });
 }
 
+/**
+ * "Today" for a user profile — prefers stored IANA timezone, else device local.
+ * @param {object} [profile]
+ * @param {Date} [d]
+ */
+export function getProfileDateKey(profile, d = new Date()) {
+  const tz = String(
+    profile?.timezone || profile?.timeZone || profile?.workoutReminder?.timeZone || '',
+  ).trim();
+  if (tz) {
+    try {
+      return new Date(d).toLocaleDateString('en-CA', { timeZone: tz });
+    } catch (_) {
+      /* invalid tz — fall through */
+    }
+  }
+  return getLocalDateKey(d);
+}
+
 export default getDateKey;

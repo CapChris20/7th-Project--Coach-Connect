@@ -151,6 +151,7 @@ export default function SpreadsheetEditorModal({
   const [selection, setSelection] = useState({ anchor: { r: 0, c: 0 }, focus: { r: 0, c: 0 } });
   const [editing, setEditing] = useState(null);
   const [editDraft, setEditDraft] = useState('');
+  const [dimRevision, setDimRevision] = useState(0);
   const [cellEditBoot, setCellEditBoot] = useState('');
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
@@ -179,11 +180,10 @@ export default function SpreadsheetEditorModal({
 
   useEffect(() => {
     if (!editing) return undefined;
-    const delay = Platform.OS === 'ios' ? 300 : 150;
-    const t = setTimeout(() => {
+    const t = requestAnimationFrame(() => {
       gridRef.current?.scrollToRow(editing.r);
-    }, delay);
-    return () => clearTimeout(t);
+    });
+    return () => cancelAnimationFrame(t);
   }, [editing?.r, editing?.c]);
 
   const showToast = useCallback((msg) => {
@@ -561,30 +561,39 @@ export default function SpreadsheetEditorModal({
     commitEditRef.current = commitEdit;
   }, [commitEdit]);
 
-  const formulaDebounceRef = useRef(null);
+  const syncDraftDims = useCallback(
+    (r, c, text) => {
+      const draft = { r, c, text };
+      setSheets((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeId) return s;
+          const { colWidths, rowHeights } = syncCellDims(s.cells, r, c, s.colWidths, s.rowHeights, draft);
+          return { ...s, colWidths, rowHeights };
+        }),
+      );
+      setDimRevision((n) => n + 1);
+    },
+    [activeId],
+  );
 
   const onFormulaChange = useCallback(
     (v) => {
       editDraftRef.current = v;
-      if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current);
-      formulaDebounceRef.current = setTimeout(() => {
-        setEditDraft(v);
-      }, 500);
+      setEditDraft(v);
+      const { r, c } = selection.focus;
+      syncDraftDims(r, c, v);
       if (!editing) startEdit(selection.focus.r, selection.focus.c, v, 'formula');
     },
-    [editing, selection.focus.c, selection.focus.r, startEdit],
+    [editing, selection.focus.c, selection.focus.r, startEdit, syncDraftDims],
   );
 
-  useEffect(
-    () => () => {
-      if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current);
+  const onCellDraftChange = useCallback(
+    (v) => {
+      editDraftRef.current = v;
+      if (editing) syncDraftDims(editing.r, editing.c, v);
     },
-    [],
+    [editing, syncDraftDims],
   );
-
-  const onCellDraftChange = useCallback((v) => {
-    editDraftRef.current = v;
-  }, []);
 
   const onCellPress = useCallback(
     (r, c) => {
@@ -1206,6 +1215,7 @@ export default function SpreadsheetEditorModal({
                 displayCache={displayCache}
                 colWidths={active?.colWidths}
                 rowHeights={active?.rowHeights}
+                dimRevision={dimRevision}
                 selection={selection}
                 editing={editing}
                 editSeed={cellEditBoot}

@@ -8,16 +8,21 @@
  *
  * @file-header
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../app-start/config';
 import { getTrainerPendingRequests } from './loadPendingTraineeRequests';
 
 /**
- * Hook to fetch and refresh pending client requests for a trainer
+ * Hook to fetch and refresh pending client requests for a trainer.
+ * Subscribes to the trainer's conversations so the badge/count updates in
+ * realtime when a new request comes in or an existing one is accepted/rejected.
  */
 export function useTrainerPendingRequests(trainerUid) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const refreshTimerRef = useRef(null);
 
   const refresh = useCallback(async () => {
     if (!trainerUid) {
@@ -25,7 +30,6 @@ export function useTrainerPendingRequests(trainerUid) {
       setLoading(false);
       return;
     }
-    setLoading(true);
     setError(null);
     try {
       const data = await getTrainerPendingRequests(trainerUid);
@@ -40,8 +44,51 @@ export function useTrainerPendingRequests(trainerUid) {
   }, [trainerUid]);
 
   useEffect(() => {
+    if (!trainerUid || !db) {
+      setRequests([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    // Initial load.
     refresh();
-  }, [refresh]);
+
+    // Realtime: any change to the trainer's conversations (new request creates
+    // or touches a conversation; accept/reject updates it) triggers a debounced
+    // re-fetch of pending requests.
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        refresh();
+      }, 400);
+    };
+
+    const convQuery = query(
+      collection(db, 'conversations'),
+      where('participants', 'array-contains', trainerUid),
+    );
+    const unsubscribe = onSnapshot(
+      convQuery,
+      (snap) => {
+        // Skip the very first snapshot's redundant refresh (initial load already ran),
+        // but still refresh on any subsequent change.
+        if (!snap.metadata.hasPendingWrites) scheduleRefresh();
+      },
+      (err) => {
+        if (__DEV__) console.warn('useTrainerPendingRequests listener:', err?.message || err);
+      },
+    );
+
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      try {
+        unsubscribe();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+  }, [trainerUid, refresh]);
 
   return { requests, loading, error, refresh };
 }

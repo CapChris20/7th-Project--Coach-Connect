@@ -52,6 +52,20 @@ export function randomNotesSharedBody() {
   return pickRandom(COPY.notesSharedBodies || ['Shared something new in Notes & Files.']);
 }
 
+export function randomClientRequestAcceptedTitle(trainerName) {
+  const t = pickRandom(COPY.clientRequestAcceptedTitles || []);
+  return t
+    ? sub(t, { trainerName: trainerName || 'Your coach' })
+    : `${trainerName || 'Your coach'} accepted your request`;
+}
+
+export function randomClientRequestAcceptedBody(trainerName) {
+  const b = pickRandom(COPY.clientRequestAcceptedBodies || []);
+  return b
+    ? sub(b, { trainerName: trainerName || 'Your coach' })
+    : `${trainerName || 'Your coach'} added you as a client.`;
+}
+
 export function randomSessionScheduledTitle(trainerName) {
   const t = pickRandom(COPY.sessionBookingTitles || []);
   return t ? sub(t, { trainerName: trainerName || 'Your coach' }) : 'Session scheduled';

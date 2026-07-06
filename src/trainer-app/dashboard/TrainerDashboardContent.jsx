@@ -28,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app-start/config';
-import { getDateKey } from '../../shared-utils/dateKeys';
+import { getProfileDateKey } from '../../shared-utils/dateKeys';
 import { getLocalDateKey } from '../../shared-utils/getLocalDay';
 import { fetchLatestLoggedWeight } from '../../metrics/daily-metrics/getRecentWeight';
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';
@@ -45,7 +45,12 @@ import TrainerWeeklyReportSection from '../weekly-report/TrainerWeeklyReportSect
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
 import CalendarTab from '../calendar-tab/TrainerCalendarTab';
-import { FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
+import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { mergeTrainerClientProfile } from '../../shared-utils/mergeTrainerClientProfile';
+import {
+  resolveTrainerProgressBeforeWeight,
+} from '../progress-tab/resolveTrainerProgressWeight';
 import { isBenignTrainerClientFirestoreError } from '../crm/trainerFirestoreErrors';
 import {
   AuroraHeroBanner,
@@ -87,6 +92,7 @@ const DashboardContent = ({
   userEmail = '',
 }) => {
   const { width: screenW } = useWindowDimensions();
+  const shellBottomPad = useShellBottomNavInset(28);
   const [activeTab, setActiveTab] = useState('Progress');
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
@@ -174,6 +180,15 @@ const DashboardContent = ({
 
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
 
+  const clientTodayKey = useMemo(() => {
+    if (!currentClient?.id) return getLocalDateKey();
+    return getProfileDateKey({
+      ...(currentClient || {}),
+      timezone: clientData?.profileTimezone,
+      timeZone: clientData?.profileTimezone,
+    });
+  }, [currentClient, clientData?.profileTimezone]);
+
   const trainerDocumentsForClient = useMemo(
     () => filterTrainerDocumentsForClient(trainerDocuments, currentClient?.id),
     [trainerDocuments, currentClient?.id],
@@ -184,19 +199,26 @@ const DashboardContent = ({
     setRemoveClientHold(client);
   }, [trainerId]);
 
-  // Most recent dailyLogs weight (for Progress "Current" when today is empty)
+  // Most recent dailyLogs weight (for Progress when today is empty) — cleared on client switch.
   useEffect(() => {
+    const clientId = currentClient?.id;
+    if (!clientId) {
+      setLatestLoggedWeight(null);
+      return undefined;
+    }
+
+    setLatestLoggedWeight(null);
     let cancelled = false;
+
     const run = async () => {
-      if (!currentClient?.id) {
-        setLatestLoggedWeight(null);
-        return;
-      }
-      const w = await fetchLatestLoggedWeight(currentClient.id);
+      const w = await fetchLatestLoggedWeight(clientId);
       if (!cancelled) setLatestLoggedWeight(w);
     };
     run();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentClient?.id, todayDailyLog?.dashboard_weight]);
 
   // Report selected client to parent so plus button / modals know which client is active
@@ -246,9 +268,11 @@ const DashboardContent = ({
   useEffect(() => {
     if (!currentClient?.id || !db) {
       setTodayDailyLog(null);
-      return;
+      return undefined;
     }
-    const dateKey = getLocalDateKey();
+
+    setTodayDailyLog(null);
+    const dateKey = clientTodayKey;
     const dailyLogRef = doc(db, 'users', currentClient.id, 'dailyLogs', dateKey);
     const unsubscribe = onSnapshot(
       dailyLogRef,
@@ -267,7 +291,7 @@ const DashboardContent = ({
       }
     );
     return () => unsubscribe();
-  }, [currentClient?.id]);
+  }, [currentClient?.id, clientTodayKey]);
 
   // Local-midnight archive/reset for the selected client (trainer dashboard hides "today" after 12am local)
   useEffect(() => {
@@ -315,7 +339,7 @@ const DashboardContent = ({
     };
 
     const tick = async () => {
-      const nowKey = getLocalDateKey();
+      const nowKey = clientTodayKey;
       const lastKey = await AsyncStorage.getItem(LAST_KEY);
       if (!lastKey) {
         await AsyncStorage.setItem(LAST_KEY, nowKey);
@@ -335,7 +359,7 @@ const DashboardContent = ({
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
-  }, [currentClient?.id]);
+  }, [currentClient?.id, clientTodayKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,8 +393,12 @@ const DashboardContent = ({
 
   // Real-time listeners for client data updates
   useEffect(() => {
-    if (!currentClient?.id || !trainerId || !db) { setClientData(null); return; }
+    if (!currentClient?.id || !trainerId || !db) {
+      setClientData(null);
+      return undefined;
+    }
 
+    setClientData(null);
     let effectCancelled = false;
     const ownerUid = String(currentClient.id);
     const unsubscribers = [];
@@ -415,7 +443,7 @@ const DashboardContent = ({
             }
           } catch (_) {}
           
-          const todayKey = getDateKey();
+          const todayKey = clientTodayKey;
           let nutritionLogs = [], nutritionTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
           let nutritionGoals = { proteinTarget: 150, carbsTarget: 250, fatTarget: 70, calories: 2000 };
           try {
@@ -438,9 +466,20 @@ const DashboardContent = ({
             nutritionGoals.calories ??
             2000;
           
+          const normalized = normalizeClientProfileFields(userData);
+          const mergedProfile = mergeTrainerClientProfile(currentClient, normalized);
+          const profileWeight = mergedProfile.weight ?? normalized.weight ?? null;
+
           setClientData({
-            beforeWeight: userData.startingWeight ?? userData.weight ?? currentClient.startingWeight ?? currentClient.weight ?? null,
-            currentWeight: userData.weight ?? currentClient.weight ?? null,
+            profileTimezone: userData.timezone || userData.timeZone || userData?.workoutReminder?.timeZone || null,
+            beforeWeight: resolveTrainerProgressBeforeWeight({
+              startingWeight: mergedProfile.startingWeight ?? normalized.startingWeight,
+              profileWeight,
+              crmStartingWeight: currentClient.startingWeight,
+              crmWeight: currentClient.weight,
+            }),
+            currentWeight: profileWeight,
+            profileWeight,
             trainingDays, programName,
             nutrition: {
               calories: nutritionTotals.calories || 0, protein: nutritionTotals.protein || 0,
@@ -490,7 +529,7 @@ const DashboardContent = ({
       async (snapshot) => {
         // Re-fetch nutrition data when it changes
         try {
-          const todayKey = getDateKey();
+          const todayKey = clientTodayKey;
           const nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
           const nutritionTotals = calculateMacroTotals(nutritionLogs);
           const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
@@ -541,9 +580,18 @@ const DashboardContent = ({
           if (effectCancelled) return;
           setClientData((prev) => {
             if (prev) return { ...prev, notesAndFiles };
+            const merged = mergeTrainerClientProfile(currentClient, {});
+            const profileWeight = merged.weight ?? currentClient?.weight ?? null;
             return {
-              beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
-              currentWeight: currentClient?.weight ?? null,
+              profileTimezone: null,
+              beforeWeight: resolveTrainerProgressBeforeWeight({
+                startingWeight: merged.startingWeight ?? currentClient?.startingWeight,
+                profileWeight,
+                crmStartingWeight: currentClient?.startingWeight,
+                crmWeight: currentClient?.weight,
+              }),
+              currentWeight: profileWeight,
+              profileWeight,
               trainingDays: [],
               programName: currentClient?.programName || 'Custom Program',
               nutrition: {
@@ -589,7 +637,7 @@ const DashboardContent = ({
       effectCancelled = true;
       unsubscribers.forEach(unsub => unsub());
     };
-  }, [currentClient?.id, trainerId]);
+  }, [currentClient?.id, trainerId, clientTodayKey]);
 
   // Refresh notes and files when trigger changes
   useEffect(() => {
@@ -733,7 +781,7 @@ const DashboardContent = ({
   return (
     <>
     <View style={{ flex: 1, minHeight: 0 }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 130, paddingHorizontal: 20, paddingTop: 4 }} {...FORM_SCROLL_PROPS}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: shellBottomPad, paddingHorizontal: 20, paddingTop: 4 }} {...FORM_SCROLL_PROPS}>
       <AuroraHeroBanner isDark={isDark} timeOfDay={timeOfDay} userName={userName} textColor={textColor} userId={trainerId} />
 
       {showPayoutNudge ? (
@@ -1199,13 +1247,16 @@ const DashboardContent = ({
         <View>
           {activeTab === 'Progress' && (
             <ProgressTab
+              key={currentClient?.id || 'progress'}
               isDark={isDark}
               clientData={clientData}
               todayDailyLog={todayDailyLog}
               latestLoggedWeight={latestLoggedWeight}
             />
           )}
-          {activeTab === 'Nutrition' && <NutritionTab isDark={isDark} clientData={clientData} />}
+          {activeTab === 'Nutrition' && (
+            <NutritionTab key={currentClient?.id || 'nutrition'} isDark={isDark} clientData={clientData} />
+          )}
           {activeTab === 'Sessions' && (
             <CalendarTab
               isDark={isDark}

@@ -45,10 +45,17 @@ const ACCENT = {
   green: '#22C55E',
 };
 
-/** Meal card action row — matches vibrant macro / brand styling */
-const NUT_SCAN_CYAN = '#64D2FF';
-const NUT_QUICK_PURPLE = '#C084FC';
-const NUT_SEARCH_GRADIENT = ['#FF6B9D', '#F97316'];
+/** Meal card actions — muted accents (not oversaturated). */
+function getMealActionColors(isDark) {
+  return {
+    scan: isDark ? '#6BB8D6' : '#4A90A8',
+    quick: isDark ? '#B892C8' : '#8B6B9E',
+    searchGradient: isDark
+      ? ['rgba(139,90,122,0.92)', 'rgba(150,95,55,0.88)']
+      : ['#9D6B82', '#A87848'],
+    searchText: '#F5F0F2',
+  };
+}
 
 function getColors(isDark) {
   return isDark
@@ -279,6 +286,7 @@ const WaterCupCircle = ({ filled, index, isDark }) => {
 const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
   const mealS = useMemo(() => createMealS(colors), [colors]);
   const emptyStyles = useMemo(() => createEmptyStyles(colors), [colors]);
+  const actionColors = useMemo(() => getMealActionColors(isDark), [isDark]);
   const foods = meal?.foods ?? [];
   const hasFood = foods.length > 0;
   const mealType = meal?.name ? meal.name.toLowerCase() : 'snacks';
@@ -304,20 +312,20 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         style={({ pressed }) => [
           mealS.scanBtn,
           {
-            borderColor: NUT_SCAN_CYAN,
+            borderColor: actionColors.scan,
             backgroundColor: actionSurface,
             opacity: pressed ? 0.88 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
           },
         ]}
       >
-        <Ionicons name="barcode-outline" size={18} color={NUT_SCAN_CYAN} />
-        <Text style={[mealS.scanBtnText, { color: NUT_SCAN_CYAN }]}>Scan</Text>
+        <Ionicons name="barcode-outline" size={18} color={actionColors.scan} />
+        <Text style={[mealS.scanBtnText, { color: actionColors.scan }]}>Scan</Text>
       </Pressable>
       <Pressable onPress={() => onLog(meal.name)} style={({ pressed }) => [mealS.logBtnWrap, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
-        <LinearGradient colors={NUT_SEARCH_GRADIENT} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={mealS.logBtn}>
-          <Ionicons name="search-outline" size={20} color="#FFFFFF" />
-          <Text style={mealS.logBtnText}>Search</Text>
+        <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={mealS.logBtn}>
+          <Ionicons name="search-outline" size={20} color={actionColors.searchText} />
+          <Text style={[mealS.logBtnText, { color: actionColors.searchText }]}>Search</Text>
         </LinearGradient>
       </Pressable>
       <Pressable
@@ -325,7 +333,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         style={({ pressed }) => [
           mealS.quickAddBtn,
           {
-            borderColor: NUT_QUICK_PURPLE,
+            borderColor: actionColors.quick,
             backgroundColor: actionSurface,
             opacity: pressed ? 0.88 : 1,
             transform: [{ scale: pressed ? 0.97 : 1 }],
@@ -333,8 +341,8 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         ]}
       >
         <View style={mealS.quickAddContent}>
-          <Ionicons name="create-outline" size={18} color={NUT_QUICK_PURPLE} />
-          <Text style={[mealS.quickAddBtnText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
+          <Ionicons name="create-outline" size={18} color={actionColors.quick} />
+          <Text style={[mealS.quickAddBtnText, { color: actionColors.quick }]}>Quick Add</Text>
         </View>
       </Pressable>
     </View>
@@ -400,20 +408,20 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 style={({ pressed }) => [
                   emptyStyles.scanBtn,
                   {
-                    borderColor: NUT_SCAN_CYAN,
+                    borderColor: actionColors.scan,
                     backgroundColor: isDark ? '#14141C' : '#FAFAFC',
                     opacity: pressed ? 0.88 : 1,
                     transform: [{ scale: pressed ? 0.97 : 1 }],
                   },
                 ]}
               >
-                <Ionicons name="barcode-outline" size={18} color={NUT_SCAN_CYAN} />
-                <Text style={[emptyStyles.scanText, { color: NUT_SCAN_CYAN }]}>Scan</Text>
+                <Ionicons name="barcode-outline" size={18} color={actionColors.scan} />
+                <Text style={[emptyStyles.scanText, { color: actionColors.scan }]}>Scan</Text>
               </Pressable>
               <Pressable onPress={() => onLog(meal?.name)} style={({ pressed }) => [emptyStyles.searchBtn, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
-                <LinearGradient colors={NUT_SEARCH_GRADIENT} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={emptyStyles.searchGradient}>
-                  <Ionicons name="search-outline" size={20} color="#FFFFFF" />
-                  <Text style={emptyStyles.searchText} numberOfLines={1} ellipsizeMode="tail">
+                <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={emptyStyles.searchGradient}>
+                  <Ionicons name="search-outline" size={20} color={actionColors.searchText} />
+                  <Text style={[emptyStyles.searchText, { color: actionColors.searchText }]} numberOfLines={1} ellipsizeMode="tail">
                     Search
                   </Text>
                 </LinearGradient>
@@ -423,7 +431,7 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 style={({ pressed }) => [
                   emptyStyles.quickBtn,
                   {
-                    borderColor: NUT_QUICK_PURPLE,
+                    borderColor: actionColors.quick,
                     backgroundColor: isDark ? '#14141C' : '#FAFAFC',
                     opacity: pressed ? 0.88 : 1,
                     transform: [{ scale: pressed ? 0.97 : 1 }],
@@ -431,8 +439,8 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 ]}
               >
                 <View style={emptyStyles.quickAddContent}>
-                  <Ionicons name="create-outline" size={18} color={NUT_QUICK_PURPLE} />
-                  <Text style={[emptyStyles.quickText, { color: NUT_QUICK_PURPLE }]}>Quick Add</Text>
+                  <Ionicons name="create-outline" size={18} color={actionColors.quick} />
+                  <Text style={[emptyStyles.quickText, { color: actionColors.quick }]}>Quick Add</Text>
                 </View>
               </Pressable>
             </View>
@@ -815,7 +823,7 @@ export const NutritionScreen = ({
   const { isDark } = useTheme();
   const colors = useMemo(() => getColors(isDark), [isDark]);
   const shellBottomPad = useShellBottomNavInset(16);
-  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : 24;
+  const scrollBottomPad = shellBottomPad + 28;
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
   const solidCardBg = isDark ? '#0A0A0F' : '#FFFFFF';

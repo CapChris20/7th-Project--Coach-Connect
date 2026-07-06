@@ -5,6 +5,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 import { hostLabel, faviconUrl } from './renderSourcePreview';
@@ -61,106 +62,171 @@ export default function CoachWebSourceCards({ message, isDark = true }) {
 
   if (!sources.length) return null;
 
-  const border = isDark ? AI_COACH_UI.borderHairline : 'rgba(10,10,15,0.1)';
+  const panelBg = isDark ? 'rgba(20,20,25,0.92)' : '#FFFFFF';
+  const rowDivider = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.06)';
   const textPrimary = isDark ? AI_COACH_UI.textPrimary : '#0A0A0F';
   const textMuted = isDark ? AI_COACH_UI.textSecondary : 'rgba(10,10,15,0.55)';
-  const accent = AI_COACH_UI.cyan;
+  const accent = isDark ? AI_COACH_UI.pink : '#BE185D';
+  const accentSecondary = isDark ? AI_COACH_UI.orange : '#C2410C';
 
   return (
     <View style={styles.wrap}>
       <TouchableOpacity
         onPress={() => setExpanded((v) => !v)}
-        activeOpacity={0.85}
-        style={[styles.pill, { borderColor: border }]}
+        activeOpacity={0.88}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         accessibilityLabel={`${expanded ? 'Hide' : 'Show'} ${sources.length} sources`}
       >
-        <Ionicons name="globe-outline" size={14} color={accent} />
-        <Text style={[styles.pillText, { color: textPrimary }]}>
-          Sources · {sources.length}
-        </Text>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={textMuted}
-        />
+        <LinearGradient
+          colors={AI_COACH_UI.gradient.borderWarm}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.pillBorder}
+        >
+          <View style={[styles.pillInner, { backgroundColor: panelBg }]}>
+            <View style={[styles.pillIcon, { backgroundColor: isDark ? 'rgba(190,24,93,0.18)' : 'rgba(219,39,119,0.10)' }]}>
+              <Ionicons name="globe-outline" size={14} color={accent} />
+            </View>
+            <Text style={[styles.pillText, { color: textPrimary }]}>
+              Sources
+            </Text>
+            <View style={[styles.countBadge, { backgroundColor: isDark ? 'rgba(194,65,12,0.22)' : 'rgba(194,65,12,0.12)' }]}>
+              <Text style={[styles.countText, { color: accentSecondary }]}>{sources.length}</Text>
+            </View>
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={textMuted}
+            />
+          </View>
+        </LinearGradient>
       </TouchableOpacity>
 
       {expanded ? (
-        <View style={[styles.list, { borderColor: border }]}>
-          {sources.map((source, idx) => {
-            const url = source.url || source.link;
-            if (!url) return null;
-            const title = source.title || source.name || hostLabel(url);
-            const host = hostLabel(url);
-            const favicon = faviconUrl(url);
-            const snippet = String(source.snippet || '').trim();
-            const isLast = idx === sources.length - 1;
-            return (
-              <TouchableOpacity
-                key={`${url}-${idx}`}
-                style={[styles.row, !isLast && { borderBottomWidth: 1, borderBottomColor: border }]}
-                onPress={() => Linking.openURL(url).catch(() => {})}
-                activeOpacity={0.85}
-                accessibilityRole="link"
-                accessibilityLabel={`Open source ${title}`}
-              >
-                {favicon ? (
-                  <Image source={{ uri: favicon }} style={styles.favicon} />
-                ) : (
-                  <Ionicons name="link-outline" size={14} color={textMuted} style={styles.faviconFallback} />
-                )}
-                <View style={styles.textCol}>
-                  <Text style={[styles.title, { color: textPrimary }]} numberOfLines={2}>
-                    {title}
-                  </Text>
-                  <Text style={[styles.host, { color: textMuted }]} numberOfLines={1}>
-                    {host}
-                    {snippet ? ` · ${snippet}` : ''}
-                  </Text>
-                </View>
-                <Ionicons name="open-outline" size={14} color={textMuted} />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <LinearGradient
+          colors={isDark ? ['rgba(190,24,93,0.14)', 'rgba(194,65,12,0.10)'] : ['rgba(219,39,119,0.08)', 'rgba(234,88,12,0.06)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.listBorder}
+        >
+          <View style={[styles.list, { backgroundColor: panelBg }]}>
+            {sources.map((source, idx) => {
+              const url = source.url || source.link;
+              if (!url) return null;
+              const title = source.title || source.name || hostLabel(url);
+              const host = hostLabel(url);
+              const favicon = faviconUrl(url);
+              const snippet = String(source.snippet || '').trim();
+              const isLast = idx === sources.length - 1;
+              return (
+                <TouchableOpacity
+                  key={`${url}-${idx}`}
+                  style={[styles.row, !isLast && { borderBottomWidth: 1, borderBottomColor: rowDivider }]}
+                  onPress={() => Linking.openURL(url).catch(() => {})}
+                  activeOpacity={0.85}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open source ${title}`}
+                >
+                  <LinearGradient
+                    colors={AI_COACH_UI.gradient.borderWarmSubtle}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.faviconRing}
+                  >
+                    {favicon ? (
+                      <Image source={{ uri: favicon }} style={styles.favicon} />
+                    ) : (
+                      <View style={[styles.faviconFallback, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                        <Ionicons name="link-outline" size={14} color={accent} />
+                      </View>
+                    )}
+                  </LinearGradient>
+                  <View style={styles.textCol}>
+                    <Text style={[styles.title, { color: textPrimary }]} numberOfLines={2}>
+                      {title}
+                    </Text>
+                    <Text style={[styles.host, { color: textMuted }]} numberOfLines={snippet ? 2 : 1}>
+                      {host}
+                      {snippet ? ` · ${snippet}` : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name="open-outline" size={16} color={accentSecondary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </LinearGradient>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 10, maxWidth: '100%' },
-  pill: {
+  wrap: { marginTop: 12, maxWidth: '100%' },
+  pillBorder: {
     alignSelf: 'flex-start',
+    borderRadius: 999,
+    padding: 1,
+  },
+  pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 999,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
   },
-  pillText: { fontSize: 12, fontWeight: '700' },
+  pillIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  countBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countText: { fontSize: 12, fontWeight: '800' },
+  listBorder: {
+    marginTop: 10,
+    borderRadius: 16,
+    padding: 1,
+  },
   list: {
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 15,
     overflow: 'hidden',
-    backgroundColor: 'transparent',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  favicon: { width: 18, height: 18, borderRadius: 4 },
-  faviconFallback: { width: 18 },
+  faviconRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    padding: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favicon: { width: 30, height: 30, borderRadius: 8 },
+  faviconFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   textCol: { flex: 1, minWidth: 0 },
-  title: { fontSize: 13, fontWeight: '600', lineHeight: 17 },
-  host: { fontSize: 11, marginTop: 2, lineHeight: 15 },
+  title: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
+  host: { fontSize: 12, marginTop: 3, lineHeight: 16 },
 });

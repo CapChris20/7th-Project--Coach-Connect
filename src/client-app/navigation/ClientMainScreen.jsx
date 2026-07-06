@@ -179,15 +179,19 @@ export default function ClientMainScreen() {
   } = s;
 
   const [workoutPlanReadyBadge, setWorkoutPlanReadyBadge] = useState(false);
+  const [workoutGenInFlight, setWorkoutGenInFlight] = useState(false);
 
   useEffect(() => {
     const uid = user?.uid;
     if (!uid) {
       setWorkoutPlanReadyBadge(false);
+      setWorkoutGenInFlight(false);
       return undefined;
     }
 
-    const syncBadge = (session) => {
+    const syncSession = (session) => {
+      if (session?.uid && session.uid !== uid) return;
+      setWorkoutGenInFlight(!!session?.inFlight);
       const show =
         !!session?.pendingReady &&
         !session?.inFlight &&
@@ -195,11 +199,8 @@ export default function ClientMainScreen() {
       setWorkoutPlanReadyBadge(show);
     };
 
-    readWorkoutGenerationSession(uid).then(syncBadge);
-    return subscribeWorkoutGenerationSession((session) => {
-      if (session.uid !== uid) return;
-      syncBadge(session);
-    });
+    readWorkoutGenerationSession(uid).then(syncSession);
+    return subscribeWorkoutGenerationSession(syncSession);
   }, [user?.uid, mainTab]);
 
   const clientPaymentStatus = userData?.paymentStatus || 'inactive';
@@ -208,9 +209,13 @@ export default function ClientMainScreen() {
   const isMainFocused = useIsFocused();
   const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
   const [nutritionSettingsOpen, setNutritionSettingsOpen] = useState(false);
+  const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
   const hideBottomNav =
-    mainTab === CLIENT_MAIN_TABS.nutrition &&
-    (nutritionOnboardingActive || nutritionSettingsOpen);
+    (mainTab === CLIENT_MAIN_TABS.nutrition &&
+      (nutritionOnboardingActive || nutritionSettingsOpen)) ||
+    showTrainerMessaging ||
+    showConversationsList ||
+    showMyDashboard;
 
   return (
     <AppNavigationProvider {...navProviderProps}>
@@ -415,53 +420,7 @@ export default function ClientMainScreen() {
           onWorkoutPress={openWorkout}
           onMessagesPress={handleOpenConversations}
         />
-      ) : mainTab === CLIENT_MAIN_TABS.workout ? (
-        <WorkoutPlanGeneratorScreen
-          hideBottomNav
-          onBack={handleHomePress}
-          onNavigate={onNavigate}
-          onProfilePress={openProfile}
-          onSettingsPress={openSettings}
-        />
-      ) : mainTab === CLIENT_MAIN_TABS.ai ? (
-        aiChatPayload ? (
-          <ChatWithCoachScreen
-            hideBottomNav
-            key={JSON.stringify({
-              sid: aiChatPayload.sessionId ?? null,
-              pf: aiChatPayload.prefill ?? null,
-              att: Array.isArray(aiChatPayload.initialAttachments)
-                ? aiChatPayload.initialAttachments.length
-                : 0,
-            })}
-            userId={user?.uid}
-            userProfile={{ ...(onboardingData || {}), ...(userData || {}) }}
-            trainerId={userData?.trainerId}
-            prefill={aiChatPayload.prefill}
-            sessionId={aiChatPayload.sessionId}
-            initialAttachments={aiChatPayload.initialAttachments}
-            onBack={() => {
-              setAiChatState('home');
-            }}
-            onSessionSwitch={(session) =>
-              openAIChatSession({ sessionId: session.sessionId || session.id })
-            }
-            onNewChat={() => openAIChatSession({})}
-            openAttachmentsOnMount={false}
-            {...aiChatNavHandlers}
-          />
-        ) : (
-          <StartCoachChatScreen
-            hideBottomNav
-            userId={user?.uid}
-            onStartChat={(payload = {}) => openAIChatSession(payload)}
-            onSessionPress={(session) =>
-              openAIChatSession({ sessionId: session.sessionId || session.id })
-            }
-            {...aiChatNavHandlers}
-          />
-        )
-      ) : (
+      ) : mainTab === CLIENT_MAIN_TABS.ai ? null : mainTab === CLIENT_MAIN_TABS.workout ? null : (
       <View style={{ flex: 1 }}>
         <CoachConnectHeader
           isDark={isDark}
@@ -646,6 +605,74 @@ export default function ClientMainScreen() {
       </ScrollView>
       </View>
       )}
+
+      {(mainTab === CLIENT_MAIN_TABS.workout || workoutGenInFlight) ? (
+        <View
+          style={[
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+            mainTab !== CLIENT_MAIN_TABS.workout && { opacity: 0, zIndex: -1 },
+          ]}
+          pointerEvents={mainTab === CLIENT_MAIN_TABS.workout ? 'auto' : 'none'}
+          collapsable={false}
+        >
+          <WorkoutPlanGeneratorScreen
+            hideBottomNav
+            onBack={handleHomePress}
+            onNavigate={onNavigate}
+            onProfilePress={openProfile}
+            onSettingsPress={openSettings}
+          />
+        </View>
+      ) : null}
+
+      {keepAiCoachMounted ? (
+        <View
+          style={[
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+            mainTab !== CLIENT_MAIN_TABS.ai && { opacity: 0, zIndex: -1 },
+          ]}
+          pointerEvents={mainTab === CLIENT_MAIN_TABS.ai ? 'auto' : 'none'}
+          collapsable={false}
+        >
+          {aiChatPayload ? (
+            <ChatWithCoachScreen
+              hideBottomNav
+              key={JSON.stringify({
+                sid: aiChatPayload.sessionId ?? null,
+                pf: aiChatPayload.prefill ?? null,
+                att: Array.isArray(aiChatPayload.initialAttachments)
+                  ? aiChatPayload.initialAttachments.length
+                  : 0,
+              })}
+              userId={user?.uid}
+              userProfile={{ ...(onboardingData || {}), ...(userData || {}) }}
+              trainerId={userData?.trainerId}
+              prefill={aiChatPayload.prefill}
+              sessionId={aiChatPayload.sessionId}
+              initialAttachments={aiChatPayload.initialAttachments}
+              onBack={() => {
+                setAiChatState('home');
+              }}
+              onSessionSwitch={(session) =>
+                openAIChatSession({ sessionId: session.sessionId || session.id })
+              }
+              onNewChat={() => openAIChatSession({})}
+              openAttachmentsOnMount={false}
+              {...aiChatNavHandlers}
+            />
+          ) : (
+            <StartCoachChatScreen
+              hideBottomNav
+              userId={user?.uid}
+              onStartChat={(payload = {}) => openAIChatSession(payload)}
+              onSessionPress={(session) =>
+                openAIChatSession({ sessionId: session.sessionId || session.id })
+              }
+              {...aiChatNavHandlers}
+            />
+          )}
+        </View>
+      ) : null}
       </View>
 
       <TrainerSharedFilesModal

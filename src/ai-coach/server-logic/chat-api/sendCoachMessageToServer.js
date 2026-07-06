@@ -149,20 +149,6 @@ async function postAICoach(payload, options = {}) {
         if (__DEV__) {
           console.debug(`AI Coach ${response.status} at ${url}:`, msg);
         }
-        if (response.status === 429 && idToken) {
-          try {
-            await fetch(`${String(base).replace(/\/$/, '')}/api/ai-coach/reset-usage`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
-                'X-AI-Coach-Test-Suite': '1',
-              },
-            });
-          } catch (_) {
-            /* ignore */
-          }
-        }
         continue;
       }
 

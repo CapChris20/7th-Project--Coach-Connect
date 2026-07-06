@@ -1,5 +1,5 @@
 /**
- * Multi-select exercise dislike picker with lottery-cage style drifting pill animation.
+ * Multi-select exercise preference picker with lottery-cage style drifting pill animation.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -148,6 +148,8 @@ export default function ExerciseDislikePicker({
   t,
   animatePills = true,
   showOtherField = true,
+  /** Stored field is still `exercisesDislike`; selected items = exercises to prioritize */
+  intent = 'prefer',
 }) {
   const { selectedIds, customText } = useMemo(() => parseExerciseDislikes(value), [value]);
   const [search, setSearch] = useState('');
@@ -186,13 +188,18 @@ export default function ExerciseDislikePicker({
   };
 
   const selectedCount = selectedIds.length;
+  const isPrefer = intent !== 'dislike';
+  const hintText = isPrefer
+    ? `Tap exercises you would prefer in your plan. Skip any you don't care about.${
+        selectedCount > 0 ? ` (${selectedCount} selected)` : ''
+      }`
+    : `Tap exercises you never want in your plan. Selected = avoided.${
+        selectedCount > 0 ? ` (${selectedCount} selected)` : ''
+      }`;
 
   return (
     <View style={styles.root}>
-      <Text style={[styles.hint, { color: t.textSecondary }]}>
-        Tap exercises you never want in your plan. Selected = avoided.
-        {selectedCount > 0 ? ` (${selectedCount} selected)` : ''}
-      </Text>
+      <Text style={[styles.hint, { color: t.textSecondary }]}>{hintText}</Text>
 
       <TextInput
         value={search}
@@ -236,7 +243,9 @@ export default function ExerciseDislikePicker({
 
       {showOtherField ? (
         <View style={{ marginTop: 12 }}>
-          <Text style={[styles.sectionLabel, { color: t.textSecondary }]}>Other (not listed)</Text>
+          <Text style={[styles.sectionLabel, { color: t.textSecondary }]}>
+            {isPrefer ? 'Other exercises you prefer' : 'Other (not listed)'}
+          </Text>
           <TextInput
             value={customText}
             onChangeText={handleCustomChange}

@@ -892,6 +892,22 @@ async function runWeeklySummaryGeneration() {
  * Generate weekly summary for a single client for a specific week.
  * If weekStartOverride is not provided, falls back to "last week" (default behavior).
  */
+async function assertCanAccessClientWeeklySummary(callerUid, clientId) {
+  if (!callerUid || !clientId) {
+    throw new HttpsError('permission-denied', 'Not authorized for this client.');
+  }
+  if (callerUid === clientId) return;
+  const linkSnap = await db
+    .collection('trainer_clients')
+    .doc(callerUid)
+    .collection('clients')
+    .doc(clientId)
+    .get();
+  if (!linkSnap.exists) {
+    throw new HttpsError('permission-denied', 'Not authorized for this client.');
+  }
+}
+
 async function generateWeeklySummaryForClient(clientId, weekStartOverride) {
   let weekStart, weekEnd;
 
@@ -994,6 +1010,7 @@ exports.generateWeeklySummaryForClient = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
     const clientId = request.data?.clientId;
     if (!clientId || typeof clientId !== 'string') throw new HttpsError('invalid-argument', 'clientId required');
+    await assertCanAccessClientWeeklySummary(request.auth.uid, clientId);
     try {
       return await generateWeeklySummaryForClient(clientId);
     } catch (error) {
@@ -1019,6 +1036,7 @@ exports.generateWeeklySummaryForClientForWeek = onCall(
     if (!weekStart || typeof weekStart !== 'string') {
       throw new HttpsError('invalid-argument', 'weekStart (YYYY-MM-DD) required');
     }
+    await assertCanAccessClientWeeklySummary(request.auth.uid, clientId);
     try {
       return await generateWeeklySummaryForClient(clientId, weekStart);
     } catch (error) {
@@ -1052,6 +1070,27 @@ exports.linkClientWithTrainerCode = onCall(async (request) => {
   const trainerDoc = await db.collection('users').doc(trainerId).get();
   if (!trainerDoc.exists || trainerDoc.data()?.role !== 'trainer') {
     throw new HttpsError('invalid-argument', 'Invalid trainer.');
+  }
+
+  const clientDoc = await db.collection('users').doc(clientId).get();
+  const clientData = clientDoc.exists ? clientDoc.data() || {} : {};
+  const serverAssignedTrainer = String(clientData.trainerId || '') === trainerId;
+
+  const inviteCodeRaw = String(request.data?.inviteCode || '').trim();
+  let inviteCodeValid = false;
+  if (inviteCodeRaw) {
+    const normalizedInvite = inviteCodeRaw.replace(/[\s-]/g, '').toUpperCase();
+    const trainerInvite = String(trainerDoc.data()?.inviteCode || '')
+      .replace(/[\s-]/g, '')
+      .toUpperCase();
+    inviteCodeValid = Boolean(normalizedInvite && trainerInvite && normalizedInvite === trainerInvite);
+  }
+
+  if (!serverAssignedTrainer && !inviteCodeValid) {
+    throw new HttpsError(
+      'permission-denied',
+      'Trainer link not authorized. Complete onboarding with a valid invite code first.',
+    );
   }
 
   await db

@@ -13,7 +13,6 @@ import {
   Dimensions,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -46,6 +45,8 @@ import { useTheme } from '../../../shared-ui/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
 import { useCoachComposerKeyboard, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../chat-thread/useCoachComposerKeyboard';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
+import StableGradientText from '../../../shared-ui/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../../shared-ui/brandGradients';
 import {
   buildHourlyCanHelpWith,
   buildHourlyCoachActions,
@@ -834,9 +835,17 @@ const HeroWelcomeCard = ({
               style={StyleSheet.absoluteFillObject}
             />
           ) : null}
-          <Text style={{ fontSize: 26, fontWeight: '900', color: t.textPrimary, textAlign: 'center' }}>
-            Good Morning, <Text style={{ color: AI_COACH_UI.pink }}>{safeName}!</Text>
-          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ fontSize: 26, fontWeight: '900', color: t.textPrimary, textAlign: 'center' }}>
+              Good Morning,{' '}
+            </Text>
+            <StableGradientText
+              colors={HERO_TITLE_TEXT_GRADIENT}
+              style={{ fontSize: 26, fontWeight: '900' }}
+            >
+              {safeName}!
+            </StableGradientText>
+          </View>
 
           <View style={{ alignItems: 'center', marginTop: 12 }}>
             <Text
@@ -857,22 +866,20 @@ const HeroWelcomeCard = ({
             />
           </View>
 
-          <Text
+          <StableGradientText
+            colors={HERO_TITLE_TEXT_GRADIENT}
             style={{
               marginTop: 14,
               fontSize: 44,
               fontWeight: '900',
-              color: AI_COACH_UI.pink,
               textAlign: 'center',
               letterSpacing: 0.4,
               lineHeight: 48,
             }}
             numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
           >
             AI Coach
-          </Text>
+          </StableGradientText>
 
           <Text
             style={{
@@ -933,7 +940,7 @@ export default function StartCoachChatScreen({
 
   const t = isDark ? DARK : LIGHT;
   const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
-  const { keyboardVisible, composerBottomPad, listBottomPad, keyboardVerticalOffset } =
+  const { keyboardVisible, composerKeyboardPad, listBottomPad } =
     useCoachComposerKeyboard({ hideBottomNav });
   // ─── Load + transition animations (UI only) ─────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(0)).current;          // 0ms -> 300ms
@@ -1207,11 +1214,7 @@ export default function StartCoachChatScreen({
         ) : null}
       </Animated.View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={keyboardVerticalOffset}
-      >
+      <View style={{ flex: 1 }}>
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
@@ -1223,7 +1226,7 @@ export default function StartCoachChatScreen({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
-          {/* Centered hero content */}
+          {!keyboardVisible ? (
           <Animated.View
             style={{
               flexGrow: 1,
@@ -1320,6 +1323,7 @@ export default function StartCoachChatScreen({
               </View>
             </View>
           </Animated.View>
+          ) : null}
         </ScrollView>
 
         <Animated.View
@@ -1331,7 +1335,7 @@ export default function StartCoachChatScreen({
             backgroundColor: t.inputBarBg,
             paddingHorizontal: 16,
             paddingTop: attachments.length > 0 ? 10 : 8,
-            paddingBottom: composerBottomPad,
+            paddingBottom: composerKeyboardPad,
           }}
         >
           {attachments.length > 0 ? (
@@ -1471,7 +1475,7 @@ export default function StartCoachChatScreen({
             </TouchableOpacity>
           </View>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
 
       <CoachChatHistorySidebar
         mode="overlay"

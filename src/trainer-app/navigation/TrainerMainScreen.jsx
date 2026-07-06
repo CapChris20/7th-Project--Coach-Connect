@@ -255,6 +255,7 @@ export default function TrainerMainScreen() {
         {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showWorkoutGenerator && s.generatorClient?.id && (
           <WorkoutPlanGeneratorScreen
             userId={s.generatorClient.id}
+            coachCanGeneratePlans
             hideBottomNav={true}
             onBack={() => {
               s.setShowWorkoutGenerator(false);
@@ -288,7 +289,14 @@ export default function TrainerMainScreen() {
           />
         )}
 
-        {!s.showWorkoutGenerator && !s.showPlanViewer && (
+        {!s.showWorkoutGenerator &&
+          !s.showPlanViewer &&
+          !s.showTrainerMessaging &&
+          !s.showConversationsList &&
+          !s.showClientRequests &&
+          !s.showClientsList &&
+          !s.showAIWorkouts &&
+          !s.showPhotoGallery && (
           <ShellBottomNavAnchor>
             <BottomNavBar
               onHomePress={s.handleHomePress}

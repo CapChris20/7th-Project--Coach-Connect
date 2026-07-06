@@ -14,14 +14,74 @@
 import { shouldRouteToPerplexity } from '../perplexityService';
 import { shouldIncludeWeeklyContextInCoachPrompt } from '../context/buildCoachPromptData';
 
+const EXPLICIT_WEB_PHRASES = [
+  'google',
+  'go online',
+  'on the web',
+  'on the internet',
+  'search the web',
+  'search online',
+  'search for',
+  'look up online',
+  'look this up',
+  'find online',
+  'browse the',
+  'browse for',
+  'latest research',
+  'latest study',
+  'latest studies',
+  'recent research',
+  'recent study',
+  'recent studies',
+  'meta-analysis',
+  'what does the research say',
+  'what do studies say',
+  'cite sources',
+  'with sources',
+  'any sources',
+  'got sources',
+  'show sources',
+  'pull up sources',
+  'pull sources',
+  'nutrition facts for',
+  'calories in a',
+  'calories in the',
+  'near me',
+  'restaurant menu',
+  'check the web',
+  'check online',
+  'check the internet',
+  'verify online',
+  'verify on the web',
+  'double check online',
+  'look it up online',
+];
+
+/** User clearly asked to search the public internet. */
+export function hasExplicitWebIntent(userText) {
+  const t = String(userText || '').toLowerCase().trim();
+  if (!t) return false;
+  if (EXPLICIT_WEB_PHRASES.some((k) => t.includes(k))) return true;
+  if (/\b(check|verify|confirm)\b.*\b(the web|online|internet|google)\b/.test(t)) return true;
+  if (/\b(the web|online|internet)\b.*\b(check|verify|confirm|search|look)\b/.test(t)) return true;
+  if (/\bverify\b.*\b(web|online|internet|research|sources?|studies)\b/.test(t)) return true;
+  if (/\b(search|lookup|look up|check)\b/.test(t) && /\b(web|online|internet|google|sources?)\b/.test(t)) {
+    return true;
+  }
+  if (/\blook up\b/.test(t) && /\b(on the web|online|internet|google)\b/.test(t)) return true;
+  return false;
+}
+
 /** User wants their CoachConnect logs — not a public web lookup. */
 export function isPersonalDataLookup(userText) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t) return false;
+  if (hasExplicitWebIntent(t)) return false;
   return (
-    /\blook up\b.*\b(my|log|logs|data|food|nutrition|meal|sleep|slept|water|steps|weight|workout|calories|dashboard|history)\b/.test(
+    /\blook up\b.*\b(my|log|logs|data|food|nutrition|meal|sleep|slept|water|steps|weight|workout|dashboard|history)\b/.test(
       t,
     ) ||
+    /\blook up\b.*\b(my )?calories\b/.test(t) ||
     /\b(check|look at|see|show|pull up)\b.*\b(my )?(sleep|slept|logs|data|history|dashboard|food log|nutrition)\b/.test(
       t,
     ) ||
@@ -37,60 +97,10 @@ export function shouldUseWebAuto(userText) {
   const t = raw.toLowerCase();
   if (!t.trim()) return false;
 
+  if (hasExplicitWebIntent(t)) return true;
   if (isPersonalDataLookup(t)) return false;
 
-  const explicit = [
-    'google',
-    'go online',
-    'on the web',
-    'on the internet',
-    'search the web',
-    'search online',
-    'search for',
-    'look up online',
-    'look this up',
-    'find online',
-    'browse the',
-    'browse for',
-    'latest research',
-    'latest study',
-    'latest studies',
-    'recent research',
-    'recent study',
-    'recent studies',
-    'meta-analysis',
-    'what does the research say',
-    'what do studies say',
-    'cite sources',
-    'with sources',
-    'any sources',
-    'got sources',
-    'show sources',
-    'pull up sources',
-    'pull sources',
-    'nutrition facts for',
-    'calories in a',
-    'calories in the',
-    'near me',
-    'restaurant menu',
-    'check the web',
-    'check online',
-    'check the internet',
-    'verify online',
-    'verify on the web',
-    'double check online',
-    'look it up online',
-  ];
-  if (explicit.some((k) => t.includes(k))) return true;
-
-  if (/\b(check|verify|confirm)\b.*\b(the web|online|internet|google)\b/.test(t)) return true;
-  if (/\b(the web|online|internet)\b.*\b(check|verify|confirm|search|look)\b/.test(t)) return true;
-  if (/\bverify\b.*\b(web|online|internet|research|sources?|studies)\b/.test(t)) return true;
-  if (/\b(search|lookup|look up|check)\b/.test(t) && /\b(web|online|internet|google|sources?)\b/.test(t)) {
-    return true;
-  }
-
-  if (/\b(look up|lookup|look this up|google)\b/.test(t)) {
+  if (/\b(look up|lookup|look this up|google)\b/.test(t) && !/\b(my|log|logs|dashboard|history|data)\b/.test(t)) {
     return true;
   }
 

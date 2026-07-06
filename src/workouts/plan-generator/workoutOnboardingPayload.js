@@ -1,4 +1,6 @@
 /** Fields used by server/lib/workoutPlanPrompt.js — keep payload small and JSON-safe. */
+import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+
 const WORKOUT_ONBOARDING_FIELDS = [
   'age',
   'gender',
@@ -47,13 +49,25 @@ function normalizeFirestoreValue(value) {
   return value;
 }
 
+function resolveDaysPerWeek(data) {
+  const d = normalizeClientProfileFields(data);
+  const raw = d.daysPerWeek ?? d.frequency ?? d.workoutsPerWeek;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  return rounded >= 1 && rounded <= 7 ? rounded : null;
+}
+
 /** Strip Firestore types / extra user-doc fields before POSTing to /api/workout/generate. */
 export function buildWorkoutOnboardingPayload(data) {
-  const src = data && typeof data === 'object' ? data : {};
+  const src = normalizeClientProfileFields(data && typeof data === 'object' ? data : {});
   const out = {};
   for (const key of WORKOUT_ONBOARDING_FIELDS) {
-    if (src[key] === undefined) continue;
+    if (src[key] === undefined || src[key] === null) continue;
     out[key] = normalizeFirestoreValue(src[key]);
   }
+  const daysPerWeek = resolveDaysPerWeek(src);
+  if (daysPerWeek != null) out.daysPerWeek = daysPerWeek;
   return out;
 }

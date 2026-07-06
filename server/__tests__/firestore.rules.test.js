@@ -143,4 +143,60 @@ describe('Firestore security rules — users locked fields', () => {
       db.collection('users').doc(TRAINER_ID).update({ bio: 'New bio' }),
     );
   });
+
+  test('Trainer CANNOT set trainerId on another user', async () => {
+    const db = testEnv.authenticatedContext(TRAINER_ID).firestore();
+    await assertFails(
+      db.collection('users').doc(OTHER_CLIENT_ID).update({ trainerId: TRAINER_ID }),
+    );
+  });
+});
+
+describe('Firestore security rules — AI coach chat', () => {
+  const SESSION_ID = 'aiChat_test_session';
+
+  test('owner can write aiChats session + messages subcollection', async () => {
+    const db = testEnv.authenticatedContext(CLIENT_ID).firestore();
+    const sessionRef = db
+      .collection('users')
+      .doc(CLIENT_ID)
+      .collection('aiChats')
+      .doc(SESSION_ID);
+
+    await assertSucceeds(
+      sessionRef.set({
+        sessionId: SESSION_ID,
+        title: 'New Chat',
+        updatedAt: new Date(),
+      }),
+    );
+
+    await assertSucceeds(
+      sessionRef.collection('messages').doc('msg_1').set({
+        id: 'msg_1',
+        role: 'user',
+        text: 'Hello coach',
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  test('other user cannot write aiChats messages subcollection', async () => {
+    const db = testEnv.authenticatedContext(OTHER_CLIENT_ID).firestore();
+    await assertFails(
+      db
+        .collection('users')
+        .doc(CLIENT_ID)
+        .collection('aiChats')
+        .doc(SESSION_ID)
+        .collection('messages')
+        .doc('msg_1')
+        .set({
+          id: 'msg_1',
+          role: 'user',
+          text: 'nope',
+          createdAt: Date.now(),
+        }),
+    );
+  });
 });

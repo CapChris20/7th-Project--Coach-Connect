@@ -30,9 +30,10 @@ export function EarningsDashboardPreview({
   textColor = '#FFFFFF',
   mutedColor = 'rgba(255,255,255,0.55)',
   borderColor = 'rgba(255,255,255,0.1)',
+  surfaceColor = 'rgba(255,255,255,0.04)',
 }) {
   return (
-    <View style={[styles.previewCard, { borderColor }]}>
+    <View style={[styles.previewCard, { borderColor, backgroundColor: surfaceColor }]}>
       <Text style={[styles.previewLabel, { color: mutedColor }]}>After your first client pays, you will see:</Text>
       <View style={styles.previewRow}>
         <Text style={[styles.previewStat, { color: textColor }]}>{EARNINGS_MOCK.pendingLabel}</Text>
@@ -155,7 +156,9 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 12,
     padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
     marginBottom: 8,
   },
   faqQ: { fontSize: 13, fontWeight: '800', marginBottom: 4 },

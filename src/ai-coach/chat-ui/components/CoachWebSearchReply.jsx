@@ -7,14 +7,13 @@ import { stripCoachToolJsonFromReply } from '../../tools/parseCoachToolCalls';
 import { stripInlineWebCitations } from '../lib/formatCoachMessageText';
 import {
   buildCoachMarkdownStyles,
-  preprocessCoachCitations,
   preprocessWebSearchLayout,
 } from '../lib/coachMarkdownStyles';
 
 export default function CoachWebSearchReply({ text, isDark = true }) {
   const body = useMemo(() => {
     const cleaned = stripInlineWebCitations(stripCoachToolJsonFromReply(String(text || '')));
-    return preprocessCoachCitations(preprocessWebSearchLayout(cleaned));
+    return preprocessWebSearchLayout(cleaned);
   }, [text]);
 
   const styles = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
