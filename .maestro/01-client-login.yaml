@@ -1,0 +1,6 @@
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    file: helpers/client-sign-in.yaml

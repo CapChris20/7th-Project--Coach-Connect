@@ -92,6 +92,41 @@ export default function FoodConfirmSheet({
 }) {
   const [amountValue, setAmountValue] = useState('');
   const [preset, setPreset] = useState('full');
+  const [selectedUnit, setSelectedUnit] = useState('g');
+  const [unitPickerOpen, setUnitPickerOpen] = useState(false);
+
+  const UNIT_OPTIONS = [
+    { id: 'g', label: 'Grams (g)' },
+    { id: 'oz', label: 'Ounces (oz)' },
+    { id: 'cups', label: 'Cups' },
+    { id: 'ml', label: 'Milliliters (ml)' },
+    { id: 'servings', label: 'Servings' },
+    { id: 'tbsp', label: 'Tablespoons (tbsp)' },
+    { id: 'tsp', label: 'Teaspoons (tsp)' },
+  ];
+
+  const unitToGrams = (value, unit, servingGrams) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return servingGrams || 100;
+    const sg = servingGrams || 100;
+    switch (unit) {
+      case 'oz':
+        return n * 28.3495;
+      case 'cups':
+        return n * 240; // approx liquid/volume food
+      case 'ml':
+        return n * 1;
+      case 'servings':
+        return n * sg;
+      case 'tbsp':
+        return n * 15;
+      case 'tsp':
+        return n * 5;
+      case 'g':
+      default:
+        return n;
+    }
+  };
 
   const normalized = food ? normalizeFoodForLog(finalizeBarcodeFood(food)) : null;
   const display = useMemo(() => {
@@ -99,22 +134,23 @@ export default function FoodConfirmSheet({
     return normalizeFoodRecordForStorage(normalized);
   }, [normalized]);
   const defaultAmount = normalized ? resolveServingGrams(normalized) : 100;
-  const unit = (normalized?.servingUnit || 'grams').toLowerCase();
-  const unitLabel = unit === 'ml' ? 'ml' : 'g';
 
   useEffect(() => {
     if (normalized) {
       setAmountValue(String(defaultAmount));
       setPreset('full');
+      setSelectedUnit('g');
     }
   }, [food?.id, food?.name, defaultAmount, normalized]);
 
   const parseNum = (v) => (v === '' || v == null ? null : Number(String(v).replace(',', '.')));
   const entered = parseNum(amountValue);
-  const grams =
+  const gramsRaw =
     entered != null && !Number.isNaN(entered) && entered > 0
-      ? Math.min(10000, Math.max(1, Math.round(entered)))
+      ? unitToGrams(entered, selectedUnit, defaultAmount)
       : defaultAmount;
+  const grams = Math.min(10000, Math.max(1, Math.round(gramsRaw)));
+  const unitLabel = selectedUnit;
 
   const macros = useMemo(
     () => (normalized ? macrosAtGrams(normalized, grams) : null),
@@ -150,6 +186,10 @@ export default function FoodConfirmSheet({
       ...normalized,
       servingGrams: grams,
       servingAmount: grams,
+      loggedAmount: entered != null && !Number.isNaN(entered) ? entered : grams,
+      loggedUnit: selectedUnit,
+      originalUnit: selectedUnit,
+      originalAmount: entered != null && !Number.isNaN(entered) ? entered : grams,
     });
     onConfirm?.(normalizeFoodForLog(normalizeFoodRecordForStorage(adjusted)));
   };
@@ -258,16 +298,76 @@ export default function FoodConfirmSheet({
               />
             </View>
 
-            <Text style={styles.amountLabel}>Amount you had ({unitLabel})</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder={String(defaultAmount)}
-              placeholderTextColor={colors.subtle}
-              value={amountValue}
-              onChangeText={handleAmountChange}
-              keyboardType="decimal-pad"
-              selectionColor={gradients.carbs[1]}
-            />
+            <Text style={styles.amountLabel}>Amount you had</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <TextInput
+                style={[styles.amountInput, { flex: 1 }]}
+                placeholder={String(defaultAmount)}
+                placeholderTextColor={colors.subtle}
+                value={amountValue}
+                onChangeText={handleAmountChange}
+                keyboardType="decimal-pad"
+                selectionColor={gradients.carbs[1]}
+              />
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS === 'ios') {
+                    const { ActionSheetIOS } = require('react-native');
+                    ActionSheetIOS.showActionSheetWithOptions(
+                      {
+                        options: [...UNIT_OPTIONS.map((u) => u.label), 'Cancel'],
+                        cancelButtonIndex: UNIT_OPTIONS.length,
+                      },
+                      (idx) => {
+                        if (idx == null || idx >= UNIT_OPTIONS.length) return;
+                        setSelectedUnit(UNIT_OPTIONS[idx].id);
+                        setPreset('custom');
+                      },
+                    );
+                  } else {
+                    setUnitPickerOpen((v) => !v);
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  minWidth: 88,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: '700' }}>{selectedUnit}</Text>
+              </Pressable>
+            </View>
+            {unitPickerOpen && Platform.OS !== 'ios' ? (
+              <View style={{ marginTop: 8, gap: 6 }}>
+                {UNIT_OPTIONS.map((u) => (
+                  <Pressable
+                    key={u.id}
+                    onPress={() => {
+                      setSelectedUnit(u.id);
+                      setUnitPickerOpen(false);
+                      setPreset('custom');
+                    }}
+                    style={{
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      backgroundColor: selectedUnit === u.id ? 'rgba(190,24,93,0.15)' : 'transparent',
+                    }}
+                  >
+                    <Text style={{ color: colors.foreground, fontWeight: selectedUnit === u.id ? '700' : '500' }}>
+                      {u.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <Text style={[styles.packageHint, { marginTop: 8 }]}>
+              ≈ {grams} g stored · showing macros for this amount
+            </Text>
           </SurfaceCard>
 
           <View style={styles.previewRow}>

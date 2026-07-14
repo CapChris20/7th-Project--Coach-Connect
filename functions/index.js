@@ -58,57 +58,10 @@ async function verifyFirebaseIdToken(req) {
   }
 }
 
+const { purgeUserFirestore: purgeUserFirestoreDocs } = require('./lib/purgeUserFirestore');
+
 async function purgeUserFirestore(uid) {
-  const userRef = db.collection('users').doc(uid);
-  await db.recursiveDelete(userRef);
-
-  // Marketplace trainer profile
-  try {
-    await db.collection('trainers').doc(uid).delete();
-  } catch (_) {
-    /* ignore */
-  }
-
-  // Conversations where user participates
-  const convSnap = await db
-    .collection('conversations')
-    .where('participants', 'array-contains', uid)
-    .limit(200)
-    .get();
-  for (const convDoc of convSnap.docs) {
-    const msgs = await db.collection('messages').where('conversationId', '==', convDoc.id).limit(500).get();
-    const batch = db.batch();
-    msgs.docs.forEach((m) => batch.delete(m.ref));
-    batch.delete(convDoc.ref);
-    await batch.commit();
-  }
-
-  // Trainer-client CRM links
-  const asTrainer = await db.collection('trainer_clients').doc(uid).listCollections();
-  for (const sub of asTrainer) {
-    const clients = await sub.get();
-    const batch = db.batch();
-    clients.docs.forEach((c) => batch.delete(c.ref));
-    await batch.commit();
-  }
-  await db.collection('trainer_clients').doc(uid).delete().catch(() => {});
-
-  const linkSnap = await db
-    .collection('trainer_client_links')
-    .where('clientId', '==', uid)
-    .limit(50)
-    .get();
-  for (const linkDoc of linkSnap.docs) {
-    await linkDoc.ref.delete();
-  }
-  const trainerLinks = await db
-    .collection('trainer_client_links')
-    .where('trainerId', '==', uid)
-    .limit(50)
-    .get();
-  for (const linkDoc of trainerLinks.docs) {
-    await linkDoc.ref.delete();
-  }
+  return purgeUserFirestoreDocs(db, uid);
 }
 
 async function purgeUserStorage(uid) {
@@ -1470,3 +1423,88 @@ exports.onMessageCreatedUpdateUnread = onDocumentCreated('messages/{messageId}',
     logger.warn('onMessageCreatedUpdateUnread failed', e?.message || e);
   }
 });
+
+/**
+ * Parse uploaded trainer PDF/DOC imports.
+ * Callable: { trainerId, importId, storagePath }
+ * Writes trainers/{trainerId}/importedData/{importId}
+ */
+exports.parseTrainerDocumentImport = onCall(
+  {
+    timeoutSeconds: 120,
+    memory: '512MiB',
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+    const uid = request.auth.uid;
+    const trainerId = String(request.data?.trainerId || '').trim();
+    const importId = String(request.data?.importId || '').trim();
+    const storagePath = String(request.data?.storagePath || '').trim();
+    if (!trainerId || !importId || !storagePath) {
+      throw new HttpsError('invalid-argument', 'trainerId, importId, and storagePath are required.');
+    }
+    if (uid !== trainerId) {
+      throw new HttpsError('permission-denied', 'Can only parse your own imports.');
+    }
+    if (!storagePath.startsWith(`trainers/${trainerId}/imports/`)) {
+      throw new HttpsError('invalid-argument', 'Invalid storage path.');
+    }
+
+    const importRef = db.collection('trainers').doc(trainerId).collection('importedData').doc(importId);
+    await importRef.set(
+      {
+        status: 'parsing',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    try {
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) throw new Error('Uploaded file not found in Storage.');
+      const [buffer] = await file.download();
+      const lower = storagePath.toLowerCase();
+      let extractedText = '';
+
+      if (lower.endsWith('.pdf') || (request.data?.mimeType || '').includes('pdf')) {
+        const pdfParse = require('pdf-parse');
+        const parsed = await pdfParse(buffer);
+        extractedText = String(parsed?.text || '').trim();
+      } else if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ buffer });
+        extractedText = String(result?.value || '').trim();
+      } else {
+        throw new Error('Unsupported file type. Use PDF or Word (.pdf, .doc, .docx).');
+      }
+
+      if (!extractedText) {
+        extractedText = '(File opened successfully but no extractable text was found.)';
+      }
+
+      await importRef.set(
+        {
+          status: 'complete',
+          extractedText: extractedText.slice(0, 200000),
+          error: null,
+          parsedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return { success: true, importId, status: 'complete' };
+    } catch (e) {
+      logger.error('parseTrainerDocumentImport failed', e?.message || e);
+      await importRef.set(
+        {
+          status: 'error',
+          error: e?.message || 'Parse failed',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      throw new HttpsError('internal', e?.message || 'Failed to parse document.');
+    }
+  },
+);

@@ -1,72 +1,96 @@
 /**
- * mark All Messages Read
- *
- * Purpose: Data/service layer: mark All Messages Read. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/ai
- * Key exports: markAllMessagesReadForUser
- *
- * @file-header
+ * Paginated mark-as-read helpers — batch updates in pages of 50.
  */
-// Utility to mark all messages as read for a user
-// Run this once to clean up any old unread messages
-
 import { db } from '../../../app-start/config';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
+  writeBatch,
+  limit,
+  startAfter,
+} from 'firebase/firestore';
+import { clearUnreadForConversation } from '../../../messaging/unreadCountIndex';
+
+const READ_PAGE_SIZE = 50;
+
+export async function markConversationMessagesReadPaginated(conversationId, userId) {
+  if (!conversationId || !userId) return 0;
+
+  let lastVisible = null;
+  let totalMarked = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let q = query(
+      collection(db, 'messages'),
+      where('conversationId', '==', conversationId),
+      limit(READ_PAGE_SIZE),
+    );
+    if (lastVisible) {
+      q = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId),
+        startAfter(lastVisible),
+        limit(READ_PAGE_SIZE),
+      );
+    }
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      hasMore = false;
+      break;
+    }
+
+    const batch = writeBatch(db);
+    let pageMarked = 0;
+    snapshot.forEach((docSnap) => {
+      const messageData = docSnap.data();
+      if (messageData.senderId !== userId && messageData.read === false) {
+        batch.update(doc(db, 'messages', docSnap.id), { read: true });
+        pageMarked += 1;
+      }
+    });
+
+    if (pageMarked > 0) {
+      await batch.commit();
+      totalMarked += pageMarked;
+    }
+
+    lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < READ_PAGE_SIZE) {
+      hasMore = false;
+    }
+  }
+
+  if (totalMarked > 0) {
+    await clearUnreadForConversation(userId, conversationId, totalMarked);
+  }
+
+  return totalMarked;
+}
 
 export async function markAllMessagesReadForUser(userId) {
-  try {
-    console.log('🔍 Finding all conversations for user:', userId);
-    
-    // Get all conversations for this user
-    const conversationsRef = collection(db, 'conversations');
-    const conversationsQuery = query(
-      conversationsRef,
-      where('participants', 'array-contains', userId)
-    );
-    
-    const conversationsSnapshot = await getDocs(conversationsQuery);
-    const conversationIds = [];
-    
-    conversationsSnapshot.forEach((doc) => {
-      conversationIds.push(doc.id);
-    });
-    
-    console.log(`📨 Found ${conversationIds.length} conversations`);
-    
-    // For each conversation, mark all messages as read
-    let totalMarked = 0;
-    
-    for (const conversationId of conversationIds) {
-      const messagesRef = collection(db, 'messages');
-      const messagesQuery = query(
-        messagesRef,
-        where('conversationId', '==', conversationId)
-      );
-      
-      const messagesSnapshot = await getDocs(messagesQuery);
-      const updatePromises = [];
-      
-      messagesSnapshot.forEach((docSnap) => {
-        const messageData = docSnap.data();
-        // Mark as read if not sent by current user and not already read
-        if (messageData.senderId !== userId && messageData.read === false) {
-          updatePromises.push(
-            updateDoc(doc(db, 'messages', docSnap.id), { read: true })
-          );
-          totalMarked++;
-        }
-      });
-      
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-      }
-    }
-    
-    console.log(`✅ Marked ${totalMarked} messages as read`);
-    return totalMarked;
-  } catch (error) {
-    console.error('❌ Error marking messages as read:', error);
-    throw error;
+  if (!userId) return 0;
+
+  const conversationsRef = collection(db, 'conversations');
+  const conversationsQuery = query(
+    conversationsRef,
+    where('participants', 'array-contains', userId),
+  );
+
+  const conversationsSnapshot = await getDocs(conversationsQuery);
+  let totalMarked = 0;
+
+  for (const convDoc of conversationsSnapshot.docs) {
+    const marked = await markConversationMessagesReadPaginated(convDoc.id, userId);
+    totalMarked += marked;
   }
+
+  return totalMarked;
 }
+
+export { READ_PAGE_SIZE };

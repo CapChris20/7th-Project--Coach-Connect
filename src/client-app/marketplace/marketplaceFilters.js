@@ -239,7 +239,8 @@ export function normalizeTrainer(raw, index = 0) {
   const grad = GRAD_KEYS[index % GRAD_KEYS.length];
   const location = String(raw.location || raw.city || '').trim() || 'Location TBD';
   const available = raw.available !== false && raw.availability !== 'Waitlist';
-  const verified = raw.verified !== false;
+  // Face / manual verification badge — only when explicitly verified
+  const verified = raw.isVerified === true || raw.verified === true;
   const trialDays = raw.trialDays ?? raw.trialPeriodDays ?? 5;
   const bio = String(
     raw.bio ||

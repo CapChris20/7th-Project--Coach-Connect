@@ -194,9 +194,9 @@ export function PaymentSetupPopup({ visible, onClose, userEmail, stripeAccountId
                 </LinearGradient>
               </View>
 
-              <Text style={styles.title}>Ready to get paid?</Text>
+              <Text style={styles.title}>Payment Method (Stripe)</Text>
               <Text style={styles.subtitle}>
-                Connect Stripe once and receive client payments directly to your bank.
+                This step is for getting paid — bank transfer, debit card, or other Stripe payout options. Identity Verification (Face ID) is separate on your profile.
               </Text>
 
               {showInitialButtons ? (

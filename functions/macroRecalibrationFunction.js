@@ -4,7 +4,7 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
-const { runDailyMacroRecalibrationJob } = require('../server/lib/macroRecalibration');
+const { runDailyMacroRecalibrationJob } = require('./lib/macroRecalibration');
 
 exports.dailyMacroRecalibration = onSchedule(
   {

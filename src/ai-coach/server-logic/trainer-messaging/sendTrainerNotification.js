@@ -34,6 +34,7 @@ import {
 } from '../../../messaging/unreadCountIndex';
 import { getDocsWithIndexFallback } from '../../../shared/firestore/firestorePagedQuery';
 import { postRemotePushNotify } from '../../../shared/api/sendPushNotification';
+import { markConversationMessagesReadPaginated } from '../services/markAllMessagesRead';
 import { randomClientRequestTitle } from '../../../notifications/buildPushNotificationText';
 
 export const MESSAGES_PAGE_SIZE = 80;
@@ -562,36 +563,9 @@ export async function getUserConversations(userId) {
  */
 export async function markMessagesAsRead(conversationId, userId) {
   try {
-    // Get all messages for the conversation (no complex query to avoid index requirement)
-    const messagesRef = collection(db, 'messages');
-    const q = query(
-      messagesRef,
-      where('conversationId', '==', conversationId)
-      // Removed other where clauses to avoid composite index requirement
-    );
-
-    const querySnapshot = await getDocs(q);
-    const updatePromises = [];
-
-    // Filter in JavaScript instead of Firestore query
-    querySnapshot.forEach((docSnap) => {
-      const messageData = docSnap.data();
-      // Only mark as read if: not sent by current user, and not already read
-      if (messageData.senderId !== userId && !messageData.read) {
-        updatePromises.push(
-          updateDoc(doc(db, 'messages', docSnap.id), {
-            read: true,
-          })
-        );
-      }
-    });
-
-    if (updatePromises.length > 0) {
-      await Promise.all(updatePromises);
-      await clearUnreadForConversation(userId, conversationId, updatePromises.length);
-    }
+    await markConversationMessagesReadPaginated(conversationId, userId);
   } catch (error) {
-    console.error('Error marking messages as read:', error);
+    if (__DEV__) console.error('Error marking messages as read:', error);
     // Don't throw - this is not critical
   }
 }

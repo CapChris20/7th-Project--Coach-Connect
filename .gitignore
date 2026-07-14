@@ -23,12 +23,14 @@ backups/
 coverage/
 test-results.txt
 pglite-debug.log
+firestore-debug.log
 functions/pglite-debug.log
 
 # Env files
 .env
 .env.local
 .env.production
+.env.maestro
 
 # Firebase Admin service accounts (never commit)
 **/serviceAccountKey.json
@@ -39,3 +41,4 @@ serviceAccount*.json
 load-tests/results/
 load-tests/node_modules/
 
+server/tmp/

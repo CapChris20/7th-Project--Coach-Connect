@@ -67,6 +67,12 @@ export default function TrainerCard({ trainer, t, isDark = true, onMessage, onCo
         <Text style={[s.trainerName, { color: t.foreground }]} numberOfLines={1}>
           {trainer.name}
         </Text>
+        {trainer.verified === true ? (
+          <View style={s.verifiedRow}>
+            <Ionicons name="shield-checkmark" size={13} color="#22C55E" />
+            <Text style={s.verifiedText}>Verified</Text>
+          </View>
+        ) : null}
         <Text style={[s.specialty, { color: '#FDBA74' }]} numberOfLines={1}>
           {specialty}
         </Text>
@@ -164,6 +170,17 @@ const s = StyleSheet.create({
   },
   onlineDotInner: { width: 8, height: 8, borderRadius: 4 },
   trainerName: { fontSize: 20, fontFamily: MP_FONT.displayBold, textAlign: 'center' },
+  verifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  verifiedText: {
+    fontSize: 12,
+    fontFamily: MP_FONT.bodySemi,
+    color: '#22C55E',
+  },
   specialty: { fontSize: 13, fontFamily: MP_FONT.bodySemi, marginTop: 4, textAlign: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
   ratingText: { fontSize: 11, fontFamily: MP_FONT.bodyMedium, marginLeft: 4 },

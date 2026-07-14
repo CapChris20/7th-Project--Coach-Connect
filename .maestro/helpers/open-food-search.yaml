@@ -1,0 +1,12 @@
+appId: com.coachconnect
+---
+- tapOn:
+    text: "Search foods, brands..."
+    optional: true
+- tapOn:
+    text: "Search"
+    optional: true
+- extendedWaitUntil:
+    visible: "Add Food|Search foods, brands, restaurants..."
+    timeout: 20000
+- assertVisible: "Add Food"

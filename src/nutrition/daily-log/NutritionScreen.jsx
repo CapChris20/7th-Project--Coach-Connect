@@ -45,15 +45,13 @@ const ACCENT = {
   green: '#22C55E',
 };
 
-/** Meal card actions — muted accents (not oversaturated). */
+/** Meal card actions — brand gradients (dark orange → pink / purple / gold). */
 function getMealActionColors(isDark) {
   return {
-    scan: isDark ? '#6BB8D6' : '#4A90A8',
-    quick: isDark ? '#B892C8' : '#8B6B9E',
-    searchGradient: isDark
-      ? ['rgba(139,90,122,0.92)', 'rgba(150,95,55,0.88)']
-      : ['#9D6B82', '#A87848'],
-    searchText: '#F5F0F2',
+    scanGradient: ['#C2410C', '#FF6B9D'],
+    searchGradient: ['#C2410C', '#A855F7'],
+    quickGradient: ['#CA8A04', '#F97316'],
+    label: '#FFFFFF',
   };
 }
 
@@ -303,47 +301,40 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
   const mealCals = Number(meal?.cals) || 0;
   const innerShadow = cardShadowStyle(isDark);
 
-  const actionSurface = isDark ? '#14141C' : '#FAFAFC';
-
   const actionRow = () => (
     <View style={mealS.btnRow}>
       <Pressable
         onPress={() => onScan(meal.name)}
-        style={({ pressed }) => [
-          mealS.scanBtn,
-          {
-            borderColor: actionColors.scan,
-            backgroundColor: actionSurface,
-            opacity: pressed ? 0.88 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          },
-        ]}
+        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
       >
-        <Ionicons name="barcode-outline" size={18} color={actionColors.scan} />
-        <Text style={[mealS.scanBtnText, { color: actionColors.scan }]}>Scan</Text>
+        <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
+          <Ionicons name="barcode-outline" size={16} color={actionColors.label} />
+          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+            Scan
+          </Text>
+        </LinearGradient>
       </Pressable>
-      <Pressable onPress={() => onLog(meal.name)} style={({ pressed }) => [mealS.logBtnWrap, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
-        <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={mealS.logBtn}>
-          <Ionicons name="search-outline" size={20} color={actionColors.searchText} />
-          <Text style={[mealS.logBtnText, { color: actionColors.searchText }]}>Search</Text>
+      <Pressable
+        onPress={() => onLog(meal.name)}
+        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+      >
+        <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
+          <Ionicons name="search-outline" size={16} color={actionColors.label} />
+          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+            Search
+          </Text>
         </LinearGradient>
       </Pressable>
       <Pressable
         onPress={() => onQuickAdd?.(mealType)}
-        style={({ pressed }) => [
-          mealS.quickAddBtn,
-          {
-            borderColor: actionColors.quick,
-            backgroundColor: actionSurface,
-            opacity: pressed ? 0.88 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          },
-        ]}
+        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
       >
-        <View style={mealS.quickAddContent}>
-          <Ionicons name="create-outline" size={18} color={actionColors.quick} />
-          <Text style={[mealS.quickAddBtnText, { color: actionColors.quick }]}>Quick Add</Text>
-        </View>
+        <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
+          <Ionicons name="flash-outline" size={16} color={actionColors.label} />
+          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+            Quick Add
+          </Text>
+        </LinearGradient>
       </Pressable>
     </View>
   );
@@ -405,43 +396,36 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
             <View style={emptyStyles.buttonRow}>
               <Pressable
                 onPress={() => onScan(meal?.name)}
-                style={({ pressed }) => [
-                  emptyStyles.scanBtn,
-                  {
-                    borderColor: actionColors.scan,
-                    backgroundColor: isDark ? '#14141C' : '#FAFAFC',
-                    opacity: pressed ? 0.88 : 1,
-                    transform: [{ scale: pressed ? 0.97 : 1 }],
-                  },
-                ]}
+                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
-                <Ionicons name="barcode-outline" size={18} color={actionColors.scan} />
-                <Text style={[emptyStyles.scanText, { color: actionColors.scan }]}>Scan</Text>
+                <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
+                  <Ionicons name="barcode-outline" size={16} color={actionColors.label} />
+                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
+                    Scan
+                  </Text>
+                </LinearGradient>
               </Pressable>
-              <Pressable onPress={() => onLog(meal?.name)} style={({ pressed }) => [emptyStyles.searchBtn, { opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}>
-                <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={emptyStyles.searchGradient}>
-                  <Ionicons name="search-outline" size={20} color={actionColors.searchText} />
-                  <Text style={[emptyStyles.searchText, { color: actionColors.searchText }]} numberOfLines={1} ellipsizeMode="tail">
+              <Pressable
+                onPress={() => onLog(meal?.name)}
+                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+              >
+                <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
+                  <Ionicons name="search-outline" size={16} color={actionColors.label} />
+                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
                     Search
                   </Text>
                 </LinearGradient>
               </Pressable>
               <Pressable
                 onPress={() => onQuickAdd?.(mealType)}
-                style={({ pressed }) => [
-                  emptyStyles.quickBtn,
-                  {
-                    borderColor: actionColors.quick,
-                    backgroundColor: isDark ? '#14141C' : '#FAFAFC',
-                    opacity: pressed ? 0.88 : 1,
-                    transform: [{ scale: pressed ? 0.97 : 1 }],
-                  },
-                ]}
+                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
-                <View style={emptyStyles.quickAddContent}>
-                  <Ionicons name="create-outline" size={18} color={actionColors.quick} />
-                  <Text style={[emptyStyles.quickText, { color: actionColors.quick }]}>Quick Add</Text>
-                </View>
+                <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
+                  <Ionicons name="flash-outline" size={16} color={actionColors.label} />
+                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
+                    Quick Add
+                  </Text>
+                </LinearGradient>
               </Pressable>
             </View>
           </View>
@@ -488,81 +472,32 @@ const createMealS = (colors) =>
     progressFill: { height: '100%', borderRadius: 99 },
     btnRow: {
       flexDirection: 'row',
-      gap: 10,
+      gap: 8,
       marginTop: 8,
       flexWrap: 'nowrap',
-      alignItems: 'center',
+      alignItems: 'stretch',
       justifyContent: 'space-between',
-      paddingVertical: 2,
     },
-    scanBtn: {
+    actionBtnWrap: {
       flex: 1,
-      flexShrink: 1,
       minWidth: 0,
-      minHeight: 48,
-      borderRadius: 24,
-      borderWidth: 1.5,
+      borderRadius: 22,
+      overflow: 'hidden',
+    },
+    actionBtn: {
+      minHeight: 44,
+      borderRadius: 22,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 10,
     },
-    scanBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
-    logBtnWrap: {
-      flex: 1.55,
-      flexShrink: 1,
-      minWidth: 0,
-      borderRadius: 28,
-      overflow: 'visible',
-      ...Platform.select({
-        ios: {
-          shadowColor: '#FF6B9D',
-          shadowOffset: { width: 0, height: 5 },
-          shadowOpacity: 0.42,
-          shadowRadius: 12,
-        },
-        android: { elevation: 10 },
-      }),
-    },
-    logBtn: {
-      borderRadius: 28,
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      flexDirection: 'row',
-      gap: 8,
-      minHeight: 52,
-    },
-    logBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', letterSpacing: 0.3 },
-    quickAddBtn: {
-      flex: 1,
-      flexShrink: 1,
-      minWidth: 0,
-      minHeight: 48,
-      borderRadius: 24,
-      borderWidth: 1.5,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 10,
-      paddingVertical: 12,
-    },
-    quickAddContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      width: '100%',
-      maxWidth: '100%',
-    },
-    quickAddBtnText: {
+    actionBtnText: {
       fontSize: 12,
       fontWeight: '800',
-      letterSpacing: 0.15,
-      textAlign: 'center',
+      letterSpacing: 0.1,
       flexShrink: 1,
     },
   });
@@ -594,77 +529,35 @@ const createEmptyStyles = (colors) =>
     },
     buttonRow: {
       flexDirection: 'row',
-      gap: 10,
+      gap: 8,
       marginTop: 8,
       width: '100%',
-      alignItems: 'center',
+      alignItems: 'stretch',
       flexWrap: 'nowrap',
       justifyContent: 'space-between',
-      paddingVertical: 0,
     },
-    scanBtn: {
+    actionBtnWrap: {
       flex: 1,
-      flexShrink: 1,
       minWidth: 0,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      minHeight: 48,
-      borderRadius: 24,
-      borderWidth: 1.5,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-    },
-    scanText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
-    searchBtn: {
-      flex: 1.55,
-      flexShrink: 1,
-      minWidth: 0,
-      borderRadius: 28,
+      borderRadius: 22,
       overflow: 'hidden',
-      ...Platform.select({
-        ios: {
-          shadowColor: '#FF6B9D',
-          shadowOffset: { width: 0, height: 5 },
-          shadowOpacity: 0.42,
-          shadowRadius: 12,
-        },
-        android: { elevation: 10 },
-      }),
     },
-    searchGradient: {
+    actionBtn: {
+      minHeight: 44,
+      borderRadius: 22,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      minHeight: 52,
-      width: '100%',
-      paddingHorizontal: 16,
-      paddingVertical: 14,
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 10,
     },
-    searchText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', minWidth: 0, letterSpacing: 0.3 },
-    quickBtn: {
-      flex: 1,
+    actionText: {
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.1,
       flexShrink: 1,
-      minWidth: 0,
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 48,
-      borderRadius: 24,
-      borderWidth: 1.5,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
     },
-    quickAddContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      width: '100%',
-      maxWidth: '100%',
-    },
-    quickText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.15, textAlign: 'center', flexShrink: 1 },
   });
 
 const WeeklyChart = ({ weekData, colors = C, isDark }) => {

@@ -28,7 +28,7 @@
  *   onClose — back button / Android back
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -40,8 +40,11 @@ import {
   ScrollView,
   Platform,
   Dimensions,
+  Alert,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import XLSX from '../../../utils/xlsx'; // SheetJS build for React Native
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -131,6 +134,8 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sortCol, setSortCol] = useState(null);
+  const [sortAsc, setSortAsc] = useState(true);
 
   const normalizeRows = (raw) => {
     const list = Array.isArray(raw) && raw.length ? raw : [];
@@ -147,6 +152,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
       setRows([]);
       setError(null);
       setLoading(true);
+      setSortCol(null);
       return;
     }
 
@@ -200,6 +206,62 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
     return () => { cancelled = true; };
   }, [visible, url, name, rowsProp]);
 
+  const displayRows = useMemo(() => {
+    if (!rows.length || sortCol == null || sortCol < 0) return rows;
+    const header = rows[0];
+    const body = rows.slice(1);
+    const sorted = [...body].sort((a, b) => {
+      const av = String(a[sortCol] ?? '');
+      const bv = String(b[sortCol] ?? '');
+      const an = Number(av);
+      const bn = Number(bv);
+      let cmp;
+      if (Number.isFinite(an) && Number.isFinite(bn) && av.trim() !== '' && bv.trim() !== '') {
+        cmp = an - bn;
+      } else {
+        cmp = av.localeCompare(bv, undefined, { sensitivity: 'base' });
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+    return [header, ...sorted];
+  }, [rows, sortCol, sortAsc]);
+
+  const rowsToCsv = (data) =>
+    (data || [])
+      .map((row) =>
+        (Array.isArray(row) ? row : [row])
+          .map((cell) => {
+            const s = String(cell ?? '');
+            if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+            return s;
+          })
+          .join(','),
+      )
+      .join('\n');
+
+  const handleCopy = async () => {
+    try {
+      await Clipboard.setStringAsync(rowsToCsv(displayRows));
+      Alert.alert('Copied', 'Table copied to clipboard as CSV.');
+    } catch (e) {
+      Alert.alert('Copy failed', e?.message || 'Could not copy');
+    }
+  };
+
+  const handleShareCsv = async () => {
+    try {
+      const csv = rowsToCsv(displayRows);
+      await Share.share({
+        message: csv,
+        title: name || 'Spreadsheet',
+      });
+    } catch (e) {
+      if (e?.message && !/User did not share/i.test(e.message)) {
+        Alert.alert('Share failed', e.message);
+      }
+    }
+  };
+
   const bg = isDark ? '#0A0A0A' : '#F9FAFB';
   const textColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)';
   const headerBg = 'rgba(255,255,255,0.08)';
@@ -207,7 +269,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
   const borderColor = 'rgba(255,255,255,0.08)';
   const rowAlt = 'rgba(255,255,255,0.02)';
 
-  const colCount = (rows[0] || []).length || 1;
+  const colCount = (displayRows[0] || []).length || 1;
   const tableWidth = Math.max(SCREEN_WIDTH - 32, colCount * MIN_CELL_WIDTH);
 
   return (
@@ -220,8 +282,21 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
           <Text style={[styles.title, { color: isDark ? '#fff' : '#1a1040' }]} numberOfLines={1}>
             {name || 'Spreadsheet'}
           </Text>
-          <View style={{ width: 40 }} />
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            <TouchableOpacity onPress={handleCopy} style={styles.backBtn} hitSlop={8} accessibilityLabel="Copy CSV">
+              <Ionicons name="copy-outline" size={22} color={isDark ? '#fff' : '#1a1040'} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleShareCsv} style={styles.backBtn} hitSlop={8} accessibilityLabel="Share CSV">
+              <Ionicons name="share-outline" size={22} color={isDark ? '#fff' : '#1a1040'} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {!loading && !error && displayRows.length > 0 ? (
+          <Text style={{ paddingHorizontal: 16, paddingBottom: 8, color: textColor, fontSize: 12 }}>
+            Viewing in-app · tap a header cell to sort · copy or share as CSV
+          </Text>
+        ) : null}
 
         <View style={styles.content}>
           {loading && (
@@ -237,7 +312,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
               <Text style={[styles.errorText, { color: isDark ? 'rgba(255,255,255,0.8)' : '#1a1040' }]}>{error}</Text>
             </View>
           )}
-          {!loading && !error && rows.length > 0 && (
+          {!loading && !error && displayRows.length > 0 && (
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
@@ -250,7 +325,7 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
                 showsVerticalScrollIndicator={true}
               >
                 <View style={[styles.table, { backgroundColor: tableBg, borderColor }]}>
-                  {rows.map((row, rIndex) => (
+                  {displayRows.map((row, rIndex) => (
                     <View
                       key={rIndex}
                       style={[
@@ -260,7 +335,18 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
                       ]}
                     >
                       {(Array.isArray(row) ? row : [row]).map((cell, cIndex) => (
-                        <View key={cIndex} style={[styles.cell, { borderColor }]}>
+                        <TouchableOpacity
+                          key={cIndex}
+                          disabled={rIndex !== 0}
+                          onPress={() => {
+                            if (sortCol === cIndex) setSortAsc((v) => !v);
+                            else {
+                              setSortCol(cIndex);
+                              setSortAsc(true);
+                            }
+                          }}
+                          style={[styles.cell, { borderColor }]}
+                        >
                           <Text
                             style={[
                               styles.cellText,
@@ -270,8 +356,9 @@ export default function SpreadsheetViewerModal({ visible, url, name, rows: rowsP
                             numberOfLines={2}
                           >
                             {cell != null && String(cell).trim() !== '' ? String(cell) : ''}
+                            {rIndex === 0 && sortCol === cIndex ? (sortAsc ? ' ▲' : ' ▼') : ''}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                     </View>
                   ))}

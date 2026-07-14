@@ -308,8 +308,8 @@ export default function BottomNavBar({
           </Animated.View>
 
           <View style={styles.navContent}>
-            <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
-              <BrandGradientIcon name="barbell" size={36} />
+            <View style={[styles.navIcon, { width: 44, height: 44 }]} collapsable={false}>
+              <BrandGradientIcon name="barbell" size={44} strokeWidth={2.35} />
               {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
             </View>
             <Text
@@ -456,8 +456,8 @@ export default function BottomNavBar({
         </Animated.View>
 
         <View style={styles.navContent}>
-          <View style={[styles.navIcon, { width: 36, height: 36 }]} collapsable={false}>
-            <BrandGradientIcon name="barbell" size={36} />
+          <View style={[styles.navIcon, { width: 44, height: 44 }]} collapsable={false}>
+            <BrandGradientIcon name="barbell" size={44} strokeWidth={2.35} />
             {workoutTabBadge ? <View style={styles.tabBadgeDot} /> : null}
           </View>
           <Text

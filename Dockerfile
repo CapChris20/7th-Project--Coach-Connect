@@ -7,6 +7,7 @@ COPY server/package.json server/package-lock.json* ./server/
 RUN cd server && npm install --omit=dev
 
 COPY server/ ./server/
+COPY functions/lib/ ./functions/lib/
 COPY src/shared/ ./src/shared/
 COPY src/ai-coach/ ./src/ai-coach/
 COPY src/nutrition/ ./src/nutrition/

@@ -249,8 +249,19 @@ export async function sendCoachMessage({
 }) {
   try {
     // Server builds the real weekly prompt from Firestore — avoid duplicate/misleading client summary.
+    const hour = new Date().getHours();
+    let greetingPeriod = 'night';
+    if (hour >= 5 && hour < 12) greetingPeriod = 'morning';
+    else if (hour >= 12 && hour < 17) greetingPeriod = 'afternoon';
+    else if (hour >= 17 && hour < 23) greetingPeriod = 'evening';
+    const greetingPhrase = `Good ${greetingPeriod}`;
+
     const enrichedProfile = {
       ...userProfile,
+      greetingPeriod,
+      greetingPhrase,
+      localHour: hour,
+      localTimeISO: new Date().toISOString(),
       ...(coachContext
         ? {
             primaryGoal: coachContext.goal,

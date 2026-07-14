@@ -1,0 +1,18 @@
+# Maestro config — Coach Connect smoke suite
+# Docs: https://maestro.mobile.dev
+#
+# Quick start:
+#   1. Boot simulator + run app (npm run ios)
+#   2. Start API server for restaurant/brand food search (npm run server)
+#   3. cp .maestro/env.example .env.maestro  → fill in test accounts
+#   4. source .env.maestro && npm run test:maestro
+#
+# Food-only (restaurants + brands):
+#   source .env.maestro && npm run test:maestro:food
+
+env:
+  APP_ID: com.coachconnect
+  # MAESTRO_CLIENT_EMAIL / MAESTRO_CLIENT_PASSWORD — unlocks extended client suite
+  # MAESTRO_TRAINER_EMAIL / MAESTRO_TRAINER_PASSWORD — trainer login + messages
+  # MAESTRO_RUN_SLOW=1 — includes AI workout plan generation (~2–3 min)
+  # MAESTRO_FOOD_QUERY — used by helpers/search-and-log-food.yaml

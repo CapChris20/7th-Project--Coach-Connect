@@ -70,7 +70,8 @@ export default function TrainerProSubscriptionOffer({
         `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
 
   const ctaLabel = primaryLabel || (variant === 'expired' ? 'Re-subscribe' : 'Start free trial');
-  const ctaDisabled = actionLoading || (Platform.OS === 'ios' && variant === 'paywall' && !connected);
+  // Don't hard-disable when StoreKit is still connecting — user can retry and see lastError.
+  const ctaDisabled = actionLoading;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>

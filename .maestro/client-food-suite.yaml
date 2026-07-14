@@ -1,0 +1,29 @@
+appId: com.coachconnect
+---
+- runFlow:
+    file: helpers/go-to-nutrition.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-chickfila.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-mcdonalds.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-starbucks.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-chipotle.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-quest.yaml
+- runFlow:
+    file: helpers/open-food-search.yaml
+- runFlow:
+    file: helpers/log-food-chicken.yaml
+- assertVisible: "Nutrition"

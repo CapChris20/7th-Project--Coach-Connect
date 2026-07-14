@@ -57,8 +57,33 @@ function decorateCurrentPlan(data) {
   };
 }
 
+function planBelongsToTrainer(plan, trainerId) {
+  if (!trainerId || !plan) return true;
+  const tid = String(trainerId);
+  const candidates = [
+    plan.trainerId,
+    plan.createdBy,
+    plan.assignedBy,
+    plan.authorId,
+    plan.ownerTrainerId,
+    plan._firebase?.trainerId,
+  ]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v));
+  // Keep plans that explicitly belong to this trainer; also keep plans with no trainer stamp
+  // only when they are that trainer's assigned/manual entries (never all clients' AI spam).
+  if (candidates.length === 0) {
+    const src = String(plan.source || plan._source || '');
+    // Unscoped legacy AI plans without trainerId should not appear on trainer dashboard.
+    if (src === 'generator' || src === 'global' || src === 'savedWorkoutPlans') return false;
+    return true;
+  }
+  return candidates.includes(tid);
+}
+
 /**
  * @param {string} clientId
+ * @param {{ trainerId?: string|null }} [opts]
  * @returns {Promise<{ plans: object[], error: string|null }>}
  */
 /** One-time mirror for plans saved before library sync existed (client session only). */
@@ -81,8 +106,9 @@ async function ensureCurrentPlanMirroredToLibrary(clientId) {
   }
 }
 
-export async function fetchClientWorkoutPlansForLibrary(clientId) {
+export async function fetchClientWorkoutPlansForLibrary(clientId, opts = {}) {
   if (!clientId || !db) return { plans: [], error: null };
+  const trainerId = opts?.trainerId ? String(opts.trainerId) : null;
 
   await ensureCurrentPlanMirroredToLibrary(clientId);
 
@@ -155,7 +181,9 @@ export async function fetchClientWorkoutPlansForLibrary(clientId) {
     if (!isBenignLoadError(e)) fatalError = fatalError || e;
   }
 
-  results.sort((a, b) => {
+  const filtered = trainerId ? results.filter((p) => planBelongsToTrainer(p, trainerId)) : results;
+
+  filtered.sort((a, b) => {
     const at =
       a.generatedAt?.toDate?.()?.getTime() ??
       (a.generatedAt ? new Date(a.generatedAt).getTime() : 0) ??
@@ -170,7 +198,7 @@ export async function fetchClientWorkoutPlansForLibrary(clientId) {
   });
 
   return {
-    plans: results,
-    error: results.length > 0 ? null : fatalError ? String(fatalError.message || fatalError) : null,
+    plans: filtered,
+    error: filtered.length > 0 ? null : fatalError ? String(fatalError.message || fatalError) : null,
   };
 }

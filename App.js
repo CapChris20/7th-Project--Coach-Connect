@@ -14,6 +14,7 @@ import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fo
 import { CrimsonPro_400Regular, CrimsonPro_600SemiBold, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
 import { ThemeProvider } from './src/shared-ui/ThemeContext';
 import AuthGate from './src/app-start/AuthGate';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppStripeProvider } from './src/shared/payments/AppStripeProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureNotifications } from './src/notifications/manageNotifications';
@@ -122,7 +123,9 @@ export default function App() {
         <ThemeProvider>
           <AppStripeProvider>
             <AIProvider>
-              <AuthGate />
+              <ErrorBoundary>
+                <AuthGate />
+              </ErrorBoundary>
             </AIProvider>
           </AppStripeProvider>
         </ThemeProvider>

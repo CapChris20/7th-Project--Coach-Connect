@@ -39,7 +39,6 @@ import { getTrainerClients, createOrUpdateClient } from '../trainer-app/clients-
 import { getOrCreateConversation, markMessagesAsRead } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
-import GradientChatBubblesIcon from '../shared/components/icons/GradientChatBubblesIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BOTTOM_NAV_BAR_HEIGHT, FORM_SCROLL_PROPS } from '../navigation/bottomNavMetrics';
 
@@ -401,17 +400,6 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
     if (filteredOut) {
       return (
         <View style={screenStyles.emptyWrap}>
-          <View
-            style={[
-              screenStyles.emptyIconBox,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-              },
-            ]}
-          >
-            <GradientChatBubblesIcon size={34} />
-          </View>
           <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No client chats yet</Text>
           <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
             Conversations with people who aren't in your client list are hidden here.
@@ -422,17 +410,6 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
 
     return (
         <View style={screenStyles.emptyWrap}>
-          <View
-            style={[
-              screenStyles.emptyIconBox,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-              },
-            ]}
-          >
-            <GradientChatBubblesIcon size={34} />
-          </View>
           <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No conversations yet</Text>
         <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
           {isTrainer

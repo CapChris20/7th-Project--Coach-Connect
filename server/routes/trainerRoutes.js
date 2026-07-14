@@ -1,5 +1,6 @@
 /** Trainer CRM actions (server-only writes that bypass Firestore rules). */
 const admin = require('firebase-admin');
+const { verifyTrainerCertification } = require('../lib/verifyTrainerCertification');
 
 async function isTrainerOfClient(db, trainerUid, clientUid) {
   if (!trainerUid || !clientUid) return false;
@@ -110,7 +111,9 @@ function registerTrainerRoutes(app, deps) {
           limitations: clientData.clientLimitations || message.clientLimitations || 'None',
         };
 
-        await db.collection('trainer_client_links').doc(linkId).set(
+        const batch = db.batch();
+        batch.set(
+          db.collection('trainer_client_links').doc(linkId),
           {
             trainerId,
             clientId,
@@ -124,15 +127,13 @@ function registerTrainerRoutes(app, deps) {
           },
           { merge: true },
         );
-
-        await db
-          .collection('trainer_clients')
-          .doc(trainerId)
-          .collection('clients')
-          .doc(clientId)
-          .set(crmPayload, { merge: true });
-
-        await db.collection('users').doc(clientId).set({ trainerId }, { merge: true });
+        batch.set(
+          db.collection('trainer_clients').doc(trainerId).collection('clients').doc(clientId),
+          crmPayload,
+          { merge: true },
+        );
+        batch.set(db.collection('users').doc(clientId), { trainerId }, { merge: true });
+        await batch.commit();
       }
 
       await db.collection('messages').doc(messageId).update({
@@ -144,6 +145,62 @@ function registerTrainerRoutes(app, deps) {
     } catch (e) {
       console.error('POST /api/trainer/accept-client failed:', e?.message || e);
       return res.status(500).json({ error: 'Failed to accept client' });
+    }
+  });
+
+  /**
+   * Claude vision certification check.
+   * Body: { trainerName, imageBase64?, imageUrl?, mediaType?, storagePath?, fileName? }
+   */
+  app.post('/api/trainer/verify-certification', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      if (!admin.apps.length) {
+        return res.status(503).json({ error: 'Firebase Admin not initialized' });
+      }
+
+      const requesterUid = String(req.firebaseAuth?.uid || '').trim();
+      if (!requesterUid) return res.status(401).json({ error: 'Unauthorized' });
+
+      const trainerId = String(req.body?.trainerId || requesterUid).trim();
+      if (trainerId !== requesterUid) {
+        return res.status(403).json({ error: 'Forbidden — can only verify your own certification' });
+      }
+
+      const trainerName = String(req.body?.trainerName || '').trim();
+      const imageBase64 = req.body?.imageBase64 || null;
+      const imageUrl = req.body?.imageUrl ? String(req.body.imageUrl).trim() : null;
+      const mediaType = req.body?.mediaType || null;
+      const storagePath = req.body?.storagePath || null;
+      const fileName = req.body?.fileName || null;
+
+      if (!imageBase64 && !imageUrl) {
+        return res.status(400).json({ error: 'imageBase64 or imageUrl is required' });
+      }
+
+      const result = await verifyTrainerCertification({
+        trainerId,
+        trainerName,
+        imageBase64,
+        imageUrl,
+        mediaType,
+        storagePath,
+        fileName,
+        serverTs,
+      });
+
+      return res.json({
+        success: true,
+        status: result.status,
+        userMessage: result.userMessage,
+        isVerified: result.outcome?.isVerified === true,
+        analysis: result.analysis,
+        aiVerification: result.aiVerification,
+      });
+    } catch (e) {
+      console.error('POST /api/trainer/verify-certification failed:', e?.message || e);
+      return res.status(500).json({
+        error: e?.message || 'Failed to verify certification',
+      });
     }
   });
 }

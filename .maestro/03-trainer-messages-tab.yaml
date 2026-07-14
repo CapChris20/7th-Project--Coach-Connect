@@ -1,0 +1,12 @@
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    file: helpers/trainer-sign-in.yaml
+- tapOn:
+    text: "Messages"
+    optional: true
+- extendedWaitUntil:
+    visible: "Messages|Conversations|No messages"
+    timeout: 30000

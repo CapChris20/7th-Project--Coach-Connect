@@ -1,0 +1,31 @@
+# Smoke: correct screen for current auth state (welcome, client home, or trainer dashboard)
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "Sign In|Get Started|Home|Good Morning|Good Afternoon|Good Evening|Active Clients|CLIENTS"
+    timeout: 30000
+
+# Logged out — welcome / auth screen
+- runFlow:
+    when:
+      visible: "Get Started"
+    commands:
+      - assertVisible: "Get Started"
+      - assertVisible: "Sign In"
+
+# Logged in as client
+- runFlow:
+    when:
+      visible: "Home"
+    commands:
+      - assertVisible: "Home"
+
+# Logged in as trainer
+- runFlow:
+    when:
+      visible: "Active Clients"
+    commands:
+      - assertVisible: "Active Clients"
+      - assertVisible: "Pending Requests"

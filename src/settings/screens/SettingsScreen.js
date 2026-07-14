@@ -710,8 +710,26 @@ export default function SettingsScreen({
           <>
             <SectionHeader title="PAYMENTS & PAYOUTS" colors={colors} />
             <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+                <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 4 }]}>
+                  Two different steps
+                </Text>
+                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, lineHeight: 17 }]}>
+                  Identity Verification (Face ID) proves who you are for the Verified badge. Payment Method is Stripe Connect — bank transfer, debit card, or other payout options so you can get paid.
+                </Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <SettingsRow
-                label="Payment Settings"
+                label="Identity Verification (Face ID)"
+                onPress={() => go('profile')}
+                colors={colors}
+                leftIcon={<Ionicons name="scan-outline" size={20} color={colors.textSecondary} />}
+              >
+                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+              </SettingsRow>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <SettingsRow
+                label="Payment Method (Stripe)"
                 colors={colors}
                 leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
               >

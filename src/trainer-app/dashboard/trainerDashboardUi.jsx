@@ -316,7 +316,7 @@ const AuroraHeroBanner = ({ isDark, timeOfDay, userName, textColor, userId }) =>
     userName={userName}
     greetingPeriod={timeOfDay}
     textColor={textColor}
-    showLiveClock={false}
+    showLiveClock
     layout="trainer"
   />
 );

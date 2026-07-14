@@ -26,6 +26,7 @@ import {
   serverTimestamp,
   query,
   where,
+  arrayUnion,
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import XLSX from '../../utils/xlsx';
@@ -626,4 +627,164 @@ export async function setDocumentSharedWith(trainerId, docId, clientIds) {
   );
 
   return { sharedWith: clientIds };
+}
+
+/**
+ * Upload a trainer import (PDF/DOC) to trainers/{trainerId}/imports/...
+ * Also writes trainers/{trainerId}/importedData/{id} with status.
+ */
+export async function uploadTrainerDocumentImport(trainerId, { localUri, filename, mimeType }, onProgress) {
+  if (!storage || !db || !trainerId) throw new Error('Storage/Firestore or trainerId not ready');
+  const safeName = (filename || 'document').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const stamp = Date.now();
+  const importId = `${stamp}_${safeName.replace(/\.[^.]+$/, '').slice(0, 40)}`;
+  const storagePath = `trainers/${trainerId}/imports/${stamp}_${safeName}`;
+  const contentType = mimeType || 'application/octet-stream';
+
+  const importRef = doc(db, 'trainers', trainerId, 'importedData', importId);
+  await setDoc(importRef, {
+    id: importId,
+    filename: filename || safeName,
+    mimeType: contentType,
+    storagePath,
+    status: 'uploading',
+    extractedText: '',
+    error: null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  try {
+    const storageRef = ref(storage, storagePath);
+    const blob = await uriToBlob(localUri);
+    await new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(storageRef, blob, { contentType });
+      task.on(
+        'state_changed',
+        (snap) => {
+          if (onProgress && snap.totalBytes > 0) {
+            onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+          }
+        },
+        reject,
+        resolve,
+      );
+    });
+    const storageUrl = await getDownloadURL(ref(storage, storagePath));
+    await updateDoc(importRef, {
+      status: 'parsing',
+      storageUrl,
+      updatedAt: serverTimestamp(),
+    });
+    return { importId, storagePath, storageUrl, importRef };
+  } catch (e) {
+    await updateDoc(importRef, {
+      status: 'error',
+      error: e?.message || 'Upload failed',
+      updatedAt: serverTimestamp(),
+    }).catch(() => {});
+    throw e;
+  }
+}
+
+const CERT_MAX_BYTES = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Upload certification sheet to trainers/{trainerId}/certifications/{filename}
+ * Writes metadata to trainers/{trainerId}.certificationSheets[] (file metadata;
+ * trainer cert *names* stay on trainers.certifications string list).
+ */
+export async function uploadTrainerCertificationSheet(
+  trainerId,
+  { localUri, filename, mimeType, fileSize },
+  onProgress,
+) {
+  if (!storage || !db || !trainerId) throw new Error('Storage/Firestore or trainerId not ready');
+  if (fileSize != null && Number(fileSize) > CERT_MAX_BYTES) {
+    throw new Error('File is too large. Maximum size is 10MB.');
+  }
+  const safeName = (filename || 'cert').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `trainers/${trainerId}/certifications/${Date.now()}_${safeName}`;
+  const contentType = mimeType || 'application/octet-stream';
+  const storageRef = ref(storage, storagePath);
+  const blob = await uriToBlob(localUri);
+  if (blob?.size > CERT_MAX_BYTES) {
+    throw new Error('File is too large. Maximum size is 10MB.');
+  }
+  await new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, blob, { contentType });
+    task.on(
+      'state_changed',
+      (snap) => {
+        if (onProgress && snap.totalBytes > 0) {
+          onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+        }
+      },
+      reject,
+      resolve,
+    );
+  });
+  const url = await getDownloadURL(storageRef);
+  const meta = {
+    fileName: filename || safeName,
+    uploadedAt: new Date().toISOString(),
+    storagePath,
+    fileType: contentType,
+    url,
+  };
+  await setDoc(
+    doc(db, 'trainers', trainerId),
+    {
+      certificationSheets: arrayUnion(meta),
+      // Also mirror onto certificationsDocuments for clients reading marketplace-safe fields
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return { path: storagePath, url, meta };
+}
+
+/** Remove a certification sheet from Storage + trainers.certificationSheets */
+export async function deleteTrainerCertificationSheet(trainerId, meta) {
+  if (!db || !trainerId || !meta?.storagePath) throw new Error('Missing trainerId or storagePath');
+  try {
+    await deleteObject(ref(storage, meta.storagePath));
+  } catch (e) {
+    if (__DEV__) console.warn('cert delete storage:', e?.message || e);
+  }
+  const refDoc = doc(db, 'trainers', trainerId);
+  const snap = await getDoc(refDoc);
+  const list = Array.isArray(snap.data()?.certificationSheets) ? snap.data().certificationSheets : [];
+  const next = list.filter((x) => String(x?.storagePath || '') !== String(meta.storagePath));
+  await setDoc(refDoc, { certificationSheets: next, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/** Face verification selfie → trainers/{trainerId}/verification/ */
+export async function uploadTrainerFaceVerification(trainerId, { localUri }) {
+  if (!storage || !db || !trainerId) throw new Error('Storage/Firestore or trainerId not ready');
+  const path = `trainers/${trainerId}/verification/${Date.now()}_face.jpg`;
+  const storageRef = ref(storage, path);
+  const blob = await uriToBlob(localUri);
+  await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+  const url = await getDownloadURL(storageRef);
+  await setDoc(
+    doc(db, 'trainers', trainerId),
+    {
+      faceVerificationPhotoURL: url,
+      faceVerificationStoragePath: path,
+      faceVerificationStatus: 'pending',
+      isVerified: false,
+      faceVerificationSubmittedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return { path, url };
+}
+
+export async function getTrainerImportedData(trainerId, importId) {
+  if (!db || !trainerId || !importId) return null;
+  const snap = await getDoc(doc(db, 'trainers', trainerId, 'importedData', importId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
 }

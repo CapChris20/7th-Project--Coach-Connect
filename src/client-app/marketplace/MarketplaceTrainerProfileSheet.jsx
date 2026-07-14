@@ -178,7 +178,7 @@ export function TrainerProfileSheet({
             {isConnected ? (
               <InfoPill icon="checkmark-circle" label="Your coach" t={t} active />
             ) : null}
-            {display.verified !== false ? (
+            {display.verified === true ? (
               <InfoPill icon="shield-checkmark" label="Verified" t={t} active />
             ) : null}
             <InfoPill

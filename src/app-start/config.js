@@ -32,6 +32,12 @@ if (firebaseConfig.projectId !== 'anatrox-auth') {
   console.error('🚨 Check your .env file immediately');
 }
 
+if (firebaseConfig.appId?.includes(':web:')) {
+  console.error(
+    '🚨 EXPO_PUBLIC_FIREBASE_APP_ID is a WEB app id — native Apple/Google sign-in will fail. Use the iOS app id (…:ios:…) from Firebase project settings.'
+  );
+}
+
 // Validate config
 const missing = [];
 if (!firebaseConfig.apiKey) missing.push('EXPO_PUBLIC_FIREBASE_API_KEY');

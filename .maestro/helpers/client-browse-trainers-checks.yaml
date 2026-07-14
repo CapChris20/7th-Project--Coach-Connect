@@ -1,0 +1,10 @@
+appId: com.coachconnect
+---
+- tapOn: "Home"
+- tapOn:
+    text: "Browse Trainers"
+    optional: true
+- extendedWaitUntil:
+    visible: "Find a Trainer"
+    timeout: 30000
+- assertVisible: "Find a Trainer"

@@ -369,6 +369,10 @@ export async function addFoodLog(userId, log) {
     sugar: Math.round(num(totalSugar) * 10) / 10,
     sodium: Math.round(num(totalSodium) * 10) / 10,
     potassium: Math.round(num(totalPotassium)),
+    originalUnit: food.originalUnit || food.loggedUnit || null,
+    originalAmount: food.originalAmount ?? food.loggedAmount ?? null,
+    loggedUnit: food.loggedUnit || food.originalUnit || null,
+    loggedAmount: food.loggedAmount ?? food.originalAmount ?? null,
     metadata: food,
     created_at: serverTimestamp(),
   };
@@ -842,6 +846,63 @@ export async function getTopLoggedFoodNames(userId, maxItems = 3) {
   } catch (_e) {
     return [];
   }
+}
+
+function favoriteFoodId(food) {
+  return String(food?.foodId || food?.id || food?.food_id || food?.name || food?.food_name || '')
+    .trim()
+    .toLowerCase();
+}
+
+function buildFavoriteFoodEntry(food) {
+  const foodName = String(food?.food_name || food?.name || 'Food').trim();
+  const foodId = favoriteFoodId(food) || foodName.toLowerCase();
+  return {
+    foodId,
+    foodName,
+    calories: Math.round(Number(food?.calories) || 0),
+    macros: {
+      protein: Math.round(Number(food?.protein) || 0),
+      carbs: Math.round(Number(food?.carbs) || 0),
+      fat: Math.round(Number(food?.fat) || 0),
+    },
+    addedDate: new Date().toISOString(),
+    brand: food?.brand_name || food?.brand || '',
+  };
+}
+
+/** users/{userId}.favoriteFoods[] — newest first after sort */
+export async function getFavoriteFoods(userId) {
+  if (!userId || !db) return [];
+  const snap = await getDoc(doc(db, 'users', userId));
+  const list = Array.isArray(snap.data()?.favoriteFoods) ? snap.data().favoriteFoods : [];
+  return [...list].sort((a, b) => String(b.addedDate || '').localeCompare(String(a.addedDate || '')));
+}
+
+export async function isFavoriteFood(userId, food) {
+  const id = favoriteFoodId(food);
+  if (!id) return false;
+  const list = await getFavoriteFoods(userId);
+  return list.some((f) => String(f.foodId).toLowerCase() === id);
+}
+
+export async function toggleFavoriteFood(userId, food) {
+  if (!userId || !db) throw new Error('Not signed in');
+  const entry = buildFavoriteFoodEntry(food);
+  const refUser = doc(db, 'users', userId);
+  const snap = await getDoc(refUser);
+  const list = Array.isArray(snap.data()?.favoriteFoods) ? [...snap.data().favoriteFoods] : [];
+  const idx = list.findIndex((f) => String(f.foodId).toLowerCase() === entry.foodId);
+  let favorited;
+  if (idx >= 0) {
+    list.splice(idx, 1);
+    favorited = false;
+  } else {
+    list.unshift(entry);
+    favorited = true;
+  }
+  await setDoc(refUser, { favoriteFoods: list.slice(0, 100), updatedAt: serverTimestamp() }, { merge: true });
+  return { favorited, favorites: list };
 }
 
 // Clean up old functions

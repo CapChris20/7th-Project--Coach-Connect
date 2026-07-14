@@ -38,6 +38,25 @@ import {
   searchExercisesForBuilder,
 } from './manualWorkoutPlanService';
 
+function buildDefaultSetDetails(ex) {
+  const n = Math.max(1, parseInt(String(ex?.sets), 10) || 3);
+  if (Array.isArray(ex?.setDetails) && ex.setDetails.length === n) {
+    return ex.setDetails.map((s, i) => ({
+      setNumber: i + 1,
+      reps: String(s.reps ?? (ex.repMode === 'fixed' ? ex.repsSingle : ex.repsMax) ?? 10),
+      weight: String(s.weight ?? ex.weight ?? ''),
+      restSeconds: Number(s.restSeconds ?? ex.restSeconds ?? 120) || 120,
+    }));
+  }
+  const defaultReps = ex?.repMode === 'fixed' ? ex?.repsSingle : ex?.repsMax;
+  return Array.from({ length: n }, (_, i) => ({
+    setNumber: i + 1,
+    reps: String(defaultReps ?? 10),
+    weight: String(ex?.weight ?? ''),
+    restSeconds: Number(ex?.restSeconds ?? 120) || 120,
+  }));
+}
+
 const GRAD_BORDER = ['#FF6B9D', '#C084FC', '#06B6D4'];
 const GRAD_CTA = ['#FF6B9D', '#C084FC'];
 const GRAD_CTA_ALT = ['#06B6D4', '#C084FC'];
@@ -339,6 +358,14 @@ function sanitizeDraftForSave(state) {
         weight: ex.weight != null ? String(ex.weight).trim() : '',
         progression: String(ex.progression || '').trim(),
         muscleGroups: Array.isArray(ex.muscleGroups) ? ex.muscleGroups : [],
+        setDetails: Array.isArray(ex.setDetails)
+          ? ex.setDetails.map((s, i) => ({
+              setNumber: i + 1,
+              reps: String(s.reps ?? ''),
+              weight: String(s.weight ?? ''),
+              restSeconds: Math.max(0, parseInt(String(s.restSeconds), 10) || 0),
+            }))
+          : [],
       };
     }),
   }));
@@ -400,6 +427,53 @@ export default function ManualWorkoutPlanBuilderScreen({
   const [tempo, setTempo] = useState('');
   const [weight, setWeight] = useState('');
   const [progression, setProgression] = useState('');
+  const [setEditOpen, setSetEditOpen] = useState(false);
+  const [setEditExId, setSetEditExId] = useState(null);
+  const [setEditIndex, setSetEditIndex] = useState(0);
+  const [setEditReps, setSetEditReps] = useState('10');
+  const [setEditWeight, setSetEditWeight] = useState('');
+  const [setEditRest, setSetEditRest] = useState('120');
+
+  const openSetEdit = (ex, setIndex) => {
+    const rows = buildDefaultSetDetails(ex);
+    const row = rows[setIndex] || rows[0];
+    setSetEditExId(ex.id);
+    setSetEditIndex(setIndex);
+    setSetEditReps(String(row.reps ?? '10'));
+    setSetEditWeight(String(row.weight ?? ''));
+    setSetEditRest(String(row.restSeconds ?? 120));
+    setSetEditOpen(true);
+  };
+
+  const saveSetEdit = () => {
+    if (!setEditExId) return;
+    setWorkoutDays((days) =>
+      days.map((d, i) => {
+        if (i !== dayIndex) return d;
+        return {
+          ...d,
+          exercises: (d.exercises || []).map((ex) => {
+            if (ex.id !== setEditExId) return ex;
+            const rows = buildDefaultSetDetails(ex);
+            rows[setEditIndex] = {
+              setNumber: setEditIndex + 1,
+              reps: setEditReps,
+              weight: setEditWeight,
+              restSeconds: Math.max(0, parseInt(String(setEditRest), 10) || 0),
+            };
+            return {
+              ...ex,
+              setDetails: rows,
+              sets: rows.length,
+              weight: rows[0]?.weight || ex.weight,
+              restSeconds: rows[0]?.restSeconds ?? ex.restSeconds,
+            };
+          }),
+        };
+      }),
+    );
+    setSetEditOpen(false);
+  };
 
   const searchResults = useMemo(() => searchExercisesForBuilder(searchQ, 20), [searchQ]);
 
@@ -520,6 +594,7 @@ export default function ManualWorkoutPlanBuilderScreen({
       weight,
       progression,
     };
+    ex.setDetails = buildDefaultSetDetails(ex);
     applyExerciseToDay(ex);
     setModalOpen(false);
     resetModal();
@@ -782,7 +857,11 @@ export default function ManualWorkoutPlanBuilderScreen({
   return (
     <BuilderThemeContext.Provider value={themeValue}>
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={80}
+      >
         <LinearGradient colors={c.topGlow} style={styles.topGlow} pointerEvents="none" />
         {renderCoachHeader()}
         <View style={styles.stepHeading}>
@@ -908,7 +987,9 @@ export default function ManualWorkoutPlanBuilderScreen({
               {(workoutDays[dayIndex]?.exercises || []).length === 0 ? (
                 <EmptyExerciseState onAdd={openAddModal} />
               ) : (
-                (workoutDays[dayIndex]?.exercises || []).map((ex, idx) => (
+                (workoutDays[dayIndex]?.exercises || []).map((ex, idx) => {
+                  const setRows = buildDefaultSetDetails(ex);
+                  return (
                   <GradientCard key={ex.id} borderColors={GRAD_BORDER} style={{ marginBottom: 10 }}>
                     <View style={styles.exHeader}>
                       <LinearGradient colors={GRAD_CTA} style={styles.numBadge}>
@@ -937,9 +1018,32 @@ export default function ManualWorkoutPlanBuilderScreen({
                         </TouchableOpacity>
                       </View>
                     </View>
+                    {setRows.map((row, si) => (
+                      <TouchableOpacity
+                        key={`${ex.id}-set-${si}`}
+                        onPress={() => openSetEdit(ex, si)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: 8,
+                          paddingHorizontal: 4,
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderTopColor: c.border || 'rgba(255,255,255,0.08)',
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={{ color: c.textSecondary, fontSize: 13, flex: 1 }}>
+                          Set {row.setNumber}: {row.reps} reps
+                          {row.weight ? ` @ ${row.weight}` : ''} · Rest {formatRest(row.restSeconds)}
+                        </Text>
+                        <Ionicons name="pencil" size={16} color={c.pink} />
+                      </TouchableOpacity>
+                    ))}
                     {!!ex.notes ? <Text style={styles.exNotes}>{ex.notes}</Text> : null}
                   </GradientCard>
-                ))
+                  );
+                })
               )}
               <View style={styles.exActionRow}>
                 <TouchableOpacity onPress={openAddModal} activeOpacity={0.88} style={{ flex: 1 }}>
@@ -1207,6 +1311,55 @@ export default function ManualWorkoutPlanBuilderScreen({
             </View>
           </LinearGradient>
         </View>
+      </Modal>
+
+      <Modal visible={setEditOpen} animationType="fade" transparent onRequestClose={() => setSetEditOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={80}
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setSetEditOpen(false)} />
+          <View style={[styles.modalCard, { marginHorizontal: 16, marginBottom: 24, borderRadius: 16, padding: 16 }]}>
+            <Text style={styles.modalTitle}>Edit set {setEditIndex + 1}</Text>
+            <FieldLabel>Reps</FieldLabel>
+            <FormField>
+              <TextInput
+                style={styles.inputBare}
+                keyboardType="number-pad"
+                value={setEditReps}
+                onChangeText={setSetEditReps}
+                placeholder="10"
+                placeholderTextColor={c.textTertiary}
+              />
+            </FormField>
+            <FieldLabel>Weight</FieldLabel>
+            <FormField>
+              <TextInput
+                style={styles.inputBare}
+                value={setEditWeight}
+                onChangeText={setSetEditWeight}
+                placeholder="e.g. 185 lbs"
+                placeholderTextColor={c.textTertiary}
+              />
+            </FormField>
+            <FieldLabel>Rest (seconds)</FieldLabel>
+            <FormField>
+              <TextInput
+                style={styles.inputBare}
+                keyboardType="number-pad"
+                value={setEditRest}
+                onChangeText={setSetEditRest}
+                placeholder="120"
+                placeholderTextColor={c.textTertiary}
+              />
+            </FormField>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <SecondaryButton label="Cancel" onPress={() => setSetEditOpen(false)} />
+              <PrimaryButton label="Save set" onPress={saveSetEdit} />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
     </BuilderThemeContext.Provider>

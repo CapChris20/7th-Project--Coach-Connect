@@ -9,6 +9,7 @@
  * @file-header
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSessionsContext } from './SessionsContext';
 import {
   addDoc,
   collection,
@@ -246,24 +247,24 @@ export const useSessions = () => {
   };
 };
 
-/** Thin aliases for session form screens */
+/** Thin aliases for session form screens — require SessionsProvider (single listener). */
 export function useCreateTrainingSession() {
-  const { addSession } = useSessions();
+  const { addSession } = useSessionsContext();
   return addSession;
 }
 
 export function useUpdateTrainingSession() {
-  const { updateSession } = useSessions();
+  const { updateSession } = useSessionsContext();
   return updateSession;
 }
 
 export function useDeleteTrainingSession() {
-  const { deleteSession } = useSessions();
+  const { deleteSession } = useSessionsContext();
   return deleteSession;
 }
 
 export function useGetTrainingSession() {
-  const { getSession, sessions } = useSessions();
+  const { getSession, sessions } = useSessionsContext();
   return useCallback((sessionId) => getSession(sessionId), [getSession, sessions]);
 }
 

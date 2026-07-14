@@ -22,9 +22,43 @@ async function mergeWorkoutProfileFromFirestore(targetUid, clientOnboarding = {}
   }
 
   try {
-    const snap = await admin.firestore().collection('users').doc(targetUid).get();
+    const db = admin.firestore();
+    const snap = await db.collection('users').doc(targetUid).get();
     if (snap.exists) {
       merged = { ...merged, ...flattenOnboardingData(snap.data() || {}) };
+    }
+
+    // Liked exercises (array of names or {name,id})
+    const liked = Array.isArray(merged.likedExercises) ? merged.likedExercises : [];
+    if (!liked.length && Array.isArray(snap.data()?.likedExercises)) {
+      merged.likedExercises = snap.data().likedExercises;
+    }
+
+    // Assigned trainer style for AI workout generation
+    const trainerId = String(merged.trainerId || snap.data()?.trainerId || '').trim();
+    if (trainerId) {
+      let trainerData = null;
+      const tSnap = await db.collection('trainers').doc(trainerId).get();
+      if (tSnap.exists) trainerData = tSnap.data();
+      if (!trainerData) {
+        const uSnap = await db.collection('users').doc(trainerId).get();
+        if (uSnap.exists) trainerData = uSnap.data();
+      }
+      if (trainerData) {
+        merged.trainerStyle = {
+          name: trainerData.name || trainerData.displayName || trainerData.firstName || '',
+          specialties: trainerData.specialties || [],
+          trainingPhilosophy: trainerData.trainingPhilosophy || '',
+          workoutStyle: Array.isArray(trainerData.specialties)
+            ? trainerData.specialties.join(', ')
+            : trainerData.workoutStyle || '',
+          preferredRepRanges: trainerData.preferredRepRanges || '',
+          preferredRestPeriods: trainerData.preferredRestPeriods || '',
+          favoriteExercises: trainerData.favoriteExercises || trainerData.exercisesPrefer || [],
+          trainerName: trainerData.name || trainerData.displayName || '',
+        };
+        merged.trainerName = merged.trainerStyle.name;
+      }
     }
   } catch (e) {
     console.warn('[workout] profile merge failed:', e?.message || e);

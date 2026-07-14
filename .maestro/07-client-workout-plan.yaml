@@ -1,0 +1,18 @@
+appId: com.coachconnect
+---
+- runFlow:
+    file: helpers/client-login-home.yaml
+- tapOn: "Workout"
+- extendedWaitUntil:
+    visible: "Workout Plans"
+    timeout: 30000
+- tapOn: "Workout Plans"
+- assertVisible: "Generate Plan"
+- tapOn: "Generate Plan"
+- extendedWaitUntil:
+    visible: "Generating|Building your|Open Plan"
+    timeout: 120000
+- extendedWaitUntil:
+    visible: "Open Plan"
+    timeout: 180000
+- assertVisible: "Open Plan"

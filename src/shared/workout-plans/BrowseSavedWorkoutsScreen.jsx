@@ -83,7 +83,7 @@ const EMPTY_CHECK_COLORS = ['#FF6B9D', '#F97316', '#BE185D', '#C2410C'];
 // ============================================================================
 // FIRESTORE HOOK
 // ============================================================================
-function useClientWorkoutPlans(clientId) {
+function useClientWorkoutPlans(clientId, trainerId) {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -97,7 +97,9 @@ function useClientWorkoutPlans(clientId) {
     setLoading(true);
     setError(null);
     try {
-      const { plans: loaded, error: loadError } = await fetchClientWorkoutPlansForLibrary(clientId);
+      const { plans: loaded, error: loadError } = await fetchClientWorkoutPlansForLibrary(clientId, {
+        trainerId: trainerId || null,
+      });
       setPlans(loaded);
       setError(loadError);
     } catch (e) {
@@ -106,7 +108,7 @@ function useClientWorkoutPlans(clientId) {
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, trainerId]);
 
   useEffect(() => {
     load();
@@ -821,7 +823,7 @@ export default function BrowseSavedWorkoutsScreen({
   const clientName = clientProp?.name || route?.params?.clientName || 'Client';
 
   const [libraryQuery, setLibraryQuery] = useState('');
-  const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId);
+  const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
 
   // Normalize all Firestore docs into UI-friendly shape
   const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);

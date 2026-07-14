@@ -1,0 +1,12 @@
+appId: com.coachconnect
+---
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: "Good Morning|Good Afternoon|Good Evening|Nutrition Today"
+    timeout: 30000
+- assertVisible: "Nutrition Today"
+- tapOn: "Explore Dashboard"
+- extendedWaitUntil:
+    visible: "YOUR DASHBOARD"
+    timeout: 20000
+- assertVisible: "Welcome back"

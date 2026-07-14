@@ -16,13 +16,11 @@ import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../s
 
 /** Dark orange → dark purple accent gradient */
 const ORANGE_PURPLE_GRAD = ['#C2410C', '#4C1D95'];
-const BRAND_PINK = '#FF6B9D';
 const PINK_GRAD = ['#BE185D', '#FF6B9D'];
 
 const GRAD_COACH = ORANGE_PURPLE_GRAD;
 const GRAD_MY = PINK_GRAD;
 
-const HERO_BORDER = ORANGE_PURPLE_GRAD;
 const UPLOAD_GRADIENT = ORANGE_PURPLE_GRAD;
 
 const FILE_TYPE_META = {
@@ -110,24 +108,24 @@ export default function FilesNotesSectionPremium({
 
   const heroCopy = isTrainer
     ? {
-        title: 'Files & Notes',
-        kicker: 'CLIENT WORKSPACE',
-        brand: clientName ? String(clientName).trim() : 'Your client',
-        tagline: 'EVERYTHING SHARED IN THIS LIBRARY',
+        title: clientName ? String(clientName).trim() : 'Client files',
+        kicker: 'Notes & Files',
+        brand: null,
+        tagline: 'Shared uploads and documents for this client',
       }
     : {
         title: 'Files & Notes',
-        kicker: 'WELCOME TO',
-        brand: 'Coach Connect',
-        tagline: 'EVERYTHING SHARED WITH YOUR COACH',
+        kicker: 'Shared with your coach',
+        brand: null,
+        tagline: 'Photos, videos, and documents in one place',
       };
 
   const labels = isTrainer
     ? {
-        coachSection: 'FROM YOU',
-        mySection: 'FROM CLIENT',
-        notesSection: 'NOTES',
-        docsSection: 'YOUR DOCUMENTS',
+        coachSection: 'From you',
+        mySection: 'From client',
+        notesSection: 'Notes',
+        docsSection: 'Your documents',
         myEmpty: 'No client uploads yet',
         coachEmpty: 'Nothing from you yet — add a note or file below',
       }
@@ -252,24 +250,33 @@ export default function FilesNotesSectionPremium({
     const preview = String(note?.content || note?.preview || '').trim();
     const createdAt = note?.createdAt?.toDate?.() || note?.createdAt;
     const when = createdAt ? formatDateShort(createdAt) : null;
-    const dateStr = when ? when.toUpperCase() : '';
     const noteTitle = isTrainer
-      ? (note?.addedBy === 'trainer' ? 'Your note' : 'Client note')
-      : 'Coaching Note';
+      ? (note?.addedBy === 'trainer' ? 'Your note' : 'From client')
+      : 'From your coach';
 
     return (
       <TouchableOpacity
         activeOpacity={0.88}
         onPress={async () => {
           try { await onMarkRead?.(note); } catch (_e) {}
-          Alert.alert(noteTitle, preview || '\u2014');
+          Alert.alert(noteTitle, preview || '—');
         }}
-        style={[s.noteCard, { backgroundColor: isDark ? '#0f1018' : '#FFFFFF', borderColor: isDark ? 'rgba(194,65,12,0.20)' : 'rgba(194,65,12,0.12)' }]}
+        style={[
+          s.noteCard,
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+          },
+        ]}
       >
-        <LinearGradient colors={ORANGE_PURPLE_GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.noteAccent} />
         <View style={s.noteContent}>
-          {dateStr ? <Text style={s.noteDate}>{dateStr}</Text> : null}
-          <Text style={[s.noteText, { color: th.text70 }]} numberOfLines={4}>{preview || '\u2014'}</Text>
+          <View style={s.noteHeaderRow}>
+            <Text style={[s.noteTitle, { color: th.text }]}>{noteTitle}</Text>
+            {when ? <Text style={[s.noteDate, { color: th.text50 }]}>{when}</Text> : null}
+          </View>
+          <Text style={[s.noteText, { color: th.text70 }]} numberOfLines={3}>
+            {preview || '—'}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -299,15 +306,11 @@ export default function FilesNotesSectionPremium({
   return (
     <View style={{ flex: 1 }}>
       <View style={s.heroOuter}>
-        <LinearGradient colors={HERO_BORDER} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroBorderRing}>
-          <View style={[s.heroInner, { backgroundColor: isDark ? '#0A0A0F' : '#F0F0F8' }]}>
-            <Text style={[s.heroTitle, { color: th.text }]}>{heroCopy.title}</Text>
-            <LinearGradient colors={ORANGE_PURPLE_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.heroRule} />
-            <Text style={[s.heroKicker, { color: th.text50 }]}>{heroCopy.kicker}</Text>
-            <Text style={[s.heroBrand, { color: BRAND_PINK }]}>{heroCopy.brand}</Text>
-            <Text style={[s.heroTagline, { color: th.text30 }]}>{heroCopy.tagline}</Text>
-          </View>
-        </LinearGradient>
+        <View style={[s.heroInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: th.border }]}>
+          <Text style={[s.heroKicker, { color: th.text50 }]}>{heroCopy.kicker}</Text>
+          <Text style={[s.heroTitle, { color: th.text }]}>{heroCopy.title}</Text>
+          <Text style={[s.heroTagline, { color: th.text50 }]}>{heroCopy.tagline}</Text>
+        </View>
       </View>
 
       {!hasAnyContent && isTrainer ? (
@@ -376,23 +379,23 @@ export default function FilesNotesSectionPremium({
 }
 
 const s = StyleSheet.create({
-  heroOuter: { paddingHorizontal: 16, marginTop: 8, marginBottom: 20 },
-  heroBorderRing: { borderRadius: 22, padding: 2 },
+  heroOuter: { paddingHorizontal: 16, marginTop: 4, marginBottom: 16 },
   heroInner: {
-    borderRadius: 20, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center',
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    borderWidth: 1,
   },
-  heroTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.3 },
-  heroRule: { width: 36, height: 3, borderRadius: 2, marginVertical: 12 },
-  heroKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 },
-  heroBrand: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5, marginBottom: 8 },
-  heroTagline: { fontSize: 10, fontWeight: '700', letterSpacing: 1.8, textTransform: 'uppercase' },
+  heroTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3, marginTop: 2 },
+  heroKicker: { fontSize: 12, fontWeight: '600' },
+  heroTagline: { fontSize: 13, fontWeight: '500', marginTop: 6, lineHeight: 18 },
 
   sectionWrap: { marginBottom: 24 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 14, gap: 10 },
-  sectionTitle: { fontSize: 13, fontWeight: '900', letterSpacing: 1.6 },
+  sectionTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4 },
   sectionBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   sectionBadgeText: { fontSize: 11, fontWeight: '900', color: '#fff' },
-  sectionLine: { flex: 1, height: 2, borderRadius: 1, marginLeft: 4 },
+  sectionLine: { flex: 1, height: 1.5, borderRadius: 1, marginLeft: 4 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 },
 
@@ -421,16 +424,21 @@ const s = StyleSheet.create({
   fileCardMeta: { fontSize: 11, fontWeight: '600', marginTop: 3 },
 
   noteCard: {
-    flexDirection: 'row', borderRadius: 16, borderWidth: 1, overflow: 'hidden',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
-      android: { elevation: 2 },
-    }),
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  noteAccent: { width: 4 },
-  noteContent: { flex: 1, padding: 16 },
-  noteDate: { fontSize: 12, fontWeight: '800', color: BRAND_PINK, letterSpacing: 0.5, marginBottom: 8 },
-  noteText: { fontSize: 14, fontWeight: '600', lineHeight: 22 },
+  noteContent: { padding: 14 },
+  noteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 6,
+  },
+  noteTitle: { fontSize: 13, fontWeight: '700' },
+  noteDate: { fontSize: 11, fontWeight: '600' },
+  noteText: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
 
   emptyCard: {
     marginHorizontal: 16, borderWidth: 1, borderStyle: 'dashed', borderRadius: 18,
@@ -445,11 +453,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 14,
-    borderRadius: 20,
-    ...Platform.select({
-      ios: { shadowColor: GRAD_MY[0], shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
-      android: { elevation: 4 },
-    }),
+    borderRadius: 16,
   },
   uploadText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });

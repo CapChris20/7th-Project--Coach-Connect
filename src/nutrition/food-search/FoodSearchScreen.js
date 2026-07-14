@@ -32,7 +32,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { searchFoods, getRecentFoods, getFoodSearchHint } from '../daily-log/logFoodToFirestore';
+import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggleFavoriteFood } from '../daily-log/logFoodToFirestore';
 import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../food-details/cleanFoodBrandName';
 import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/cleanFoodCardLabels';
 import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
@@ -212,7 +212,7 @@ const recentHistoryCardStyles = StyleSheet.create({
   },
 });
 
-const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
+const FoodResultRow = ({ item, onAdd, colors, isDark = true, isFavorite = false, onToggleFavorite }) => {
   const [adding, setAdding] = useState(false);
   const c = colors || DARK;
   const foodTitle = item.food_name || item.name || '';
@@ -304,11 +304,27 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true }) => {
             </View>
 
             <View style={foodCardStyles.sideCol}>
+              <TouchableOpacity
+                onPress={() => onToggleFavorite?.(item)}
+                hitSlop={8}
+                style={{ marginBottom: 6, alignSelf: 'flex-end' }}
+                accessibilityRole="button"
+                accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Ionicons name={isFavorite ? 'heart' : 'heart-outline'} size={22} color={isFavorite ? '#BE185D' : labelMuted} />
+              </TouchableOpacity>
               <GradientText colors={c.calGradient} style={foodCardStyles.calValue} numberOfLines={1}>
                 {item.calories}
               </GradientText>
               <Text style={[foodCardStyles.calLabel, { color: labelMuted }]}>CAL</Text>
-              <TouchableOpacity onPress={handleAdd} disabled={adding} activeOpacity={0.88} style={foodCardStyles.addHit}>
+              <TouchableOpacity
+                onPress={handleAdd}
+                disabled={adding}
+                activeOpacity={0.88}
+                style={foodCardStyles.addHit}
+                accessibilityRole="button"
+                accessibilityLabel="Add food to log"
+              >
                 <LinearGradient colors={HERO_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={foodCardStyles.addBtn}>
                   {adding ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
@@ -592,6 +608,9 @@ const FoodSearchScreen = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [recentHistoryExpanded, setRecentHistoryExpanded] = useState(true);
   const [pendingFood, setPendingFood] = useState(null);
+  const [favoriteFoods, setFavoriteFoods] = useState([]);
+  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
+  const [browseTab, setBrowseTab] = useState('recent'); // 'recent' | 'favorites'
   const uid = userId || auth.currentUser?.uid;
 
   const confirmTheme = useMemo(
@@ -619,8 +638,58 @@ const FoodSearchScreen = ({
         setRecentFoods([]);
       }
     };
+    const loadFavorites = async () => {
+      try {
+        const favs = await getFavoriteFoods(uid);
+        const mapped = (favs || []).map((f) =>
+          normalizeFood({
+            id: f.foodId,
+            name: f.foodName,
+            food_name: f.foodName,
+            calories: f.calories,
+            protein: f.macros?.protein,
+            carbs: f.macros?.carbs,
+            fat: f.macros?.fat,
+            brand: f.brand,
+          }),
+        );
+        setFavoriteFoods(mapped);
+        setFavoriteIds(new Set((favs || []).map((f) => String(f.foodId).toLowerCase())));
+      } catch (err) {
+        console.log('Favorite foods unavailable:', err.message);
+        setFavoriteFoods([]);
+      }
+    };
     loadRecent();
+    loadFavorites();
   }, [uid]);
+
+  const handleToggleFavorite = useCallback(
+    async (food) => {
+      if (!uid || !food) return;
+      try {
+        const { favorited, favorites } = await toggleFavoriteFood(uid, food);
+        setFavoriteIds(new Set((favorites || []).map((f) => String(f.foodId).toLowerCase())));
+        setFavoriteFoods(
+          (favorites || []).map((f) =>
+            normalizeFood({
+              id: f.foodId,
+              name: f.foodName,
+              food_name: f.foodName,
+              calories: f.calories,
+              protein: f.macros?.protein,
+              carbs: f.macros?.carbs,
+              fat: f.macros?.fat,
+              brand: f.brand,
+            }),
+          ),
+        );
+      } catch (e) {
+        console.warn('toggle favorite:', e?.message || e);
+      }
+    },
+    [uid],
+  );
 
   const handleSearch = useCallback(async (searchQuery) => {
     if (!searchQuery.trim()) {
@@ -689,17 +758,34 @@ const FoodSearchScreen = ({
   };
 
   const hasRecentHistory = recentFoods.length > 0;
-  const showRecent = !hasSearched && hasRecentHistory && recentHistoryExpanded;
+  const hasFavorites = favoriteFoods.length > 0;
+  const showFavoritesBrowse = !hasSearched && browseTab === 'favorites';
+  const showRecent = !hasSearched && browseTab === 'recent' && hasRecentHistory && recentHistoryExpanded;
   const showResults = hasSearched && results.length > 0 && !loading;
   const showBrowseIdle = !hasSearched && !loading;
   const showEmpty =
     !loading &&
-    ((hasSearched && results.length === 0) || (showBrowseIdle && !hasRecentHistory));
+    ((hasSearched && results.length === 0) ||
+      (showBrowseIdle && browseTab === 'recent' && !hasRecentHistory) ||
+      (showFavoritesBrowse && !hasFavorites));
 
   const listBottomPad =
     Math.max(insets.bottom, 12) + (embedded ? 16 : 32) + (reserveShellBottomNav ? shellBottomPad : 0);
-  const listData = showRecent ? recentFoods : showResults ? results : [];
-  const listKey = showRecent ? 'recent' : 'results';
+  const listData = showFavoritesBrowse
+    ? favoriteFoods
+    : showRecent
+      ? recentFoods
+      : showResults
+        ? results
+        : [];
+  const listKey = showFavoritesBrowse ? 'favorites' : showRecent ? 'recent' : 'results';
+
+  const foodIsFavorite = (item) => {
+    const id = String(item?.id || item?.food_id || item?.name || item?.food_name || '')
+      .trim()
+      .toLowerCase();
+    return favoriteIds.has(id);
+  };
 
   const renderHeaderBlock = () => (
     <>
@@ -796,7 +882,36 @@ const FoodSearchScreen = ({
 
       {showBrowseIdle && <FoodSearchAccuracyHeroCard isDark={isDark} />}
 
-      {showBrowseIdle && hasRecentHistory && (
+      {showBrowseIdle ? (
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, paddingHorizontal: 0 }}>
+          {[
+            { id: 'recent', label: 'Recent' },
+            { id: 'favorites', label: 'Favorites' },
+          ].map((tab) => {
+            const active = browseTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                onPress={() => setBrowseTab(tab.id)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: active ? 'rgba(190,24,93,0.2)' : colors.inputBg,
+                  borderWidth: 1,
+                  borderColor: active ? '#BE185D' : colors.cardBorder,
+                }}
+              >
+                <Text style={{ color: active ? '#BE185D' : colors.textMuted, fontWeight: '700', fontSize: 13 }}>
+                  {tab.id === 'favorites' ? `♥ ${tab.label}` : tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {showBrowseIdle && browseTab === 'recent' && hasRecentHistory && (
         <Pressable
           onPress={() => setRecentHistoryExpanded((v) => !v)}
           accessibilityRole="button"
@@ -886,7 +1001,14 @@ const FoodSearchScreen = ({
             showRecent ? (
               <RecentHistoryFoodCard item={item} isDark={isDark} onAdd={handleAddFood} />
             ) : (
-              <FoodResultRow item={item} onAdd={handleAddFood} colors={colors} isDark={isDark} />
+              <FoodResultRow
+                item={item}
+                onAdd={handleAddFood}
+                colors={colors}
+                isDark={isDark}
+                isFavorite={foodIsFavorite(item)}
+                onToggleFavorite={handleToggleFavorite}
+              />
             )
           }
           ListEmptyComponent={null}

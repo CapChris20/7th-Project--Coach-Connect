@@ -23,6 +23,7 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -41,6 +42,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../shared-ui/ThemeContext';
 import { auth, db } from '../app-start/config';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as DocumentPicker from 'expo-document-picker';
+import {
+  uploadTrainerCertificationSheet,
+  uploadTrainerFaceVerification,
+} from '../shared/notes-files/manageNotesAndFiles';
+import {
+  verifyTrainerCertification,
+  certificationStatusLabel,
+  certificationStatusDetail,
+} from '../shared/api/verifyTrainerCertification';
 import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
 import { validateTrainerCodeWithDeps } from './validateTrainerInviteCode';
 import { completeOnboardingClient, buildOnboardingUpdatePayload } from './finishOnboarding';
@@ -1507,6 +1519,11 @@ export default function OnboardingWizardScreen({
   const { accessState: trainerSubscriptionAccess } = useSubscription();
   // Paywall plan selected on trainer step 8 (annual is the recommended default).
   const [trainerPlanId, setTrainerPlanId] = useState('pro_annual');
+  const [faceCamOpen, setFaceCamOpen] = useState(false);
+  const [faceCapturing, setFaceCapturing] = useState(false);
+  const [certUploading, setCertUploading] = useState(false);
+  const faceCamRef = useRef(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [onboardingData, setOnboardingData] = useState({
     // Client fields - Basic Info
     weight: null, // in kg or lbs
@@ -1544,6 +1561,10 @@ export default function OnboardingWizardScreen({
     pricing: { perSession: null, perMonth: null, initialConsult: null },
     inviteCode: null,
     certificationOther: '',
+    faceVerificationPhotoURL: null,
+    faceVerificationStatus: 'unsubmitted',
+    isVerified: false,
+    certificationSheetURLs: [],
     /** Trainer display name (step 6) */
     name: '',
     /** Short public bio; long-form philosophy stays in trainingPhilosophy */
@@ -1979,8 +2000,8 @@ export default function OnboardingWizardScreen({
         case 7:
           return true; // Auto-generated invite code
         case 8:
-          if (!TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) return true;
-          return trainerSubscriptionAccess?.hasFullAccess === true;
+          // Pro IAP is offered here but not required to finish setup / enter the app.
+          return true;
         default:
           return false;
       }
@@ -2171,7 +2192,7 @@ export default function OnboardingWizardScreen({
     if (role === 'client') {
       return currentStep === 6 || currentStep === 7; // Injuries and Trainer Code (steps 8-9 are required)
     }
-    return currentStep === 4; // Training philosophy optional
+    return currentStep === 4 || currentStep === 8; // philosophy + Pro IAP optional
   };
 
   const getStepTitle = () => {
@@ -2713,6 +2734,135 @@ Examples:
                 />
               </View>
             ) : null}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={certUploading || !auth?.currentUser?.uid}
+              onPress={async () => {
+                const tid = auth?.currentUser?.uid;
+                if (!tid) {
+                  Alert.alert('Sign in required', 'Finish signup first so we can save your certification sheet.');
+                  return;
+                }
+                try {
+                  const result = await DocumentPicker.getDocumentAsync({
+                    type: [
+                      'application/pdf',
+                      'application/msword',
+                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                      'image/*',
+                      '*/*',
+                    ],
+                    copyToCacheDirectory: true,
+                  });
+                  if (result.canceled) return;
+                  const file = result.assets[0];
+                  setCertUploading(true);
+                  const { url, meta } = await uploadTrainerCertificationSheet(tid, {
+                    localUri: file.uri,
+                    filename: file.name || 'certification.pdf',
+                    mimeType: file.mimeType,
+                    fileSize: file.size,
+                  });
+                  setOnboardingData((prev) => ({
+                    ...prev,
+                    certificationSheetURLs: [...(prev.certificationSheetURLs || []), url],
+                    certificationSheets: [...(prev.certificationSheets || []), meta].filter(Boolean),
+                  }));
+
+                  const trainerName =
+                    String(onboardingData.name || '').trim() ||
+                    String(auth?.currentUser?.displayName || '').trim() ||
+                    'Trainer';
+                  let verifyMessage = 'Certification sheet saved for review.';
+                  const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
+                  if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''))) {
+                    try {
+                      setOnboardingData((prev) => ({
+                        ...prev,
+                        certificationVerificationStatus: 'checking',
+                      }));
+                      const verification = await verifyTrainerCertification({
+                        trainerId: tid,
+                        trainerName,
+                        localUri: file.uri,
+                        imageUrl: url,
+                        mediaType: file.mimeType || 'image/jpeg',
+                        storagePath: meta?.storagePath,
+                        fileName: meta?.fileName,
+                      });
+                      verifyMessage =
+                        verification.userMessage ||
+                        certificationStatusLabel(verification.status) ||
+                        verifyMessage;
+                      if (verification.status === 'manual_review') {
+                        verifyMessage = `${verifyMessage}\nUsually reviewed within 24–48 hours.`;
+                      }
+                      setOnboardingData((prev) => ({
+                        ...prev,
+                        aiVerification: verification.aiVerification || verification.analysis || null,
+                        certificationVerificationStatus: verification.status,
+                        isVerified: verification.isVerified === true,
+                      }));
+                    } catch (verifyErr) {
+                      if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
+                      setOnboardingData((prev) => ({
+                        ...prev,
+                        certificationVerificationStatus: 'manual_review',
+                      }));
+                      verifyMessage =
+                        'Uploaded — Under review. AI check was unavailable; usually reviewed within 24–48 hours.';
+                    }
+                  } else {
+                    setOnboardingData((prev) => ({
+                      ...prev,
+                      certificationVerificationStatus: 'manual_review',
+                    }));
+                    verifyMessage =
+                      'Uploaded — Under review. Usually reviewed within 24–48 hours (use a JPG/PNG for instant AI check).';
+                  }
+                  Alert.alert('Certification', verifyMessage);
+                } catch (e) {
+                  Alert.alert('Upload failed', e?.message || 'Could not upload certification.');
+                } finally {
+                  setCertUploading(false);
+                }
+              }}
+              style={{
+                marginTop: 16,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: ot.cardBorder,
+                paddingVertical: 14,
+                paddingHorizontal: 16,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              {certUploading ? (
+                <ActivityIndicator color={ot.textPrimary} />
+              ) : (
+                <>
+                  <Ionicons name="document-attach-outline" size={20} color={ot.textPrimary} />
+                  <Text style={{ color: ot.textPrimary, fontWeight: '700' }}>
+                    Upload cert sheet ({(onboardingData.certificationSheetURLs || []).length})
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {certificationStatusLabel(onboardingData.certificationVerificationStatus) ? (
+              <View style={{ marginTop: 12, paddingHorizontal: 2 }}>
+                <Text style={{ color: ot.textPrimary, fontWeight: '700', fontSize: 13 }}>
+                  {certificationStatusLabel(onboardingData.certificationVerificationStatus)}
+                </Text>
+                {certificationStatusDetail(onboardingData.certificationVerificationStatus) ? (
+                  <Text style={{ color: ot.textMuted || ot.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                    {certificationStatusDetail(onboardingData.certificationVerificationStatus)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         );
 
@@ -2884,7 +3034,17 @@ Examples:
               />
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => Alert.alert('Profile photo', 'You can add a photo later from your trainer profile.')}
+                disabled={faceCapturing}
+                onPress={async () => {
+                  if (!cameraPermission?.granted) {
+                    const res = await requestCameraPermission();
+                    if (!res.granted) {
+                      Alert.alert('Camera needed', 'Allow camera access to verify your face for your trainer profile.');
+                      return;
+                    }
+                  }
+                  setFaceCamOpen(true);
+                }}
                 style={{ alignItems: 'center', marginTop: 8 }}
               >
                 <View
@@ -2894,15 +3054,31 @@ Examples:
                     borderRadius: 48,
                     borderWidth: 2,
                     borderStyle: 'dashed',
-                    borderColor: ot.cardBorder,
+                    borderColor: onboardingData.faceVerificationPhotoURL ? '#22C55E' : ot.cardBorder,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    overflow: 'hidden',
                   }}
                 >
-                  <Ionicons name="camera-outline" size={28} color={ot.textSecondary} />
+                  {onboardingData.faceVerificationPhotoURL ? (
+                    <Image
+                      source={{ uri: onboardingData.faceVerificationPhotoURL }}
+                      style={{ width: 96, height: 96, borderRadius: 48 }}
+                    />
+                  ) : (
+                    <Ionicons name="scan-outline" size={28} color={ot.textSecondary} />
+                  )}
                 </View>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textPrimary, marginTop: 8 }}>Add profile photo</Text>
-                <Text style={{ fontSize: 12, color: ot.textSecondary }}>Optional</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textPrimary, marginTop: 8 }}>
+                  {onboardingData.faceVerificationPhotoURL
+                    ? 'Identity Verification submitted'
+                    : 'Identity Verification (Face ID)'}
+                </Text>
+                <Text style={{ fontSize: 12, color: ot.textSecondary, textAlign: 'center', paddingHorizontal: 24 }}>
+                  {onboardingData.faceVerificationPhotoURL
+                    ? 'Pending manual review — Verified badge appears after approval. This is not a payment step.'
+                    : 'Take a selfie for identity review only. Payment method (bank/debit via Stripe) is a separate step.'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3138,6 +3314,85 @@ Examples:
           )}
         </KeyboardAvoidingView>
       </View>
+
+      <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
+          <CameraView
+            ref={faceCamRef}
+            style={{ flex: 1 }}
+            facing="front"
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              ...StyleSheet.absoluteFillObject,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                width: 240,
+                height: 300,
+                borderRadius: 140,
+                borderWidth: 3,
+                borderColor: 'rgba(255,107,157,0.9)',
+                backgroundColor: 'transparent',
+              }}
+            />
+            <Text style={{ color: '#fff', marginTop: 24, fontWeight: '700', textAlign: 'center', paddingHorizontal: 32 }}>
+              Center your face in the oval
+            </Text>
+          </View>
+          <View style={{ position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity
+              disabled={faceCapturing}
+              onPress={async () => {
+                const tid = auth?.currentUser?.uid;
+                if (!tid) {
+                  Alert.alert('Sign in required', 'Complete signup first.');
+                  return;
+                }
+                try {
+                  setFaceCapturing(true);
+                  const photo = await faceCamRef.current?.takePictureAsync?.({
+                    quality: 0.7,
+                    skipProcessing: false,
+                  });
+                  if (!photo?.uri) throw new Error('Could not capture photo');
+                  const { url } = await uploadTrainerFaceVerification(tid, { localUri: photo.uri });
+                  setOnboardingData((prev) => ({
+                    ...prev,
+                    faceVerificationPhotoURL: url,
+                    faceVerificationStatus: 'pending',
+                    isVerified: false,
+                    faceVerificationSubmittedAt: new Date().toISOString(),
+                  }));
+                  setFaceCamOpen(false);
+                  Alert.alert('Submitted', 'Face photo uploaded for manual review.');
+                } catch (e) {
+                  Alert.alert('Capture failed', e?.message || 'Could not save face verification.');
+                } finally {
+                  setFaceCapturing(false);
+                }
+              }}
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: '#FF6B9D',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {faceCapturing ? <ActivityIndicator color="#fff" /> : <Ionicons name="camera" size={28} color="#fff" />}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFaceCamOpen(false)}>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScreenRoot>
   );
 }

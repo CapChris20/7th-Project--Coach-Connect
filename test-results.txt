@@ -1,41 +1,128 @@
-Timestamp: 2026-07-04T03:44:07.603Z
-Command: jest --runInBand --testPathPattern=ClientPaymentModal
-Exit code: 1
-watchman warning:  Recrawled this watch 3 times, most recently because:
-MustScanSubDirs UserDroppedTo resolve, please review the information on
-https://facebook.github.io/watchman/docs/troubleshooting.html#recrawl
-To clear this warning, run:
-`watchman watch-del '/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect' ; watchman watch-project '/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect'`
+Timestamp: 2026-07-06T05:32:38.943Z
+Command: jest --runInBand --testPathPattern=TrainerApp.unreadListener|ErrorBoundary|AuthGate.logout|markAllMessagesRead.pagination|ScheduleTrainingSessionScreen|purgeUserFirestore|acceptClientRequest|repo.cleanliness|ALL_FIXES --runInBand
+Exit code: 0
+PASS src/__tests__/unit/ScheduleTrainingSessionScreen.listeners.test.js
+PASS src/__tests__/unit/ErrorBoundary.test.js
+  ● Console
 
-FAIL src/__tests__/ClientPaymentModal.test.js
-  ● Test suite failed to run
+    console.error
+      ErrorBoundary caught: Error: boom
+          at /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:15:34
+          at Object.<anonymous> (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/toThrowMatchers.js:74:11)
+          at Object.throwingMatcher [as toThrow] (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/index.js:320:21)
+          at Object.toThrow (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:16:11)
+          at Promise.then.completed (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:298:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:231:10)
+          at _callCircusTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:316:40)
+          at _runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:252:3)
+          at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:126:9)
+          at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:121:9)
+          at run (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:71:3)
+          at runAndTransformResultsToJestFormat (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+          at jestAdapter (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+          at runTestInternal (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:367:16)
+          at runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:444:34) { componentStack: 'stack' }
 
-    Cannot find module './sweet/setUpJsLogger.fx' from 'node_modules/expo-modules-core/src/index.ts'
+      15 |   componentDidCatch(error, errorInfo) {
+      16 |     if (__DEV__) {
+    > 17 |       console.error('ErrorBoundary caught:', error, errorInfo);
+         |               ^
+      18 |     }
+      19 |     try {
+      20 |       logger.error(error, { componentStack: errorInfo?.componentStack, boundary: true });
 
-    Require stack:
-      node_modules/expo-modules-core/src/index.ts
-      node_modules/expo-constants/build/Constants.js
-      src/shared/payments/stripeNativeStatus.js
-      src/components/ClientPaymentModal.jsx
-      src/__tests__/ClientPaymentModal.test.js
+      at ErrorBoundary.error [as componentDidCatch] (src/components/ErrorBoundary.jsx:17:15)
+      at componentDidCatch (src/__tests__/unit/ErrorBoundary.test.js:15:16)
+      at Object.<anonymous> (node_modules/expect/build/toThrowMatchers.js:74:11)
+      at Object.throwingMatcher [as toThrow] (node_modules/expect/build/index.js:320:21)
+      at Object.toThrow (src/__tests__/unit/ErrorBoundary.test.js:16:11)
 
-      2 |  * Detect whether Stripe native (CardField / useStripe) is usable in this build.
-      3 |  */
-    > 4 | import Constants from 'expo-constants';
-        | ^
-      5 |
-      6 | let stripeModule = null;
-      7 | let loadError = null;
+    console.error
+      [ERROR] Error: boom { message: undefined, stack: undefined }
 
-      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
-      at Object.require (node_modules/expo-modules-core/src/index.ts:1:1)
-      at Object.require (node_modules/expo-constants/src/Constants.ts:10:1)
-      at Object.require (src/shared/payments/stripeNativeStatus.js:4:1)
-      at Object.require (src/components/ClientPaymentModal.jsx:24:1)
-      at Object.require (src/__tests__/ClientPaymentModal.test.js:62:32)
+      34 |   error: (message, error, context = {}) => {
+      35 |     // eslint-disable-next-line no-console -- errors must surface in prod
+    > 36 |     console.error(`[ERROR] ${message}`, {
+         |             ^
+      37 |       message: error?.message,
+      38 |       stack: error?.stack,
+      39 |       ...context,
 
-Test Suites: 1 failed, 1 total
-Tests:       0 total
+      at Object.error (src/shared/api/logErrorToServer.js:36:13)
+      at ErrorBoundary.error [as componentDidCatch] (src/components/ErrorBoundary.jsx:20:14)
+      at componentDidCatch (src/__tests__/unit/ErrorBoundary.test.js:15:16)
+      at Object.<anonymous> (node_modules/expect/build/toThrowMatchers.js:74:11)
+      at Object.throwingMatcher [as toThrow] (node_modules/expect/build/index.js:320:21)
+      at Object.toThrow (src/__tests__/unit/ErrorBoundary.test.js:16:11)
+
+    console.error
+      [ERROR] captureException {
+        message: '[object Object]',
+        stack: 'Error: [object Object]\n' +
+          '    at Object.error (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/shared/api/logErrorToServer.js:41:53)\n' +
+          '    at ErrorBoundary.error [as componentDidCatch] (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/components/ErrorBoundary.jsx:20:14)\n' +
+          '    at componentDidCatch (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:15:16)\n' +
+          '    at Object.<anonymous> (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/toThrowMatchers.js:74:11)\n' +
+          '    at Object.throwingMatcher [as toThrow] (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/index.js:320:21)\n' +
+          '    at Object.toThrow (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:16:11)\n' +
+          '    at Promise.then.completed (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:298:28)\n' +
+          '    at new Promise (<anonymous>)\n' +
+          '    at callAsyncCircusFn (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:231:10)\n' +
+          '    at _callCircusTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:316:40)\n' +
+          '    at _runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:252:3)\n' +
+          '    at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:126:9)\n' +
+          '    at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:121:9)\n' +
+          '    at run (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:71:3)\n' +
+          '    at runAndTransformResultsToJestFormat (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n' +
+          '    at jestAdapter (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n' +
+          '    at runTestInternal (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:367:16)\n' +
+          '    at runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:444:34)',
+        logMessage: Error: boom
+            at /Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:15:34
+            at Object.<anonymous> (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/toThrowMatchers.js:74:11)
+            at Object.throwingMatcher [as toThrow] (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/expect/build/index.js:320:21)
+            at Object.toThrow (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/src/__tests__/unit/ErrorBoundary.test.js:16:11)
+            at Promise.then.completed (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:298:28)
+            at new Promise (<anonymous>)
+            at callAsyncCircusFn (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/utils.js:231:10)
+            at _callCircusTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:316:40)
+            at _runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:252:3)
+            at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:126:9)
+            at _runTestsForDescribeBlock (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:121:9)
+            at run (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/run.js:71:3)
+            at runAndTransformResultsToJestFormat (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+            at jestAdapter (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+            at runTestInternal (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:367:16)
+            at runTest (/Users/captainchris20/Desktop/My-Coding-Portfolio/7th-Project--Coach-Connect/node_modules/jest-runner/build/runTest.js:444:34)
+      }
+
+      91 |   }
+      92 |   // eslint-disable-next-line no-console
+    > 93 |   console.error('[ERROR] captureException', {
+         |           ^
+      94 |     message: error?.message,
+      95 |     stack: error?.stack,
+      96 |     ...context,
+
+      at error (src/shared/api/monitorAppHealth.js:93:11)
+      at Object.error (src/shared/api/logErrorToServer.js:42:21)
+      at ErrorBoundary.error [as componentDidCatch] (src/components/ErrorBoundary.jsx:20:14)
+      at componentDidCatch (src/__tests__/unit/ErrorBoundary.test.js:15:16)
+      at Object.<anonymous> (node_modules/expect/build/toThrowMatchers.js:74:11)
+      at Object.throwingMatcher [as toThrow] (node_modules/expect/build/index.js:320:21)
+      at Object.toThrow (src/__tests__/unit/ErrorBoundary.test.js:16:11)
+
+PASS server/__tests__/purgeUserFirestore.test.js
+PASS server/__tests__/acceptClientRequest.batch.test.js
+PASS src/__tests__/unit/TrainerApp.unreadListener.test.js
+PASS src/__tests__/unit/markAllMessagesRead.pagination.test.js
+PASS src/__tests__/unit/ALL_FIXES_VERIFICATION.test.js
+PASS src/__tests__/unit/repo.cleanliness.test.js
+PASS src/__tests__/unit/AuthGate.logout.test.js
+
+Test Suites: 9 passed, 9 total
+Tests:       23 passed, 23 total
 Snapshots:   0 total
-Time:        3.826 s
-Ran all test suites matching /ClientPaymentModal/i.
+Time:        0.693 s, estimated 1 s
+Ran all test suites matching /TrainerApp.unreadListener|ErrorBoundary|AuthGate.logout|markAllMessagesRead.pagination|ScheduleTrainingSessionScreen|purgeUserFirestore|acceptClientRequest|repo.cleanliness|ALL_FIXES/i.

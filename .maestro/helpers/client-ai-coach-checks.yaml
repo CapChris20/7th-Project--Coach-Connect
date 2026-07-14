@@ -1,0 +1,13 @@
+appId: com.coachconnect
+---
+- tapOn: "AI Coach"
+- extendedWaitUntil:
+    visible: "AI Coach"
+    timeout: 30000
+- assertVisible: "Ask your coach..."
+- tapOn: "Message input"
+- inputText: "How many calories should I aim for today?"
+- tapOn: "Send message"
+- extendedWaitUntil:
+    visible: "calorie|Calorie|protein|Protein"
+    timeout: 90000

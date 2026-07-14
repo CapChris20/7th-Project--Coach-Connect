@@ -1,0 +1,10 @@
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "Sign In|Get Started|Home|Good Morning|Active Clients|CLIENTS"
+    timeout: 60000
+- assertVisible:
+    text: "Coach Connect"
+    optional: true

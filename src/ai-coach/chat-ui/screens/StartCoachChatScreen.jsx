@@ -62,6 +62,7 @@ import {
 import { getClientDateKey } from '../../../shared-utils/dateKeys';
 import { calculateMacroTotals, getFoodLogsForDate } from '../../../nutrition/daily-log/logFoodToFirestore';
 import { parseDailyMetricsFromSnapshots } from '../../../metrics/daily-metrics/parseUserDailyMetrics';
+import { getAuroraHeroGreetingPhrase } from '../../../shared/components/home/AuroraHeroBanner';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
@@ -837,7 +838,7 @@ const HeroWelcomeCard = ({
           ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ fontSize: 26, fontWeight: '900', color: t.textPrimary, textAlign: 'center' }}>
-              Good Morning,{' '}
+              {getAuroraHeroGreetingPhrase()},{' '}
             </Text>
             <StableGradientText
               colors={HERO_TITLE_TEXT_GRADIENT}
@@ -1429,6 +1430,7 @@ export default function StartCoachChatScreen({
               placeholderTextColor={t.textMuted}
               returnKeyType="send"
               blurOnSubmit={false}
+              accessibilityLabel="Message input"
             />
             <TouchableOpacity
               onPress={toggleListen}
@@ -1457,6 +1459,8 @@ export default function StartCoachChatScreen({
               disabled={!canSend}
               activeOpacity={0.85}
               style={{ marginBottom: 2, opacity: canSend ? 1 : 0.45 }}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
             >
               <LinearGradient
                 colors={isDark ? COMPOSER_SEND_GRAD : COMPOSER_SEND_GRAD_LIGHT}

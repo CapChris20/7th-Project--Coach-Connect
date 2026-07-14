@@ -60,7 +60,6 @@ import {
   getDoc,
   collection,
   getDocs,
-  onSnapshot,
   updateDoc,
   query,
   where,
@@ -101,8 +100,7 @@ import {
   subscribePushTokenRefreshOnResume,
 } from "../notifications/manageNotifications";
 import { useTheme as useGlobalTheme } from "../shared-ui/ThemeContext";
-import { httpsCallable } from "firebase/functions";
-import { auth, db, functions } from "../app-start/config";
+import { auth, db } from "../app-start/config";
 import { fetchLatestLoggedWeight } from '../metrics/daily-metrics/getRecentWeight';
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { autoLogErrorSync } from "../utils/autoLogError";
@@ -110,8 +108,9 @@ import { getOrCreateConversation } from "../ai-coach/server-logic/trainer-messag
 import { getDateKey } from "../shared-utils/dateKeys";
 import { getLocalDateKey } from "../shared-utils/getLocalDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { subscribeToUnreadCount } from "../ai-coach/server-logic/chat-api/loadMoreCoachConversations";
-import { markAllMessagesReadForUser } from "../ai-coach/server-logic/services/markAllMessagesRead";
+import { SessionsProvider } from "../trainer-app/hooks/SessionsContext";
+import { useUnreadNotificationCount } from "../notifications/useUnreadNotificationCount";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../shared/notes-files/manageNotesAndFiles";
 import { clearAllUserData } from "../utils/clearDataOnLogout";
 import AddNotesFilesModal from "../shared/components/notes-files/AddNotesFilesModal";
@@ -922,7 +921,9 @@ export default function TrainerApp({ user }) {
   return (
     <TrainerStylesProvider>
       <SubscriptionProvider userId={user?.uid}>
-        <TrainerAppContent user={user} />
+        <SessionsProvider>
+          <TrainerAppContent user={user} />
+        </SessionsProvider>
       </SubscriptionProvider>
     </TrainerStylesProvider>
   );
@@ -989,7 +990,7 @@ function TrainerAppContent({ user }) {
   const [navSelectedClientId, setNavSelectedClientId] = useState(null);
   const [selectedClientIdForMessages, setSelectedClientIdForMessages] = useState(null);
   const [userName, setUserName] = useState(null);
-  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const unreadMessageCount = useUnreadNotificationCount(user?.uid);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
   const [spreadsheetEditor, setSpreadsheetEditor] = useState({ visible: false, documentId: null, title: '', rows: null });
@@ -1046,7 +1047,6 @@ function TrainerAppContent({ user }) {
     // Reset all user-specific state
     setUserName(null);
     setTrainerProfileDoc(null);
-    setUnreadMessageCount(0);
     setSelectedTrainer(null);
     setSelectedConversation(null);
     setNavSelectedClientId(null);
@@ -1250,7 +1250,7 @@ function TrainerAppContent({ user }) {
     };
   }, [handleHomePress, handlePlusPress, openProfile, openSettings, openVoiceAI, openNutrition, openWorkoutPlan]);
 
-  const shell = {
+  const shell = useMemo(() => ({
     user,
     isDark,
     clients,
@@ -1344,13 +1344,40 @@ function TrainerAppContent({ user }) {
     getTrainerEditorNavChrome,
     handleTrainerClientRemovedFromRoster,
     appSessionId: appSessionIdRef.current,
-  };
+  }), [
+    user,
+    isDark,
+    clients,
+    clientsLoading,
+    clientsLoadingMore,
+    clientsHasMore,
+    pendingRequests,
+    unreadMessageCount,
+    userName,
+    trainerProfileDoc,
+    navProviderProps,
+    showTrainerMessaging,
+    showConversationsList,
+    showClientRequests,
+    showClientsList,
+    selectedClientIdFromDashboard,
+    selectedClientIdForMessages,
+    navSelectedClientId,
+    aiChatState,
+    weeklyReportScreen,
+    pdfViewer,
+    documentEditor,
+    spreadsheetEditor,
+    trainerDocsRefreshKey,
+  ]);
 
   return (
     <TrainerAppShellProvider value={shell}>
-      <NavigationContainer ref={rootNavigationRef} linking={trainerLinking}>
-        <TrainerRootNavigator />
-      </NavigationContainer>
+      <ErrorBoundary>
+        <NavigationContainer ref={rootNavigationRef} linking={trainerLinking}>
+          <TrainerRootNavigator />
+        </NavigationContainer>
+      </ErrorBoundary>
     </TrainerAppShellProvider>
   );
 }

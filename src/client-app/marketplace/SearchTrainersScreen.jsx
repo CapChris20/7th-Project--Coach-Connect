@@ -8,10 +8,21 @@
  *
  * @file-header
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, query, where, getDocs, getDoc, doc, documentId } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  doc,
+  documentId,
+  orderBy,
+  limit,
+  startAfter,
+} from 'firebase/firestore';
 import { db, storage } from '../../app-start/config';
 import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared-utils/getTrainerProfileMedia';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
@@ -31,6 +42,7 @@ import {
 } from './marketplaceFilters';
 
 const MARKETPLACE_PAGE_SIZE = 30;
+const FIRESTORE_TRAINER_PAGE_SIZE = 20;
 
 async function enrichTrainersFromUsers(trainersList) {
   const userMap = new Map();
@@ -128,34 +140,80 @@ const SearchTrainersScreen = ({
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
   const [visibleCount, setVisibleCount] = useState(MARKETPLACE_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreFromFirestore, setHasMoreFromFirestore] = useState(true);
+  const lastTrainerDocRef = useRef(null);
+  const useTrainersCollectionRef = useRef(true);
+
+  const fetchTrainerPage = useCallback(async (reset) => {
+    if (reset) {
+      lastTrainerDocRef.current = null;
+      setHasMoreFromFirestore(true);
+    }
+
+    let rows = [];
+    const pageSize = FIRESTORE_TRAINER_PAGE_SIZE;
+
+    const loadFromCollection = async (collName, withRoleFilter) => {
+      const base = collection(db, collName);
+      let q = query(base, orderBy(documentId()), limit(pageSize));
+      if (!reset && lastTrainerDocRef.current) {
+        q = query(base, orderBy(documentId()), startAfter(lastTrainerDocRef.current), limit(pageSize));
+      }
+      if (withRoleFilter) {
+        q = reset || !lastTrainerDocRef.current
+          ? query(base, where('role', '==', 'trainer'), orderBy(documentId()), limit(pageSize))
+          : query(
+              base,
+              where('role', '==', 'trainer'),
+              orderBy(documentId()),
+              startAfter(lastTrainerDocRef.current),
+              limit(pageSize),
+            );
+      }
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        lastTrainerDocRef.current = snap.docs[snap.docs.length - 1];
+      }
+      if (snap.size < pageSize) {
+        setHasMoreFromFirestore(false);
+      }
+      snap.docs.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+    };
+
+    try {
+      if (useTrainersCollectionRef.current) {
+        await loadFromCollection('trainers', false);
+      } else {
+        await loadFromCollection('users', true);
+      }
+    } catch (err) {
+      if (useTrainersCollectionRef.current) {
+        useTrainersCollectionRef.current = false;
+        lastTrainerDocRef.current = null;
+        await loadFromCollection('users', true);
+      } else {
+        throw err;
+      }
+    }
+
+    return enrichTrainersFromUsers(rows);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        let data = [];
-        try {
-          const trainersRef = collection(db, 'trainers');
-          const snap = await getDocs(trainersRef);
-          snap.docs.forEach((d) => data.push({ id: d.id, ...d.data() }));
-        } catch (err) {
-          console.warn('trainers collection failed, falling back to users:', err?.message);
-          const usersRef = collection(db, 'users');
-          const q = query(usersRef, where('role', '==', 'trainer'));
-          const snap = await getDocs(q);
-          snap.docs.forEach((d) => data.push({ id: d.id, ...d.data() }));
-        }
-        data = await enrichTrainersFromUsers(data);
+        const data = await fetchTrainerPage(true);
         setTrainers(data);
         setVisibleCount(MARKETPLACE_PAGE_SIZE);
       } catch (e) {
-        console.error('SearchTrainersScreen load error:', e);
+        if (__DEV__) console.error('SearchTrainersScreen load error:', e);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, []);
+  }, [fetchTrainerPage]);
 
   const normalized = useMemo(
     () => trainers.map((t, i) => normalizeTrainer(t, i)),
@@ -172,11 +230,35 @@ const SearchTrainersScreen = ({
     [filtered, visibleCount],
   );
 
-  const loadMoreTrainers = () => {
-    if (loadingMore || visibleCount >= filtered.length) return;
+  const loadMoreTrainers = async () => {
+    if (loadingMore) return;
+    if (visibleCount < filtered.length) {
+      setLoadingMore(true);
+      setVisibleCount((c) => Math.min(c + MARKETPLACE_PAGE_SIZE, filtered.length));
+      setLoadingMore(false);
+      return;
+    }
+    if (!hasMoreFromFirestore) return;
+
     setLoadingMore(true);
-    setVisibleCount((c) => Math.min(c + MARKETPLACE_PAGE_SIZE, filtered.length));
-    setLoadingMore(false);
+    try {
+      const nextPage = await fetchTrainerPage(false);
+      if (nextPage.length > 0) {
+        setTrainers((prev) => {
+          const seen = new Set(prev.map((t) => t.id));
+          const merged = [...prev];
+          nextPage.forEach((t) => {
+            if (!seen.has(t.id)) merged.push(t);
+          });
+          return merged;
+        });
+        setVisibleCount((c) => c + MARKETPLACE_PAGE_SIZE);
+      }
+    } catch (e) {
+      if (__DEV__) console.error('SearchTrainersScreen loadMore error:', e);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   useEffect(() => {

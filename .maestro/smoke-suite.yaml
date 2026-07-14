@@ -1,0 +1,6 @@
+# Full Maestro suite — run with credentials via npm run test:maestro
+appId: com.coachconnect
+---
+- runFlow: 00-app-launch.yaml
+- runFlow: 00-trainer-dashboard-smoke.yaml
+# Client + trainer login and extended flows are orchestrated by scripts/runMaestroSmoke.sh

@@ -26,9 +26,11 @@ function keyboardInsetFromEvent(e) {
  * Keyboard inset for AI Coach composer — positions input flush above the keyboard.
  * Avoids KeyboardAvoidingView, which double-pads and leaves a floating gap on iOS.
  */
-export function useCoachComposerKeyboard({ hideBottomNav = false } = {}) {
+export function useCoachComposerKeyboard({ hideBottomNav: _hideBottomNav = false } = {}) {
   const insets = useSafeAreaInsets();
-  const shellNavPad = hideBottomNav ? BOTTOM_NAV_BAR_HEIGHT + insets.bottom : insets.bottom;
+  // Tab bar is always an absolute overlay here — either this screen renders it
+  // (!hideBottomNav) or the parent shell does (hideBottomNav). Always reserve its height.
+  const shellNavPad = BOTTOM_NAV_BAR_HEIGHT + Math.max(insets.bottom, 0);
   const [keyboardInset, setKeyboardInset] = useState(0);
 
   useEffect(() => {

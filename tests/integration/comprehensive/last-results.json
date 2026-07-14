@@ -1,0 +1,375 @@
+{
+  "meta": {
+    "generatedAt": "2026-07-07T05:42:05.255Z",
+    "apiBase": "https://coachconnect-api-421005574501.us-central1.run.app",
+    "firebaseAdmin": true,
+    "firebaseAdminWritable": true,
+    "durationMs": 32510
+  },
+  "results": {
+    "auth": [
+      {
+        "test": "Auth uid transition clears session on switch",
+        "status": "PASS",
+        "type": "unit_logic",
+        "verified": "clearAllUserData() called on uid switch u1→u2",
+        "evidence": "calls=push:u1,clear"
+      },
+      {
+        "test": "Auth logout clears local user data",
+        "status": "PASS",
+        "type": "unit_logic",
+        "verified": "clearAllUserData() invoked when uid becomes null"
+      },
+      {
+        "test": "Live signup trainer + Firestore role",
+        "status": "PASS",
+        "type": "live_auth",
+        "verified": "users/rg9FFLgklZdJ2q2LD3OEI4SweQf2 role=trainer",
+        "evidence": "email=trainer+1783402893673-fvnpaw@coachconnect-test.invalid"
+      },
+      {
+        "test": "Live login trainer + role correct",
+        "status": "PASS",
+        "type": "live_auth",
+        "verified": "Custom token exchanged; role doc still trainer",
+        "evidence": "jwt length=1005"
+      },
+      {
+        "test": "Live create second user (client)",
+        "status": "PASS",
+        "type": "live_auth",
+        "verified": "Second Auth user created with distinct uid",
+        "evidence": "clientUid=AQlaTMuP…"
+      },
+      {
+        "test": "Forgot password email link generated",
+        "status": "PASS",
+        "type": "live_auth",
+        "verified": "Reset link contains oobCode",
+        "sample": "https://anatrox-auth.firebaseapp.com/__/auth/action?…"
+      },
+      {
+        "test": "Token refresh works",
+        "status": "PASS",
+        "type": "live_auth",
+        "verified": "Two JWT minted successfully",
+        "evidence": "tokens differ=false"
+      }
+    ],
+    "trainer-client-linking": [
+      {
+        "test": "Client connection request message created",
+        "status": "PASS",
+        "type": "live_firestore",
+        "verified": "messages/JIzs61IOyuw9YFYCJKog requestType=connection, status=pending",
+        "evidence": "sender=p3Okpdpc… → trainer=R0Szqu31…"
+      },
+      {
+        "test": "All 3 collections written on accept",
+        "status": "PASS",
+        "type": "live_firestore",
+        "verified": "users.trainerId + trainer_clients + trainer_client_links all exist",
+        "evidence": "linkId=R0Szqu31JCNYHEYy5uMunSYxfLj1_p3OkpdpcJkQHSnPVgxeDvZG4vWG3"
+      },
+      {
+        "test": "All 3 collections cleared on remove",
+        "status": "PASS",
+        "type": "live_firestore",
+        "verified": "trainerId deleted; CRM + link docs removed"
+      }
+    ],
+    "messaging": [
+      {
+        "test": "Unread index schema (total + conversations)",
+        "status": "PASS",
+        "type": "unit_logic",
+        "verified": "Schema uses { total: number, conversations: object }"
+      },
+      {
+        "test": "Message write completes",
+        "status": "PASS",
+        "type": "live_firestore",
+        "elapsed": 82,
+        "verified": "messages doc written in 82ms",
+        "evidence": "conversationId=3Qg3SSZ0eAHUqFiCCpma"
+      },
+      {
+        "test": "Unread index increment",
+        "status": "PASS",
+        "type": "live_firestore",
+        "count": 1,
+        "verified": "users/…/unreadCount/index total=1"
+      },
+      {
+        "test": "Mark as read clears badge",
+        "status": "PASS",
+        "type": "live_firestore",
+        "verified": "unreadCount/index total=0 after mark-read"
+      },
+      {
+        "test": "100 messages batch write",
+        "status": "PASS",
+        "type": "live_firestore",
+        "count": 100,
+        "verified": "100 messages queryable by conversationId"
+      }
+    ],
+    "food-search": [
+      {
+        "test": "Search McDonald's brand",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "GET /api/food/search?query=McDonald's",
+        "elapsed": 236,
+        "results": 20,
+        "verified": "HTTP 200, 20 results",
+        "sample": "Cheeseburger"
+      },
+      {
+        "test": "Search generic food chicken",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "GET /api/food/search?query=chicken",
+        "elapsed": 217,
+        "results": 16,
+        "verified": "16 chicken results returned"
+      },
+      {
+        "test": "Gibberish search completes fast",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "GET /api/food/search?query=qwertyasdfgh",
+        "elapsed": 1657,
+        "verified": "Completed in 1657ms without timeout"
+      },
+      {
+        "test": "Big Mac nutrition search returns data",
+        "status": "PASS",
+        "type": "live_api",
+        "verified": "Nutrition endpoint returned 200",
+        "sample": "unknown"
+      },
+      {
+        "test": "Barcode scan POST /api/food/barcode",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "POST /api/food/barcode",
+        "elapsed": 120,
+        "verified": "Barcode 012000007962 → Food Barcode Trackers",
+        "sample": "Food Barcode Trackers"
+      },
+      {
+        "test": "Typo matching Mcdonalds → McDonald's",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "GET /api/food/search?query=Mcdonalds",
+        "verified": "Result contains mcdonald brand/name"
+      }
+    ],
+    "ai-coach": [
+      {
+        "test": "Health endpoint reachable",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "GET /api/health",
+        "verified": "aiCoachReady=true, deepseek=true"
+      },
+      {
+        "test": "AI Coach response received",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "POST /api/ai-coach",
+        "elapsed": 2943,
+        "verified": "Non-empty reply from DeepSeek coach",
+        "sample": "Scrambled eggs with a side of fruit and some whole-grain toast. 30–40g protein, healthy fats from the eggs, and carbs fr…"
+      },
+      {
+        "test": "Web search returns sources",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "POST /api/ai-coach (web:on)",
+        "verified": "Reply + 8 sources",
+        "sample": "The top 2026 fitness trends are AI-powered and wearable tech for real-time form …"
+      },
+      {
+        "test": "Workout generation limit enforced",
+        "status": "PASS",
+        "type": "live_api",
+        "endpoint": "POST /api/workout/generate",
+        "verified": "Limit enforced: HTTP 429, error=monthly_limit_reached",
+        "evidence": "used=0/month"
+      }
+    ],
+    "firestore-listeners": [
+      {
+        "test": "Unread index single listener (subscribeToUnreadIndex)",
+        "status": "PASS"
+      },
+      {
+        "test": "Trainer unread hook (useUnreadNotificationCount)",
+        "status": "PASS"
+      },
+      {
+        "test": "SessionsContext dedupes training sessions listener",
+        "status": "PASS"
+      },
+      {
+        "test": "Mark all messages read pagination (READ_PAGE_SIZE 50)",
+        "status": "PASS"
+      },
+      {
+        "test": "Client home daily date key bootstrap",
+        "status": "PASS"
+      }
+    ],
+    "workout-generation": [
+      {
+        "test": "Workout plan prompt module present",
+        "status": "PASS"
+      },
+      {
+        "test": "Workout generation rate limit active",
+        "status": "PASS"
+      }
+    ],
+    "ai-tools": [
+      {
+        "test": "executeTool module exports function",
+        "status": "PASS"
+      },
+      {
+        "test": "Unknown tool returns error object",
+        "status": "PASS"
+      },
+      {
+        "test": "Tool: logSleep validates input",
+        "status": "PASS"
+      }
+    ],
+    "account-deletion": [
+      {
+        "test": "Purge PAGE_SIZE is 100",
+        "status": "PASS"
+      },
+      {
+        "test": "purgeUserFirestore recursive-deletes user doc",
+        "status": "PASS"
+      },
+      {
+        "test": "Live auth user delete",
+        "status": "PASS"
+      }
+    ],
+    "trainer-dashboard": [
+      {
+        "test": "TrainerApp wrapped in ErrorBoundary",
+        "status": "PASS"
+      },
+      {
+        "test": "loadPendingTraineeRequests module exists",
+        "status": "PASS"
+      },
+      {
+        "test": "Trainer CRM client roster write/read",
+        "status": "PASS"
+      }
+    ],
+    "client-dashboard": [
+      {
+        "test": "ClientApp wrapped in ErrorBoundary",
+        "status": "PASS"
+      },
+      {
+        "test": "AuthGate routes by user role",
+        "status": "PASS"
+      },
+      {
+        "test": "Client daily log write/read",
+        "status": "PASS"
+      }
+    ],
+    "notifications": [
+      {
+        "test": "useUnreadNotificationCount uses unread index listener",
+        "status": "PASS"
+      },
+      {
+        "test": "sendTrainerNotification module exists",
+        "status": "PASS"
+      },
+      {
+        "test": "Push token doc write/read",
+        "status": "PASS"
+      }
+    ],
+    "progress-photos": [
+      {
+        "test": "Progress photo UI modules present",
+        "status": "PASS",
+        "count": 2
+      },
+      {
+        "test": "Progress photo metadata Firestore write",
+        "status": "PASS"
+      }
+    ],
+    "weekly-summaries": [
+      {
+        "test": "Weekly summaries collection contract testable",
+        "status": "PASS",
+        "note": "using users/{uid}/weeklySummaries"
+      },
+      {
+        "test": "Weekly summary Firestore write/read",
+        "status": "PASS"
+      }
+    ],
+    "session-scheduling": [
+      {
+        "test": "useMyTrainingSessions listens on trainer_clients sessions",
+        "status": "PASS"
+      },
+      {
+        "test": "SessionsContext provider exists",
+        "status": "PASS"
+      },
+      {
+        "test": "Training session Firestore write/read",
+        "status": "PASS"
+      }
+    ],
+    "apple-iap": [
+      {
+        "test": "IAP dev test script exists",
+        "status": "PASS"
+      },
+      {
+        "test": "subscriptionRoutes module exists",
+        "status": "PASS"
+      },
+      {
+        "test": "Apple IAP verify rejects unauthenticated/invalid receipt",
+        "status": "PASS",
+        "httpStatus": 401
+      },
+      {
+        "test": "Stripe/payment webhooks excluded from comprehensive suite",
+        "status": "PASS"
+      }
+    ],
+    "scale-tests": [
+      {
+        "test": "20 concurrent health checks",
+        "status": "PASS",
+        "metric": "217ms",
+        "ok": 20
+      },
+      {
+        "test": "Batch 50 Firestore writes",
+        "status": "PASS",
+        "metric": "142ms"
+      }
+    ]
+  }
+}

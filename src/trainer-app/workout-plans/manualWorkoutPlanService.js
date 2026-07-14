@@ -425,6 +425,7 @@ export function draftFromTrainerPlanDoc(docData) {
                 weight: ex.weight != null ? String(ex.weight) : '',
                 progression: ex.progression || '',
                 muscleGroups: ex.muscleGroups || [],
+                setDetails: Array.isArray(ex.setDetails) ? ex.setDetails : [],
               };
             })
           : [],

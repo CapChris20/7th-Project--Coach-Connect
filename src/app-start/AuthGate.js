@@ -18,7 +18,8 @@
  * - Routes authenticated users to TrainerApp or ClientApp based on role
  */
 
-import React, { Suspense, useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
+import { View } from 'react-native';
 import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
 import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
 import { auth, db } from './config';
@@ -37,6 +38,7 @@ import {
   normalizeAppRole,
   profileNeedsOnboarding,
 } from '../auth/detectUserRole';
+import { handleAuthUidTransition } from '../auth/authSessionTransition';
 import { resolveClientProfileFields } from '../shared-utils/resolveClientProfileFields';
 
 /** Lazy-loaded shells — avoids pulling heavy native modules (Reanimated, Lottie, OAuth, etc.) at cold start. */
@@ -47,10 +49,15 @@ const TrainerApp = React.lazy(() => import('./TrainerApp'));
 const ClientApp = React.lazy(() => import('./ClientApp'));
 
 function AuthScreenSuspense({ children }) {
-  return <Suspense fallback={<AppLoadingScreen isDark />}>{children}</Suspense>;
+  return (
+    <Suspense fallback={<AppLoadingScreen isDark />}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </Suspense>
+  );
 }
 
 export { normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser };
+export { handleAuthUidTransition } from '../auth/authSessionTransition';
 
 /**
  * Firestore can lag behind local completion (API/offline). Prefer AsyncStorage if it proves onboarding finished.
@@ -93,6 +100,7 @@ export default function AuthGate() {
   const [userRole, setUserRole] = useState(null);
   const [userData, setUserData] = useState(null);
   const [keyLoaded, setKeyLoaded] = useState(false);
+  const prevUidRef = useRef(null);
 
   // Load API key and initialize error syncing on app start
   useEffect(() => {
@@ -119,24 +127,17 @@ export default function AuthGate() {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Clear cache when user signs out or switches
-      if (!firebaseUser && user) {
-        try {
-          if (user.uid) await clearPushTokensForUid(user.uid);
-        } catch (_) {
-          /* best-effort */
-        }
-        await clearAllUserData();
-      }
-      
-      // Clear cache when user switches accounts
-      if (firebaseUser && user && firebaseUser.uid !== user.uid) {
-        try {
-          await clearPushTokensForUid(user.uid);
-        } catch (_) {
-          /* best-effort */
-        }
-        await clearAllUserData();
+      const prevUid = prevUidRef.current;
+
+      await handleAuthUidTransition(prevUid, firebaseUser, {
+        clearPushTokensForUid,
+        clearAllUserData,
+      });
+
+      if (firebaseUser?.uid) {
+        prevUidRef.current = firebaseUser.uid;
+      } else {
+        prevUidRef.current = null;
       }
       
       // Clear old shared chats when user logs in (migration)

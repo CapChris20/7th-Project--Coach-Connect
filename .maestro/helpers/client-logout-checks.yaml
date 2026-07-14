@@ -1,0 +1,11 @@
+appId: com.coachconnect
+---
+- tapOn: "Open profile"
+- scrollUntilVisible:
+    element: "Sign out"
+    direction: DOWN
+- tapOn: "Sign out"
+- tapOn: "Sign Out"
+- extendedWaitUntil:
+    visible: "Get Started"
+    timeout: 30000

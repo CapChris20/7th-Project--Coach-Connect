@@ -824,7 +824,7 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
   );
 }
 
-export default function ViewMyWorkoutPlanScreen({ route }) {
+export default function ViewMyWorkoutPlanScreen({ route, navigation, onBack }) {
   const shellBottomPad = useShellBottomNavInset(16);
   const reserveShellBottomNav = route?.params?.reserveShellBottomNav === true;
   const modalScrollBottomPad = useModalScrollBottomPad(56);
@@ -833,6 +833,18 @@ export default function ViewMyWorkoutPlanScreen({ route }) {
   const systemIsDark = colorScheme === "dark";
   const isDarkOverride = route?.params?.isDarkOverride;
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : systemIsDark;
+
+  const handleRootBack = useCallback(() => {
+    if (typeof onBack === "function") {
+      onBack();
+      return;
+    }
+    if (typeof route?.params?.onBack === "function") {
+      route.params.onBack();
+      return;
+    }
+    if (navigation?.canGoBack?.()) navigation.goBack();
+  }, [onBack, route?.params, navigation]);
 
   const subViewBackRef = route?.params?.subViewBackRef;
   const onSubViewActiveChange = route?.params?.onSubViewActiveChange;
@@ -951,6 +963,24 @@ export default function ViewMyWorkoutPlanScreen({ route }) {
 
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+        <TouchableOpacity
+          onPress={handleRootBack}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            gap: 4,
+            paddingVertical: 8,
+            paddingRight: 12,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={24} color={isDark ? TOKENS.pink : "#BE185D"} />
+          <Text style={{ color: isDark ? TOKENS.pink : "#BE185D", fontWeight: "700", fontSize: 16 }}>Back</Text>
+        </TouchableOpacity>
+      </View>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
         {...FORM_SCROLL_PROPS}

@@ -344,94 +344,160 @@ const macroS = StyleSheet.create({
 // FAVORITE FOODS STEP  (was: src/components/FavoriteFoodsStep.tsx)
 // ─────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG = {
-  check:   { emoji: '✅', color: '#22c55e' },
-  warning: { emoji: '⚠️', color: '#eab308' },
-  bad:     { emoji: '❌', color: '#ef4444' },
-};
+const FAVORITE_PRESETS = [
+  'Chicken Breast',
+  'Eggs',
+  'Greek Yogurt',
+  'Salmon',
+  'Brown Rice',
+  'Oats',
+  'Avocado',
+  'Broccoli',
+  'Banana',
+  'Sweet Potato',
+];
 
-const PRESET_FOODS = [
-  { name: 'Chicken Breast', status: 'check' },
-  { name: 'Brown Rice',     status: 'check' },
-  { name: 'Avocado',        status: 'check' },
-  { name: 'Pizza',          status: 'warning' },
-  { name: 'Ice Cream',      status: 'bad' },
+const LEAST_FAVORITE_PRESETS = [
+  'Liver',
+  'Cottage Cheese',
+  'Tuna',
+  'Kale',
+  'Protein Powder',
+  'Celery',
+  'Brussels Sprouts',
+  'Plain Egg Whites',
 ];
 
 const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
-  const [foods, setFoods] = useState(PRESET_FOODS);
+  const insets = useSafeAreaInsets();
+  const [favorites, setFavorites] = useState([]);
+  const [leastFavorites, setLeastFavorites] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const [addMode, setAddMode] = useState('favorite'); // favorite | least
+  const bottomPad = Math.max(footerPadBottom || 0, Math.max(insets.bottom, 20) + 24);
 
-  const addFood = () => {
-    if (!inputValue.trim()) return;
-    const statuses = ['check', 'warning', 'bad'];
-    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-    setFoods([...foods, { name: inputValue.trim(), status: randomStatus }]);
+  const togglePreset = (name, list, setList) => {
+    setList((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
+  };
+
+  const addCustom = () => {
+    const name = inputValue.trim();
+    if (!name) return;
+    if (addMode === 'favorite') {
+      setFavorites((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    } else {
+      setLeastFavorites((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    }
     setInputValue('');
   };
 
   return (
     <KeyboardAvoidingView
-      style={[step.container, { paddingBottom: footerPadBottom }]}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
     >
-      <View style={{ flex: 1 }}>
-      <View style={{ position: 'relative', marginBottom: 32 }}>
-        <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
-          <Text style={step.linkText}>← Back</Text>
-        </TouchableOpacity>
-        <ProgressBar currentStep={3} totalSteps={3} />
-      </View>
-
-      <Text style={step.title}>Your Favorite Foods</Text>
-
-      <View style={favS.inputCard}>
-        <TextInput
-          style={favS.input}
-          placeholder="Add a food..."
-          placeholderTextColor={T.textMuted}
-          value={inputValue}
-          onChangeText={setInputValue}
-          onSubmitEditing={addFood}
-          returnKeyType="done"
-        />
-        <TouchableOpacity onPress={addFood} activeOpacity={0.85}>
-          <LinearGradient colors={T.brandCta} style={favS.addBtn}>
-            <Ionicons name="add" size={18} color="white" />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 16 }}
-        keyboardDismissMode="on-drag"
-        scrollEventThrottle={16}
-      >
-        <View style={favS.chipsWrap}>
-          {foods.map((food, i) => (
-            <View key={i} style={[macroS.card, favS.chipCard]}>
-              <View style={favS.chip}>
-                <Text style={favS.chipText}>{food.name}</Text>
-                <Text style={{ fontSize: 14 }}>{STATUS_CONFIG[food.status].emoji}</Text>
-              </View>
-            </View>
-          ))}
+      <View style={[step.container, { flex: 1, paddingBottom: 0 }]}>
+        <View style={{ position: 'relative', marginBottom: 16 }}>
+          <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
+            <Text style={step.linkText}>← Back</Text>
+          </TouchableOpacity>
+          <ProgressBar currentStep={3} totalSteps={3} />
         </View>
-      </ScrollView>
 
-      <TouchableOpacity onPress={onFinish} activeOpacity={0.85} style={{ marginTop: 16 }}>
-        <LinearGradient
-          colors={T.brandCta}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={step.gradBtn}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         >
-          <Text style={step.gradBtnText}>Finish Setup</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+          <Text style={step.title}>Foods you love & skip</Text>
+          <Text style={{ color: T.textMuted, fontSize: 14, marginBottom: 16, lineHeight: 20 }}>
+            Tap pills for favorites and least favorites — just like exercise prefs in client onboarding.
+          </Text>
+
+          <Text style={{ color: T.text, fontWeight: '700', marginBottom: 10 }}>Favorites</Text>
+          <View style={favS.chipsWrap}>
+            {FAVORITE_PRESETS.map((name) => {
+              const selected = favorites.includes(name);
+              return (
+                <TouchableOpacity
+                  key={`fav-${name}`}
+                  onPress={() => togglePreset(name, favorites, setFavorites)}
+                  activeOpacity={0.85}
+                  style={[favS.pill, selected && favS.pillSelectedGood]}
+                >
+                  <Ionicons name={selected ? 'heart' : 'heart-outline'} size={14} color={selected ? '#fff' : T.text} />
+                  <Text style={[favS.pillText, selected && { color: '#fff' }]}>{name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={{ color: T.text, fontWeight: '700', marginTop: 22, marginBottom: 10 }}>Least favorites</Text>
+          <View style={favS.chipsWrap}>
+            {LEAST_FAVORITE_PRESETS.map((name) => {
+              const selected = leastFavorites.includes(name);
+              return (
+                <TouchableOpacity
+                  key={`least-${name}`}
+                  onPress={() => togglePreset(name, leastFavorites, setLeastFavorites)}
+                  activeOpacity={0.85}
+                  style={[favS.pill, selected && favS.pillSelectedBad]}
+                >
+                  <Ionicons name={selected ? 'close-circle' : 'close-circle-outline'} size={14} color={selected ? '#fff' : T.text} />
+                  <Text style={[favS.pillText, selected && { color: '#fff' }]}>{name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={[favS.inputCard, { marginTop: 20 }]}>
+            <TouchableOpacity onPress={() => setAddMode('favorite')} style={{ padding: 6 }}>
+              <Ionicons name="heart" size={18} color={addMode === 'favorite' ? '#BE185D' : T.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setAddMode('least')} style={{ padding: 6 }}>
+              <Ionicons name="close-circle" size={18} color={addMode === 'least' ? '#ef4444' : T.textMuted} />
+            </TouchableOpacity>
+            <TextInput
+              style={favS.input}
+              placeholder={addMode === 'favorite' ? 'Add a favorite…' : 'Add a least favorite…'}
+              placeholderTextColor={T.textMuted}
+              value={inputValue}
+              onChangeText={setInputValue}
+              onSubmitEditing={addCustom}
+              returnKeyType="done"
+            />
+            <TouchableOpacity onPress={addCustom} activeOpacity={0.85}>
+              <LinearGradient colors={T.brandCta} style={favS.addBtn}>
+                <Ionicons name="add" size={18} color="white" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        <View style={{ paddingTop: 8, paddingBottom: bottomPad }}>
+          {(favorites.length > 0 || leastFavorites.length > 0) ? (
+            <Text style={{ color: T.textMuted, fontSize: 12, marginBottom: 8, textAlign: 'center' }}>
+              Selected: {favorites.length} favorites · {leastFavorites.length} least favorites
+            </Text>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={() => onFinish?.({ favorites, leastFavorites })}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={T.brandCta}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={step.gradBtn}
+            >
+              <Text style={step.gradBtnText}>Finish Setup</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -441,21 +507,38 @@ const favS = StyleSheet.create({
   inputCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     backgroundColor: T.cardBg,
     borderWidth: 1,
     borderColor: T.cardBorder,
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
   },
   input: { flex: 1, color: T.text, fontSize: 14 },
   addBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chipCard: { paddingVertical: 12, paddingHorizontal: 14 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  chipText: { color: T.text, fontSize: 14, fontWeight: '500' },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.cardBorder,
+    backgroundColor: T.cardBg,
+  },
+  pillSelectedGood: {
+    backgroundColor: '#BE185D',
+    borderColor: '#BE185D',
+  },
+  pillSelectedBad: {
+    backgroundColor: '#B91C1C',
+    borderColor: '#B91C1C',
+  },
+  pillText: { color: T.text, fontSize: 13, fontWeight: '600' },
 });
 
 const OZ_TO_G = 28.3495;
@@ -573,27 +656,38 @@ export const NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE = 88;
 
 export const NutritionOnboardingWizardScreen = ({ onComplete, reservedBottomInset = 0 }) => {
   const insets = useSafeAreaInsets();
+  // Shell edges omit bottom inset (tab bar owns it). When the tab bar is hidden during
+  // onboarding, reserve the home-indicator + breathing room ourselves.
   const footerPadBottom =
-    Math.max(insets.bottom, 12) + Math.max(reservedBottomInset, 0) + 20;
+    Math.max(insets.bottom, 20) + Math.max(reservedBottomInset, 0) + 28;
   const [currentStep, setStep] = useState(1);
   const [calories, setCalories] = useState(2000);
   const [macros, setMacros] = useState({ protein: 150, carbs: 200, fat: 65 });
 
-  const handleFinish = async () => {
-    // Firebase wiring: configured in src/app-start/config.js
-    // import { db } from '../../app-start/config';
-    // import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-    // const { currentUser } = auth;
-    // await setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
-    //   user_id: currentUser.uid,
-    //   calorie_target: calories,
-    //   protein_target: macros.protein,
-    //   carbs_target: macros.carbs,
-    //   fat_target: macros.fat,
-    //   macro_split: { protein: macros.protein, carbs: macros.carbs, fat: macros.fat },
-    //   updated_at: serverTimestamp(),
-    // });
-    if (onComplete) onComplete({ calories, macros });
+  const handleFinish = async (foodPrefs = {}) => {
+    const favorites = Array.isArray(foodPrefs.favorites) ? foodPrefs.favorites : [];
+    const leastFavorites = Array.isArray(foodPrefs.leastFavorites) ? foodPrefs.leastFavorites : [];
+    try {
+      const { auth, db } = require('../../app-start/config');
+      const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+      const uid = auth?.currentUser?.uid;
+      if (uid && db) {
+        await setDoc(
+          doc(db, 'users', uid),
+          {
+            nutritionFavoriteFoods: favorites,
+            nutritionLeastFavoriteFoods: leastFavorites,
+            calorieTarget: calories,
+            macroTargets: macros,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+    } catch (e) {
+      console.warn('nutrition onboarding save:', e?.message || e);
+    }
+    if (onComplete) onComplete({ calories, macros, favorites, leastFavorites });
   };
 
   return (

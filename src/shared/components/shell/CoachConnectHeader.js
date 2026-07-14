@@ -103,7 +103,12 @@ export default function CoachConnectHeader({
       <View style={styles.headerRow}>
         <View style={styles.headerLeftSlot}>{headerLeft ?? null}</View>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={onProfilePress} style={styles.headerProfileButton}>
+          <TouchableOpacity
+            onPress={onProfilePress}
+            style={styles.headerProfileButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+          >
             <GradientProfileHeaderIcon size={36} />
           </TouchableOpacity>
 

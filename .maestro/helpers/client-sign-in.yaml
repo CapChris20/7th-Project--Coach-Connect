@@ -1,0 +1,27 @@
+appId: com.coachconnect
+---
+- extendedWaitUntil:
+    visible: "Home|Get Started|Welcome Back"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Get Started"
+    commands:
+      - tapOn: "Sign In"
+      - extendedWaitUntil:
+          visible: "Welcome Back|Sign in"
+          timeout: 20000
+- runFlow:
+    when:
+      visible: "Welcome Back|Sign in"
+    commands:
+      - tapOn: "Login email"
+      - inputText: ${MAESTRO_CLIENT_EMAIL}
+      - tapOn: "Login password"
+      - inputText: ${MAESTRO_CLIENT_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Submit login"
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 120000
+- assertVisible: "Home"

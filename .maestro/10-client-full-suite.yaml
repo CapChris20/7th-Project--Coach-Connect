@@ -1,0 +1,16 @@
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    file: helpers/client-sign-in.yaml
+- runFlow:
+    file: client-food-suite.yaml
+- runFlow:
+    file: helpers/client-dashboard-checks.yaml
+- runFlow:
+    file: helpers/client-ai-coach-checks.yaml
+- runFlow:
+    file: helpers/client-browse-trainers-checks.yaml
+- runFlow:
+    file: helpers/client-logout-checks.yaml

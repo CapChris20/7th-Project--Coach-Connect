@@ -132,6 +132,7 @@ import { rootNavigationRef } from '../navigation/navigationRef';
 import { CLIENT_ROUTES } from '../navigation/routes';
 import { clientLinking } from '../navigation/linking';
 import { ClientAppShellProvider } from '../client-app/navigation/ClientAppShellContext';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import ClientRootNavigator from '../client-app/navigation/ClientRootNavigator';
 import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
@@ -1133,10 +1134,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     [user?.uid, user?.displayName, userData, onboardingData, trainerData?.id],
   );
 
-    // Main home screen render — use shared app loading screen (same as AuthGate / entire app)
-  if (loading) {
-    return <AppLoadingScreen isDark={isDark} />;
-  }
+  // Do not return early before shell useMemo — hooks must run in the same order every render.
 
   const aiChatNavHandlers = {
     onHomePress: () => {
@@ -1292,7 +1290,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     });
   }
 
-  const shell = {
+  const shell = useMemo(() => ({
     user,
     userData,
     onRefetchUserData,
@@ -1420,13 +1418,64 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     setSleepHours,
     setTodayWorkout,
     setDashboardWorkoutSummary,
-  };
+  }), [
+    user,
+    userData,
+    onRefetchUserData,
+    isDark,
+    styles,
+    colors,
+    themeMode,
+    navProviderProps,
+    addNotesFilesModalEl,
+    aiChatNavHandlers,
+    mainTab,
+    mainTabActiveKey,
+    nutritionTabFocusNonce,
+    workoutTabFocusNonce,
+    showTrainerMessaging,
+    showConversationsList,
+    showMyDashboard,
+    showCoachingPaymentModal,
+    showAddNotesFilesModal,
+    showTrainerSharedFilesModal,
+    trainerData,
+    unreadMessageCount,
+    notesAndFiles,
+    selectedTrainer,
+    selectedConversation,
+    aiChatState,
+    userName,
+    userRole,
+    hasTrainer,
+    onboardingData,
+    todayWorkout,
+    waterIntake,
+    sleepHours,
+    refreshing,
+    pendingSessions,
+    dashboardWorkoutSummary,
+    pdfViewer,
+    spreadsheetViewer,
+    documentViewer,
+    mediaViewer,
+    embedWebViewer,
+    showRemoveTrainerSheet,
+    reviewPromptTrainer,
+    showReviewSheetForPrompt,
+  ]);
+
+  if (loading) {
+    return <AppLoadingScreen isDark={isDark} />;
+  }
 
   return (
     <ClientAppShellProvider value={shell}>
-      <NavigationContainer ref={rootNavigationRef} linking={clientLinking}>
-        <ClientRootNavigator />
-      </NavigationContainer>
+      <ErrorBoundary>
+        <NavigationContainer ref={rootNavigationRef} linking={clientLinking}>
+          <ClientRootNavigator />
+        </NavigationContainer>
+      </ErrorBoundary>
 
       <Modal
         visible={showCoachingPaymentModal}

@@ -1,13 +1,14 @@
 import React from 'react';
 import { ActivityIndicator, Platform, View, StyleSheet } from 'react-native';
 import { useSubscription } from './SubscriptionProvider';
-import TrainerSubscriptionPaywallScreen from './TrainerSubscriptionPaywallScreen';
 import SubscriptionExpiredScreen from './SubscriptionExpiredScreen';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from './constants';
 
 /**
- * Gates trainer app content by platform subscription state.
- * iOS only — other platforms pass through (Android IAP not in scope).
+ * Gates trainer app when a *prior* subscription has expired.
+ * Does NOT block login for trainers with no subscription yet — Pro IAP is
+ * offered in onboarding / Settings, not as a hard login wall (legacy accounts
+ * and TestFlight trainers otherwise get stuck on payment forever).
  */
 export default function TrainerSubscriptionGate({ children, onOpenSettings, onOpenTerms, onOpenPrivacy }) {
   const { firestoreLoading, accessState } = useSubscription();
@@ -24,16 +25,7 @@ export default function TrainerSubscriptionGate({ children, onOpenSettings, onOp
     );
   }
 
-  if (accessState.access === 'no_subscription') {
-    return (
-      <TrainerSubscriptionPaywallScreen
-        onOpenSettings={onOpenSettings}
-        onOpenTerms={onOpenTerms}
-        onOpenPrivacy={onOpenPrivacy}
-      />
-    );
-  }
-
+  // Only lock the app if they had Pro and it expired — not if they've never subscribed.
   if (accessState.access === 'expired') {
     return (
       <SubscriptionExpiredScreen

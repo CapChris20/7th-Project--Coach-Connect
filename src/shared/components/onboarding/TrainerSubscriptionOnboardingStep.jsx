@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { getOnboardingUiTokens } from './onboardingAiDeps';
+import BrandLogo from '../brand/BrandLogo';
 import { useSubscription } from '../../../subscription/SubscriptionProvider';
 import {
   TRAINER_SUBSCRIPTION_TIERS,
@@ -117,14 +118,7 @@ function BrandRow({ t, isDark }) {
   return (
     <View style={styles.brandRow}>
       <View style={styles.brandLeft}>
-        <LinearGradient
-          colors={PAYWALL_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.brandLogo}
-        >
-          <Ionicons name="barbell" size={18} color="#FFFFFF" />
-        </LinearGradient>
+        <BrandLogo width={36} />
         <Text style={[styles.brandName, { color: t.textPrimary }]}>Coach Connect</Text>
       </View>
       <View
@@ -398,7 +392,8 @@ export function TrainerSubscriptionCtaFooter({
   const live = TRAINER_PLATFORM_SUBSCRIPTION_ENABLED;
   const subscribed = live && accessState?.hasFullAccess === true;
   const busy = live && (actionLoading || firestoreLoading);
-  const ctaDisabled = live && !subscribed && !connected;
+  // Never hard-block Continue — if StoreKit is slow, still let trainers finish setup.
+  const ctaDisabled = busy;
 
   let ctaLabel = 'Start 3-day free trial';
   let onPress = () => startFreeTrial(selectedTier?.productId);
@@ -408,6 +403,10 @@ export function TrainerSubscriptionCtaFooter({
   } else if (subscribed) {
     ctaLabel = 'Complete setup';
     onPress = onComplete;
+  } else {
+    // Two actions: try purchase, but primary path for TestFlight can use Continue below
+    ctaLabel = connected ? 'Start 3-day free trial' : 'Connect to App Store…';
+    onPress = () => startFreeTrial(selectedTier?.productId);
   }
 
   return (
@@ -458,6 +457,18 @@ export function TrainerSubscriptionCtaFooter({
           </TouchableOpacity>
         ) : null}
       </View>
+      {live && !subscribed ? (
+        <TouchableOpacity
+          onPress={onComplete}
+          disabled={busy}
+          accessibilityRole="button"
+          style={{ marginTop: 10, alignItems: 'center', paddingVertical: 6 }}
+        >
+          <Text style={[styles.footerRestoreText, { color: t.textSecondary }]}>
+            Continue without Pro for now
+          </Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }

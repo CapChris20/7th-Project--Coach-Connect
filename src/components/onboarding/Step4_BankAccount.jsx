@@ -48,17 +48,34 @@ export function Step4_BankAccount({ email, isDark = true, onSkip, onComplete }) 
     <View style={styles.container}>
       <View style={styles.iconWrap}>
         <LinearGradient colors={['#FF6B9D', '#22D3EE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.iconGradient}>
-          <Ionicons name="wallet-outline" size={36} color="#FFFFFF" />
+          <Ionicons name="card-outline" size={36} color="#FFFFFF" />
         </LinearGradient>
       </View>
 
-      <Text style={[styles.title, { color: textPrimary }]}>Connect Your Bank Account</Text>
+      <Text style={[styles.title, { color: textPrimary }]}>Payment Method</Text>
       <Text style={[styles.subtitle, { color: textSecondary }]}>
-        Receive payments directly from clients
+        This is for receiving client payments — not Face ID / identity verification.
       </Text>
       <Text style={[styles.message, { color: textSecondary }]}>
-        You'll connect securely through Stripe
+        Stripe Connect lets you add a bank account, debit card, or other payout options so clients can pay you securely.
       </Text>
+
+      <View style={styles.compareRow}>
+        <View style={[styles.compareCard, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]}>
+          <Ionicons name="scan-outline" size={22} color="#C084FC" />
+          <Text style={[styles.compareTitle, { color: textPrimary }]}>Identity Verification</Text>
+          <Text style={[styles.compareBody, { color: textSecondary }]}>
+            Face ID selfie on your profile step — manual review for the Verified badge. Separate from payments.
+          </Text>
+        </View>
+        <View style={[styles.compareCard, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]}>
+          <Ionicons name="card-outline" size={22} color="#FF6B9D" />
+          <Text style={[styles.compareTitle, { color: textPrimary }]}>Payment Method</Text>
+          <Text style={[styles.compareBody, { color: textSecondary }]}>
+            Bank transfer, debit card, and other Stripe payout options for coaching fees.
+          </Text>
+        </View>
+      </View>
 
       {isConnecting ? (
         <View style={styles.statusBlock}>
@@ -146,6 +163,28 @@ function makeStyles(isDark) {
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    compareRow: {
+      width: '100%',
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 20,
+    },
+    compareCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 12,
+      gap: 6,
+    },
+    compareTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      marginTop: 4,
+    },
+    compareBody: {
+      fontSize: 11,
+      lineHeight: 15,
     },
     title: {
       fontSize: 24,

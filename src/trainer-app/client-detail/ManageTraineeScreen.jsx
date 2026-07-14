@@ -215,6 +215,8 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             },
             calendar: clientDocData.calendar || { completed: [], upcoming: [], missed: [], upcomingSessions: [] },
             notesAndFiles,
+            likedExercises: Array.isArray(userData.likedExercises) ? userData.likedExercises : [],
+            exercisesPrefer: userData.exercisesPrefer || userData.exercisesDislike || '',
           });
         } catch (e) {
           console.error('Error updating client data:', e);
@@ -468,6 +470,21 @@ const ClientDetailScreen = ({ client, trainerId, onBack, onRemoveClient, trainer
             </TouchableOpacity>
           </View>
         </GlassCard>
+
+        {Array.isArray(clientData?.likedExercises) && clientData.likedExercises.length > 0 ? (
+          <GlassCard isDark={isDark} style={{ padding: 14, borderRadius: 16, marginTop: 12, borderColor: CARD_BORDER_PINK_ORANGE }}>
+            <Text style={{ color: textColor, fontWeight: '800', fontSize: 13, marginBottom: 8 }}>
+              Liked exercises (prioritize when programming)
+            </Text>
+            <Text style={{ color: mutedColor, fontSize: 13, lineHeight: 18 }}>
+              {clientData.likedExercises
+                .map((x) => (typeof x === 'string' ? x : x?.name || x?.exerciseName || ''))
+                .filter(Boolean)
+                .slice(0, 12)
+                .join(' · ')}
+            </Text>
+          </GlassCard>
+        ) : null}
 
         {/* ── Tab Pills ── */}
         <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />

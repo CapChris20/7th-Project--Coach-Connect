@@ -19,12 +19,27 @@ import {
 } from './subscriptionApi';
 import { SubscriptionContext } from './subscriptionContext';
 
+function productSku(product) {
+  return String(product?.id || product?.productId || '').trim();
+}
+
+function purchaseSku(purchase) {
+  return String(purchase?.productId || purchase?.id || '').trim();
+}
+
 /**
  * @param {import('expo-iap').Purchase} purchase
  */
 async function processVerifiedPurchase(purchase, finishTransaction) {
   await verifyAppleSubscriptionOnServer(purchase);
-  await finishTransaction({ purchase, isConsumable: false });
+  try {
+    await finishTransaction({ purchase, isConsumable: false });
+  } catch (finishErr) {
+    // Verification already succeeded — don't fail the whole flow if finish is flaky.
+    if (__DEV__) {
+      console.warn('[SubscriptionProvider] finishTransaction:', finishErr?.message || finishErr);
+    }
+  }
 }
 
 export function IapSubscriptionProvider({ userId, children }) {
@@ -32,6 +47,7 @@ export function IapSubscriptionProvider({ userId, children }) {
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [lastError, setLastError] = useState(null);
+  const [productsAttempted, setProductsAttempted] = useState(false);
   const processingRef = useRef(new Set());
 
   const {
@@ -42,7 +58,7 @@ export function IapSubscriptionProvider({ userId, children }) {
     finishTransaction,
   } = useIAP({
     onPurchaseSuccess: async (purchase) => {
-      const key = purchase?.transactionId || purchase?.purchaseToken;
+      const key = purchase?.transactionId || purchase?.purchaseToken || purchaseSku(purchase);
       if (key && processingRef.current.has(key)) return;
       if (key) processingRef.current.add(key);
 
@@ -69,7 +85,10 @@ export function IapSubscriptionProvider({ userId, children }) {
     },
     onPurchaseError: (error) => {
       if (error?.code === ErrorCode.UserCancelled) return;
-      const isNetwork = error?.code === ErrorCode.NetworkError;
+      if (String(error?.code || '') === 'E_USER_CANCELLED') return;
+      const isNetwork =
+        error?.code === ErrorCode.NetworkError ||
+        String(error?.code || '').includes('NETWORK');
       setLastError({
         type: isNetwork ? 'network' : 'generic',
         message: error?.message || 'Purchase failed',
@@ -105,43 +124,59 @@ export function IapSubscriptionProvider({ userId, children }) {
     return unsub;
   }, [userId]);
 
-  useEffect(() => {
-    if (!connected || Platform.OS !== 'ios') return;
-    fetchProducts({
-      skus: TRAINER_SUBSCRIPTION_PRODUCT_IDS,
-      type: 'subs',
-    }).catch((error) => {
+  const loadStoreProducts = useCallback(async () => {
+    if (Platform.OS !== 'ios') return;
+    if (!connected) {
+      setLastError({
+        type: 'network',
+        message: 'App Store not connected yet. Wait a moment, then try again.',
+      });
+      return;
+    }
+    setProductsAttempted(true);
+    try {
+      await fetchProducts({
+        skus: TRAINER_SUBSCRIPTION_PRODUCT_IDS,
+        type: 'subs',
+      });
+      setLastError(null);
+    } catch (error) {
       if (__DEV__) {
         console.warn('[SubscriptionProvider] fetchProducts failed:', error?.message || error);
       }
       setLastError({
         type: 'generic',
         message:
-          `Could not load subscriptions from the App Store. Confirm ${TRAINER_PRO_MONTHLY_PRODUCT_ID} exists in App Store Connect and you are signed into a Sandbox account on this device.`,
+          `Could not load subscriptions from the App Store. Confirm ${TRAINER_PRO_MONTHLY_PRODUCT_ID} is Ready to Submit in App Store Connect, and this device is signed into a Sandbox Apple ID.`,
       });
-    });
+    }
   }, [connected, fetchProducts]);
+
+  useEffect(() => {
+    if (!connected || Platform.OS !== 'ios') return;
+    loadStoreProducts();
+  }, [connected, loadStoreProducts]);
 
   const accessState = useMemo(
     () => resolveSubscriptionAccess(firestoreSubscription),
     [firestoreSubscription],
   );
 
-  const storeProduct = useMemo(
-    () => subscriptions?.find((s) => s.id === TRAINER_PRO_MONTHLY_PRODUCT_ID) || null,
-    [subscriptions],
-  );
-
-  /** All trainer platform products returned by StoreKit, keyed by product ID. */
   const storeProducts = useMemo(() => {
     const map = {};
     for (const sub of subscriptions || []) {
-      if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(sub.id)) {
-        map[sub.id] = sub;
+      const sku = productSku(sub);
+      if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(sku)) {
+        map[sku] = sub;
       }
     }
     return map;
   }, [subscriptions]);
+
+  const storeProduct = useMemo(
+    () => storeProducts[TRAINER_PRO_MONTHLY_PRODUCT_ID] || null,
+    [storeProducts],
+  );
 
   const startFreeTrial = useCallback(async (productId) => {
     const sku = TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(productId)
@@ -152,28 +187,45 @@ export function IapSubscriptionProvider({ userId, children }) {
       return;
     }
     if (!connected) {
-      setLastError({ type: 'network', message: 'Store not connected. Check your connection and try again.' });
+      setLastError({
+        type: 'network',
+        message: 'Store not connected. Check your connection and try again.',
+      });
       return;
+    }
+
+    // Best-effort refresh products before purchase (fixes stale StoreKit cache).
+    if (!storeProducts[sku]) {
+      try {
+        await loadStoreProducts();
+      } catch (_) {
+        /* lastError already set */
+      }
     }
 
     setActionLoading(true);
     setLastError(null);
     try {
       await requestPurchase({
-        request: { apple: { sku } },
+        request: {
+          apple: { sku },
+          ios: { sku },
+        },
         type: 'subs',
       });
     } catch (e) {
-      if (e?.code !== ErrorCode.UserCancelled) {
-        setLastError({
-          type: e?.code === ErrorCode.NetworkError ? 'network' : 'generic',
-          message: e?.message || 'Could not start purchase',
-        });
+      const code = e?.code;
+      if (code === ErrorCode.UserCancelled || String(code || '') === 'E_USER_CANCELLED') {
+        return;
       }
+      setLastError({
+        type: code === ErrorCode.NetworkError ? 'network' : 'generic',
+        message: e?.message || 'Could not start purchase',
+      });
     } finally {
       setActionLoading(false);
     }
-  }, [connected, requestPurchase]);
+  }, [connected, requestPurchase, storeProducts, loadStoreProducts]);
 
   const restorePurchases = useCallback(async () => {
     if (Platform.OS !== 'ios') {
@@ -184,15 +236,25 @@ export function IapSubscriptionProvider({ userId, children }) {
     setActionLoading(true);
     setLastError(null);
     try {
-      await restorePurchasesIap();
+      try {
+        await restorePurchasesIap();
+      } catch (restoreHookErr) {
+        // Some StoreKit builds throw even when purchases exist — still query local entitlements.
+        if (__DEV__) {
+          console.warn('[SubscriptionProvider] restorePurchasesIap:', restoreHookErr?.message || restoreHookErr);
+        }
+      }
       const purchases = await getAvailablePurchasesDirect({
         onlyIncludeActiveItemsIOS: true,
       });
-      const relevant = (purchases || []).filter(
-        (p) => TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(p.productId),
+      const relevant = (purchases || []).filter((p) =>
+        TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(purchaseSku(p)),
       );
       if (!relevant.length) {
-        Alert.alert('No subscription found', 'We could not find an active Coach Connect Pro subscription for this Apple ID.');
+        Alert.alert(
+          'No subscription found',
+          'We could not find an active Coach Connect Pro subscription for this Apple ID.',
+        );
         return false;
       }
       await restoreAppleSubscriptionOnServer(relevant);
@@ -231,9 +293,11 @@ export function IapSubscriptionProvider({ userId, children }) {
       storeProduct,
       storeProducts,
       connected,
+      productsAttempted,
       startFreeTrial,
       restorePurchases,
       retryLastAction: startFreeTrial,
+      refreshProducts: loadStoreProducts,
     }),
     [
       firestoreSubscription,
@@ -245,8 +309,10 @@ export function IapSubscriptionProvider({ userId, children }) {
       storeProduct,
       storeProducts,
       connected,
+      productsAttempted,
       startFreeTrial,
       restorePurchases,
+      loadStoreProducts,
     ],
   );
 

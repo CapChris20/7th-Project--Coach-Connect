@@ -14,18 +14,30 @@ function toMillis(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Whether the post-signup payment popup should appear. */
+/** Whether the post-signup payment popup should appear.
+ * Opt-in reminder only — never spam trainers who already dismissed, and
+ * don't force payment UI on every login.
+ */
 export function shouldShowPaymentSetupPopup(user = {}) {
   if (String(user.stripeAccountId || '').trim()) return false;
   if (user.stripeStatus === 'active' || user.stripeConnectStatus === 'active') return false;
 
+  // Already said "Maybe later" — don't show again until 30 days later
   const dismissed = user.paymentPromptDismissed === true;
-  if (!dismissed) return true;
+  if (dismissed) {
+    const dismissedAtMs = toMillis(user.paymentPromptDismissedAt);
+    if (!dismissedAtMs) return false;
+    return Date.now() - dismissedAtMs >= THIRTY_DAYS_MS;
+  }
 
-  const dismissedAtMs = toMillis(user.paymentPromptDismissedAt);
-  if (!dismissedAtMs) return true;
-
-  return Date.now() - dismissedAtMs >= THIRTY_DAYS_MS;
+  // First-time only within 7 days of account creation / onboarding finish
+  const createdMs =
+    toMillis(user.onboardingCompletedAt) ||
+    toMillis(user.createdAt) ||
+    toMillis(user.joinedAt);
+  if (!createdMs) return false;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - createdMs <= SEVEN_DAYS_MS;
 }
 
 /** Persist "Maybe later" dismissal on the trainer profile. */

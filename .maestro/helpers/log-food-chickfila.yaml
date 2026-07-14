@@ -1,0 +1,19 @@
+appId: com.coachconnect
+---
+- tapOn: "Search foods"
+- eraseText
+- inputText: "Chick-fil-A original chicken sandwich"
+- extendedWaitUntil:
+    visible: "Search results"
+    timeout: 90000
+- assertVisible: "CAL"
+- tapOn:
+    text: "Add food to log"
+    index: 0
+- extendedWaitUntil:
+    visible: "Confirm & log"
+    timeout: 15000
+- tapOn: "Log it"
+- extendedWaitUntil:
+    visible: "Nutrition"
+    timeout: 30000

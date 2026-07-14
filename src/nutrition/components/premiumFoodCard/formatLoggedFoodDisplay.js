@@ -71,7 +71,12 @@ export function formatLoggedFoodDisplay(log, amountDisplay) {
   const fat = Number(log?.fat) || 0;
   const calories = Math.round(Number(log?.calories) || 0);
   const weightG = log?.serving_grams != null ? Number(log.serving_grams) : null;
+  const origAmt = log?.originalAmount ?? log?.loggedAmount ?? log?.metadata?.originalAmount;
+  const origUnit = log?.originalUnit || log?.loggedUnit || log?.metadata?.originalUnit || '';
   const serving =
+    (origAmt != null && origUnit
+      ? `${origAmt} ${origUnit}${weightG ? ` (≈${Math.round(weightG)}g)` : ''}`
+      : null) ||
     log?.serving_description ||
     log?.servingDescription ||
     (amountDisplay && amountDisplay !== '—' ? amountDisplay : '') ||

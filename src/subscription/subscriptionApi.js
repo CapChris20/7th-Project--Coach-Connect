@@ -1,10 +1,15 @@
 import { auth } from '../app-start/config';
-import { getResilientApiBases } from '../shared/api/baseUrl';
+import { getResilientApiBases, isCloudHostedApiBase } from '../shared/api/baseUrl';
 
 async function getIdToken() {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
   return user.getIdToken(true);
+}
+
+function subscriptionApiBases() {
+  const bases = getResilientApiBases().filter(isCloudHostedApiBase);
+  return bases.length ? bases : getResilientApiBases().slice(0, 1);
 }
 
 /**
@@ -13,7 +18,7 @@ async function getIdToken() {
  */
 async function postSubscription(action, body) {
   const token = await getIdToken();
-  const bases = getResilientApiBases();
+  const bases = subscriptionApiBases();
   let lastError = null;
 
   for (const base of bases) {

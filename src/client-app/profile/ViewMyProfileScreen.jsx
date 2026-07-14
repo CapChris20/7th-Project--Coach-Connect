@@ -31,6 +31,18 @@ import { auth, db } from '../../app-start/config';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as DocumentPicker from 'expo-document-picker';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  uploadTrainerCertificationSheet,
+  deleteTrainerCertificationSheet,
+} from '../../shared/notes-files/manageNotesAndFiles';
+import {
+  verifyTrainerCertification,
+  certificationStatusLabel,
+  certificationStatusDetail,
+  certificationStatusTone,
+} from '../../shared/api/verifyTrainerCertification';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
@@ -609,6 +621,11 @@ export function ViewMyViewMyProfileScreen({
   const [editLabel, setEditLabel] = useState('');
   const [editValue, setEditValue] = useState('');
   const [savingField, setSavingField] = useState(false);
+  const [certSheets, setCertSheets] = useState([]);
+  const [certUploading, setCertUploading] = useState(false);
+  const [certProgress, setCertProgress] = useState(0);
+  const [certVerifyStatus, setCertVerifyStatus] = useState(null); // local + live status key
+  const [certVerifyBusy, setCertVerifyBusy] = useState(false);
 
   // Subtle entrance animations (fade + slight lift)
   const heroAnim = useMemo(() => new Animated.Value(0), []);
@@ -625,6 +642,140 @@ export function ViewMyViewMyProfileScreen({
   }, [heroAnim, personalAnim, trainingAnim, accountAnim]);
 
   const trainerDoc = useMemo(() => ({ ...(userData || {}), ...(onboardingData || {}) }), [userData, onboardingData]);
+
+  React.useEffect(() => {
+    if (!isTrainer) return;
+    const list = Array.isArray(trainerDoc?.certificationSheets) ? trainerDoc.certificationSheets : [];
+    setCertSheets(list);
+  }, [isTrainer, trainerDoc?.certificationSheets]);
+
+  React.useEffect(() => {
+    if (!isTrainer || certVerifyBusy) return;
+    const fromDoc =
+      trainerDoc?.certificationVerificationStatus ||
+      trainerDoc?.aiVerification?.status ||
+      null;
+    if (fromDoc) setCertVerifyStatus(String(fromDoc));
+  }, [
+    isTrainer,
+    certVerifyBusy,
+    trainerDoc?.certificationVerificationStatus,
+    trainerDoc?.aiVerification?.status,
+  ]);
+
+  const handleAddCertification = async () => {
+    const tid = auth?.currentUser?.uid;
+    if (!tid) {
+      Alert.alert('Sign in required', 'Sign in again to upload certifications.');
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'image/jpeg',
+          'image/png',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets?.[0];
+      if (!file?.uri) {
+        Alert.alert('Upload failed', 'Could not read the selected file.');
+        return;
+      }
+      if (file.size != null && file.size > 10 * 1024 * 1024) {
+        Alert.alert('File too large', 'Certification sheets must be 10MB or smaller.');
+        return;
+      }
+      setCertUploading(true);
+      setCertProgress(0);
+      const { meta, url } = await uploadTrainerCertificationSheet(
+        tid,
+        {
+          localUri: file.uri,
+          filename: file.name || 'certification.pdf',
+          mimeType: file.mimeType,
+          fileSize: file.size,
+        },
+        (pct) => setCertProgress(pct),
+      );
+      setCertSheets((prev) => [...prev, meta]);
+      onProfileSaved?.();
+
+      const trainerName =
+        `${String(userData?.firstName || '').trim()} ${String(userData?.lastName || '').trim()}`.trim() ||
+        String(userData?.name || onboardingData?.name || auth?.currentUser?.displayName || '').trim() ||
+        'Trainer';
+
+      let verifyMessage = 'Certification sheet added to your profile.';
+      const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
+      if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''))) {
+        try {
+          setCertVerifyBusy(true);
+          setCertVerifyStatus('checking');
+          const verification = await verifyTrainerCertification({
+            trainerId: tid,
+            trainerName,
+            localUri: file.uri,
+            imageUrl: url,
+            mediaType: file.mimeType || 'image/jpeg',
+            storagePath: meta?.storagePath,
+            fileName: meta?.fileName,
+          });
+          const nextStatus = verification.status || 'manual_review';
+          setCertVerifyStatus(nextStatus);
+          verifyMessage =
+            verification.userMessage ||
+            certificationStatusLabel(nextStatus) ||
+            verifyMessage;
+          if (verification.analysis?.issues?.length && verification.status === 'rejected') {
+            verifyMessage = `${verifyMessage}\n${verification.analysis.issues[0]}`;
+          }
+        } catch (verifyErr) {
+          if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
+          setCertVerifyStatus('manual_review');
+          verifyMessage = 'Uploaded — Under review. AI check was unavailable; we’ll review it within 24–48 hours.';
+        } finally {
+          setCertVerifyBusy(false);
+        }
+      } else {
+        setCertVerifyStatus('manual_review');
+        verifyMessage =
+          'Uploaded — Under review. Photos (JPG/PNG) get instant AI checks; other file types are reviewed within 24–48 hours.';
+      }
+
+      Alert.alert('Certification', verifyMessage);
+    } catch (e) {
+      Alert.alert('Upload failed', e?.message || 'Could not upload certification. Try again.');
+    } finally {
+      setCertUploading(false);
+      setCertProgress(0);
+    }
+  };
+
+  const handleDeleteCertification = (meta) => {
+    Alert.alert('Remove certification', `Delete ${meta?.fileName || 'this file'}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const tid = auth?.currentUser?.uid;
+          if (!tid) return;
+          try {
+            await deleteTrainerCertificationSheet(tid, meta);
+            setCertSheets((prev) => prev.filter((x) => x.storagePath !== meta.storagePath));
+            onProfileSaved?.();
+          } catch (e) {
+            Alert.alert('Delete failed', e?.message || 'Could not remove file.');
+          }
+        },
+      },
+    ]);
+  };
 
   const clientProfile = useMemo(
     () => resolveClientProfileFields(userData, onboardingData),
@@ -1016,6 +1167,148 @@ export function ViewMyViewMyProfileScreen({
                     isDark={isDark}
                     style={{ minWidth: '100%' }}
                   />
+                  <View
+                    style={{
+                      width: '100%',
+                      marginTop: 12,
+                      padding: 14,
+                      borderRadius: 16,
+                      backgroundColor: theme.card,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                    }}
+                  >
+                    <Text style={{ color: theme.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 }}>
+                      CERTIFICATION SHEETS
+                    </Text>
+                    <Text style={{ color: theme.muted, fontSize: 12, marginTop: 4, marginBottom: 10 }}>
+                      Upload a photo of your certificate for AI verification (JPG/PNG). PDF is accepted for manual review.
+                    </Text>
+                    {(certVerifyBusy || certificationStatusLabel(certVerifyStatus)) ? (
+                      <View
+                        style={{
+                          marginBottom: 12,
+                          padding: 12,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor:
+                            certificationStatusTone(certVerifyStatus) === 'success'
+                              ? 'rgba(22,163,74,0.35)'
+                              : certificationStatusTone(certVerifyStatus) === 'danger'
+                                ? 'rgba(220,38,38,0.35)'
+                                : theme.border,
+                          backgroundColor:
+                            certificationStatusTone(certVerifyStatus) === 'success'
+                              ? 'rgba(22,163,74,0.08)'
+                              : certificationStatusTone(certVerifyStatus) === 'danger'
+                                ? 'rgba(220,38,38,0.08)'
+                                : isDark
+                                  ? 'rgba(255,255,255,0.04)'
+                                  : 'rgba(0,0,0,0.03)',
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {certVerifyBusy || certVerifyStatus === 'checking' ? (
+                            <ActivityIndicator size="small" color={theme.muted} />
+                          ) : null}
+                          <Text
+                            style={{
+                              flex: 1,
+                              color:
+                                certificationStatusTone(certVerifyStatus) === 'success'
+                                  ? '#16a34a'
+                                  : certificationStatusTone(certVerifyStatus) === 'danger'
+                                    ? '#dc2626'
+                                    : theme.text,
+                              fontSize: 13,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {certificationStatusLabel(certVerifyStatus) || 'Checking status…'}
+                          </Text>
+                        </View>
+                        {certificationStatusDetail(certVerifyStatus) ? (
+                          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 6, lineHeight: 17 }}>
+                            {certificationStatusDetail(certVerifyStatus)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {certSheets.length === 0 ? (
+                      <Text style={{ color: theme.muted, fontSize: 13, marginBottom: 10 }}>
+                        No files uploaded yet
+                      </Text>
+                    ) : (
+                      certSheets.map((sheet) => (
+                        <View
+                          key={sheet.storagePath || sheet.fileName}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 10,
+                            borderTopWidth: StyleSheet.hairlineWidth,
+                            borderTopColor: theme.border,
+                          }}
+                        >
+                          <Ionicons name="document-attach-outline" size={18} color={theme.muted} />
+                          <View style={{ flex: 1, marginHorizontal: 10 }}>
+                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>
+                              {sheet.fileName || 'Certification'}
+                            </Text>
+                            <Text style={{ color: theme.muted, fontSize: 11 }} numberOfLines={1}>
+                              {sheet.fileType || 'file'}
+                              {sheet.uploadedAt ? ` · ${String(sheet.uploadedAt).slice(0, 10)}` : ''}
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleDeleteCertification(sheet)} hitSlop={8}>
+                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      ))
+                    )}
+                    {certUploading ? (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={{ color: theme.muted, fontSize: 12, marginBottom: 6 }}>
+                          Uploading… {certProgress}%
+                        </Text>
+                        <View
+                          style={{
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: theme.border,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: `${Math.max(4, certProgress)}%`,
+                              height: '100%',
+                              backgroundColor: PROFILE.purple,
+                            }}
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={handleAddCertification}
+                        activeOpacity={0.85}
+                        style={{
+                          marginTop: 8,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          paddingVertical: 12,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: theme.border,
+                        }}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={18} color={theme.text} />
+                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Add Certification</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <View style={styles.credRowHalf}>
                     <CredentialPill
                       Icon={Calendar}

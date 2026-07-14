@@ -13,12 +13,12 @@ export const BRAND_GRADIENT_ICON_PATHS = {
   barbell: {
     style: 'stroke',
     paths: [
-      'M14.4 14.4 9.6 9.6',
-      'M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.828l6.364-6.364a2 2 0 1 1 2.829 2.828l-1.768 1.767a2 2 0 1 1 2.828 2.829z',
-      'M21.5 21.5l-1.4-1.4',
-      'M3.5 3.5l1.4 1.4',
-      'M6.343 6.515a2 2 0 1 0 2.829 2.828l1.767-1.768a2 2 0 1 0 2.829-2.828L6.343 6.515z',
-      'M9.5 9.5l1.4 1.4',
+      // Classic barbell: bar + end plates (not the Lucide bone/dumbbell mashup)
+      'M3 12h18',
+      'M5 8v8',
+      'M7 9v6',
+      'M17 9v6',
+      'M19 8v8',
     ],
   },
   restaurant: {

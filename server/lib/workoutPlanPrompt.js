@@ -25,7 +25,58 @@ function resolveDaysPerWeek(data) {
 /** Legacy Firestore key is `exercisesDislike`; values are exercises the client wants to prioritize. */
 function getPreferredExercisesList(data) {
   const d = data && typeof data === 'object' ? data : {};
-  return String(d.exercisesPrefer || d.exercisesDislike || '').trim();
+  const fromLiked = Array.isArray(d.likedExercises)
+    ? d.likedExercises
+        .map((x) => (typeof x === 'string' ? x : x?.name || x?.exerciseName || ''))
+        .filter(Boolean)
+        .join(', ')
+    : '';
+  const fromField = String(d.exercisesPrefer || d.exercisesDislike || '').trim();
+  return [fromLiked, fromField].filter(Boolean).join(', ');
+}
+
+function buildLikedExercisesBlock(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const liked = Array.isArray(d.likedExercises) ? d.likedExercises : [];
+  const names = liked
+    .map((x) => (typeof x === 'string' ? x : x?.name || x?.exerciseName || ''))
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  if (!names.length) return '';
+  const top = names.slice(0, 12);
+  return `
+LIKED / FAVORITE EXERCISES — PRIORITIZE (place 3–5 of these early in each training day when appropriate):
+${top.join(', ')}
+
+Rules:
+- Put liked exercises in the first 3–5 slots of training days when equipment/split allow.
+- Fill remaining slots with complementary exercises for balance.
+- Do not invent injury exclusions from this list — these are favorites.`;
+}
+
+function buildTrainerStyleBlock(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const style = d.trainerStyle || d.assignedTrainerStyle;
+  if (!style || typeof style !== 'object') return '';
+  const name = String(style.name || style.trainerName || '').trim();
+  const specialties = Array.isArray(style.specialties) ? style.specialties.join(', ') : String(style.specialties || '');
+  const philosophy = String(style.trainingPhilosophy || style.philosophy || '').trim();
+  const preferredReps = String(style.preferredRepRanges || style.repRanges || '').trim();
+  const rest = String(style.preferredRestPeriods || style.restPeriods || '').trim();
+  const favExercises = Array.isArray(style.favoriteExercises)
+    ? style.favoriteExercises.join(', ')
+    : String(style.favoriteExercises || style.exercisesPrefer || '').trim();
+  const workoutStyle = String(style.workoutStyle || specialties || '').trim();
+  return `
+ASSIGNED TRAINER STYLE — MATCH THIS COACHING APPROACH:
+${name ? `- Trainer: ${name}` : ''}
+${workoutStyle ? `- Workout style / specialties: ${workoutStyle}` : ''}
+${preferredReps ? `- Preferred rep ranges: ${preferredReps}` : ''}
+${rest ? `- Preferred rest periods: ${rest}` : ''}
+${favExercises ? `- Trainer favorite exercises: ${favExercises}` : ''}
+${philosophy ? `- Training philosophy: ${philosophy.slice(0, 500)}` : ''}
+
+Generate a workout that matches this trainer's style. When showing the plan back to the client, note it was influenced by ${name || 'their trainer'}.`;
 }
 
 function buildExercisePreferenceBlock(data) {
@@ -174,9 +225,12 @@ function buildWorkoutUserPrompt(data) {
   const daysPerWeek = resolveDaysPerWeek(d);
   const preferred = getPreferredExercisesList(d);
   const preferenceBlock = buildExercisePreferenceBlock(d);
+  const likedBlock = buildLikedExercisesBlock(d);
+  const trainerBlock = buildTrainerStyleBlock(d);
   const exclusionBlock = buildExerciseExclusionBlock(d);
   const frequencyBlock = buildTrainingFrequencyBlock(d);
   const trainingDaysLabel = daysPerWeek != null ? daysPerWeek : 'the requested number of';
+  const trainerName = d.trainerStyle?.name || d.assignedTrainerStyle?.name || d.trainerName || '';
   return `Create a ${trainingDaysLabel}-day per week personalized workout plan for a client:
 
 CLIENT PROFILE:
@@ -191,8 +245,10 @@ CLIENT PROFILE:
 - Preferred Exercises (include in plan when possible): ${preferred || 'No specific preferences'}
 - Sleep: ${d.sleepQuality || '7-8 hours'}
 - Stress Level: ${d.currentStressLevel || 'Moderate'}
-${frequencyBlock}${preferenceBlock}${exclusionBlock}
-Generate the complete 7-day JSON plan NOW. Return ONLY JSON. Honor injury/limitation exclusions only — preferred exercises must appear in the plan when feasible.`;
+${frequencyBlock}${likedBlock}${preferenceBlock}${trainerBlock}${exclusionBlock}
+Generate the complete 7-day JSON plan NOW. Return ONLY JSON. Honor injury/limitation exclusions only — preferred/liked exercises must appear early in the plan when feasible.${
+    trainerName ? ` Overview may mention AI Coach trained by ${trainerName}.` : ''
+  }`;
 }
 
 module.exports = {
@@ -200,6 +256,8 @@ module.exports = {
   buildWorkoutUserPrompt,
   buildExerciseExclusionBlock,
   buildExercisePreferenceBlock,
+  buildLikedExercisesBlock,
+  buildTrainerStyleBlock,
   buildTrainingFrequencyBlock,
   getPreferredExercisesList,
   resolveDaysPerWeek,

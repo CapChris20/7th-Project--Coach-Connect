@@ -195,6 +195,10 @@ app.post('/api/onboarding/complete', verifyFirebaseBearerToken, async (req, res)
         flexiblePricingAvailable: safeOnboardingData?.flexiblePricingAvailable || false,
         inviteCode: safeOnboardingData?.inviteCode || null,
         onboardingCompleted: true,
+        isVerified: safeOnboardingData?.isVerified === true,
+        faceVerificationStatus: safeOnboardingData?.faceVerificationStatus || 'unsubmitted',
+        faceVerificationPhotoURL: safeOnboardingData?.faceVerificationPhotoURL || null,
+        faceVerificationSubmittedAt: safeOnboardingData?.faceVerificationSubmittedAt || null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };

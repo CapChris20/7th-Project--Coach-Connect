@@ -133,29 +133,32 @@ const THEME_KEY = 'coachconnect-theme';
 
 const DARK = {
   bg: '#0A0A0F',
-  wordmark: 'rgba(255,255,255,0.4)',
+  wordmark: 'rgba(255,255,255,0.92)',
   heading: '#FFFFFF',
-  subtitle: 'rgba(255,255,255,0.5)',
-  toggleBg: 'rgba(255,255,255,0.08)',
-  toggleBorder: 'rgba(255,255,255,0.12)',
-  toggleIcon: 'rgba(255,255,255,0.7)',
-  lottieGlow: 'rgba(193, 38, 90, 0.2)',
-  signinMuted: 'rgba(255,255,255,0.5)',
+  subtitle: 'rgba(255,255,255,0.72)',
+  toggleBg: 'rgba(255,255,255,0.10)',
+  toggleBorder: 'rgba(255,107,157,0.55)',
+  toggleIcon: '#FF8FA8',
+  lottieGlow: 'rgba(193, 38, 90, 0.28)',
+  signinMuted: 'rgba(255,255,255,0.68)',
   signinLink: '#FF8FA8',
+  cardBorder: 'rgba(255,255,255,0.14)',
+  quoteBorder: 'rgba(255,107,157,0.35)',
 };
 
 const LIGHT = {
   bg: '#F5F5F7',
-  wordmark: 'rgba(0,0,0,0.35)',
+  wordmark: 'rgba(10,10,15,0.88)',
   heading: '#0A0A0F',
-  subtitle: 'rgba(0,0,0,0.5)',
-  // Higher contrast for light mode so the theme toggle is visible.
+  subtitle: 'rgba(10,10,15,0.62)',
   toggleBg: 'rgba(193, 38, 90, 0.10)',
   toggleBorder: 'rgba(193, 38, 90, 0.28)',
   toggleIcon: 'rgba(193, 38, 90, 0.95)',
   lottieGlow: 'rgba(193, 38, 90, 0.12)',
-  signinMuted: 'rgba(0,0,0,0.45)',
+  signinMuted: 'rgba(10,10,15,0.55)',
   signinLink: '#C1265A',
+  cardBorder: 'rgba(10,10,15,0.10)',
+  quoteBorder: 'rgba(193, 38, 90, 0.22)',
 };
 
 function FloatingInput({
@@ -166,6 +169,7 @@ function FloatingInput({
   secureTextEntry = false,
   keyboardType = 'default',
   isDark = true,
+  accessibilityLabel,
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -193,6 +197,7 @@ function FloatingInput({
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoCapitalize="none"
+        accessibilityLabel={accessibilityLabel || label}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -457,19 +462,16 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [focusedField, setFocusedField] = useState(null);
   const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
-  // Auth screen local theme state, synced with ThemeContext (so Welcome + Sign Up match)
-  const [isDarkLanding, setIsDarkLanding] = useState(isDark);
+  // Auth screen local theme — default dark so cold start never flashes black-on-dark text
+  const [isDarkLanding, setIsDarkLanding] = useState(true);
   const bgAnim = useRef(new RNAnimated.Value(1)).current;
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((val) => {
-      if (val !== null) {
-        const dark = val === 'dark';
-        setIsDarkLanding(dark);
-        // Keep ThemeContext in sync so Signup components using useTheme() match.
-        toggleThemeContext?.(dark ? 'dark' : 'light');
-        bgAnim.setValue(dark ? 1 : 0);
-      }
+      const dark = val === null ? true : val === 'dark';
+      setIsDarkLanding(dark);
+      toggleThemeContext?.(dark ? 'dark' : 'light');
+      bgAnim.setValue(dark ? 1 : 0);
     });
   }, []);
 
@@ -1284,12 +1286,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   // ==================== RENDER VIEWS ====================
   const renderWelcomeView = () => (
     <RNAnimated.View style={{ flex: 1, backgroundColor: animatedBg }}>
-      {/* Background glow overlay */}
+      {/* Soft pink wash — keeps atmosphere without crushing text */}
       <View
         pointerEvents="none"
         style={{
           ...StyleSheet.absoluteFillObject,
-          backgroundColor: isDarkLanding ? 'rgba(26,5,51,0.85)' : 'rgba(124,58,237,0.04)',
+          backgroundColor: isDarkLanding ? 'rgba(40,8,28,0.55)' : 'rgba(193,38,90,0.04)',
         }}
       />
 
@@ -1308,8 +1310,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           onPress={toggleTheme}
           activeOpacity={0.75}
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 7,
+            width: 40,
+            height: 40,
             borderRadius: 20,
             borderWidth: 1,
             backgroundColor: t.toggleBg,
@@ -1326,7 +1328,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         </TouchableOpacity>
       </View>
 
-      {/* Welcome wordmark — clean card, no gradient frame; blends with landing background. */}
+      {/* Welcome wordmark */}
       <View style={{ width: '100%', alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
         <View
           style={{
@@ -1338,7 +1340,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1,
-            borderColor: isDarkLanding ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderColor: t.cardBorder,
+            backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.72)',
           }}
         >
           <Text
@@ -1347,7 +1350,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               fontWeight: '900',
               letterSpacing: 3,
               textAlign: 'center',
-              color: t.heading,
+              color: t.wordmark,
             }}
           >
             COACH
@@ -1374,7 +1377,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               alignSelf: 'stretch',
               maxWidth: 340,
               borderWidth: 1,
-              borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)',
+              borderColor: t.quoteBorder,
+              backgroundColor: isDarkLanding ? 'rgba(255,107,157,0.10)' : 'rgba(193,38,90,0.06)',
             }}
           >
             <Text
@@ -1468,7 +1472,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             textAlign: 'center',
             lineHeight: 22,
             color: t.subtitle,
-            marginBottom: 32,
+            marginBottom: 28,
           }}
         >
           One platform for programming, tracking, and communication.
@@ -1483,14 +1487,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             width: '80%',
             maxWidth: 400,
             borderRadius: 16,
-            padding: 2,
-            marginTop: 16,
+            marginTop: 8,
             marginBottom: 20,
             ...(Platform.OS === 'ios'
               ? {
                   shadowColor: '#C1265A',
                   shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.35,
+                  shadowOpacity: 0.45,
                   shadowRadius: 18,
                 }
               : {}),
@@ -1500,16 +1503,15 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             onPress={onGetStarted}
             activeOpacity={0.88}
             style={{
-              borderRadius: 14,
-              height: 52,
+              borderRadius: 16,
+              height: 54,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.92)' : 'rgba(255,255,255,0.96)',
             }}
           >
             <Text
               style={{
-                color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+                color: '#FFFFFF',
                 fontSize: 17,
                 fontWeight: '800',
                 letterSpacing: 0.3,
@@ -1528,7 +1530,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             <Text
               style={{
                 fontSize: 14,
-                fontWeight: '600',
+                fontWeight: '700',
                 color: t.signinLink,
               }}
             >
@@ -2281,6 +2283,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!loginLoading}
+                  accessibilityLabel="Login email"
+                  textContentType="emailAddress"
                 />
                 {loginErrors.email && <Text style={loginStyles.errorText}>{loginErrors.email}</Text>}
               </View>
@@ -2298,6 +2302,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   }}
                   secureTextEntry
                   editable={!loginLoading}
+                  accessibilityLabel="Login password"
+                  textContentType="password"
                 />
                 {loginErrors.password && <Text style={loginStyles.errorText}>{loginErrors.password}</Text>}
               </View>
@@ -2306,6 +2312,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 style={[loginStyles.loginButton, loginLoading && { opacity: 0.6 }]} 
                 onPress={handleLogin}
                 disabled={loginLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Submit login"
               >
                 <Text style={loginStyles.loginButtonText}>Sign In</Text>
               </TouchableOpacity>
@@ -2848,6 +2856,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 placeholder="name@example.com"
                 keyboardType="email-address"
                 isDark={isDarkLanding}
+                accessibilityLabel="Login email"
               />
               {loginErrors.email ? (
                 <Text
@@ -2872,6 +2881,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 placeholder="••••••••"
                 secureTextEntry
                 isDark={isDarkLanding}
+                accessibilityLabel="Login password"
               />
               {loginErrors.password ? (
                 <Text
@@ -2933,6 +2943,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 onPress={handleLogin}
                 activeOpacity={0.88}
                 disabled={loginLoading}
+                accessibilityLabel="Submit login"
                 style={{
                   borderRadius: 14,
                   height: 52,
@@ -3103,9 +3114,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         ? renderWelcomeView()
         : currentView === 'signup'
           ? renderSignupViewLiquid()
-          : currentView === 'login'
-            ? renderLoginViewLiquid()
-            : null}
+          : renderLoginViewLiquid()}
       <ErrorModal
         visible={!!errorModal}
         title={errorModal?.title ?? 'Error'}

@@ -43,7 +43,6 @@ import {
   formatClientHeightDisplay,
   getClientSubtext,
   useTrainerTheme,
-  PINK,
   CARD_BORDER_PROGRESS,
   CARD_BORDER_NUTRITION,
   CARD_BORDER_CALENDAR,
@@ -566,78 +565,42 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
         </View>
       ) : null}
 
-      {/* keep client note (if present) but visually secondary */}
+      {/* Client note for the day — keep it quiet and secondary */}
       {log.dashboard_notes != null && log.dashboard_notes !== '' && (
         <View style={{ marginTop: 22 }}>
           <Text style={[sectionHeaderStyle, { marginTop: 0 }]}>Client note</Text>
-          <LinearGradient
-            colors={isDark ? ['rgba(255,107,157,0.35)', 'rgba(139,92,246,0.28)'] : ['rgba(236,72,153,0.45)', 'rgba(139,92,246,0.35)']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
+          <View
             style={{
-              borderRadius: 18,
-              padding: 1,
-              marginTop: 4,
+              marginTop: 8,
+              borderRadius: 14,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
+              paddingVertical: 14,
+              paddingHorizontal: 14,
             }}
           >
-            <View
+            <Text
               style={{
-                borderRadius: 17,
-                overflow: 'hidden',
-                backgroundColor: isDark ? 'rgba(18,18,24,0.96)' : '#FFFFFF',
-                flexDirection: 'row',
-                alignItems: 'stretch',
+                color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.5)',
+                fontSize: 12,
+                fontWeight: '600',
+                marginBottom: 6,
               }}
             >
-              <View
-                style={{
-                  width: 4,
-                  backgroundColor: PINK,
-                  opacity: isDark ? 0.95 : 1,
-                }}
-              />
-              <View style={{ flex: 1, flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 16, gap: 14 }}>
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: isDark ? 'rgba(255,107,157,0.14)' : 'rgba(236,72,153,0.12)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,107,157,0.28)' : 'rgba(236,72,153,0.22)',
-                  }}
-                >
-                  <Icon name="MessageSquare" size={18} color={PINK} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={{
-                      color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.5)',
-                      fontSize: 11,
-                      fontWeight: '700',
-                      letterSpacing: 1.2,
-                      textTransform: 'uppercase',
-                      marginBottom: 8,
-                    }}
-                  >
-                    From client (today)
-                  </Text>
-                  <Text
-                    style={{
-                      color: isDark ? 'rgba(255,255,255,0.92)' : 'rgba(15,23,42,0.88)',
-                      fontSize: 15,
-                      lineHeight: 24,
-                      fontWeight: '500',
-                    }}
-                  >
-                    {log.dashboard_notes}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
+              From client · today
+            </Text>
+            <Text
+              style={{
+                color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.88)',
+                fontSize: 15,
+                lineHeight: 22,
+                fontWeight: '500',
+              }}
+            >
+              {log.dashboard_notes}
+            </Text>
+          </View>
         </View>
       )}
     </View>

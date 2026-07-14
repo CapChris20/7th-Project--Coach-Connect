@@ -37,9 +37,16 @@ const HERO_TOP_STRIPE = ['#C2410C', '#4C1D95'];
 
 export function getAuroraHeroGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Morning';
-  if (hour < 17) return 'Afternoon';
-  return 'Evening';
+  // 5am–12pm morning · 12–5pm afternoon · 5–11pm evening · 11pm–5am night
+  if (hour >= 5 && hour < 12) return 'Morning';
+  if (hour >= 12 && hour < 17) return 'Afternoon';
+  if (hour >= 17 && hour < 23) return 'Evening';
+  return 'Night';
+}
+
+/** Full phrase for AI Coach / copy: "Good morning" */
+export function getAuroraHeroGreetingPhrase() {
+  return `Good ${getAuroraHeroGreeting().toLowerCase()}`;
 }
 
 function auroraHeroDaySegment(hour) {

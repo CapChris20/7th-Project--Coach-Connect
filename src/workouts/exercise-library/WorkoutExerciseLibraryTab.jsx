@@ -29,6 +29,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../../app-start/config';
 import { useYouTubeAPI, getExerciseLibraryJourneyHint } from './useYouTubeAPI';
 import { YouTubeIframeExercisePlayer } from './VideoPlayerModal';
 import ExerciseSection from '../components/ExerciseSection';
@@ -409,17 +411,45 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
     }
   }, []);
 
+  const persistLikedExercisesToFirestore = useCallback(async (exercise, isLiked) => {
+    const uid = auth?.currentUser?.uid;
+    if (!uid || !db || !exercise) return;
+    try {
+      const refUser = doc(db, 'users', uid);
+      const snap = await getDoc(refUser);
+      const prev = Array.isArray(snap.data()?.likedExercises) ? [...snap.data().likedExercises] : [];
+      const name = String(exercise.title || exercise.name || '').trim();
+      const id = String(exercise.id || name).trim();
+      let next;
+      if (isLiked) {
+        const entry = { id, name, likedAt: new Date().toISOString() };
+        next = [entry, ...prev.filter((x) => String(x?.id || x?.name) !== id && String(x?.name) !== name)].slice(0, 80);
+      } else {
+        next = prev.filter((x) => String(x?.id || '') !== id && String(x?.name || '') !== name);
+      }
+      await setDoc(refUser, { likedExercises: next, updatedAt: serverTimestamp() }, { merge: true });
+    } catch (e) {
+      if (__DEV__) console.warn('likedExercises save:', e?.message || e);
+    }
+  }, []);
+
   const toggleSave = useCallback(
-    (id) => {
+    (exerciseOrId) => {
+      const id = typeof exerciseOrId === 'string' ? exerciseOrId : exerciseOrId?.id;
+      if (!id) return;
       setSaved((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
+        const willLike = !next.has(id);
+        if (willLike) next.add(id);
+        else next.delete(id);
         persistSaved(next);
+        if (typeof exerciseOrId === 'object') {
+          void persistLikedExercisesToFirestore(exerciseOrId, willLike);
+        }
         return next;
       });
     },
-    [persistSaved],
+    [persistSaved, persistLikedExercisesToFirestore],
   );
 
   const defaultDifficulty = useMemo(() => {
@@ -733,7 +763,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           accentGradient={SECTION_GRADIENT.primary}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
-                          onToggleSave={() => toggleSave(item.id)}
+                          onToggleSave={() => toggleSave(item)}
                           onPress={() => setActiveExercise(item)}
                         />
                       </View>
@@ -763,7 +793,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           accentGradient={SECTION_GRADIENT.shorts}
                           isDark={isDark}
                           saved={saved.has(item.id)}
-                          onToggleSave={() => toggleSave(item.id)}
+                          onToggleSave={() => toggleSave(item)}
                           onPress={() => setActiveExercise(item)}
                         />
                       )}
@@ -822,7 +852,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           accentGradient={SECTION_GRADIENT.primary}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
-                          onToggleSave={() => toggleSave(item.id)}
+                          onToggleSave={() => toggleSave(item)}
                           onPress={() => setActiveExercise(item)}
                         />
                       </View>
@@ -851,7 +881,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         accentGradient={SECTION_GRADIENT.shorts}
                         isDark={isDark}
                         saved={saved.has(item.id)}
-                        onToggleSave={() => toggleSave(item.id)}
+                        onToggleSave={() => toggleSave(item)}
                         onPress={() => setActiveExercise(item)}
                       />
                     )}
@@ -886,7 +916,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           accentGradient={SECTION_GRADIENT.goals}
                           accentPlacement="bottom"
                           saved={saved.has(item.id)}
-                          onToggleSave={() => toggleSave(item.id)}
+                          onToggleSave={() => toggleSave(item)}
                           onPress={() => setActiveExercise(item)}
                         />
                       </View>
@@ -922,7 +952,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                           accentGradient={SECTION_GRADIENT.form}
                           accentPlacement="left"
                           saved={saved.has(item.id)}
-                          onToggleSave={() => toggleSave(item.id)}
+                          onToggleSave={() => toggleSave(item)}
                           onPress={() => setActiveExercise(item)}
                         />
                       </View>
@@ -979,7 +1009,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                       accentGradient={SECTION_GRADIENT.primary}
                       accentPlacement="left"
                       saved={saved.has(item.id)}
-                      onToggleSave={() => toggleSave(item.id)}
+                      onToggleSave={() => toggleSave(item)}
                       onPress={() => setActiveExercise(item)}
                     />
                   </View>
@@ -1006,7 +1036,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
                         accentGradient={SECTION_GRADIENT.shorts}
                         isDark={isDark}
                         saved={saved.has(item.id)}
-                        onToggleSave={() => toggleSave(item.id)}
+                        onToggleSave={() => toggleSave(item)}
                         onPress={() => setActiveExercise(item)}
                       />
                     )}

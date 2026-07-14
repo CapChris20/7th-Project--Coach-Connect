@@ -175,6 +175,7 @@ export function TrainerVoiceAIScreen() {
         prefill={s.aiChatState.prefill}
         sessionId={s.aiChatState.sessionId}
         enableHistorySidebar
+        hideBottomNav={false}
         onSessionSwitch={(session) =>
           s.openAIChatSession({ sessionId: session.sessionId || session.id })
         }
@@ -198,6 +199,7 @@ export function TrainerVoiceAIScreen() {
     <>
       <VoiceCoachScreen
         userId={s.user?.uid}
+        hideBottomNav={false}
         onStartChat={({ prefill } = {}) => s.openAIChatSession({ prefill })}
         onSessionPress={(session) =>
           s.openAIChatSession({ sessionId: session.sessionId || session.id })

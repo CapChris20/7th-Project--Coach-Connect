@@ -1,0 +1,6 @@
+appId: com.coachconnect
+---
+- runFlow:
+    file: helpers/client-login-home.yaml
+- runFlow:
+    file: helpers/client-logout-checks.yaml

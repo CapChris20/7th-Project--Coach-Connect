@@ -18,6 +18,10 @@ service cloud.firestore {
     match /trainers/{trainerId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == trainerId;
+
+      match /importedData/{importId} {
+        allow read, write: if request.auth != null && request.auth.uid == trainerId;
+      }
     }
 
     // Client → trainer coaching payments (server writes only)

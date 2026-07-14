@@ -1,0 +1,9 @@
+# Navigate to Nutrition tab and pass onboarding if needed
+appId: com.coachconnect
+---
+- tapOn: "Nutrition"
+- extendedWaitUntil:
+    visible: "Nutrition|Set Your Calorie Goal"
+    timeout: 30000
+- runFlow:
+    file: nutrition-onboarding-if-needed.yaml

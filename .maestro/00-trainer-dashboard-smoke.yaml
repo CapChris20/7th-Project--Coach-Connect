@@ -1,0 +1,10 @@
+# Smoke: trainer dashboard visible when already signed in (no password needed)
+appId: com.coachconnect
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "Active Clients"
+    timeout: 60000
+- assertVisible: "Active Clients"
+- assertVisible: "Pending Requests"
