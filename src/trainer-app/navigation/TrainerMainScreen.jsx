@@ -197,7 +197,14 @@ export default function TrainerMainScreen() {
 
         {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showPhotoGallery && s.day6Client?.id && !s.showWorkoutGenerator && !s.showPlanViewer && (
           <MyProgressPhotosScreen
-            route={{ params: { clientId: s.day6Client.id, clientName: s.day6Client.name, allowUpload: false } }}
+            route={{
+              params: {
+                clientId: s.day6Client.id,
+                clientName: s.day6Client.name,
+                allowUpload: false,
+                reserveShellBottomNav: true,
+              },
+            }}
             navigation={{ goBack: () => s.setShowPhotoGallery(false) }}
           />
         )}
@@ -291,12 +298,7 @@ export default function TrainerMainScreen() {
 
         {!s.showWorkoutGenerator &&
           !s.showPlanViewer &&
-          !s.showTrainerMessaging &&
-          !s.showConversationsList &&
-          !s.showClientRequests &&
-          !s.showClientsList &&
-          !s.showAIWorkouts &&
-          !s.showPhotoGallery && (
+          !s.showTrainerMessaging && (
           <ShellBottomNavAnchor>
             <BottomNavBar
               onHomePress={s.handleHomePress}

@@ -10,11 +10,11 @@
  */
 import React, { useRef } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -51,13 +51,16 @@ function GradientCard({ borderColors, style, innerStyle, children }) {
 
 export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(24);
+  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
   const supportEmail = getSupportEmail();
   const t = getCardTokens(isDark);
   const contactLine = `Contact: ${supportEmail}`;
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scrollContent: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24 },
+    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
 
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
@@ -208,7 +211,12 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <CoachConnectHeader title="Terms of Service" skipTopSafeInset onBack={onClose} />
 
-      <ScrollView style={styles.scrollContent} {...FORM_SCROLL_PROPS}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        {...FORM_SCROLL_PROPS}
+        showsVerticalScrollIndicator
+      >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
           <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroOuter} innerStyle={styles.heroInner}>
             <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>

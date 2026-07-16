@@ -25,11 +25,16 @@ function keyboardInsetFromEvent(e) {
 /**
  * Keyboard inset for AI Coach composer — positions input flush above the keyboard.
  * Avoids KeyboardAvoidingView, which double-pads and leaves a floating gap on iOS.
+ *
+ * Layout contract:
+ * - FlatList / ScrollView sits above the composer in normal flow.
+ * - Composer sits above the absolute ShellBottomNavAnchor.
+ * - Only the composer needs BOTTOM_NAV_BAR_HEIGHT reserve; the list only needs a
+ *   small breathing gap above the composer (not a second full nav pad).
  */
 export function useCoachComposerKeyboard({ hideBottomNav: _hideBottomNav = false } = {}) {
   const insets = useSafeAreaInsets();
-  // Tab bar is always an absolute overlay here — either this screen renders it
-  // (!hideBottomNav) or the parent shell does (hideBottomNav). Always reserve its height.
+  // Absolute bottom nav overlay (this screen or parent shell). Composer must clear it.
   const shellNavPad = BOTTOM_NAV_BAR_HEIGHT + Math.max(insets.bottom, 0);
   const [keyboardInset, setKeyboardInset] = useState(0);
 
@@ -48,7 +53,9 @@ export function useCoachComposerKeyboard({ hideBottomNav: _hideBottomNav = false
 
   const keyboardVisible = keyboardInset > 0;
   const composerBottomPad = keyboardVisible ? 8 : 10 + shellNavPad;
-  const listBottomPad = keyboardVisible ? 8 : 12 + shellNavPad;
+  // List already ends above the composer — do NOT add another nav-height pad (that
+  // created a large empty "hidden" gap at the bottom of trainer/client AI Coach).
+  const listBottomPad = keyboardVisible ? 12 : 20;
   /** Apply to composer wrapper: lifts bar exactly above keyboard when open. */
   const composerKeyboardPad = keyboardVisible ? keyboardInset + 8 : composerBottomPad;
 
@@ -58,5 +65,6 @@ export function useCoachComposerKeyboard({ hideBottomNav: _hideBottomNav = false
     composerBottomPad,
     composerKeyboardPad,
     listBottomPad,
+    shellNavPad,
   };
 }

@@ -52,7 +52,13 @@ jest.mock('../../shared/api/logErrorToServer', () => ({
 jest.mock('../../auth/LoginScreen', () => () => null);
 jest.mock('../../auth/ResetPasswordScreen', () => () => null);
 jest.mock('../../auth/OnboardingWizardScreen', () => () => null);
-jest.mock('../../shared/components/shell/AppLoadingScreen', () => () => null);
+jest.mock('../../shared/components/shell/BootLoading', () => ({
+  BootSuspenseFallback: () => null,
+  useBootLoadingLock: () => {},
+  BootLoadingProvider: ({ children }) => children,
+  BootLoadingOverlay: () => null,
+  useBootLoading: () => ({ acquire: () => {}, release: () => {}, visible: false }),
+}));
 
 jest.mock('../../app-start/TrainerApp', () => {
   const ReactLocal = require('react');

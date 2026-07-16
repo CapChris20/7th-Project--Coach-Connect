@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
+import { NUT_MACRO_GRADIENTS } from '../nutritionTheme';
 
 const PINK = '#BE185D';
 const PINK_SOFT = '#FF6B9D';
@@ -43,21 +44,21 @@ const MACRO_LANES = [
     key: 'protein',
     label: 'Protein',
     icon: require('../../assets/icons/Protein.png'),
-    accent: PINK_SOFT,
+    gradient: NUT_MACRO_GRADIENTS.protein,
     barMax: 250,
   },
   {
     key: 'carbs',
     label: 'Carbs',
     icon: require('../../assets/icons/Carbs.png'),
-    accent: ORANGE_SOFT,
+    gradient: NUT_MACRO_GRADIENTS.carbs,
     barMax: 350,
   },
   {
     key: 'fat',
     label: 'Fat',
     icon: require('../../assets/icons/Fats.png'),
-    accent: CYAN,
+    gradient: NUT_MACRO_GRADIENTS.fat,
     barMax: 120,
   },
 ];
@@ -115,7 +116,14 @@ function MacroLane({ row, value, onChange, palette }) {
         </View>
       </View>
       <View style={[lane.track, { backgroundColor: palette.inputBg }]}>
-        <View style={[lane.fill, { width: `${fill * 100}%`, backgroundColor: row.accent }]} />
+        <View style={[lane.fill, { width: `${Math.max(fill * 100, fill > 0 ? 4 : 0)}%` }]}>
+          <LinearGradient
+            colors={row.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
       </View>
     </View>
   );
@@ -133,9 +141,13 @@ export default function NutritionSettingsScreen({
   const { isDark } = useTheme();
   const palette = useMemo(() => getPalette(isDark), [isDark]);
   const insets = useSafeAreaInsets();
-  const shellBottomPad = useShellBottomNavInset(16);
+  const shellBottomPad = useShellBottomNavInset(24);
+  // Floating BottomNavBar always overlays when embedded in NutritionContainer
+  // (either this container's nav or the parent shell's). Never stack insets twice.
   const scrollBottomPad =
-    Math.max(insets.bottom, 16) + (embedded ? 12 : 32) + (reserveShellBottomNav ? shellBottomPad : 0);
+    embedded || reserveShellBottomNav
+      ? shellBottomPad
+      : Math.max(insets.bottom, 16) + 32;
 
   const [calories, setCalories] = useState(String(currentGoals.calories ?? 2000));
   const [protein, setProtein] = useState(String(currentGoals.proteinTarget ?? 150));
@@ -203,7 +215,7 @@ export default function NutritionSettingsScreen({
     <ScrollView
       style={s.scroll}
       contentContainerStyle={[s.scrollContent, { paddingBottom: scrollBottomPad }]}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       automaticallyAdjustKeyboardInsets
@@ -507,12 +519,13 @@ const lane = StyleSheet.create({
     width: 14,
   },
   track: {
-    height: 4,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 99,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 99,
+    overflow: 'hidden',
   },
 });

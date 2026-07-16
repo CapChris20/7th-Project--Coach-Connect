@@ -281,10 +281,23 @@ function formatToolActionSummary(toolCall) {
         }
         return { icon: 'trash-outline', title: 'Delete last food entry', detail: 'Remove your most recent meal log' };
       }
+      const metricLabels = {
+        sleep: ['Delete sleep log', 'Clear your sleep entry from the dashboard'],
+        water: ['Delete water log', 'Clear your water entry from the dashboard'],
+        steps: ['Delete steps log', 'Clear your step count from the dashboard'],
+        energy: ['Delete energy log', 'Clear your energy rating from the dashboard'],
+        mood: ['Delete mood log', 'Clear your mood entry from the dashboard'],
+        workout: ['Delete workout log', 'Clear your workout entry from the dashboard'],
+        restDay: ['Clear rest day', 'Remove the rest day mark from the dashboard'],
+      };
+      const [title, detailBase] = metricLabels[logType] || [
+        'Delete log',
+        `Clear ${logType} entry from the dashboard`,
+      ];
       return {
         icon: 'trash-outline',
-        title: 'Delete log',
-        detail: joinParts(`Clear ${logType} entry`, p.date && p.date !== 'Today' ? `for ${p.date}` : 'for today'),
+        title,
+        detail: joinParts(detailBase, p.date && p.date !== 'Today' ? `for ${p.date}` : null),
       };
     }
     default:
@@ -1735,7 +1748,7 @@ export default function ChatWithCoachScreen({
               paddingTop: 16,
               paddingBottom: listBottomPad,
             }}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
             keyboardShouldPersistTaps="always"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             scrollEventThrottle={16}

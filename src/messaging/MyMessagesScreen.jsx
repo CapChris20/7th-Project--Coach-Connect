@@ -40,7 +40,7 @@ import { getOrCreateConversation, markMessagesAsRead } from '../ai-coach/server-
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BOTTOM_NAV_BAR_HEIGHT, FORM_SCROLL_PROPS } from '../navigation/bottomNavMetrics';
+import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomNavMetrics';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -180,7 +180,9 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
-  const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) + BOTTOM_NAV_BAR_HEIGHT : 0;
+  // Shell BottomNavBar stays visible on the conversations list — reserve it.
+  const shellBottomPad = useShellBottomNavInset(24);
+  const embedBottomPad = embedInLayout ? shellBottomPad : 0;
   const t = isDark ? DARK : LIGHT;
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -545,7 +547,11 @@ export default function MyMessagesScreen({ onSelectConversation, onClose, onProf
           data={filteredConversations}
           keyExtractor={(item) => item.id}
           renderItem={renderRow}
-          contentContainerStyle={{ paddingTop: 16, paddingBottom: 48 + embedBottomPad, flexGrow: 1 }}
+          contentContainerStyle={{
+            paddingTop: 16,
+            paddingBottom: embedInLayout ? embedBottomPad : 48,
+            flexGrow: 1,
+          }}
           {...FORM_SCROLL_PROPS}
           ListFooterComponent={
             hasMoreConversations ? (

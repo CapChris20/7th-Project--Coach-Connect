@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import StableGradientText from '../../shared-ui/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../shared-ui/brandGradients';
 import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
 import { getClientDateKey } from '../../shared-utils/dateKeys';
 import {
@@ -705,12 +706,9 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   const mutedColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(17,24,39,0.58)';
   const subtleBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)';
   const subtleFill = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
-  const agendaBgColors = isDark ? ['#1A1F2E', '#0F1419'] : ['#FFFFFF', '#F3F4F6'];
   const agendaTextureColors = isDark
     ? ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)']
     : ['rgba(0,0,0,0.03)', 'rgba(0,0,0,0)', 'rgba(192,132,252,0.10)'];
-  const emptyGlassBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)';
-  const emptyGlassBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)';
 
   const w0 = (workouts || [])[0] || null;
   const rawTitle = String(w0?.name || w0?.workoutName || 'Training Agenda').trim();
@@ -729,6 +727,15 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   })();
 
   const exerciseCount = exercises.length;
+  const isEmpty = exerciseCount === 0;
+  const agendaBgColors = isEmpty
+    ? isDark
+      ? ['#1B1430', '#14101F', '#1A120E']
+      : ['#F8F5FF', '#FFFFFF', '#FFF7ED']
+    : isDark
+      ? ['#1A1F2E', '#0F1419']
+      : ['#FFFFFF', '#F3F4F6'];
+
   const estMinutes = (() => {
     if (!exerciseCount) return 0;
     // Premium-feeling estimate without overthinking it.
@@ -752,7 +759,6 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
 
   // Animations: card entrance + cascade items
   const enter = useRef(new Animated.Value(0)).current;
-  const emptyPulse = useRef(new Animated.Value(1)).current;
   const itemAnims = useRef([]).current;
   const shownExercises = exercises.slice(0, 8);
   while (itemAnims.length < shownExercises.length) itemAnims.push(new Animated.Value(0));
@@ -783,40 +789,26 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
     }
   }, [enter, exercises.length]);
 
-  useEffect(() => {
-    if (exerciseCount !== 0) {
-      emptyPulse.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(emptyPulse, {
-          toValue: 1.04,
-          duration: 1400,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(emptyPulse, {
-          toValue: 1,
-          duration: 1400,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [exerciseCount, emptyPulse]);
-
-  const isEmpty = exerciseCount === 0;
-
   return (
     <View style={styles.agendaContainer}>
-      <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Training Agenda Today</Text>
+      <Text
+        style={[
+          styles.sectionTitle,
+          !isDark && styles.lightText,
+          {
+            fontFamily: Platform.select({
+              ios: 'SpaceGrotesk_600SemiBold',
+              android: 'SpaceGrotesk_600SemiBold',
+              default: 'SpaceGrotesk_600SemiBold',
+            }),
+          },
+        ]}
+      >
+        Training Agenda Today
+      </Text>
       <View
         style={[
           styles.agendaGradientBorder,
-          isEmpty && styles.agendaGradientBorderPremiumEmpty,
           {
             borderWidth: 1,
             borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
@@ -828,7 +820,6 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
         <Animated.View
           style={[
             styles.agendaCardInner,
-            isEmpty && styles.agendaCardInnerPremiumEmpty,
             {
               opacity: enter,
               transform: [
@@ -844,7 +835,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
             colors={agendaBgColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.agendaBg, isEmpty && styles.agendaBgPremiumEmpty]}
+            style={styles.agendaBg}
           >
             {/* Subtle texture */}
             <LinearGradient
@@ -854,19 +845,28 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
               style={styles.agendaTexture}
             />
             {isEmpty ? (
-              <LinearGradient
-                colors={
-                  isDark
-                    ? ['rgba(109,40,217,0.14)', 'rgba(194,65,12,0.08)']
-                    : ['rgba(109,40,217,0.08)', 'rgba(194,65,12,0.06)']
-                }
-                start={{ x: 0.1, y: 0 }}
-                end={{ x: 0.9, y: 1 }}
-                style={styles.agendaEmptyAmbient}
-                pointerEvents="none"
-              />
+              <>
+                <LinearGradient
+                  colors={AGENDA_BORDER_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.agendaEmptyTopStripe}
+                  pointerEvents="none"
+                />
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent']
+                      : ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent']
+                  }
+                  locations={[0, 0.35, 0.7, 1]}
+                  start={{ x: 0.15, y: 0 }}
+                  end={{ x: 0.9, y: 1 }}
+                  style={styles.agendaEmptyAmbient}
+                  pointerEvents="none"
+                />
+              </>
             ) : null}
-
             <View style={styles.agendaPad}>
               <View style={styles.agendaHeaderRow}>
                 <View style={{ flex: 1 }}>
@@ -889,7 +889,6 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
                 <View
                   style={[
                     styles.agendaBadge,
-                    isEmpty && styles.agendaBadgeEmptyPremium,
                     { backgroundColor: subtleFill, borderColor: subtleBorder },
                   ]}
                 >
@@ -900,52 +899,40 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
               </View>
 
               {isEmpty ? (
-                <View style={styles.agendaEmptyPremiumShell}>
-                  <View
-                    style={[
-                      styles.agendaEmptyGlass,
-                      {
-                        backgroundColor: emptyGlassBg,
-                        borderColor: emptyGlassBorder,
-                      },
-                    ]}
+                <View style={styles.agendaEmptyStage}>
+                  <LinearGradient
+                    colors={HERO_TITLE_TEXT_GRADIENT}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.agendaEmptyIconWrap}
                   >
-                    <View style={styles.agendaEmptyPremiumRow}>
-                      <Animated.View style={{ transform: [{ scale: emptyPulse }] }}>
-                          <View
-                            style={[
-                              styles.agendaEmptyIconRingOuter,
-                              {
-                                borderWidth: 1,
-                                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)',
-                                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                              },
-                            ]}
-                          >
-                          <View
-                            style={[
-                              styles.agendaEmptyIconRingInner,
-                              {
-                                backgroundColor: isDark ? '#12131A' : '#FAFAFC',
-                                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="barbell-outline" size={26} color="#C2410C" />
-                          </View>
-                        </View>
-                      </Animated.View>
-                      <View style={styles.agendaEmptyCopyCol}>
-                        <Text style={[styles.agendaEmptyHeadline, { color: textColor }]}>
-                          {"Today's canvas is clear"}
-                        </Text>
-                        <Text style={[styles.agendaEmptySubcopy, { color: mutedColor }]}>
-                          No exercises logged yet. Stack your first lifts here—or open Workout to generate a plan and
-                          sync it to today.
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                    <Ionicons name="barbell-outline" size={22} color="#FFFFFF" />
+                  </LinearGradient>
+
+                  <StableGradientText
+                    colors={HERO_TITLE_TEXT_GRADIENT}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.agendaEmptyHeadline}
+                  >
+                    Ready when you are
+                  </StableGradientText>
+
+                  <Text style={[styles.agendaEmptySubcopy, { color: mutedColor }]}>
+                    No lifts on the board yet — today's agenda is wide open.
+                  </Text>
+
+                  <LinearGradient
+                    colors={
+                      isDark
+                        ? ['transparent', 'rgba(190,24,93,0.55)', 'rgba(194,65,12,0.45)', 'transparent']
+                        : ['transparent', 'rgba(190,24,93,0.35)', 'rgba(194,65,12,0.28)', 'transparent']
+                    }
+                    locations={[0, 0.35, 0.65, 1]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.agendaEmptyRule}
+                  />
                 </View>
               ) : (
                 <View style={styles.agendaExercisesWrap}>
@@ -1154,7 +1141,21 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
 
   return (
     <View style={styles.nutritionContainer}>
-      <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Nutrition Today</Text>
+      <Text
+        style={[
+          styles.sectionTitle,
+          !isDark && styles.lightText,
+          {
+            fontFamily: Platform.select({
+              ios: 'SpaceGrotesk_600SemiBold',
+              android: 'SpaceGrotesk_600SemiBold',
+              default: 'SpaceGrotesk_600SemiBold',
+            }),
+          },
+        ]}
+      >
+        Nutrition Today
+      </Text>
       <View
         style={[
           styles.nutritionGradientBorder,
@@ -1391,7 +1392,21 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
 
   return (
     <View style={styles.notesContainer}>
-      <Text style={[styles.sectionTitle, !isDark && styles.lightText]}>Notes & Files</Text>
+      <Text
+        style={[
+          styles.sectionTitle,
+          !isDark && styles.lightText,
+          {
+            fontFamily: Platform.select({
+              ios: 'SpaceGrotesk_600SemiBold',
+              android: 'SpaceGrotesk_600SemiBold',
+              default: 'SpaceGrotesk_600SemiBold',
+            }),
+          },
+        ]}
+      >
+        Notes & Files
+      </Text>
       <LinearGradient
         colors={['#C084FC', '#FF6B9D']}
         start={{ x: 0, y: 0 }}

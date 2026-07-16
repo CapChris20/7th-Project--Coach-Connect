@@ -27,6 +27,14 @@ function isPer100gSource(source) {
   return PER_100G_SOURCES.has(String(source || '').toLowerCase());
 }
 
+/** FatSecret / Serper / manual often store label serving totals, not per-100g. */
+function isLabelServingBasis(food) {
+  const basis = String(food?.dataBasis || '').toLowerCase();
+  if (basis === 'label_serving' || basis === 'per_serving') return true;
+  if (basis === 'per_100g' || basis === 'per_100') return false;
+  return !isPer100gSource(food?.source);
+}
+
 /**
  * Resolve logged/scanned amount in grams (or ml for beverages).
  */
@@ -38,9 +46,11 @@ function resolveServingGrams(food) {
   return 100;
 }
 
-/** Factor to multiply per-100g nutrient values (grams / 100). */
+/** Factor to multiply nutrient values for a chosen gram amount. */
 function resolveServingFactor(food) {
-  return resolveServingGrams(food) / 100;
+  const grams = resolveServingGrams(food);
+  if (isLabelServingBasis(food)) return 1;
+  return grams / 100;
 }
 
 function nutrientTotalForGrams(per100Value, grams) {
@@ -49,12 +59,21 @@ function nutrientTotalForGrams(per100Value, grams) {
 
 function caloriesForGrams(food, grams) {
   const g = num(grams) > 0 ? num(grams) : resolveServingGrams(food);
+  if (isLabelServingBasis(food)) {
+    const baseG = resolveServingGrams(food) || 100;
+    const labelCals = num(food?.calories) || num(food?.nf_calories) || num(food?.kcalPer100Unit);
+    return Math.round(labelCals * (g / baseG));
+  }
   const per100 = num(food?.calories) || num(food?.kcalPer100Unit);
   return Math.round(nutrientTotalForGrams(per100, g));
 }
 
-function scaleMacroForGrams(per100Value, grams) {
-  return Math.round(nutrientTotalForGrams(per100Value, grams) * 10) / 10;
+function scaleMacroForGrams(per100OrLabelValue, grams, food = null) {
+  if (food && isLabelServingBasis(food)) {
+    const baseG = resolveServingGrams(food) || 100;
+    return Math.round(num(per100OrLabelValue) * (num(grams) / baseG) * 10) / 10;
+  }
+  return Math.round(nutrientTotalForGrams(per100OrLabelValue, grams) * 10) / 10;
 }
 
 /**
@@ -122,6 +141,7 @@ module.exports = {
   PER_100G_SOURCES,
   MAX_SANE_KCAL_PER_100,
   isPer100gSource,
+  isLabelServingBasis,
   resolveServingGrams,
   resolveServingFactor,
   nutrientTotalForGrams,

@@ -1,10 +1,10 @@
 /**
  * coach Delete Log Routing
  *
- * Purpose: coach Delete Log Routing — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
+ * Purpose: Detect delete intent and route food vs dashboard metrics (sleep/water/…).
+ * Why it matters: Prevents sleep/water deletes from being forced into nutrition/food chips.
  * Area: src/ai
- * Key exports: userWantsDeleteLog, coachTextImpliesDelete, parseLooseDateKey, sanitizeDeleteFoodQuery, wantsDeleteAllFoodLogs, inferDeleteLogParams, coerceMisroutedDeleteTool
+ * Key exports: userWantsDeleteLog, coachTextImpliesDelete, parseLooseDateKey, sanitizeDeleteFoodQuery, wantsDeleteAllFoodLogs, inferDeleteLogParams, coerceMisroutedDeleteTool, inferDeleteLogType
  *
  * @file-header
  */
@@ -39,11 +39,21 @@ const MONTHS = {
   december: 12,
 };
 
+const NON_NUTRITION_TYPES = new Set([
+  'sleep',
+  'water',
+  'steps',
+  'energy',
+  'mood',
+  'workout',
+  'restDay',
+]);
+
 function userWantsDeleteLog(text) {
   const t = String(text || '').toLowerCase();
   if (!/\b(delete|remove|clear|undo|unlog|erase)\b/i.test(t)) return false;
   if (
-    /\b(food|meal|entry|entries|nutrition|log|sleep|water|steps|energy|mood|workout|recent|last|today|yesterday)\b/i.test(
+    /\b(food|meal|entry|entries|nutrition|log|sleep|slept|sleeping|water|steps|energy|mood|workout|rest|recent|last|today|yesterday|dashboard)\b/i.test(
       t,
     )
   ) {
@@ -56,8 +66,15 @@ function coachTextImpliesDelete(text) {
   const t = String(text || '');
   return (
     userWantsDeleteLog(t) ||
-    /\b(i'?ll|i will|going to)\s+(delete|remove|clear)\b/i.test(t) ||
-    /\b(deleted|removed|cleared)\b.*\b(from your|from the)\b/i.test(t)
+    /\b(i'?ll|i will|going to|i am|i'm)\s+(delete|remove|clear)\b/i.test(t) ||
+    /\b(deleted|removed|cleared|removing|deleting)\b.*\b(from your|from the|sleep|log|dashboard)\b/i.test(t) ||
+    /\b(remove|clear|delete)\b.*\b(sleep|water|steps|energy|mood|workout|food|log)\b/i.test(t)
+  );
+}
+
+function userAffirmsCoachAction(text) {
+  return /^(do it|yes|yeah|yep|ok|okay|please|go ahead|confirm|yes please|do that|send it)\.?$/i.test(
+    String(text || '').trim(),
   );
 }
 
@@ -103,7 +120,7 @@ function sanitizeDeleteFoodQuery(raw) {
 
   if (!s) return null;
 
-  if (/domino/.test(s)) return "domino";
+  if (/domino/.test(s)) return 'domino';
   if (/pizza/.test(s)) return 'pizza';
   if (/^(two|2|both|slices?|the slices?|pizza slices?)$/.test(s)) return 'pizza';
   if (/chicken/.test(s)) return 'chicken';
@@ -112,14 +129,14 @@ function sanitizeDeleteFoodQuery(raw) {
   if (/shake/.test(s)) return 'shake';
 
   const junk =
-    /^(last|recent|latest|today|all|food|nutrition|my|both|two|2|three|3|from|the|slice|slices)$/;
+    /^(last|recent|latest|today|all|food|nutrition|my|both|two|2|three|3|from|the|slice|slices|sleep|slept|sleeping|water|steps|energy|mood|workout|dashboard|log)$/;
   if (junk.test(s)) return null;
 
   return s.length >= 3 ? s : null;
 }
 
 function extractDeleteFoodKeyword(lower) {
-  if (/domino/.test(lower)) return "domino";
+  if (/domino/.test(lower)) return 'domino';
   if (/pizza/.test(lower)) return 'pizza';
   if (/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/.test(lower)) {
     const m = lower.match(/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/);
@@ -145,16 +162,59 @@ function wantsDeleteAllFoodLogs(lower) {
   return false;
 }
 
+function mentionsFoodDelete(lower) {
+  return (
+    /\b(food|meal|nutrition|ate|eaten|breakfast|lunch|dinner|snack)\b/.test(lower) ||
+    !!extractDeleteFoodKeyword(lower)
+  );
+}
+
+/** Prefer dashboard metrics over nutrition when the user names them. */
+function inferDeleteLogType(userText = '', coachText = '') {
+  const lower = `${userText}\n${coachText}`.toLowerCase();
+  const food = mentionsFoodDelete(lower);
+
+  if (/\b(sleep|slept|sleeping)\b/.test(lower) && !food) return 'sleep';
+  if (/\b(water|hydration)\b/.test(lower) && !food) return 'water';
+  if (/\b(steps?|step count)\b/.test(lower) && !food) return 'steps';
+  if (/\b(energy|fatigue)\b/.test(lower) && !food) return 'energy';
+  if (/\bmood\b/.test(lower) && !food) return 'mood';
+  if (/\b(rest day)\b/.test(lower) && !food) return 'restDay';
+  if (/\bworkout\b/.test(lower) && !/\b(workout plan|plan)\b/.test(lower) && !food) return 'workout';
+  if (/\b(dashboard)\b/.test(lower) && /\b(sleep|slept|sleeping)\b/.test(lower)) return 'sleep';
+
+  return 'nutrition';
+}
+
+function deleteLogReasoning(params = {}) {
+  const logType = String(params.logType || 'nutrition');
+  if (logType === 'sleep') return 'Remove the sleep log from your dashboard.';
+  if (logType === 'water') return 'Remove the water log from your dashboard.';
+  if (logType === 'steps') return 'Remove the step count from your dashboard.';
+  if (logType === 'energy') return 'Remove the energy rating from your dashboard.';
+  if (logType === 'mood') return 'Remove the mood log from your dashboard.';
+  if (logType === 'restDay') return 'Clear the rest day from your dashboard.';
+  if (logType === 'workout') return 'Remove the workout entry from your dashboard.';
+  if (params.deleteAll) return 'Clear all food logs for this day.';
+  if (params.foodName) return `Remove "${params.foodName}" from your nutrition log.`;
+  return 'Remove your most recent food entry.';
+}
+
 function inferDeleteLogParams(userText = '', coachText = '') {
   const combined = `${userText}\n${coachText}`;
   const lower = combined.toLowerCase();
-  const params = { logType: 'nutrition' };
+  const logType = inferDeleteLogType(userText, coachText);
+  const params = { logType };
 
   if (/\btoday\b/.test(String(userText || '').toLowerCase())) {
     // Use local today at execution — don't override with coach prose dates.
   } else {
     const date = parseLooseDateKey(combined);
     if (date) params.date = date;
+  }
+
+  if (logType !== 'nutrition') {
+    return params;
   }
 
   if (wantsDeleteAllFoodLogs(lower)) {
@@ -182,55 +242,99 @@ function inferDeleteLogParams(userText = '', coachText = '') {
 }
 
 function cleanMisroutedFoodName(raw) {
-  return sanitizeDeleteFoodQuery(raw) || String(raw || '')
-    .replace(/^(remove|delete|clear|undo)\s+(the|my|both)?\s*/i, '')
-    .replace(/\s+from\s+.*$/i, '')
-    .replace(/\s+x\d+$/i, '')
-    .trim();
+  return (
+    sanitizeDeleteFoodQuery(raw) ||
+    String(raw || '')
+      .replace(/^(remove|delete|clear|undo)\s+(the|my|both)?\s*/i, '')
+      .replace(/\s+from\s+.*$/i, '')
+      .replace(/\s+x\d+$/i, '')
+      .trim()
+  );
 }
 
 function coerceMisroutedDeleteTool(toolCall, userText = '', coachText = '', normalizeToolCall) {
   const deleteIntent = userWantsDeleteLog(userText);
+  const affirmDelete = userAffirmsCoachAction(userText) && coachTextImpliesDelete(coachText);
+  const inferredFromText = inferDeleteLogParams(
+    deleteIntent || !affirmDelete ? userText : `${coachText}\n${userText}`,
+    coachText,
+  );
 
   if (!toolCall) {
-    if (!deleteIntent) return null;
+    if (!deleteIntent && !affirmDelete) return null;
     return normalizeToolCall({
       name: 'deleteLog',
-      params: inferDeleteLogParams(userText, coachText),
-      reasoning: 'Remove this from your nutrition log.',
+      params: inferredFromText,
+      reasoning: deleteLogReasoning(inferredFromText),
     });
   }
 
   const nameRaw = toolCall.name || toolCall.tool;
   const params = toolCall.params && typeof toolCall.params === 'object' ? { ...toolCall.params } : {};
   const foodStr = String(params.foodName || params.food || '');
+  const existingType = String(params.logType || '').trim();
+  const textMetricType = inferDeleteLogType(userText, coachText);
+  const metricMismatch =
+    nameRaw === 'deleteLog' &&
+    textMetricType !== 'nutrition' &&
+    String(existingType || 'nutrition') === 'nutrition';
 
   const misroutedLog =
     (nameRaw === 'logNutrition' || nameRaw === 'deleteLog') &&
-    (deleteIntent || /^(remove|delete|clear|undo)\b/i.test(foodStr));
+    (deleteIntent || affirmDelete || metricMismatch || /^(remove|delete|clear|undo)\b/i.test(foodStr));
 
   if (!misroutedLog) return normalizeToolCall(toolCall);
 
-  const inferred = inferDeleteLogParams(userText, coachText);
-  const foodName = cleanMisroutedFoodName(foodStr);
-  if (foodName && !/^(remove|delete|clear)/i.test(foodName)) {
-    inferred.foodName = foodName;
-  } else if (!inferred.foodName && params.foodName) {
-    const fromParams = sanitizeDeleteFoodQuery(params.foodName || params.food);
-    if (fromParams) inferred.foodName = fromParams;
+  // Model already returned a metric delete that matches user text — keep it.
+  if (
+    nameRaw === 'deleteLog' &&
+    NON_NUTRITION_TYPES.has(existingType) &&
+    (inferredFromText.logType === existingType ||
+      (inferredFromText.logType === 'nutrition' && !mentionsFoodDelete(String(userText || '').toLowerCase())))
+  ) {
+    const kept = {
+      logType: existingType,
+      date: params.date || inferredFromText.date,
+    };
+    return normalizeToolCall({
+      name: 'deleteLog',
+      params: kept,
+      reasoning: toolCall.reasoning || deleteLogReasoning(kept),
+    });
   }
+
+  const inferred = { ...inferredFromText };
+  if (metricMismatch) {
+    inferred.logType = textMetricType;
+  }
+
+  if (inferred.logType === 'nutrition') {
+    const foodName = cleanMisroutedFoodName(foodStr);
+    if (foodName && !/^(remove|delete|clear)/i.test(foodName)) {
+      inferred.foodName = foodName;
+    } else if (!inferred.foodName && params.foodName) {
+      const fromParams = sanitizeDeleteFoodQuery(params.foodName || params.food);
+      if (fromParams) inferred.foodName = fromParams;
+    }
+    if (params.deleteAll) inferred.deleteAll = true;
+  } else {
+    delete inferred.foodName;
+    delete inferred.deleteAll;
+  }
+
   const userLower = String(userText || '').toLowerCase();
   if (/\btoday\b/.test(userLower)) {
     delete inferred.date;
-  } else if (params.date) {
+  } else if (params.date && inferred.logType === 'nutrition') {
+    inferred.date = params.date;
+  } else if (params.date && !inferred.date) {
     inferred.date = params.date;
   }
-  if (params.deleteAll) inferred.deleteAll = true;
 
   return normalizeToolCall({
     name: 'deleteLog',
     params: inferred,
-    reasoning: toolCall.reasoning || params.reasoning || 'Remove this from your nutrition log.',
+    reasoning: toolCall.reasoning || deleteLogReasoning(inferred),
   });
 }
 
@@ -240,6 +344,8 @@ module.exports = {
   parseLooseDateKey,
   sanitizeDeleteFoodQuery,
   wantsDeleteAllFoodLogs,
+  inferDeleteLogType,
   inferDeleteLogParams,
+  deleteLogReasoning,
   coerceMisroutedDeleteTool,
 };

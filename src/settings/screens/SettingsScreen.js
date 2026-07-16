@@ -36,7 +36,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useShellNavigate } from '../../navigation/shellNavigate';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAI, getAiToggleMeterHint } from '../../shared/contexts/AIContext';
@@ -252,6 +252,7 @@ export default function SettingsScreen({
   const onBack = onBackProp || onClose;
   const go = (screen) => openSettingsSubScreen(screen, onNavigate);
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
+  const shellNavInset = useShellBottomNavInset(24);
   /** Pill position: explicit light/dark, or match current UI when theme follows system. */
   const appearanceValue = themeMode === 'system' ? (isDark ? 'dark' : 'light') : themeMode;
   const { aiEnabled, toggleAI, toggleMeter, refreshToggleMeter } = useAI();
@@ -513,7 +514,7 @@ export default function SettingsScreen({
           onSettingsPress={() => {}}
         />
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
           {...FORM_SCROLL_PROPS}
         >
         <SectionHeader title="APPEARANCE" colors={colors} />
@@ -987,16 +988,18 @@ export default function SettingsScreen({
       />
 
       {onNavigate && !embedShellBottomNav ? (
-        <BottomNavBar
-          onHomePress={() => go('home')}
-          onProfilePress={() => go('profile')}
-          onPlusPress={() => go('create')}
-          onVoicePress={() => go('voice')}
-          onWorkoutPress={() => go('workout')}
-          onNutritionPress={() => go('nutrition')}
-          onMessagesPress={() => go('messages')}
-          activeTabKey="home"
-        />
+        <ShellBottomNavAnchor>
+          <BottomNavBar
+            onHomePress={() => go('home')}
+            onProfilePress={() => go('profile')}
+            onPlusPress={() => go('create')}
+            onVoicePress={() => go('voice')}
+            onWorkoutPress={() => go('workout')}
+            onNutritionPress={() => go('nutrition')}
+            onMessagesPress={() => go('messages')}
+            activeTabKey="home"
+          />
+        </ShellBottomNavAnchor>
       ) : null}
       </SafeAreaView>
   );

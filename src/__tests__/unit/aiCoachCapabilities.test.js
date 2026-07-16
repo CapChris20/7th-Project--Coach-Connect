@@ -133,6 +133,15 @@ describe('offline — delete log, personal data, tool inference', () => {
         deletePizza.foodName === 'pizza' || /pizza/i.test(String(deletePizza.foodName)),
       ).toBe(true);
     });
+
+    it('delete: sleep / dashboard sleep → logType sleep', () => {
+      const sleep = inferDeleteLogParams('Can u remove the log I put for sleeping 12 hours', '');
+      expect(sleep.logType).toBe('sleep');
+      expect(sleep.foodName).toBeFalsy();
+
+      const dashboard = inferDeleteLogParams('No not a food entry a dashboard log for sleep', '');
+      expect(dashboard.logType).toBe('sleep');
+    });
   });
 
   describe('wantsDeleteAllFoodLogs', () => {

@@ -208,14 +208,12 @@ export default function ClientMainScreen() {
   const aiChatPayload = aiChatState && typeof aiChatState === 'object' ? aiChatState : null;
   const isMainFocused = useIsFocused();
   const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
-  const [nutritionSettingsOpen, setNutritionSettingsOpen] = useState(false);
   const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
+  // Keep shell BottomNavBar on Dashboard, Messages list, Goals, etc.
+  // Only hide for focused flows: nutrition onboarding, or an open chat thread.
   const hideBottomNav =
-    (mainTab === CLIENT_MAIN_TABS.nutrition &&
-      (nutritionOnboardingActive || nutritionSettingsOpen)) ||
-    showTrainerMessaging ||
-    showConversationsList ||
-    showMyDashboard;
+    (mainTab === CLIENT_MAIN_TABS.nutrition && nutritionOnboardingActive) ||
+    showTrainerMessaging;
 
   return (
     <AppNavigationProvider {...navProviderProps}>
@@ -405,7 +403,6 @@ export default function ClientMainScreen() {
         <NutritionContainer
           hideBottomNav
           onOnboardingActiveChange={setNutritionOnboardingActive}
-          onSettingsOverlayChange={setNutritionSettingsOpen}
           onBack={() => {
             handleHomePress();
             refetchNutritionData?.();

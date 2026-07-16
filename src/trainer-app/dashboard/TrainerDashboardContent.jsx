@@ -1313,7 +1313,7 @@ const DashboardContent = ({
         </View>
       )}
 
-      <View style={{ height: 100 }} />
+      <View style={{ height: 16 }} />
       <SpreadsheetViewerModal
         visible={spreadsheetViewer.visible}
         url={spreadsheetViewer.url}

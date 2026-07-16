@@ -196,27 +196,60 @@ function guardCoachToolProposals(rawCalls) {
   return out;
 }
 
+function userAffirmsPendingCoachAction(text) {
+  return /^(do it|yes|yeah|yep|ok|okay|please|go ahead|confirm|yes please|do that|send it)\.?$/i.test(
+    String(text || '').trim(),
+  );
+}
+
 function toolAlignsWithUserMessage(guarded, userText) {
   const t = String(userText || '').toLowerCase();
   const { name } = guarded;
+  if (name === 'deleteLog') {
+    if (userAffirmsPendingCoachAction(userText)) return true;
+    if (!/\b(delete|remove|clear|undo|unlog|erase)\b/.test(t)) {
+      // Clarification like "not food, dashboard sleep"
+      const logType = String(guarded.params?.logType || 'nutrition').toLowerCase();
+      if (logType === 'sleep') return /\b(sleep|slept|sleeping|dashboard)\b/.test(t);
+      if (logType !== 'nutrition') return true;
+      return false;
+    }
+    const logType = String(guarded.params?.logType || 'nutrition').toLowerCase();
+    if (logType === 'sleep') return /\b(sleep|slept|sleeping)\b/.test(t);
+    if (logType === 'water') return /\b(water|hydration)\b/.test(t);
+    if (logType === 'steps') return /\b(steps?|step count)\b/.test(t);
+    if (logType === 'energy') return /\b(energy|fatigue)\b/.test(t);
+    if (logType === 'mood') return /\bmood\b/.test(t);
+    if (logType === 'restDay') return /\b(rest day|rest)\b/.test(t);
+    if (logType === 'workout') return /\bworkout\b/.test(t) && !/\b(workout plan|plan)\b/.test(t);
+    // nutrition deletes must not fire when the user clearly meant a dashboard metric
+    if (/\b(sleep|slept|sleeping)\b/.test(t) && !/\b(food|meal|nutrition)\b/.test(t)) return false;
+    if (/\b(water|hydration)\b/.test(t) && !/\b(food|meal|nutrition)\b/.test(t)) return false;
+    if (/\b(steps?)\b/.test(t) && !/\b(food|meal|nutrition)\b/.test(t)) return false;
+    return true;
+  }
   const patterns = {
     logSleep: /\b(sleep|slept|hour|hrs?)\b/,
     logWater: /\b(water|oz|ounce|hydrat|drank)\b/,
-    logNutrition: /\b(egg|food|meal|ate|breakfast|lunch|dinner|snack|nutrition|protein)\b/,
+    logNutrition: /\b(egg|food|meal|ate|breakfast|lunch|dinner|snack|nutrition|protein|chicken|rice)\b/,
     rateWorkout: /\b(workout|session|training)\b/,
-    adjustMacroTargets: /\b(calor|macro|goal|target|protein|carb|fat|kcal)\b/,
+    adjustMacroTargets: /\b(calor(?:ie)?s?|macros?|goal|target|protein|carb|fat|kcal|cals?)\b/,
     logRestDay: /\b(rest)\b/,
     logSteps: /\b(steps?|walked)\b/,
     rateEnergy: /\b(energy|fatigue)\b/,
     logMood: /\b(mood|feel|feeling)\b/,
-    deleteLog: /\b(delete|remove|clear|undo)\b/,
+    updateGoal: /\b(goal|goals|bulk|cut|recomp|fat|muscle)\b/,
+    updateWorkout: /\b(swap|replace|substitute|exercise|press|lift|workout|bench)\b/,
+    openWorkoutPlan: /\b(workout|plan|program)\b/,
+    bookSession: /\b(book|schedule|session|trainer|appointment)\b/,
+    notifyTrainer: /\b(trainer|coach|notify|tell|message|knee|hurt|injur)\b/,
   };
   const re = patterns[name];
   if (!re) return true;
   return re.test(t);
 }
 
-const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put)\b/i;
+const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put|mark|rate)\b/i;
 
 const DASHBOARD_METRIC_PATTERNS = {
   sleep: /\b(sleep|slept|hours?|hrs?)\b/i,
@@ -237,7 +270,14 @@ function userExplicitlyRequestsAction(userText) {
     /\b(set|change|update|adjust)\s+my\b/.test(t) ||
     /\blog\s+it\b/.test(t) ||
     (/\b(delete|remove|clear|undo)\b/.test(t) &&
-      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(t))
+      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(t)) ||
+    (/\b(book|schedule)\b/.test(t) && /\b(session|trainer|appointment)\b/.test(t)) ||
+    (/\b(swap|replace|substitute)\b/.test(t) && /\b(exercise|press|lift|workout|bench)\b/.test(t)) ||
+    (/\b(tell|notify|message|text)\b/.test(t) && /\b(trainer|coach)\b/.test(t)) ||
+    (/\b(open|show|see|view|pull up)\b/.test(t) && /\b(workout|plan|program)\b/.test(t)) ||
+    (/\b(goal|goals)\b/.test(t) && /\b(change|update|set|switch)\b/.test(t)) ||
+    (/\b(calor(?:ie)?s?|kcal|cals?|macros?|protein|carb)\b/.test(t) &&
+      /\b(change|set|update|adjust|lower|raise|bump)\b/.test(t))
   );
 }
 

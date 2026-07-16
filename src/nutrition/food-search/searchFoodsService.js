@@ -642,6 +642,31 @@ class FoodSearchProvider {
   }
 
   /**
+   * Save user-confirmed barcode food to server verified catalog (Firestore).
+   */
+  async saveVerifiedBarcode(barcode, food) {
+    const clean = String(barcode || '').replace(/\D/g, '');
+    if (!clean || !food) return false;
+    try {
+      const authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+      if (!authHeaders.Authorization) return false;
+      const response = await fetchWithTimeout(
+        `${this.serverUrl}/api/food/barcode/verify`,
+        {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ barcode: clean, food }),
+        },
+        FOOD_SERVER_FETCH_TIMEOUT_MS,
+      );
+      return response.ok;
+    } catch (error) {
+      logger.warn('🍔 saveVerifiedBarcode failed', { message: error?.message || String(error) });
+      return false;
+    }
+  }
+
+  /**
    * Get data from cache
    */
   getFromCache(key) {

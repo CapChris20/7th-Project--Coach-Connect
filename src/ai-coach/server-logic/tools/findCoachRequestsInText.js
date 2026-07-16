@@ -19,6 +19,7 @@ import {
   userWantsDeleteLog,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
+  deleteLogReasoning,
 } from './detectDeleteFoodRequest';
 import {
   isInformationalUserMessage,
@@ -230,43 +231,10 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   // Delete only when the user asked — never from coach prose ("remove from your diet", etc.).
   if (userWantsDeleteLog(user)) {
     const inferred = inferDeleteLogParams(user, raw);
-
-    if (/\b(sleep|slept)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'sleep', ...inferred }, reasoning: 'Remove the sleep log from your dashboard.' });
-    }
-    if (/\b(water|hydration)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'water', ...inferred }, reasoning: 'Remove the water log from your dashboard.' });
-    }
-    if (/\b(steps|step count)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'steps', ...inferred }, reasoning: 'Remove the step count from your dashboard.' });
-    }
-    if (/\b(energy|fatigue)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'energy', ...inferred }, reasoning: 'Remove the energy rating from your dashboard.' });
-    }
-    if (/\b(mood|feeling)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'mood', ...inferred }, reasoning: 'Remove the mood log from your dashboard.' });
-    }
-    if (/\b(rest day|rest)\b/i.test(combined) && !/\bfood\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'restDay', ...inferred }, reasoning: 'Clear the rest day from your dashboard.' });
-    }
-    if (/\b(workout)\b/i.test(combined) && !/\b(workout plan|plan)\b/i.test(combined)) {
-      return normalizeToolCall({ name: 'deleteLog', params: { logType: 'workout', ...inferred }, reasoning: 'Remove the workout entry from your dashboard.' });
-    }
-
-    const deleteAll = !!inferred.deleteAll;
-    const foodName = inferred.foodName;
-
     return normalizeToolCall({
       name: 'deleteLog',
-      params: {
-        logType: 'nutrition',
-        ...inferred,
-      },
-      reasoning: foodName
-        ? `Remove "${foodName}" from your nutrition log.`
-        : deleteAll
-          ? 'Clear all food logs for today.'
-          : 'Remove your most recent food entry.',
+      params: inferred,
+      reasoning: deleteLogReasoning(inferred),
     });
   }
 

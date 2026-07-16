@@ -25,6 +25,7 @@ import { normalizeBarcodeForLookup } from '../barcode/normalizeBarcodeForLookup'
 import { cacheFoodProduct } from '../daily-log/logFoodToFirestore';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
+import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
 
 const ACCENT = {
   hotPink: '#FF6B9D', // Keep your hot pink
@@ -74,7 +75,8 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
   const [manualBarcode, setManualBarcode] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [pendingBarcodeFood, setPendingBarcodeFood] = useState(null);
-  const [amountValue, setAmountValue] = useState('');
+  const [lastScannedBarcode, setLastScannedBarcode] = useState('');
+  const [missState, setMissState] = useState(null);
   const isProcessingRef = useRef(false);
   const styles = createStyles(spacing, t);
 
@@ -101,67 +103,66 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     
     setLoading(true);
     setScanned(true);
+    setMissState(null);
     
     try {
       console.log('Looking up barcode:', normalized);
+      setLastScannedBarcode(normalized);
       const raw = await searchFoodsService.lookupBarcode(normalized);
       const isFoodHit = raw && !raw.notFound && !raw.variableWeightBarcode;
       const result = isFoodHit
-        ? { success: true, data: raw }
+        ? { success: true, data: { ...raw, scannedBarcode: normalized } }
         : {
             success: false,
             error: raw?.variableWeightBarcode
               ? raw.message
-              : 'Product not found',
+              : 'This product is not in our food databases yet.',
             variableWeight: !!raw?.variableWeightBarcode,
-            suggestedSearch: raw?.suggestedSearchQueries?.[0] || null,
+            suggestedSearch: raw?.suggestedSearchQueries || [],
+            scannedBarcode: normalized,
           };
       
       if (result.success && result.data) {
-        // Cache the product for future use
         try {
           await cacheFoodProduct(result.data);
         } catch (cacheError) {
           console.warn('Failed to cache product:', cacheError);
         }
-        // Show amount-adjust step instead of logging immediately
-        const defaultAmount = Number(result.data.servingGrams) || 100;
         setPendingBarcodeFood(result.data);
-        setAmountValue(String(Math.round(defaultAmount)));
       } else {
-        const title = result.variableWeight ? 'Store scale label' : 'Product Not Found';
-        const message =
-          result.error
-          || 'This barcode was not found in our database. Please try searching by name instead.';
-        const buttons = [
-          { text: 'Try Again', onPress: () => { setScanned(false); setManualBarcode(''); } },
-          { text: 'Cancel', onPress: onClose, style: 'cancel' },
-        ];
-        if (result.variableWeight && result.suggestedSearch) {
-          buttons.unshift({
-            text: 'Search by name',
-            onPress: () => {
-              setScanned(false);
-              setManualBarcode('');
-              onClose?.({ searchQuery: result.suggestedSearch });
-            },
-          });
-        }
-        Alert.alert(title, message, buttons);
+        setMissState({
+          barcode: normalized,
+          message: result.error || 'Product not found.',
+          variableWeight: result.variableWeight,
+          suggestions: Array.isArray(result.suggestedSearch)
+            ? result.suggestedSearch
+            : (result.suggestedSearch ? [result.suggestedSearch] : []),
+        });
       }
     } catch (error) {
       console.error('Barcode lookup error:', error);
-      Alert.alert(
-        'Error',
-        'Failed to look up barcode. Please check your connection and try again.',
-        [
-          { text: 'Try Again', onPress: () => { setScanned(false); setManualBarcode(''); } },
-          { text: 'Cancel', onPress: onClose, style: 'cancel' },
-        ]
-      );
+      setMissState({
+        barcode: normalized,
+        message: 'Failed to look up barcode. Check your connection and try again.',
+        variableWeight: false,
+        suggestions: [],
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  const goSearchByName = (query) => {
+    const q = String(query || '').trim();
+    if (!q) return;
+    onClose?.({ searchQuery: q });
+  };
+
+  const resetScanner = () => {
+    setMissState(null);
+    setPendingBarcodeFood(null);
+    setScanned(false);
+    setManualBarcode('');
   };
 
   const handleBarCodeScanned = async ({ type, data }) => {
@@ -175,86 +176,153 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     }
   };
 
-  const handleConfirmAmount = () => {
-    if (!pendingBarcodeFood || !onScanSuccess) return;
-    const defaultAmount = Number(pendingBarcodeFood.servingGrams) || 100;
-    const num = (v) => (v === '' || v == null) ? null : Number(String(v).replace(',', '.'));
-    const entered = num(amountValue);
-    const multiplier = (entered != null && !Number.isNaN(entered) && entered > 0)
-      ? Math.min(10, Math.max(0.01, entered / defaultAmount))
-      : 1;
-    const adjustedFood = {
-      ...pendingBarcodeFood,
-      servingSize: (pendingBarcodeFood.servingSize ?? 1) * multiplier,
-      servingGrams: Math.round((pendingBarcodeFood.servingGrams || defaultAmount) * multiplier),
-    };
+  const handleConfirmFood = async (adjustedFood) => {
+    if (!adjustedFood || !onScanSuccess) return;
+    const gtin = adjustedFood.scannedBarcode || lastScannedBarcode || pendingBarcodeFood?.scannedBarcode;
+    if (gtin) {
+      try {
+        await searchFoodsService.saveVerifiedBarcode(gtin, adjustedFood);
+      } catch (e) {
+        console.warn('Failed to save verified barcode:', e?.message || e);
+      }
+    }
     onScanSuccess(adjustedFood, mealType);
     if (onClose) onClose();
   };
 
+  const handleWrongItem = () => {
+    const name = pendingBarcodeFood?.name || pendingBarcodeFood?.brand || '';
+    setPendingBarcodeFood(null);
+    setScanned(false);
+    goSearchByName(name || 'packaged food');
+  };
+
   const handleCancelAmount = () => {
     setPendingBarcodeFood(null);
-    setAmountValue('');
     setScanned(false);
   };
 
-  // Amount-adjust step (after successful scan)
-  const renderAmountStep = () => {
-    if (!pendingBarcodeFood) return null;
-    const defaultAmount = Math.round(Number(pendingBarcodeFood.servingGrams) || 100);
-    const unit = (pendingBarcodeFood.servingUnit || 'grams').toLowerCase();
-    const unitLabel = unit === 'ml' ? 'ml' : 'g';
-    const defaultCals = Math.round(
-      (Number(pendingBarcodeFood.calories) || 0) * (Number(pendingBarcodeFood.servingSize) || 1)
+  // Serving confirm (after successful scan) — shared with search confirm UX
+  if (pendingBarcodeFood) {
+    return (
+      <FoodConfirmSheet
+        food={pendingBarcodeFood}
+        title="Confirm & log"
+        theme={{ screenBg: t.screenBg }}
+        showVerification
+        reserveShellBottomNav
+        scannedBarcode={pendingBarcodeFood.scannedBarcode || lastScannedBarcode}
+        onConfirm={handleConfirmFood}
+        onCancel={handleCancelAmount}
+        onWrongItem={handleWrongItem}
+      />
     );
-    const num = (v) => (v === '' || v == null) ? null : Number(String(v).replace(',', '.'));
-    const entered = num(amountValue);
-    const multiplier = (entered != null && !Number.isNaN(entered) && entered > 0)
-      ? Math.min(10, Math.max(0.01, entered / defaultAmount))
-      : 1;
-    const estimatedCals = Math.round(defaultCals * multiplier);
+  }
 
+  // Not found — typed UPC retry + name search (never dead-end)
+  if (missState) {
+    const suggestions = (missState.suggestions || []).filter(
+      (s) => s && !/barcode|gs1|tracker|nutritionix|fnic|calorie content/i.test(String(s)),
+    );
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleCancelAmount} style={[styles.closeButton, { minWidth: 60, alignItems: 'flex-start' }]}>
-            <Text style={styles.closeText}>← Back</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <Text style={styles.closeText} selectable={true}>✕</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Adjust amount</Text>
+          <Text style={styles.title} selectable={true}>Not found</Text>
           <View style={styles.placeholder} />
         </View>
-        <View style={styles.amountStepContent}>
-          <Text style={styles.amountProductName} numberOfLines={2}>{pendingBarcodeFood.name}</Text>
-          <Text style={styles.amountDefaultText}>
-            Default: {defaultAmount} {unitLabel} ({defaultCals} cal)
-          </Text>
-          <Text style={styles.amountLabel}>Amount you had ({unitLabel})</Text>
-          <TextInput
-            style={styles.amountInput}
-            placeholder={String(defaultAmount)}
-            placeholderTextColor="#9CA3AF"
-            value={amountValue}
-            onChangeText={setAmountValue}
-            keyboardType="decimal-pad"
-          />
-          <Text style={styles.amountEstimated}>≈ {estimatedCals} cal will be logged</Text>
-          <TouchableOpacity style={styles.logButton} onPress={handleConfirmAmount} activeOpacity={0.9}>
-            <LinearGradient
-              colors={[t.hotPink, t.orange]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ padding: 14, alignItems: 'center' }}
+        <View style={styles.manualEntryContainer}>
+          <LinearGradient
+            colors={isDark ? ['#BE185D', '#EA580C'] : ['#BE185D', '#FB923C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ borderRadius: 22, padding: 1 }}
+          >
+            <View
+              style={{
+                borderRadius: 21,
+                backgroundColor: t.surfaceOpaque,
+                paddingVertical: 22,
+                paddingHorizontal: 18,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: t.cardBorder,
+              }}
             >
-              <Text style={styles.logButtonText}>Log it</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cancelButton} onPress={handleCancelAmount}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
+              <Text style={styles.manualEntryTitle} selectable={true}>
+                {missState.variableWeight ? 'Store scale label' : 'Barcode not in database'}
+              </Text>
+              <Text style={styles.manualEntrySubtitle} selectable={true}>
+                {missState.message}
+                {'\n\n'}UPC: {missState.barcode}
+              </Text>
+              <TextInput
+                style={styles.barcodeInput}
+                placeholder="Try typing UPC again"
+                placeholderTextColor={t.textVeryMuted}
+                value={manualBarcode}
+                onChangeText={setManualBarcode}
+                keyboardType="numeric"
+                returnKeyType="search"
+                onSubmitEditing={() => lookupBarcode(manualBarcode || missState.barcode)}
+              />
+              <TouchableOpacity
+                style={[styles.searchButton, loading && styles.searchButtonDisabled]}
+                onPress={() => lookupBarcode(manualBarcode || missState.barcode)}
+                disabled={loading}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={['#9F1239', '#EA580C']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.searchButtonInner}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.searchButtonText} selectable={true}>
+                      Look up UPC
+                    </Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+              {suggestions.slice(0, 3).map((q) => (
+                <TouchableOpacity
+                  key={q}
+                  style={[styles.button, { marginTop: 10 }]}
+                  onPress={() => goSearchByName(q)}
+                >
+                  <Text style={styles.buttonText} selectable={true}>
+                    Search: {q.length > 42 ? `${q.slice(0, 42)}…` : q}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.button, { marginTop: 10 }]}
+                onPress={() => onClose?.({ openFoodSearch: true })}
+              >
+                <Text style={styles.buttonText} selectable={true}>
+                  Search by name
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelButton} onPress={resetScanner} hitSlop={{ top: 8, bottom: 8 }}>
+                <Text style={styles.cancelButtonText} selectable={true}>
+                  Scan again
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelButton} onPress={onClose} hitSlop={{ top: 8, bottom: 8 }}>
+                <Text style={styles.cancelButtonText} selectable={true}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
         </View>
       </SafeAreaView>
     );
-  };
+  }
 
   // Manual entry screen (user chose "Enter manually")
   const renderManualEntry = () => (
@@ -333,10 +401,6 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
       </View>
     </SafeAreaView>
   );
-
-  if (pendingBarcodeFood) {
-    return renderAmountStep();
-  }
 
   if (showManualEntry) {
     return renderManualEntry();

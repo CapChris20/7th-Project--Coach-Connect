@@ -320,7 +320,10 @@ export async function addFoodLog(userId, log) {
     return (typeof n === 'number' && !Number.isNaN(n)) ? n : 0;
   };
 
-  if (food.source === 'openfoodfacts' || food.source === 'usda') {
+  if (
+    (food.source === 'openfoodfacts' || food.source === 'usda')
+    && String(food.dataBasis || '').toLowerCase() !== 'logged_total'
+  ) {
     // These sources provide per 100g data
     servingGrams = servingQuantity * 100;
     totalCalories = num(food.calories) * servingQuantity;
@@ -332,7 +335,7 @@ export async function addFoodLog(userId, log) {
     totalSodium = num(food.sodium) * servingQuantity;
     totalPotassium = num(food.potassium) * servingQuantity;
   } else {
-    // Manual / other: per serving
+    // Manual / confirm sheet / FatSecret label: values are already totals for this portion
     const sg = num(food.servingGrams);
     servingGrams = sg > 0 ? sg : servingQuantity;
     totalCalories = num(food.calories);
@@ -369,10 +372,11 @@ export async function addFoodLog(userId, log) {
     sugar: Math.round(num(totalSugar) * 10) / 10,
     sodium: Math.round(num(totalSodium) * 10) / 10,
     potassium: Math.round(num(totalPotassium)),
-    originalUnit: food.originalUnit || food.loggedUnit || null,
+    originalUnit: food.originalUnit || food.loggedUnit || food.preferredUnit || null,
     originalAmount: food.originalAmount ?? food.loggedAmount ?? null,
-    loggedUnit: food.loggedUnit || food.originalUnit || null,
+    loggedUnit: food.loggedUnit || food.preferredUnit || food.originalUnit || null,
     loggedAmount: food.loggedAmount ?? food.originalAmount ?? null,
+    preferredUnit: food.preferredUnit || food.loggedUnit || food.originalUnit || null,
     metadata: food,
     created_at: serverTimestamp(),
   };

@@ -21,7 +21,7 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -818,6 +818,7 @@ export default function BrowseSavedWorkoutsScreen({
 }) {
   const { isDark } = useTheme();
   const theme = THEME[isDark ? 'dark' : 'light'];
+  const shellBottomPad = useShellBottomNavInset(24);
 
   const clientId   = clientProp?.id   || route?.params?.clientId;
   const clientName = clientProp?.name || route?.params?.clientName || 'Client';
@@ -936,7 +937,11 @@ export default function BrowseSavedWorkoutsScreen({
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, embedInLayout && { paddingTop: 4 }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: shellBottomPad },
+          embedInLayout && { paddingTop: 4 },
+        ]}
         style={{ backgroundColor: theme.bg }}
         keyboardShouldPersistTaps="handled"
       >
@@ -1065,7 +1070,7 @@ export default function BrowseSavedWorkoutsScreen({
 // ============================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 120 },
+  scrollContent: { paddingBottom: 0 },
 
   trainerBuilderFooterWrap: { paddingHorizontal: 16, marginTop: 20 },
   trainerBuilderFooterBorder: { borderRadius: 14, padding: 1.5 },

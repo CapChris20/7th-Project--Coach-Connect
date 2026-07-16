@@ -282,6 +282,8 @@ export default function MyProgressPhotosScreen({
   const clientName = route?.params?.clientName || 'Client';
   /** Trainers only view; clients upload from the gallery. */
   const allowUpload = route?.params?.allowUpload !== false;
+  const reserveNav =
+    reserveShellBottomNav === true || route?.params?.reserveShellBottomNav === true;
 
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -522,7 +524,7 @@ export default function MyProgressPhotosScreen({
     if (typeof onBack === 'function') onBack();
     else navigation?.goBack?.();
   };
-  const gridBottomPad = insets.bottom + 24 + (reserveShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
+  const gridBottomPad = insets.bottom + 24 + (reserveNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
@@ -673,7 +675,16 @@ export default function MyProgressPhotosScreen({
       )}
 
       {!loading && !error && allowUpload ? (
-        <View style={[styles.fabRow, { bottom: Math.max(insets.bottom, 8) + 20 }]} pointerEvents="box-none">
+        <View
+          style={[
+            styles.fabRow,
+            {
+              bottom:
+                (reserveNav ? BOTTOM_NAV_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8) + 20,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
           <Pressable
             onPress={handleAddPhoto}
             accessibilityRole="button"

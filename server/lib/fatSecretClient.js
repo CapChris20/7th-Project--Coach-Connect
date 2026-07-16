@@ -22,18 +22,24 @@ async function getAccessToken() {
     scope: 'basic',
   });
 
-  const res = await axios.post('https://oauth.fatsecret.com/connect/token', body.toString(), {
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-    },
-    timeout: 12000,
-  });
+  try {
+    const res = await axios.post('https://oauth.fatsecret.com/connect/token', body.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
+      timeout: 12000,
+    });
 
-  cachedToken = res.data?.access_token || null;
-  const expiresIn = Number(res.data?.expires_in || 3600);
-  tokenExpiresAt = now + expiresIn * 1000;
-  return cachedToken;
+    cachedToken = res.data?.access_token || null;
+    const expiresIn = Number(res.data?.expires_in || 3600);
+    tokenExpiresAt = now + expiresIn * 1000;
+    return cachedToken;
+  } catch (e) {
+    // Many apps only have OAuth 1.0 consumer keys — not OAuth 2.0 client credentials.
+    console.warn('[FatSecret] OAuth2 token failed (will use OAuth1 where needed):', e.response?.data?.error || e.message);
+    return null;
+  }
 }
 
 function parseFatSecretNumber(v) {
@@ -62,12 +68,14 @@ function normalizeFatSecretFood(food, barcode) {
     brand_name: String(food.brand_name || '').trim() || null,
     barcode: String(barcode || food.food_id || '').trim(),
     source: 'fatsecret',
+    dataBasis: 'label_serving',
     servingAmount: grams,
     servingGrams: grams,
-    servingSize: grams,
+    servingSize: 1,
     servingUnit: unit.toLowerCase().includes('ml') ? 'ml' : 'g',
     serving_label: primary.serving_description || `${grams}${unit}`,
-    calories: Math.round(per100Kcal),
+    // Label-serving totals (package panel), not per-100g
+    calories: Math.round(perServingKcal),
     kcalPer100Unit: Math.round(per100Kcal),
     protein: parseFatSecretNumber(primary.protein),
     carbs: parseFatSecretNumber(primary.carbohydrate),
@@ -182,37 +190,75 @@ async function searchFoodsFatSecret(query, limit = 20) {
 }
 
 async function lookupBarcodeFatSecret(barcode) {
-  const token = await getAccessToken();
-  if (!token || !String(barcode || '').trim()) return null;
+  if (!fatSecretConfigured() || !String(barcode || '').trim()) return null;
 
   const clean = String(barcode).replace(/\D/g, '');
   if (!clean) return null;
 
-  try {
-    const res = await axios.get('https://platform.fatsecret.com/rest/server.api', {
-      params: {
-        method: 'food.find_id_for_barcode',
-        barcode: clean,
-        format: 'json',
-      },
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 12000,
-    });
+  const { key, secret } = getFatSecretCredentials();
+  // Prefer OAuth 1.0 — FatSecret barcode keys are typically consumer key/secret.
+  // Fall back to OAuth 2.0 Bearer only when OAuth 1.0 fails.
+  const variants = [clean];
+  if (clean.length < 13) variants.push(clean.padStart(13, '0'));
+  if (clean.length < 14) variants.push(clean.padStart(14, '0'));
 
-    const foodId = res.data?.food_id?.value || res.data?.food_id;
+  try {
+    let foodId = null;
+    for (const code of variants) {
+      try {
+        const data = await fatSecretOAuth1Get(
+          { method: 'food.find_id_for_barcode', barcode: code, format: 'json' },
+          key,
+          secret,
+        );
+        foodId = data?.food_id?.value || data?.food_id || null;
+        if (foodId) break;
+      } catch {
+        /* try next GTIN pad */
+      }
+    }
+
+    if (!foodId) {
+      // OAuth 2.0 path (Premier/barcode scope apps)
+      const token = await getAccessToken().catch(() => null);
+      if (!token) return null;
+      for (const code of variants) {
+        try {
+          const res = await axios.get('https://platform.fatsecret.com/rest/server.api', {
+            params: { method: 'food.find_id_for_barcode', barcode: code, format: 'json' },
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 12000,
+          });
+          foodId = res.data?.food_id?.value || res.data?.food_id || null;
+          if (foodId) break;
+        } catch {
+          /* try next */
+        }
+      }
+    }
+
     if (!foodId) return null;
 
-    const detail = await axios.get('https://platform.fatsecret.com/rest/server.api', {
-      params: {
-        method: 'food.get.v4',
-        food_id: foodId,
-        format: 'json',
-      },
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 12000,
-    });
+    let food = null;
+    try {
+      const detail = await fatSecretOAuth1Get(
+        { method: 'food.get.v4', food_id: foodId, format: 'json' },
+        key,
+        secret,
+      );
+      food = detail?.food || null;
+    } catch {
+      const token = await getAccessToken().catch(() => null);
+      if (token) {
+        const detail = await axios.get('https://platform.fatsecret.com/rest/server.api', {
+          params: { method: 'food.get.v4', food_id: foodId, format: 'json' },
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 12000,
+        });
+        food = detail.data?.food || null;
+      }
+    }
 
-    const food = detail.data?.food;
     return normalizeFatSecretFood(food, clean);
   } catch (e) {
     console.warn('FatSecret barcode lookup failed:', e?.message || e);

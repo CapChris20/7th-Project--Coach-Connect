@@ -50,6 +50,7 @@ import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, use
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from '../plan-builder/workoutPlanBuilderFieldEditBody';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
+import PremiumSectionHeader from '../../shared/components/PremiumSectionHeader';
 import {
   PROFILE_CARD_ICON_SIZE,
   PROFILE_FIELD_ICON_ID,
@@ -4196,20 +4197,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             const visibleSections = filterProfileCardSections(sections, onboardingData);
 
             const SectionHeader = ({ text }) => (
-              <View style={{ marginTop: 20, marginBottom: 12 }}>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '900',
-                    letterSpacing: 1.1,
-                    textTransform: 'uppercase',
-                    color: lovableMuted,
-                  }}
-                >
-                  {text}
-                </Text>
-                <View style={{ marginTop: 10, height: 1, backgroundColor: planBuilderDivider }} />
-              </View>
+              <PremiumSectionHeader text={text} isDark={isDark} />
             );
 
             const PillCard = ({ item, accent }) => {

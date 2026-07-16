@@ -10,11 +10,11 @@
  */
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -185,6 +185,9 @@ const FAQ_SECTIONS = [
 
 export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(24);
+  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
   const supportEmail = getSupportEmail();
   const [openKey, setOpenKey] = useState(null);
   const t = getCardTokens(isDark);
@@ -207,8 +210,8 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
     },
     scrollContent: {
       paddingHorizontal: 16,
-      paddingVertical: 16,
-      paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24,
+      paddingTop: 16,
+      paddingBottom: scrollBottomPad,
     },
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
@@ -284,7 +287,12 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <CoachConnectHeader title="FAQ" skipTopSafeInset onBack={onClose} />
 
-      <ScrollView style={styles.scrollContent} {...FORM_SCROLL_PROPS}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        {...FORM_SCROLL_PROPS}
+        showsVerticalScrollIndicator
+      >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
           <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroOuter} innerStyle={styles.heroInner}>
             <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>

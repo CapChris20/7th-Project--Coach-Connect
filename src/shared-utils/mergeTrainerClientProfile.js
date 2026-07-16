@@ -24,6 +24,9 @@ export const TRAINER_CLIENT_PROFILE_FIELDS = [
   'energyLevels',
   'supplementsCurrentlyTaking',
   'hydrationHabits',
+  // Billing — prefer users/{clientId}, fall back to CRM row
+  'monthlyRate',
+  'paymentStatus',
 ];
 
 function isPresent(value) {

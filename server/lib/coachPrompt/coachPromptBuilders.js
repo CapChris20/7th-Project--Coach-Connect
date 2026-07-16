@@ -94,7 +94,9 @@ Tool routing:
 - User explicitly rates a completed workout → rateWorkout (1-10 only — never rest days)
 - "Rest day" / "log rest" / "skip workout today" / "mark today rest" → logRestDay ONLY (updates dashboard workout card). NEVER rateWorkout or updateWorkout for rest days.
 - Food/meals with macros → logNutrition only when user wants to log food
-- "Delete/remove/clear food or logs" → deleteLog (logType nutrition + foodName/date). NEVER use logNutrition for deletes.
+- "Delete/remove/clear food" → deleteLog with logType nutrition (+ foodName/date). NEVER use logNutrition for deletes.
+- "Delete/remove/clear my sleep/water/steps/energy/mood/workout log" → deleteLog with THAT logType (sleep ≠ nutrition). NEVER show a food delete for sleep.
+- "Remove the sleep log I put" / "dashboard sleep" → deleteLog logType sleep. ALWAYS append toolCalls JSON — never say Confirm without JSON.
 - Trainer-related stuff → bookSession, notifyTrainer, updateGoal
 - Workouts → updateWorkout, openWorkoutPlan
 - "Open/show my workout plan" or "what's today's session" → openWorkoutPlan AND summarize from WORKOUT PROGRAM below

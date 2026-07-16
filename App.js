@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import {
@@ -22,8 +22,26 @@ import { initMonitoring } from './src/shared/api/monitorAppHealth';
 import { AIProvider } from './src/shared/contexts/AIContext';
 import { SubscriptionProvider } from './src/subscription/SubscriptionProvider';
 import OnboardingSnapshotRunner from './src/auth/OnboardingSnapshotRunner';
+import {
+  BootLoadingOverlay,
+  BootLoadingProvider,
+  useBootLoading,
+} from './src/shared/components/shell/BootLoading';
 
 initMonitoring();
+
+/** Provider starts with 1 lock held; release it once fonts are ready. */
+function FontBootLock({ fontsLoaded }) {
+  const { release } = useBootLoading();
+  const released = React.useRef(false);
+  React.useLayoutEffect(() => {
+    if (fontsLoaded && !released.current) {
+      released.current = true;
+      release();
+    }
+  }, [fontsLoaded, release]);
+  return null;
+}
 
 function useOnboardingSnapshotAutoStart() {
   const [active, setActive] = useState(false);
@@ -93,14 +111,6 @@ export default function App() {
     }
   }, []);
 
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#050508' }}>
-        <ActivityIndicator size="large" color="#F06BA8" />
-      </View>
-    );
-  }
-
   if (snapshotCapture && __DEV__) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -120,15 +130,27 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <AppStripeProvider>
-            <AIProvider>
-              <ErrorBoundary>
-                <AuthGate />
-              </ErrorBoundary>
-            </AIProvider>
-          </AppStripeProvider>
-        </ThemeProvider>
+        <BootLoadingProvider>
+          {/* Overlay stays mounted for the whole boot — animation never remounts */}
+          <BootLoadingOverlay />
+          {fontsLoaded ? (
+            <>
+              <ThemeProvider>
+                <AppStripeProvider>
+                  <AIProvider>
+                    <ErrorBoundary>
+                      <AuthGate />
+                    </ErrorBoundary>
+                  </AIProvider>
+                </AppStripeProvider>
+              </ThemeProvider>
+              {/* Release the initial font lock AFTER AuthGate can acquire its own */}
+              <FontBootLock fontsLoaded={fontsLoaded} />
+            </>
+          ) : (
+            <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />
+          )}
+        </BootLoadingProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

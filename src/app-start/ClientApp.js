@@ -139,7 +139,7 @@ import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutr
 import LogTodaysMealsScreen from '../client-app/meal-plan/LogTodaysMealsScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
 import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
-import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
+import { useBootLoadingLock } from '../shared/components/shell/BootLoading';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
 import DocumentViewerModal from '../shared/components/notes-files/DocumentViewerModal';
@@ -234,6 +234,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   // Home screen data state
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  useBootLoadingLock(loading);
   const [onboardingData, setOnboardingData] = useState(null);
   const [todayWorkout, setTodayWorkout] = useState(null);
   const [caloriesConsumed, setCaloriesConsumed] = useState(0);
@@ -1466,7 +1467,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   ]);
 
   if (loading) {
-    return <AppLoadingScreen isDark={isDark} />;
+    return <View style={{ flex: 1, backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF' }} />;
   }
 
   return (

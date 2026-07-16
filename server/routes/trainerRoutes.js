@@ -149,6 +149,69 @@ function registerTrainerRoutes(app, deps) {
   });
 
   /**
+   * Set a linked client's monthly coaching rate (cents) + billing status.
+   * Body: { clientId, monthlyRateCents }
+   */
+  app.post('/api/trainer/set-client-rate', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      if (!admin.apps.length) {
+        return res.status(503).json({ error: 'Firebase Admin not initialized' });
+      }
+
+      const trainerId = String(req.firebaseAuth?.uid || '').trim();
+      const clientId = String(req.body?.clientId || '').trim();
+      const monthlyRateCents = Math.round(Number(req.body?.monthlyRateCents));
+
+      if (!trainerId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+      if (!Number.isFinite(monthlyRateCents) || monthlyRateCents < 100 || monthlyRateCents > 10000000) {
+        return res.status(400).json({ error: 'monthlyRateCents must be between 100 ($1) and 10000000' });
+      }
+
+      const db = admin.firestore();
+      const linked = await isTrainerOfClient(db, trainerId, clientId);
+      if (!linked) {
+        return res.status(403).json({ error: 'Client is not linked to this trainer' });
+      }
+
+      const clientSnap = await db.collection('users').doc(clientId).get();
+      if (!clientSnap.exists || clientSnap.data()?.role !== 'client') {
+        return res.status(400).json({ error: 'Client not found' });
+      }
+
+      const prevStatus = String(clientSnap.data()?.paymentStatus || '').trim();
+      const paymentStatus =
+        prevStatus === 'active' || prevStatus === 'past_due' ? prevStatus : 'awaiting_payment';
+      const ts = serverTs();
+      const billingPatch = {
+        monthlyRate: monthlyRateCents,
+        paymentStatus,
+        monthlyRateUpdatedAt: ts,
+        monthlyRateUpdatedBy: trainerId,
+      };
+
+      const batch = db.batch();
+      batch.set(db.collection('users').doc(clientId), billingPatch, { merge: true });
+      batch.set(
+        db.collection('trainer_clients').doc(trainerId).collection('clients').doc(clientId),
+        billingPatch,
+        { merge: true },
+      );
+      await batch.commit();
+
+      return res.json({
+        success: true,
+        clientId,
+        monthlyRate: monthlyRateCents,
+        paymentStatus,
+      });
+    } catch (e) {
+      console.error('POST /api/trainer/set-client-rate failed:', e?.message || e);
+      return res.status(500).json({ error: 'Failed to save client rate' });
+    }
+  });
+
+  /**
    * Claude vision certification check.
    * Body: { trainerName, imageBase64?, imageUrl?, mediaType?, storagePath?, fileName? }
    */

@@ -14,9 +14,9 @@ function macrosAtGrams(food, grams) {
   const g = Number(grams) > 0 ? Number(grams) : Number(food?.servingGrams || 100);
   return {
     calories: caloriesForGrams(food, g),
-    protein: scaleMacroForGrams(food?.protein, g),
-    carbs: scaleMacroForGrams(food?.carbs, g),
-    fat: scaleMacroForGrams(food?.fat, g),
+    protein: scaleMacroForGrams(food?.protein, g, food),
+    carbs: scaleMacroForGrams(food?.carbs, g, food),
+    fat: scaleMacroForGrams(food?.fat, g, food),
   };
 }
 

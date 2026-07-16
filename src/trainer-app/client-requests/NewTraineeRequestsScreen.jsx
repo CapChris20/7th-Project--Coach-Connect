@@ -19,7 +19,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../shared-ui/ThemeContext';
@@ -33,7 +33,7 @@ const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 
 export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSettingsPress, onClientAdded, embedInLayout }) {
   const { isDark } = useTheme();
-  const listBottomPad = useEmbeddedScrollBottomPad(32);
+  const listBottomPad = useShellBottomNavInset(32);
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = useTrainerPendingRequests(trainerUid);
   const [selectedRequest, setSelectedRequest] = useState(null);

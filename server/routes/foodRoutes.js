@@ -32,8 +32,18 @@ const {
   applyFoodCardPresentationToRows,
 } = require('../../src/nutrition/food-search/cleanFoodCardLabels');
 const { lookupBarcodeFatSecret, fatSecretConfigured, searchFoodsFatSecret } = require('../lib/fatSecretClient');
-const { guardBarcodeResult } = require('../lib/barcodeMerge');
+const { guardBarcodeResult, pickBestBarcodeCandidate } = require('../lib/barcodeMerge');
+const { getVerifiedBarcode, saveVerifiedBarcode } = require('../lib/verifiedBarcodeCache');
 const { variableWeightBarcodeHint } = require('../lib/variableWeightBarcode');
+const {
+  lookupBarcodeWithSerper: lookupBarcodeWithSerperImproved,
+  barcodeGtinVariants,
+} = require('../lib/barcodeSerperLookup');
+const { lookupUpcItemDb } = require('../lib/upcItemDbLookup');
+const {
+  isUsableBarcodeFood,
+  barcodeNotFoundPayload,
+} = require('../../src/nutrition/barcode/validateBarcodeFood');
 
 const SERPER_ORGANIC_MAX = 10;
 
@@ -445,11 +455,48 @@ const setCache = (key, data) => {
 };
 
 // ─── USDA Branded barcode → same shape as Open Food Facts normalizer (client + addFoodLog) ───
-function normalizeGtinDigits(barcode) {
+/** Compare barcodes as GTIN-14 (left-pad). Do NOT strip zeros — that merges distinct UPC-A rows. */
+function toGtin14(barcode) {
   const d = String(barcode || '').replace(/\D/g, '');
   if (!d) return '';
-  const stripped = d.replace(/^0+/, '');
-  return stripped || '0';
+  if (d.length > 14) return d.slice(-14);
+  return d.padStart(14, '0');
+}
+
+function normalizeGtinDigits(barcode) {
+  return toGtin14(barcode).replace(/^0+/, '') || '0';
+}
+
+function gtinDigitsEqual(a, b) {
+  const ga = toGtin14(a);
+  const gb = toGtin14(b);
+  return !!(ga && gb && ga === gb);
+}
+
+function scoreUsdaBarcodeCandidate(hit, hintTokens = []) {
+  let score = 0;
+  if (getFdcNutrientFromSearchFood(hit, 1008) > 0) score += 5;
+  if (getFdcNutrientFromSearchFood(hit, 1003) > 0) score += 1;
+  if (getFdcNutrientFromSearchFood(hit, 1005) > 0) score += 1;
+  if (getFdcNutrientFromSearchFood(hit, 1004) > 0) score += 1;
+  if (Number(hit.servingSize) > 0) score += 1;
+  const desc = String(hit.description || '');
+  // Prefer specific branded retail labels over sparse/zero-macro duplicates for the same GTIN
+  if (desc.length > 20) score += 1;
+  const hay = `${desc} ${hit.brandOwner || ''} ${hit.brandName || ''}`.toLowerCase();
+  for (const t of hintTokens) {
+    if (t.length > 2 && hay.includes(t)) score += 3;
+  }
+  return score;
+}
+
+function pickBestUsdaGtinHit(foods, clean, hintTokens = []) {
+  const matches = (foods || []).filter(
+    (f) => gtinDigitsEqual(f.gtinUpc, clean) || barcodeGtinVariants(clean).some((v) => gtinDigitsEqual(f.gtinUpc, v)),
+  );
+  if (!matches.length) return null;
+  matches.sort((a, b) => scoreUsdaBarcodeCandidate(b, hintTokens) - scoreUsdaBarcodeCandidate(a, hintTokens));
+  return matches[0];
 }
 
 function getFdcNutrientFromSearchFood(item, ...nutrientIds) {
@@ -473,13 +520,21 @@ function mapUsdaBrandedSearchHitToBarcodeFood(hit) {
   let servingG = Number(hit.servingSize);
   if (!Number.isFinite(servingG) || servingG <= 0) servingG = 100;
   const unitRaw = String(hit.servingSizeUnit || 'g').toLowerCase();
-  const useMl = unitRaw === 'ml' || unitRaw === 'milliliters';
+  // FDC branded search nutrients are per 100 g/ml. Unit codes: G, ML, MLT, OZA, ONZ…
+  const useMl = unitRaw === 'ml' || unitRaw === 'mlt' || unitRaw === 'milliliters' || unitRaw === 'milliliter';
+  if (unitRaw === 'oz' || unitRaw === 'onz' || unitRaw === 'oza' || unitRaw === 'ounce' || unitRaw === 'ounces') {
+    servingG = servingG * 28.3495;
+  }
   const scale = servingG / 100;
+  const household = String(hit.householdServingFullText || '').trim();
+  const servingLabel = household
+    ? `${household}${servingG ? ` (${Math.round(servingG)} g)` : ''}`
+    : `${Math.round(servingG)} g`;
 
   return {
     id: String(hit.fdcId),
     name: hit.description || 'Unknown',
-    brand: hit.brandOwner || null,
+    brand: hit.brandOwner || hit.brandName || null,
     restaurant: null,
     calories: kcal,
     protein,
@@ -491,9 +546,12 @@ function mapUsdaBrandedSearchHitToBarcodeFood(hit) {
     servingSize: scale,
     servingUnit: useMl ? 'ml' : 'grams',
     servingGrams: Math.round(servingG),
+    serving_label: servingLabel,
     source: 'usda',
+    dataBasis: 'per_100g',
     kcalPer100Unit: kcal,
     servingAmount: Math.round(servingG),
+    gtinUpc: hit.gtinUpc || null,
   };
 }
 
@@ -502,33 +560,166 @@ async function lookupBarcodeUsda(barcode) {
   if (!apiKey || !String(barcode || '').trim()) return null;
 
   const clean = String(barcode).trim();
-  const target = normalizeGtinDigits(clean);
+  const variants = barcodeGtinVariants(clean);
+  if (!variants.includes(clean.replace(/\D/g, ''))) {
+    variants.unshift(clean.replace(/\D/g, ''));
+  }
 
   try {
+    // Collect every GTIN match across pad variants — USDA sometimes stores the same
+    // code as 12-digit and 14-digit with different (even conflicting) product rows.
+    const allMatches = [];
+    const seenFdc = new Set();
+    for (const q of variants) {
+      const res = await axios.post(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`,
+        {
+          query: q,
+          pageSize: 40,
+          dataType: ['Branded'],
+        },
+        { timeout: 12000, headers: { 'Content-Type': 'application/json' } }
+      );
+
+      for (const f of res.data?.foods || []) {
+        if (!gtinDigitsEqual(f.gtinUpc, clean) && !variants.some((v) => gtinDigitsEqual(f.gtinUpc, v))) continue;
+        const id = String(f.fdcId);
+        if (seenFdc.has(id)) continue;
+        seenFdc.add(id);
+        allMatches.push(f);
+      }
+    }
+
+    let hintTokens = [];
+    if (allMatches.length > 1) {
+      try {
+        const upcItem = await lookupUpcItemDb(clean);
+        const hint = String(upcItem?.name || '').toLowerCase();
+        hintTokens = hint.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+        if (hintTokens.length) {
+          console.log('[Barcode] USDA multi-hit, ranking with UPCitemdb hint:', upcItem.name);
+        }
+      } catch (_) { /* ignore */ }
+      if (!hintTokens.length) {
+        try {
+          const offHint = await lookupBarcodeOpenFoodFacts(clean);
+          const hint = String(offHint?.name || '').toLowerCase();
+          hintTokens = hint.split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+          if (hintTokens.length) {
+            console.log('[Barcode] USDA multi-hit, ranking with OFF hint:', offHint.name);
+          }
+        } catch (_) { /* ignore */ }
+      }
+    }
+
+    const hit = pickBestUsdaGtinHit(allMatches, clean, hintTokens);
+    if (hit) {
+      console.log(
+        '[Barcode] USDA branded match:',
+        hit.description,
+        'fdcId:', hit.fdcId,
+        'gtin:', hit.gtinUpc,
+        'score:', scoreUsdaBarcodeCandidate(hit, hintTokens),
+      );
+      return mapUsdaBrandedSearchHitToBarcodeFood(hit);
+    }
+    return null;
+  } catch (e) {
+    console.warn('[Barcode] USDA lookup failed:', e.message);
+    return null;
+  }
+}
+
+/** Drop generic words that caused Oreos → "ORIGINAL BEEF STICKS" false matches. */
+const USDA_NAME_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'food', 'foods', 'product', 'pack', 'packaging',
+  'original', 'mild', 'classic', 'natural', 'organic', 'nutrition', 'nutritional',
+  'protein', 'calorie', 'calories', 'facts', 'serving', 'size', 'barcode', 'upc',
+  'stick', 'sticks', 'bar', 'bars', 'snack', 'snacks', 'energy', 'supplement',
+]);
+
+function distinctiveNameTokens(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !USDA_NAME_STOPWORDS.has(t));
+}
+
+/** When barcode miss, use product name from web/Serper to find USDA branded row. */
+async function lookupUsdaBrandedByName(productName, brandHint = '') {
+  const apiKey = process.env.USDA_API_KEY;
+  const q = String(productName || '').trim();
+  if (!apiKey || q.length < 3) return null;
+
+  try {
+    const query = [brandHint, q].filter(Boolean).join(' ').slice(0, 120);
     const res = await axios.post(
       `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`,
       {
-        query: clean,
+        query,
         pageSize: 25,
         dataType: ['Branded'],
       },
       { timeout: 12000, headers: { 'Content-Type': 'application/json' } }
     );
-
     const foods = res.data?.foods || [];
-    const hit =
-      foods.find((f) => normalizeGtinDigits(f.gtinUpc) === target) ||
-      foods.find((f) => String(f.gtinUpc || '').replace(/\D/g, '') === clean.replace(/\D/g, '')) ||
-      null;
+    if (!foods.length) return null;
 
-    if (!hit) return null;
+    const tokens = distinctiveNameTokens(q);
+    if (tokens.length < 2) return null;
 
-    console.log('[Barcode] USDA branded match:', hit.description, 'fdcId:', hit.fdcId, 'gtin:', hit.gtinUpc);
-    return mapUsdaBrandedSearchHitToBarcodeFood(hit);
+    const brandTok = distinctiveNameTokens(brandHint)[0] || '';
+    const scored = foods.map((f) => {
+      const desc = `${f.description || ''} ${f.brandOwner || ''} ${f.brandName || ''}`.toLowerCase();
+      let score = 0;
+      let matched = 0;
+      for (const t of tokens) {
+        if (desc.includes(t)) {
+          score += 2;
+          matched += 1;
+        }
+      }
+      if (brandTok && desc.includes(brandTok)) score += 4;
+      if (brandHint && desc.includes(String(brandHint).toLowerCase())) score += 2;
+      // Prefer rows with a real serving size + calories
+      if (Number(f.servingSize) > 0) score += 1;
+      const kcal = getFdcNutrientFromSearchFood(f, 1008);
+      if (kcal > 0) score += 5;
+      else if (!/\b(diet|zero|sugar.?free|unsweetened)\b/i.test(desc)) score -= 4;
+      return { f, score, matched };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = scored[0];
+    // Require most distinctive tokens to appear — stops yeast/Chomps poisoning
+    const needMatched = Math.max(2, Math.ceil(tokens.length * 0.6));
+    if (!best || best.matched < needMatched || best.score < 6) return null;
+    console.log('[Barcode] USDA name fallback:', best.f.description, 'score:', best.score, 'matched:', best.matched);
+    return mapUsdaBrandedSearchHitToBarcodeFood(best.f);
   } catch (e) {
-    console.warn('[Barcode] USDA lookup failed:', e.message);
+    console.warn('[Barcode] USDA name fallback failed:', e.message);
     return null;
   }
+}
+
+async function lookupBarcodeOpenFoodFacts(barcode) {
+  const variants = barcodeGtinVariants(barcode);
+  for (const code of variants.length ? variants : [String(barcode || '').trim()]) {
+    try {
+      const openFoodFactsUrl = `https://world.openfoodfacts.org/api/v2/product/${code}.json`;
+      const offResponse = await axios.get(openFoodFactsUrl, { timeout: 12000 });
+      if (offResponse.data?.product) {
+        const result = normalizeOpenFoodFactsProduct(offResponse.data.product);
+        if (result) {
+          console.log('Barcode from OFF:', result.name, 'code:', code, 'servingAmount:', result.servingAmount, 'calories:', result.calories);
+          return result;
+        }
+      }
+    } catch (offError) {
+      console.warn('OpenFoodFacts barcode lookup failed:', code, offError.message);
+    }
+  }
+  return null;
 }
 
 app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
@@ -1257,50 +1448,101 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
       return res.json(cached);
     }
 
+    const clean = String(barcode || '').trim();
     let result = null;
 
-    // 1. USDA FDC — branded products only (see lookupBarcodeUsda: dataType Branded + GTIN match)
-    if (process.env.USDA_API_KEY) {
-      result = await lookupBarcodeUsda(barcode.trim());
-      if (result) console.log('Barcode from USDA:', result.name, 'fdcId:', result.id);
+    // 0. User-verified Firestore catalog (instant + accurate on repeat scans)
+    try {
+      result = await getVerifiedBarcode(clean);
+      if (result) console.log('[Barcode] Verified cache hit:', result.name);
+    } catch (vcErr) {
+      console.warn('[Barcode] Verified cache lookup failed:', vcErr.message);
     }
 
-    // 2. FatSecret branded barcode
+    // 1–3. Parallel branded DBs → merge (prefer FatSecret/OFF label serving over USDA per-100g)
     if (!result) {
-      try {
-        result = await lookupBarcodeFatSecret(barcode.trim());
-        if (result) console.log('Barcode from FatSecret:', result.name);
-      } catch (fsErr) {
-        console.warn('FatSecret barcode lookup failed:', fsErr.message);
+      const [usdaResult, fatsecretResult, offResult] = await Promise.all([
+        process.env.USDA_API_KEY ? lookupBarcodeUsda(clean) : Promise.resolve(null),
+        lookupBarcodeFatSecret(clean).catch((e) => {
+          console.warn('FatSecret barcode lookup failed:', e.message);
+          return null;
+        }),
+        lookupBarcodeOpenFoodFacts(clean),
+      ]);
+
+      const candidates = [usdaResult, fatsecretResult, offResult].filter(
+        (f) => f && isUsableBarcodeFood(f),
+      );
+      result = pickBestBarcodeCandidate(candidates);
+      if (result) {
+        console.log('[Barcode] Merged pick:', result.name, 'source:', result.source, 'basis:', result.dataBasis);
+      } else if (usdaResult && !isUsableBarcodeFood(usdaResult)) {
+        console.warn('[Barcode] USDA hit unusable, continuing pipeline:', usdaResult.name);
       }
     }
 
-    // 3. Open Food Facts with portion normalization
+    // 3b. UPCitemdb → USDA by product name (covers GTINs USDA indexes under a different pad)
+    let upcItemHint = null;
     if (!result) {
       try {
-        const openFoodFactsUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-        const offResponse = await axios.get(openFoodFactsUrl);
-
-        if (offResponse.data && offResponse.data.product) {
-          result = normalizeOpenFoodFactsProduct(offResponse.data.product);
-          if (result) console.log('Barcode from OFF:', result.name, 'servingAmount:', result.servingAmount, 'calories:', result.calories);
+        upcItemHint = await lookupUpcItemDb(clean);
+        if (upcItemHint?.name) {
+          const usdaFromUpcItem = await lookupUsdaBrandedByName(upcItemHint.name, upcItemHint.brand || '');
+          if (usdaFromUpcItem && isUsableBarcodeFood(usdaFromUpcItem)) {
+            console.log('[Barcode] USDA via UPCitemdb name:', usdaFromUpcItem.name);
+            result = usdaFromUpcItem;
+          }
         }
-      } catch (offError) {
-        console.warn('OpenFoodFacts barcode lookup failed:', offError.message);
+      } catch (upcErr) {
+        console.warn('[Barcode] UPCitemdb assist failed:', upcErr.message);
       }
     }
 
-    // 4. Serper web search for barcode + nutrition
+    // 4. Serper web search for barcode + nutrition (junk GS1/tracker pages filtered)
+    let serperSuggested = [];
+    if (upcItemHint?.name) serperSuggested.push(upcItemHint.name);
     if (!result && process.env.SERPER_API_KEY) {
       try {
-        result = await lookupBarcodeWithSerper(barcode);
-        if (result) console.log('Barcode found via Serper:', result.name);
+        const serper = await lookupBarcodeWithSerperImproved(clean);
+        serperSuggested = serper?.suggestedSearchQueries || [];
+        if (serper?.food) {
+          result = {
+            ...serper.food,
+            dataBasis: serper.food.dataBasis || 'label_serving',
+            barcodeConfidence: 'low',
+            needsVerification: true,
+          };
+          console.log('Barcode found via Serper:', result.name);
+        }
       } catch (serperErr) {
         console.warn('Serper barcode fallback failed:', serperErr.message);
       }
     }
 
+    // 5. USDA by product name (covers brands whose package GTIN isn’t in FDC under that exact code)
+    if ((!result || !isUsableBarcodeFood(result) || String(result.source).toLowerCase() === 'serper') && process.env.USDA_API_KEY) {
+      const nameCandidates = [
+        result?.name,
+        ...(Array.isArray(serperSuggested) ? serperSuggested : []),
+      ].filter((n) => n && !/barcode|gs1|tracker|fooddata|calorie content/i.test(String(n)));
+      const brandHint = result?.brand || '';
+      for (const nameHint of nameCandidates.slice(0, 4)) {
+        const usdaByName = await lookupUsdaBrandedByName(nameHint, brandHint);
+        if (usdaByName && isUsableBarcodeFood(usdaByName)) {
+          console.log('[Barcode] Preferring USDA name match over', result?.source || 'miss');
+          result = usdaByName;
+          break;
+        }
+      }
+    }
+
     result = guardBarcodeResult(result);
+
+    // Reject GS1 "Food Barcode" / zero-macro junk that would log as 0 kcal
+    if (result && !isUsableBarcodeFood(result)) {
+      console.warn('[Barcode] Rejected unusable hit:', result?.name, result?.source);
+      result = null;
+    }
 
     if (!result) {
       const clean = String(barcode || '').trim();
@@ -1310,13 +1552,40 @@ app.post('/api/food/barcode', verifyFirebaseBearerToken, async (req, res) => {
         setCache(cacheKey, vwHint);
         return res.json(vwHint);
       }
+      const notFound = barcodeNotFoundPayload(clean, serperSuggested);
+      setCache(cacheKey, notFound);
+      return res.json(notFound);
     }
 
     setCache(cacheKey, result);
-    return res.json(result);
+    return res.json({ ...result, scannedBarcode: clean });
   } catch (error) {
     console.error('Barcode lookup error:', error);
     return res.status(500).json({ error: 'Barcode lookup failed' });
+  }
+});
+
+// Save user-confirmed barcode food to shared verified catalog
+app.post('/api/food/barcode/verify', verifyFirebaseBearerToken, async (req, res) => {
+  try {
+    const { barcode, food } = req.body || {};
+    const clean = String(barcode || food?.gtinUpc || food?.barcode || '').trim();
+    if (!clean || !food || typeof food !== 'object') {
+      return res.status(400).json({ error: 'barcode and food are required' });
+    }
+    const guarded = guardBarcodeResult({ ...food, verified: true });
+    if (!guarded || !isUsableBarcodeFood(guarded)) {
+      return res.status(400).json({ error: 'Food row is not usable for cache' });
+    }
+    const uid = req.user?.uid || null;
+    const ok = await saveVerifiedBarcode(clean, guarded, uid);
+    if (!ok) {
+      return res.status(500).json({ error: 'Failed to save verified barcode' });
+    }
+    return res.json({ ok: true, gtin: clean, food: guarded });
+  } catch (error) {
+    console.error('Barcode verify save error:', error);
+    return res.status(500).json({ error: 'Failed to save verified barcode' });
   }
 });
 

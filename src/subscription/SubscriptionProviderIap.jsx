@@ -203,6 +203,15 @@ export function IapSubscriptionProvider({ userId, children }) {
       }
     }
 
+    if (!storeProducts[sku] && !subscriptions?.some((s) => productSku(s) === sku)) {
+      setLastError({
+        type: 'generic',
+        message:
+          `SKU not found: "${sku}". In App Store Connect → your app → Subscriptions, create/open the subscription whose Product ID is exactly "${sku}" (and "${TRAINER_SUBSCRIPTION_PRODUCT_IDS.join('" / "')}"). Status must not be Missing Metadata. Paid Apps Agreement must be Active.`,
+      });
+      return;
+    }
+
     setActionLoading(true);
     setLastError(null);
     try {
@@ -218,6 +227,15 @@ export function IapSubscriptionProvider({ userId, children }) {
       if (code === ErrorCode.UserCancelled || String(code || '') === 'E_USER_CANCELLED') {
         return;
       }
+      const msg = String(e?.message || '');
+      if (/sku not found/i.test(msg) || /product.*(not found|invalid)/i.test(msg)) {
+        setLastError({
+          type: 'generic',
+          message:
+            `SKU not found: "${sku}". Open App Store Connect → Monetization → Subscriptions and confirm a Product ID of exactly "${sku}" exists.`,
+        });
+        return;
+      }
       setLastError({
         type: code === ErrorCode.NetworkError ? 'network' : 'generic',
         message: e?.message || 'Could not start purchase',
@@ -225,7 +243,7 @@ export function IapSubscriptionProvider({ userId, children }) {
     } finally {
       setActionLoading(false);
     }
-  }, [connected, requestPurchase, storeProducts, loadStoreProducts]);
+  }, [connected, requestPurchase, storeProducts, loadStoreProducts, subscriptions]);
 
   const restorePurchases = useCallback(async () => {
     if (Platform.OS !== 'ios') {

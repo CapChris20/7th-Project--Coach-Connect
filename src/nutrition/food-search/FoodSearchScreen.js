@@ -769,8 +769,11 @@ const FoodSearchScreen = ({
       (showBrowseIdle && browseTab === 'recent' && !hasRecentHistory) ||
       (showFavoritesBrowse && !hasFavorites));
 
+  // Floating shell nav overlays when embedded; useShellBottomNavInset already includes safe area.
   const listBottomPad =
-    Math.max(insets.bottom, 12) + (embedded ? 16 : 32) + (reserveShellBottomNav ? shellBottomPad : 0);
+    embedded || reserveShellBottomNav
+      ? shellBottomPad
+      : Math.max(insets.bottom, 12) + 32;
   const listData = showFavoritesBrowse
     ? favoriteFoods
     : showRecent

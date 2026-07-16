@@ -63,6 +63,7 @@ const ClientsListScreen = ({
   onMessagesPress,
   isDark = true,
 }) => {
+  // Floating shell BottomNavBar overlays embed + standalone — always reserve it.
   const scrollBottomPad = useShellBottomNavInset(24);
   const [deletePending, setDeletePending] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);

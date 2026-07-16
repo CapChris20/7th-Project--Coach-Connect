@@ -46,7 +46,9 @@ function isUsableBarcodeFood(food) {
   const source = String(food.source || '').toLowerCase();
 
   if (TRUSTED_SOURCES.has(source)) {
-    return hasMacros;
+    // Diet soda / zero-cal water still valid from USDA/OFF/FatSecret
+    if (hasMacros) return true;
+    return /\b(diet|zero|sugar.?free|unsweetened|water|sparkling|mineral|seltzer)\b/i.test(name);
   }
 
   // Web / Serper estimates — require real nutrition signal

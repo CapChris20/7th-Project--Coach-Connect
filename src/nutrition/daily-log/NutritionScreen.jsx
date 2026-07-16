@@ -308,8 +308,13 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
       >
         <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="barcode-outline" size={16} color={actionColors.label} />
-          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+          <Ionicons name="barcode-outline" size={15} color={actionColors.label} />
+          <Text
+            style={[mealS.actionBtnText, { color: actionColors.label }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
             Scan
           </Text>
         </LinearGradient>
@@ -319,19 +324,29 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
       >
         <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="search-outline" size={16} color={actionColors.label} />
-          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+          <Ionicons name="search-outline" size={15} color={actionColors.label} />
+          <Text
+            style={[mealS.actionBtnText, { color: actionColors.label }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
             Search
           </Text>
         </LinearGradient>
       </Pressable>
       <Pressable
         onPress={() => onQuickAdd?.(mealType)}
-        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+        style={({ pressed }) => [mealS.actionBtnWrap, mealS.actionBtnWrapWide, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
       >
         <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="flash-outline" size={16} color={actionColors.label} />
-          <Text style={[mealS.actionBtnText, { color: actionColors.label }]} numberOfLines={1}>
+          <Ionicons name="flash-outline" size={15} color={actionColors.label} />
+          <Text
+            style={[mealS.actionBtnText, { color: actionColors.label }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
             Quick Add
           </Text>
         </LinearGradient>
@@ -399,8 +414,13 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
                 <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="barcode-outline" size={16} color={actionColors.label} />
-                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
+                  <Ionicons name="barcode-outline" size={15} color={actionColors.label} />
+                  <Text
+                    style={[emptyStyles.actionText, { color: actionColors.label }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
                     Scan
                   </Text>
                 </LinearGradient>
@@ -410,19 +430,29 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
                 style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
                 <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="search-outline" size={16} color={actionColors.label} />
-                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
+                  <Ionicons name="search-outline" size={15} color={actionColors.label} />
+                  <Text
+                    style={[emptyStyles.actionText, { color: actionColors.label }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
                     Search
                   </Text>
                 </LinearGradient>
               </Pressable>
               <Pressable
                 onPress={() => onQuickAdd?.(mealType)}
-                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+                style={({ pressed }) => [emptyStyles.actionBtnWrap, emptyStyles.actionBtnWrapWide, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
                 <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="flash-outline" size={16} color={actionColors.label} />
-                  <Text style={[emptyStyles.actionText, { color: actionColors.label }]} numberOfLines={1}>
+                  <Ionicons name="flash-outline" size={15} color={actionColors.label} />
+                  <Text
+                    style={[emptyStyles.actionText, { color: actionColors.label }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
                     Quick Add
                   </Text>
                 </LinearGradient>
@@ -472,7 +502,7 @@ const createMealS = (colors) =>
     progressFill: { height: '100%', borderRadius: 99 },
     btnRow: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 6,
       marginTop: 8,
       flexWrap: 'nowrap',
       alignItems: 'stretch',
@@ -484,20 +514,23 @@ const createMealS = (colors) =>
       borderRadius: 22,
       overflow: 'hidden',
     },
+    actionBtnWrapWide: {
+      flex: 1.25,
+    },
     actionBtn: {
       minHeight: 44,
       borderRadius: 22,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 5,
-      paddingHorizontal: 8,
+      gap: 4,
+      paddingHorizontal: 6,
       paddingVertical: 10,
     },
     actionBtnText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '800',
-      letterSpacing: 0.1,
+      letterSpacing: 0,
       flexShrink: 1,
     },
   });
@@ -529,7 +562,7 @@ const createEmptyStyles = (colors) =>
     },
     buttonRow: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 6,
       marginTop: 8,
       width: '100%',
       alignItems: 'stretch',
@@ -542,20 +575,23 @@ const createEmptyStyles = (colors) =>
       borderRadius: 22,
       overflow: 'hidden',
     },
+    actionBtnWrapWide: {
+      flex: 1.25,
+    },
     actionBtn: {
       minHeight: 44,
       borderRadius: 22,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 5,
-      paddingHorizontal: 8,
+      gap: 4,
+      paddingHorizontal: 6,
       paddingVertical: 10,
     },
     actionText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '800',
-      letterSpacing: 0.1,
+      letterSpacing: 0,
       flexShrink: 1,
     },
   });
@@ -715,8 +751,8 @@ export const NutritionScreen = ({
 }) => {
   const { isDark } = useTheme();
   const colors = useMemo(() => getColors(isDark), [isDark]);
-  const shellBottomPad = useShellBottomNavInset(16);
-  const scrollBottomPad = shellBottomPad + 28;
+  const shellBottomPad = useShellBottomNavInset(24);
+  const scrollBottomPad = shellBottomPad;
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
   const solidCardBg = isDark ? '#0A0A0F' : '#FFFFFF';

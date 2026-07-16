@@ -45,7 +45,7 @@ import {
 } from '../../shared/api/verifyTrainerCertification';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
 import {
   PROFILE_ROW_ICON_SIZE,
@@ -607,6 +607,7 @@ export function ViewMyViewMyProfileScreen({
 }) {
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
+  const shellNavInset = useShellBottomNavInset(24);
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
   const theme = isDark ? DARK : LIGHT;
   const [notificationsOn, setNotificationsOn] = useState(true);
@@ -1095,7 +1096,7 @@ export function ViewMyViewMyProfileScreen({
         />
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
           {...FORM_SCROLL_PROPS}
         >
           <Animated.View

@@ -56,7 +56,12 @@ export default function BottomSheetMenu({ visible, onClose, title, children, the
         {title ? (
           <Text style={[styles.title, { color: theme?.text }]}>{title}</Text>
         ) : null}
-        <ScrollView style={styles.scroll} bounces={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
           {children}
         </ScrollView>
       </Animated.View>
@@ -90,12 +95,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingBottom: 24,
   },
   handleRow: { alignItems: 'center', paddingTop: 10 },
   handle: { width: 40, height: 5, borderRadius: 3 },
   title: { fontSize: 15, fontWeight: '700', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
   scroll: { maxHeight: 480 },
+  scrollContent: { paddingBottom: 28 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',

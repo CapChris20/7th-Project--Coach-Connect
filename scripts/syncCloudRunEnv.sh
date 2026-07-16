@@ -90,6 +90,14 @@ else
 fi
 [ -n "${STRIPE_PUBLISHABLE_KEY:-}" ] && VARS+=",STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}"
 
+# IconScout (icons / illustrations API — server-side only)
+if [ -n "${ICONSCOUT_CLIENT_ID:-}" ] && [ -n "${ICONSCOUT_CLIENT_SECRET:-}" ]; then
+  VARS+=",ICONSCOUT_CLIENT_ID=${ICONSCOUT_CLIENT_ID},ICONSCOUT_CLIENT_SECRET=${ICONSCOUT_CLIENT_SECRET}"
+  echo "ℹ️  ICONSCOUT_CLIENT_ID / ICONSCOUT_CLIENT_SECRET will sync."
+elif [ -n "${ICONSCOUT_CLIENT_ID:-}" ] || [ -n "${ICONSCOUT_CLIENT_SECRET:-}" ]; then
+  echo "⚠️  IconScout partial — set both ICONSCOUT_CLIENT_ID and ICONSCOUT_CLIENT_SECRET in .env."
+fi
+
 echo "Updating Cloud Run env vars (not including FIREBASE_SERVICE_ACCOUNT — set that in Console as JSON)..."
 gcloud config set project "$PROJECT_ID" 2>/dev/null
 gcloud run services update "$SERVICE_NAME" \

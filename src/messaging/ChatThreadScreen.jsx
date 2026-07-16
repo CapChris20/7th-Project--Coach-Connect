@@ -55,7 +55,6 @@ import { getTrainerClients, createOrUpdateClient } from '../trainer-app/clients-
 import { doc, getDoc } from 'firebase/firestore';
 import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BOTTOM_NAV_BAR_HEIGHT } from '../navigation/bottomNavMetrics';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────
 const DARK = {
@@ -354,7 +353,8 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
-  const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) + BOTTOM_NAV_BAR_HEIGHT : 0;
+  // Parent shell hides BottomNavBar on threads — only reserve safe area on the composer.
+  const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) : 0;
   const t = isDark ? DARK : LIGHT;
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
@@ -791,7 +791,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 + embedBottomPad }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"

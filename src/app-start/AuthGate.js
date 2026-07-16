@@ -21,7 +21,7 @@
 import React, { Suspense, useState, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { SubscriptionProvider } from '../subscription/SubscriptionProvider';
-import AppLoadingScreen from '../shared/components/shell/AppLoadingScreen';
+import { useBootLoadingLock } from '../shared/components/shell/BootLoading';
 import { auth, db } from './config';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -48,9 +48,14 @@ const OnboardingWizardScreen = React.lazy(() => import('../auth/OnboardingWizard
 const TrainerApp = React.lazy(() => import('./TrainerApp'));
 const ClientApp = React.lazy(() => import('./ClientApp'));
 
+function AuthBootFallback() {
+  useBootLoadingLock(true);
+  return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
+}
+
 function AuthScreenSuspense({ children }) {
   return (
-    <Suspense fallback={<AppLoadingScreen isDark />}>
+    <Suspense fallback={<AuthBootFallback />}>
       <View style={{ flex: 1 }}>{children}</View>
     </Suspense>
   );
@@ -101,6 +106,10 @@ export default function AuthGate() {
   const [userData, setUserData] = useState(null);
   const [keyLoaded, setKeyLoaded] = useState(false);
   const prevUidRef = useRef(null);
+
+  // Keep the single boot overlay up — do not remount a new loader here.
+  const bootLocked = (!user && authLoading) || (!!user && (!keyLoaded || !onboardingChecked));
+  useBootLoadingLock(bootLocked);
 
   // Load API key and initialize error syncing on app start
   useEffect(() => {
@@ -277,7 +286,7 @@ export default function AuthGate() {
   // Show auth screens if user is not logged in
   if (!user) {
     if (authLoading) {
-      return <AppLoadingScreen isDark />;
+      return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
     }
     if (showForgotPasswordFlow) {
       return (
@@ -347,9 +356,9 @@ export default function AuthGate() {
     );
   }
 
-  // For logged-in users, wait for onboarding check and key loading — show app loading screen
+  // For logged-in users, wait for onboarding check and key loading — overlay stays up
   if (!keyLoaded || !onboardingChecked) {
-    return <AppLoadingScreen isDark />;
+    return <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />;
   }
 
   // Show onboarding if needed

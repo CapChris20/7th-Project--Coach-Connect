@@ -10,26 +10,21 @@
  */
 /**
  * AppLoadingScreen — shared full-screen loading for the entire app (client and trainer).
- * Shows Lottie animation only.
- * Used by AuthGate (while checking auth/onboarding) and ClientApp/TrainerApp (while loading data).
+ * Exact IconScout loading-bar motion (recolored preview frames, pink → orange).
  */
 
 import React from 'react';
-import { StyleSheet, SafeAreaView, StatusBar } from 'react-native';
-import LottieView from 'lottie-react-native';
-
-const LOTTIE_SOURCE = require('../../../assets/animations/legacy/loading.json');
+import { StyleSheet, View, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import LoadingPrismFlip from './LoadingPrismFlip';
 
 export default function AppLoadingScreen({ isDark = true }) {
   return (
     <SafeAreaView style={[styles.container, isDark ? styles.dark : styles.light]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <LottieView
-        source={LOTTIE_SOURCE}
-        autoPlay
-        loop
-        style={styles.lottie}
-      />
+      <View style={styles.content}>
+        <LoadingPrismFlip isDark={isDark} width={300} />
+      </View>
     </SafeAreaView>
   );
 }
@@ -46,8 +41,9 @@ const styles = StyleSheet.create({
   light: {
     backgroundColor: '#FFFFFF',
   },
-  lottie: {
-    width: 400,
-    height: 400,
+  content: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
 });

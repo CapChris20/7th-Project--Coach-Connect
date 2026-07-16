@@ -94,6 +94,8 @@ export function BrowseTrainersScreen({
   onMessage,
   onConnect,
   onOpenFilters,
+  /** Bottom clearance for floating shell BottomNavBar (defaults to legacy fixed pad). */
+  listBottomPad = 100,
 }) {
   const t = getTheme(isDark);
   const screenGrad = isDark ? t.screenGradient || ['#1A0F2E', '#0C0814', '#050508'] : ['#FAFAFC', '#F5F5F8', '#FAFAFC'];
@@ -112,7 +114,7 @@ export function BrowseTrainersScreen({
     <LinearGradient colors={screenGrad} style={s.flex}>
       <FlatList
         style={s.flex}
-        contentContainerStyle={s.listScroll}
+        contentContainerStyle={[s.listScroll, { paddingBottom: listBottomPad }]}
         data={trainers}
         keyExtractor={(tr) => String(tr.id)}
         initialNumToRender={12}

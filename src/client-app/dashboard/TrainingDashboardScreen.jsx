@@ -1563,6 +1563,7 @@ export const TrainingDashboardScreen = ({
 }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  // Floating shell BottomNavBar overlays this screen — always reserve it.
   const shellBottomPad = useShellBottomNavInset(embedInLayout ? 40 : 24);
   const t = isDark ? DARK : LIGHT;
   const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;

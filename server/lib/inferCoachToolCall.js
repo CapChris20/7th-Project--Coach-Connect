@@ -6,6 +6,9 @@ function parseCalorieTargetFromMessage(text, fallback) {
   const raw = String(text || '');
   const fromTo = raw.match(/\bfrom\s*(\d{3,4})\s*(?:kcal|cals?|calories?)?\s*to\s*(\d{3,4})\b/i);
   if (fromTo) return Number(fromTo[2]);
+  // "change my calories to 2200" / "set calories to 1800"
+  const calTo = raw.match(/\b(?:calor(?:ie)?s?|kcal|cals?)\s*(?:goal|target)?\s*(?:to|at|=|:)\s*(\d{3,4})\b/i);
+  if (calTo) return Number(calTo[1]);
   const toOnly = raw.match(/\b(?:to|at)\s*(\d{3,4})\s*(?:kcal|cals?|calories?)\b/i);
   if (toOnly) return Number(toOnly[1]);
   const setCal = raw.match(/\b(?:set|change|update|lower|reduce)\b[^.]{0,40}?\b(\d{3,4})\s*(?:kcal|cals?|calories?)\b/i);
@@ -37,6 +40,7 @@ const {
   userWantsDeleteLog,
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
+  deleteLogReasoning,
 } = require('../../src/ai-coach/server-logic/tools/detectDeleteFoodRequest');
 const {
   guardCoachToolProposal,
@@ -71,11 +75,17 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   const t = raw.toLowerCase();
   if (!t) return null;
 
+  // Advice / questions should never invent Confirm chips.
+  if (isInformationalUserMessage(raw) && !userExplicitlyRequestsAction(raw)) {
+    return null;
+  }
+
   if (userWantsDeleteLog(raw)) {
+    const params = inferDeleteLogParams(raw, '');
     return {
       name: 'deleteLog',
-      params: inferDeleteLogParams(raw, ''),
-      reasoning: 'Remove this from your nutrition log.',
+      params,
+      reasoning: deleteLogReasoning(params),
     };
   }
 
@@ -84,8 +94,11 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   const targetF = Number(weeklyContext.targetF) || 65;
   const targetCal = Number(weeklyContext.targetCal) || 2250;
 
-  // logWater: "I drank X oz", "100oz water", etc.
-  const waterMatch = raw.match(/(?:drank|drink|had)\s*(?:about\s*)?(\d+)\s*(?:oz|ounce)/i);
+  // logWater: "I drank X oz", "Log 20 oz of water", etc.
+  const waterMatch =
+    raw.match(/(?:drank|drink|had)\s*(?:about\s*)?(\d+)\s*(?:oz|ounce)/i) ||
+    raw.match(/(?:log|track|record|add|save)\s*(?:my\s*)?(?:water\s*)?(?:as\s*)?(\d+)\s*(?:oz|ounce)/i) ||
+    raw.match(/(\d+)\s*(?:oz|ounce)s?\s*(?:of\s*)?water/i);
   if (waterMatch && userWantsExplicitDashboardLog(raw, 'water')) {
     const amount_oz = Number(waterMatch[1]);
     if (amount_oz > 0 && amount_oz < 1000) {
@@ -97,8 +110,10 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // logSteps: "I did X steps", "10,000 steps", etc.
-  const stepsMatch = raw.match(/(?:did|walked|got|logged)\s*(?:about\s*)?(\d+(?:,\d{3})*)\s*steps/i);
+  // logSteps: "I did X steps", "Log 8000 steps", etc.
+  const stepsMatch =
+    raw.match(/(?:did|walked|got|logged|log|track|record|add)\s*(?:about\s*)?(\d+(?:,\d{3})*)\s*steps/i) ||
+    raw.match(/(\d+(?:,\d{3})*)\s*steps/i);
   if (stepsMatch && userWantsExplicitDashboardLog(raw, 'steps')) {
     const step_count = Number(stepsMatch[1].replace(/,/g, ''));
     if (step_count >= 0 && step_count < 100000) {
@@ -110,8 +125,10 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // rateEnergy: "My energy is X/10", "Energy X", etc.
-  const energyMatch = raw.match(/(?:energy|feel)\s*(?:is)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i);
+  // rateEnergy: "My energy is X/10", "Log my energy as 7/10", etc.
+  const energyMatch =
+    raw.match(/(?:energy|feel)\s*(?:is|as|at)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+    raw.match(/(?:log|track|rate)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
   if (energyMatch && userWantsExplicitDashboardLog(raw, 'energy')) {
     const rating = Number(energyMatch[1]);
     if (rating >= 1 && rating <= 10) {
@@ -128,7 +145,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   for (const mood of moodKeywords) {
     if (
       userWantsExplicitDashboardLog(raw, 'mood') &&
-      new RegExp(`\\b(?:mood|feel|feeling)\\s+(?:is\\s+)?${mood}\\b`, 'i').test(t)
+      new RegExp(`\\b(?:mood|feel|feeling)\\s+(?:is\\s+|as\\s+)?${mood}\\b`, 'i').test(t)
     ) {
       return {
         name: 'logMood',
@@ -151,8 +168,10 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     };
   }
 
-  // rateWorkout: "That workout was X/10", "Workout rating X"
-  const workoutMatch = raw.match(/(?:workout|session)\s*(?:was|is|rate[sd]?)\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i);
+  // rateWorkout: "That workout was X/10", "Rate today's workout 8/10"
+  const workoutMatch =
+    raw.match(/(?:workout|session)\s*(?:was|is|rate[sd]?|as)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+    raw.match(/(?:rate|log)\s*(?:my\s*|today'?s?\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i);
   if (workoutMatch && userWantsExplicitDashboardLog(raw, 'workout')) {
     const rating = Number(workoutMatch[1]);
     if (rating >= 1 && rating <= 10) {
@@ -173,10 +192,28 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     };
   }
 
+  // Primary goal changes — before calorie/macro target updates (both use "change" + "goal")
+  if (
+    /\b(goal|goals)\b/.test(t) &&
+    /\b(change|update|set|switch)\b/.test(t) &&
+    !/\b(calor|kcal|macro|protein|carb|fat target|calorie target)\b/.test(t)
+  ) {
+    let newGoal = 'Lose fat';
+    if (/\b(bulk|build muscle|gain muscle)\b/.test(t)) newGoal = 'Build muscle';
+    else if (/\b(recomp|recomposition)\b/.test(t)) newGoal = 'Recomposition';
+    else if (/\b(lose fat|fat loss|cut|lose weight)\b/.test(t)) newGoal = 'Lose fat';
+    else {
+      const m = raw.match(/\b(?:goal|goals)\s+(?:to|as)\s+(.+)$/i);
+      if (m?.[1]) newGoal = m[1].replace(/[.!?].*$/, '').trim().slice(0, 80) || newGoal;
+    }
+    return { name: 'updateGoal', params: { newGoal }, reasoning: `Update goal to ${newGoal}.` };
+  }
+
   const newCalories = parseCalorieTargetFromMessage(raw, null);
   if (
-    (newCalories != null && newCalories >= 800) ||
-    (/\b(calor|kcal|macro|goal)\b/.test(t) && /\b(change|set|update|lower|reduce|from|to|bump|raise)\b/.test(t))
+    (newCalories != null && newCalories >= 800 && /\b(calor(?:ie)?s?|kcal|cals?|macros?)\b/.test(t)) ||
+    (/\b(calor(?:ie)?s?|kcal|cals?|macros?)\b/.test(t) &&
+      /\b(change|set|update|lower|reduce|from|to|bump|raise)\b/.test(t))
   ) {
     const calories = newCalories != null ? newCalories : targetCal;
     return {
@@ -261,9 +298,10 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   }
 
   if (
-    (/\b(open|show|see|view|pull up)\b/.test(t) && /\b(workout|plan|program)\b/.test(t)) ||
-    /\btoday'?s?\s*(workout|session)\b/.test(t) ||
-    /\bwhat('?s| is) (on|in) my (workout|plan|program)\b/.test(t)
+    !/\b(rate|rating)\b/.test(t) &&
+    ((/\b(open|show|see|view|pull up)\b/.test(t) && /\b(workout|plan|program)\b/.test(t)) ||
+      /\btoday'?s?\s*(workout|session)\b/.test(t) ||
+      /\bwhat('?s| is) (on|in) my (workout|plan|program)\b/.test(t))
   ) {
     return {
       name: 'openWorkoutPlan',
@@ -285,7 +323,11 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     };
   }
 
-  if (/\b(bulk|cut|recomp)\b/.test(t) && /\b(now|switch|change|should i)\b/.test(t)) {
+  if (
+    /\b(bulk|cut|recomp)\b/.test(t) &&
+    /\b(now|switch|change)\b/.test(t) &&
+    !/\b(should i|should we)\b/.test(t)
+  ) {
     const newGoal = /\bbulk\b/.test(t) ? 'Build muscle' : /\bcut\b/.test(t) ? 'Lose fat' : 'Recomposition';
     return { name: 'updateGoal', params: { newGoal }, reasoning: `Update goal to ${newGoal}.` };
   }

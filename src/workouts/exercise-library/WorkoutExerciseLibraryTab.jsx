@@ -36,6 +36,7 @@ import { YouTubeIframeExercisePlayer } from './VideoPlayerModal';
 import ExerciseSection from '../components/ExerciseSection';
 import ExerciseCard from './ExerciseCard';
 import ShortsCard from './ShortsCard';
+import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const GUTTER = 20;
@@ -365,6 +366,7 @@ function exercisesToGridVideos(exercises) {
  * Uses YouTube Data API (env key) for thumbnails/metadata; no hardcoded video IDs.
  */
 export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboardingData }) {
+  const shellNavInset = useShellBottomNavInset(24);
   const COLORS = isDark ? COLORS_DARK : COLORS_LIGHT;
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -634,6 +636,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         style={styles.flex}
+        contentContainerStyle={{ paddingBottom: shellNavInset }}
         stickyHeaderIndices={[1]}
       >
         <View style={styles.headerBlock}>
@@ -1048,7 +1051,7 @@ export default function WorkoutExerciseLibraryTab({ isDark, onThemeToggle, onboa
           </ExerciseSection>
         )}
 
-        <View style={{ height: 32 }} />
+        <View style={{ height: 8 }} />
       </ScrollView>
 
       {activeExercise ? (

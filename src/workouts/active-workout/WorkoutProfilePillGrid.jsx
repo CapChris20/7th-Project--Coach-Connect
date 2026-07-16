@@ -3,6 +3,7 @@ import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
+import PremiumSectionHeader from '../../shared/components/PremiumSectionHeader';
 import { profileCardIconWrapStyle } from '../../shared/workout-profile/profileCardIcons';
 import { filterProfileCardSections, getProfileCardSectionLabels } from '../../shared/workout-profile/shouldShowProfileCard';
 import {
@@ -86,20 +87,7 @@ export default function WorkoutProfilePillGrid({
   const visibleSections = filterProfileCardSections(sections, onboardingData);
 
   const SectionHeader = ({ text }) => (
-    <View style={{ marginTop: 20, marginBottom: 12 }}>
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: '900',
-          letterSpacing: 1.1,
-          textTransform: 'uppercase',
-          color: lovableMuted,
-        }}
-      >
-        {text}
-      </Text>
-      <View style={{ marginTop: 10, height: 1, backgroundColor: planBuilderDivider }} />
-    </View>
+    <PremiumSectionHeader text={text} isDark={isDark} />
   );
 
   const PillCard = ({ item }) => {

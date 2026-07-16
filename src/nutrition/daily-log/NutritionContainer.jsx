@@ -481,7 +481,7 @@ export const NutritionContainer = ({
         <View style={flexScrollHost}>
           <FoodSearchScreen
             embedded
-            reserveShellBottomNav={hideBottomNav}
+            reserveShellBottomNav
             mealType={activeMealType}
             onFoodSelected={handleFoodAdded}
             onClose={() => { setShowFoodSearch(false); setInitialSearchQuery(''); }}
@@ -501,7 +501,10 @@ export const NutritionContainer = ({
         onScanSuccess={handleFoodAdded}
         onClose={(payload) => {
           setShowBarcodeScanner(false);
-          if (payload?.searchQuery) {
+          if (payload?.openFoodSearch) {
+            setInitialSearchQuery('');
+            setShowFoodSearch(true);
+          } else if (payload?.searchQuery) {
             setInitialSearchQuery(payload.searchQuery);
             setShowFoodSearch(true);
           }
@@ -523,7 +526,7 @@ export const NutritionContainer = ({
         />
         <View style={flexScrollHost}>
         <QuickAddNutrition
-          reserveShellBottomNav={hideBottomNav}
+          reserveShellBottomNav
           userId={uid}
           onLogFood={(entry) => {
             const num = (v) => {
@@ -571,7 +574,7 @@ export const NutritionContainer = ({
           logs={logs}
           goals={goals}
           foodCount={logs.length}
-          reserveShellBottomNav={hideBottomNav}
+          reserveShellBottomNav
         />
         {bottomNavEl}
       </SafeAreaView>
@@ -591,7 +594,7 @@ export const NutritionContainer = ({
         <View style={flexScrollHost}>
           <NutritionSettingsScreen
             embedded
-            reserveShellBottomNav={hideBottomNav}
+            reserveShellBottomNav
             currentGoals={{
               calories: goals?.calories ?? 2000,
               proteinTarget: goals?.proteinTarget ?? 150,
@@ -619,7 +622,7 @@ export const NutritionContainer = ({
       />
       <View style={flexScrollHost}>
       <NutritionScreen
-        reserveShellBottomNav={hideBottomNav}
+        reserveShellBottomNav
         consumed={consumed}
         goal={goal}
         burned={burned}

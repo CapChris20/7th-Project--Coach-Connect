@@ -7,7 +7,7 @@ const axios = require('axios');
 const { resolveBarcodeBrand: resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
 
 const SERPER_JUNK_PATTERN =
-  /barcode tracker|fooddata central|gs1 us|dietagram|calorie content of products|search by barcode/i;
+  /barcode tracker|fooddata central|gs1 us|dietagram|calorie content of products|search by barcode|food and nutrition information center|\bfnic\b|nutritionix|largest verified nutrition|nutrition facts search tool|nutrition calculator|mcdonald'?s nutrition/i;
 
 const RETAILER_HOST_PATTERN =
   /kroger|walmart|target|heb|safeway|albertsons|qfc|instacart|ghostlifestyle|priceplow/i;
@@ -105,11 +105,23 @@ function scoreSerperOrganicResult(result, barcode) {
   return score;
 }
 
+function parseServingGramsFromText(text) {
+  const t = String(text || '');
+  const ozG = t.match(/(\d+(?:\.\d+)?)\s*oz[^0-9]{0,12}(\d+)\s*g/i);
+  if (ozG) return num(ozG[2]);
+  const servingG = t.match(/serving size[^0-9]{0,24}(\d+)\s*g/i);
+  if (servingG) return num(servingG[1]);
+  const parenG = t.match(/\((\d+)\s*g\)/i);
+  if (parenG) return num(parenG[1]);
+  return 0;
+}
+
 function serperOrganicToFood(result, barcode) {
   const text = `${result.title || ''} ${result.snippet || ''}`;
   const { cals, protein, carbs, fat } = parseBarcodeNutritionText(text);
   const calories = cals > 0 ? cals : estimateCaloriesFromMacros(protein, carbs, fat);
   const name = cleanSerperProductName(result.title, barcode);
+  const servingGrams = parseServingGramsFromText(text) || 100;
 
   if (!name || isSerperBarcodeNoise(name, result.link)) return null;
   if (calories <= 0 && protein <= 0 && carbs <= 0 && fat <= 0) return null;
@@ -126,9 +138,11 @@ function serperOrganicToFood(result, barcode) {
     fiber: null,
     sodium: null,
     sugar: null,
+    dataBasis: 'label_serving',
     servingSize: 1,
     servingUnit: 'serving',
-    servingGrams: 41,
+    servingGrams,
+    serving_label: servingGrams !== 100 ? `1 serving (${servingGrams} g)` : '1 serving',
     source: 'serper',
     needsVerification: true,
     barcodeConfidence: 'low',
@@ -172,8 +186,9 @@ async function lookupBarcodeWithSerper(barcode) {
 
   try {
     const queries = [
-      `${gtin} ghost OR cereal OR protein nutrition facts`,
-      `${clean} UPC kroger OR walmart nutrition`,
+      `${gtin} nutrition facts calories protein`,
+      `${clean} UPC nutrition facts`,
+      `"${clean}" calories protein carbs`,
     ];
 
     const mergedOrganic = [];
@@ -202,7 +217,11 @@ async function lookupBarcodeWithSerper(barcode) {
 
     const suggestedSearchQueries = extractSuggestedSearchNames(mergedOrganic, clean);
 
-    for (const { row } of ranked) {
+    // Only lock a Serper product when the barcode/GTIN appears in the hit.
+    // Otherwise return name suggestions only — avoids Oreos→Chomps-style poison.
+    for (const { row, score } of ranked) {
+      if (!serperResultMatchesBarcode(row, clean) && score < 50) continue;
+      if (!serperResultMatchesBarcode(row, clean)) continue;
       const food = serperOrganicToFood(row, clean);
       if (food) {
         return { food, suggestedSearchQueries };

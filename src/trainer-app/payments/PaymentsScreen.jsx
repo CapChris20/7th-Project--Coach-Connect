@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,23 +19,28 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { setDoc, serverTimestamp } from 'firebase/firestore';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { useTrainerAppShell } from '../navigation/TrainerAppShellContext';
 import { getClientInitials } from '../dashboard/trainerDashboardUi';
-import { resolveStripeStatus } from '../../shared/api/stripeConnectApi';
+import { resolveStripeStatus, verifyStripeConnectStatus } from '../../shared/api/stripeConnectApi';
 import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
 import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
 import {
   HowPaymentsWorkSection,
   EarningsDashboardPreview,
 } from '../../shared/payments/PaymentEducationSections';
+import { postSetClientRate } from '../../shared/api/trainerClientApi';
+import { trainerClientDocRef } from '../crm/trainerClientFirestorePaths';
 import { auth } from '../../app-start/config';
 
 const ACCENT_PINK = '#BE185D';
@@ -147,6 +152,7 @@ const cardStyles = StyleSheet.create({
 export default function PaymentsScreen() {
   const shell = useTrainerAppShell();
   const { colors, isDark } = useTheme();
+  const shellNavInset = useShellBottomNavInset(24);
   const clients = shell.clients || [];
   const profile = shell.trainerProfileDoc || {};
 
@@ -174,9 +180,12 @@ export default function PaymentsScreen() {
 
   const [rateModalClient, setRateModalClient] = useState(null);
   const [rateInput, setRateInput] = useState('');
+  const [savingRate, setSavingRate] = useState(false);
+  const [refreshingStripe, setRefreshingStripe] = useState(false);
+  const [rateOverrides, setRateOverrides] = useState({});
 
   const openRateModal = useCallback((client) => {
-    const existing = client?.monthlyRate;
+    const existing = rateOverrides[client?.id]?.monthlyRate ?? client?.monthlyRate;
     const display =
       existing != null && Number(existing) >= 100
         ? String(Number(existing) / 100)
@@ -185,14 +194,44 @@ export default function PaymentsScreen() {
           : '';
     setRateInput(display);
     setRateModalClient(client);
-  }, []);
+  }, [rateOverrides]);
+
+  const refreshStripeStatus = useCallback(async () => {
+    setRefreshingStripe(true);
+    try {
+      await verifyStripeConnectStatus();
+      await shell.refreshTrainerUserDoc?.();
+    } catch (e) {
+      Alert.alert('Couldn’t refresh', e?.message || 'Try Finish setup if Stripe still needs info.');
+    } finally {
+      setRefreshingStripe(false);
+    }
+  }, [shell]);
 
   const stripeConnect = useStripeConnectFlow({
     email: auth?.currentUser?.email || profile.email || '',
     onActive: () => {
-      shell.refetchTrainerProfile?.();
+      shell.refreshTrainerUserDoc?.();
     },
   });
+
+  useEffect(() => {
+    if (stripeConnectStatus !== 'pending') return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        await verifyStripeConnectStatus();
+        if (!cancelled) await shell.refreshTrainerUserDoc?.();
+      } catch (_) {
+        /* keep pending UI; user can tap Refresh */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Only auto-check when we first land on pending — not on every shell object identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stripeConnectStatus]);
 
   const handleConnectBank = useCallback(() => {
     if (stripeConnect.error) stripeConnect.retry();
@@ -203,9 +242,49 @@ export default function PaymentsScreen() {
     stripeConnect.startConnect();
   }, [stripeConnect]);
 
-  const handleSetClientRate = useCallback((clientId, amountInCents) => {
-    console.log('[PaymentsScreen] handleSetClientRate placeholder', { clientId, amountInCents });
-  }, []);
+  const handleSetClientRate = useCallback(
+    async (clientId, amountInCents) => {
+      const trainerId = auth?.currentUser?.uid || shell.user?.uid;
+      if (!trainerId || !clientId) throw new Error('Not signed in');
+
+      const prevStatus = String(
+        rateOverrides[clientId]?.paymentStatus ||
+          clients.find((c) => c.id === clientId)?.paymentStatus ||
+          '',
+      ).trim();
+      const paymentStatus =
+        prevStatus === 'active' || prevStatus === 'past_due' ? prevStatus : 'awaiting_payment';
+
+      // CRM write is allowed client-side and updates this screen immediately.
+      await setDoc(
+        trainerClientDocRef(trainerId, clientId),
+        {
+          monthlyRate: amountInCents,
+          paymentStatus,
+          monthlyRateUpdatedAt: serverTimestamp(),
+          monthlyRateUpdatedBy: trainerId,
+        },
+        { merge: true },
+      );
+
+      setRateOverrides((prev) => ({
+        ...prev,
+        [clientId]: { monthlyRate: amountInCents, paymentStatus },
+      }));
+
+      // Sync to users/{clientId} so the client sees the rate (Admin SDK).
+      try {
+        await postSetClientRate({ clientId, monthlyRateCents: amountInCents });
+      } catch (e) {
+        // CRM saved; server sync may be undeployed — still usable on trainer side.
+        if (__DEV__) console.warn('[PaymentsScreen] set-client-rate API:', e?.message || e);
+      }
+
+      await shell.refreshClients?.();
+      return { monthlyRate: amountInCents, paymentStatus };
+    },
+    [shell, clients, rateOverrides],
+  );
 
   const parsedRatePreview = useMemo(() => {
     const dollars = parseFloat(String(rateInput).replace(/[^0-9.]/g, ''));
@@ -214,14 +293,24 @@ export default function PaymentsScreen() {
     return { gross: dollars, net };
   }, [rateInput]);
 
-  const saveRate = useCallback(() => {
-    if (!rateModalClient?.id) return;
+  const saveRate = useCallback(async () => {
+    if (!rateModalClient?.id || savingRate) return;
     const dollars = parseFloat(String(rateInput).replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(dollars) || dollars <= 0) return;
-    handleSetClientRate(rateModalClient.id, Math.round(dollars * 100));
-    setRateModalClient(null);
-    setRateInput('');
-  }, [rateModalClient, rateInput, handleSetClientRate]);
+    if (!Number.isFinite(dollars) || dollars < 1) {
+      Alert.alert('Invalid rate', 'Enter a monthly rate of at least $1.');
+      return;
+    }
+    setSavingRate(true);
+    try {
+      await handleSetClientRate(rateModalClient.id, Math.round(dollars * 100));
+      setRateModalClient(null);
+      setRateInput('');
+    } catch (e) {
+      Alert.alert('Couldn’t save rate', e?.message || 'Please try again.');
+    } finally {
+      setSavingRate(false);
+    }
+  }, [rateModalClient, rateInput, handleSetClientRate, savingRate]);
 
   const payoutStatusChip = () => {
     if (stripeConnectStatus === 'active') {
@@ -246,7 +335,7 @@ export default function PaymentsScreen() {
       />
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: BOTTOM_NAV_BAR_HEIGHT + 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: shellNavInset }]}
         {...FORM_SCROLL_PROPS}
       >
         {/* Section 1 — Payout Account */}
@@ -288,10 +377,47 @@ export default function PaymentsScreen() {
           ) : null}
 
           {stripeConnectStatus === 'pending' ? (
-            <Text style={[styles.bodyText, { color: mutedColor }]}>
-              {bankMask ? `Bank account: ${bankMask}. ` : ''}
-              Stripe is verifying your account. This usually takes 1-2 business days.
-            </Text>
+            <>
+              <Text style={[styles.bodyText, { color: mutedColor }]}>
+                {bankMask ? `Account: ${bankMask}. ` : ''}
+                Stripe still needs your payout details, or is finishing verification. If you already
+                submitted everything, tap Refresh — otherwise Finish setup.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={handleConnectBank}
+                style={styles.primaryBtnOuter}
+                disabled={refreshingStripe}
+              >
+                <LinearGradient
+                  colors={[ACCENT_PINK, ACCENT_ORANGE]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryBtnGradient}
+                >
+                  <Text style={styles.primaryBtnText}>Finish setup</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={refreshStripeStatus}
+                disabled={refreshingStripe}
+                style={[
+                  styles.secondaryBtn,
+                  {
+                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
+                    opacity: refreshingStripe ? 0.7 : 1,
+                  },
+                ]}
+              >
+                {refreshingStripe ? (
+                  <ActivityIndicator color={textColor} />
+                ) : (
+                  <Text style={[styles.secondaryBtnText, { color: textColor }]}>Refresh status</Text>
+                )}
+              </TouchableOpacity>
+            </>
           ) : null}
 
           {stripeConnectStatus === 'active' ? (
@@ -348,10 +474,12 @@ export default function PaymentsScreen() {
           </GlassCard>
         ) : (
           clients.map((client) => {
+            const override = rateOverrides[client.id] || {};
+            const monthlyRate = override.monthlyRate ?? client.monthlyRate;
             const name = client.name || client.displayName || 'Client';
             const initials = getClientInitials(name);
-            const rateLabel = formatMonthlyRate(client.monthlyRate);
-            const payStatus = client.paymentStatus || 'inactive';
+            const rateLabel = formatMonthlyRate(monthlyRate);
+            const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
             const statusTone =
               payStatus === 'active'
                 ? 'success'
@@ -455,7 +583,7 @@ export default function PaymentsScreen() {
               <Text style={[styles.netPreviewValue, { color: colors.text }]}>
                 {parsedRatePreview ? `$${parsedRatePreview.net.toFixed(2)}/mo` : '—/mo'}
               </Text>
-              <Text style={[styles.netPreviewHint, { color: colors.textSecondary }]}>After 5% platform fee</Text>
+              <Text style={[styles.netPreviewHint, { color: colors.textSecondary }]}>After 10% platform fee</Text>
             </View>
 
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Monthly rate (USD)</Text>
@@ -479,14 +607,23 @@ export default function PaymentsScreen() {
               />
             </View>
 
-            <TouchableOpacity activeOpacity={0.92} onPress={saveRate} style={styles.primaryBtnOuter}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={saveRate}
+              style={[styles.primaryBtnOuter, savingRate && { opacity: 0.7 }]}
+              disabled={savingRate}
+            >
               <LinearGradient
                 colors={[ACCENT_PINK, ACCENT_ORANGE]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.primaryBtnGradient}
               >
-                <Text style={styles.primaryBtnText}>Save Rate</Text>
+                {savingRate ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Save Rate</Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setRateModalClient(null)}>

@@ -10,14 +10,14 @@
  */
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto';
 import { getApiBase } from '../../shared/api/baseUrl';
 import { getAuth } from 'firebase/auth';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -62,6 +62,9 @@ function openBugMail() {
 
 export default function BugReportScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, spacing, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(24);
+  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
   const supportEmail = getSupportEmail();
   const t = getCardTokens(isDark);
   const [whatExpected, setWhatExpected] = useState('');
@@ -154,7 +157,7 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scroll: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: embedShellBottomNav ? BOTTOM_NAV_BAR_HEIGHT + 24 : 24 },
+    scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
     heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
     heroInner: {
       borderRadius: 14,
@@ -231,7 +234,12 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <CoachConnectHeader title="Report a bug" skipTopSafeInset onBack={onClose} />
 
-      <ScrollView style={styles.scroll} {...FORM_SCROLL_PROPS}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scroll}
+        {...FORM_SCROLL_PROPS}
+        showsVerticalScrollIndicator
+      >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
           <GradientCard borderColors={[ORANGE, PINK]} style={styles.heroOuter} innerStyle={styles.heroInner}>
             <GradientCard borderColors={[ORANGE, PINK]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>

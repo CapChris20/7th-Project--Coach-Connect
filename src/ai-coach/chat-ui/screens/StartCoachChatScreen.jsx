@@ -1223,7 +1223,7 @@ export default function StartCoachChatScreen({
             paddingBottom: listBottomPad,
             paddingHorizontal: 16,
           }}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >

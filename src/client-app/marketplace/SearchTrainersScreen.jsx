@@ -27,6 +27,7 @@ import { db, storage } from '../../app-start/config';
 import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared-utils/getTrainerProfileMedia';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
+import { useTheme } from '../../shared-ui/ThemeContext';
 import TrainerRequestConfirmModal from './TrainerRequestConfirmModal';
 import TrainerRequestIntroModal from './TrainerRequestIntroModal';
 import BrowseTrainersScreen from './BrowseTrainersScreen';
@@ -113,7 +114,7 @@ const SearchTrainersScreen = ({
   onSelectTrainer,
   onProfilePress,
   onSettingsPress,
-  isDark = true,
+  isDark: isDarkProp,
   onHomePress,
   onPlusPress,
   onVoicePress,
@@ -122,10 +123,14 @@ const SearchTrainersScreen = ({
   onMessagesPress,
 }) => {
   const headerBack = onBack ?? onClose;
+  const { isDark: appIsDark } = useTheme();
+  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : appIsDark;
   const theme = getTheme(isDark);
-  const shellNavInset = useShellBottomNavInset(0);
+  const shellNavInset = useShellBottomNavInset(24);
   const profileShellInset =
     showBottomNav !== false || reserveShellBottomNav ? shellNavInset : 0;
+  const listBottomPad =
+    showBottomNav !== false || reserveShellBottomNav ? shellNavInset : Math.max(24, 32);
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -391,6 +396,7 @@ const SearchTrainersScreen = ({
           onMessage={openMessageFlow}
           onConnect={openConnectFlow}
           onOpenFilters={() => setFiltersOpen(true)}
+          listBottomPad={listBottomPad}
         />
       )}
 

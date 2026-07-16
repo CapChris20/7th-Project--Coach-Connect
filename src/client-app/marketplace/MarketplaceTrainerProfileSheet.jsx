@@ -32,9 +32,6 @@ import {
 } from './MarketplaceUI';
 import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
 
-/** Sticky footer row (Message + Connect) — used for scroll padding. */
-const PROFILE_FOOTER_H = 96;
-
 const FEATURES = [
   { label: 'Custom workouts', icon: 'barbell-outline', color: BRAND.pink },
   { label: 'Direct messaging', icon: 'chatbubbles-outline', color: BRAND.purple },
@@ -87,7 +84,8 @@ export function TrainerProfileSheet({
   const handleMessage = onMessage;
   const handleConnect = onConnect || onRequest;
   const shellNavClearance = embedded ? Math.max(0, shellBottomInset) : 0;
-  const scrollBottomPad = PROFILE_FOOTER_H + 28 + shellNavClearance;
+  // Footer is in-flow under the scroll view — only the footer needs shell clearance.
+  const scrollBottomPad = 28;
 
   const footer = (
     <View
