@@ -339,11 +339,14 @@ export default function FoodConfirmSheet({
     } else if (unitId === 'oz') {
       setAmountValue(String(Math.round((prevGrams / 28.3495) * 100) / 100));
     } else if (unitId === 'cups') {
-      setAmountValue(String(Math.round((prevGrams / 240) * 100) / 100));
+      const cupG = gramsForVolumeUnit(1, 'cups', foodNameForDensity) || 240;
+      setAmountValue(String(Math.round((prevGrams / cupG) * 100) / 100));
     } else if (unitId === 'tbsp') {
-      setAmountValue(String(Math.round((prevGrams / 15) * 100) / 100));
+      const tbspG = gramsForVolumeUnit(1, 'tbsp', foodNameForDensity) || 15;
+      setAmountValue(String(Math.round((prevGrams / tbspG) * 100) / 100));
     } else if (unitId === 'tsp') {
-      setAmountValue(String(Math.round((prevGrams / 5) * 100) / 100));
+      const tspG = gramsForVolumeUnit(1, 'tsp', foodNameForDensity) || 5;
+      setAmountValue(String(Math.round((prevGrams / tspG) * 100) / 100));
     }
   };
 
@@ -376,6 +379,10 @@ export default function FoodConfirmSheet({
       protein: macros.protein,
       carbs: macros.carbs,
       fat: macros.fat,
+      fiber: macros.fiber ?? nutritionBase.fiber,
+      sugar: macros.sugar ?? nutritionBase.sugar,
+      sodium: macros.sodium ?? nutritionBase.sodium,
+      potassium: macros.potassium ?? nutritionBase.potassium,
       servingGrams: grams,
       servingAmount: grams,
       servingSize: servingsLogged,

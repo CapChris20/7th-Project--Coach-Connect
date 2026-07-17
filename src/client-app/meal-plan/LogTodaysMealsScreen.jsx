@@ -31,6 +31,9 @@ import {
   getFoodLogsForDate,
   addFoodLog,
   deleteFoodLog,
+  getDailyGoals,
+  splitLogsByMeal,
+  calculateMacroTotals,
 } from '../../nutrition/daily-log/logFoodToFirestore';
 import FoodSearchScreen from '../../nutrition/food-search/FoodSearchScreen';
 import { autoLogErrorSync } from '../../utils/autoLogError';
@@ -197,25 +200,13 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
     }
     
     try {
-      // Use enhanced service if food is from FatSecret
-      if (food.source === 'fatsecret' || food.food_id) {
-        await addFoodLogWithFatSecret(user.uid, {
-          mealType: mealType || activeMeal,
-          food,
-          date: selectedDate,
-          servingSize: food.servingSize || 1,
-          foodId: food.food_id,
-          source: 'fatsecret',
-        });
-      } else {
-        // Use existing service for manual/cache foods
-        await addFoodLog(user.uid, {
-          mealType: mealType || activeMeal,
-          food,
-          date: selectedDate,
-          servingSize: food.servingSize || 1,
-        });
-      }
+      // FatSecret and all other sources use the same addFoodLog path
+      await addFoodLog(user.uid, {
+        mealType: mealType || activeMeal,
+        food,
+        date: selectedDate,
+        servingSize: food.servingSize || 1,
+      });
       
       setShowFoodSearch(false);
       setShowBarcodeScanner(false);

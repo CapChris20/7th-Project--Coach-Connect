@@ -77,7 +77,7 @@ function inferFoodLogParams(userText) {
     protein: proteinMatch ? Number(proteinMatch[1]) : isChickenRice ? 50 : undefined,
     carbs: carbMatch ? Number(carbMatch[1]) : isChickenRice ? 45 : undefined,
     fat: fatMatch ? Number(fatMatch[1]) : isChickenRice ? 4 : undefined,
-    mealType: /breakfast/.test(t) ? 'breakfast' : /dinner/.test(t) ? 'dinner' : /snack/.test(t) ? 'snack' : 'lunch',
+    mealType: /breakfast/.test(t) ? 'breakfast' : /dinner/.test(t) ? 'dinner' : /snack/.test(t) ? 'snacks' : 'lunch',
   };
 }
 

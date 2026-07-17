@@ -353,7 +353,13 @@ async function executeTool(userId, toolCall) {
       }
 
       const todayKey = String(params?.date || isoDateKey()).trim();
-      const mealType = String(params?.mealType || 'snack').toLowerCase();
+      const mealRaw = String(params?.mealType || params?.meal || 'snacks').toLowerCase();
+      const mealType =
+        mealRaw === 'snack' || mealRaw === 'snacks'
+          ? 'snacks'
+          : ['breakfast', 'lunch', 'dinner', 'snacks'].includes(mealRaw)
+            ? mealRaw
+            : 'snacks';
       await db.collection('nutrition_logs').add({
         user_id: userId,
         date: todayKey,
@@ -361,7 +367,7 @@ async function executeTool(userId, toolCall) {
         food_name: foodName,
         brand: '',
         serving_size: 1,
-        serving_grams: 100,
+        serving_grams: Number(params?.servingGrams) > 0 ? Math.round(Number(params.servingGrams)) : 100,
         calories: Math.round(cals),
         protein: Math.round(p * 10) / 10,
         carbs: Math.round(c * 10) / 10,
@@ -371,6 +377,11 @@ async function executeTool(userId, toolCall) {
         sodium: 0,
         potassium: 0,
         source: 'aiCoach',
+        metadata: {
+          source: 'aiCoach',
+          dataBasis: 'logged_totals',
+          servingGrams: Number(params?.servingGrams) > 0 ? Math.round(Number(params.servingGrams)) : 100,
+        },
         created_at: serverTs(),
       });
 

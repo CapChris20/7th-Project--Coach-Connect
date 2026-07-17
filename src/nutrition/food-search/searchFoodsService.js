@@ -70,7 +70,9 @@ function mapOffProductToRow(p, limitIndex) {
     servingSize: 1,
     servingUnit: 'grams',
     servingGrams: 100,
+    dataBasis: 'per_100g',
     source: 'openfoodfacts',
+    needsVerification: true,
   };
 }
 

@@ -659,6 +659,11 @@ const FoodSearchScreen = ({
             carbs: f.macros?.carbs,
             fat: f.macros?.fat,
             brand: f.brand,
+            servingGrams: f.servingGrams,
+            servingSize: f.servingSize,
+            servingUnit: f.servingUnit,
+            dataBasis: f.dataBasis,
+            source: f.source,
           }),
         );
         setFavoriteFoods(mapped);
@@ -689,6 +694,11 @@ const FoodSearchScreen = ({
               carbs: f.macros?.carbs,
               fat: f.macros?.fat,
               brand: f.brand,
+              servingGrams: f.servingGrams,
+              servingSize: f.servingSize,
+              servingUnit: f.servingUnit,
+              dataBasis: f.dataBasis,
+              source: f.source,
             }),
           ),
         );

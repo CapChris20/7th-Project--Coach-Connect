@@ -302,18 +302,22 @@ export async function getFoodLogsForDate(userId, date = new Date()) {
   }
 }
 
-const clampNutrition = (food) => ({
-  ...food,
-  calories: Math.min(Math.max(Math.round(food.calories || 0), 0), 5000),
-  protein: Math.min(Math.max(parseFloat(((food.protein || 0)).toFixed(1)), 0), 500),
-  carbs: Math.min(Math.max(parseFloat(((food.carbs || 0)).toFixed(1)), 0), 500),
-  fat: Math.min(Math.max(parseFloat(((food.fat || 0)).toFixed(1)), 0), 300),
-  fiber: Math.min(Math.max(parseFloat(((food.fiber || 0)).toFixed(1)), 0), 100),
-  sugar: Math.min(Math.max(parseFloat(((food.sugar || 0)).toFixed(1)), 0), 200),
-  sodium: Math.min(Math.max(Math.round(food.sodium || 0), 0), 10000),
-  potassium: Math.min(Math.max(Math.round(food.potassium || 0), 0), 10000),
-  serving_grams: Math.min(Math.max(Math.round(food.serving_grams || food.servingGrams || 100), 1), 2000),
-});
+const clampNutrition = (food) => {
+  const grams = Math.min(Math.max(Math.round(food.serving_grams || food.servingGrams || 100), 1), 10000);
+  return {
+    ...food,
+    calories: Math.min(Math.max(Math.round(food.calories || 0), 0), 10000),
+    protein: Math.min(Math.max(parseFloat(((food.protein || 0)).toFixed(1)), 0), 500),
+    carbs: Math.min(Math.max(parseFloat(((food.carbs || 0)).toFixed(1)), 0), 500),
+    fat: Math.min(Math.max(parseFloat(((food.fat || 0)).toFixed(1)), 0), 300),
+    fiber: Math.min(Math.max(parseFloat(((food.fiber || 0)).toFixed(1)), 0), 100),
+    sugar: Math.min(Math.max(parseFloat(((food.sugar || 0)).toFixed(1)), 0), 200),
+    sodium: Math.min(Math.max(Math.round(food.sodium || 0), 0), 10000),
+    potassium: Math.min(Math.max(Math.round(food.potassium || 0), 0), 10000),
+    serving_grams: grams,
+    servingGrams: grams,
+  };
+};
 
 export async function addFoodLog(userId, log) {
   if (!userId || !db) throw new Error('User required');
@@ -897,12 +901,17 @@ function buildFavoriteFoodEntry(food) {
     foodName,
     calories: Math.round(Number(food?.calories) || 0),
     macros: {
-      protein: Math.round(Number(food?.protein) || 0),
-      carbs: Math.round(Number(food?.carbs) || 0),
-      fat: Math.round(Number(food?.fat) || 0),
+      protein: Math.round((Number(food?.protein) || 0) * 10) / 10,
+      carbs: Math.round((Number(food?.carbs) || 0) * 10) / 10,
+      fat: Math.round((Number(food?.fat) || 0) * 10) / 10,
     },
-    addedDate: new Date().toISOString(),
+    servingGrams: Number(food?.servingGrams || food?.serving_grams) || null,
+    servingSize: Number(food?.servingSize || food?.serving_size) || 1,
+    servingUnit: food?.servingUnit || food?.serving_unit || 'serving',
+    dataBasis: food?.dataBasis || null,
+    source: food?.source || 'manual',
     brand: food?.brand_name || food?.brand || '',
+    addedDate: new Date().toISOString(),
   };
 }
 

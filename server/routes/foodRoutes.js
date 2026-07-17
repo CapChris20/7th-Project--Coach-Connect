@@ -326,6 +326,31 @@ const lookupBarcodeWithSerper = async (barcode) => {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return null;
 
+  const toLegacySerperBarcodeFood = (name, macros, text = '') => {
+    const servingGrams = parseServingGramsFromLabel(text) || 100;
+    return {
+      id: `serper_barcode_${barcode}`,
+      name,
+      brand: resolveFoodBrandLabel(name, ''),
+      restaurant: null,
+      calories: macros.cals || 0,
+      protein: macros.protein || 0,
+      carbs: macros.carbs || 0,
+      fat: macros.fat || 0,
+      fiber: null,
+      sodium: null,
+      sugar: null,
+      servingSize: 1,
+      servingUnit: 'serving',
+      servingGrams,
+      labelServingGrams: servingGrams,
+      dataBasis: 'label_serving',
+      source: 'serper',
+      needsVerification: true,
+      barcodeConfidence: 'low',
+    };
+  };
+
   try {
     const q = `${barcode} UPC barcode nutrition facts calories per serving`;
     const res = await axios.post(
@@ -352,25 +377,9 @@ const lookupBarcodeWithSerper = async (barcode) => {
       const box = data.answerBox;
       const title = (box.title || `Product ${barcode}`).trim();
       const snippet = box.answer || box.snippet || '';
-      const { cals, protein, carbs, fat } = parseSnippet(snippet);
-      if (title && (cals > 0 || protein > 0)) {
-        return {
-          id: `serper_barcode_${barcode}`,
-          name: title,
-          brand: resolveFoodBrandLabel(title, ''),
-          restaurant: null,
-          calories: cals,
-          protein,
-          carbs,
-          fat,
-          fiber: null,
-          sodium: null,
-          sugar: null,
-          servingSize: 1,
-          servingUnit: 'serving',
-          servingGrams: 100,
-          source: 'serper',
-        };
+      const macros = parseSnippet(snippet);
+      if (title && (macros.cals > 0 || macros.protein > 0)) {
+        return toLegacySerperBarcodeFood(title, macros, snippet);
       }
     }
 
@@ -379,28 +388,14 @@ const lookupBarcodeWithSerper = async (barcode) => {
       const kg = data.knowledgeGraph;
       const attrs = kg.attributes || {};
       const cleanNum = (v) => num(parseFloat(String(v || '0').replace(/[^\d.]/g, '')));
-      const cals = cleanNum(attrs['Calories'] || attrs['Energy'] || '0');
-      const protein = cleanNum(attrs['Protein'] || '0');
-      const carbs = cleanNum(attrs['Total Carbohydrate'] || attrs['Carbohydrates'] || '0');
-      const fat = cleanNum(attrs['Total Fat'] || attrs['Fat'] || '0');
-      if (cals > 0) {
-        return {
-          id: `serper_barcode_${barcode}`,
-          name: kg.title,
-          brand: resolveFoodBrandLabel(kg.title, ''),
-          restaurant: null,
-          calories: cals,
-          protein,
-          carbs,
-          fat,
-          fiber: null,
-          sodium: null,
-          sugar: null,
-          servingSize: 1,
-          servingUnit: 'serving',
-          servingGrams: 100,
-          source: 'serper',
-        };
+      const macros = {
+        cals: cleanNum(attrs['Calories'] || attrs['Energy'] || '0'),
+        protein: cleanNum(attrs['Protein'] || '0'),
+        carbs: cleanNum(attrs['Total Carbohydrate'] || attrs['Carbohydrates'] || '0'),
+        fat: cleanNum(attrs['Total Fat'] || attrs['Fat'] || '0'),
+      };
+      if (macros.cals > 0) {
+        return toLegacySerperBarcodeFood(kg.title, macros, JSON.stringify(attrs));
       }
     }
 
@@ -408,26 +403,10 @@ const lookupBarcodeWithSerper = async (barcode) => {
     if (Array.isArray(data.organic) && data.organic.length > 0) {
       for (const r of data.organic.slice(0, 3)) {
         const text = `${r.title || ''} ${r.snippet || ''}`;
-        const { cals, protein, carbs, fat } = parseSnippet(text);
+        const macros = parseSnippet(text);
         const name = (r.title || `Product ${barcode}`).split('-')[0].split('|')[0].trim();
-        if (name && (cals > 0 || protein > 0)) {
-          return {
-            id: `serper_barcode_${barcode}`,
-            name,
-            brand: resolveFoodBrandLabel(name, ''),
-            restaurant: null,
-            calories: cals,
-            protein,
-            carbs,
-            fat,
-            fiber: null,
-            sodium: null,
-            sugar: null,
-            servingSize: 1,
-            servingUnit: 'serving',
-            servingGrams: 100,
-            source: 'serper',
-          };
+        if (name && (macros.cals > 0 || macros.protein > 0)) {
+          return toLegacySerperBarcodeFood(name, macros, text);
         }
       }
       // return best guess with product name even if we couldn't parse calories
@@ -435,24 +414,8 @@ const lookupBarcodeWithSerper = async (barcode) => {
       const name = (first.title || `Product ${barcode}`).split('-')[0].split('|')[0].trim();
       if (name) {
         const text = `${first.title || ''} ${first.snippet || ''}`;
-        const { cals, protein, carbs, fat } = parseSnippet(text);
-        return {
-          id: `serper_barcode_${barcode}`,
-          name,
-          brand: resolveFoodBrandLabel(name, ''),
-          restaurant: null,
-          calories: cals || 0,
-          protein: protein || 0,
-          carbs: carbs || 0,
-          fat: fat || 0,
-          fiber: null,
-          sodium: null,
-          sugar: null,
-          servingSize: 1,
-          servingUnit: 'serving',
-          servingGrams: 100,
-          source: 'serper',
-        };
+        const macros = parseSnippet(text);
+        return toLegacySerperBarcodeFood(name, macros, text);
       }
     }
     return null;
@@ -1760,10 +1723,12 @@ app.post('/api/food/usda', verifyFirebaseBearerToken, async (req, res) => {
         fiber: food.foodNutrients?.find(n => n.nutrientId === 1079)?.value || null,
         sodium: food.foodNutrients?.find(n => n.nutrientId === 1093)?.value || null,
         sugar: food.foodNutrients?.find(n => n.nutrientId === 2000)?.value || null,
-        servingSize: 100,
+        // Foundation/SR nutrients are per 100g — servingSize is servings of 100g, not grams.
+        servingSize: 1,
         servingUnit: 'grams',
         servingGrams: 100,
-        source: 'usda'
+        dataBasis: 'per_100g',
+        source: 'usda',
       }));
 
       return res.json(results);
