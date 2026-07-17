@@ -340,13 +340,25 @@ function filterFoodSearchRows(query, rows, limit = 20) {
   const requiredBrand = getConsumerBrandInQuery(query);
   const menuStyle = isMenuStyleQuery(query);
   const minHits = minTokenHitsForMatch(query);
+  const itemTokens = menuStyle ? menuItemTokensFromQuery(query) : [];
 
-  const candidates = list.filter((row) => {
+  let candidates = list.filter((row) => {
     const text = rowSearchText(row);
     if (isRetailFoodNoise(text)) return false;
     if (requiredBrand && !textIncludesBrand(text, requiredBrand)) return false;
     return true;
   });
+
+  // HARD gate for restaurant item queries: require item tokens (crazy+bread) so pizzas/soda cannot crowd out.
+  if (menuStyle && itemTokens.length >= 2) {
+    const need = Math.min(2, itemTokens.length);
+    const exact = candidates.filter(
+      (row) => countTokenHits(rowSearchText(row), itemTokens) >= need,
+    );
+    if (exact.length > 0) {
+      candidates = exact;
+    }
+  }
 
   if (!candidates.length) return [];
 
@@ -355,20 +367,18 @@ function filterFoodSearchRows(query, rows, limit = 20) {
       row,
       score: scoreFoodSearchRelevance(rowSearchText(row), query),
       hits: countTokenHits(rowSearchText(row), significantQueryTokens(query)),
+      itemHits: itemTokens.length
+        ? countTokenHits(rowSearchText(row), itemTokens)
+        : 0,
     }))
-    .sort((a, b) => b.score - a.score || b.hits - a.hits);
+    .sort((a, b) => b.score - a.score || b.itemHits - a.itemHits || b.hits - a.hits);
 
   const strong = scored.filter((entry) => {
     if (menuStyle) {
-      const itemTokens = menuItemTokensFromQuery(query);
-      if (itemTokens.length >= 2) {
-        const itemHits = countTokenHits(rowSearchText(entry.row), itemTokens);
-        // Prefer exact item in top band; allow related menu items only when nothing matches.
-        if (itemHits < Math.min(2, itemTokens.length) && scored.some((s) => countTokenHits(rowSearchText(s.row), itemTokens) >= Math.min(2, itemTokens.length))) {
-          return false;
-        }
+      if (itemTokens.length >= 2 && entry.itemHits < Math.min(2, itemTokens.length)) {
+        return false;
       }
-      return entry.hits >= minHits && itemMatchesQuery(rowSearchText(entry.row), query);
+      return entry.hits >= Math.min(minHits, 2) || entry.itemHits >= Math.min(2, itemTokens.length || 2);
     }
     if (requiredBrand) return itemMatchesQuery(rowSearchText(entry.row), query);
     return entry.hits >= minHits;
@@ -378,15 +388,14 @@ function filterFoodSearchRows(query, rows, limit = 20) {
 
   if (strong.length > 0) return pick(strong);
 
-  // Branded restaurant: surface exact-item hits first even if strict token gate was too tight.
   if (menuStyle) {
-    const itemTokens = menuItemTokensFromQuery(query);
     if (itemTokens.length >= 1) {
       const exactItem = scored.filter(
-        (e) => countTokenHits(rowSearchText(e.row), itemTokens) >= Math.min(2, itemTokens.length),
+        (e) => e.itemHits >= Math.min(2, itemTokens.length),
       );
       if (exactItem.length > 0) return pick(exactItem);
     }
+    // Better empty than a dump of unrelated chain pizzas/sodas.
     return [];
   }
 

@@ -29,6 +29,7 @@ const {
   mergeNutritionSearchWithLegacy,
 } = require('./mergeFoodNutritionSources');
 const { applyFoodCardPresentationToRows } = require('./cleanFoodCardLabels');
+const { lookupTrustedFoods } = require('./trustedFoodCatalog');
 
 function presentSearchResults(rows, query) {
   return applyFoodCardPresentationToRows(rows, query);
@@ -467,18 +468,24 @@ class FoodSearchProvider {
    * Pipeline: nutrition consensus (5-site scrape) + legacy Serper/USDA/FatSecret/OFF search
    */
   async searchFoods(query, limit = 20) {
-    const cacheKey = `search_v45_${query}_${limit}`;
+    const cacheKey = `search_v46_${query}_${limit}`;
     try {
       this.lastSearchHint = null;
       logger.debug('🍔 Searching foods for', query);
       const q = String(query || '').trim();
       if (!q) return [];
-      
+
       // Check cache first
       const cached = this.getFromCache(cacheKey);
       if (cached) {
         logger.debug('🍔 Returning cached search results');
         return presentSearchResults(cached, q);
+      }
+
+      // Curated catalog first for famous chain items (Crazy Bread, Big Mac, …).
+      const trusted = lookupTrustedFoods(q, 2);
+      if (trusted.length > 0 && isMenuStyleQuery(q)) {
+        // Still fetch live results, but trusted rows always lead and displace Serper junk.
       }
 
       const serverUrl = this.serverUrl;
@@ -487,12 +494,17 @@ class FoodSearchProvider {
       // Serper/USDA/FatSecret + multi-source nutrition consensus run on the Express API.
       if (!hasServer) {
         logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.');
-        const merged = await this.offlineFoodFallback(q, limit);
+        let merged = await this.offlineFoodFallback(q, limit);
+        if (trusted.length) merged = [...trusted, ...merged].slice(0, limit);
         if (merged.length === 0) {
           this.lastSearchHint = 'Set EXPO_PUBLIC_API_BASE_URL to your Coach Connect API (Cloud Run URL).';
         }
-        if (merged.length > 0) this.setCache(cacheKey, presentSearchResults(merged, q));
-        return presentSearchResults(merged, q);
+        const presentedOffline = presentSearchResults(
+          filterFoodSearchRows(q, merged, limit),
+          q,
+        );
+        if (presentedOffline.length > 0) this.setCache(cacheKey, presentedOffline);
+        return presentedOffline;
       }
 
       let authHeaders;
@@ -500,11 +512,15 @@ class FoodSearchProvider {
         authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
       } catch (_) {
         this.lastSearchHint = 'Sign in to search foods on the server.';
-        return presentSearchResults(await this.offlineFoodFallback(q, limit), q);
+        const offline = await this.offlineFoodFallback(q, limit);
+        const withTrusted = trusted.length ? [...trusted, ...offline] : offline;
+        return presentSearchResults(filterFoodSearchRows(q, withTrusted, limit), q);
       }
       if (!authHeaders.Authorization) {
         this.lastSearchHint = 'Sign in to search foods on the server.';
-        return presentSearchResults(await this.offlineFoodFallback(q, limit), q);
+        const offline = await this.offlineFoodFallback(q, limit);
+        const withTrusted = trusted.length ? [...trusted, ...offline] : offline;
+        return presentSearchResults(filterFoodSearchRows(q, withTrusted, limit), q);
       }
 
       const [consensusResult, legacyResults] = await Promise.all([
@@ -514,7 +530,24 @@ class FoodSearchProvider {
 
       const nutritionRows = consensusResult?.rows || [];
       let merged = mergeNutritionSearchWithLegacy(nutritionRows, legacyResults, limit);
+      if (trusted.length > 0) {
+        merged = mergeNutritionSearchWithLegacy(trusted, merged, limit);
+      }
       let filtered = filterFoodSearchRows(q, merged, limit);
+      if (trusted.length > 0 && filtered.length === 0) {
+        filtered = trusted.slice(0, limit);
+      } else if (trusted.length > 0) {
+        // Ensure trusted card stays on top even if live ranking drifted.
+        const trustedIds = new Set(trusted.map((t) => t.id));
+        filtered = [
+          ...trusted,
+          ...filtered.filter((r) => !trustedIds.has(r.id) && !trusted.some((t) => {
+            const a = String(t.food_name || '').toLowerCase();
+            const b = String(r.food_name || r.name || '').toLowerCase();
+            return a && b && (a === b || b.includes(a));
+          })),
+        ].slice(0, limit);
+      }
 
       if (filtered.length === 0) {
         const offline = await this.offlineFoodFallback(q, limit);
@@ -530,7 +563,7 @@ class FoodSearchProvider {
       }
       if (presented.length > 0) this.setCache(cacheKey, presented);
       logger.debug(
-        `✅ Food search success: nutrition_rows=${nutritionRows.length} legacy=${legacyResults.length} merged=${presented.length}`,
+        `✅ Food search success: trusted=${trusted.length} nutrition_rows=${nutritionRows.length} legacy=${legacyResults.length} merged=${presented.length}`,
       );
       return presented;
     } catch (error) {

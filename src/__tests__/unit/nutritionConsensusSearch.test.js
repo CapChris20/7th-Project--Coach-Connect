@@ -170,11 +170,13 @@ describe('mergeNutritionSearchWithLegacy', () => {
     const legacy = [
       { id: 'l1', name: 'Four Corner Pizza Jets', calories: 398, source: 'serper' },
       { id: 'l2', name: 'Side Salad', calories: 80, source: 'serper' },
+      { id: 'l3', name: 'Garden Side', calories: 60, source: 'usda' },
     ];
     const merged = mergeNutritionSearchWithLegacy(nutrition, legacy, 10);
     expect(merged[0].id).toBe('c1');
-    expect(merged).toHaveLength(3);
+    // FatSecret present → drop Serper legacy; keep non-Serper extras.
     expect(merged.find((r) => r.id === 'l1')).toBeFalsy();
-    expect(merged.find((r) => r.id === 'l2')).toBeTruthy();
+    expect(merged.find((r) => r.id === 'l2')).toBeFalsy();
+    expect(merged.find((r) => r.id === 'l3')).toBeTruthy();
   });
 });

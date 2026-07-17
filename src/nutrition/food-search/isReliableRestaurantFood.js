@@ -38,6 +38,7 @@ const TRUSTED_DB_SOURCES = new Set([
   'fastFoodNutrition',
   'foodfacto',
   'foodFacto',
+  'trusted_catalog',
 ]);
 
 const WEAK_WEB_SOURCES = new Set(['serper', 'mixed', 'nutrition_consensus', 'web']);

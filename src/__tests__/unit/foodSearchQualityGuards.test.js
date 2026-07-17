@@ -26,6 +26,24 @@ const {
   mapNutritionSearchToFoodRows,
 } = require('../../nutrition/food-search/mergeFoodNutritionSources');
 
+describe('trustedFoodCatalog', () => {
+  const { lookupTrustedFoods } = require('../../nutrition/food-search/trustedFoodCatalog');
+
+  it('returns Crazy Bread for Little Caesars crazy bread', () => {
+    const rows = lookupTrustedFoods("Little Caesar's crazy bread");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].food_name).toMatch(/Crazy Bread/i);
+    expect(rows[0].serving_label).toMatch(/breadstick/i);
+    expect(rows[0].calories).toBe(100);
+  });
+
+  it('returns Big Mac for McDonalds Big Mac', () => {
+    const rows = lookupTrustedFoods("McDonald's Big Mac");
+    expect(rows[0].food_name).toMatch(/Big Mac/i);
+    expect(rows[0].calories).toBeGreaterThan(500);
+  });
+});
+
 describe('junk title guards', () => {
   it('flags Crazy Breadmenu Items as junk', () => {
     expect(isJunkWebSearchTitle('Crazy Breadmenu Items')).toBe(true);
@@ -193,13 +211,12 @@ describe('branded restaurant ranking', () => {
       { name: 'Pepperoni Pizza', brand: 'Little Caesars' },
       { name: 'Crazy Bread', brand: 'Little Caesars' },
       { name: 'Cheese Pizza', brand: 'Little Caesars' },
+      { name: 'Pineapple Soda', brand: 'Little Caesars' },
     ];
     const out = filterFoodSearchRows("Little Caesar's crazy bread", rows, 10);
+    expect(out.length).toBeGreaterThan(0);
     expect(out[0].name).toMatch(/Crazy Bread/i);
-    expect(scoreFoodSearchRelevance('Crazy Bread Little Caesars', "Little Caesar's crazy bread"))
-      .toBeGreaterThan(
-        scoreFoodSearchRelevance('Pepperoni Pizza Little Caesars', "Little Caesar's crazy bread"),
-      );
+    expect(out.every((r) => !/pizza|soda/i.test(r.name))).toBe(true);
   });
 
   it('ranks Big Mac above nuggets for Big Mac query', () => {

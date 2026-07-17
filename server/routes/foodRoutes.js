@@ -32,6 +32,7 @@ const {
   applyFoodCardPresentationToRows,
 } = require('../../src/nutrition/food-search/cleanFoodCardLabels');
 const { lookupBarcodeFatSecret, fatSecretConfigured, searchFoodsFatSecret } = require('../lib/fatSecretClient');
+const { lookupTrustedFoods } = require('../../src/nutrition/food-search/trustedFoodCatalog');
 const { guardBarcodeResult, pickBestBarcodeCandidate } = require('../lib/barcodeMerge');
 const { getVerifiedBarcode, saveVerifiedBarcode } = require('../lib/verifiedBarcodeCache');
 const { variableWeightBarcodeHint } = require('../lib/variableWeightBarcode');
@@ -47,7 +48,7 @@ const {
 
 const SERPER_ORGANIC_MAX = 10;
 
-const FOOD_SEARCH_PIPELINE_VERSION = 39;
+const FOOD_SEARCH_PIPELINE_VERSION = 40;
 
 const OPEN_FOOD_FACTS_USER_AGENT =
   'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
@@ -730,6 +731,19 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   const normalizedKey = normalizeSearchKey(query);
   const cacheKey = `v${FOOD_SEARCH_PIPELINE_VERSION}|${normalizedKey}`;
 
+  // Curated famous items (Crazy Bread, Big Mac, …) — return before Serper/cache pollution.
+  const trustedHits = lookupTrustedFoods(query, Math.min(3, limit));
+  if (trustedHits.length > 0 && isMenuStyleQuery(query)) {
+    const out = sanitizeSearchResultRows(trustedHits, query).slice(0, limit);
+    console.log('[Food Search] Trusted catalog hit:', query, '→', out[0]?.food_name);
+    foodCache.set(cacheKey, { data: out, timestamp: Date.now() });
+    return res.json({
+      results: out,
+      source: 'trusted_catalog',
+      cached: false,
+    });
+  }
+
   const cachedMem = foodCache.get(cacheKey);
   if (cachedMem && Date.now() - cachedMem.timestamp < FOOD_CACHE_TTL) {
     console.log('[Food Search] In-memory cache hit:', query);
@@ -1302,7 +1316,11 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     if (needsFill()) await loadUsdaBroad();
   } else if (searchMode === 'branded') {
     if (needsFill()) await loadFatSecretSearch();
-    if (needsFill()) await mergeSerperFoodSearch('[Food Search] Serper (menu-style first)');
+    // FatSecret-first: skip Serper when we already have a strong menu match.
+    const fatSecretOk = Array.isArray(results) && results.length > 0 && hasGoodMatch(results);
+    if (!fatSecretOk && needsFill()) {
+      await mergeSerperFoodSearch('[Food Search] Serper (menu-style fallback after FatSecret miss)');
+    }
     if (needsFill()) await loadUsdaBroad();
     if (needsFill()) await loadUsdaFoundationFirst();
   } else {

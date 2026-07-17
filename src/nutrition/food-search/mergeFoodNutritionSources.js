@@ -346,7 +346,18 @@ function mergeNutritionSearchWithLegacy(nutritionRows, legacyRows, limit = 20) {
   const legacy = Array.isArray(legacyRows) ? legacyRows : [];
   if (nutrition.length === 0) return legacy.slice(0, limit);
 
-  const filtered = legacy.filter((row) => {
+  const hasTrusted = nutrition.some((row) => sourcePriority(row.source) >= 100);
+  let legacyPool = legacy;
+  if (hasTrusted) {
+    // When FatSecret/USDA/OFF/catalog already hit, drop weak web scrapes from legacy.
+    legacyPool = legacy.filter((row) => {
+      const src = String(row.source || '').toLowerCase();
+      if (src === 'serper' || src === 'mixed') return false;
+      return true;
+    });
+  }
+
+  const filtered = legacyPool.filter((row) => {
     for (const anchor of nutrition) {
       if (!isSameFoodCandidate(anchor, row)) continue;
       const calDiff =
