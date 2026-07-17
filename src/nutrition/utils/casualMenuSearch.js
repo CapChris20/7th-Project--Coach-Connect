@@ -98,6 +98,8 @@ const CASUAL_ITEM_ALIASES = [
   { chainRe: /\bportillo/i, itemRe: /\bitalian\s*beef\b/i, serper: ['portillos italian beef sandwich'] },
   { chainRe: /\bwhite\s*castle\b/i, itemRe: /\b(slider|cheese)\b/i, serper: ['white castle cheese slider'] },
   { chainRe: /\bjets\s*pizza\b/i, itemRe: /\bcrazy\s*bread\b/i, serper: ['jets pizza crazy bread'] },
+  { chainRe: /\blittle\s*caesars?\b/i, itemRe: /\bcrazy\s*bread\b/i, serper: ['little caesars crazy bread', 'little caesars crazy bread nutrition'] },
+  { chainRe: /\blittle\s*caesars?\b/i, itemRe: /\bstuffed\s*crazy\s*bread\b/i, serper: ['little caesars stuffed crazy bread'] },
 ];
 
 const MENU_ITEM_SIGNAL =

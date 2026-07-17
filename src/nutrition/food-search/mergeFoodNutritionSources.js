@@ -12,7 +12,8 @@ const {
   isJunkFoodTitle,
   sanitizeFoodCardTitle,
 } = require('./cleanFoodCardLabels');
-const { resolveFoodServingLabel } = require('./guessServingSize');
+const { resolveFoodServingLabelDetailed } = require('./guessServingSize');
+const { TRUSTED_DB_SOURCES } = require('./isReliableRestaurantFood');
 
 /** Chains users type without the full brand name (e.g. "jets four corner", "20pc mcnuggets"). */
 const LOOSE_CHAIN_HINTS = [
@@ -21,6 +22,7 @@ const LOOSE_CHAIN_HINTS = [
   { re: /\b(big\s*mac|quarter\s*pounder|mcflurry|happy\s*meal)\b/i, label: "McDonald's" },
   { re: /\b(whopper|chicken\s*fries)\b/i, label: 'Burger King' },
   { re: /\b(dave'?s?\s*single|frosty|baconator)\b/i, label: "Wendy's" },
+  { re: /\bcrazy\s*bread\b/i, label: 'Little Caesars', itemRe: /\bcrazy\s*bread\b/i },
 ];
 
 function detectLooseRestaurantChain(q) {
@@ -114,13 +116,15 @@ function buildConsensusSubtitle(payload) {
 }
 
 function applyServingFields(row, displayQuery, payload, sourceRow = null) {
-  const label = resolveFoodServingLabel({
+  const detailed = resolveFoodServingLabelDetailed({
     userQuery: displayQuery,
     foodName: row.food_name || row.name,
     restaurant: payload?.query?.restaurant || row.restaurant,
     scraperLabel: sourceRow?.servingLabel,
     displayName: sourceRow?.displayName,
+    calories: row.nf_calories ?? row.calories,
   });
+  const label = detailed.label;
   return {
     ...row,
     serving_label: label,
@@ -130,6 +134,8 @@ function applyServingFields(row, displayQuery, payload, sourceRow = null) {
     portion_text: label,
     serving_qty: 1,
     serving_size: 1,
+    nutrition_unverified: Boolean(row.nutrition_unverified) || Boolean(detailed.nutrition_unverified),
+    multiServingFallback: Boolean(row.multiServingFallback) || Boolean(detailed.multiServingFallback),
   };
 }
 
@@ -249,15 +255,38 @@ function mapSourceResultsToFoodRows(payload, displayQuery) {
   return rows;
 }
 
+function sourcePriority(source) {
+  const s = String(source || '');
+  const low = s.toLowerCase();
+  if (TRUSTED_DB_SOURCES.has(s) || TRUSTED_DB_SOURCES.has(low)) return 100;
+  if (low === 'nutrition_consensus') return 35;
+  if (low === 'serper' || low === 'mixed') return 20;
+  return 50;
+}
+
 function mapNutritionSearchToFoodRows(payload, displayQuery) {
   const rows = [];
   const consensusRow = mapConsensusToFoodRow(payload, displayQuery);
-  if (consensusRow) rows.push(consensusRow);
-
   const sourceRows = mapSourceResultsToFoodRows(payload, displayQuery);
-  rows.push(...sourceRows);
 
-  return rows;
+  // Prefer clean FatSecret/USDA/OFF hits over consensus when available.
+  const trusted = sourceRows.filter((r) => sourcePriority(r.source) >= 100);
+  const otherSources = sourceRows.filter((r) => sourcePriority(r.source) < 100);
+
+  if (trusted.length > 0) {
+    rows.push(...trusted);
+    if (consensusRow) {
+      // Consensus only as backup / alternate portion — not the default top card.
+      const overlapsTrusted = trusted.some((t) => isSameFoodCandidate(t, consensusRow));
+      if (!overlapsTrusted) rows.push(consensusRow);
+    }
+    rows.push(...otherSources);
+  } else {
+    if (consensusRow) rows.push(consensusRow);
+    rows.push(...otherSources);
+  }
+
+  return rows.sort((a, b) => sourcePriority(b.source) - sourcePriority(a.source));
 }
 
 function isSameFoodCandidate(a, b) {
@@ -287,6 +316,20 @@ function isSameFoodCandidate(a, b) {
 function mergeConsensusWithResults(consensusRow, rows, limit = 20) {
   const list = Array.isArray(rows) ? rows : [];
   if (!consensusRow || consensusRow.nutrition_unverified) return list.slice(0, limit);
+
+  const hasTrustedDb = list.some((row) => sourcePriority(row.source) >= 100);
+  if (hasTrustedDb) {
+    // DB hit wins the top slot; consensus is a backup when macros diverge.
+    const filtered = list.filter((row) => {
+      if (sourcePriority(row.source) >= 100) return true;
+      if (!isSameFoodCandidate(consensusRow, row)) return true;
+      const calDiff =
+        Math.abs(Number(row.calories) - Number(consensusRow.calories)) /
+        Math.max(Number(consensusRow.calories), 1);
+      return calDiff > 0.15;
+    });
+    return filtered.slice(0, limit);
+  }
 
   const filtered = list.filter((row) => {
     if (!isSameFoodCandidate(consensusRow, row)) return true;

@@ -26,6 +26,28 @@ describe('guessServingSize', () => {
     expect(servingLabelFromQueryStructure('dominos cheese bread')).toBe('1 piece');
   });
 
+  it('infers crazy bread as breadstick and rejects nugget scraper labels', () => {
+    expect(servingLabelFromQueryStructure("little caesars crazy bread")).toBe('1 breadstick');
+    expect(
+      resolveFoodServingLabel({
+        userQuery: "little caesars crazy bread",
+        foodName: 'Crazy Bread',
+        scraperLabel: '10 pc nuggets',
+      }),
+    ).toBe('1 breadstick');
+  });
+
+  it('relabels high-cal single-piece bread as multi/order', () => {
+    expect(
+      resolveFoodServingLabel({
+        userQuery: 'crazy bread',
+        foodName: 'Crazy Bread',
+        scraperLabel: '1 piece',
+        calories: 980,
+      }),
+    ).toMatch(/order|multi/i);
+  });
+
   it('infers burgers as sandwich', () => {
     expect(servingLabelFromQueryStructure('wendys baconator')).toBe('1 sandwich');
   });

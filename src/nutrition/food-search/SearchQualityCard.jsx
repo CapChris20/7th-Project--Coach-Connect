@@ -8,8 +8,8 @@
  *
  * @file-header
  */
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -28,9 +28,9 @@ const FEATURES = [
 
 /**
  * Hero disclaimer for food search — matches DashboardHeroCard / marketplace heroes.
+ * Always fully expanded on open (no collapse / expand dance).
  */
 export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
-  const [expanded, setExpanded] = useState(false);
   const bgGradient = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
   const labelColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.55)';
   const headlineColor = isDark ? '#FFFFFF' : INK;
@@ -58,28 +58,19 @@ export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
             end={{ x: 0, y: 1 }}
             style={styles.inner}
           >
-            <Pressable
-              onPress={() => setExpanded((v) => !v)}
-              accessibilityRole="button"
-              accessibilityLabel={expanded ? 'Collapse accuracy info' : 'Expand accuracy info'}
-            >
-              <View style={styles.headerRow}>
-                <View style={styles.headerTextCol}>
-                  <Text style={[styles.label, { color: labelColor }]}>Nutrition data</Text>
-                  <Text style={[styles.headline, { color: headlineColor }]}>
-                    Verify before you log
-                  </Text>
-                </View>
-                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={CYAN} />
+            <View style={styles.headerRow}>
+              <View style={styles.headerTextCol}>
+                <Text style={[styles.label, { color: labelColor }]}>Nutrition data</Text>
+                <Text style={[styles.headline, { color: headlineColor }]}>
+                  Verify before you log
+                </Text>
               </View>
-            </Pressable>
+            </View>
 
-            {expanded ? (
-              <Text style={[styles.subhead, { color: subheadColor }]}>
-                Numbers come from trusted food databases and restaurant menus. Labels change often,
-                so double-check serving sizes or edit entries after logging.
-              </Text>
-            ) : null}
+            <Text style={[styles.subhead, { color: subheadColor }]}>
+              Numbers come from trusted food databases and restaurant menus. Labels change often,
+              so double-check serving sizes or edit entries after logging.
+            </Text>
 
             <View style={styles.pillsRow}>
               {FEATURES.map(({ icon, label }) => (
@@ -100,19 +91,18 @@ export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginTop: 8,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   cardShadow: {
     borderRadius: 20,
     ...Platform.select({
       ios: {
-        shadowColor: '#BE185D',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.28,
-        shadowRadius: 14,
+        shadowColor: '#000',
+        shadowOpacity: 0.22,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
       },
-      android: { elevation: 8 },
+      android: { elevation: 5 },
     }),
   },
   cardClip: {
@@ -120,64 +110,59 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   topBorder: {
-    height: 3,
+    height: 2,
     width: '100%',
   },
   inner: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 12,
   },
   headerTextCol: {
     flex: 1,
-    minWidth: 0,
+    paddingRight: 8,
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    letterSpacing: 1.1,
+    marginBottom: 4,
   },
   headline: {
-    marginTop: 4,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
-    lineHeight: 22,
+    letterSpacing: -0.4,
   },
   subhead: {
     marginTop: 10,
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '500',
-    lineHeight: 19,
   },
   pillsRow: {
+    marginTop: 14,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 12,
   },
   pill: {
-    flexGrow: 1,
-    flexBasis: '22%',
-    minWidth: 74,
-    minHeight: 34,
-    borderRadius: 10,
-    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   pillIcon: {
-    marginTop: 0,
+    marginRight: 5,
   },
   pillText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
 });

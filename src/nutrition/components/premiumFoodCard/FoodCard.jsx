@@ -90,7 +90,10 @@ export default function FoodCard({
   isDark = true,
   embedded = false,
   palette: paletteProp,
+  /** When true, card stays expanded and the chevron toggle is hidden (confirm/verify screens). */
+  permanentlyExpanded = false,
 }) {
+  const isExpanded = permanentlyExpanded ? true : expanded;
   const palette = useMemo(
     () => paletteProp ?? getFoodCardPalette(isDark, { embedded }),
     [paletteProp, isDark, embedded],
@@ -109,14 +112,15 @@ export default function FoodCard({
   const pct = food?.macroPercents || { carbs: 0, protein: 0, fat: 0 };
 
   const handleToggle = () => {
-    if (!expanded) {
+    if (permanentlyExpanded) return;
+    if (!isExpanded) {
       Haptics.selectionAsync().catch(() => {});
     }
     onToggle?.();
   };
 
   const cardShadow =
-    expanded && !embedded
+    isExpanded && !embedded
       ? Platform.select({
           ios: {
             shadowColor: '#000000',
@@ -127,7 +131,7 @@ export default function FoodCard({
           android: { elevation: 12 },
           default: {},
         })
-      : expanded && embedded
+      : isExpanded && embedded
         ? Platform.select({
             ios: {
               shadowColor: '#000000',
@@ -151,8 +155,8 @@ export default function FoodCard({
       style={[
         styles.card,
         {
-          backgroundColor: expanded ? palette.expandedSurface : palette.background,
-          borderColor: expanded ? palette.borderStrong : palette.border,
+          backgroundColor: isExpanded ? palette.expandedSurface : palette.background,
+          borderColor: isExpanded ? palette.borderStrong : palette.border,
           borderWidth: embedded ? StyleSheet.hairlineWidth : 1,
           overflow: embedded ? 'visible' : 'hidden',
         },
@@ -213,17 +217,19 @@ export default function FoodCard({
                   )}
                 </IconAction>
               ) : null}
-              <IconAction onPress={handleToggle} accessibilityLabel={expanded ? 'Collapse' : 'Expand'} palette={palette}>
-                {(pressed) => (
-                  <View style={{ transform: [{ rotate: expanded ? '180deg' : '0deg' }] }}>
-                    <ChevronDown
-                      size={16}
-                      color={pressed ? palette.foreground : palette.subtle}
-                      strokeWidth={2}
-                    />
-                  </View>
-                )}
-              </IconAction>
+              {!permanentlyExpanded ? (
+                <IconAction onPress={handleToggle} accessibilityLabel={isExpanded ? 'Collapse' : 'Expand'} palette={palette}>
+                  {(pressed) => (
+                    <View style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}>
+                      <ChevronDown
+                        size={16}
+                        color={pressed ? palette.foreground : palette.subtle}
+                        strokeWidth={2}
+                      />
+                    </View>
+                  )}
+                </IconAction>
+              ) : null}
             </View>
             <View style={styles.calRow}>
               <GradientText colors={gradients.calories} style={styles.calValue}>
@@ -241,10 +247,10 @@ export default function FoodCard({
         </View>
       </View>
 
-      {expanded ? (
+      {isExpanded ? (
         <Animated.View
-          entering={FadeIn.duration(220)}
-          layout={Layout.duration(220)}
+          entering={permanentlyExpanded ? undefined : FadeIn.duration(220)}
+          layout={permanentlyExpanded ? undefined : Layout.duration(220)}
           style={[styles.expandedSection, { borderTopColor: palette.border }]}
         >
           <NutritionFactsSection

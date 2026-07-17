@@ -1033,6 +1033,7 @@ const FoodSearchScreen = ({
       <FoodConfirmSheet
         food={pendingFood}
         theme={confirmTheme}
+        showVerification={Boolean(pendingFood?.nutrition_unverified)}
         onConfirm={handleConfirmFood}
         onCancel={() => setPendingFood(null)}
       />

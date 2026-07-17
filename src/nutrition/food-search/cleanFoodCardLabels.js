@@ -12,10 +12,17 @@
  * Clean web-search (Serper) titles for food cards — never show [PDF] / "Nutrition Information".
  */
 const { significantQueryTokens, countTokenHits } = require('../food-search/sortBestFoodMatches');
-const { resolveFoodServingLabel } = require('./guessServingSize');
+const {
+  resolveFoodServingLabelDetailed,
+  servingConflictsWithFood,
+} = require('./guessServingSize');
 
 const JUNK_TITLE_RE =
   /\[(pdf|doc|xls|ppt|docx)\]|\.pdf\b|nutrition\s+infor|nutrition\s+facts\s*(guide|sheet|pdf)?\s*$/i;
+
+/** Concatenated web/menu-page titles and tracker noise that must never top search. */
+const MENU_PAGE_JUNK_RE =
+  /\bmenu\s*items?\b|breadmenu|menuitems?|\bgs1\b|\bupc\s*tracker\b|\bbarcode\s*tracker\b|\bnutritionix\s*track|\bcalorie\s*content\b|\ballergen\s*(guide|sheet)\b/i;
 
 /** Site / pipeline names that must never become the food card title. */
 const SOURCE_NAME_JUNK = new Set([
@@ -85,6 +92,9 @@ function isJunkWebSearchTitle(title) {
   const t = String(title || '').trim();
   if (!t || t.length < 4) return true;
   if (JUNK_TITLE_RE.test(t)) return true;
+  if (MENU_PAGE_JUNK_RE.test(t)) return true;
+  // Concatenated scrapes like "Crazy Breadmenu Items"
+  if (/\b\w+menu\s*items?\b/i.test(t)) return true;
   if (/^nutrition\b/i.test(t) && !/\b(pizza|burger|bread|chicken|salad)\b/i.test(t)) return true;
   if (/^(calories|carbs|protein|fat)\s+in\b/i.test(t) && t.length < 30) return true;
   if (/^(download|view|read)\b/i.test(t)) return true;
@@ -160,6 +170,8 @@ function isJunkFoodTitle(name) {
   if (/^(calorieking|fatsecret|fastfoodnutrition|openfoodfacts|foodfacto|myfitnesspal)$/i.test(cleaned)) {
     return true;
   }
+  // Source-name-only after stripping punctuation (e.g. "Menu Items", "GS1 Tracker")
+  if (/^(menu\s*items?|tracker|gs1|upc|barcode)$/i.test(cleaned)) return true;
   return false;
 }
 
@@ -212,12 +224,22 @@ function applyFoodCardPresentation(row, userQuery = '') {
   const brand = normalized.brand || row.brand || row.brand_name || '';
 
   const source_subtitle = inferSourceSubtitle(row);
-  const servingLabel = resolveFoodServingLabel({
+  const calories = row.nf_calories ?? row.calories;
+  const servingResolved = resolveFoodServingLabelDetailed({
     userQuery: query,
     foodName: title,
     restaurant: row.restaurant || row.brand_name || row.brand,
     scraperLabel: row.serving_label || row.servingLabel,
     displayName: title,
+    calories,
+  });
+  const servingLabel = servingResolved.label;
+
+  const conflict = servingConflictsWithFood({
+    userQuery: query,
+    foodName: title,
+    restaurant: row.restaurant || row.brand_name || row.brand,
+    servingLabel: row.serving_label || row.servingLabel,
   });
 
   return {
@@ -231,6 +253,12 @@ function applyFoodCardPresentation(row, userQuery = '') {
     serving_unit: servingLabel,
     servingUnit: servingLabel,
     portion_text: servingLabel,
+    nutrition_unverified:
+      Boolean(row.nutrition_unverified) ||
+      Boolean(servingResolved.nutrition_unverified) ||
+      conflict,
+    multiServingFallback:
+      Boolean(row.multiServingFallback) || Boolean(servingResolved.multiServingFallback),
     ...(source_subtitle ? { source_subtitle } : {}),
   };
 }
@@ -289,13 +317,51 @@ function nutritionRowKey(row) {
   return `${nameKey}|${cal}|${p}|${c}|${f}|${label}`;
 }
 
-/** Drop exact duplicate macros/portions — keep different servings (e.g. 1 vs 2 slices). */
+function rowMacroTuple(row) {
+  return {
+    cal: Number(row.nf_calories ?? row.calories) || 0,
+    p: Number(row.nf_protein ?? row.protein) || 0,
+    c: Number(row.nf_total_carbohydrate ?? row.carbs) || 0,
+    f: Number(row.nf_total_fat ?? row.fat) || 0,
+    nameKey: normalizeTitleKey(
+      String(row.food_name || row.name || '')
+        .replace(/\b(little\s*caesars?|mcdonald'?s?|chipotle|wendy'?s?|domino'?s?)\b/gi, ''),
+    ),
+  };
+}
+
+function macrosWithinPct(a, b, pct = 0.05) {
+  const keys = ['cal', 'p', 'c', 'f'];
+  for (const k of keys) {
+    const av = a[k];
+    const bv = b[k];
+    if (av === 0 && bv === 0) continue;
+    const base = Math.max(Math.abs(av), Math.abs(bv), 1);
+    if (Math.abs(av - bv) / base > pct) return false;
+  }
+  return true;
+}
+
+/** Drop exact duplicates and near-identical rows (same name ± brand, macros within ~5%). */
 function dedupeFoodRows(rows) {
   const out = [];
   const seen = new Set();
   for (const row of rows || []) {
     const key = nutritionRowKey(row);
     if (seen.has(key)) continue;
+
+    const macros = rowMacroTuple(row);
+    const nearDup = out.find((prev) => {
+      const pm = rowMacroTuple(prev);
+      if (!macros.nameKey || !pm.nameKey) return false;
+      const sameName =
+        macros.nameKey === pm.nameKey ||
+        macros.nameKey.includes(pm.nameKey) ||
+        pm.nameKey.includes(macros.nameKey);
+      return sameName && macrosWithinPct(macros, pm, 0.05);
+    });
+    if (nearDup) continue;
+
     seen.add(key);
     out.push(row);
   }

@@ -438,6 +438,27 @@ export default function FoodConfirmSheet({
             {title}
           </Text>
 
+          {(showVerification || normalized?.nutrition_unverified || food?.nutrition_unverified) ? (
+            <View
+              style={[
+                styles.verifyBanner,
+                {
+                  backgroundColor: isDark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                  borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : 'rgba(245, 158, 11, 0.4)',
+                },
+              ]}
+            >
+              <Text style={[styles.verifyBannerTitle, { color: t.primary }]}>
+                Double-check this item
+              </Text>
+              <Text style={[styles.verifyBannerBody, { color: t.muted }]}>
+                {normalized?.nutrition_unverified || food?.nutrition_unverified
+                  ? 'Macros may be crowdsourced or unverified. Confirm the serving matches what you ate.'
+                  : 'Wrong item? Search by name below before logging.'}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Food header */}
           <View style={styles.foodHeader}>
             <Text style={[styles.foodName, { color: t.primary, fontFamily: DISPLAY }]} numberOfLines={3}>
@@ -739,6 +760,23 @@ const styles = StyleSheet.create({
     fontSize: 22,
     letterSpacing: -0.3,
     marginBottom: 14,
+  },
+  verifyBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  verifyBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  verifyBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   foodHeader: {
     marginBottom: 18,

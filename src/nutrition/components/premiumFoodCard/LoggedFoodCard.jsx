@@ -14,18 +14,21 @@ export default function LoggedFoodCard({
   onBookmark,
   isDark = true,
   style,
+  /** Confirm/verify surfaces should open fully expanded with no chevron. */
+  permanentlyExpanded = false,
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(permanentlyExpanded);
   const food = useMemo(() => formatLoggedFoodDisplay(log, amount), [log, amount]);
 
   return (
     <View style={[styles.wrap, style]}>
       <FoodCard
         food={food}
-        expanded={expanded}
+        expanded={permanentlyExpanded ? true : expanded}
+        permanentlyExpanded={permanentlyExpanded}
         embedded
         isDark={isDark}
-        onToggle={() => setExpanded((v) => !v)}
+        onToggle={permanentlyExpanded ? undefined : () => setExpanded((v) => !v)}
         onEdit={onEdit && log ? () => onEdit(log) : undefined}
         onDelete={onRemove && log?.id ? () => onRemove(log.id) : undefined}
         onBookmark={onBookmark}

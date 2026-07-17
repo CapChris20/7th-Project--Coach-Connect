@@ -47,7 +47,7 @@ const {
 
 const SERPER_ORGANIC_MAX = 10;
 
-const FOOD_SEARCH_PIPELINE_VERSION = 38;
+const FOOD_SEARCH_PIPELINE_VERSION = 39;
 
 const OPEN_FOOD_FACTS_USER_AGENT =
   'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';

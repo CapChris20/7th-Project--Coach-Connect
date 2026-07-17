@@ -53,7 +53,7 @@ const QUERY_STOP_WORDS = new Set([
 
 /** Menu / prepared-food language — not a brand list. */
 const MENU_STYLE_PATTERN =
-  /\b(pizza|burger|sandwich|wrap|bowl|salad|taco|burrito|wing|wings|nugget|nuggets|combo|meal|latte|mocha|frappuccino|sub\b|hoagie|calzone|pasta|entree|appetizer|deep\s*dish|corner|slice|cheeseburger|hamburger|quesadilla|nachos|fries|chicken\s+fingers)\b/i;
+  /\b(pizza|burger|sandwich|wrap|bowl|salad|taco|burrito|wing|wings|nugget|nuggets|combo|meal|latte|mocha|frappuccino|sub\b|hoagie|calzone|pasta|entree|appetizer|deep\s*dish|corner|slice|cheeseburger|hamburger|quesadilla|nachos|fries|chicken\s+fingers|crazy\s*bread|breadstick|garlic\s+bread|cheesy\s+bread|big\s*mac|whopper|baconator|frosty)\b/i;
 
 const GROCERY_INGREDIENT_PATTERN =
   /\b(chicken breast|boneless\s+skinless|skinless\s+boneless|ground beef|ground turkey|pork chop|salmon fillet|tilapia|shrimp|turkey breast|brown rice|white rice|olive oil|greek yogurt|almond milk|protein powder|raw\s+chicken)\b/i;
@@ -191,6 +191,37 @@ function brandTokensFromQuery(query) {
   return normalizeQueryText(brand).split(' ').filter((w) => w.length > 1);
 }
 
+/** Common US chain tokens for branded menu ranking (avoids circular require with casualMenuSearch). */
+const CHAIN_TOKEN_PATTERNS = [
+  /\blittle\s*caesars?\b/i,
+  /\bmcdonald'?s?\b/i,
+  /\bchipotle\b/i,
+  /\bwendy'?s?\b/i,
+  /\bdomino'?s?\b/i,
+  /\bburger\s*king\b/i,
+  /\btaco\s*bell\b/i,
+  /\bstarbucks\b/i,
+  /\bpapa\s*john'?s?\b/i,
+  /\bpizza\s*hut\b/i,
+  /\bchick[\s-]?fil[\s-]?a\b/i,
+  /\bjets?\b/i,
+  /\bsubway\b/i,
+  /\bpanda\s*express\b/i,
+  /\bfive\s*guys\b/i,
+  /\bin[\s-]?n[\s-]?out\b/i,
+];
+
+/** Item tokens after stripping chain/brand (e.g. crazy + bread from "little caesars crazy bread"). */
+function menuItemTokensFromQuery(query) {
+  const brandParts = new Set(brandTokensFromQuery(query));
+  let qNorm = normalizeQueryText(query);
+  for (const re of CHAIN_TOKEN_PATTERNS) {
+    qNorm = qNorm.replace(re, ' ');
+  }
+  qNorm = qNorm.replace(/\s+/g, ' ').trim();
+  return significantQueryTokens(qNorm).filter((t) => !brandParts.has(t));
+}
+
 function distinctiveQueryTokens(query) {
   const brandParts = brandTokensFromQuery(query);
   return significantQueryTokens(query).filter(
@@ -238,6 +269,23 @@ function scoreFoodSearchRelevance(itemText, query) {
     if (isRetailFoodNoise(itemText)) score -= 200;
     if (/\bjets\b/.test(qNorm) && /\bpizza\b/.test(qNorm) && /\bcandy|gummi\b/.test(hay)) {
       score -= 200;
+    }
+
+    const itemTokens = menuItemTokensFromQuery(query);
+    if (itemTokens.length >= 1) {
+      const itemHits = countTokenHits(itemText, itemTokens);
+      if (itemHits >= itemTokens.length) score += 55;
+      else if (itemHits === 0) score -= 110;
+      else score += itemHits * 12;
+    }
+
+    // Related chain items (pizza when searching crazy bread) stay below the exact item.
+    if (
+      /\bcrazy\s*bread|breadstick/i.test(qNorm) &&
+      /\bpizza\b/i.test(hay) &&
+      !/\b(crazy\s*bread|breadstick)/i.test(hay)
+    ) {
+      score -= 95;
     }
   }
 
@@ -311,7 +359,17 @@ function filterFoodSearchRows(query, rows, limit = 20) {
     .sort((a, b) => b.score - a.score || b.hits - a.hits);
 
   const strong = scored.filter((entry) => {
-    if (menuStyle) return entry.hits >= minHits && itemMatchesQuery(rowSearchText(entry.row), query);
+    if (menuStyle) {
+      const itemTokens = menuItemTokensFromQuery(query);
+      if (itemTokens.length >= 2) {
+        const itemHits = countTokenHits(rowSearchText(entry.row), itemTokens);
+        // Prefer exact item in top band; allow related menu items only when nothing matches.
+        if (itemHits < Math.min(2, itemTokens.length) && scored.some((s) => countTokenHits(rowSearchText(s.row), itemTokens) >= Math.min(2, itemTokens.length))) {
+          return false;
+        }
+      }
+      return entry.hits >= minHits && itemMatchesQuery(rowSearchText(entry.row), query);
+    }
     if (requiredBrand) return itemMatchesQuery(rowSearchText(entry.row), query);
     return entry.hits >= minHits;
   });
@@ -320,7 +378,17 @@ function filterFoodSearchRows(query, rows, limit = 20) {
 
   if (strong.length > 0) return pick(strong);
 
-  if (menuStyle) return [];
+  // Branded restaurant: surface exact-item hits first even if strict token gate was too tight.
+  if (menuStyle) {
+    const itemTokens = menuItemTokensFromQuery(query);
+    if (itemTokens.length >= 1) {
+      const exactItem = scored.filter(
+        (e) => countTokenHits(rowSearchText(e.row), itemTokens) >= Math.min(2, itemTokens.length),
+      );
+      if (exactItem.length > 0) return pick(exactItem);
+    }
+    return [];
+  }
 
   // Packaged / grocery / brand: show best available rather than nothing.
   const loose = scored.filter((e) => e.hits >= 1 || e.score >= 20);
@@ -349,4 +417,5 @@ module.exports = {
   countTokenHits,
   isRetailFoodNoise,
   MENU_STYLE_PATTERN,
+  menuItemTokensFromQuery,
 };

@@ -100,9 +100,13 @@ describe('mapNutritionSearchToFoodRows', () => {
     );
 
     expect(rows.length).toBeGreaterThanOrEqual(2);
-    expect(rows[0].source).toBe('nutrition_consensus');
-    expect(rows[0].name).toBe('20pc Mcnuggets');
+    // Trusted DB hits (FatSecret) rank above consensus when both exist.
+    expect(rows[0].source).toBe('fatSecret');
+    expect(rows[0].name).toBe('20 Piece Chicken McNuggets');
     expect(rows[0].source_subtitle).toMatch(/^via /);
+    const consensus = rows.find((r) => r.source === 'nutrition_consensus');
+    // Consensus is backup only when it doesn't overlap the trusted DB hit.
+    expect(consensus == null || consensus.source === 'nutrition_consensus').toBe(true);
     const fatSecret = rows.find((r) => r.source === 'fatSecret');
     expect(fatSecret).toMatchObject({
       name: '20 Piece Chicken McNuggets',

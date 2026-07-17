@@ -16,12 +16,34 @@ const {
   significantQueryTokens,
   countTokenHits,
 } = require('../food-search/sortBestFoodMatches');
+const {
+  servingConflictsWithFood,
+  inferFoodServingCategory,
+} = require('../food-search/guessServingSize');
 
 const AUTHORITY_SOURCE_RE =
   /fatsecret|eatthismuch|myfooddiary|calorieking|sparkpeople|verywell\s*fit|nutritionix|menu\s+with\s+nutrition|nutrition\s+facts|calories\s+in\s+/i;
 
+const TRUSTED_DB_SOURCES = new Set([
+  'fatsecret',
+  'fatSecret',
+  'usda',
+  'usdafdc',
+  'usdaFdc',
+  'openfoodfacts',
+  'openFoodFacts',
+  'calorieking',
+  'calorieKing',
+  'fastfoodnutrition',
+  'fastFoodNutrition',
+  'foodfacto',
+  'foodFacto',
+]);
+
+const WEAK_WEB_SOURCES = new Set(['serper', 'mixed', 'nutrition_consensus', 'web']);
+
 const NOISE_SOURCE_RE =
-  /reddit|tiktok|pinterest|instagram|homemade|copycat|diy\b|blog\b|permanent\s+rotation|just\s+earned|knockoff|meal\s+prep\s+idea/i;
+  /reddit|tiktok|pinterest|instagram|homemade|copycat|diy\b|blog\b|permanent\s+rotation|just\s+earned|knockoff|meal\s+prep\s+idea|menu\s*items?|breadmenu|gs1|tracker/i;
 
 const COMBO_MEAL_RE =
   /\b(combo\b|value meal|kids meal|happy meal|meal\b.*\b(fries|drink)|with fries|with drink|includes fries|includes drink)\b/i;
@@ -207,7 +229,7 @@ function compareRankedRows(a, b) {
 /** Rich-protein dishes where 0g protein on a high-cal row is almost always a bad parse. */
 function expectsRichMacros(userQuery, rowText) {
   const t = `${userQuery} ${rowText}`.toLowerCase();
-  return /\b(burger|cheeseburger|hamburger|sandwich|whopper|big mac|quarter pounder|pizza|slice|pepperoni|nugget|tender|wing|burrito|bowl|sub\b|biscuit|baconator|frosty|blizzard|orange chicken|crazy bread|roast beef|patty|footlong|quesadilla|mac and cheese|fried rice|lo mein)\b/.test(
+  return /\b(burger|cheeseburger|hamburger|sandwich|whopper|big mac|quarter pounder|pizza|slice|pepperoni|nugget|tender|wing|burrito|bowl|sub\b|biscuit|baconator|frosty|blizzard|orange chicken|crazy bread|breadstick|garlic bread|cheesy bread|roast beef|patty|footlong|quesadilla|mac and cheese|fried rice|lo mein|chicken|turkey|beef|steak|pork|salmon|shrimp|fish|meatball|sausage|bacon)\b/.test(
     t,
   );
 }
@@ -304,6 +326,43 @@ function variantPreferenceScore(row, userQuery) {
   }
 
   if (isArticleNutritionRoundup(row)) score -= 70;
+
+  // Serving label must match food family (Crazy Bread ≠ 10 pc nuggets).
+  const servingLabel = row.serving_label || row.serving_unit || '';
+  if (
+    servingConflictsWithFood({
+      userQuery,
+      foodName: row.food_name || row.name,
+      restaurant: row.brand_name || row.brand || row.restaurant,
+      servingLabel,
+    })
+  ) {
+    score -= 400;
+  }
+
+  // Demote incomplete macros for foods that should have protein.
+  if (hasImplausibleZeroMacros(macros, userQuery, text)) score -= 120;
+
+  // Prefer trusted DB sources over weak web/consensus scrapes.
+  const src = String(row.source || '').toLowerCase();
+  if (TRUSTED_DB_SOURCES.has(row.source) || TRUSTED_DB_SOURCES.has(src)) score += 55;
+  if (WEAK_WEB_SOURCES.has(src) || WEAK_WEB_SOURCES.has(row.source)) score -= 25;
+
+  // Branded item queries: exact item tokens beat related menu items (pizza vs crazy bread).
+  const queryCategory = inferFoodServingCategory(userQuery, '', '');
+  const rowCategory = inferFoodServingCategory('', text, '');
+  if (queryCategory !== 'generic' && rowCategory !== 'generic' && queryCategory !== rowCategory) {
+    score -= 85;
+  }
+  if (/\bcrazy\s*bread|breadstick/i.test(q) && /\bpizza\b/i.test(text) && !/\b(crazy\s*bread|breadstick)/i.test(text)) {
+    score -= 90;
+  }
+  if (/\bbig\s*mac\b/i.test(q) && /\b(nugget|fries|mcflurry)\b/i.test(text) && !/\bbig\s*mac\b/i.test(text)) {
+    score -= 90;
+  }
+  if (/\bchicken\s+bowl\b/i.test(q) && /\b(burrito|taco|quesadilla)\b/i.test(text) && !/\bbowl\b/i.test(text)) {
+    score -= 70;
+  }
 
   if (!getMultiServingInfo(row).isMulti) {
     const text = getRowText(row).toLowerCase();
@@ -441,6 +500,16 @@ function filterUsableSerperRows(rows, userQuery) {
     if (isRetailCoffeeProduct(row, userQuery)) return false;
     const macros = getRowMacros(row);
     const rowText = getRowText(row);
+    if (
+      servingConflictsWithFood({
+        userQuery,
+        foodName: row.food_name || row.name,
+        restaurant: row.brand_name || row.brand || row.restaurant,
+        servingLabel: row.serving_label || row.serving_unit || '',
+      })
+    ) {
+      return false;
+    }
     if (isLowCalBeverageRow(macros, userQuery, rowText)) return true;
     const consistency = macroCalorieConsistencyScore(macros);
     if (consistency < MIN_MACRO_CONSISTENCY_TO_USE) return false;
@@ -532,4 +601,6 @@ module.exports = {
   filterUsableSerperRows,
   AUTHORITY_SOURCE_RE,
   NOISE_SOURCE_RE,
+  TRUSTED_DB_SOURCES,
+  WEAK_WEB_SOURCES,
 };
