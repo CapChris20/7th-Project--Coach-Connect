@@ -43,13 +43,20 @@ export default function MealCard({ mealType, mealKey, items = [], onAddPress, on
             <FoodItem
               key={item.id || index}
               food={{
-                name: item.food_name || item.metadata?.name,
-                calories: Number(item.calories) || Number(item.metadata?.calories) || 0,
-                protein: Number(item.protein) || Number(item.metadata?.protein) || 0,
-                carbs: Number(item.carbs) || Number(item.metadata?.carbs) || 0,
-                fat: Number(item.fat) || Number(item.metadata?.fat) || 0,
-                servingSize: Number(item.serving_size) || 1,
+                // Prefer log totals over nested metadata (metadata may still be per-100g).
                 ...item.metadata,
+                name: item.food_name || item.metadata?.name,
+                food_name: item.food_name || item.metadata?.name,
+                calories: Number(item.calories) || 0,
+                protein: Number(item.protein) || 0,
+                carbs: Number(item.carbs) || 0,
+                fat: Number(item.fat) || 0,
+                servingSize: 1,
+                serving_size: Number(item.serving_size) || 1,
+                serving_unit: item.originalUnit || item.loggedUnit || item.serving_unit || item.metadata?.servingUnit || 'serving',
+                serving_description:
+                  item.metadata?.serving_label
+                  || (item.serving_grams ? `${Math.round(item.serving_grams)} g` : null),
               }}
               onDelete={() => onDeleteItem(item)}
               showDelete

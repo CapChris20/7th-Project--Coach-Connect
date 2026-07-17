@@ -217,10 +217,15 @@ function normalizeOpenFoodFactsProduct(product) {
 
   const sodiumRaw = usePer100ml ? (nut.sodium_100ml ?? nut.sodium_100g) : nut.sodium_100g;
   const saltRaw = usePer100ml ? (nut.salt_100ml ?? nut.salt_100g) : nut.salt_100g;
+  // OFF stores sodium_100g / salt_100g in grams; app uses milligrams.
   let sodiumPer100 = numOrNull(sodiumRaw);
-  if (sodiumPer100 == null && saltRaw != null) sodiumPer100 = num(saltRaw) * 400;
+  if (sodiumPer100 != null) sodiumPer100 = sodiumPer100 * 1000;
+  if (sodiumPer100 == null && saltRaw != null) sodiumPer100 = num(saltRaw) * 400; // g salt → mg sodium
   const sodiumFromServing = per100FromServing(nut.sodium_serving);
-  if (sodiumFromServing != null) sodiumPer100 = sodiumFromServing;
+  if (sodiumFromServing != null) {
+    // sodium_serving is also in grams when present
+    sodiumPer100 = sodiumFromServing * 1000;
+  }
 
   let fiberPer100 = numOrNull(usePer100ml ? (nut.fiber_100ml ?? nut.fiber_100g) : nut.fiber_100g);
   const fiberFromServing = per100FromServing(nut.fiber_serving);
@@ -242,8 +247,12 @@ function normalizeOpenFoodFactsProduct(product) {
     servingUnit,
     servingGrams: servingAmount,
     source: 'openfoodfacts',
+    dataBasis: 'per_100g',
     kcalPer100Unit,
     servingAmount,
+    // Crowdsourced OFF — confirm sheet should let users verify product identity
+    needsVerification: true,
+    barcodeConfidence: 'medium',
   };
 }
 

@@ -17,6 +17,10 @@ function macrosAtGrams(food, grams) {
     protein: scaleMacroForGrams(food?.protein, g, food),
     carbs: scaleMacroForGrams(food?.carbs, g, food),
     fat: scaleMacroForGrams(food?.fat, g, food),
+    fiber: scaleMacroForGrams(food?.fiber, g, food),
+    sugar: scaleMacroForGrams(food?.sugar, g, food),
+    sodium: scaleMacroForGrams(food?.sodium, g, food),
+    potassium: scaleMacroForGrams(food?.potassium, g, food),
   };
 }
 

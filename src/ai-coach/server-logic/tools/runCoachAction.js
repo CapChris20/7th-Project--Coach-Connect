@@ -191,8 +191,16 @@ async function executeLogNutritionClient(userId, params) {
     };
   }
 
+  const mealRaw = String(params.mealType || params.meal || 'snacks').toLowerCase();
+  const mealType =
+    mealRaw === 'snack' || mealRaw === 'snacks'
+      ? 'snacks'
+      : ['breakfast', 'lunch', 'dinner', 'snacks'].includes(mealRaw)
+        ? mealRaw
+        : 'snacks';
+
   await addFoodLog(userId, {
-    mealType: String(params.mealType || 'snack').toLowerCase(),
+    mealType,
     date: params.date || getClientDateKey(),
     food: {
       name: foodName,
@@ -201,6 +209,9 @@ async function executeLogNutritionClient(userId, params) {
       carbs,
       fat,
       source: 'manual',
+      dataBasis: 'logged_totals',
+      servingGrams: Number(params.servingGrams) > 0 ? Number(params.servingGrams) : 100,
+      servingSize: 1,
     },
   });
 

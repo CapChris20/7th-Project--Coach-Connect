@@ -51,11 +51,19 @@ function dataSource(log) {
 
 function isLabelServingLog(log) {
   const meta = resolveMetadata(log);
-  return String(meta.dataBasis || log?.dataBasis || '').toLowerCase() === 'label_serving';
+  const basis = String(meta.dataBasis || log?.dataBasis || '').toLowerCase();
+  return basis === 'label_serving' || basis === 'per_serving';
+}
+
+function isLoggedTotalsLog(log) {
+  const meta = resolveMetadata(log);
+  const basis = String(meta.dataBasis || log?.dataBasis || '').toLowerCase();
+  return basis === 'logged_totals' || basis === 'logged_total' || Boolean(meta.fromRecentLog);
 }
 
 /** Per-portion multiplier for openfoodfacts / usda (metadata is per 100g/ml). */
 function servingMultiplier(log) {
+  if (isLoggedTotalsLog(log)) return 1;
   if (isLabelServingLog(log)) {
     const labelG = Number(resolveMetadata(log).labelServingGrams) || Number(log?.serving_grams) || 0;
     const grams = Number(log?.serving_grams) || labelG;
@@ -89,6 +97,9 @@ function scaledFromMeta(log, key) {
   ];
   const raw = readMetaValue(meta, aliases);
   if (raw == null) return null;
+
+  // Logged portion totals already include the full amount — never rescale meta.
+  if (isLoggedTotalsLog(log)) return raw;
 
   if (isLabelServingLog(log)) {
     return raw * servingMultiplier(log);
@@ -124,7 +135,8 @@ export function extractNutrientsFromLog(log) {
   const fat = num(log.fat);
   const pick = (logKey, metaKey) => {
     const direct = numOrNull(log[logKey]);
-    if (direct != null && direct > 0) return direct;
+    // Prefer log values including explicit zeros for logged_totals (already portion totals).
+    if (direct != null && (direct > 0 || isLoggedTotalsLog(log))) return direct;
     const fromMeta = scaledFromMeta(log, metaKey || logKey);
     return fromMeta != null ? fromMeta : 0;
   };

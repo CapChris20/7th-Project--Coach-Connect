@@ -107,14 +107,22 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
   const handleLog = () => {
     if (!isValid) return;
     const { name } = makeReadableFoodTitle({ name: foodName.trim(), source: 'manual' });
+    const qty = Math.max(0.01, Number(quantity) || 1);
     const entry = {
       name,
-      quantity,
-      calories: parseFloat(calories),
-      ...macros,
+      quantity: qty,
+      calories: parseFloat(calories) * qty,
+      protein: (parseFloat(macros.protein) || 0) * qty,
+      carbs: (parseFloat(macros.carbs) || 0) * qty,
+      fat: (parseFloat(macros.fat) || 0) * qty,
+      fiber: (parseFloat(macros.fiber) || 0) * qty,
+      sugar: (parseFloat(macros.sugar) || 0) * qty,
+      sodium: (parseFloat(macros.sodium) || 0) * qty,
+      servingSize: macros.servingSize,
+      servingUnit: macros.servingUnit,
     };
     onLogFood?.(entry);
-    Alert.alert('Success', `${entry.name} · ${entry.calories} cal logged`);
+    Alert.alert('Success', `${entry.name} · ${Math.round(entry.calories)} cal logged`);
     setFoodName('');
     setQuantity(1);
     setCalories('');

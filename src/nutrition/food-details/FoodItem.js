@@ -17,15 +17,15 @@ import { useTheme } from '../../shared-ui/ThemeContext';
 export default function FoodItem({ food, onAdd, onDelete, showDelete = false }) {
   const { isDark } = useTheme();
 
-  const servingSize = food.servingSize || 1;
-  const baseCalories = Number(food.calories) || 0;
-  const totalCalories = baseCalories * servingSize;
+  // Log rows already store portion totals — do not multiply again by servingSize.
+  const servingSize = Number(food.servingSize) || 1;
+  const totalCalories = Number(food.calories) || 0;
 
   const servingText =
     food.serving_description ||
     (servingSize > 1
       ? `${servingSize.toFixed(2)} ${food.serving_unit || 'serving'}`
-      : food.serving_unit || '1 serving');
+      : food.serving_unit || food.serving_label || '1 serving');
 
   const brandText = food.brand_name || food.brand;
   const displayName = food.name || food.food_name || 'Food Item';

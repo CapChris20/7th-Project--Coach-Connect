@@ -11,7 +11,12 @@
 /**
  * Shared food normalization + serving unit guards for search, barcode, and logging.
  */
-const { finalizeBarcodeFood, isPer100gSource } = require('../food-details/calculateServingSize');
+const {
+  finalizeBarcodeFood,
+  isPer100gSource,
+  isLoggedTotalsBasis,
+  normalizeDataBasis,
+} = require('../food-details/calculateServingSize');
 const { applyFoodCardPresentation } = require('../food-search/cleanFoodCardLabels');
 
 const SOLID_FOOD_PATTERN =
@@ -102,7 +107,7 @@ function mapSearchRowToFoodShape(item) {
     saturatedFat: roundOrNull(item.saturatedFat ?? item.saturated_fat),
     transFat: roundOrNull(item.transFat ?? item.trans_fat),
     source,
-    dataBasis: item.dataBasis || null,
+    dataBasis: normalizeDataBasis(item.dataBasis) || item.dataBasis || null,
     labelServingGrams: item.labelServingGrams || null,
     servingUnit: item.servingUnit || item.serving_unit || item.servingSizeUnit || 'serving',
     servingGrams: servingG,
@@ -118,6 +123,13 @@ function mapSearchRowToFoodShape(item) {
     portion_text: item.portion_text || item.serving_label || item.servingLabel || null,
   };
 
+  if (isLoggedTotalsBasis(base)) {
+    return servingUnitGuard({
+      ...base,
+      dataBasis: 'logged_totals',
+    });
+  }
+
   if (source === 'openfoodfacts' || source === 'usda' || source === 'fatsecret') {
     if (base.dataBasis === 'label_serving') {
       return servingUnitGuard({
@@ -127,6 +139,7 @@ function mapSearchRowToFoodShape(item) {
     }
     const finalized = finalizeBarcodeFood({
       ...base,
+      dataBasis: base.dataBasis || 'per_100g',
       servingSize: servingG / 100,
       servingGrams: servingG,
       servingAmount: servingG,
@@ -141,12 +154,12 @@ function normalizeFoodForLog(food) {
   if (!food) return food;
   const { normalizeFoodRecordForStorage } = require('./makeReadableFoodTitle');
   let out;
-  if (food.dataBasis === 'logged_totals' || food.fromRecentLog) {
+  if (isLoggedTotalsBasis(food) || food.fromRecentLog) {
     out = servingUnitGuard({
       ...food,
       dataBasis: 'logged_totals',
     });
-  } else if (food.dataBasis === 'label_serving' || isPer100gSource(food.source)) {
+  } else if (normalizeDataBasis(food.dataBasis) === 'label_serving' || isPer100gSource(food.source)) {
     out = mapSearchRowToFoodShape(food);
   } else {
     out = servingUnitGuard(mapSearchRowToFoodShape(food));

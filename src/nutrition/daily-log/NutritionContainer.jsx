@@ -209,7 +209,7 @@ export const NutritionContainer = ({
 
       const [goalsData, logsData] = await Promise.all([
         getDailyGoals(uid),
-        getFoodLogsForDate(uid, today),
+        getFoodLogsForDate(uid, viewDate),
       ]);
       setGoals(goalsData);
       setLogs(logsData);
@@ -308,10 +308,11 @@ export const NutritionContainer = ({
   const handleFoodAdded = async (food, mealType) => {
     if (!uid) return;
 
-    // Build a dedup key from food name + meal type + date
+    // Build a dedup key from food name + meal type + date (use viewed day, not always today)
     const name = food?.food_name || food?.name || 'item';
     const keyMeal = (mealType || activeMealType || '').toLowerCase();
-    const dedupKey = `${name}:${keyMeal}:${today}`;
+    const logDate = viewDate || today;
+    const dedupKey = `${name}:${keyMeal}:${logDate}`;
 
     if (pendingLogs.current.has(dedupKey)) {
       console.log('Duplicate log prevented:', dedupKey);
@@ -321,8 +322,8 @@ export const NutritionContainer = ({
     pendingLogs.current.add(dedupKey);
 
     try {
-      await addFoodLog(uid, { food, mealType: mealType || activeMealType, date: today });
-      const updated = await getFoodLogsForDate(uid, today);
+      await addFoodLog(uid, { food, mealType: mealType || activeMealType, date: logDate });
+      const updated = await getFoodLogsForDate(uid, logDate);
       setLogs(updated);
       setLogError(null);
       if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
@@ -342,7 +343,7 @@ export const NutritionContainer = ({
     if (!uid || !logId) return;
     try {
       await deleteFoodLog(logId);
-      const updated = await getFoodLogsForDate(uid, today);
+      const updated = await getFoodLogsForDate(uid, viewDate);
       setLogs(updated);
       if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
     } catch (err) {
@@ -373,7 +374,8 @@ export const NutritionContainer = ({
     const oldGrams = Number(editingLog.serving_grams) || 100;
     const gramsPerServing = oldGrams / oldQty;
     const newGrams = newQty * gramsPerServing;
-    setEditAmountValue((newGrams * G_TO_OZ).toFixed(1));
+    const isMl = (editingLog.metadata?.servingUnit || '').toLowerCase() === 'ml';
+    setEditAmountValue((newGrams * (isMl ? ML_TO_FL_OZ : G_TO_OZ)).toFixed(1));
   };
 
   const handleSaveEditAmount = async () => {
@@ -382,12 +384,14 @@ export const NutritionContainer = ({
     const currentGrams = Number(editingLog.serving_grams) || 1;
     const ozEntered = num(editAmountValue);
     if (ozEntered == null || Number.isNaN(ozEntered) || ozEntered <= 0) return;
-    const newAmount = Math.round(ozEntered * OZ_TO_G);
+    const isMl = (editingLog.metadata?.servingUnit || '').toLowerCase() === 'ml';
+    const FL_OZ_TO_ML = 29.5735;
+    const newAmount = Math.round(ozEntered * (isMl ? FL_OZ_TO_ML : OZ_TO_G));
     const newQty = num(editQuantityValue);
     const finalQty = (newQty != null && !Number.isNaN(newQty) && newQty > 0)
       ? newQty
       : (Number(editingLog.serving_size) || 1);
-    const ratio = Math.min(10, Math.max(0.01, newAmount / currentGrams));
+    const ratio = Math.min(50, Math.max(0.01, newAmount / currentGrams));
     const numRound = (n) => Math.round(Number(n) * 100) / 100;
     try {
       await updateFoodLog(editingLog.id, {
@@ -400,8 +404,9 @@ export const NutritionContainer = ({
         fiber: numRound((Number(editingLog.fiber) || 0) * ratio),
         sugar: numRound((Number(editingLog.sugar) || 0) * ratio),
         sodium: numRound((Number(editingLog.sodium) || 0) * ratio),
+        potassium: numRound((Number(editingLog.potassium) || 0) * ratio),
       });
-      const updated = await getFoodLogsForDate(uid, today);
+      const updated = await getFoodLogsForDate(uid, viewDate);
       setLogs(updated);
       if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
       setEditingLog(null);
@@ -534,7 +539,8 @@ export const NutritionContainer = ({
               return typeof n === 'number' && !Number.isNaN(n) ? n : 0;
             };
 
-            // QuickAddNutrition UI already collects macros in grams.
+            const qty = Math.max(1, num(entry?.quantity) || 1);
+            const perServingG = Math.round(num(entry?.servingSize)) || 100;
             const food = {
               name: entry?.name || 'Food Item',
               calories: num(entry?.calories),
@@ -544,10 +550,11 @@ export const NutritionContainer = ({
               fiber: Math.round(num(entry?.fiber) * 10) / 10,
               sugar: Math.round(num(entry?.sugar) * 10) / 10,
               sodium: num(entry?.sodium), // mg
-              servingGrams: Math.round(num(entry?.servingSize)) || 100,
-              servingSize: num(entry?.quantity) || 1,
+              servingGrams: perServingG * qty,
+              servingSize: 1,
               servingUnit: (entry?.servingUnit || 'g').trim() || 'g',
               source: 'manual',
+              dataBasis: 'logged_totals',
             };
 
             handleFoodAdded(food, activeMealType);

@@ -75,6 +75,12 @@ export function buildFoodHistoryEntry(food) {
   const name = String(normalized?.name || normalized?.food_name || '').trim();
   if (!name) return null;
 
+  const incomingBasis = String(normalized.dataBasis || '').toLowerCase();
+  const isLoggedTotals =
+    incomingBasis === 'logged_totals'
+    || incomingBasis === 'logged_total'
+    || Boolean(normalized.fromRecentLog);
+
   const qty = Number(normalized.servingSize) || 1;
   const perServing = (v, round = true) => {
     const x = Number(v) || 0;
@@ -103,15 +109,35 @@ export function buildFoodHistoryEntry(food) {
     servingUnit: normalized.servingUnit || normalized.serving_unit || 'serving',
     serving_unit: normalized.servingUnit || normalized.serving_unit || 'serving',
     source: normalized.source || 'manual',
-    dataBasis: normalized.dataBasis === 'label_serving' || isPer100gSource(normalized.source)
-      ? normalized.dataBasis
-      : 'logged_totals',
+    dataBasis: isLoggedTotals
+      ? 'logged_totals'
+      : (normalized.dataBasis === 'label_serving' || isPer100gSource(normalized.source)
+        ? normalized.dataBasis
+        : 'logged_totals'),
     labelServingGrams: normalized.labelServingGrams,
-    fromRecentLog: normalized.dataBasis === 'logged_totals',
+    fromRecentLog: isLoggedTotals,
     savedAt: Date.now(),
   };
 
-  if (entry.dataBasis !== 'logged_totals') {
+  // Confirmed portion totals → one-serving template so re-log does not double-scale USDA/OFF.
+  if (isLoggedTotals) {
+    const servingsLogged = Math.max(0.01, Number(normalized.servingSize) || 1);
+    const labelG = Math.max(
+      1,
+      Math.round(Number(normalized.labelServingGrams) || Number(normalized.servingGrams) / servingsLogged || 100),
+    );
+    entry.dataBasis = 'logged_totals';
+    entry.fromRecentLog = true;
+    entry.calories = Math.round((Number(normalized.calories) || 0) / servingsLogged);
+    entry.protein = Math.round(((Number(normalized.protein) || 0) / servingsLogged) * 10) / 10;
+    entry.carbs = Math.round(((Number(normalized.carbs) || 0) / servingsLogged) * 10) / 10;
+    entry.fat = Math.round(((Number(normalized.fat) || 0) / servingsLogged) * 10) / 10;
+    entry.servingSize = 1;
+    entry.serving_size = 1;
+    entry.servingGrams = labelG;
+    entry.serving_grams = labelG;
+    entry.labelServingGrams = labelG;
+  } else if (entry.dataBasis !== 'logged_totals') {
     entry.fromRecentLog = false;
     entry.calories = Math.round(Number(normalized.calories) || 0);
     entry.protein = Number(normalized.protein) || 0;
@@ -276,18 +302,22 @@ export async function getFoodLogsForDate(userId, date = new Date()) {
   }
 }
 
-const clampNutrition = (food) => ({
-  ...food,
-  calories: Math.min(Math.max(Math.round(food.calories || 0), 0), 5000),
-  protein: Math.min(Math.max(parseFloat(((food.protein || 0)).toFixed(1)), 0), 500),
-  carbs: Math.min(Math.max(parseFloat(((food.carbs || 0)).toFixed(1)), 0), 500),
-  fat: Math.min(Math.max(parseFloat(((food.fat || 0)).toFixed(1)), 0), 300),
-  fiber: Math.min(Math.max(parseFloat(((food.fiber || 0)).toFixed(1)), 0), 100),
-  sugar: Math.min(Math.max(parseFloat(((food.sugar || 0)).toFixed(1)), 0), 200),
-  sodium: Math.min(Math.max(Math.round(food.sodium || 0), 0), 10000),
-  potassium: Math.min(Math.max(Math.round(food.potassium || 0), 0), 10000),
-  serving_grams: Math.min(Math.max(Math.round(food.serving_grams || food.servingGrams || 100), 1), 2000),
-});
+const clampNutrition = (food) => {
+  const grams = Math.min(Math.max(Math.round(food.serving_grams || food.servingGrams || 100), 1), 10000);
+  return {
+    ...food,
+    calories: Math.min(Math.max(Math.round(food.calories || 0), 0), 10000),
+    protein: Math.min(Math.max(parseFloat(((food.protein || 0)).toFixed(1)), 0), 500),
+    carbs: Math.min(Math.max(parseFloat(((food.carbs || 0)).toFixed(1)), 0), 500),
+    fat: Math.min(Math.max(parseFloat(((food.fat || 0)).toFixed(1)), 0), 300),
+    fiber: Math.min(Math.max(parseFloat(((food.fiber || 0)).toFixed(1)), 0), 100),
+    sugar: Math.min(Math.max(parseFloat(((food.sugar || 0)).toFixed(1)), 0), 200),
+    sodium: Math.min(Math.max(Math.round(food.sodium || 0), 0), 10000),
+    potassium: Math.min(Math.max(Math.round(food.potassium || 0), 0), 10000),
+    serving_grams: grams,
+    servingGrams: grams,
+  };
+};
 
 export async function addFoodLog(userId, log) {
   if (!userId || !db) throw new Error('User required');
@@ -320,11 +350,16 @@ export async function addFoodLog(userId, log) {
     return (typeof n === 'number' && !Number.isNaN(n)) ? n : 0;
   };
 
+  const basis = String(food.dataBasis || '').toLowerCase();
+  const isLoggedTotal = basis === 'logged_total' || basis === 'logged_totals';
+  const isLabelServing = basis === 'label_serving' || basis === 'per_serving';
+
   if (
     (food.source === 'openfoodfacts' || food.source === 'usda')
-    && String(food.dataBasis || '').toLowerCase() !== 'logged_total'
+    && !isLoggedTotal
+    && !isLabelServing
   ) {
-    // These sources provide per 100g data
+    // These sources provide per 100g data (servingQuantity is servings of 100g)
     servingGrams = servingQuantity * 100;
     totalCalories = num(food.calories) * servingQuantity;
     totalProtein = num(food.protein) * servingQuantity;
@@ -335,7 +370,7 @@ export async function addFoodLog(userId, log) {
     totalSodium = num(food.sodium) * servingQuantity;
     totalPotassium = num(food.potassium) * servingQuantity;
   } else {
-    // Manual / confirm sheet / FatSecret label: values are already totals for this portion
+    // Manual / confirm sheet / FatSecret / Serper label: values are already totals for this portion
     const sg = num(food.servingGrams);
     servingGrams = sg > 0 ? sg : servingQuantity;
     totalCalories = num(food.calories);
@@ -697,7 +732,7 @@ function logToHistoryEntry(log) {
       id: meta.id || buildFoodHistoryId(meta),
       name,
       food_name: name,
-      fromRecentLog: Boolean(meta.dataBasis === 'logged_totals' || meta.fromRecentLog),
+      fromRecentLog: Boolean(meta.dataBasis === 'logged_totals' || meta.dataBasis === 'logged_total' || meta.fromRecentLog),
     });
   }
 
@@ -790,7 +825,7 @@ export async function getRecentFoods(userId, limit = 15) {
       for (const item of cached) {
         pushUnique({
           ...item,
-          fromRecentLog: Boolean(item.dataBasis === 'logged_totals' || item.fromRecentLog),
+          fromRecentLog: Boolean(item.dataBasis === 'logged_totals' || item.dataBasis === 'logged_total' || item.fromRecentLog),
         });
         if (recent.length >= limit) break;
       }
@@ -866,12 +901,17 @@ function buildFavoriteFoodEntry(food) {
     foodName,
     calories: Math.round(Number(food?.calories) || 0),
     macros: {
-      protein: Math.round(Number(food?.protein) || 0),
-      carbs: Math.round(Number(food?.carbs) || 0),
-      fat: Math.round(Number(food?.fat) || 0),
+      protein: Math.round((Number(food?.protein) || 0) * 10) / 10,
+      carbs: Math.round((Number(food?.carbs) || 0) * 10) / 10,
+      fat: Math.round((Number(food?.fat) || 0) * 10) / 10,
     },
-    addedDate: new Date().toISOString(),
+    servingGrams: Number(food?.servingGrams || food?.serving_grams) || null,
+    servingSize: Number(food?.servingSize || food?.serving_size) || 1,
+    servingUnit: food?.servingUnit || food?.serving_unit || 'serving',
+    dataBasis: food?.dataBasis || null,
+    source: food?.source || 'manual',
     brand: food?.brand_name || food?.brand || '',
+    addedDate: new Date().toISOString(),
   };
 }
 

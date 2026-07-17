@@ -42,6 +42,14 @@ async function searchFoodWithSerper(rawQuery) {
     const displayName = name || userQuery;
     const brandLabel = resolveFoodBrandLabel(displayName, '');
     const extended = mergeExtendedNutrients(extras, extras.extended || {});
+    const labelText = `${serving_label || ''} ${unitLabel || ''}`;
+    const gMatch = labelText.match(/\((\d+)\s*g\)/i) || labelText.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+    const tbsp = labelText.match(/(\d+(?:\.\d+)?)\s*(tbsp|tablespoons?)\b/i);
+    const servingGrams = gMatch
+      ? Math.round(Number(gMatch[1]))
+      : tbsp
+        ? Math.round(Number(tbsp[1]) * 15)
+        : 100;
     return {
       id: `serper_${Date.now()}_${Math.random()}`,
       food_name: displayName,
@@ -76,7 +84,9 @@ async function searchFoodWithSerper(rawQuery) {
       vitaminD: extended.vitaminD ?? null,
       servingSize: 1,
       servingUnit: unitLabel,
-      servingGrams: 100,
+      servingGrams,
+      labelServingGrams: servingGrams,
+      dataBasis: 'label_serving',
       photo: null,
       source: 'serper',
       _organicScore: organicScore,
