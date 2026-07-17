@@ -20,7 +20,7 @@ import {
   ArrowRight,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { finalizeBarcodeFood, resolveServingGrams, parseServingQtyInput } from '../food-details/calculateServingSize';
+import { finalizeBarcodeFood, resolveServingGrams, parseServingQtyInput, gramsForVolumeUnit } from '../food-details/calculateServingSize';
 import { macrosAtGrams } from '../barcode/renderScannedBarcode';
 import { normalizeFoodForLog } from '../food-search/normalizeFoodQuery';
 import { normalizeFoodRecordForStorage } from '../food-search/makeReadableFoodTitle';
@@ -72,23 +72,21 @@ const DISPLAY = Platform.select({
 });
 const DISPLAY_SEMI = 'SpaceGrotesk_600SemiBold';
 
-function unitToGrams(value, unit, servingGrams) {
+function unitToGrams(value, unit, servingGrams, foodName = '') {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return servingGrams || 100;
   const sg = servingGrams || 100;
   switch (unit) {
     case 'oz':
-      return n * 28.3495;
     case 'cups':
-      return n * 240;
     case 'ml':
-      return n;
+    case 'tbsp':
+    case 'tsp': {
+      const fromDensity = gramsForVolumeUnit(n, unit === 'cups' ? 'cups' : unit, foodName);
+      return fromDensity > 0 ? fromDensity : n;
+    }
     case 'servings':
       return n * sg;
-    case 'tbsp':
-      return n * 15;
-    case 'tsp':
-      return n * 5;
     case 'g':
     default:
       return n;
@@ -258,8 +256,9 @@ export default function FoodConfirmSheet({
   };
   const entered = parseNum(amountValue);
   const hasValidAmount = entered != null && !Number.isNaN(entered) && entered > 0;
+  const foodNameForDensity = String(normalized?.name || normalized?.food_name || food?.name || '');
   const gramsRaw = hasValidAmount
-    ? unitToGrams(entered, selectedUnit, defaultAmount)
+    ? unitToGrams(entered, selectedUnit, defaultAmount, foodNameForDensity)
     : defaultAmount;
   const grams = Math.min(10000, Math.max(1, Math.round(gramsRaw)));
 
@@ -329,7 +328,7 @@ export default function FoodConfirmSheet({
 
   const applyUnit = (unitId) => {
     const prevGrams = hasValidAmount
-      ? unitToGrams(entered, selectedUnit, defaultAmount)
+      ? unitToGrams(entered, selectedUnit, defaultAmount, foodNameForDensity)
       : defaultAmount;
     setSelectedUnit(unitId);
     setPreset('custom');
@@ -380,7 +379,7 @@ export default function FoodConfirmSheet({
       servingGrams: grams,
       servingAmount: grams,
       servingSize: servingsLogged,
-      dataBasis: 'logged_total',
+      dataBasis: 'logged_totals',
       loggedAmount: entered,
       loggedUnit: selectedUnit,
       preferredUnit: selectedUnit,
@@ -440,9 +439,14 @@ export default function FoodConfirmSheet({
 
           {/* Food header */}
           <View style={styles.foodHeader}>
-            <Text style={[styles.foodName, { color: t.primary, fontFamily: DISPLAY }]} numberOfLines={3}>
+            <Text style={[styles.foodName, { color: t.primary, fontFamily: DISPLAY }]} numberOfLines={4}>
               {display?.name || normalized.name}
             </Text>
+            {(normalized?.needsVerification || normalized?.nutrition_unverified || food?.needsVerification) ? (
+              <Text style={[styles.verifyHint, { color: t.muted }]}>
+                Verify this product before logging — data may be incomplete or crowdsourced.
+              </Text>
+            ) : null}
             <View style={styles.foodMetaRow}>
               {(display?.brand || normalized.brand) ? (
                 <>
@@ -747,6 +751,12 @@ const styles = StyleSheet.create({
     fontSize: 30,
     lineHeight: 34,
     letterSpacing: -0.6,
+  },
+  verifyHint: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   foodMetaRow: {
     marginTop: 8,

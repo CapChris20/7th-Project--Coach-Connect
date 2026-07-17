@@ -134,7 +134,17 @@ function mapFatSecretSearchHitToRow(food) {
     ? resolveFoodBrandLabel(name, food.brand_name)
     : null;
   const servingLabel = parsed.servingLabel || 'serving';
-  const servingGrams = /100\s*g/i.test(servingLabel) ? 100 : null;
+  let servingGrams = null;
+  const gMatch = String(servingLabel).match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  if (gMatch) servingGrams = Math.round(Number(gMatch[1]));
+  else if (/100\s*g/i.test(servingLabel)) servingGrams = 100;
+  else {
+    const tbsp = String(servingLabel).match(/(\d+(?:\.\d+)?)\s*(tbsp|tablespoons?)\b/i);
+    if (tbsp) servingGrams = Math.round(Number(tbsp[1]) * 15);
+    const cup = String(servingLabel).match(/(\d+(?:\.\d+)?)\s*cups?\b/i);
+    if (cup) servingGrams = Math.round(Number(cup[1]) * 240);
+  }
+  if (!servingGrams || servingGrams <= 0) servingGrams = 100;
 
   return {
     id: `fs_${food.food_id}`,
@@ -154,6 +164,8 @@ function mapFatSecretSearchHitToRow(food) {
     serving_unit: servingLabel,
     serving_label: servingLabel,
     servingGrams,
+    labelServingGrams: servingGrams,
+    dataBasis: 'label_serving',
     source: 'fatsecret',
     fatsecretFoodId: String(food.food_id),
     food_type: food.food_type || null,

@@ -101,7 +101,9 @@ describe('mapNutritionSearchToFoodRows', () => {
 
     expect(rows.length).toBeGreaterThanOrEqual(2);
     expect(rows[0].source).toBe('nutrition_consensus');
-    expect(rows[0].name).toBe('20pc Mcnuggets');
+    // Prefer scraper title so macros stay tied to the measured item
+    expect(rows[0].name.toLowerCase()).toContain('chicken mcnuggets');
+    expect(rows[0].dataBasis).toBe('label_serving');
     expect(rows[0].source_subtitle).toMatch(/^via /);
     const fatSecret = rows.find((r) => r.source === 'fatSecret');
     expect(fatSecret).toMatchObject({

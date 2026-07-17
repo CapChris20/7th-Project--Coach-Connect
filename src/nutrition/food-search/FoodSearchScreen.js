@@ -112,7 +112,12 @@ const DARK = {
 
 // Normalize into a "food" shape compatible with nutritionService.addFoodLog
 const normalizeFood = (item, searchQuery = '') => {
-  const round = (val) => Math.round(val ?? 0);
+  const roundMacro = (val) => {
+    if (val == null || val === '') return 0;
+    const n = Number(val);
+    return Number.isFinite(n) ? Math.round(n * 10) / 10 : 0;
+  };
+  const roundCal = (val) => Math.round(Number(val) || 0);
   const meta = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
 
   const portion_text =
@@ -144,15 +149,18 @@ const normalizeFood = (item, searchQuery = '') => {
     servingSize: item.servingSize || item.serving_qty || item.serving_size || 1,
     servingUnit: item.servingUnit || item.serving_unit || item.servingSizeUnit || 'serving',
     servingGrams: item.servingGrams || item.serving_weight_grams || item.serving_grams || 100,
-    calories: round(item.calories ?? item.nf_calories),
-    protein: round(item.protein ?? item.nf_protein),
-    carbs: round(item.carbs ?? item.nf_total_carbohydrate),
-    fat: round(item.fat ?? item.nf_total_fat),
-    fiber: round(item.fiber ?? item.nf_dietary_fiber),
-    sugar: round(item.sugar ?? item.nf_sugars),
-    sodium: round(item.sodium ?? item.nf_sodium),
+    labelServingGrams: item.labelServingGrams || null,
+    dataBasis: item.dataBasis || null,
+    calories: roundCal(item.calories ?? item.nf_calories),
+    protein: roundMacro(item.protein ?? item.nf_protein),
+    carbs: roundMacro(item.carbs ?? item.nf_total_carbohydrate),
+    fat: roundMacro(item.fat ?? item.nf_total_fat),
+    fiber: roundMacro(item.fiber ?? item.nf_dietary_fiber),
+    sugar: roundMacro(item.sugar ?? item.nf_sugars),
+    sodium: roundCal(item.sodium ?? item.nf_sodium),
     source: item.source || 'server',
     nutrition_unverified: Boolean(item.nutrition_unverified),
+    needsVerification: Boolean(item.needsVerification),
     multiServingFallback: Boolean(item.multiServingFallback),
     servingMultiplier: item.servingMultiplier ?? null,
 
@@ -272,7 +280,7 @@ const FoodResultRow = ({ item, onAdd, colors, isDark = true, isFavorite = false,
             <View style={foodCardStyles.body}>
               <Text
                 style={[foodCardStyles.title, { color: titleFill }]}
-                numberOfLines={2}
+                numberOfLines={4}
                 ellipsizeMode="tail"
               >
                 {foodTitle}

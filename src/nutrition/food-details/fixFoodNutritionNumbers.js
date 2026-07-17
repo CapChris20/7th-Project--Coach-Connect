@@ -242,8 +242,12 @@ function normalizeOpenFoodFactsProduct(product) {
     servingUnit,
     servingGrams: servingAmount,
     source: 'openfoodfacts',
+    dataBasis: 'per_100g',
     kcalPer100Unit,
     servingAmount,
+    // Crowdsourced OFF — confirm sheet should let users verify product identity
+    needsVerification: true,
+    barcodeConfidence: 'medium',
   };
 }
 

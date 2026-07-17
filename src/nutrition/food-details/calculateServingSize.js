@@ -18,6 +18,20 @@ const PER_100G_SOURCES = new Set(['openfoodfacts', 'usda']);
 /** Max plausible kcal per 100 g — catches bad OFF crowdsourced *_serving derivations. */
 const MAX_SANE_KCAL_PER_100 = 1000;
 
+/** Cooked/staple cup densities (g per cup). Default 240 ≈ water. */
+const CUP_GRAMS_BY_FOOD = [
+  { re: /\brice\b/i, cooked: 158, dry: 185 },
+  { re: /\b(pasta|spaghetti|noodle|macaroni)\b/i, cooked: 140, dry: 105 },
+  { re: /\b(oat|oatmeal|porridge)\b/i, cooked: 234, dry: 80 },
+  { re: /\bquinoa\b/i, cooked: 185, dry: 170 },
+  { re: /\b(milk|water|juice|broth|stock)\b/i, cooked: 240, dry: 240 },
+  { re: /\b(peanut\s*butter|almond\s*butter)\b/i, cooked: 258, dry: 258 },
+  { re: /\bflour\b/i, cooked: 120, dry: 120 },
+  { re: /\bsugar\b/i, cooked: 200, dry: 200 },
+  { re: /\b(spinach|lettuce)\b/i, cooked: 180, dry: 30 },
+  { re: /\bbroccoli\b/i, cooked: 156, dry: 91 },
+];
+
 function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -27,12 +41,65 @@ function isPer100gSource(source) {
   return PER_100G_SOURCES.has(String(source || '').toLowerCase());
 }
 
-/** FatSecret / Serper / manual often store label serving totals, not per-100g. */
+function normalizeDataBasis(basis) {
+  const b = String(basis || '').toLowerCase().trim();
+  if (b === 'logged_total' || b === 'logged_totals') return 'logged_totals';
+  if (b === 'label_serving' || b === 'per_serving') return 'label_serving';
+  if (b === 'per_100g' || b === 'per_100') return 'per_100g';
+  return b || null;
+}
+
+function isLoggedTotalsBasis(foodOrBasis) {
+  const basis = typeof foodOrBasis === 'string'
+    ? foodOrBasis
+    : foodOrBasis?.dataBasis;
+  return normalizeDataBasis(basis) === 'logged_totals';
+}
+
+/** FatSecret / Serper / manual / confirmed logs store label or portion totals, not per-100g. */
 function isLabelServingBasis(food) {
-  const basis = String(food?.dataBasis || '').toLowerCase();
-  if (basis === 'label_serving' || basis === 'per_serving') return true;
-  if (basis === 'per_100g' || basis === 'per_100') return false;
+  const basis = normalizeDataBasis(food?.dataBasis);
+  if (basis === 'label_serving' || basis === 'logged_totals') return true;
+  if (basis === 'per_100g') return false;
   return !isPer100gSource(food?.source);
+}
+
+/**
+ * Grams for a household volume unit. Uses density when food name is known.
+ * tbsp/tsp use ~15g/5g (approx); peanut butter tbsp ~16g when detected.
+ */
+function gramsForVolumeUnit(value, unit, foodName = '') {
+  const n = num(value);
+  if (n <= 0) return 0;
+  const name = String(foodName || '');
+  const u = String(unit || '').toLowerCase();
+  if (u === 'ml') return n;
+  if (u === 'oz') return n * 28.3495;
+  if (u === 'tsp') return n * 5;
+  if (u === 'tbsp') {
+    if (/\b(peanut\s*butter|almond\s*butter|nut\s*butter)\b/i.test(name)) return n * 16;
+    return n * 15;
+  }
+  if (u === 'cups' || u === 'cup') {
+    const dry = /\b(dry|uncooked|raw)\b/i.test(name);
+    for (const row of CUP_GRAMS_BY_FOOD) {
+      if (row.re.test(name)) return n * (dry ? row.dry : row.cooked);
+    }
+    return n * 240;
+  }
+  return 0;
+}
+
+/** True when P×4 + C×4 + F×9 disagrees with calories by more than tolerance. */
+function macrosDisagreeWithCalories(macros, { toleranceCal = 50 } = {}) {
+  const cal = num(macros?.calories ?? macros?.nf_calories);
+  const p = num(macros?.protein ?? macros?.nf_protein);
+  const c = num(macros?.carbs ?? macros?.nf_total_carbohydrate);
+  const f = num(macros?.fat ?? macros?.nf_total_fat);
+  if (cal < 40) return false;
+  const fromMacros = p * 4 + c * 4 + f * 9;
+  if (fromMacros < 12) return cal >= 80;
+  return Math.abs(fromMacros - cal) > toleranceCal;
 }
 
 /**
@@ -78,9 +145,11 @@ function scaleMacroForGrams(per100OrLabelValue, grams, food = null) {
 
 /**
  * Normalize barcode / per-100g food payloads so servingSize is always grams/100.
+ * Skip foods already stored as label or logged portion totals.
  */
 function finalizeBarcodeFood(food) {
   if (!food || !isPer100gSource(food.source)) return food;
+  if (isLabelServingBasis(food)) return food;
 
   const grams = resolveServingGrams(food);
   let per100Kcal = num(food.calories) || num(food.kcalPer100Unit);
@@ -96,6 +165,7 @@ function finalizeBarcodeFood(food) {
 
   return {
     ...food,
+    dataBasis: food.dataBasis || 'per_100g',
     calories: per100Kcal,
     kcalPer100Unit: per100Kcal || food.kcalPer100Unit,
     servingGrams: grams,
@@ -140,8 +210,13 @@ function parseServingQtyInput(value) {
 module.exports = {
   PER_100G_SOURCES,
   MAX_SANE_KCAL_PER_100,
+  CUP_GRAMS_BY_FOOD,
   isPer100gSource,
+  normalizeDataBasis,
+  isLoggedTotalsBasis,
   isLabelServingBasis,
+  gramsForVolumeUnit,
+  macrosDisagreeWithCalories,
   resolveServingGrams,
   resolveServingFactor,
   nutrientTotalForGrams,

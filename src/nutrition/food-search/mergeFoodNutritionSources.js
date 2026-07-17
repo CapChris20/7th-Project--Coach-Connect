@@ -87,6 +87,17 @@ function mapConsensusNutrient(consensus, key) {
 function buildDisplayName(payload, displayQuery) {
   const raw = String(displayQuery || '').trim();
   const query = payload?.query || {};
+
+  // Prefer a real scraper title so macros stay tied to the measured item (not a renamed query).
+  const sourceTitles = (payload?.sourceResults || [])
+    .map((r) => stripLegacyFoodTitleDecorations(r?.displayName))
+    .filter((t) => t && !isJunkFoodTitle(t));
+  if (sourceTitles.length > 0) {
+    const cleaned = sanitizeFoodCardTitle(sourceTitles[0], raw);
+    if (cleaned && !isJunkFoodTitle(cleaned)) return cleaned;
+    return sourceTitles[0];
+  }
+
   const fromUser = formatUserQueryAsFoodName(raw);
   if (fromUser && !isJunkFoodTitle(fromUser)) return fromUser;
 
@@ -101,6 +112,9 @@ function buildDisplayName(payload, displayQuery) {
 function resolveSourceFoodTitle(sourceRow, payload, displayQuery) {
   const cleaned = stripLegacyFoodTitleDecorations(sourceRow?.displayName);
   if (cleaned && !isJunkFoodTitle(cleaned)) return cleaned;
+  // Junk/source-only title — prefer the user's query for this row (not another scraper's name)
+  const fromUser = formatUserQueryAsFoodName(displayQuery);
+  if (fromUser && !isJunkFoodTitle(fromUser)) return fromUser;
   return buildDisplayName(payload, displayQuery);
 }
 
@@ -113,6 +127,17 @@ function buildConsensusSubtitle(payload) {
   return `via ${names.slice(0, 4).join(', ')}`;
 }
 
+function parseGramsFromServingLabel(label) {
+  const t = String(label || '');
+  const parenG = t.match(/\((\d+)\s*g\)/i);
+  if (parenG) return Number(parenG[1]);
+  const plainG = t.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  if (plainG) return Number(plainG[1]);
+  const tbsp = t.match(/(\d+(?:\.\d+)?)\s*(tbsp|tablespoons?)\b/i);
+  if (tbsp) return Math.round(Number(tbsp[1]) * 15);
+  return 0;
+}
+
 function applyServingFields(row, displayQuery, payload, sourceRow = null) {
   const label = resolveFoodServingLabel({
     userQuery: displayQuery,
@@ -121,6 +146,10 @@ function applyServingFields(row, displayQuery, payload, sourceRow = null) {
     scraperLabel: sourceRow?.servingLabel,
     displayName: sourceRow?.displayName,
   });
+  const parsedG = parseGramsFromServingLabel(label)
+    || parseGramsFromServingLabel(sourceRow?.servingLabel)
+    || 0;
+  const servingGrams = parsedG > 0 ? Math.round(parsedG) : (Number(row.servingGrams) > 0 ? Number(row.servingGrams) : 100);
   return {
     ...row,
     serving_label: label,
@@ -130,6 +159,9 @@ function applyServingFields(row, displayQuery, payload, sourceRow = null) {
     portion_text: label,
     serving_qty: 1,
     serving_size: 1,
+    servingGrams,
+    labelServingGrams: servingGrams,
+    dataBasis: row.dataBasis || 'label_serving',
   };
 }
 
@@ -143,16 +175,21 @@ function mapConsensusToFoodRow(payload, displayQuery) {
   if (calories == null) return null;
 
   const query = payload?.query || {};
-  const baseName = buildDisplayName(payload, displayQuery);
-  const displayName = baseName;
+  const protein = mapConsensusNutrient(consensus, 'protein_g');
+  const carbs = mapConsensusNutrient(consensus, 'carbs_g');
+  const fat = mapConsensusNutrient(consensus, 'fat_g');
+  const displayName = buildDisplayName(payload, displayQuery);
   const sourceSubtitle = buildConsensusSubtitle(payload);
 
   const needsVerify = Object.values(consensus || {}).some((v) => v?.warning === 'verify_manually');
+  const incompleteMacros =
+    (Number(calories) >= 200 && (!protein || protein === 0))
+    || (Number(calories) >= 250 && (!carbs || carbs === 0) && (!fat || fat === 0));
   const sources = Array.isArray(payload?.sources_used) ? payload.sources_used : [];
 
   return applyServingFields(
     {
-      id: `nutrition_consensus_${String(displayQuery || baseName).toLowerCase().replace(/\s+/g, '_')}`,
+      id: `nutrition_consensus_${String(displayQuery || displayName).toLowerCase().replace(/\s+/g, '_')}`,
       name: displayName,
       food_name: displayName,
       source_subtitle: sourceSubtitle,
@@ -160,26 +197,28 @@ function mapConsensusToFoodRow(payload, displayQuery) {
       brand_name: query.restaurant || null,
       restaurant: query.restaurant || null,
       calories,
-      protein: mapConsensusNutrient(consensus, 'protein_g'),
-      carbs: mapConsensusNutrient(consensus, 'carbs_g'),
-      fat: mapConsensusNutrient(consensus, 'fat_g'),
+      protein,
+      carbs,
+      fat,
       fiber: mapConsensusNutrient(consensus, 'fiber_g'),
       sodium: mapConsensusNutrient(consensus, 'sodium_mg'),
       sugar: null,
       servingSize: 1,
       servingGrams: 100,
+      dataBasis: 'label_serving',
       source: 'nutrition_consensus',
-      nutrition_unverified: needsVerify || payload?.fallbackUsed,
+      nutrition_unverified: needsVerify || payload?.fallbackUsed || incompleteMacros,
       nf_calories: calories,
-      nf_protein: mapConsensusNutrient(consensus, 'protein_g'),
-      nf_total_carbohydrate: mapConsensusNutrient(consensus, 'carbs_g'),
-      nf_total_fat: mapConsensusNutrient(consensus, 'fat_g'),
+      nf_protein: protein,
+      nf_total_carbohydrate: carbs,
+      nf_total_fat: fat,
       metadata: {
         consensus,
         sources_used: sources,
         cacheHit: payload?.cacheHit,
         fallbackUsed: payload?.fallbackUsed,
         source: 'nutrition_consensus',
+        incompleteMacros,
       },
     },
     displayQuery,
@@ -215,8 +254,10 @@ function mapSourceResultToFoodRow(sourceRow, payload, displayQuery) {
       sugar: null,
       servingSize: 1,
       servingGrams: 100,
+      dataBasis: 'label_serving',
       source: sourceRow.sourceKey || 'nutrition_source',
-      nutrition_unverified: false,
+      nutrition_unverified:
+        (Number(sourceRow.calories) >= 200 && !(Number(sourceRow.protein_g) > 0)),
       nf_calories: sourceRow.calories,
       nf_protein: sourceRow.protein_g,
       nf_total_carbohydrate: sourceRow.carbs_g,

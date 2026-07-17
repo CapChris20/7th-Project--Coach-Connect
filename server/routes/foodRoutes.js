@@ -44,10 +44,31 @@ const {
   isUsableBarcodeFood,
   barcodeNotFoundPayload,
 } = require('../../src/nutrition/barcode/validateBarcodeFood');
+const { macrosDisagreeWithCalories } = require('../../src/nutrition/food-details/calculateServingSize');
+
+/** Parse "28 g" / "(32g)" / "2 oz (56 g)" from serving labels for Serper/FatSecret rows. */
+function parseServingGramsFromLabel(text) {
+  const t = String(text || '');
+  const ozG = t.match(/(\d+(?:\.\d+)?)\s*oz[^0-9]{0,12}(\d+)\s*g/i);
+  if (ozG) return Number(ozG[2]);
+  const servingG = t.match(/serving size[^0-9]{0,24}(\d+)\s*g/i);
+  if (servingG) return Number(servingG[1]);
+  const parenG = t.match(/\((\d+)\s*g\)/i);
+  if (parenG) return Number(parenG[1]);
+  const plainG = t.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  if (plainG) return Number(plainG[1]);
+  const tbsp = t.match(/(\d+(?:\.\d+)?)\s*(tbsp|tablespoons?)\b/i);
+  if (tbsp) return Math.round(Number(tbsp[1]) * 15);
+  const tsp = t.match(/(\d+(?:\.\d+)?)\s*(tsp|teaspoons?)\b/i);
+  if (tsp) return Math.round(Number(tsp[1]) * 5);
+  const cup = t.match(/(\d+(?:\.\d+)?)\s*cups?\b/i);
+  if (cup) return Math.round(Number(cup[1]) * 240);
+  return 0;
+}
 
 const SERPER_ORGANIC_MAX = 10;
 
-const FOOD_SEARCH_PIPELINE_VERSION = 38;
+const FOOD_SEARCH_PIPELINE_VERSION = 39;
 
 const OPEN_FOOD_FACTS_USER_AGENT =
   'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
@@ -110,6 +131,17 @@ const searchFoodWithSerper = async (rawQuery) => {
     const unitLabel = serving_label || extras.serving_unit || 'serving';
     const displayName = name || userQuery;
     const brandLabel = resolveFoodBrandLabel(displayName, '');
+    const parsedG = parseServingGramsFromLabel(serving_label) || parseServingGramsFromLabel(unitLabel);
+    const servingGrams = parsedG > 0 ? Math.round(parsedG) : 100;
+    const macrosForCheck = {
+      calories: macros.calories,
+      protein: macros.protein,
+      carbs: macros.carbs,
+      fat: macros.fat,
+    };
+    const unverified =
+      Boolean(extras.nutrition_unverified)
+      || macrosDisagreeWithCalories(macrosForCheck);
     return {
       id: `serper_${Date.now()}_${Math.random()}`,
       food_name: displayName,
@@ -133,13 +165,15 @@ const searchFoodWithSerper = async (rawQuery) => {
       sugar: extras.sugar ?? null,
       servingSize: 1,
       servingUnit: unitLabel,
-      servingGrams: 100,
+      servingGrams,
+      labelServingGrams: servingGrams,
+      dataBasis: 'label_serving',
       photo: null,
       source: 'serper',
       _organicScore: organicScore,
       multiServingFallback: Boolean(extras.multiServingFallback),
       servingMultiplier: extras.servingMultiplier ?? null,
-      nutrition_unverified: Boolean(extras.nutrition_unverified),
+      nutrition_unverified: unverified,
     };
   };
 
@@ -996,21 +1030,45 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       const nutrients = item.foodNutrients || [];
       const get = (id) => nutrients.find((n) => n.nutrientId === id)?.value || 0;
       const household = item.householdServingFullText ? String(item.householdServingFullText).trim() : '';
+      let servingG = Number(item.servingSize);
+      if (!Number.isFinite(servingG) || servingG <= 0) servingG = 100;
+      const unitRaw = String(item.servingSizeUnit || 'g').toLowerCase();
+      const useMl = unitRaw === 'ml' || unitRaw === 'mlt' || unitRaw === 'milliliters' || unitRaw === 'milliliter';
+      if (unitRaw === 'oz' || unitRaw === 'onz' || unitRaw === 'oza' || unitRaw === 'ounce' || unitRaw === 'ounces') {
+        servingG = servingG * 28.3495;
+      }
+      servingG = Math.round(servingG);
       const sizeBit = item.servingSize ? `${item.servingSize}${item.servingSizeUnit || ''}` : '';
       const servingHuman = String(household || sizeBit || '').trim();
+      const servingLabel = household
+        ? `${household}${servingG ? ` (${servingG} g)` : ''}`
+        : (sizeBit || `${servingG} g`);
+      const kcal = get(1008);
+      const protein = get(1003);
+      const carbs = get(1005);
+      const fat = get(1004);
       return {
         food_name: item.description,
         brand_name: item.brandOwner || '',
         serving_qty: 1,
-        serving_unit: servingHuman || 'serving',
-        serving_label: household || sizeBit || null,
+        serving_unit: servingHuman || (useMl ? 'ml' : 'grams'),
+        serving_label: servingLabel,
         householdServingFullText: household || null,
-        nf_calories: get(1008),
-        nf_protein: get(1003),
-        nf_total_carbohydrate: get(1005),
-        nf_total_fat: get(1004),
+        servingGrams: servingG,
+        servingSize: servingG / 100,
+        servingUnit: useMl ? 'ml' : 'grams',
+        nf_calories: kcal,
+        nf_protein: protein,
+        nf_total_carbohydrate: carbs,
+        nf_total_fat: fat,
+        calories: kcal,
+        protein,
+        carbs,
+        fat,
         photo: null,
         source: 'usda',
+        dataBasis: 'per_100g',
+        kcalPer100Unit: kcal,
       };
     });
 
@@ -1252,18 +1310,65 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       const data = await r.json();
       console.log('[Food Search] 🥫 OFF products:', data.products?.length || 0);
       offResults = (data.products || []).slice(0, 24).map((item) => {
+        const normalized = item?.code ? normalizeOpenFoodFactsProduct(item) : null;
+        if (normalized && (normalized.calories > 0 || normalized.protein > 0)) {
+          const mismatched = macrosDisagreeWithCalories(normalized);
+          return {
+            food_name: normalized.name || item.product_name || query,
+            brand_name: normalized.brand || item.brands || '',
+            serving_qty: 1,
+            serving_unit: normalized.servingUnit || item.serving_size || 'serving',
+            serving_label: item.serving_size || `${normalized.servingGrams} ${normalized.servingUnit || 'g'}`,
+            servingGrams: normalized.servingGrams,
+            servingSize: normalized.servingSize,
+            nf_calories: normalized.calories,
+            nf_protein: normalized.protein,
+            nf_total_carbohydrate: normalized.carbs,
+            nf_total_fat: normalized.fat,
+            calories: normalized.calories,
+            protein: normalized.protein,
+            carbs: normalized.carbs,
+            fat: normalized.fat,
+            photo: item.image_small_url || null,
+            source: 'openfoodfacts',
+            dataBasis: 'per_100g',
+            kcalPer100Unit: normalized.kcalPer100Unit,
+            nutrition_unverified: mismatched,
+            needsVerification: mismatched,
+          };
+        }
+        // Fallback: use only per-100g fields — never mix *_serving into a per-100g client path
         const n = item.nutriments || {};
+        const kcal = n['energy-kcal_100g'] || 0;
+        const protein = n['proteins_100g'] || 0;
+        const carbs = n['carbohydrates_100g'] || 0;
+        const fat = n['fat_100g'] || 0;
+        const mismatched = macrosDisagreeWithCalories({
+          calories: kcal,
+          protein,
+          carbs,
+          fat,
+        });
         return {
           food_name: item.product_name || query,
           brand_name: item.brands || '',
           serving_qty: 1,
           serving_unit: item.serving_size || 'serving',
-          nf_calories: n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0,
-          nf_protein: n['proteins_serving'] || n['proteins_100g'] || 0,
-          nf_total_carbohydrate: n['carbohydrates_serving'] || n['carbohydrates_100g'] || 0,
-          nf_total_fat: n['fat_serving'] || n['fat_100g'] || 0,
+          serving_label: item.serving_size || '100 g',
+          servingGrams: 100,
+          nf_calories: kcal,
+          nf_protein: protein,
+          nf_total_carbohydrate: carbs,
+          nf_total_fat: fat,
+          calories: kcal,
+          protein,
+          carbs,
+          fat,
           photo: item.image_small_url || null,
           source: 'openfoodfacts',
+          dataBasis: 'per_100g',
+          nutrition_unverified: mismatched || Boolean(n['energy-kcal_serving'] && !n['energy-kcal_100g']),
+          needsVerification: true,
         };
       });
       offResults = rankResults(offResults);
