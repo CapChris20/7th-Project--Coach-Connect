@@ -12,8 +12,9 @@ dist
 dist-ssr
 *.local
 
-# Local QA-only script, not part of the shipped app
+# Local QA-only scripts, not part of the shipped app
 screenshot.mjs
+debug.mjs
 
 # Editor directories and files
 .vscode/*
