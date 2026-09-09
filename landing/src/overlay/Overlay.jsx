@@ -13,7 +13,7 @@ export function Overlay() {
       <HudChrome />
       <HeroOverlay />
       <ActPanel act={actById.connection} side="left" />
-      <ActPanel act={actById['client-lane']} side="right" />
+      <ActPanel act={actById['client-lane']} side="left" />
       <ActPanel act={actById['trainer-lane']} side="left" />
       <ActPanel act={actById.differentiators} side="left" />
       <PricingPanel act={actById.pricing} />
