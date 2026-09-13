@@ -48,7 +48,7 @@ const {
 
 const SERPER_ORGANIC_MAX = 10;
 
-const FOOD_SEARCH_PIPELINE_VERSION = 40;
+const FOOD_SEARCH_PIPELINE_VERSION = 45;
 
 const OPEN_FOOD_FACTS_USER_AGENT =
   'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
@@ -731,18 +731,8 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   const normalizedKey = normalizeSearchKey(query);
   const cacheKey = `v${FOOD_SEARCH_PIPELINE_VERSION}|${normalizedKey}`;
 
-  // Curated famous items (Crazy Bread, Big Mac, …) — return before Serper/cache pollution.
+  // Catalog seeds famous items into the pool — never short-circuit past consensus/filter.
   const trustedHits = lookupTrustedFoods(query, Math.min(3, limit));
-  if (trustedHits.length > 0 && isMenuStyleQuery(query)) {
-    const out = sanitizeSearchResultRows(trustedHits, query).slice(0, limit);
-    console.log('[Food Search] Trusted catalog hit:', query, '→', out[0]?.food_name);
-    foodCache.set(cacheKey, { data: out, timestamp: Date.now() });
-    return res.json({
-      results: out,
-      source: 'trusted_catalog',
-      cached: false,
-    });
-  }
 
   const cachedMem = foodCache.get(cacheKey);
   if (cachedMem && Date.now() - cachedMem.timestamp < FOOD_CACHE_TTL) {
@@ -1352,7 +1342,10 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   }
 
   if (!results || results.length === 0) {
-    if (!menuStyleQuery) {
+    if (trustedHits.length > 0) {
+      results = trustedHits.slice();
+      source = 'trusted_catalog';
+    } else if (!menuStyleQuery) {
       if (usdaResults && usdaResults.length > 0) {
         let fallback = usdaResults;
         if (requiredConsumerBrand) {
@@ -1373,7 +1366,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     }
   }
 
-  if (!results || results.length === 0) {
+  if ((!results || results.length === 0) && trustedHits.length === 0) {
     console.error('[Food Search] All tiers failed for query:', query);
     return res.json({
       results: [],
@@ -1383,14 +1376,12 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     });
   }
 
-  if (requiredConsumerBrand && Array.isArray(results) && results.length) {
-    const before = results.length;
-    results = filterFoodSearchRows(query, results, limit);
-    console.log('[Food Search] Shared relevance filter:', before, '→', results.length, 'for', query);
-    if (results.length === 0) {
-      searchHint = `No ${requiredConsumerBrand} products matched. Try scanning the barcode or a shorter product name.`;
-    }
-  } else if (menuStyleQuery && Array.isArray(results) && results.length) {
+  // Seed curated close matches into the pool, then strict-filter everything.
+  if (trustedHits.length > 0) {
+    results = [...trustedHits, ...(results || [])];
+  }
+
+  if (Array.isArray(results) && results.length) {
     const serperSafe = results.filter((it) => {
       if (it.source !== 'serper') return true;
       const macros = {
@@ -1404,19 +1395,30 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
       return true;
     });
     const before = serperSafe.length;
-    results = filterFoodSearchRows(query, serperSafe, limit);
-    console.log('[Food Search] Menu relevance filter:', before, '→', results.length, 'for', query);
-  } else if (Array.isArray(results) && results.length > limit) {
-    results = filterFoodSearchRows(query, results, limit);
+    results = filterFoodSearchRows(query, serperSafe, Math.min(limit, 5));
+    console.log('[Food Search] Strict close-name filter:', before, '→', results.length, 'for', query);
+    if (results.length === 0 && requiredConsumerBrand) {
+      searchHint = `No ${requiredConsumerBrand} products matched. Try scanning the barcode or a shorter product name.`;
+    }
   }
 
-  let sliced = (results || []).slice(0, limit);
+  if (!results || results.length === 0) {
+    return res.json({
+      results: [],
+      source: 'none',
+      hint: searchHint || EMPTY_SEARCH_HINT,
+      query,
+    });
+  }
+
+  let sliced = (results || []).slice(0, Math.min(limit, 5));
   const serperRows = sliced.filter((r) => r.source === 'serper');
   const otherRows = sliced.filter((r) => r.source !== 'serper');
   if (serperRows.length > 0) {
-    sliced = [...rankSerperFoodResultRows(serperRows, query), ...otherRows].slice(0, limit);
+    sliced = [...rankSerperFoodResultRows(serperRows, query), ...otherRows].slice(0, Math.min(limit, 5));
   }
-  const out = dedupeFoodRows(sanitizeSearchResultRows(sliced, query)).slice(0, limit);
+  const out = dedupeFoodRows(sanitizeSearchResultRows(sliced, query)).slice(0, Math.min(limit, 5));
+
 
   if (!serperAllowed && out.length === 0 && (menuStyleQuery || requiredConsumerBrand)) {
     searchHint = searchHint || 'Live menu web search is temporarily limited. Try again later or use a shorter item name.';

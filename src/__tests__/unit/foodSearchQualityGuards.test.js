@@ -42,6 +42,13 @@ describe('trustedFoodCatalog', () => {
     expect(rows[0].food_name).toMatch(/Big Mac/i);
     expect(rows[0].calories).toBeGreaterThan(500);
   });
+
+  it('returns curated Cherry Coke 20oz', () => {
+    const rows = lookupTrustedFoods('cherry coke 20oz');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].food_name || rows[0].name).toMatch(/Cherry Coke/i);
+    expect(Number(rows[0].calories)).toBe(260);
+  });
 });
 
 describe('junk title guards', () => {
@@ -83,6 +90,16 @@ describe('serving / food conflicts', () => {
     ).toBe(true);
   });
 
+  it('rejects bare pc / buff junk on bread', () => {
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'garlic breadsticks',
+        foodName: 'Garlic Breadsticks',
+        servingLabel: '10 pc buff',
+      }),
+    ).toBe(true);
+  });
+
   it('allows breadstick serving on crazy bread', () => {
     expect(
       servingConflictsWithFood({
@@ -91,6 +108,50 @@ describe('serving / food conflicts', () => {
         servingLabel: '1 breadstick',
       }),
     ).toBe(false);
+  });
+
+  it('rejects pizza with nugget/wing/bare-pc servings', () => {
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'dominos cheese pizza',
+        foodName: 'Cheese Pizza',
+        servingLabel: '10 pc nuggets',
+      }),
+    ).toBe(true);
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'buffalo wing pizza',
+        foodName: 'Buffalo Wing Pizza',
+        servingLabel: '8 wings',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects burger with slice or pc servings', () => {
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'big mac',
+        foodName: 'Big Mac',
+        servingLabel: '1 slice',
+      }),
+    ).toBe(true);
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'whopper',
+        foodName: 'Whopper',
+        servingLabel: '6 pc',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects beverage with piece-count servings', () => {
+    expect(
+      servingConflictsWithFood({
+        userQuery: 'cherry coke 20oz',
+        foodName: 'Cherry Coke',
+        servingLabel: '10 pc',
+      }),
+    ).toBe(true);
   });
 
   it('never attaches nugget counts to bread query structure', () => {
@@ -102,6 +163,36 @@ describe('serving / food conflicts', () => {
         scraperLabel: '10 pc nuggets',
       }),
     ).toBe('1 breadstick');
+  });
+
+  it('labels papa johns cheese sticks by calorie band', () => {
+    expect(
+      resolveFoodServingLabel({
+        userQuery: "papa john's garlic parmesan cheese sticks",
+        foodName: 'Garlic Parmesan Cheese Sticks',
+        scraperLabel: '1 serving',
+        calories: 340,
+      }),
+    ).toBe('2 cheese sticks');
+    expect(
+      resolveFoodServingLabel({
+        userQuery: 'garlic parmesan breadstick',
+        foodName: 'Garlic Parmesan Breadstick',
+        scraperLabel: '100g',
+        calories: 170,
+      }),
+    ).toBe('1 breadstick');
+  });
+
+  it('treats buffalo wing pizza as pizza family, not wings', () => {
+    expect(servingLabelFromQueryStructure('buffalo wing pizza')).toBe('1 slice');
+    expect(
+      resolveFoodServingLabel({
+        userQuery: 'buffalo wing pizza',
+        foodName: 'Buffalo Wing Pizza',
+        scraperLabel: '6 wings',
+      }),
+    ).toBe('1 slice');
   });
 
   it('relabels high-cal multi bread order instead of 1 piece', () => {
@@ -228,6 +319,64 @@ describe('branded restaurant ranking', () => {
     const out = filterFoodSearchRows("McDonald's Big Mac", rows, 10);
     expect(out[0].name).toMatch(/Big Mac/i);
   });
+
+  it('keeps plain Domino\'s cheese pizza and drops Philly / specialty pies', () => {
+    const rows = [
+      { name: 'Philly Cheese Steak Pizza - Hand Tossed - Large', brand: "Domino's" },
+      { name: 'Wisconsin 6 Cheese Pizza', brand: "Domino's" },
+      { name: 'Dominos Large Cheese Pizza', brand: "Domino's" },
+      { name: 'Cheese 14" Large Original Crust Pizza', brand: "Domino's" },
+    ];
+    const out = filterFoodSearchRows('dominos large cheese pizza', rows, 10);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.every((r) => !/philly|steak|wisconsin|6 cheese/i.test(r.name))).toBe(true);
+    expect(out[0].name).toMatch(/cheese pizza|cheese.*pizza/i);
+  });
+
+  it('drops diet / 12oz / seltzer junk for cherry coke 20oz', () => {
+    const { hasUnrequestedBeverageMismatch } = require('../../nutrition/food-search/sortBestFoodMatches');
+    const q = 'cherry coke 20oz';
+    expect(hasUnrequestedBeverageMismatch('Diet Cherry Coke Can, 12 Fl Oz', q)).toBe(true);
+    expect(hasUnrequestedBeverageMismatch('Feisty Cherry Bottle Diet Coke', q)).toBe(true);
+    expect(hasUnrequestedBeverageMismatch('20oz Bottle Black Cherry Seltzer', q)).toBe(true);
+    expect(hasUnrequestedBeverageMismatch('Cherry Coke 20 Fl Oz Bottle', q)).toBe(false);
+
+    const out = filterFoodSearchRows(q, [
+      { name: 'Diet Cherry Coke Can, 12 Fl Oz', brand: 'Coca-Cola', calories: 0, fat: 0, protein: 0 },
+      { name: 'Cherry Coke 20oz', brand: 'Coca-Cola', calories: 2000, fat: 65, protein: 0 },
+      { name: 'Cherry Coke', brand: 'Coca-Cola', calories: 260, fat: 0, protein: 0, serving: '20 fl oz' },
+      { name: 'Cherry Coke 20 Fl Oz Bottle', brand: 'Coca-Cola', calories: 260, fat: 0, protein: 0 },
+      { name: '20oz Bottle Black Cherry Seltzer', brand: 'Polar', calories: 0, fat: 0, protein: 0 },
+    ], 10);
+    expect(out.every((r) => !/diet|seltzer|feisty/i.test(r.name))).toBe(true);
+    expect(out.every((r) => Number(r.calories) < 450)).toBe(true);
+  });
+
+  it('drops wrong food families for any brand (bread ≠ pizza, taco ≠ burrito)', () => {
+    const {
+      hasUnrequestedFoodFamilyMismatch,
+      hasUnrequestedVariantMismatch,
+    } = require('../../nutrition/food-search/sortBestFoodMatches');
+
+    expect(hasUnrequestedFoodFamilyMismatch('Pepperoni Pizza', 'crazy bread')).toBe(true);
+    expect(hasUnrequestedFoodFamilyMismatch('Crazy Bread', 'crazy bread')).toBe(false);
+    expect(hasUnrequestedFoodFamilyMismatch('Chicken McNuggets', 'big mac')).toBe(true);
+    expect(hasUnrequestedFoodFamilyMismatch('Big Mac', 'big mac')).toBe(false);
+    expect(hasUnrequestedFoodFamilyMismatch('Taco Bell Burrito', 'taco bell soft taco')).toBe(true);
+    expect(hasUnrequestedFoodFamilyMismatch('Soft Taco', 'taco bell soft taco')).toBe(false);
+
+    expect(hasUnrequestedVariantMismatch('Large Fries', 'medium fries')).toBe(true);
+    expect(hasUnrequestedVariantMismatch('Medium Fries', 'medium fries')).toBe(false);
+    expect(hasUnrequestedVariantMismatch('Sugar Free Cola', 'cola')).toBe(true);
+
+    const breadOut = filterFoodSearchRows('papa johns garlic breadsticks', [
+      { name: 'Pepperoni Pizza', brand: "Papa John's" },
+      { name: 'Garlic Parmesan Breadsticks', brand: "Papa John's" },
+      { name: 'Chicken Poppers', brand: "Papa John's" },
+    ], 10);
+    expect(breadOut.every((r) => !/pizza|popper|nugget/i.test(r.name))).toBe(true);
+    expect(breadOut[0]?.name).toMatch(/breadstick/i);
+  });
 });
 
 describe('near-duplicate dedupe', () => {
@@ -273,7 +422,7 @@ describe('presentation + DB preference', () => {
     expect(row.serving_label).not.toMatch(/nugget/i);
   });
 
-  it('prefers FatSecret over consensus when both exist', () => {
+  it('prefers consensus macros over FatSecret when both exist', () => {
     const payload = {
       query: { foodName: 'crazy bread', restaurant: 'Little Caesars' },
       sources_used: ['fatSecret', 'serper'],
@@ -298,7 +447,8 @@ describe('presentation + DB preference', () => {
       ],
     };
     const rows = mapNutritionSearchToFoodRows(payload, "Little Caesar's crazy bread");
-    expect(rows[0].source).toMatch(/fatSecret/i);
+    expect(rows[0].source).toMatch(/nutrition_consensus/i);
+    expect(Number(rows[0].calories)).toBe(100);
   });
 });
 

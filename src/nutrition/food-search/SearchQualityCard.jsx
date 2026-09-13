@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
 const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
-const TOP_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
 const CYAN = '#64D2FF';
 const INK = '#0A0A0F';
 
@@ -46,12 +45,6 @@ export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
     >
       <View style={styles.cardShadow}>
         <View style={styles.cardClip}>
-          <LinearGradient
-            colors={TOP_BORDER_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.topBorder}
-          />
           <LinearGradient
             colors={bgGradient}
             start={{ x: 0, y: 0 }}
@@ -108,10 +101,6 @@ const styles = StyleSheet.create({
   cardClip: {
     borderRadius: 20,
     overflow: 'hidden',
-  },
-  topBorder: {
-    height: 2,
-    width: '100%',
   },
   inner: {
     paddingHorizontal: 16,

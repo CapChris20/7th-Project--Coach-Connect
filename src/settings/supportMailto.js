@@ -17,10 +17,10 @@ export function openSupportMailto({ subject = '', body = '' } = {}) {
 }
 
 /** When the API cannot send (no Resend/SMTP on server), offer the same content via mailto. */
-export function offerSupportMailtoFallback({ subject, body, apiError }) {
+export function offerSupportMailtoFallback({ subject, body, apiError, title } = {}) {
   const detail = String(apiError || '').trim();
   Alert.alert(
-    'Couldn’t send through the app',
+    title || 'Couldn’t send through the app',
     detail
       ? `${detail}\n\nYou can send the same message through your email app to ${getSupportEmail() || 'support'}.`
       : 'You can send the same message through your email app instead.',

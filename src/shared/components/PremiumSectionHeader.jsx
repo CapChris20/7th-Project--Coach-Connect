@@ -5,9 +5,10 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import StableGradientText from '../../shared-ui/StableGradientText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../shared-ui/brandGradients';
 
 const DISPLAY = 'SpaceGrotesk_600SemiBold';
+/** Brighter pink → orange — matches workout tab header treatment. */
+const SECTION_HEADER_GRADIENT = ['#FF6B9D', '#FB923C'];
 
 export default function PremiumSectionHeader({
   text,
@@ -15,13 +16,13 @@ export default function PremiumSectionHeader({
   style,
 }) {
   const ruleColors = isDark
-    ? ['transparent', 'rgba(190,24,93,0.55)', 'rgba(194,65,12,0.45)', 'transparent']
-    : ['transparent', 'rgba(190,24,93,0.35)', 'rgba(194,65,12,0.28)', 'transparent'];
+    ? ['transparent', 'rgba(255,107,157,0.75)', 'rgba(251,146,60,0.65)', 'transparent']
+    : ['transparent', 'rgba(255,107,157,0.55)', 'rgba(251,146,60,0.45)', 'transparent'];
 
   return (
     <View style={[styles.wrap, style]}>
       <StableGradientText
-        colors={HERO_TITLE_TEXT_GRADIENT}
+        colors={SECTION_HEADER_GRADIENT}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={[
@@ -53,15 +54,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   label: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 2.8,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 2.4,
     textTransform: 'uppercase',
     textAlign: 'center',
   },
   rule: {
     marginTop: 12,
-    height: 1.5,
+    height: 2,
     width: '56%',
     alignSelf: 'center',
     borderRadius: 2,

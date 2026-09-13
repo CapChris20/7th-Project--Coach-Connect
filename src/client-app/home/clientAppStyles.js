@@ -769,13 +769,6 @@ const clientAppStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
   },
-  agendaEmptyTopStripe: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2.5,
-  },
   agendaEmptyAmbient: {
     ...StyleSheet.absoluteFillObject,
   },

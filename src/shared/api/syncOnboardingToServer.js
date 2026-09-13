@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseCandidates } from './baseUrl';
 
 const pendingKeyForUid = (uid) => `pending_onboarding_sync_${uid}`;
+const pendingCompleteKeyForUid = (uid) => `pending_onboarding_complete_${uid}`;
 
 /**
  * Queue a pending onboarding completion payload to sync later.
@@ -30,42 +31,8 @@ export async function queuePendingOnboardingSync(uid, payload) {
   }
 }
 
-/**
- * Attempt to flush pending onboarding completion to the server.
- * Returns true if flushed (or nothing to do), false if still pending.
- */
-export async function flushPendingOnboardingSync(firebaseUser) {
-  const uid = firebaseUser?.uid;
-  if (!uid) return true;
-
-  let raw = null;
-  try {
-    raw = await AsyncStorage.getItem(pendingKeyForUid(uid));
-  } catch (_) {
-    return true;
-  }
-
-  if (!raw) return true;
-
-  let queued = null;
-  try {
-    queued = JSON.parse(raw);
-  } catch (_) {
-    // Corrupt payload; clear it so it doesn't block.
-    try {
-      await AsyncStorage.removeItem(pendingKeyForUid(uid));
-    } catch (_) {}
-    return true;
-  }
-
-  const payload = queued?.payload;
-  const path = payload?.path;
-  const body = payload?.body;
-  if (!path) return true;
-
+async function postWithAuth(firebaseUser, path, body) {
   const bases = getApiBaseCandidates();
-
-  // Try each base; if any succeeds, clear pending.
   for (const baseUrl of bases) {
     try {
       await firebaseUser.reload();
@@ -82,21 +49,94 @@ export async function flushPendingOnboardingSync(firebaseUser) {
         body: JSON.stringify(body ?? {}),
       });
 
-      if (!resp.ok) {
-        // If base URL is reachable but server rejected, don't delete; let next run retry.
-        continue;
-      }
-
-      // Success: clear pending
-      try {
-        await AsyncStorage.removeItem(pendingKeyForUid(uid));
-      } catch (_) {}
-      return true;
+      if (resp.ok) return true;
     } catch (_) {
       // try next base
     }
   }
-
   return false;
+}
+
+/**
+ * Attempt to flush pending onboarding completion to the server.
+ * Handles both wizard queue (`pending_onboarding_sync_*`) and
+ * finishOnboarding cache (`pending_onboarding_complete_*`).
+ * Returns true if flushed (or nothing to do), false if still pending.
+ */
+export async function flushPendingOnboardingSync(firebaseUser) {
+  const uid = firebaseUser?.uid;
+  if (!uid) return true;
+
+  let syncOk = true;
+  let completeOk = true;
+
+  let raw = null;
+  try {
+    raw = await AsyncStorage.getItem(pendingKeyForUid(uid));
+  } catch (_) {
+    raw = null;
+  }
+
+  if (raw) {
+    let queued = null;
+    try {
+      queued = JSON.parse(raw);
+    } catch (_) {
+      try {
+        await AsyncStorage.removeItem(pendingKeyForUid(uid));
+      } catch (_) {}
+      queued = null;
+    }
+
+    const payload = queued?.payload;
+    const path = payload?.path;
+    const body = payload?.body;
+    if (path) {
+      const ok = await postWithAuth(firebaseUser, path, body ?? {});
+      if (ok) {
+        try {
+          await AsyncStorage.removeItem(pendingKeyForUid(uid));
+        } catch (_) {}
+      } else {
+        syncOk = false;
+      }
+    }
+  }
+
+  let completeRaw = null;
+  try {
+    completeRaw = await AsyncStorage.getItem(pendingCompleteKeyForUid(uid));
+  } catch (_) {
+    completeRaw = null;
+  }
+
+  if (completeRaw) {
+    let completePayload = null;
+    try {
+      completePayload = JSON.parse(completeRaw);
+    } catch (_) {
+      try {
+        await AsyncStorage.removeItem(pendingCompleteKeyForUid(uid));
+      } catch (_) {}
+      completePayload = null;
+    }
+
+    if (completePayload && (completePayload.finalRole || completePayload.onboardingData)) {
+      const ok = await postWithAuth(firebaseUser, '/api/onboarding/complete', {
+        finalRole: completePayload.finalRole,
+        onboardingData: completePayload.onboardingData,
+        displayName: completePayload.displayName,
+      });
+      if (ok) {
+        try {
+          await AsyncStorage.removeItem(pendingCompleteKeyForUid(uid));
+        } catch (_) {}
+      } else {
+        completeOk = false;
+      }
+    }
+  }
+
+  return syncOk && completeOk;
 }
 

@@ -27,12 +27,15 @@ const {
   parseNutritionSearchQuery,
   mapNutritionSearchToFoodRows,
   mergeNutritionSearchWithLegacy,
+  keepCloseMacroRows,
+  enrichSearchRowMicros,
 } = require('./mergeFoodNutritionSources');
 const { applyFoodCardPresentationToRows } = require('./cleanFoodCardLabels');
 const { lookupTrustedFoods } = require('./trustedFoodCatalog');
 
 function presentSearchResults(rows, query) {
-  return applyFoodCardPresentationToRows(rows, query);
+  const enriched = (Array.isArray(rows) ? rows : []).map(enrichSearchRowMicros);
+  return applyFoodCardPresentationToRows(enriched, query);
 }
 
 const { normalizeOpenFoodFactsProduct } = require('../food-details/fixFoodNutritionNumbers');
@@ -468,7 +471,7 @@ class FoodSearchProvider {
    * Pipeline: nutrition consensus (5-site scrape) + legacy Serper/USDA/FatSecret/OFF search
    */
   async searchFoods(query, limit = 20) {
-    const cacheKey = `search_v46_${query}_${limit}`;
+    const cacheKey = `search_v51_${query}_${limit}`;
     try {
       this.lastSearchHint = null;
       logger.debug('🍔 Searching foods for', query);
@@ -482,11 +485,8 @@ class FoodSearchProvider {
         return presentSearchResults(cached, q);
       }
 
-      // Curated catalog first for famous chain items (Crazy Bread, Big Mac, …).
+      // Catalog seeds famous items; still run consensus + strict filter for every query.
       const trusted = lookupTrustedFoods(q, 2);
-      if (trusted.length > 0 && isMenuStyleQuery(q)) {
-        // Still fetch live results, but trusted rows always lead and displace Serper junk.
-      }
 
       const serverUrl = this.serverUrl;
       const hasServer = !!serverUrl && serverUrl !== 'null' && serverUrl !== 'undefined';
@@ -531,29 +531,33 @@ class FoodSearchProvider {
       const nutritionRows = consensusResult?.rows || [];
       let merged = mergeNutritionSearchWithLegacy(nutritionRows, legacyResults, limit);
       if (trusted.length > 0) {
-        merged = mergeNutritionSearchWithLegacy(trusted, merged, limit);
+        // Seed only — never replace consensus; strict filter decides the final list.
+        merged = mergeNutritionSearchWithLegacy(
+          nutritionRows.length ? nutritionRows : trusted,
+          nutritionRows.length ? [...trusted, ...legacyResults] : legacyResults,
+          limit,
+        );
       }
-      let filtered = filterFoodSearchRows(q, merged, limit);
+      let filtered = filterFoodSearchRows(q, merged, Math.min(limit, 8));
+      // Keep multiple cards when macros agree; don't collapse to a single consensus row.
+      filtered = keepCloseMacroRows(filtered, Math.min(limit, 5));
       if (trusted.length > 0 && filtered.length === 0) {
-        filtered = trusted.slice(0, limit);
+        filtered = keepCloseMacroRows(filterFoodSearchRows(q, trusted, 3), 3);
       } else if (trusted.length > 0) {
-        // Ensure trusted card stays on top even if live ranking drifted.
-        const trustedIds = new Set(trusted.map((t) => t.id));
-        filtered = [
-          ...trusted,
-          ...filtered.filter((r) => !trustedIds.has(r.id) && !trusted.some((t) => {
-            const a = String(t.food_name || '').toLowerCase();
-            const b = String(r.food_name || r.name || '').toLowerCase();
-            return a && b && (a === b || b.includes(a));
-          })),
-        ].slice(0, limit);
+        const trustedClose = filterFoodSearchRows(q, trusted, 2);
+        if (trustedClose.length > 0) {
+          filtered = keepCloseMacroRows([...trustedClose, ...filtered], Math.min(limit, 5));
+        }
       }
 
       if (filtered.length === 0) {
         const offline = await this.offlineFoodFallback(q, limit);
         if (offline.length > 0) {
           merged = mergeNutritionSearchWithLegacy(filtered, offline, limit);
-          filtered = filterFoodSearchRows(q, merged.length ? merged : offline, limit);
+          filtered = keepCloseMacroRows(
+            filterFoodSearchRows(q, merged.length ? merged : offline, Math.min(limit, 5)),
+            Math.min(limit, 5),
+          );
         }
       }
 

@@ -137,6 +137,9 @@ async function testAuthRequiredRoutes() {
     ['POST', '/api/trainers', { name: 'Test Trainer' }],
     ['PUT', '/api/trainers/trainer123', { name: 'Hacked' }],
     ['DELETE', '/api/trainers/trainer123', null],
+    ['GET', '/api/trainers', null],
+    ['GET', '/api/trainers/trainer123', null],
+    ['GET', '/api/specialties', null],
   ];
 
   for (const [method, route, body] of cases) {

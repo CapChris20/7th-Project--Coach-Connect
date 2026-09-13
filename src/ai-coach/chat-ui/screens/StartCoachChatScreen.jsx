@@ -536,12 +536,6 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
                 backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
               }}
             >
-              <LinearGradient
-                colors={item.rim || ['#FF6B9D', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{ height: 1.5, width: '100%', opacity: 0.85 }}
-              />
             <View
               style={{
                 paddingVertical: 16,
@@ -684,12 +678,6 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
             backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
           }}
         >
-          <LinearGradient
-            colors={iconRim}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ height: 1.5, width: '100%', opacity: 0.85 }}
-          />
           <View
             style={{
               paddingVertical: 16,

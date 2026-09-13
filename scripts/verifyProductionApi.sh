@@ -1,6 +1,7 @@
 #!/bin/bash
 # Fail if Cloud Run is missing API keys or AI Coach is not ready.
 # Usage: ./scripts/verifyProductionApi.sh [base-url]
+# Optional: ALLOW_STRIPE_TEST_KEYS=1  → allow sk_test_/pk_test_ for TestFlight-only (still fails on webhook 404)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,11 +36,38 @@ YOUTUBE_RAW="$(curl -sf --max-time 25 "$YOUTUBE_HEALTH_URL" 2>/dev/null)" || YOU
 WORKOUT_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/workout/generate" -H "Content-Type: application/json" -d '{}' || true)"
 SUBSCRIPTION_VERIFY_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/subscription/apple/verify" -H "Content-Type: application/json" -d '{}' || true)"
 STRIPE_CREATE_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/stripe/create-account" -H "Content-Type: application/json" -d '{}' || true)"
+STRIPE_WEBHOOK_STATUS="$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 -X POST "${BASE}/api/stripe/webhook" -H "Content-Type: application/json" -d '{}' || true)"
+
+STRIPE_KEY_MODE="missing"
+if [ -n "${STRIPE_SECRET_KEY:-}" ]; then
+  case "$STRIPE_SECRET_KEY" in
+    sk_live_*) STRIPE_KEY_MODE="live" ;;
+    sk_test_*) STRIPE_KEY_MODE="test" ;;
+    *) STRIPE_KEY_MODE="unknown" ;;
+  esac
+fi
+PUB_KEY_MODE="missing"
+if [ -n "${EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}" ]; then
+  case "$EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY" in
+    pk_live_*) PUB_KEY_MODE="live" ;;
+    pk_test_*) PUB_KEY_MODE="test" ;;
+    *) PUB_KEY_MODE="unknown" ;;
+  esac
+fi
+
+ALLOW_TEST="${ALLOW_STRIPE_TEST_KEYS:-0}"
 
 node -e "
 const raw = process.argv[1];
 const youtubeRaw = process.argv[2];
 const workoutStatus = String(process.argv[3] || '');
+const subscriptionVerifyStatus = String(process.argv[4] || '');
+const stripeCreateStatus = String(process.argv[5] || '');
+const stripeWebhookStatus = String(process.argv[6] || '');
+const stripeKeyMode = String(process.argv[7] || 'missing');
+const pubKeyMode = String(process.argv[8] || 'missing');
+const allowTest = String(process.argv[9] || '0') === '1';
+
 let h;
 let y = {};
 try { h = JSON.parse(raw); } catch (e) {
@@ -48,6 +76,7 @@ try { h = JSON.parse(raw); } catch (e) {
 }
 try { y = JSON.parse(youtubeRaw); } catch (_) {}
 const fail = (msg) => { console.error('❌ ' + msg); process.exit(1); };
+
 if (!h.firebaseAdmin) fail('firebaseAdmin is false — set FIREBASE_SERVICE_ACCOUNT on Cloud Run');
 if (!h.deepseek) fail('deepseek is false — run ./scripts/syncCloudRunEnv.sh');
 if (!h.serper) fail('serper is false — SERPER_API_KEY missing on Cloud Run');
@@ -61,8 +90,6 @@ if (!youtubeOk) {
 if (workoutStatus === '404') {
   fail('POST /api/workout/generate returned 404 — stale Cloud Run revision is missing workout route');
 }
-const subscriptionVerifyStatus = String(process.argv[4] || '');
-const stripeCreateStatus = String(process.argv[5] || '');
 if (subscriptionVerifyStatus === '404') {
   fail('POST /api/subscription/apple/verify returned 404 — stale Cloud Run revision is missing IAP subscription routes');
 }
@@ -75,15 +102,30 @@ if (stripeCreateStatus !== '401' && stripeCreateStatus !== '400') {
 if (subscriptionVerifyStatus !== '401' && subscriptionVerifyStatus !== '400') {
   fail('POST /api/subscription/apple/verify returned ' + subscriptionVerifyStatus + ' — expected 401 (no auth) or 400 (missing token)');
 }
-if (!h.supportEmailReady) {
-  console.warn('⚠️  supportEmailReady is false — tickets save to Firestore, but email to coachconnect0@gmail.com needs RESEND_API_KEY or SMTP_*.');
-  console.warn('    Add to .env and run ./scripts/syncCloudRunEnv.sh for inbox email delivery.');
+if (stripeWebhookStatus === '404') {
+  fail('POST /api/stripe/webhook returned 404 — deploy server with stripeWebhookRoutes before claiming payments are production-ready');
 }
+if ((stripeKeyMode === 'test' || pubKeyMode === 'test') && !allowTest) {
+  fail('Stripe keys are still TEST mode (sk_test_/pk_test_). For real users switch to live keys, or set ALLOW_STRIPE_TEST_KEYS=1 for intentional TestFlight-only builds.');
+}
+if ((stripeKeyMode === 'test' || pubKeyMode === 'test') && allowTest) {
+  console.warn('⚠️  ALLOW_STRIPE_TEST_KEYS=1 — test Stripe keys allowed (TestFlight / sandbox only). Not safe for real money.');
+}
+if (stripeKeyMode === 'missing') {
+  console.warn('⚠️  STRIPE_SECRET_KEY missing in local .env — confirm Cloud Run has the intended key.');
+}
+if (!h.supportEmailReady) {
+  console.warn('⚠️  supportEmailReady is false — Contact/Bug opens mailto to ' + (h.supportInbox || 'coachconnect0@gmail.com') + '.');
+  console.warn('    Optional: add RESEND_API_KEY or SMTP_* + syncCloudRunEnv for automatic delivery.');
+}
+
 console.log('✅ Production API OK');
 console.log('   deepseek:', h.deepseek, '| perplexity:', h.perplexity, '| serper:', h.serper, '| youtube:', youtubeOk);
 console.log('   aiCoachReady:', h.aiCoachReady, '| firebaseAdmin:', h.firebaseAdmin);
 console.log('   workoutRouteStatus:', workoutStatus || 'unknown');
 console.log('   subscriptionVerifyRouteStatus:', subscriptionVerifyStatus || 'unknown');
 console.log('   stripeCreateRouteStatus:', stripeCreateStatus || 'unknown');
+console.log('   stripeWebhookRouteStatus:', stripeWebhookStatus || 'unknown');
+console.log('   stripeKeyMode:', stripeKeyMode, '| publishableKeyMode:', pubKeyMode);
 console.log('   supportEmailReady:', h.supportEmailReady, '| supportInbox:', h.supportInbox || '(default coachconnect0@gmail.com)');
-" "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS" "$SUBSCRIPTION_VERIFY_STATUS" "$STRIPE_CREATE_STATUS"
+" "$RAW" "$YOUTUBE_RAW" "$WORKOUT_STATUS" "$SUBSCRIPTION_VERIFY_STATUS" "$STRIPE_CREATE_STATUS" "$STRIPE_WEBHOOK_STATUS" "$STRIPE_KEY_MODE" "$PUB_KEY_MODE" "$ALLOW_TEST"

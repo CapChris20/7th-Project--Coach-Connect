@@ -132,7 +132,17 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
       }
       setSubject('');
       setMessage('');
-      Alert.alert('Sent', 'Thanks — we received your message.');
+      // Always open mailto so coachconnect0@gmail.com gets the message even when
+      // Cloud Run has no RESEND/SMTP (supportEmailReady: false).
+      openSupportMailto({ subject: s, body: m });
+      if (json?.delivery === 'firestore') {
+        Alert.alert(
+          'Almost done',
+          `We saved your ticket and opened email to ${supportEmail || 'support'}. Tap Send in Mail so it hits the inbox.`,
+        );
+      } else {
+        Alert.alert('Sent', 'Thanks — we received your message (and opened email as a backup).');
+      }
     } catch (e) {
       offerSupportMailtoFallback({
         subject: s,

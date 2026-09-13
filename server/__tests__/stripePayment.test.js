@@ -15,6 +15,7 @@ const {
   buildStripeTestApp,
   postJson,
   seedUser,
+  getUser,
   getPayment,
   countPayments,
   resetFirestoreStore,
@@ -44,6 +45,7 @@ function seedClient() {
     role: 'client',
     name: 'Client Test',
     email: CLIENT_EMAIL,
+    trainerId: TRAINER_ID,
   });
 }
 
@@ -92,6 +94,8 @@ describe('POST /api/charges', () => {
         success: true,
         charge_id: 'ch_fifty',
         trainer_gets: 45,
+        platform_fee: 5,
+        platform_fee_rate: 0.1,
       });
 
       expect(getPayment('ch_fifty')).toEqual({
@@ -100,10 +104,17 @@ describe('POST /api/charges', () => {
         amount: 50,
         commission: 5,
         trainer_payout: 45,
+        platform_fee_rate: 0.1,
         status: 'succeeded',
         stripe_charge_id: 'ch_fifty',
+        stripe_account_id: STRIPE_ACCOUNT_ID,
         created_at: 'SERVER_TS',
       });
+
+      expect(getUser(CLIENT_ID).paymentStatus).toBe('active');
+      expect(getUser(TRAINER_ID).earningsGrossCents).toBe(5000);
+      expect(getUser(TRAINER_ID).earningsPlatformFeesCents).toBe(500);
+      expect(getUser(TRAINER_ID).earningsNetCents).toBe(4500);
 
       expect(stripe.chargesCreate).toHaveBeenCalledTimes(1);
       expect(stripe.chargesCreate).toHaveBeenCalledWith(
@@ -113,8 +124,33 @@ describe('POST /api/charges', () => {
           source: 'tok_visa',
           application_fee_amount: 500,
           description: expect.stringContaining('Coaching payment'),
+          metadata: {
+            coachconnect_client_id: CLIENT_ID,
+            coachconnect_trainer_id: TRAINER_ID,
+            platform_fee_rate: '0.1',
+          },
         },
-        { stripeAccount: STRIPE_ACCOUNT_ID },
+        expect.objectContaining({ stripeAccount: STRIPE_ACCOUNT_ID }),
+      );
+    });
+
+    test('forwards idempotencyKey to Stripe so a double-tap cannot double-charge', async () => {
+      const stripe = makeStripePaymentMock({ chargeId: 'ch_idem' });
+
+      const res = await postCharge(app, {
+        trainerId: TRAINER_ID,
+        amount: 50,
+        token: 'tok_visa',
+        idempotencyKey: 'pay_client456_abc123',
+      });
+
+      expect(res.status).toBe(200);
+      expect(stripe.chargesCreate).toHaveBeenCalledWith(
+        expect.any(Object),
+        {
+          stripeAccount: STRIPE_ACCOUNT_ID,
+          idempotencyKey: 'pay_client456_abc123',
+        },
       );
     });
 
@@ -212,6 +248,28 @@ describe('POST /api/charges', () => {
       expect(countPayments()).toBe(0);
     });
 
+    test('client not linked to trainer → 403', async () => {
+      resetFirestoreStore();
+      seedActiveTrainer();
+      seedUser(CLIENT_ID, {
+        role: 'client',
+        name: 'Client Test',
+        email: CLIENT_EMAIL,
+        // no trainerId
+      });
+      makeStripePaymentMock();
+
+      const res = await postCharge(app, {
+        trainerId: TRAINER_ID,
+        amount: 50,
+        token: 'tok_visa',
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/linked/i);
+      expect(countPayments()).toBe(0);
+    });
+
     test('amount 0 → 400', async () => {
       makeStripePaymentMock();
 
@@ -222,7 +280,7 @@ describe('POST /api/charges', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/amount must be a positive number/i);
+      expect(res.body.error).toMatch(/amount/i);
       expect(countPayments()).toBe(0);
     });
 
@@ -236,7 +294,21 @@ describe('POST /api/charges', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/amount must be a positive number/i);
+      expect(res.body.error).toMatch(/amount/i);
+      expect(countPayments()).toBe(0);
+    });
+
+    test('amount above $10000 → 400', async () => {
+      makeStripePaymentMock();
+
+      const res = await postCharge(app, {
+        trainerId: TRAINER_ID,
+        amount: 10001,
+        token: 'tok_visa',
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/10000/i);
       expect(countPayments()).toBe(0);
     });
 

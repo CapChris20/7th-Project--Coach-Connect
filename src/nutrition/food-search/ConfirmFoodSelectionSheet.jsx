@@ -438,27 +438,6 @@ export default function FoodConfirmSheet({
             {title}
           </Text>
 
-          {(showVerification || normalized?.nutrition_unverified || food?.nutrition_unverified) ? (
-            <View
-              style={[
-                styles.verifyBanner,
-                {
-                  backgroundColor: isDark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                  borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : 'rgba(245, 158, 11, 0.4)',
-                },
-              ]}
-            >
-              <Text style={[styles.verifyBannerTitle, { color: t.primary }]}>
-                Double-check this item
-              </Text>
-              <Text style={[styles.verifyBannerBody, { color: t.muted }]}>
-                {normalized?.nutrition_unverified || food?.nutrition_unverified
-                  ? 'Macros may be crowdsourced or unverified. Confirm the serving matches what you ate.'
-                  : 'Wrong item? Search by name below before logging.'}
-              </Text>
-            </View>
-          ) : null}
-
           {/* Food header */}
           <View style={styles.foodHeader}>
             <Text style={[styles.foodName, { color: t.primary, fontFamily: DISPLAY }]} numberOfLines={3}>
@@ -473,11 +452,13 @@ export default function FoodConfirmSheet({
                   <Text style={{ color: t.secondary }}> · </Text>
                 </>
               ) : null}
+              <Text style={[styles.foodMeta, { color: t.muted }]} numberOfLines={1}>
+                {packageServingLabel}
+              </Text>
+              <Text style={{ color: t.secondary }}> · </Text>
               <GradientText colors={['#FF8C42', '#FF69B4', '#FF1493']} style={styles.foodMetaCal}>
                 {labelServingMacros?.calories ?? '—'} cal
               </GradientText>
-              <Text style={{ color: t.secondary }}> · </Text>
-              <Text style={[styles.foodMeta, { color: t.muted }]}>{defaultAmount} g</Text>
             </View>
           </View>
 
@@ -496,7 +477,10 @@ export default function FoodConfirmSheet({
               <View style={styles.calHeroLeft}>
                 <Text style={[styles.calHeroHint, { color: t.secondary }]}>Total for this amount</Text>
                 <Text style={[styles.calHeroAmount, { color: t.primary, fontFamily: DISPLAY_SEMI }]}>
-                  {servingSummary} · {grams} g
+                  {packageServingLabel}
+                  {servingSummary && servingSummary !== packageServingLabel
+                    ? ` · ${servingSummary}`
+                    : ''}
                 </Text>
               </View>
               <View style={styles.calHeroRight}>
@@ -536,7 +520,8 @@ export default function FoodConfirmSheet({
           <GlassCard isDark={isDark} style={styles.cardGap}>
             <SectionLabel color={t.label}>Serving size</SectionLabel>
             <Text style={[styles.labelInfo, { color: t.muted, marginTop: 6 }]}>
-              Label serving: {packageServingLabel} · {defaultAmount} g
+              Real serving on label: {packageServingLabel}
+              {defaultAmount ? ` (≈${defaultAmount} g)` : ''}
             </Text>
 
             {/* Unit segmented switcher */}

@@ -60,6 +60,30 @@ describe('guessServingSize', () => {
     expect(servingLabelFromQueryStructure('wendys small frosty vanilla')).toBe('Small');
   });
 
+  it('labels cheese sticks / breadsticks by calories for any brand', () => {
+    expect(
+      resolveFoodServingLabel({
+        userQuery: "papa john's garlic parmesan cheese sticks",
+        foodName: 'Garlic Parmesan Cheese Sticks',
+        scraperLabel: '10 pc buff',
+        calories: 340,
+      }),
+    ).toBe('2 cheese sticks');
+  });
+
+  it('keeps pizza serving when name mentions wings', () => {
+    expect(
+      formatServingDisplayLine(
+        {
+          food_name: 'Buffalo Wing Pizza',
+          serving_label: '8 pc wings',
+          nf_calories: 280,
+        },
+        'buffalo wing pizza',
+      ),
+    ).toBe('1 slice');
+  });
+
   it('resolves weak scraper labels using the user query', () => {
     expect(
       resolveFoodServingLabel({

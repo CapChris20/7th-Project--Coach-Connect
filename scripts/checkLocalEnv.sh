@@ -25,10 +25,31 @@ warn=()
 [ -z "${SERPER_API_KEY:-}" ] && warn+=("SERPER_API_KEY (food search)")
 [ -z "${USDA_API_KEY:-}" ] && warn+=("USDA_API_KEY (grocery search)")
 [ -z "${PERPLEXITY_API_KEY:-}" ] && warn+=("PERPLEXITY_API_KEY (AI web search)")
+[ -z "${STRIPE_WEBHOOK_SECRET:-}" ] && warn+=("STRIPE_WEBHOOK_SECRET (payments webhooks will not verify)")
+
+hard_fail=0
+if [ -n "${STRIPE_SECRET_KEY:-}" ] && [[ "$STRIPE_SECRET_KEY" == sk_test_* ]]; then
+  if [ "${ALLOW_STRIPE_TEST_KEYS:-0}" = "1" ]; then
+    warn+=("STRIPE_SECRET_KEY is sk_test_* (ALLOW_STRIPE_TEST_KEYS=1 — TestFlight only)")
+  else
+    echo "❌ STRIPE_SECRET_KEY is still sk_test_* — real charges need sk_live_*, or set ALLOW_STRIPE_TEST_KEYS=1 for sandbox-only"
+    hard_fail=1
+  fi
+fi
+if [ -n "${EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}" ] && [[ "$EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY" == pk_test_* ]]; then
+  if [ "${ALLOW_STRIPE_TEST_KEYS:-0}" != "1" ]; then
+    echo "❌ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY is still pk_test_* — real charges need pk_live_*, or set ALLOW_STRIPE_TEST_KEYS=1"
+    hard_fail=1
+  fi
+fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "❌ Required in .env:"
   printf '   - %s\n' "${missing[@]}"
+  exit 1
+fi
+
+if [ "$hard_fail" -eq 1 ]; then
   exit 1
 fi
 
@@ -39,7 +60,7 @@ if [[ ! "$EXPO_PUBLIC_API_BASE_URL" =~ run\.app ]]; then
 fi
 
 if [ "${#warn[@]}" -gt 0 ]; then
-  echo "⚠️  Recommended in .env:"
+  echo "⚠️  Recommended / shipping notes:"
   printf '   - %s\n' "${warn[@]}"
 fi
 

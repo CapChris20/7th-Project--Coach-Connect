@@ -36,7 +36,7 @@ export function getStripeCardPaymentBlockReason() {
     };
   }
 
-  if (!stripeModule?.CardField) {
+  if (!stripeModule?.CardField && !stripeModule?.CardForm) {
     return {
       title: 'Stripe card module missing from this app install',
       detail:

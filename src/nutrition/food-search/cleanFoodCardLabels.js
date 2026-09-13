@@ -22,7 +22,7 @@ const JUNK_TITLE_RE =
 
 /** Concatenated web/menu-page titles and tracker noise that must never top search. */
 const MENU_PAGE_JUNK_RE =
-  /\bmenu\s*items?\b|breadmenu|menuitems?|\bgs1\b|\bupc\s*tracker\b|\bbarcode\s*tracker\b|\bnutritionix\s*track|\bcalorie\s*content\b|\ballergen\s*(guide|sheet)\b/i;
+  /\bmenu\s*items?\b|breadmenu|menuitems?|\bgs1\b|\bupc\s*tracker\b|\bbarcode\s*tracker\b|\bnutritionix\s*track|\bcalorie\s*content\b|\ballergen\s*(guide|sheet)\b|\bsearch\s+results?\b|\bproduct\s+list\b|\bhomepage\b|\b14\s*million\s+foods\b|\bfood\s+search\s+results?\b|\bmenu\s+with\s+prices\b|\bpdf\s+download\b|\btrack(er|ing)?\s+your\s+calories\b/i;
 
 /** Site / pipeline names that must never become the food card title. */
 const SOURCE_NAME_JUNK = new Set([
@@ -44,6 +44,8 @@ const SOURCE_NAME_JUNK = new Set([
   'web',
   'unknown',
   'menuitem',
+  'foodsearchresultspage',
+  'nutritionfactslabelscannerapp',
 ]);
 
 const SOURCE_SUBTITLE_LABELS = {
@@ -98,6 +100,17 @@ function isJunkWebSearchTitle(title) {
   if (/^nutrition\b/i.test(t) && !/\b(pizza|burger|bread|chicken|salad)\b/i.test(t)) return true;
   if (/^(calories|carbs|protein|fat)\s+in\b/i.test(t) && t.length < 30) return true;
   if (/^(download|view|read)\b/i.test(t)) return true;
+  // Bare site / scanner / homepage titles with no food item words
+  const key = t.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (SOURCE_NAME_JUNK.has(key)) return true;
+  if (
+    /\b(calorieking|myfitnesspal|open\s*food\s*facts|fooddata\s*central|nutrition\s*facts\s*label\s*scanner)\b/i.test(
+      t,
+    ) &&
+    !/\b(burger|sandwich|pizza|bread|nugget|taco|bowl|salad|latte|coke|wing|fries)\b/i.test(t)
+  ) {
+    return true;
+  }
   return false;
 }
 

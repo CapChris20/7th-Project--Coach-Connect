@@ -38,7 +38,7 @@ import {
   StatGradientText,
 } from '../../shared-ui/homeStatGradients';
 import { DailyQuotePill } from '../../shared/components/home/DailyQuoteCard';
-import AuroraHeroBanner, { getAuroraHeroGreeting, TODAY_CARD_TOP_STRIPE } from '../../shared/components/home/AuroraHeroBanner';
+import AuroraHeroBanner, { getAuroraHeroGreeting } from '../../shared/components/home/AuroraHeroBanner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
@@ -698,8 +698,6 @@ const NewCalendar = ({ theme }) => {
 };
 
 // Training agenda: Today's workouts list with checkboxes and structured exercises.
-const AGENDA_BORDER_GRADIENT = TODAY_CARD_TOP_STRIPE;
-
 const TrainingAgenda = ({ theme, workouts = [] }) => {
   const isDark = theme === 'dark';
   const textColor = isDark ? '#FFFFFF' : '#111827';
@@ -845,27 +843,18 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
               style={styles.agendaTexture}
             />
             {isEmpty ? (
-              <>
-                <LinearGradient
-                  colors={AGENDA_BORDER_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.agendaEmptyTopStripe}
-                  pointerEvents="none"
-                />
-                <LinearGradient
-                  colors={
-                    isDark
-                      ? ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent']
-                      : ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent']
-                  }
-                  locations={[0, 0.35, 0.7, 1]}
-                  start={{ x: 0.15, y: 0 }}
-                  end={{ x: 0.9, y: 1 }}
-                  style={styles.agendaEmptyAmbient}
-                  pointerEvents="none"
-                />
-              </>
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent']
+                    : ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent']
+                }
+                locations={[0, 0.35, 0.7, 1]}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={styles.agendaEmptyAmbient}
+                pointerEvents="none"
+              />
             ) : null}
             <View style={styles.agendaPad}>
               <View style={styles.agendaHeaderRow}>

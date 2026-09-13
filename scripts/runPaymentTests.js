@@ -10,6 +10,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 const SUITES = [
+  { file: 'stripeMoneyFlow.explained.test.js', label: 'Money flow explained (10% fee story)' },
   { file: 'stripeConnect.test.js', label: 'Trainer bank connect API' },
   { file: 'stripePayment.test.js', label: 'Client pays trainer API' },
   { file: 'ClientPaymentModal.test.js', label: 'Client payment form UI' },

@@ -18,6 +18,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://coachconnect-api-421005574501.us-central1.run.app",
         "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3",
@@ -26,6 +27,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://coachconnect-api-421005574501.us-central1.run.app",
         "EXPO_APPLE_TEAM_ID": "PFTT3AW4H3",

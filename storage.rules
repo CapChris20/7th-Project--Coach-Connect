@@ -44,11 +44,11 @@ service firebase.storage {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Trainer verification / certifications / document imports
+    // Trainer verification / certifications / document imports — owner only
+    // (certs/IDs/imports must not be readable by arbitrary signed-in users)
     // Path: trainers/{trainerId}/verification|certifications|imports/...
     match /trainers/{trainerId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == trainerId;
+      allow read, write: if request.auth != null && request.auth.uid == trainerId;
     }
   }
 }

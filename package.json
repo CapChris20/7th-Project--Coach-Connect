@@ -29,6 +29,7 @@
     "test:security": "node ./scripts/testSecurityFixes.js",
     "test:firestore-rules": "bash ./scripts/runFirestoreRulesJest.sh",
     "test:payments": "node ./scripts/runPaymentTests.js",
+    "test:payments:guide": "node ./scripts/testStripePaymentsGuide.js",
     "test:component-imports": "node ./scripts/checkComponentImports.js",
     "fix:imports": "node ./scripts/fixRelativeImports.js && node ./scripts/fixAllBrokenImports.js --fix && node ./scripts/restoreAssetExtensions.js && node ./scripts/verifyRelativeImports.js",
     "verify:imports": "node ./scripts/verifyRelativeImports.js",

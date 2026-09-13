@@ -1,6 +1,10 @@
 /** Trainer marketplace CRUD (Lovable legacy) */
 const admin = require('firebase-admin');
-const { assertTrainerSelf } = require('../lib/marketplaceAuth');
+const {
+  assertTrainerSelf,
+  toPublicTrainerProfile,
+  pickWritableTrainerFields,
+} = require('../lib/marketplaceAuth');
 
 function registerMarketplaceRoutes(app, deps = {}) {
   const { verifyFirebaseBearerToken } = deps;
@@ -8,201 +12,7 @@ function registerMarketplaceRoutes(app, deps = {}) {
     throw new Error('registerMarketplaceRoutes requires verifyFirebaseBearerToken');
   }
 
-  // Get all trainers with filtering and sorting
-  app.get('/api/trainers', async (req, res) => {
-    try {
-      const db = admin.firestore();
-      const {
-        page = 1,
-        limit = 10,
-        specialty,
-        minRating,
-        sortBy = 'rating',
-        sortOrder = 'desc',
-        search,
-      } = req.query;
-
-      let trainersQuery = db.collection('trainers').where('available', '==', true);
-
-      // Apply filters
-      if (specialty) {
-        trainersQuery = trainersQuery.where('specialties', 'array-contains', specialty);
-      }
-
-      if (minRating) {
-        trainersQuery = trainersQuery.where('rating', '>=', parseFloat(minRating));
-      }
-
-      // Execute query
-      const snapshot = await trainersQuery.get();
-      let trainers = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      // Apply search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        trainers = trainers.filter(
-          (trainer) =>
-            trainer.name?.toLowerCase().includes(searchLower) ||
-            trainer.specialties?.some((s) => s.toLowerCase().includes(searchLower)) ||
-            trainer.location?.toLowerCase().includes(searchLower),
-        );
-      }
-
-      // Apply sorting
-      trainers.sort((a, b) => {
-        const aVal = a[sortBy] || 0;
-        const bVal = b[sortBy] || 0;
-        return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
-      });
-
-      // Apply pagination
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + parseInt(limit, 10);
-      const paginatedTrainers = trainers.slice(startIndex, endIndex);
-
-      res.json({
-        trainers: paginatedTrainers,
-        pagination: {
-          page: parseInt(page, 10),
-          limit: parseInt(limit, 10),
-          total: trainers.length,
-          pages: Math.ceil(trainers.length / limit),
-        },
-      });
-    } catch (error) {
-      console.error('Error fetching trainers:', error);
-      res.status(500).json({ error: 'Failed to fetch trainers' });
-    }
-  });
-
-  // Get single trainer by ID
-  app.get('/api/trainers/:id', async (req, res) => {
-    try {
-      const db = admin.firestore();
-      const trainerDoc = await db.collection('trainers').doc(req.params.id).get();
-
-      if (!trainerDoc.exists) {
-        return res.status(404).json({ error: 'Trainer not found' });
-      }
-
-      res.json({
-        id: trainerDoc.id,
-        ...trainerDoc.data(),
-      });
-    } catch (error) {
-      console.error('Error fetching trainer:', error);
-      res.status(500).json({ error: 'Failed to fetch trainer' });
-    }
-  });
-
-  // Create trainer profile (trainer may only create own doc keyed by uid)
-  app.post('/api/trainers', verifyFirebaseBearerToken, async (req, res) => {
-    const auth = assertTrainerSelf(req, req.firebaseAuth?.uid);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
-    try {
-      const db = admin.firestore();
-      const trainerData = {
-        ...req.body,
-        uid: auth.requesterUid,
-        available: true,
-        rating: 0,
-        reviews: 0,
-        clients: 0,
-        sessions: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      const trainerRef = db.collection('trainers').doc(auth.requesterUid);
-      await trainerRef.set(trainerData, { merge: true });
-      const saved = await trainerRef.get();
-
-      res.json({
-        id: saved.id,
-        ...saved.data(),
-      });
-    } catch (error) {
-      console.error('Error creating trainer:', error);
-      res.status(500).json({ error: 'Failed to create trainer' });
-    }
-  });
-
-  // Update trainer
-  app.put('/api/trainers/:id', verifyFirebaseBearerToken, async (req, res) => {
-    const auth = assertTrainerSelf(req, req.params.id);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
-    try {
-      const db = admin.firestore();
-      const trainerRef = db.collection('trainers').doc(auth.targetId);
-
-      const updateData = {
-        ...req.body,
-        uid: auth.requesterUid,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      await trainerRef.set(updateData, { merge: true });
-
-      const updatedTrainer = await trainerRef.get();
-      res.json({
-        id: updatedTrainer.id,
-        ...updatedTrainer.data(),
-      });
-    } catch (error) {
-      console.error('Error updating trainer:', error);
-      res.status(500).json({ error: 'Failed to update trainer' });
-    }
-  });
-
-  // Delete trainer
-  app.delete('/api/trainers/:id', verifyFirebaseBearerToken, async (req, res) => {
-    const auth = assertTrainerSelf(req, req.params.id);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.error });
-    }
-
-    try {
-      const db = admin.firestore();
-      await db.collection('trainers').doc(auth.targetId).delete();
-
-      res.json({ message: 'Trainer deleted successfully' });
-    } catch (error) {
-      console.error('Error deleting trainer:', error);
-      res.status(500).json({ error: 'Failed to delete trainer' });
-    }
-  });
-
-  // Get trainer specialties for filters
-  app.get('/api/specialties', async (req, res) => {
-    try {
-      const db = admin.firestore();
-      const snapshot = await db.collection('trainers').get();
-
-      const allSpecialties = new Set();
-      snapshot.docs.forEach((doc) => {
-        const specialties = doc.data().specialties || [];
-        specialties.forEach((specialty) => allSpecialties.add(specialty));
-      });
-
-      res.json({
-        specialties: Array.from(allSpecialties).sort(),
-      });
-    } catch (error) {
-      console.error('Error fetching specialties:', error);
-      res.status(500).json({ error: 'Failed to fetch specialties' });
-    }
-  });
-
-  // Sample data endpoint for Lovable testing
+  // Sample data endpoint for Lovable testing (static — no auth, no Admin SDK)
   app.get('/api/trainers/sample', (req, res) => {
     res.json({
       trainers: [
@@ -277,6 +87,186 @@ function registerMarketplaceRoutes(app, deps = {}) {
         'bodybuilding',
       ],
     });
+  });
+
+  // Get all trainers with filtering and sorting (auth required; public fields only)
+  app.get('/api/trainers', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      const db = admin.firestore();
+      const {
+        page = 1,
+        limit = 10,
+        specialty,
+        minRating,
+        sortBy = 'rating',
+        sortOrder = 'desc',
+        search,
+      } = req.query;
+
+      let trainersQuery = db.collection('trainers').where('available', '==', true);
+
+      if (specialty) {
+        trainersQuery = trainersQuery.where('specialties', 'array-contains', specialty);
+      }
+
+      if (minRating) {
+        trainersQuery = trainersQuery.where('rating', '>=', parseFloat(minRating));
+      }
+
+      const snapshot = await trainersQuery.get();
+      let trainers = snapshot.docs.map((docSnap) => toPublicTrainerProfile(docSnap.id, docSnap.data()));
+
+      if (search) {
+        const searchLower = String(search).toLowerCase();
+        trainers = trainers.filter(
+          (trainer) =>
+            trainer.name?.toLowerCase().includes(searchLower) ||
+            trainer.specialties?.some((s) => String(s).toLowerCase().includes(searchLower)) ||
+            trainer.location?.toLowerCase().includes(searchLower),
+        );
+      }
+
+      const allowedSort = new Set(['rating', 'reviews', 'clients', 'sessions', 'rate', 'price', 'name']);
+      const sortKey = allowedSort.has(String(sortBy)) ? String(sortBy) : 'rating';
+      trainers.sort((a, b) => {
+        const aVal = a[sortKey] || 0;
+        const bVal = b[sortKey] || 0;
+        return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
+      });
+
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+      const startIndex = (pageNum - 1) * limitNum;
+      const paginatedTrainers = trainers.slice(startIndex, startIndex + limitNum);
+
+      res.json({
+        trainers: paginatedTrainers,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: trainers.length,
+          pages: Math.ceil(trainers.length / limitNum) || 0,
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching trainers:', error);
+      res.status(500).json({ error: 'Failed to fetch trainers' });
+    }
+  });
+
+  // Get single trainer by ID (auth required; public fields only)
+  app.get('/api/trainers/:id', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      const db = admin.firestore();
+      const trainerDoc = await db.collection('trainers').doc(req.params.id).get();
+
+      if (!trainerDoc.exists) {
+        return res.status(404).json({ error: 'Trainer not found' });
+      }
+
+      res.json(toPublicTrainerProfile(trainerDoc.id, trainerDoc.data()));
+    } catch (error) {
+      console.error('Error fetching trainer:', error);
+      res.status(500).json({ error: 'Failed to fetch trainer' });
+    }
+  });
+
+  // Create trainer profile (trainer may only create own doc keyed by uid)
+  app.post('/api/trainers', verifyFirebaseBearerToken, async (req, res) => {
+    const auth = assertTrainerSelf(req, req.firebaseAuth?.uid);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    try {
+      const db = admin.firestore();
+      const trainerData = {
+        ...pickWritableTrainerFields(req.body),
+        uid: auth.requesterUid,
+        available: true,
+        rating: 0,
+        reviews: 0,
+        clients: 0,
+        sessions: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      const trainerRef = db.collection('trainers').doc(auth.requesterUid);
+      await trainerRef.set(trainerData, { merge: true });
+      const saved = await trainerRef.get();
+
+      res.json(toPublicTrainerProfile(saved.id, saved.data()));
+    } catch (error) {
+      console.error('Error creating trainer:', error);
+      res.status(500).json({ error: 'Failed to create trainer' });
+    }
+  });
+
+  // Update trainer
+  app.put('/api/trainers/:id', verifyFirebaseBearerToken, async (req, res) => {
+    const auth = assertTrainerSelf(req, req.params.id);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    try {
+      const db = admin.firestore();
+      const trainerRef = db.collection('trainers').doc(auth.targetId);
+
+      const updateData = {
+        ...pickWritableTrainerFields(req.body),
+        uid: auth.requesterUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      await trainerRef.set(updateData, { merge: true });
+
+      const updatedTrainer = await trainerRef.get();
+      res.json(toPublicTrainerProfile(updatedTrainer.id, updatedTrainer.data()));
+    } catch (error) {
+      console.error('Error updating trainer:', error);
+      res.status(500).json({ error: 'Failed to update trainer' });
+    }
+  });
+
+  // Delete trainer
+  app.delete('/api/trainers/:id', verifyFirebaseBearerToken, async (req, res) => {
+    const auth = assertTrainerSelf(req, req.params.id);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    try {
+      const db = admin.firestore();
+      await db.collection('trainers').doc(auth.targetId).delete();
+
+      res.json({ message: 'Trainer deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting trainer:', error);
+      res.status(500).json({ error: 'Failed to delete trainer' });
+    }
+  });
+
+  // Get trainer specialties for filters (auth required; specialties list only)
+  app.get('/api/specialties', verifyFirebaseBearerToken, async (req, res) => {
+    try {
+      const db = admin.firestore();
+      const snapshot = await db.collection('trainers').where('available', '==', true).get();
+
+      const allSpecialties = new Set();
+      snapshot.docs.forEach((docSnap) => {
+        const specialties = docSnap.data().specialties || [];
+        specialties.forEach((specialty) => allSpecialties.add(specialty));
+      });
+
+      res.json({
+        specialties: Array.from(allSpecialties).sort(),
+      });
+    } catch (error) {
+      console.error('Error fetching specialties:', error);
+      res.status(500).json({ error: 'Failed to fetch specialties' });
+    }
   });
 }
 

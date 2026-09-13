@@ -3,9 +3,11 @@
  */
 import { auth } from '../../../app-start/config';
 import { getAICoachApiBases } from '../../../shared/api/baseUrl';
-import { buildCreativeTitleLocal, deriveChatTitle } from './chatTitleUtils';
+import { buildCreativeTitleLocal, deriveChatTitle, isJunkChatTitle } from './chatTitleUtils';
 
-const TITLE_PROMPT = `Based on this fitness coaching conversation, generate ONE creative, catchy chat title (3-5 words, can include one emoji). Make it feel natural and conversational. Examples: "Sleep Recovery Tactics", "Macro Math Breakdown", "Late Night Gains 🌙".
+const TITLE_PROMPT = `Based on this fitness coaching conversation, generate ONE creative, catchy chat title (3-5 words, can include one emoji). Make it feel natural and conversational — like a playlist name, not a status message. Examples: "Sleep Recovery Tactics", "Macro Math Breakdown", "Late Night Gains 🌙", "Recomp Roadmap", "Creatine Clarity".
+
+Never use bland titles like "Calories Chat" or "Fitness Log". Never quote coach disclaimers like "Live search wasn't available".
 
 Reply with ONLY the title text — no quotes, no explanation.`;
 
@@ -14,7 +16,9 @@ function excerptFromMessages(messages = []) {
     .slice(0, 4)
     .map((m) => {
       const role = m?.role === 'ai' || m?.role === 'assistant' ? 'Coach' : 'User';
-      const text = String(m?.content || m?.text || '').trim();
+      let text = String(m?.content || m?.text || '').trim();
+      // Don't let disclaimer prefixes poison title generation
+      text = text.replace(/^Live search wasn't available this turn[^.]*\.\s*/i, '').trim();
       return text ? `${role}: ${text}` : '';
     })
     .filter(Boolean)
@@ -23,12 +27,18 @@ function excerptFromMessages(messages = []) {
 }
 
 function cleanTitle(raw) {
-  const s = String(raw || '')
+  let s = String(raw || '')
     .replace(/^["'`]+|["'`]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 56);
-  return s || null;
+  if (!s || isJunkChatTitle(s)) return null;
+  // If model echoed a long sentence, keep first clause
+  if (s.length > 40 && /[.!—]/.test(s)) {
+    s = s.split(/[.!—]/)[0].trim().slice(0, 56);
+  }
+  if (!s || isJunkChatTitle(s)) return null;
+  return s;
 }
 
 async function requestTitleFromDedicatedRoute(excerpt, idToken) {

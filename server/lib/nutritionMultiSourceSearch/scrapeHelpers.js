@@ -28,6 +28,7 @@ function normalizeMacros(partial) {
   const fat_g = parseNumber(partial.fat_g);
   const fiber_g = parseNumber(partial.fiber_g);
   const sodium_mg = parseNumber(partial.sodium_mg);
+  const sugar_g = parseNumber(partial.sugar_g);
 
   const hasAny =
     calories != null ||
@@ -35,7 +36,8 @@ function normalizeMacros(partial) {
     carbs_g != null ||
     fat_g != null ||
     fiber_g != null ||
-    sodium_mg != null;
+    sodium_mg != null ||
+    sugar_g != null;
 
   if (!hasAny) return null;
 
@@ -46,6 +48,7 @@ function normalizeMacros(partial) {
     fat_g,
     fiber_g,
     sodium_mg,
+    sugar_g,
   };
 }
 
@@ -106,6 +109,7 @@ function parseNutritionFromText(text) {
     fat_g: extractLabeledValue(t, ['total fat', 'fat']),
     fiber_g: extractLabeledValue(t, ['dietary fiber', 'fiber']),
     sodium_mg: extractLabeledValue(t, ['sodium']),
+    sugar_g: extractLabeledValue(t, ['total sugars', 'sugars', 'sugar']),
   });
 }
 

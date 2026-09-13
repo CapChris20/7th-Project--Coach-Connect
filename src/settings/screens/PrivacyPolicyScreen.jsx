@@ -9,16 +9,16 @@
  * @file-header
  */
 import React, { useRef } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Linking, Pressable } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../shared-ui/ThemeContext';
-import { getSupportEmail } from '../supportConfig';
+import { getSupportEmail, getPrivacyPolicyUrl } from '../supportConfig';
 import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-const LAST_UPDATED = 'May 11, 2026';
+const LAST_UPDATED = 'August 6, 2026';
 const CYAN = '#06B6D4';
 const PURPLE = '#C084FC';
 const BORDER_PAD = 0.6;
@@ -67,6 +67,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
   const shellNavInset = useShellBottomNavInset(24);
   const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
   const supportEmail = getSupportEmail();
+  const privacyUrl = getPrivacyPolicyUrl();
   const t = getCardTokens(isDark);
   const contactLine = `Privacy questions: ${supportEmail}`;
 
@@ -160,6 +161,13 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <Text style={styles.pageSub}>
             Plain-language summary of how Coach Connect handles personal information. This is not personal legal advice.
           </Text>
+          {privacyUrl ? (
+            <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: 16 }}>
+              <Text style={[styles.pageSub, { color: PURPLE, marginBottom: 0 }]}>
+                Also online: {privacyUrl}
+              </Text>
+            </Pressable>
+          ) : null}
 
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>1. Who we are</Text>

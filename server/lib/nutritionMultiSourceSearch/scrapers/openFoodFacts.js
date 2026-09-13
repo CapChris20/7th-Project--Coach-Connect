@@ -22,6 +22,7 @@ function mapOffProduct(product) {
     fat_g: parseNumber(n.fat_serving ?? n.fat),
     fiber_g: parseNumber(n.fiber_serving ?? n.fiber),
     sodium_mg,
+    sugar_g: parseNumber(n.sugars_serving ?? n.sugars),
   });
 }
 

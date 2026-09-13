@@ -19,8 +19,9 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
-  Check,
   Bookmark,
+  Plus,
+  Heart,
 } from 'lucide-react-native';
 import GradientText from './GradientText';
 import NutritionFactsSection from './NutritionFactsSection';
@@ -53,12 +54,6 @@ function MacroPill({ label, grams, gradientStops, palette }) {
 
   return (
     <View style={[styles.macroPillOuter, { borderColor: palette.borderStrong }]}>
-      <LinearGradient
-        colors={gradientStops}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.macroPillTopAccent}
-      />
       <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.macroPillBg}>
         <GradientText
           colors={gradientStops}
@@ -87,6 +82,11 @@ export default function FoodCard({
   onEdit,
   onDelete,
   onBookmark,
+  /** Search / add-to-log — shows a plus in the action row. */
+  onAdd,
+  /** Optional favorite toggle for search results. */
+  onFavorite,
+  isFavorite = false,
   isDark = true,
   embedded = false,
   palette: paletteProp,
@@ -117,6 +117,11 @@ export default function FoodCard({
       Haptics.selectionAsync().catch(() => {});
     }
     onToggle?.();
+  };
+
+  const handleAdd = () => {
+    Haptics.selectionAsync().catch(() => {});
+    onAdd?.();
   };
 
   const cardShadow =
@@ -158,7 +163,7 @@ export default function FoodCard({
           backgroundColor: isExpanded ? palette.expandedSurface : palette.background,
           borderColor: isExpanded ? palette.borderStrong : palette.border,
           borderWidth: embedded ? StyleSheet.hairlineWidth : 1,
-          overflow: embedded ? 'visible' : 'hidden',
+          overflow: onAdd || embedded ? 'visible' : 'hidden',
         },
         cardShadow,
         animatedCardStyle,
@@ -179,9 +184,6 @@ export default function FoodCard({
               >
                 {food?.name || 'Food'}
               </Text>
-              {food?.verified ? (
-                <Check size={14} color={palette.subtle} strokeWidth={2.5} style={styles.checkIcon} />
-              ) : null}
             </View>
             {subtitle ? (
               <Text
@@ -195,6 +197,22 @@ export default function FoodCard({
 
           <View style={styles.topRight}>
             <View style={styles.iconRow}>
+              {onFavorite ? (
+                <IconAction
+                  onPress={onFavorite}
+                  accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  palette={palette}
+                >
+                  {(pressed) => (
+                    <Heart
+                      size={15}
+                      color={isFavorite || pressed ? '#BE185D' : palette.subtle}
+                      fill={isFavorite ? '#BE185D' : 'transparent'}
+                      strokeWidth={2}
+                    />
+                  )}
+                </IconAction>
+              ) : null}
               {onEdit ? (
                 <IconAction onPress={onEdit} accessibilityLabel="Edit food" palette={palette}>
                   {(pressed) => (
@@ -217,7 +235,7 @@ export default function FoodCard({
                   )}
                 </IconAction>
               ) : null}
-              {!permanentlyExpanded ? (
+              {!permanentlyExpanded && onToggle ? (
                 <IconAction onPress={handleToggle} accessibilityLabel={isExpanded ? 'Collapse' : 'Expand'} palette={palette}>
                   {(pressed) => (
                     <View style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}>
@@ -240,12 +258,31 @@ export default function FoodCard({
           </View>
         </View>
 
-        <View style={styles.pillsRow}>
+        <View style={[styles.pillsRow, onAdd ? styles.pillsRowWithAdd : null]}>
           <MacroPill label="CARBS" grams={food?.carbs} gradientStops={gradients.carbs} palette={palette} />
           <MacroPill label="PROTEIN" grams={food?.protein} gradientStops={gradients.protein} palette={palette} />
           <MacroPill label="FAT" grams={food?.fat} gradientStops={gradients.fat} palette={palette} />
         </View>
       </View>
+
+      {onAdd ? (
+        <Pressable
+          onPress={handleAdd}
+          accessibilityRole="button"
+          accessibilityLabel="Add food to log"
+          style={({ pressed }) => [styles.addFab, pressed && { opacity: 0.9, transform: [{ scale: 0.96 }] }]}
+          hitSlop={4}
+        >
+          <LinearGradient
+            colors={['#BE185D', '#C2410C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.addFabInner}
+          >
+            <Plus size={26} color="#FFFFFF" strokeWidth={2.75} />
+          </LinearGradient>
+        </Pressable>
+      ) : null}
 
       {isExpanded ? (
         <Animated.View
@@ -303,13 +340,14 @@ export default function FoodCard({
 const styles = StyleSheet.create({
   card: {
     borderRadius: radii.card,
+    position: 'relative',
   },
   innerHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 1,
+    height: 0,
     zIndex: 2,
   },
   compactBody: {
@@ -329,10 +367,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
-  },
-  checkIcon: {
-    marginTop: 3,
-    flexShrink: 0,
   },
   foodName: {
     flex: 1,
@@ -387,15 +421,38 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 14,
   },
+  pillsRowWithAdd: {
+    paddingRight: 52,
+  },
+  addFab: {
+    position: 'absolute',
+    right: 12,
+    bottom: 14,
+    borderRadius: 22,
+    zIndex: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#BE185D',
+        shadowOpacity: 0.45,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
+  },
+  addFabInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   macroPillOuter: {
     flex: 1,
     borderRadius: radii.pill,
     borderWidth: 1,
     overflow: 'hidden',
-  },
-  macroPillTopAccent: {
-    height: 1,
-    width: '100%',
   },
   macroPillBg: {
     paddingVertical: 12,

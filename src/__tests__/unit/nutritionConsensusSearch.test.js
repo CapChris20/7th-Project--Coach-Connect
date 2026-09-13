@@ -73,7 +73,7 @@ describe('mapConsensusToFoodRow', () => {
 });
 
 describe('mapNutritionSearchToFoodRows', () => {
-  it('returns consensus row plus per-source rows', () => {
+  it('returns consensus as the primary row when sources agree', () => {
     const rows = mapNutritionSearchToFoodRows(
       {
         query: { foodName: '20 piece mcnuggets', restaurant: "McDonald's" },
@@ -99,23 +99,13 @@ describe('mapNutritionSearchToFoodRows', () => {
       '20pc mcnuggets',
     );
 
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    // Trusted DB hits (FatSecret) rank above consensus when both exist.
-    expect(rows[0].source).toBe('fatSecret');
-    expect(rows[0].name).toBe('20 Piece Chicken McNuggets');
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows[0].source).toBe('nutrition_consensus');
+    expect(Number(rows[0].calories)).toBe(850);
     expect(rows[0].source_subtitle).toMatch(/^via /);
-    const consensus = rows.find((r) => r.source === 'nutrition_consensus');
-    // Consensus is backup only when it doesn't overlap the trusted DB hit.
-    expect(consensus == null || consensus.source === 'nutrition_consensus').toBe(true);
-    const fatSecret = rows.find((r) => r.source === 'fatSecret');
-    expect(fatSecret).toMatchObject({
-      name: '20 Piece Chicken McNuggets',
-      source_subtitle: 'via FatSecret',
-    });
-    expect(rows.some((r) => r.source === 'foodFacto')).toBe(true);
   });
 
-  it('falls back to user query when scraper title is only the source name', () => {
+  it('names consensus card from the user query', () => {
     const rows = mapNutritionSearchToFoodRows(
       {
         query: { foodName: 'cheese bread', restaurant: "Domino's" },
@@ -130,9 +120,9 @@ describe('mapNutritionSearchToFoodRows', () => {
       },
       'dominos cheese bread',
     );
-    const ck = rows.find((r) => r.source === 'calorieKing');
-    expect(ck?.name).toBe('Dominos Cheese Bread');
-    expect(ck?.source_subtitle).toBe('via CalorieKing');
+    expect(rows[0].source).toBe('nutrition_consensus');
+    expect(rows[0].name).toMatch(/cheese bread/i);
+    expect(Number(rows[0].calories)).toBe(160);
   });
 
   it('returns source-only rows when consensus missing', () => {

@@ -6,30 +6,43 @@ const express = require('express');
 const firestoreStore = {
   users: {},
   payments: {},
+  trainer_clients: {},
 };
 
 function resetFirestoreStore() {
   firestoreStore.users = {};
   firestoreStore.payments = {};
+  firestoreStore.trainer_clients = {};
 }
 
-function deepMerge(target, source) {
-  const out = { ...target };
-  for (const [key, value] of Object.entries(source || {})) {
-    out[key] = value;
+function applyWrite(prev, data, merge) {
+  const base = merge ? { ...(prev || {}) } : {};
+  for (const [key, value] of Object.entries(data || {})) {
+    if (value && typeof value === 'object' && value.__increment != null) {
+      base[key] = (Number(base[key]) || 0) + Number(value.__increment);
+    } else {
+      base[key] = value;
+    }
   }
-  return out;
+  return base;
 }
 
 function createMockFirestore() {
   const FieldValue = {
     serverTimestamp: () => 'SERVER_TS',
+    increment: (n) => ({ __increment: n }),
   };
 
-  function docRef(collection, id) {
+  function docRef(collectionPath, id) {
     return {
       get: async () => {
-        const data = firestoreStore[collection]?.[id];
+        const parts = collectionPath.split('/');
+        let cursor = firestoreStore;
+        for (let i = 0; i < parts.length; i += 1) {
+          cursor = cursor?.[parts[i]];
+          if (cursor == null) break;
+        }
+        const data = cursor?.[id];
         return {
           exists: data != null,
           data: () => (data ? { ...data } : undefined),
@@ -37,18 +50,41 @@ function createMockFirestore() {
         };
       },
       set: async (data, options = {}) => {
-        if (!firestoreStore[collection]) firestoreStore[collection] = {};
-        const prev = firestoreStore[collection][id] || {};
-        firestoreStore[collection][id] = options.merge ? deepMerge(prev, data) : { ...data };
+        const parts = collectionPath.split('/');
+        let cursor = firestoreStore;
+        for (let i = 0; i < parts.length; i += 1) {
+          const p = parts[i];
+          if (!cursor[p] || typeof cursor[p] !== 'object') cursor[p] = {};
+          cursor = cursor[p];
+        }
+        const prev = cursor[id] || {};
+        cursor[id] = applyWrite(prev, data, !!options.merge);
       },
+      collection: (sub) => ({
+        doc: (subId) => docRef(`${collectionPath}/${id}/${sub}`, subId),
+      }),
     };
   }
 
   function collection(name) {
-    return { doc: (id) => docRef(name, id) };
+    return {
+      doc: (id) => docRef(name, id),
+    };
   }
 
-  const firestoreFn = () => ({ collection });
+  function batch() {
+    const ops = [];
+    return {
+      set: (ref, data, options) => {
+        ops.push(() => ref.set(data, options));
+      },
+      commit: async () => {
+        for (const op of ops) await op();
+      },
+    };
+  }
+
+  const firestoreFn = () => ({ collection, batch });
   firestoreFn.FieldValue = FieldValue;
   return firestoreFn;
 }
@@ -78,8 +114,7 @@ function buildStripeTestApp({ uid = 'user-test', email = 'user@test.com', authMi
   const app = express();
   app.use(express.json());
 
-  const verifyFirebaseBearerToken =
-    authMiddleware || createAuthMiddleware(uid, email);
+  const verifyFirebaseBearerToken = authMiddleware || createAuthMiddleware(uid, email);
 
   const deps = { verifyFirebaseBearerToken };
   registerStripeConnectRoutes(app, deps);

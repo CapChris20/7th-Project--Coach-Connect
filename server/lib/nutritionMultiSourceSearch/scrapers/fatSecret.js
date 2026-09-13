@@ -23,6 +23,7 @@ async function scrapeFatSecret(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
       fat_g: hit.fat ?? hit.nf_total_fat,
       fiber_g: hit.fiber,
       sodium_mg: hit.sodium,
+      sugar_g: hit.sugar,
     }),
     {
       url,

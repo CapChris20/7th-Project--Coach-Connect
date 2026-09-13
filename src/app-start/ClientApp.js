@@ -1495,13 +1495,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           />
           <View
             style={{
-              backgroundColor: isDark ? colors.surface : colors.surface,
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
-              padding: 24,
-              paddingBottom: 32,
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderColor: colors.border,
+              overflow: 'hidden',
             }}
           >
             <ClientPaymentModal

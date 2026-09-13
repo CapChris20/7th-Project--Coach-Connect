@@ -76,7 +76,8 @@ function isHighConfidenceConsensus(consensus, { fallbackUsed = false } = {}) {
   const cal = consensus?.calories;
   if (!cal || cal.value == null) return false;
   if ((cal.sources_agreeing || 0) < 2) return false;
-  if (cal.value < 50) return false;
+  // Allow 0-cal diet drinks — only reject negative / missing.
+  if (Number(cal.value) < 0) return false;
   return true;
 }
 
@@ -155,6 +156,19 @@ function mapConsensusToFoodRow(payload, displayQuery) {
 
   const needsVerify = Object.values(consensus || {}).some((v) => v?.warning === 'verify_manually');
   const sources = Array.isArray(payload?.sources_used) ? payload.sources_used : [];
+  const carbs = mapConsensusNutrient(consensus, 'carbs_g');
+  const protein = mapConsensusNutrient(consensus, 'protein_g');
+  const fat = mapConsensusNutrient(consensus, 'fat_g');
+  let sugar = mapConsensusNutrient(consensus, 'sugar_g');
+  // Soft drinks / sodas: carbs are almost entirely sugar when sugar wasn't scraped.
+  if (
+    (sugar == null || sugar <= 0) &&
+    Number(carbs) > 0 &&
+    Number(protein || 0) < 1 &&
+    Number(fat || 0) < 1
+  ) {
+    sugar = carbs;
+  }
 
   return applyServingFields(
     {
@@ -166,20 +180,21 @@ function mapConsensusToFoodRow(payload, displayQuery) {
       brand_name: query.restaurant || null,
       restaurant: query.restaurant || null,
       calories,
-      protein: mapConsensusNutrient(consensus, 'protein_g'),
-      carbs: mapConsensusNutrient(consensus, 'carbs_g'),
-      fat: mapConsensusNutrient(consensus, 'fat_g'),
+      protein,
+      carbs,
+      fat,
       fiber: mapConsensusNutrient(consensus, 'fiber_g'),
       sodium: mapConsensusNutrient(consensus, 'sodium_mg'),
-      sugar: null,
+      sugar,
       servingSize: 1,
       servingGrams: 100,
       source: 'nutrition_consensus',
       nutrition_unverified: needsVerify || payload?.fallbackUsed,
       nf_calories: calories,
-      nf_protein: mapConsensusNutrient(consensus, 'protein_g'),
-      nf_total_carbohydrate: mapConsensusNutrient(consensus, 'carbs_g'),
-      nf_total_fat: mapConsensusNutrient(consensus, 'fat_g'),
+      nf_protein: protein,
+      nf_total_carbohydrate: carbs,
+      nf_total_fat: fat,
+      nf_sugars: sugar,
       metadata: {
         consensus,
         sources_used: sources,
@@ -203,6 +218,19 @@ function mapSourceResultToFoodRow(sourceRow, payload, displayQuery) {
   const displayName = itemLabel || baseName;
   const sourceSubtitle = sourceRow.source ? `via ${sourceRow.source}` : null;
 
+  const carbs = sourceRow.carbs_g;
+  const protein = sourceRow.protein_g;
+  const fat = sourceRow.fat_g;
+  let sugar = sourceRow.sugar_g;
+  if (
+    (sugar == null || sugar <= 0) &&
+    Number(carbs) > 0 &&
+    Number(protein || 0) < 1 &&
+    Number(fat || 0) < 1
+  ) {
+    sugar = carbs;
+  }
+
   return applyServingFields(
     {
       id: `nutrition_source_${sourceRow.sourceKey}_${String(itemLabel).toLowerCase().replace(/\s+/g, '_')}`,
@@ -213,20 +241,21 @@ function mapSourceResultToFoodRow(sourceRow, payload, displayQuery) {
       brand_name: query.restaurant || null,
       restaurant: query.restaurant || null,
       calories: sourceRow.calories,
-      protein: sourceRow.protein_g,
-      carbs: sourceRow.carbs_g,
-      fat: sourceRow.fat_g,
+      protein,
+      carbs,
+      fat,
       fiber: sourceRow.fiber_g,
       sodium: sourceRow.sodium_mg,
-      sugar: null,
+      sugar,
       servingSize: 1,
       servingGrams: 100,
       source: sourceRow.sourceKey || 'nutrition_source',
       nutrition_unverified: false,
       nf_calories: sourceRow.calories,
-      nf_protein: sourceRow.protein_g,
-      nf_total_carbohydrate: sourceRow.carbs_g,
-      nf_total_fat: sourceRow.fat_g,
+      nf_protein: protein,
+      nf_total_carbohydrate: carbs,
+      nf_total_fat: fat,
+      nf_sugars: sugar,
       metadata: {
         sourceResult: sourceRow,
         url: sourceRow.url,
@@ -258,8 +287,9 @@ function mapSourceResultsToFoodRows(payload, displayQuery) {
 function sourcePriority(source) {
   const s = String(source || '');
   const low = s.toLowerCase();
+  if (low === 'nutrition_consensus') return 200;
+  if (low === 'trusted_catalog') return 150;
   if (TRUSTED_DB_SOURCES.has(s) || TRUSTED_DB_SOURCES.has(low)) return 100;
-  if (low === 'nutrition_consensus') return 35;
   if (low === 'serper' || low === 'mixed') return 20;
   return 50;
 }
@@ -269,20 +299,21 @@ function mapNutritionSearchToFoodRows(payload, displayQuery) {
   const consensusRow = mapConsensusToFoodRow(payload, displayQuery);
   const sourceRows = mapSourceResultsToFoodRows(payload, displayQuery);
 
-  // Prefer clean FatSecret/USDA/OFF hits over consensus when available.
+  // Consensus macros win when sources agree — that is the card the user should see.
+  if (consensusRow) {
+    rows.push(consensusRow);
+    for (const row of sourceRows) {
+      if (isSameFoodCandidate(consensusRow, row)) continue;
+      rows.push(row);
+    }
+    return rows;
+  }
+
   const trusted = sourceRows.filter((r) => sourcePriority(r.source) >= 100);
   const otherSources = sourceRows.filter((r) => sourcePriority(r.source) < 100);
-
   if (trusted.length > 0) {
-    rows.push(...trusted);
-    if (consensusRow) {
-      // Consensus only as backup / alternate portion — not the default top card.
-      const overlapsTrusted = trusted.some((t) => isSameFoodCandidate(t, consensusRow));
-      if (!overlapsTrusted) rows.push(consensusRow);
-    }
-    rows.push(...otherSources);
+    rows.push(...trusted, ...otherSources);
   } else {
-    if (consensusRow) rows.push(consensusRow);
     rows.push(...otherSources);
   }
 
@@ -313,43 +344,35 @@ function isSameFoodCandidate(a, b) {
   return false;
 }
 
-function mergeConsensusWithResults(consensusRow, rows, limit = 20) {
+function mergeConsensusWithResults(consensusRow, rows, limit = 8) {
   const list = Array.isArray(rows) ? rows : [];
   if (!consensusRow || consensusRow.nutrition_unverified) return list.slice(0, limit);
 
-  const hasTrustedDb = list.some((row) => sourcePriority(row.source) >= 100);
-  if (hasTrustedDb) {
-    // DB hit wins the top slot; consensus is a backup when macros diverge.
-    const filtered = list.filter((row) => {
-      if (sourcePriority(row.source) >= 100) return true;
-      if (!isSameFoodCandidate(consensusRow, row)) return true;
-      const calDiff =
-        Math.abs(Number(row.calories) - Number(consensusRow.calories)) /
-        Math.max(Number(consensusRow.calories), 1);
-      return calDiff > 0.15;
-    });
-    return filtered.slice(0, limit);
-  }
-
+  // Consensus is the primary card; drop near-duplicate cousins.
   const filtered = list.filter((row) => {
+    if (String(row.source || '').toLowerCase() === 'nutrition_consensus') return false;
     if (!isSameFoodCandidate(consensusRow, row)) return true;
     const calDiff =
       Math.abs(Number(row.calories) - Number(consensusRow.calories)) /
-      Math.max(Number(consensusRow.calories), 1);
-    return calDiff > 0.15;
+      Math.max(Math.abs(Number(consensusRow.calories)) || 1, 1);
+    return calDiff > 0.2;
   });
   return [consensusRow, ...filtered].slice(0, limit);
 }
 
-function mergeNutritionSearchWithLegacy(nutritionRows, legacyRows, limit = 20) {
+function mergeNutritionSearchWithLegacy(nutritionRows, legacyRows, limit = 8) {
   const nutrition = Array.isArray(nutritionRows) ? nutritionRows : [];
   const legacy = Array.isArray(legacyRows) ? legacyRows : [];
   if (nutrition.length === 0) return legacy.slice(0, limit);
 
-  const hasTrusted = nutrition.some((row) => sourcePriority(row.source) >= 100);
+  const hasConsensus = nutrition.some(
+    (row) => String(row.source || '').toLowerCase() === 'nutrition_consensus',
+  );
+  const hasTrustedDb = nutrition.some((row) => sourcePriority(row.source) >= 100);
+
   let legacyPool = legacy;
-  if (hasTrusted) {
-    // When FatSecret/USDA/OFF/catalog already hit, drop weak web scrapes from legacy.
+  if (hasConsensus || hasTrustedDb) {
+    // When consensus or DB already hit, drop weak web scrapes from legacy.
     legacyPool = legacy.filter((row) => {
       const src = String(row.source || '').toLowerCase();
       if (src === 'serper' || src === 'mixed') return false;
@@ -362,13 +385,68 @@ function mergeNutritionSearchWithLegacy(nutritionRows, legacyRows, limit = 20) {
       if (!isSameFoodCandidate(anchor, row)) continue;
       const calDiff =
         Math.abs(Number(row.calories) - Number(anchor.calories)) /
-        Math.max(Number(anchor.calories), 1);
+        Math.max(Math.abs(Number(anchor.calories)) || 1, 1);
       if (calDiff <= 0.15) return false;
     }
     return true;
   });
 
+  // Consensus / nutrition rows first; legacy only fills gaps with close names later via filter.
   return [...nutrition, ...filtered].slice(0, limit);
+}
+
+/**
+ * Keep multiple results when calories/macros agree (±12% or ±25 kcal).
+ * Consensus / trusted stay first; drop distant cousins.
+ */
+function keepCloseMacroRows(rows, limit = 5) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return [];
+
+  const anchor =
+    list.find((r) => String(r.source || '').toLowerCase() === 'nutrition_consensus') ||
+    list.find((r) => String(r.source || '').toLowerCase() === 'trusted_catalog') ||
+    list[0];
+  const aCal = Number(anchor.calories) || 0;
+
+  const close = list.filter((row) => {
+    const cal = Number(row.calories) || 0;
+    if (aCal <= 0 && cal <= 0) return true;
+    const rel = Math.abs(cal - aCal) / Math.max(Math.abs(aCal), 1);
+    if (rel <= 0.12) return true;
+    if (Math.abs(cal - aCal) <= 25) return true;
+    return false;
+  });
+
+  const priority = (row) => {
+    const src = String(row.source || '').toLowerCase();
+    if (src === 'nutrition_consensus') return 3;
+    if (src === 'trusted_catalog') return 2;
+    if (src === 'fatsecret' || src === 'usda' || src === 'usdafdc') return 1;
+    return 0;
+  };
+
+  return close
+    .sort((a, b) => priority(b) - priority(a) || Math.abs(Number(a.calories) - aCal) - Math.abs(Number(b.calories) - aCal))
+    .slice(0, limit);
+}
+
+/** Fill missing sugar for near-zero fat/protein items (sodas) from carbs. */
+function enrichSearchRowMicros(row) {
+  if (!row || typeof row !== 'object') return row;
+  const carbs = Number(row.carbs ?? row.nf_total_carbohydrate) || 0;
+  const protein = Number(row.protein ?? row.nf_protein) || 0;
+  const fat = Number(row.fat ?? row.nf_total_fat) || 0;
+  let sugar = Number(row.sugar ?? row.nf_sugars);
+  if ((!Number.isFinite(sugar) || sugar <= 0) && carbs > 0 && protein < 1 && fat < 1) {
+    sugar = carbs;
+  }
+  if (!Number.isFinite(sugar) || sugar < 0) return row;
+  return {
+    ...row,
+    sugar,
+    nf_sugars: sugar,
+  };
 }
 
 module.exports = {
@@ -379,6 +457,8 @@ module.exports = {
   mapNutritionSearchToFoodRows,
   mergeConsensusWithResults,
   mergeNutritionSearchWithLegacy,
+  keepCloseMacroRows,
+  enrichSearchRowMicros,
   isHighConfidenceConsensus,
   // Re-exported from cleanFoodCardLabels — keep for older import paths / Metro cache.
   sanitizeFoodCardTitle,

@@ -20,6 +20,7 @@ function mapUsdaFood(food) {
     fat_g: get(1004),
     fiber_g: get(1079),
     sodium_mg: get(1090, 1093),
+    sugar_g: get(2000),
   });
 }
 

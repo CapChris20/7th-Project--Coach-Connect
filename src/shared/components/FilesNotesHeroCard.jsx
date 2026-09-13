@@ -15,9 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
 const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
-/** Dark orange → dark purple — border, CTA, glow */
+/** Dark orange → dark purple — CTA, glow */
 const ORANGE_PURPLE_GRADIENT = ['#C2410C', '#4C1D95'];
-const TOP_BORDER_GRADIENT = ORANGE_PURPLE_GRADIENT;
 const CTA_GRADIENT = ORANGE_PURPLE_GRADIENT;
 const PINK = '#FF6B9D';
 const INK = '#0A0A0F';
@@ -80,12 +79,6 @@ export default function FilesNotesHeroCard({
       >
         <View style={styles.cardShadow}>
           <View style={styles.cardClip}>
-            <LinearGradient
-              colors={TOP_BORDER_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.topBorder}
-            />
             <LinearGradient
               colors={bgGradient}
               start={{ x: 0, y: 0 }}
@@ -183,10 +176,6 @@ const styles = StyleSheet.create({
   cardClip: {
     borderRadius: 24,
     overflow: 'hidden',
-  },
-  topBorder: {
-    height: 3,
-    width: '100%',
   },
   inner: {
     padding: 24,

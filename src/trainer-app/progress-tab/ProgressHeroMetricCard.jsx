@@ -1,9 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-
-const ACCENT_GRADIENT = ['#BE185D', '#C2410C'];
 
 export default function ProgressHeroMetricCard({
   isDark,
@@ -38,7 +35,6 @@ export default function ProgressHeroMetricCard({
         style,
       ]}
     >
-      <LinearGradient colors={ACCENT_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.accentBar} />
       <View style={styles.body}>
         <Ionicons name={icon} size={20} color="#FDBA74" style={styles.cornerIcon} />
         <Text style={[styles.metric, { color: text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
@@ -60,10 +56,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     minHeight: 118,
-  },
-  accentBar: {
-    height: 3,
-    width: '100%',
   },
   body: {
     flex: 1,

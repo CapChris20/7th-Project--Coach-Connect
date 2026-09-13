@@ -149,6 +149,10 @@ if (process.env.K_SERVICE) {
   app.set('trust proxy', 1);
 }
 
+// Stripe webhooks need the raw body for signature verification — before JSON parser.
+const { handleStripeWebhook } = require('./routes/stripeWebhookRoutes');
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+
 // CORS — restrict to known origins (dev + prod)
 const allowedOrigins = [
   /^http:\/\/localhost/,
@@ -578,7 +582,7 @@ listenWithPortCheck()
     `🤖 AI Coach daily limits: ${
       isAiCoachLimitsEnforced()
         ? 'ENFORCED (10/day)'
-        : 'OFF — unlimited local dev (production: NODE_ENV=production + AI_COACH_ENFORCE_LIMITS=1)'
+        : 'OFF — unlimited local/dev (Cloud Run prod enforces daily caps by default)'
     }`
   );
   console.log(`🌐 HTTP endpoints: http://localhost:${PORT}`);

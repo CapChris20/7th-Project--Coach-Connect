@@ -31,6 +31,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Stripe webhook idempotency log (Admin SDK only)
+    match /stripe_webhook_events/{eventId} {
+      allow read, write: if false;
+    }
+
     // Users collection
     match /users/{userId} {
       // SECURITY: user docs are private by default.
@@ -52,13 +57,24 @@ service cloud.firestore {
       allow list: if request.auth != null;
 
       // Writes: owner profile fields; trainer may set only trainerId on a client doc (marketplace accept).
+      // Billing / Stripe identity fields are server-only (Admin SDK).
       allow create: if request.auth != null
         && request.auth.uid == userId
-        && !request.resource.data.keys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier']);
+        && !request.resource.data.keys().hasAny([
+          'trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus',
+          'stripeConnectStatus', 'stripeCreatedAt', 'subscriptionTier',
+          'paymentStatus', 'monthlyRate', 'earningsGrossCents', 'earningsPlatformFeesCents',
+          'earningsNetCents', 'lastPaymentAt', 'lastPaymentAmount', 'lastPaymentId',
+        ]);
       allow delete: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null &&
         request.auth.uid == userId &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus', 'subscriptionTier']);
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'trainerId', 'role', 'linked', 'subscription', 'stripeAccountId', 'stripeStatus',
+          'stripeConnectStatus', 'stripeCreatedAt', 'subscriptionTier',
+          'paymentStatus', 'monthlyRate', 'earningsGrossCents', 'earningsPlatformFeesCents',
+          'earningsNetCents', 'lastPaymentAt', 'lastPaymentAmount', 'lastPaymentId',
+        ]);
     }
 
     // Current workout plan (users/{uid}/workoutPlan/current) — client owns; linked trainer can read
@@ -135,8 +151,15 @@ service cloud.firestore {
         resource.data.clientId == request.auth.uid ||
         exists(/databases/$(database)/documents/trainer_clients/$(request.auth.uid)/clients/$(resource.data.clientId))
       );
-      // Writes should be done by the owner (client) or server-side; keep tight.
-      allow create, update, delete: if request.auth != null && request.auth.uid == request.resource.data.clientId;
+      // Create: owner must match clientId on the new doc.
+      // Update/delete: must already own the existing doc (cannot steal by rewriting clientId).
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.clientId;
+      allow update: if request.auth != null
+        && resource.data.clientId == request.auth.uid
+        && request.resource.data.clientId == resource.data.clientId;
+      allow delete: if request.auth != null
+        && resource.data.clientId == request.auth.uid;
     }
 
     // Trainer-authored manual workout plan templates (trainer-owned; not client-visible at this path)
@@ -148,16 +171,35 @@ service cloud.firestore {
     
     // Conversations - only participants can read/update/delete; creators must include themselves
     match /conversations/{conversationId} {
-      // Only participants can read or update a conversation
-      allow read, update: if request.auth != null
-        && (resource == null || request.auth.uid in resource.data.participants);
-      
+      // Only participants can read
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.participants;
+
       // Allow list queries for conversations where user is participant
       allow list: if request.auth != null;
 
       // Only authenticated users can create — and they must include themselves as participant
       allow create: if request.auth != null
         && request.auth.uid in request.resource.data.participants;
+
+      // Participants may update message preview / typing only — not membership or ownership
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants
+        && (
+          !('clientId' in resource.data)
+          || request.resource.data.clientId == resource.data.clientId
+        )
+        && (
+          !('trainerId' in resource.data)
+          || request.resource.data.trainerId == resource.data.trainerId
+        )
+        && (
+          !('type' in resource.data)
+          || request.resource.data.type == resource.data.type
+        )
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['lastMessage', 'lastMessageTime', 'updatedAt', 'typingUserId', 'typingAt']);
 
       // Only participants can delete
       allow delete: if request.auth != null
@@ -657,10 +699,9 @@ service cloud.firestore {
       // Allow list queries for food search
       allow list: if request.auth != null;
       
-      // Create/Update: Authenticated users can save food data
-      allow create, update: if request.auth != null;
-      // Delete: Not allowed
-      allow delete: if false;
+      // Create only — no arbitrary overwrites of shared food catalog
+      allow create: if request.auth != null;
+      allow update, delete: if false;
     }
     
     // User food logs subcollection - NEW

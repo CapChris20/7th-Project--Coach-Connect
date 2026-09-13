@@ -21,6 +21,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,13 +33,14 @@ import BottomNavBar from '../../navigation/BottomNavBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { useTrainerAppShell } from '../navigation/TrainerAppShellContext';
 import { getClientInitials } from '../dashboard/trainerDashboardUi';
-import { resolveStripeStatus, verifyStripeConnectStatus } from '../../shared/api/stripeConnectApi';
+import { resolveStripeStatus, verifyStripeConnectStatus, getStripeConnectBalance } from '../../shared/api/stripeConnectApi';
 import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
 import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
 import {
   HowPaymentsWorkSection,
   EarningsDashboardPreview,
 } from '../../shared/payments/PaymentEducationSections';
+import { useTrainerPaymentHistory } from '../../shared/payments/useTrainerPaymentHistory';
 import { postSetClientRate } from '../../shared/api/trainerClientApi';
 import { trainerClientDocRef } from '../crm/trainerClientFirestorePaths';
 import { auth } from '../../app-start/config';
@@ -53,30 +55,46 @@ function formatUsdFromCents(cents) {
   return `$${(n / 100).toFixed(2)}`;
 }
 
-function formatUsdFromDollars(dollars) {
-  const n = Number(dollars);
-  if (!Number.isFinite(n)) return '$0.00';
-  return `$${n.toFixed(2)}`;
+/** Stored rates are cents (>= 100 for $1+). Tiny legacy dollar values still supported. */
+function monthlyRateToCents(rate) {
+  if (rate == null || rate === '') return 0;
+  const n = Number(rate);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n >= 100) return Math.round(n);
+  return Math.round(n * 100);
 }
 
 function formatMonthlyRate(rate) {
-  if (rate == null || rate === '') return null;
-  const n = Number(rate);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n >= 100 ? formatUsdFromCents(n) : formatUsdFromDollars(n);
+  const cents = monthlyRateToCents(rate);
+  if (!cents) return null;
+  return formatUsdFromCents(cents);
 }
 
-function clientPaymentStatusLabel(status) {
+function isBillingEnabled(paymentStatus, rateCents) {
+  if (!rateCents) return false;
+  const s = String(paymentStatus || '').trim();
+  if (!s || s === 'inactive' || s === 'not_set' || s === 'none') return false;
+  return true;
+}
+
+function clientPaymentStatusLabel(status, rateCents) {
+  if (!rateCents) return 'No rate';
   switch (status) {
     case 'active':
-      return 'Active';
+      return 'Paid up';
     case 'awaiting_payment':
     case 'payment_required':
-      return 'Awaiting payment';
+      return 'Awaiting pay';
     case 'past_due':
       return 'Past due';
+    case 'inactive':
+    case 'not_set':
+    case 'none':
+    case '':
+    case undefined:
+      return 'Billing off';
     default:
-      return 'Inactive';
+      return 'Billing off';
   }
 }
 
@@ -158,10 +176,55 @@ export default function PaymentsScreen() {
 
   const stripeConnectStatus = resolveStripeStatus(profile);
   const stripeAccountId = profile.stripeAccountId || '';
-  const grossCents = Number(profile.earningsGrossCents) || 0;
-  const feesCents = Number(profile.earningsPlatformFeesCents) || Math.round(grossCents * PLATFORM_FEE_RATE);
-  const netCents = Number(profile.earningsNetCents) || Math.max(0, grossCents - feesCents);
-  const nextPayout = profile.nextPayoutLabel || profile.nextPayoutDate || '—';
+  const trainerUid = auth?.currentUser?.uid || profile.uid || profile.id || '';
+  const { rows: paymentHistory, loading: paymentHistoryLoading } = useTrainerPaymentHistory(
+    stripeConnectStatus === 'active' ? trainerUid : null,
+  );
+  const [stripeBalance, setStripeBalance] = useState({ pending: null, available: null });
+  const profileGrossCents = Number(profile.earningsGrossCents) || 0;
+  const profileFeesCents =
+    Number(profile.earningsPlatformFeesCents) || Math.round(profileGrossCents * PLATFORM_FEE_RATE);
+  const profileNetCents =
+    Number(profile.earningsNetCents) || Math.max(0, profileGrossCents - profileFeesCents);
+
+  // Prefer live payment history when profile counters are stale / unset.
+  const earningsFromHistory = useMemo(() => {
+    if (!paymentHistory.length) return null;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    let gross = 0;
+    let fee = 0;
+    let net = 0;
+    let counted = 0;
+    for (const row of paymentHistory) {
+      if (row.createdAtMs && row.createdAtMs < monthStart) continue;
+      if (String(row.status).toLowerCase() === 'failed') continue;
+      gross += Number(row.amount) || 0;
+      fee += Number(row.fee) || 0;
+      net += Number(row.net) || 0;
+      counted += 1;
+    }
+    if (!counted) return null;
+    return {
+      grossCents: Math.round(gross * 100),
+      feesCents: Math.round(fee * 100),
+      netCents: Math.round(net * 100),
+    };
+  }, [paymentHistory]);
+
+  const grossCents = Math.max(profileGrossCents, earningsFromHistory?.grossCents || 0);
+  const feesCents =
+    grossCents === (earningsFromHistory?.grossCents || 0) && earningsFromHistory
+      ? earningsFromHistory.feesCents
+      : Math.max(profileFeesCents, earningsFromHistory?.feesCents || 0);
+  const netCents =
+    grossCents === (earningsFromHistory?.grossCents || 0) && earningsFromHistory
+      ? earningsFromHistory.netCents
+      : Math.max(profileNetCents, earningsFromHistory?.netCents || 0);
+  const nextPayout =
+    stripeBalance.available != null
+      ? `$${Number(stripeBalance.available).toFixed(2)} available`
+      : profile.nextPayoutLabel || profile.nextPayoutDate || '—';
 
   const textColor = colors.text;
   const mutedColor = colors.textSecondary;
@@ -233,6 +296,30 @@ export default function PaymentsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stripeConnectStatus]);
 
+  useEffect(() => {
+    if (stripeConnectStatus !== 'active') {
+      setStripeBalance({ pending: null, available: null });
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const bal = await getStripeConnectBalance();
+        if (!cancelled) {
+          setStripeBalance({
+            pending: bal?.pending ?? null,
+            available: bal?.available ?? null,
+          });
+        }
+      } catch (e) {
+        console.warn('Stripe balance load failed:', e?.message || e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stripeConnectStatus]);
+
   const handleConnectBank = useCallback(() => {
     if (stripeConnect.error) stripeConnect.retry();
     else stripeConnect.startConnect();
@@ -243,7 +330,7 @@ export default function PaymentsScreen() {
   }, [stripeConnect]);
 
   const handleSetClientRate = useCallback(
-    async (clientId, amountInCents) => {
+    async (clientId, amountInCents, { billingEnabled = true } = {}) => {
       const trainerId = auth?.currentUser?.uid || shell.user?.uid;
       if (!trainerId || !clientId) throw new Error('Not signed in');
 
@@ -252,10 +339,13 @@ export default function PaymentsScreen() {
           clients.find((c) => c.id === clientId)?.paymentStatus ||
           '',
       ).trim();
-      const paymentStatus =
-        prevStatus === 'active' || prevStatus === 'past_due' ? prevStatus : 'awaiting_payment';
 
-      // CRM write is allowed client-side and updates this screen immediately.
+      let paymentStatus = 'inactive';
+      if (billingEnabled && amountInCents > 0) {
+        paymentStatus =
+          prevStatus === 'active' || prevStatus === 'past_due' ? prevStatus : 'awaiting_payment';
+      }
+
       await setDoc(
         trainerClientDocRef(trainerId, clientId),
         {
@@ -272,11 +362,9 @@ export default function PaymentsScreen() {
         [clientId]: { monthlyRate: amountInCents, paymentStatus },
       }));
 
-      // Sync to users/{clientId} so the client sees the rate (Admin SDK).
       try {
         await postSetClientRate({ clientId, monthlyRateCents: amountInCents });
       } catch (e) {
-        // CRM saved; server sync may be undeployed — still usable on trainer side.
         if (__DEV__) console.warn('[PaymentsScreen] set-client-rate API:', e?.message || e);
       }
 
@@ -284,6 +372,33 @@ export default function PaymentsScreen() {
       return { monthlyRate: amountInCents, paymentStatus };
     },
     [shell, clients, rateOverrides],
+  );
+
+  const handleToggleBilling = useCallback(
+    async (client, turnOn) => {
+      const override = rateOverrides[client.id] || {};
+      const rateCents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
+
+      if (turnOn) {
+        if (!rateCents) {
+          openRateModal(client);
+          return;
+        }
+        try {
+          await handleSetClientRate(client.id, rateCents, { billingEnabled: true });
+        } catch (e) {
+          Alert.alert('Couldn’t enable billing', e?.message || 'Please try again.');
+        }
+        return;
+      }
+
+      try {
+        await handleSetClientRate(client.id, rateCents, { billingEnabled: false });
+      } catch (e) {
+        Alert.alert('Couldn’t turn off billing', e?.message || 'Please try again.');
+      }
+    },
+    [rateOverrides, openRateModal, handleSetClientRate],
   );
 
   const parsedRatePreview = useMemo(() => {
@@ -302,7 +417,9 @@ export default function PaymentsScreen() {
     }
     setSavingRate(true);
     try {
-      await handleSetClientRate(rateModalClient.id, Math.round(dollars * 100));
+      await handleSetClientRate(rateModalClient.id, Math.round(dollars * 100), {
+        billingEnabled: true,
+      });
       setRateModalClient(null);
       setRateInput('');
     } catch (e) {
@@ -467,7 +584,12 @@ export default function PaymentsScreen() {
         </GlassCard>
 
         {/* Section 3 — Client Billing Overview */}
-        <Text style={[sectionLabelStyle, { marginLeft: 4, marginBottom: 10 }]}>CLIENT BILLING</Text>
+        <View style={styles.billingHeaderBlock}>
+          <Text style={[sectionLabelStyle, { marginBottom: 6 }]}>CLIENT BILLING</Text>
+          <Text style={[styles.billingHint, { color: mutedColor }]}>
+            Flip billing on, set their monthly rate. They get charged that amount in-app; you keep 90%.
+          </Text>
+        </View>
         {clients.length === 0 ? (
           <GlassCard isDark={isDark} colors={colors}>
             <Text style={[styles.bodyText, { color: mutedColor }]}>No connected clients yet.</Text>
@@ -476,62 +598,158 @@ export default function PaymentsScreen() {
           clients.map((client) => {
             const override = rateOverrides[client.id] || {};
             const monthlyRate = override.monthlyRate ?? client.monthlyRate;
+            const rateCents = monthlyRateToCents(monthlyRate);
             const name = client.name || client.displayName || 'Client';
             const initials = getClientInitials(name);
             const rateLabel = formatMonthlyRate(monthlyRate);
             const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
+            const billingOn = isBillingEnabled(payStatus, rateCents);
+            const youKeep = rateCents
+              ? formatUsdFromCents(Math.round(rateCents * (1 - PLATFORM_FEE_RATE)))
+              : null;
             const statusTone =
-              payStatus === 'active'
-                ? 'success'
-                : payStatus === 'past_due'
-                  ? 'error'
-                  : payStatus === 'awaiting_payment' || payStatus === 'payment_required'
-                    ? 'warning'
-                    : 'neutral';
+              !rateCents || !billingOn
+                ? 'neutral'
+                : payStatus === 'active'
+                  ? 'success'
+                  : payStatus === 'past_due'
+                    ? 'error'
+                    : payStatus === 'awaiting_payment' || payStatus === 'payment_required'
+                      ? 'warning'
+                      : 'neutral';
 
             return (
-              <TouchableOpacity key={client.id} activeOpacity={0.88} onPress={() => openRateModal(client)}>
-                <GlassCard isDark={isDark} colors={colors} style={{ marginBottom: 10 }}>
-                  <View style={styles.clientRow}>
-                    <LinearGradient
-                      colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.clientAvatar}
-                    >
-                      <Text style={styles.clientAvatarText}>{initials}</Text>
-                    </LinearGradient>
-                    <View style={styles.clientBody}>
-                      <Text style={[styles.clientName, { color: textColor }]} numberOfLines={1}>
-                        {name}
+              <GlassCard key={client.id} isDark={isDark} colors={colors} style={{ marginBottom: 10, paddingVertical: 14 }}>
+                <View style={styles.clientRow}>
+                  <LinearGradient
+                    colors={[ACCENT_PINK, ACCENT_ORANGE]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.clientAvatar}
+                  >
+                    <Text style={styles.clientAvatarText}>{initials}</Text>
+                  </LinearGradient>
+                  <View style={styles.clientBody}>
+                    <Text style={[styles.clientName, { color: textColor }]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    {rateLabel ? (
+                      <Text style={[styles.clientRate, { color: textColor }]}>
+                        {rateLabel}/mo
+                        {youKeep ? (
+                          <Text style={{ color: mutedColor, fontWeight: '600' }}>
+                            {' '}
+                            · you keep {youKeep}
+                          </Text>
+                        ) : null}
                       </Text>
+                    ) : (
                       <Text style={[styles.clientRate, { color: mutedColor }]}>
-                        {rateLabel ? `${rateLabel}/mo` : 'No rate set'}
+                        No monthly rate yet
                       </Text>
-                    </View>
-                    <StatusChip
-                      label={clientPaymentStatusLabel(payStatus)}
-                      tone={statusTone}
-                      colors={colors}
-                      isDark={isDark}
+                    )}
+                  </View>
+                  <View style={styles.billingToggleCol}>
+                    <Text style={[styles.billingToggleLabel, { color: mutedColor }]}>
+                      {billingOn ? 'On' : 'Off'}
+                    </Text>
+                    <Switch
+                      value={billingOn}
+                      onValueChange={(on) => handleToggleBilling(client, on)}
+                      trackColor={{
+                        false: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
+                        true: ACCENT_PINK,
+                      }}
+                      thumbColor="#FFFFFF"
+                      ios_backgroundColor={isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)'}
                     />
                   </View>
-                </GlassCard>
-              </TouchableOpacity>
+                </View>
+
+                <View
+                  style={[
+                    styles.clientActionsRow,
+                    {
+                      borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+                    },
+                  ]}
+                >
+                  <StatusChip
+                    label={clientPaymentStatusLabel(payStatus, rateCents)}
+                    tone={statusTone}
+                    colors={colors}
+                    isDark={isDark}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={0.88}
+                    onPress={() => openRateModal(client)}
+                    style={[
+                      styles.setRateBtn,
+                      {
+                        borderColor: isDark ? 'rgba(255,255,255,0.14)' : colors.border,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.setRateBtnText, { color: textColor }]}>
+                      {rateLabel ? 'Edit rate' : 'Set rate'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color={mutedColor} />
+                  </TouchableOpacity>
+                </View>
+              </GlassCard>
             );
           })
         )}
 
-        {/* Section 4 — Payout History */}
+        {/* Section 4 — Payment / Payout History */}
         <GlassCard isDark={isDark} colors={colors}>
-          <Text style={sectionLabelStyle}>PAYOUT HISTORY</Text>
-          <View style={styles.emptyState}>
-            <Ionicons name="receipt-outline" size={36} color={mutedColor} />
-            <Text style={[styles.emptyTitle, { color: textColor }]}>No payouts yet</Text>
-            <Text style={[styles.emptySub, { color: mutedColor }]}>
-              Completed payouts will appear here once clients are billed.
+          <Text style={sectionLabelStyle}>PAYMENT HISTORY</Text>
+          {paymentHistoryLoading ? (
+            <ActivityIndicator color={textColor} style={{ marginVertical: 16 }} />
+          ) : paymentHistory.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="receipt-outline" size={36} color={mutedColor} />
+              <Text style={[styles.emptyTitle, { color: textColor }]}>No payments yet</Text>
+              <Text style={[styles.emptySub, { color: mutedColor }]}>
+                When clients pay you in-app, each charge (minus the 10% platform fee) shows up here.
+              </Text>
+            </View>
+          ) : (
+            paymentHistory.map((row) => (
+              <View
+                key={row.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: 10,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+                }}
+              >
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ color: textColor, fontWeight: '700', fontSize: 14 }}>
+                    ${Number(row.net).toFixed(2)} net
+                  </Text>
+                  <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2 }}>
+                    {row.date} · ${Number(row.amount).toFixed(2)} gross · {row.status}
+                  </Text>
+                </View>
+                <Text style={{ color: mutedColor, fontSize: 12 }}>
+                  Fee ${Number(row.fee).toFixed(2)}
+                </Text>
+              </View>
+            ))
+          )}
+          {stripeBalance.pending != null || stripeBalance.available != null ? (
+            <Text style={{ color: mutedColor, fontSize: 12, marginTop: 12 }}>
+              Stripe balance — available ${Number(stripeBalance.available || 0).toFixed(2)}
+              {stripeBalance.pending != null
+                ? ` · pending $${Number(stripeBalance.pending).toFixed(2)}`
+                : ''}
             </Text>
-          </View>
+          ) : null}
         </GlassCard>
       </ScrollView>
 
@@ -563,10 +781,10 @@ export default function PaymentsScreen() {
               },
             ]}
           >
-            <Text style={[styles.sheetTitle, { color: colors.text }]}>Set Monthly Coaching Rate</Text>
+            <Text style={[styles.sheetTitle, { color: colors.text }]}>Monthly rate</Text>
             {rateModalClient ? (
               <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>
-                {rateModalClient.name || rateModalClient.displayName || 'Client'}
+                {rateModalClient.name || rateModalClient.displayName || 'Client'} — what they pay you each month
               </Text>
             ) : null}
 
@@ -622,7 +840,7 @@ export default function PaymentsScreen() {
                 {savingRate ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Save Rate</Text>
+                  <Text style={styles.primaryBtnText}>Save & turn billing on</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
@@ -689,7 +907,30 @@ const styles = StyleSheet.create({
   clientAvatarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   clientBody: { flex: 1, minWidth: 0 },
   clientName: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  clientRate: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  clientRate: { fontSize: 13, fontWeight: '700', marginTop: 3 },
+  billingHeaderBlock: { marginLeft: 4, marginBottom: 12 },
+  billingHint: { fontSize: 13, lineHeight: 18, fontWeight: '500', paddingRight: 8 },
+  billingToggleCol: { alignItems: 'center', gap: 4 },
+  billingToggleLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  clientActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  setRateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  setRateBtnText: { fontSize: 13, fontWeight: '700' },
   emptyState: { alignItems: 'center', paddingVertical: 20, gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '800' },
   emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 18, paddingHorizontal: 12 },

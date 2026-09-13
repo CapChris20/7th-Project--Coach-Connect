@@ -76,7 +76,13 @@ function registerAICoachRoutes(app, deps) {
         .trim()
         .slice(0, 56);
 
-      return res.json({ title: cleaned || 'Chat' });
+      const junk =
+        !cleaned ||
+        /live search wasn'?t available/i.test(cleaned) ||
+        /here'?s what i know from coaching/i.test(cleaned) ||
+        /^(calories|protein|macro|macros|fitness|sleep)\s+chat$/i.test(cleaned);
+
+      return res.json({ title: junk ? 'Coach Check-In' : cleaned });
     } catch (e) {
       return res.status(500).json({ error: e?.message || 'Failed to generate title' });
     }

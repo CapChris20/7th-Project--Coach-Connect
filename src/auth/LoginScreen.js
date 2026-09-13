@@ -676,8 +676,10 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
+    } else if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      newErrors.password = 'Password must include at least one letter and one number';
     }
     
     if (!confirmPassword) {
@@ -905,8 +907,6 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     
     if (!loginPassword) {
       newErrors.password = 'Password is required';
-    } else if (loginPassword.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
     
     setLoginErrors(newErrors);
@@ -1899,7 +1899,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 <Text style={signupStyles.inputLabel}>Password</Text>
                 <TextInput
                   style={signupStyles.input}
-                  placeholder="Create a password (min. 6 characters)"
+                  placeholder="Create a password (8+ chars, letter + number)"
                   placeholderTextColor={placeholderTextColor}
                   value={password}
                   onChangeText={(text) => {

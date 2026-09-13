@@ -24,7 +24,7 @@ if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
   exit 1
 fi
 
-VARS="NODE_ENV=production"
+VARS="NODE_ENV=production,AI_COACH_ENFORCE_LIMITS=1"
 [ -n "${DEEPSEEK_API_KEY:-}" ] && VARS+=",DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}"
 [ -n "${OPENAI_API_KEY:-}" ] && VARS+=",OPENAI_API_KEY=${OPENAI_API_KEY}"
 [ -n "${REPLICATE_API_TOKEN:-}" ] && VARS+=",REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}"
@@ -89,6 +89,12 @@ else
   echo "⚠️  No STRIPE_SECRET_KEY in .env — Stripe payment routes will not work on Cloud Run."
 fi
 [ -n "${STRIPE_PUBLISHABLE_KEY:-}" ] && VARS+=",STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}"
+if [ -n "${STRIPE_WEBHOOK_SECRET:-}" ]; then
+  VARS+=",STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}"
+  echo "ℹ️  STRIPE_WEBHOOK_SECRET will sync — Stripe webhooks enabled."
+else
+  echo "⚠️  No STRIPE_WEBHOOK_SECRET in .env — add after creating a webhook endpoint for /api/stripe/webhook."
+fi
 
 # IconScout (icons / illustrations API — server-side only)
 if [ -n "${ICONSCOUT_CLIENT_ID:-}" ] && [ -n "${ICONSCOUT_CLIENT_SECRET:-}" ]; then

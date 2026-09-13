@@ -87,6 +87,10 @@ function registerStripeConnectRoutes(app, deps) {
       const userRef = db.collection('users').doc(uid);
       const userSnap = await userRef.get();
       const user = userSnap.exists ? userSnap.data() || {} : {};
+      const role = String(user.role || '').trim().toLowerCase();
+      if (role && role !== 'trainer') {
+        return res.status(403).json({ error: 'Only trainers can connect payouts' });
+      }
 
       const email = String(req.body?.email || user.email || req.firebaseAuth?.email || '').trim();
       if (!email) {

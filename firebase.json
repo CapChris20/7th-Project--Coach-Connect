@@ -9,6 +9,20 @@
   "functions": {
     "source": "functions"
   },
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/privacy", "destination": "/privacy.html" },
+      { "source": "/privacy-policy", "destination": "/privacy.html" }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html)",
+        "headers": [{ "key": "Cache-Control", "value": "public,max-age=300" }]
+      }
+    ]
+  },
   "emulators": {
     "firestore": {
       "port": 8080

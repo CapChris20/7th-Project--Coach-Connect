@@ -57,7 +57,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.coachconnect',
-      buildNumber: '1',
+      buildNumber: '20',
       /** Apple Developer Team — required for device builds & IAP. */
       appleTeamId: 'PFTT3AW4H3',
       icon: './assets/icon.png',
@@ -74,8 +74,7 @@ module.exports = {
         NSSpeechRecognitionUsageDescription:
           'This app uses speech recognition to turn your voice into messages for your AI Coach.',
         NSPhotoLibraryUsageDescription: 'This app needs access to your photo library to save progress photos.',
-        // Allow insecure HTTP loads to local dev API (LAN IP / localhost).
-        // Without this, iOS may block `http://192.168.x.x:4000` with "Network request failed".
+        // Localhost only for optional local API debugging. Do not ship LAN IP exceptions.
         NSAppTransportSecurity: {
           NSExceptionDomains: {
             localhost: {
@@ -86,10 +85,6 @@ module.exports = {
               NSExceptionAllowsInsecureHTTPLoads: true,
               NSIncludesSubdomains: true,
             },
-            '192.168.0.178': {
-              NSExceptionAllowsInsecureHTTPLoads: true,
-              NSIncludesSubdomains: true,
-            },
           },
         },
       },
@@ -97,7 +92,7 @@ module.exports = {
     newArchEnabled: true,
     android: {
       package: 'com.coachconnect',
-      versionCode: 1,
+      versionCode: 20,
       icon: './assets/icon.png',
       adaptiveIcon: {
         foregroundImage: './assets/icon.png',
@@ -121,6 +116,11 @@ module.exports = {
         'https://coachconnect-api-421005574501.us-central1.run.app',
       /** Optional: shown for Contact support / Report a bug in Settings. */
       supportEmail: (process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'coachconnect0@gmail.com').trim(),
+      /** Public HTTPS privacy policy for App Store Connect. */
+      privacyPolicyUrl: (
+        process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ||
+        'https://anatrox-auth.web.app/privacy.html'
+      ).trim(),
       /** Google OAuth — set in .env / EAS secrets (never commit values). */
       googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
       googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,

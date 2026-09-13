@@ -61,6 +61,7 @@ import {
   getProfileCardSectionLabels,
 } from '../../shared/workout-profile/shouldShowProfileCard';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from './workoutService';
+import { buildCreativeWorkoutPlanName } from './buildCreativeWorkoutPlanName';
 import Markdown from 'react-native-markdown-display';
 import { useAI } from '../../shared/contexts/AIContext';
 import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
@@ -2569,9 +2570,7 @@ export default function WorkoutPlanGeneratorScreen({
           rawPlan: planText,
           planText,
           structuredPlan: planData.structuredPlan || null,
-          title: planData.structuredPlan?.goal
-            ? `${String(planData.structuredPlan.goal).slice(0, 48)} plan`
-            : undefined,
+          title: buildCreativeWorkoutPlanName(planData),
         });
       }
 
@@ -3615,28 +3614,35 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           activeOpacity={0.75}
           style={styles.tabButton}
         >
-          <Text
-            style={[
-              styles.tabText,
-              {
-                color:
-                  activeTab === 'plans'
-                    ? '#FF6B9D'
-                    : isDark
-                      ? 'rgba(255,255,255,0.5)'
-                      : 'rgba(10,10,15,0.55)',
-              },
-              activeTab === 'plans' ? styles.tabTextActive : null,
-            ]}
-          >
-            Workout Plans
-          </Text>
-          <View
-            style={[
-              styles.tabIndicator,
-              { backgroundColor: activeTab === 'plans' ? '#FF6B9D' : 'transparent' },
-            ]}
-          />
+          {activeTab === 'plans' ? (
+            <StableGradientText
+              colors={['#FF6B9D', '#FB923C']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.tabText, styles.tabTextActive]}
+            >
+              Workout Plans
+            </StableGradientText>
+          ) : (
+            <Text
+              style={[
+                styles.tabText,
+                { color: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.55)' },
+              ]}
+            >
+              Workout Plans
+            </Text>
+          )}
+          {activeTab === 'plans' ? (
+            <LinearGradient
+              colors={['#FF6B9D', '#FB923C']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.tabIndicator}
+            />
+          ) : (
+            <View style={[styles.tabIndicator, { backgroundColor: 'transparent' }]} />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -3644,28 +3650,35 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           activeOpacity={0.75}
           style={styles.tabButton}
         >
-          <Text
-            style={[
-              styles.tabText,
-              {
-                color:
-                  activeTab === 'library'
-                    ? '#FF6B9D'
-                    : isDark
-                      ? 'rgba(255,255,255,0.5)'
-                      : 'rgba(10,10,15,0.55)',
-              },
-              activeTab === 'library' ? styles.tabTextActive : null,
-            ]}
-          >
-            Exercise Library
-          </Text>
-          <View
-            style={[
-              styles.tabIndicator,
-              { backgroundColor: activeTab === 'library' ? '#FF6B9D' : 'transparent' },
-            ]}
-          />
+          {activeTab === 'library' ? (
+            <StableGradientText
+              colors={['#FF6B9D', '#FB923C']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.tabText, styles.tabTextActive]}
+            >
+              Exercise Library
+            </StableGradientText>
+          ) : (
+            <Text
+              style={[
+                styles.tabText,
+                { color: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.55)' },
+              ]}
+            >
+              Exercise Library
+            </Text>
+          )}
+          {activeTab === 'library' ? (
+            <LinearGradient
+              colors={['#FF6B9D', '#FB923C']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.tabIndicator}
+            />
+          ) : (
+            <View style={[styles.tabIndicator, { backgroundColor: 'transparent' }]} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -4595,9 +4608,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   tabText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 19,
+    fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   tabTextActive: {
     fontWeight: '800',
@@ -4606,7 +4620,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     width: '72%',
     maxWidth: 200,
-    height: 3,
+    height: 3.5,
     borderRadius: 2,
   },
   headerWrap: {

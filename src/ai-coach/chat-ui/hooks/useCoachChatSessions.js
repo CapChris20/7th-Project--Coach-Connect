@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../../app-start/config';
-import { needsCreativeTitle } from '../../server-logic/chat-api/chatTitleUtils';
+import { needsCreativeTitle, isJunkChatTitle } from '../../server-logic/chat-api/chatTitleUtils';
 import { refreshStaleChatSessionTitles } from '../../server-logic/chat-api/refreshStaleChatSessionTitles';
 
 export function toSessionDateLabel(d) {
@@ -15,19 +15,19 @@ export function toSessionDateLabel(d) {
 }
 
 export function formatSessionDisplayTitle(title) {
-  let s = String(title || 'Chat')
+  let s = String(title || 'Coach Check-In')
     .replace(/\{[\s\S]*?\}/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!s) s = 'Chat';
-  if (s.length <= 48) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Chat';
+  if (!s || isJunkChatTitle(s)) s = 'Coach Check-In';
+  if (s.length <= 48) return s.replace(/[-–—]\s*$/, '').replace(/\s+\d+$/, '').trim() || 'Coach Check-In';
   const slice = s.slice(0, 48);
   const lastSpace = slice.lastIndexOf(' ');
   const cut = (lastSpace > 10 ? slice.slice(0, lastSpace) : slice)
     .replace(/[-–—]\s*$/, '')
     .replace(/\s+\d+$/, '')
     .trim();
-  return cut || 'Chat';
+  return cut || 'Coach Check-In';
 }
 
 export function groupSessionsForSidebar(sessions) {

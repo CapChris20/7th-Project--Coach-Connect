@@ -79,6 +79,7 @@ function buildSourceResultRow(sourceKey, macros) {
     fat_g: macros.fat_g ?? null,
     fiber_g: macros.fiber_g ?? null,
     sodium_mg: macros.sodium_mg ?? null,
+    sugar_g: macros.sugar_g ?? null,
     url: macros.url || null,
     servingLabel: macros.servingLabel || null,
     displayName: macros.displayName || null,

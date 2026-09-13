@@ -1,4 +1,38 @@
-# Coach Connect — Complete `src/` File Catalog
+# Handoff for Claude — full `src/` inventory
+
+**Do not rename or move anything until the human approves a concrete tree.**
+
+## What this file is
+Complete inventory of Coach Connect `src/`: every folder and file, with what it is for / what it does. Use this to propose a clearer folder + file organization.
+
+## How the human thinks about the app (journey order)
+1. Welcome / boot
+2. Sign-in / sign-up
+3. First-time account setup (currently called “onboarding” in code)
+4. Role: client-app or trainer-app
+5. Trainer UI order: home/hero → clients → tabs
+6. Shared features opened from tabs: nutrition, workouts, ai-coach, messaging, etc.
+
+## Naming rule the human wants
+File/folder name = **the job** (verb + object), clear and professional — not jargon (`Wizard`, `crm`, `guess`, `premium`), not dumbed-down UI nouns alone.
+Example that clicked: `guessServingSize.js` → something like `pickServingSize.js` (job = pick the correct serving size for the food card).
+
+## What to produce for the human
+1. Target folder tree in journey order
+2. Table: `| current path | job (1–2 sentences) | KEEP or → new path |` for folders and files that need change
+3. Stop for APPROVE / APPROVE WITH EDITS / REJECT — no code changes until then
+
+## Constraints
+- Do not touch Firebase project id `anatrox-auth` / env project ids
+- Do not rewrite business logic — organize and rename only
+- Kill dump folders (`utils/`, `lib/`, root `components/`) by moving into real homes
+- Fix imports only after approval, in waves
+
+## Full inventory starts below
+(Generated catalog — every path under `src/`.)
+
+---
+
 
 **629 files** (518 JS/JSX modules) — generated 2026-08-06.
 

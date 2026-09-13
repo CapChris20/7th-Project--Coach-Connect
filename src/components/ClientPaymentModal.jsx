@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,10 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../shared-ui/ThemeContext';
 import { postCoachingCharge } from '../shared/api/chargesApi';
 import {
@@ -36,6 +38,7 @@ const QUICK_AMOUNTS = [50, 100, 150];
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
 
+// Prefer CardField — CardForm on iOS ignores text colors and looks broken in dark mode.
 const stripeModule = getStripeNativeModule();
 const CardField = stripeModule?.CardField || null;
 const useStripeHook =
@@ -46,22 +49,48 @@ function formatMoney(value) {
   return formatPaymentDollars(value);
 }
 
+function newChargeIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `cc_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
   const { colors, isDark } = useTheme();
   const stripe = useStripeHook();
+  const amountInputRef = useRef(null);
+  const payInFlightRef = useRef(false);
 
   const [amount, setAmount] = useState('100');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [cardReady, setCardReady] = useState(false);
-  const [success, setSuccess] = useState(null); // { amount, trainerGets }
+  const [cardMeta, setCardMeta] = useState(null); // { brand, last4 }
+  const [success, setSuccess] = useState(null);
 
   const displayName = trainerName || 'your coach';
   const numericAmount = parseFloat(amount);
   const trainerGets = trainerGetsFromAmount(numericAmount);
   const platformFee = platformFeeFromAmount(numericAmount);
+  const amountOk = Number.isFinite(numericAmount) && numericAmount >= MIN_AMOUNT;
 
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  // Always use a light Stripe field — iOS CardField text colors are unreliable on dark fills.
+  const stripeCardStyle = useMemo(
+    () => ({
+      backgroundColor: '#FFFFFF',
+      textColor: '#111111',
+      placeholderColor: '#8E8E93',
+      borderWidth: 0,
+      borderRadius: 12,
+      fontSize: 16,
+      cursorColor: '#BE185D',
+      textErrorColor: '#FF3B30',
+    }),
+    [],
+  );
 
   const selectQuickAmount = useCallback((value) => {
     setAmount(String(value));
@@ -74,6 +103,7 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
     setLoading(false);
     setSuccess(null);
     setCardReady(false);
+    setCardMeta(null);
   }, []);
 
   const handleCancel = useCallback(() => {
@@ -94,12 +124,25 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
     return msg || 'Payment failed, try again';
   }, []);
 
+  const onCardChange = useCallback((details) => {
+    setCardReady(!!details?.complete);
+    if (details?.complete && (details.brand || details.last4)) {
+      setCardMeta({
+        brand: details.brand || null,
+        last4: details.last4 || null,
+      });
+    } else if (!details?.complete) {
+      setCardMeta(null);
+    }
+  }, []);
+
   const handlePayNow = useCallback(async () => {
+    if (payInFlightRef.current) return;
     setError(null);
 
     const value = parseFloat(amount);
     if (!Number.isFinite(value) || value < MIN_AMOUNT || value > MAX_AMOUNT) {
-      setError('Enter amount between $1-$10,000');
+      setError('Enter an amount between $1 and $10,000');
       return;
     }
 
@@ -109,17 +152,21 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
       return;
     }
 
+    if (CardField && !cardReady) {
+      setError('Enter your card number, expiry, CVC, and ZIP.');
+      return;
+    }
+
+    payInFlightRef.current = true;
     setLoading(true);
     try {
       const { token, error: tokenError } = await stripe.createToken({ type: 'Card' });
       if (tokenError) {
         setError(tokenError.message || 'Please check your card details.');
-        setLoading(false);
         return;
       }
       if (!token?.id) {
         setError('Could not read your card. Please try again.');
-        setLoading(false);
         return;
       }
 
@@ -127,6 +174,7 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
         trainerId,
         amount: value,
         token: token.id,
+        idempotencyKey: newChargeIdempotencyKey(),
       });
 
       if (result?.success) {
@@ -145,131 +193,155 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
     } catch (e) {
       setError(mapError(e));
     } finally {
+      payInFlightRef.current = false;
       setLoading(false);
     }
-  }, [amount, stripe, trainerId, onSuccess, onClose, resetForm, mapError]);
+  }, [amount, stripe, trainerId, onSuccess, onClose, resetForm, mapError, cardReady]);
 
   if (success) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.successCheck}>✅</Text>
-        <Text style={styles.successTitle}>Payment successful!</Text>
-        <Text style={styles.successLine}>You paid: {formatMoney(success.amount)}</Text>
-        <Text style={styles.successLine}>Coach receives: {formatMoney(success.trainerGets)}</Text>
-        <Text style={styles.successSub}>
-          This transaction is saved in your payment history (Settings → Billing).
-        </Text>
+      <View style={styles.sheet}>
+        <View style={styles.successIconWrap}>
+          <Ionicons name="checkmark-circle" size={52} color="#30D158" />
+        </View>
+        <Text style={styles.successTitle}>Payment successful</Text>
+        <Text style={styles.successLine}>You paid {formatMoney(success.amount)}</Text>
+        <Text style={styles.successLine}>Coach receives {formatMoney(success.trainerGets)}</Text>
+        <Text style={styles.successSub}>Saved to your payment history.</Text>
       </View>
     );
   }
 
+  const payDisabled = loading || (CardField && !cardReady);
+
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Pay Coach {displayName}</Text>
-      <Text style={styles.trustLine}>Secure payment via Stripe · Receipt saved in your history</Text>
-
-      <Text style={styles.label}>Amount</Text>
-      <View style={styles.amountRow}>
-        <Text style={styles.dollarSign}>$</Text>
-        <TextInput
-          style={styles.amountInput}
-          value={amount}
-          onChangeText={(t) => {
-            setAmount(t.replace(/[^0-9.]/g, ''));
-            setError(null);
-          }}
-          keyboardType="decimal-pad"
-          placeholder="Amount ($)"
-          placeholderTextColor={colors.textSecondary}
-          editable={!loading}
-        />
-      </View>
-
-      <View style={styles.quickRow}>
-        {QUICK_AMOUNTS.map((value) => {
-          const active = amount === String(value);
-          return (
-            <TouchableOpacity
-              key={value}
-              style={[styles.quickBtn, active && styles.quickBtnActive]}
-              onPress={() => selectQuickAmount(value)}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.quickBtnText, active && styles.quickBtnTextActive]}>
-                {formatMoney(value)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-        <View style={[styles.quickBtn, styles.customBtn]}>
-          <Text style={styles.quickBtnText}>Custom</Text>
-        </View>
-      </View>
-
-      {Number.isFinite(numericAmount) && numericAmount >= MIN_AMOUNT ? (
-        <View style={styles.feeBreakdown}>
-          <Text style={styles.feeBreakdownText}>
-            You pay {formatMoney(numericAmount)} · Coach gets {formatMoney(trainerGets)} · Platform fee{' '}
-            {Math.round(PLATFORM_FEE_RATE * 100)}% ({formatMoney(platformFee)})
-          </Text>
-          <Text style={styles.feeNote}>One-time coaching payment — not your Coach Connect Pro subscription.</Text>
-        </View>
-      ) : null}
-
-      <Text style={styles.label}>Card details</Text>
-      {CardField ? (
-        <CardField
-          postalCodeEnabled
-          placeholders={{ number: '4242 4242 4242 4242' }}
-          cardStyle={{
-            backgroundColor: isDark ? colors.surfaceSecondary : '#FFFFFF',
-            textColor: colors.textPrimary || colors.text,
-            placeholderColor: colors.textSecondary,
-            borderColor: colors.border,
-            borderWidth: 1,
-            borderRadius: 12,
-          }}
-          style={styles.cardField}
-          onCardChange={(details) => setCardReady(!!details?.complete)}
-        />
-      ) : (
-        <View style={styles.cardFallback}>
-          <Text style={[styles.cardFallbackText, { fontWeight: '700', marginBottom: 6 }]}>
-            {cardPaymentBlock?.title || 'Card payments unavailable'}
-          </Text>
-          <Text style={styles.cardFallbackText}>
-            {cardPaymentBlock?.detail ||
-              'Rebuild the app with npm run ios:run, then try again.'}
-          </Text>
-        </View>
-      )}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={handlePayNow}
-        disabled={loading || (CardField && !cardReady)}
-        style={styles.payWrap}
+    <View style={styles.sheet}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        <LinearGradient
-          colors={['#FF6B9D', '#C084FC']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.payBtn, (loading || (CardField && !cardReady)) && styles.payBtnDisabled]}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.payText}>{error ? 'RETRY' : 'PAY NOW'}</Text>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
+        <Text style={styles.title}>Pay Coach {displayName}</Text>
+        <Text style={styles.trustLine}>Secured by Stripe</Text>
 
-      <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} disabled={loading}>
-        <Text style={styles.cancelText}>Cancel</Text>
-      </TouchableOpacity>
+        <Text style={styles.label}>Amount</Text>
+        <View style={styles.amountRow}>
+          <Text style={styles.dollarSign}>$</Text>
+          <TextInput
+            ref={amountInputRef}
+            style={styles.amountInput}
+            value={amount}
+            onChangeText={(t) => {
+              setAmount(t.replace(/[^0-9.]/g, ''));
+              setError(null);
+            }}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            placeholderTextColor={isDark ? '#636366' : '#8E8E93'}
+            editable={!loading}
+            selectionColor="#BE185D"
+          />
+        </View>
+
+        <View style={styles.quickRow}>
+          {QUICK_AMOUNTS.map((value) => {
+            const active = amount === String(value);
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[styles.quickBtn, active && styles.quickBtnActive]}
+                onPress={() => selectQuickAmount(value)}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.quickBtnText, active && styles.quickBtnTextActive]}>
+                  {formatMoney(value)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {amountOk ? (
+          <Text style={styles.feeOneLiner}>
+            Coach gets {formatMoney(trainerGets)} · {Math.round(PLATFORM_FEE_RATE * 100)}% platform fee (
+            {formatMoney(platformFee)})
+          </Text>
+        ) : null}
+
+        <Text style={styles.label}>Card</Text>
+        {CardField ? (
+          <View style={styles.stripeLightPanel}>
+            <CardField
+              postalCodeEnabled
+              placeholders={{
+                number: 'Card number',
+                expiration: 'MM/YY',
+                cvc: 'CVC',
+                postalCode: 'ZIP',
+              }}
+              cardStyle={stripeCardStyle}
+              style={styles.cardField}
+              onCardChange={onCardChange}
+              disabled={loading}
+            />
+          </View>
+        ) : (
+          <View style={styles.cardFallback}>
+            <Text style={[styles.cardFallbackText, { fontWeight: '700', marginBottom: 6 }]}>
+              {cardPaymentBlock?.title || 'Card payments unavailable'}
+            </Text>
+            <Text style={styles.cardFallbackText}>
+              {cardPaymentBlock?.detail ||
+                'Rebuild the app with npm run ios:run, then try again.'}
+            </Text>
+          </View>
+        )}
+
+        {cardReady && cardMeta?.last4 ? (
+          <View style={styles.readyRow}>
+            <Ionicons name="shield-checkmark" size={14} color="#30D158" />
+            <Text style={styles.readyText}>
+              {cardMeta.brand ? `${String(cardMeta.brand)} ` : ''}···· {cardMeta.last4}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.cardHelp}>Enter card number, expiry, CVC, and ZIP</Text>
+        )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={handlePayNow}
+          disabled={payDisabled}
+          style={styles.payWrap}
+        >
+          <LinearGradient
+            colors={['#BE185D', '#C2410C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.payBtn, payDisabled && styles.payBtnDisabled]}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.payText}>
+                {error
+                  ? 'Try again'
+                  : amountOk
+                    ? `Pay ${formatMoney(numericAmount)}`
+                    : 'Pay now'}
+              </Text>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} disabled={loading}>
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -277,137 +349,163 @@ function ClientPaymentModal({ trainerId, trainerName, onClose, onSuccess }) {
 function makeStyles(colors, isDark) {
   const textPrimary = colors.textPrimary || colors.text || '#FFFFFF';
   return StyleSheet.create({
-    card: {
-      borderRadius: 16,
-      padding: 20,
-      backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+    sheet: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: 22,
+      paddingHorizontal: 20,
+      paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+      backgroundColor: isDark ? '#141416' : colors.surface,
       ...Platform.select({
         ios: {
           shadowColor: '#000',
-          shadowOpacity: 0.25,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.35,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: -4 },
         },
-        android: { elevation: 8 },
+        android: { elevation: 10 },
       }),
     },
+    scrollContent: {
+      paddingBottom: 16,
+    },
     title: {
-      fontSize: 20,
+      fontSize: 24,
       fontWeight: '800',
       color: textPrimary,
-      marginBottom: 6,
+      letterSpacing: -0.4,
+      marginBottom: 4,
     },
     trustLine: {
       fontSize: 13,
       color: colors.textSecondary,
-      marginBottom: 12,
-      lineHeight: 18,
-    },
-    feeBreakdown: {
-      marginTop: 12,
-      padding: 12,
-      borderRadius: 12,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    feeBreakdownText: {
-      fontSize: 12,
+      marginBottom: 18,
       fontWeight: '600',
-      color: colors.textSecondary,
-      lineHeight: 17,
-    },
-    feeNote: {
-      marginTop: 6,
-      fontSize: 11,
-      color: colors.textSecondary,
-      opacity: 0.85,
     },
     label: {
       fontSize: 12,
       fontWeight: '700',
       color: colors.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: 8,
-      marginTop: 12,
+      marginTop: 4,
     },
     amountRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      borderRadius: 16,
+      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      backgroundColor: isDark ? colors.surfaceSecondary : '#FFFFFF',
-      paddingHorizontal: 14,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      paddingHorizontal: 16,
+      marginBottom: 10,
     },
     dollarSign: {
-      fontSize: 22,
+      fontSize: 28,
       fontWeight: '700',
       color: textPrimary,
-      marginRight: 6,
+      marginRight: 4,
     },
     amountInput: {
       flex: 1,
-      fontSize: 22,
-      fontWeight: '700',
+      fontSize: 28,
+      fontWeight: '800',
       color: textPrimary,
-      paddingVertical: 14,
+      paddingVertical: 16,
+      letterSpacing: -0.5,
     },
     quickRow: {
       flexDirection: 'row',
-      gap: 8,
-      marginTop: 12,
+      gap: 10,
+      marginBottom: 10,
     },
     quickBtn: {
       flex: 1,
       paddingVertical: 12,
       borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
       alignItems: 'center',
-      backgroundColor: isDark ? colors.surfaceSecondary : '#FFFFFF',
+      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
+      borderWidth: 1.5,
+      borderColor: 'transparent',
     },
     quickBtnActive: {
-      borderColor: '#C084FC',
-      backgroundColor: isDark ? 'rgba(192,132,252,0.18)' : 'rgba(192,132,252,0.12)',
-    },
-    customBtn: {
-      opacity: 0.6,
+      borderColor: '#BE185D',
+      backgroundColor: isDark ? 'rgba(190,24,93,0.18)' : 'rgba(190,24,93,0.1)',
     },
     quickBtnText: {
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: '700',
       color: colors.textSecondary,
     },
     quickBtnTextActive: {
-      color: '#C084FC',
+      color: isDark ? '#FF6B9D' : '#BE185D',
+    },
+    feeOneLiner: {
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.textSecondary,
+      fontWeight: '600',
+      marginBottom: 16,
+      marginTop: 2,
+    },
+    stripeLightPanel: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.08)',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
+        },
+        android: { elevation: 2 },
+      }),
     },
     cardField: {
+      width: '100%',
       height: 50,
-      marginBottom: 4,
+    },
+    cardHelp: {
+      marginTop: 8,
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    readyRow: {
+      marginTop: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    readyText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#30D158',
+      textTransform: 'capitalize',
     },
     cardFallback: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: 16,
       padding: 16,
-      backgroundColor: isDark ? colors.surfaceSecondary : '#FFFFFF',
+      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
     },
     cardFallbackText: {
       color: colors.textSecondary,
       fontSize: 13,
+      lineHeight: 18,
     },
     error: {
       color: colors.error || '#FF453A',
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: '700',
       marginTop: 12,
     },
     payWrap: {
-      marginTop: 20,
+      marginTop: 18,
     },
     payBtn: {
       height: 56,
@@ -416,31 +514,29 @@ function makeStyles(colors, isDark) {
       justifyContent: 'center',
     },
     payBtnDisabled: {
-      opacity: 0.6,
+      opacity: 0.5,
     },
     payText: {
       color: '#FFFFFF',
-      fontSize: 16,
+      fontSize: 17,
       fontWeight: '800',
-      letterSpacing: 0.5,
     },
     cancelBtn: {
       paddingVertical: 14,
       alignItems: 'center',
-      marginTop: 4,
     },
     cancelText: {
       color: colors.textSecondary,
       fontSize: 15,
       fontWeight: '600',
     },
-    successCheck: {
-      fontSize: 40,
-      textAlign: 'center',
-      marginBottom: 8,
+    successIconWrap: {
+      alignItems: 'center',
+      marginTop: 12,
+      marginBottom: 12,
     },
     successTitle: {
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: '800',
       color: textPrimary,
       textAlign: 'center',
@@ -457,8 +553,8 @@ function makeStyles(colors, isDark) {
       fontSize: 13,
       color: colors.textSecondary,
       textAlign: 'center',
-      marginTop: 8,
-      lineHeight: 18,
+      marginTop: 10,
+      marginBottom: 20,
     },
   });
 }

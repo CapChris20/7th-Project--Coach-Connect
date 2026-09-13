@@ -1,6 +1,6 @@
 /** Shared constants for multi-source nutrition search. */
 
-const NUTRIENT_KEYS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sodium_mg'];
+const NUTRIENT_KEYS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sodium_mg', 'sugar_g'];
 
 const ALL_SOURCE_KEYS = [
   'fatSecret',

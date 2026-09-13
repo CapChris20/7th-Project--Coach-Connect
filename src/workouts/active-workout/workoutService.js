@@ -24,6 +24,7 @@ import {
   orderBy,
   onSnapshot,
 } from 'firebase/firestore';
+import { buildCreativeWorkoutPlanName, looksLikeDefaultAiPlanName } from './buildCreativeWorkoutPlanName';
 
 // Firestore Collections
 const WORKOUT_TEMPLATES_COLLECTION = 'workoutTemplates';
@@ -50,8 +51,14 @@ export async function setCurrentWorkoutPlan(userId, { rawPlan, generatedAt, stru
   const text = String(planText || rawPlan);
   const when = generatedAt || serverTimestamp();
   const displayTitle =
-    title ||
-    `Workout plan · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    (title && String(title).trim() && !looksLikeDefaultAiPlanName(title)
+      ? String(title).trim()
+      : null) ||
+    buildCreativeWorkoutPlanName({
+      structuredPlan: structuredPlan || null,
+      planText: text,
+      generatedAt: typeof generatedAt === 'number' ? generatedAt : Date.now(),
+    });
   try {
     const ref = doc(db, 'users', userId, 'workoutPlan', 'current');
     await setDoc(
@@ -583,7 +590,7 @@ export async function deleteWorkout(workoutId) {
  * Save a generated AI workout plan to the user's workout collection (saved plans)
  * @param {string} userId - User ID
  * @param {Object} planData - Plan object with planText, structuredPlan, etc.
- * @param {string} [name] - Optional display name (default: "AI Plan – [date]")
+ * @param {string} [name] - Optional display name (creative name derived from goal if omitted)
  * @returns {Promise<{ success: boolean, id?: string, error?: string }>}
  */
 export async function saveGeneratedPlanToCollection(userId, planData, name) {
@@ -592,7 +599,10 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
   }
 
   try {
-    const displayName = name || `AI Plan – ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    const displayName =
+      (name && String(name).trim() && !looksLikeDefaultAiPlanName(name)
+        ? String(name).trim()
+        : null) || buildCreativeWorkoutPlanName(planData);
 
     const structured = planData.structuredPlan || null;
     const goal = structured?.goal || structured?.focus || '';

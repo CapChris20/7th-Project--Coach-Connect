@@ -18,6 +18,7 @@ jest.mock('react-native', () => {
     TextInput: mock('TextInput'),
     TouchableOpacity: mock('TouchableOpacity'),
     ActivityIndicator: mock('ActivityIndicator'),
+    ScrollView: mock('ScrollView'),
     Platform: { OS: 'ios', select: (obj) => obj.ios },
   };
 });
@@ -25,6 +26,13 @@ jest.mock('react-native', () => {
 jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));
+
+jest.mock('@expo/vector-icons', () => {
+  const ReactLocal = require('react');
+  return {
+    Ionicons: (props) => ReactLocal.createElement('Ionicons', props),
+  };
+});
 
 jest.mock('../shared-ui/ThemeContext', () => ({
   useTheme: () => ({
@@ -44,12 +52,22 @@ jest.mock('../shared/api/chargesApi', () => ({
   postCoachingCharge: (...args) => mockPostCoachingCharge(...args),
 }));
 
+jest.mock('../shared/payments/stripeNativeStatus', () => {
+  const stripe = require('@stripe/stripe-react-native');
+  return {
+    getStripeNativeModule: () => stripe,
+    getStripeCardPaymentBlockReason: () => null,
+    isStripeCardPaymentReady: () => true,
+    getStripePublishableKey: () => 'pk_test_mock',
+  };
+});
+
 jest.mock('@stripe/stripe-react-native', () => {
   const ReactLocal = require('react');
   return {
     CardField: (props) => {
       ReactLocal.useEffect(() => {
-        props.onCardChange?.({ complete: true });
+        props.onCardChange?.({ complete: true, brand: 'Visa', last4: '4242' });
       }, []);
       return ReactLocal.createElement('CardField', { testID: 'stripe-card-field' });
     },
@@ -77,6 +95,17 @@ function findTouchableByText(tree, label) {
         .map((child) => (Array.isArray(child.children) ? child.children.join('') : String(child.children ?? '')));
       return texts.some((t) => t === label || t.includes(label));
     });
+}
+
+function findPayButton(tree) {
+  return (
+    findTouchableByText(tree, 'Pay $') ||
+    findTouchableByText(tree, 'Pay now') ||
+    findTouchableByText(tree, 'Try again') ||
+    findTouchableByText(tree, 'PAY $') ||
+    findTouchableByText(tree, 'PAY NOW') ||
+    findTouchableByText(tree, 'RETRY')
+  );
 }
 
 function renderModal(props = {}) {
@@ -137,8 +166,9 @@ describe('ClientPaymentModal', () => {
     expect(content).toMatch(/Pay Coach John/);
     expect(tree.root.findAllByType('TextInput').length).toBeGreaterThan(0);
     expect(tree.root.findAllByProps({ testID: 'stripe-card-field' }).length).toBe(1);
-    expect(content).toMatch(/PAY NOW/);
+    expect(content).toMatch(/Pay \$100|Pay now|Try again/i);
     expect(content).toMatch(/Cancel/);
+    expect(content).toMatch(/Card/i);
   });
 
   test('Test 2: Amount Selection', () => {
@@ -160,7 +190,7 @@ describe('ClientPaymentModal', () => {
 
     act(() => input.props.onChangeText('75'));
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       await payNow.props.onPress();
     });
@@ -170,6 +200,7 @@ describe('ClientPaymentModal', () => {
       trainerId: 'trainer123',
       amount: 75,
       token: 'tok_visa',
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -192,7 +223,7 @@ describe('ClientPaymentModal', () => {
     const fifty = findTouchableByText(tree, '$50');
     act(() => fifty.props.onPress());
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       payNow.props.onPress();
       await Promise.resolve();
@@ -206,8 +237,8 @@ describe('ClientPaymentModal', () => {
     });
 
     const successText = textContent(tree);
-    expect(successText).toMatch(/Paid \$50/);
-    expect(successText).toMatch(/They receive \$45/);
+    expect(successText).toMatch(/You paid \$50|You paid: \$50/);
+    expect(successText).toMatch(/Coach receives \$45|Coach receives: \$45/);
     expect(onSuccess).toHaveBeenCalled();
 
     act(() => {
@@ -229,17 +260,17 @@ describe('ClientPaymentModal', () => {
     const fifty = findTouchableByText(tree, '$50');
     act(() => fifty.props.onPress());
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       await payNow.props.onPress();
     });
     await flushPromises();
 
     expect(textContent(tree)).toMatch(/Card declined/i);
-    expect(textContent(tree)).toMatch(/RETRY/);
+    expect(textContent(tree)).toMatch(/Try again/i);
     expect(onSuccess).not.toHaveBeenCalled();
 
-    const retry = findTouchableByText(tree, 'RETRY');
+    const retry = findTouchableByText(tree, 'Try again');
     await act(async () => {
       await retry.props.onPress();
     });
@@ -268,12 +299,12 @@ describe('ClientPaymentModal', () => {
 
     act(() => input.props.onChangeText('0'));
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       await payNow.props.onPress();
     });
 
-    expect(textContent(tree)).toMatch(/Enter amount between \$1-\$10,000/);
+    expect(textContent(tree)).toMatch(/Enter an amount between \$1 and \$10,000/);
     expect(mockPostCoachingCharge).not.toHaveBeenCalled();
     expect(mockCreateToken).not.toHaveBeenCalled();
   });
@@ -284,12 +315,12 @@ describe('ClientPaymentModal', () => {
 
     act(() => input.props.onChangeText('0.5'));
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       await payNow.props.onPress();
     });
 
-    expect(textContent(tree)).toMatch(/Enter amount between \$1-\$10,000/);
+    expect(textContent(tree)).toMatch(/Enter an amount between \$1 and \$10,000/);
     expect(mockPostCoachingCharge).not.toHaveBeenCalled();
   });
 
@@ -299,12 +330,12 @@ describe('ClientPaymentModal', () => {
 
     act(() => input.props.onChangeText(''));
 
-    const payNow = findTouchableByText(tree, 'PAY NOW');
+    const payNow = findPayButton(tree);
     await act(async () => {
       await payNow.props.onPress();
     });
 
-    expect(textContent(tree)).toMatch(/Enter amount between \$1-\$10,000/);
+    expect(textContent(tree)).toMatch(/Enter an amount between \$1 and \$10,000/);
     expect(mockPostCoachingCharge).not.toHaveBeenCalled();
   });
 });

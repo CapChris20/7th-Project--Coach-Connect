@@ -229,15 +229,15 @@
           <form id="reset-form" novalidate>
             <label for="password">New password</label>
             <div class="field">
-              <input id="password" name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters" />
+              <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" />
               <button type="button" class="toggle-pw" data-target="password" aria-label="Show password">Show</button>
             </div>
             <label for="confirm">Confirm password</label>
             <div class="field">
-              <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="6" required placeholder="Re-enter your password" />
+              <input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Re-enter your password" />
               <button type="button" class="toggle-pw" data-target="confirm" aria-label="Show confirm password">Show</button>
             </div>
-            <p class="hint">Use at least 6 characters. Mix letters and numbers for a stronger password.</p>
+            <p class="hint">Use at least 8 characters with at least one letter and one number.</p>
             <button type="submit" class="btn" id="submit-btn">Update password</button>
           </form>
         </div>
@@ -332,8 +332,12 @@
         clearFormError();
         var pw = document.getElementById('password').value;
         var confirm = document.getElementById('confirm').value;
-        if (pw.length < 6) {
-          showFormError('Password must be at least 6 characters.');
+        if (pw.length < 8) {
+          showFormError('Password must be at least 8 characters.');
+          return;
+        }
+        if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) {
+          showFormError('Password must include at least one letter and one number.');
           return;
         }
         if (pw !== confirm) {
@@ -359,7 +363,7 @@
               showPanel('error');
               errorDetail.textContent = 'This link has expired or was already used. Go back to the app and tap Forgot password to get a new email.';
             } else if (/WEAK_PASSWORD/i.test(err)) {
-              showFormError('Choose a stronger password (at least 6 characters).');
+              showFormError('Choose a stronger password (at least 8 characters with a letter and a number).');
               submitBtn.disabled = false;
               submitBtn.textContent = 'Update password';
             } else {

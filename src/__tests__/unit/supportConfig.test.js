@@ -18,9 +18,14 @@ describe('supportConfig', () => {
     expect(getSupportEmail()).toBe(DEFAULT_SUPPORT_EMAIL);
   });
 
-  test('supports env override from expo extra', () => {
-    mockConstants.expoConfig = { extra: { supportEmail: 'help@example.com' } };
-    const { getSupportEmail } = require('../../settings/supportConfig');
-    expect(getSupportEmail()).toBe('help@example.com');
+  test('returns default privacy policy URL', () => {
+    const { getPrivacyPolicyUrl, DEFAULT_PRIVACY_POLICY_URL } = require('../../settings/supportConfig');
+    expect(getPrivacyPolicyUrl()).toBe(DEFAULT_PRIVACY_POLICY_URL);
+  });
+
+  test('supports privacy URL override from expo extra', () => {
+    mockConstants.expoConfig = { extra: { privacyPolicyUrl: 'https://example.com/privacy' } };
+    const { getPrivacyPolicyUrl } = require('../../settings/supportConfig');
+    expect(getPrivacyPolicyUrl()).toBe('https://example.com/privacy');
   });
 });

@@ -33,14 +33,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggleFavoriteFood } from '../daily-log/logFoodToFirestore';
-import { resolveFoodBrandLabel, shouldShowFoodBrandSubtitle } from '../food-details/cleanFoodBrandName';
+import { resolveFoodBrandLabel } from '../food-details/cleanFoodBrandName';
 import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/cleanFoodCardLabels';
+import { formatServingDisplayLine } from '../food-search/guessServingSize';
 import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
 import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
 import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
 import { HOME_STAT_SLEEP_GRADIENT } from '../../shared-ui/homeStatGradients';
 import FoodCard from '../components/premiumFoodCard/FoodCard';
-import GradientText from '../components/premiumFoodCard/GradientText';
 import { gradients, brandGradients } from '../components/premiumFoodCard/theme';
 import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
 import { auth } from '../../app-start/config';
@@ -168,22 +168,8 @@ const normalizeFood = (item, searchQuery = '') => {
   };
 };
 
-function formatServingLine(item) {
-  if (item.portion_text) return item.portion_text;
-  const qty = item.serving_size;
-  const unit = (item.serving_unit || 'serving').trim();
-  const g = item.serving_grams;
-  const unitLower = unit.toLowerCase();
-  if ((unitLower === 'grams' || unitLower === 'gram' || unitLower === 'g') && g) return `${Math.round(g)}g`;
-  if (qty != null && unit && g && !/^(grams?|g|serving|portion|each|ml)$/i.test(unitLower)) {
-    return `${qty} ${unit} (${Math.round(g)}g)`;
-  }
-  if (g) return `${Math.round(g)}g serving`;
-  if (qty != null && unit) return `${qty} ${unit}`;
-  if (item.source === 'serper' || item.source === 'mixed') {
-    return 'Estimated serving — adjust after adding';
-  }
-  return '1 serving';
+function formatServingLine(item, userQuery = '') {
+  return formatServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
 }
 
 /** Saved / recent history — same premium card as logged foods on NutritionScreen. */
@@ -193,153 +179,46 @@ const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
   const food = useMemo(() => formatLoggedFoodDisplay(item, amount), [item, amount]);
 
   return (
-    <View style={recentHistoryCardStyles.wrap}>
+    <View style={premiumSearchCardStyles.wrap}>
       <FoodCard
         food={food}
         expanded={expanded}
         embedded
         isDark={isDark}
         onToggle={() => setExpanded((v) => !v)}
-        onEdit={() => onAdd(item)}
+        onAdd={() => onAdd(item)}
       />
     </View>
   );
 };
 
-const recentHistoryCardStyles = StyleSheet.create({
+/** Search hits — same logged-food card layout, plus to open confirm/log. */
+const FoodResultRow = ({ item, onAdd, isDark = true, isFavorite = false, onToggleFavorite, query = '' }) => {
+  const [expanded, setExpanded] = useState(false);
+  const amount = formatServingLine(item, query);
+  const food = useMemo(() => formatLoggedFoodDisplay(item, amount), [item, amount]);
+
+  return (
+    <View style={premiumSearchCardStyles.wrap}>
+      <FoodCard
+        food={food}
+        expanded={expanded}
+        embedded
+        isDark={isDark}
+        onToggle={() => setExpanded((v) => !v)}
+        onAdd={() => onAdd(item)}
+        onFavorite={onToggleFavorite ? () => onToggleFavorite(item) : undefined}
+        isFavorite={isFavorite}
+      />
+    </View>
+  );
+};
+
+const premiumSearchCardStyles = StyleSheet.create({
   wrap: {
     marginBottom: 10,
   },
 });
-
-const FoodResultRow = ({ item, onAdd, colors, isDark = true, isFavorite = false, onToggleFavorite }) => {
-  const [adding, setAdding] = useState(false);
-  const c = colors || DARK;
-  const foodTitle = item.food_name || item.name || '';
-  const brand = resolveFoodBrandLabel(foodTitle, item.brand_name || item.brand || '').trim();
-  const showBrand = shouldShowFoodBrandSubtitle(foodTitle, brand);
-  const bgGradient = isDark ? HERO_BG_DARK : HERO_BG_LIGHT;
-  const labelMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
-  const pillText = isDark ? '#FFFFFF' : '#0A0A0F';
-  const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
-
-  const handleAdd = async () => {
-    setAdding(true);
-    await onAdd(item);
-    setAdding(false);
-  };
-
-  const MacroStat = ({ label, value }) => {
-    const grams = Math.round(Number(value) || 0);
-    return (
-      <View style={foodCardStyles.macroItem}>
-        <Text style={[foodCardStyles.macroLabel, { color: labelMuted }]} numberOfLines={1}>
-          {label}
-        </Text>
-        <Text style={[foodCardStyles.macroValue, { color: pillText }]}>{grams}g</Text>
-      </View>
-    );
-  };
-
-  return (
-    <View
-      style={[
-        foodCardStyles.wrapper,
-        Platform.select({
-          ios: {
-            shadowColor: '#BE185D',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: isDark ? 0.28 : 0.12,
-            shadowRadius: 10,
-          },
-          android: { elevation: 6 },
-        }),
-      ]}
-    >
-      <View style={foodCardStyles.clip}>
-        <LinearGradient
-          colors={HERO_TOP_BORDER}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={foodCardStyles.topBorder}
-        />
-        <LinearGradient colors={bgGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={foodCardStyles.inner}>
-          <View style={foodCardStyles.mainRow}>
-            <View style={foodCardStyles.iconWrap}>
-              <Ionicons name="restaurant-outline" size={18} color={labelMuted} />
-            </View>
-
-            <View style={foodCardStyles.body}>
-              <Text
-                style={[foodCardStyles.title, { color: titleFill }]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
-                {foodTitle}
-              </Text>
-
-              {showBrand ? (
-                <Text style={[foodCardStyles.brand, { color: labelMuted }]} numberOfLines={1}>
-                  {brand}
-                </Text>
-              ) : null}
-
-              <Text style={[foodCardStyles.serving, { color: labelMuted }]} numberOfLines={2}>
-                {formatServingLine(item)}
-              </Text>
-
-              {item.multiServingFallback ? (
-                <Text style={foodCardStyles.warn}>
-                  Multi-serving estimate{item.servingMultiplier ? ` (÷${item.servingMultiplier})` : ''} — confirm on menu
-                </Text>
-              ) : item.nutrition_unverified ? (
-                <Text style={foodCardStyles.warn}>Unverified — confirm on menu before logging</Text>
-              ) : null}
-
-              <View style={foodCardStyles.macroRow}>
-                <MacroStat label="Protein" value={item.protein} />
-                <MacroStat label="Carbs" value={item.carbs} />
-                <MacroStat label="Fat" value={item.fat} />
-              </View>
-            </View>
-
-            <View style={foodCardStyles.sideCol}>
-              <TouchableOpacity
-                onPress={() => onToggleFavorite?.(item)}
-                hitSlop={8}
-                style={{ marginBottom: 6, alignSelf: 'flex-end' }}
-                accessibilityRole="button"
-                accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                <Ionicons name={isFavorite ? 'heart' : 'heart-outline'} size={22} color={isFavorite ? '#BE185D' : labelMuted} />
-              </TouchableOpacity>
-              <GradientText colors={c.calGradient} style={foodCardStyles.calValue} numberOfLines={1}>
-                {item.calories}
-              </GradientText>
-              <Text style={[foodCardStyles.calLabel, { color: labelMuted }]}>CAL</Text>
-              <TouchableOpacity
-                onPress={handleAdd}
-                disabled={adding}
-                activeOpacity={0.88}
-                style={foodCardStyles.addHit}
-                accessibilityRole="button"
-                accessibilityLabel="Add food to log"
-              >
-                <LinearGradient colors={HERO_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={foodCardStyles.addBtn}>
-                  {adding ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Ionicons name="add" size={22} color="#FFFFFF" />
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
-    </View>
-  );
-};
 
 const QUICK_PICKS = [
   { label: 'Chicken Breast', icon: 'barbell-outline', accentKey: 'pink' },
@@ -1007,10 +886,10 @@ const FoodSearchScreen = ({
               <FoodResultRow
                 item={item}
                 onAdd={handleAddFood}
-                colors={colors}
                 isDark={isDark}
                 isFavorite={foodIsFavorite(item)}
                 onToggleFavorite={handleToggleFavorite}
+                query={query}
               />
             )
           }
@@ -1033,7 +912,7 @@ const FoodSearchScreen = ({
       <FoodConfirmSheet
         food={pendingFood}
         theme={confirmTheme}
-        showVerification={Boolean(pendingFood?.nutrition_unverified)}
+        showVerification={false}
         onConfirm={handleConfirmFood}
         onCancel={() => setPendingFood(null)}
       />
@@ -1041,121 +920,6 @@ const FoodSearchScreen = ({
     </>
   );
 };
-
-const foodCardStyles = StyleSheet.create({
-  wrapper: {
-    marginBottom: 12,
-    borderRadius: 18,
-  },
-  clip: {
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  topBorder: {
-    height: 2,
-    width: '100%',
-  },
-  inner: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  mainRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    overflow: 'hidden',
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(100,210,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  body: {
-    flex: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  brand: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  serving: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  warn: {
-    fontSize: 11,
-    color: '#F59E0B',
-    marginTop: 6,
-    fontWeight: '600',
-    lineHeight: 15,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    marginTop: 10,
-    gap: 10,
-  },
-  macroItem: {
-    flex: 1,
-    minWidth: 0,
-  },
-  macroLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-  },
-  macroValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 2,
-    fontVariant: ['tabular-nums'],
-  },
-  sideCol: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-    width: 64,
-    paddingTop: 2,
-  },
-  calValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    maxWidth: 64,
-    textAlign: 'right',
-  },
-  calLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  addHit: {
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
 
 const fs = StyleSheet.create({
   topBar: {

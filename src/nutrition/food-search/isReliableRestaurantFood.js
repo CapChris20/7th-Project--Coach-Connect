@@ -15,6 +15,8 @@
 const {
   significantQueryTokens,
   countTokenHits,
+  hasUnrequestedFoodFamilyMismatch,
+  rowNameBrandText,
 } = require('../food-search/sortBestFoodMatches');
 const {
   servingConflictsWithFood,
@@ -41,7 +43,7 @@ const TRUSTED_DB_SOURCES = new Set([
   'trusted_catalog',
 ]);
 
-const WEAK_WEB_SOURCES = new Set(['serper', 'mixed', 'nutrition_consensus', 'web']);
+const WEAK_WEB_SOURCES = new Set(['serper', 'mixed', 'web']);
 
 const NOISE_SOURCE_RE =
   /reddit|tiktok|pinterest|instagram|homemade|copycat|diy\b|blog\b|permanent\s+rotation|just\s+earned|knockoff|meal\s+prep\s+idea|menu\s*items?|breadmenu|gs1|tracker/i;
@@ -235,11 +237,37 @@ function expectsRichMacros(userQuery, rowText) {
   );
 }
 
+function isPlausibleRestaurantNutritionRow(macros, { relaxed = false } = {}) {
+  const cal = Number(macros?.calories) || 0;
+  const p = Number(macros?.protein) || 0;
+  const c = Number(macros?.carbs) || 0;
+  const f = Number(macros?.fat) || 0;
+  if (cal <= 0 || cal > 3500) return false;
+
+  const mc = macroCalories(p, c, f);
+  const consistency = macroCalorieConsistencyScore(macros);
+  const minConsistency = relaxed ? 40 : MIN_MACRO_CONSISTENCY_TO_USE;
+
+  // Explicit zero-macro poison rows (or macros that wildly exceed claimed calories).
+  if (p === 0 && c === 0 && f === 0 && cal > 0) return false;
+  if (mc > 40 && cal > 0 && mc / cal > 1.55) return false;
+
+  if (mc < 15) {
+    if (cal >= 80) return false;
+    return p > 0 || c > 0 || f > 0;
+  }
+
+  if (cal >= 120 && consistency < minConsistency) return false;
+  if (cal >= 80 && mc < 20) return false;
+  return true;
+}
+
 function hasImplausibleZeroMacros(macros, userQuery, rowText) {
   const cal = Number(macros?.calories) || 0;
   const p = Number(macros?.protein) || 0;
   const c = Number(macros?.carbs) || 0;
   const f = Number(macros?.fat) || 0;
+  if (cal <= 0 && p <= 0 && c <= 0 && f <= 0) return true;
   if (cal < 150) return false;
   if (!expectsRichMacros(userQuery, rowText)) return false;
 
@@ -344,25 +372,20 @@ function variantPreferenceScore(row, userQuery) {
   // Demote incomplete macros for foods that should have protein.
   if (hasImplausibleZeroMacros(macros, userQuery, text)) score -= 120;
 
-  // Prefer trusted DB sources over weak web/consensus scrapes.
+  // Prefer consensus + trusted DB sources over weak web scrapes.
   const src = String(row.source || '').toLowerCase();
-  if (TRUSTED_DB_SOURCES.has(row.source) || TRUSTED_DB_SOURCES.has(src)) score += 55;
+  if (src === 'nutrition_consensus') score += 70;
+  else if (TRUSTED_DB_SOURCES.has(row.source) || TRUSTED_DB_SOURCES.has(src)) score += 55;
   if (WEAK_WEB_SOURCES.has(src) || WEAK_WEB_SOURCES.has(row.source)) score -= 25;
 
-  // Branded item queries: exact item tokens beat related menu items (pizza vs crazy bread).
+  // Branded item queries: exact item tokens beat related menu items (pizza vs breadsticks).
   const queryCategory = inferFoodServingCategory(userQuery, '', '');
   const rowCategory = inferFoodServingCategory('', text, '');
   if (queryCategory !== 'generic' && rowCategory !== 'generic' && queryCategory !== rowCategory) {
     score -= 85;
   }
-  if (/\bcrazy\s*bread|breadstick/i.test(q) && /\bpizza\b/i.test(text) && !/\b(crazy\s*bread|breadstick)/i.test(text)) {
-    score -= 90;
-  }
-  if (/\bbig\s*mac\b/i.test(q) && /\b(nugget|fries|mcflurry)\b/i.test(text) && !/\bbig\s*mac\b/i.test(text)) {
-    score -= 90;
-  }
-  if (/\bchicken\s+bowl\b/i.test(q) && /\b(burrito|taco|quesadilla)\b/i.test(text) && !/\bbowl\b/i.test(text)) {
-    score -= 70;
+  if (hasUnrequestedFoodFamilyMismatch(rowNameBrandText(row), userQuery)) {
+    score -= 200;
   }
 
   if (!getMultiServingInfo(row).isMulti) {
@@ -438,30 +461,6 @@ function macroCalorieConsistencyScore(macros) {
   return 5;
 }
 
-/**
- * Stricter plausibility for restaurant Serper rows (calories + macros must agree).
- */
-function isPlausibleRestaurantNutritionRow(macros, { relaxed = false } = {}) {
-  const cal = Number(macros?.calories) || 0;
-  const p = Number(macros?.protein) || 0;
-  const c = Number(macros?.carbs) || 0;
-  const f = Number(macros?.fat) || 0;
-  if (cal <= 0 || cal > 3500) return false;
-
-  const mc = macroCalories(p, c, f);
-  const consistency = macroCalorieConsistencyScore(macros);
-  const minConsistency = relaxed ? 40 : MIN_MACRO_CONSISTENCY_TO_USE;
-
-  if (mc < 15) {
-    if (cal >= 80) return false;
-    return p > 0 || c > 0 || f > 0;
-  }
-
-  if (cal >= 120 && consistency < minConsistency) return false;
-  if (cal >= 80 && mc < 20) return false;
-  return true;
-}
-
 function brandTokenBonus(row, userQuery) {
   const tokens = significantQueryTokens(userQuery);
   if (tokens.length < 2) return 0;
@@ -509,6 +508,9 @@ function filterUsableSerperRows(rows, userQuery) {
         servingLabel: row.serving_label || row.serving_unit || '',
       })
     ) {
+      return false;
+    }
+    if (hasUnrequestedFoodFamilyMismatch(rowNameBrandText(row), userQuery)) {
       return false;
     }
     if (isLowCalBeverageRow(macros, userQuery, rowText)) return true;

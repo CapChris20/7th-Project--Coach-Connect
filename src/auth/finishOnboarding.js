@@ -38,7 +38,9 @@ export function buildOnboardingUpdatePayload(finalRole, onboardingData, override
 
 /**
  * Persists onboarding completion locally + users/{uid}, then syncs via API.
- * Returns { updateData, firestoreSynced, serverResponse, error }.
+ * Retries the server role write so trainers don't fall into the client shell if
+ * the first /api/onboarding/complete call flakes.
+ * Returns { updateData, firestoreSynced, serverResponse, error, roleCached }.
  */
 export async function completeOnboardingClient({
   userId,
@@ -52,14 +54,37 @@ export async function completeOnboardingClient({
   AsyncStorage,
   postOnboardingApi,
   displayName = null,
+  getProfileCacheKey = (uid) => `auth_profile_${uid}`,
 }) {
   const updateData = buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
   let firestoreSynced = false;
   let serverResponse = null;
   let error = null;
+  let roleCached = false;
+
+  const cacheRoleLocally = async () => {
+    if (!AsyncStorage?.setItem || !userId) return;
+    const role = String(finalRole || '').toLowerCase() === 'trainer' ? 'trainer' : 'client';
+    await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(updateData));
+    await AsyncStorage.setItem(
+      getProfileCacheKey(userId),
+      JSON.stringify({
+        uid: userId,
+        ...updateData,
+        role,
+        onboardingCompleted: true,
+      }),
+    );
+    // If server sync fails, AuthGate can retry from this flag on next launch.
+    await AsyncStorage.setItem(
+      `pending_onboarding_complete_${userId}`,
+      JSON.stringify({ finalRole: role, onboardingData: updateData, displayName }),
+    );
+    roleCached = true;
+  };
 
   try {
-    await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(updateData));
+    await cacheRoleLocally();
 
     if (db && setDoc && doc) {
       const { onboardingCompletedAt: _oca, updatedAt: _ua, ...restForFs } = updateData;
@@ -76,15 +101,39 @@ export async function completeOnboardingClient({
       firestoreSynced = true;
     }
 
-    serverResponse = await postOnboardingApi('/api/onboarding/complete', {
-      finalRole,
-      onboardingData: updateData,
-      displayName,
-    });
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        serverResponse = await postOnboardingApi('/api/onboarding/complete', {
+          finalRole,
+          onboardingData: updateData,
+          displayName,
+        });
+        lastErr = null;
+        if (AsyncStorage?.removeItem) {
+          await AsyncStorage.removeItem(`pending_onboarding_complete_${userId}`);
+        }
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+        }
+      }
+    }
+    if (lastErr) {
+      error = lastErr;
+      return { updateData, firestoreSynced, serverResponse, error: lastErr, roleCached };
+    }
 
-    return { updateData, firestoreSynced, serverResponse, error: null };
+    return { updateData, firestoreSynced, serverResponse, error: null, roleCached };
   } catch (e) {
     error = e;
-    return { updateData, firestoreSynced, serverResponse, error: e };
+    try {
+      await cacheRoleLocally();
+    } catch (_) {
+      /* ignore */
+    }
+    return { updateData, firestoreSynced, serverResponse, error: e, roleCached };
   }
 }

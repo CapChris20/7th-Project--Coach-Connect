@@ -30,10 +30,12 @@ export const TODAY_CARD_TOP_STRIPE = ['#6D28D9', '#C2410C'];
 /** Hot pink → dark orange rim on welcome hero (client + trainer). */
 export const AURORA_HERO_BORDER = ['#FF6B9D', '#C2410C'];
 
+/** @deprecated Prefer AURORA_HERO_BORDER — kept so stale bundles/imports do not crash. */
+export const HERO_TOP_STRIPE = AURORA_HERO_BORDER;
+
 /** Inner fill — same family as FilesNotesHeroCard (not flat black). */
 const HERO_INNER_BG_DARK = ['#1a0a2e', '#0f0a1a'];
 const HERO_INNER_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
-const HERO_TOP_STRIPE = ['#C2410C', '#4C1D95'];
 
 export function getAuroraHeroGreeting() {
   const hour = new Date().getHours();
@@ -184,12 +186,6 @@ function HeroGradientFrame({ isDark, layout, children }) {
           >
             <View style={[styles.innerClip, { borderRadius: radius - 1.5 }]}>
               <LinearGradient
-                colors={HERO_TOP_STRIPE}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.topStripe}
-              />
-              <LinearGradient
                 colors={innerBg}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
@@ -310,10 +306,6 @@ const styles = StyleSheet.create({
   },
   innerClip: {
     overflow: 'hidden',
-  },
-  topStripe: {
-    height: 3,
-    width: '100%',
   },
   outerClient: {
     marginHorizontal: 16,

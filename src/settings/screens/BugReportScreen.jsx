@@ -147,7 +147,15 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
       setWhatHappened('');
       setSteps('');
       setDeviceInfo('');
-      Alert.alert('Sent', 'Thanks — your bug report was sent.');
+      openSupportMailto({ subject, body: message });
+      if (json?.delivery === 'firestore') {
+        Alert.alert(
+          'Almost done',
+          `We saved your bug report and opened email to ${supportEmail || 'support'}. Tap Send in Mail so it hits the inbox.`,
+        );
+      } else {
+        Alert.alert('Sent', 'Thanks — your bug report was sent (email opened as a backup).');
+      }
     } catch (e) {
       offerSupportMailtoFallback({ subject, body: message, apiError: e?.message });
     } finally {

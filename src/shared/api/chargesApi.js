@@ -19,10 +19,10 @@ async function getIdToken() {
 
 /**
  * Charge the signed-in client and pay the given trainer.
- * @param {{ trainerId: string, amount: number, token: string }} params
+ * @param {{ trainerId: string, amount: number, token: string, idempotencyKey?: string }} params
  * @returns {Promise<{ success: boolean, charge_id: string, trainer_gets: number }>}
  */
-export async function postCoachingCharge({ trainerId, amount, token }) {
+export async function postCoachingCharge({ trainerId, amount, token, idempotencyKey }) {
   const idToken = await getIdToken();
   const bases = getResilientApiBases();
   let lastError = null;
@@ -38,7 +38,12 @@ export async function postCoachingCharge({ trainerId, amount, token }) {
           Accept: 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ trainerId, amount, token }),
+        body: JSON.stringify({
+          trainerId,
+          amount,
+          token,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        }),
         signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
