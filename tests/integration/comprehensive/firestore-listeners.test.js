@@ -31,7 +31,7 @@ async function testFirestoreListeners() {
     },
     {
       name: 'Mark all messages read pagination (READ_PAGE_SIZE 50)',
-      file: 'src/ai-coach/server-logic/services/markAllMessagesRead.js',
+      file: 'src/ai-coach/logic/services/markAllMessagesRead.js',
       patterns: ['READ_PAGE_SIZE', 'markConversationMessagesReadPaginated', 'writeBatch'],
     },
     {

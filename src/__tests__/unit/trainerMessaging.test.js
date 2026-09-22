@@ -29,11 +29,11 @@ jest.mock('firebase/firestore', () => ({
   deleteField: jest.fn(),
 }));
 
-jest.mock('../../shared/firestore/firestorePagedQuery', () => ({
+jest.mock('../../for-both/firestore/firestorePagedQuery', () => ({
   getDocsWithIndexFallback: (...args) => mockGetDocsWithIndexFallback(...args),
 }));
 
-jest.mock('../../shared/api/sendPushNotification', () => ({
+jest.mock('../../for-both/api/sendPushNotification', () => ({
   postRemotePushNotify: (...args) => mockPostRemotePushNotify(...args),
 }));
 
@@ -44,7 +44,7 @@ const {
   markMessagesAsRead,
   subscribeToMessages,
   CLIENT_REQUEST_TYPES,
-} = require('../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification');
+} = require('../../ai-coach/logic/trainer-messaging/sendTrainerNotification');
 
 beforeEach(() => {
   jest.clearAllMocks();

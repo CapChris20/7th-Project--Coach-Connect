@@ -26,32 +26,32 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import StableGradientText from '../../shared-ui/StableGradientText';
+import StableGradientText from '../../theme/StableGradientText';
 import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
-import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
-import { DailyQuotePill } from '../../shared/components/home/DailyQuoteCard';
-import AuroraHeroBannerBase from '../../shared/components/home/AuroraHeroBanner';
-import FilesNotesHeroCard from '../../shared/components/FilesNotesHeroCard';
-import FilesNotesSectionPremium from '../../shared/components/notes-files/FilesNotesSectionPremium';
-import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
-import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';
-import EmbedWebViewModal from '../../shared/components/notes-files/EmbedWebViewModal';
-import { deleteNotesAndFilesItem } from '../../shared/notes-files/manageNotesAndFiles';
+import BlurBackdropPlate from '../../theme/BlurBackdropPlate';
+import { DailyQuotePill } from '../../for-both/components/home/DailyQuoteCard';
+import AuroraHeroBannerBase from '../../for-both/components/home/AuroraHeroBanner';
+import FilesNotesHeroCard from '../../for-both/components/FilesNotesHeroCard';
+import FilesNotesSectionPremium from '../../for-both/components/notes-files/FilesNotesSectionPremium';
+import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
+import MediaViewerModal from '../../for-both/components/notes-files/MediaViewerModal';
+import EmbedWebViewModal from '../../for-both/components/notes-files/EmbedWebViewModal';
+import { deleteNotesAndFilesItem } from '../../for-both/notes-files/manageNotesAndFiles';
 import {
   isImageFile as isNotesImageFile,
   isVideoFile as isNotesVideoFile,
   isPdfFile as isNotesPdfFile,
   getEmbedViewerUri,
-} from '../../shared-utils/getFileViewType';
+} from '../../helpers/getFileViewType';
 import { Dimensions } from 'react-native';
-import { useTheme as useGlobalTheme } from '../../shared-ui/ThemeContext';
+import { useTheme as useGlobalTheme } from '../../theme/ThemeContext';
 
 const LOTTIE_WELLNESS_SORENESS_EMPTY = require('../../assets/sad reaction.json');
 const LOTTIE_WELLNESS_ENERGY_EMPTY = require('../../assets/Run Hamster... run.json');
 const LOTTIE_WELLNESS_STRESS_EMPTY = require('../../assets/Stressed Employee At Work.json');
-const LOTTIE_STEPS_EMPTY = require('../../shared/assets/Walking steps.json');
-const LOTTIE_MOOD_EMPTY = require('../../shared/assets/Happy SUN.json');
+const LOTTIE_STEPS_EMPTY = require('../../for-both/assets/Walking steps.json');
+const LOTTIE_MOOD_EMPTY = require('../../for-both/assets/Happy SUN.json');
 const LOTTIE_FOOD_AROUND_CITY = require('../../assets/animations/legacy/food around the city.json');
 
 function getTrainerDashboardLottieSource(lottieType) {

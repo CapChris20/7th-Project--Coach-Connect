@@ -3,15 +3,15 @@
     "Animated loading spinner (five bouncing dots) shown while async work completes.",
     "Used as a lightweight loading indicator anywhere the app needs a visual wait state."
   ],
-  "ai-coach/server-logic/chat-api/sendCoachMessageToServer.js": [
+  "ai-coach/logic/chat-api/sendCoachMessageToServer.js": [
     "Client-side HTTP client for the AI coach chat API — sends messages, handles retries, and parses server responses.",
     "Called from ChatWithCoachScreen; routes to your Cloud Run backend, not directly to DeepSeek."
   ],
-  "ai-coach/server-logic/services/markAllMessagesRead.js": [
+  "ai-coach/logic/services/markAllMessagesRead.js": [
     "Marks all unread trainer/client messages as read in Firestore when the user opens the inbox.",
     "Prevents stale unread badges after the user views their conversations."
   ],
-  "ai-coach/server-logic/tools/cleanupToolParams.js": [
+  "ai-coach/logic/tools/cleanupToolParams.js": [
     "Sanitizes and normalizes parameters on AI coach tool calls before execution (strips junk, fixes types).",
     "Runs in the tool pipeline so bad model output does not crash Firestore writes."
   ],
@@ -79,7 +79,7 @@
     "Maps overlay route names to screens: Profile, Settings, FAQ, Terms, Nutrition, Marketplace, Weekly Report, etc.",
     "Rendered on top of ClientMainScreen when user opens settings or support from the client shell."
   ],
-  "lib/sessions.js": [
+  "helpers/session-dates.js": [
     "Date/time formatting helpers for trainer session scheduling (pad2, long date, 12-hour time).",
     "Used by session cards and calendar views to display human-readable session times."
   ],
@@ -131,15 +131,15 @@
     "Encodes spreadsheet rows for Firestore — flattens nested arrays because Firestore forbids them.",
     "Used when trainers edit shared spreadsheets in DocumentEditorModal."
   ],
-  "shared-ui/ThemeContext.js": [
+  "theme/ThemeContext.js": [
     "React context for light/dark theme — ThemeProvider wraps the app, useTheme() reads colors in screens.",
     "Drives text/background colors across Coach Connect without hardcoding hex values in every file."
   ],
-  "shared-ui/homeStatGradients.js": [
+  "theme/homeStatGradients.js": [
     "Gradient color arrays for home stat pills (workout, water, sleep, soreness, etc.).",
     "PremiumStatsSection and dashboard cards import these for consistent stat card styling."
   ],
-  "shared-utils/formatFileSize.js": [
+  "helpers/formatFileSize.js": [
     "Formats byte sizes (KB/MB), short dates, and friendly filenames for the files gallery.",
     "Also detects auto-generated upload names so the UI can show cleaner labels."
   ],

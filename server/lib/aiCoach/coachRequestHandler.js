@@ -19,9 +19,10 @@ const {
   findPriorSubstantiveUserQuestion,
   resolveCoachWebSearchGate,
   filterFitnessWebSources,
+  userWantsSourceQuotes,
 } = require('../coachWebSearch');
 const { mergeCoachToolCalls } = require('../inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../../src/ai-coach/server-logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../../src/ai-coach/logic/tools/shouldShowCoachAction');
 const { sanitizeCoachImageAttachments, runCoachVisionTurn } = require('../coachVision');
 const { parseCoachToolCalls, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/tools/parseCoachToolCalls');
 const {
@@ -224,7 +225,8 @@ async function runCoachWebSearch({
   deepSeekKey,
 }) {
   const query = stripWebSearchPrefix(String(searchQuery || '').trim()) || String(searchQuery || '').trim();
-  const sourceQuoteMode = isWebSourceQuoteFollowUp(lastUserMsg);
+  // Quote instructions live in the system prompt — never as the Serper topic.
+  const sourceQuoteMode = userWantsSourceQuotes(lastUserMsg) || isWebSourceQuoteFollowUp(lastUserMsg, messages);
   const webSystemPrompt =
     systemPrompt + WEB_SEARCH_SYSTEM_APPEND + (sourceQuoteMode ? WEB_SOURCE_QUOTE_SYSTEM_APPEND : '');
 
@@ -402,7 +404,7 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
       systemPrompt += `\n\nSOURCES FROM YOUR PRIOR WEB SEARCH (use ONLY these — quote snippets when asked what sources said):\n${srcBlock}`;
     }
     systemPrompt += THREAD_CLARIFY_SYSTEM_APPEND;
-    if (isWebSourceQuoteFollowUp(lastUserMsg)) {
+    if (isWebSourceQuoteFollowUp(lastUserMsg, normalized) || userWantsSourceQuotes(lastUserMsg)) {
       systemPrompt += WEB_SOURCE_QUOTE_SYSTEM_APPEND;
     }
   } else if (!invokeWeb) {

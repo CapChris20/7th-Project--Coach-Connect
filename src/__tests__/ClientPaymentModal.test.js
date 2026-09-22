@@ -34,7 +34,7 @@ jest.mock('@expo/vector-icons', () => {
   };
 });
 
-jest.mock('../shared-ui/ThemeContext', () => ({
+jest.mock('../theme/ThemeContext', () => ({
   useTheme: () => ({
     colors: {
       text: '#FFFFFF',
@@ -48,11 +48,11 @@ jest.mock('../shared-ui/ThemeContext', () => ({
   }),
 }));
 
-jest.mock('../shared/api/chargesApi', () => ({
+jest.mock('../for-both/api/chargesApi', () => ({
   postCoachingCharge: (...args) => mockPostCoachingCharge(...args),
 }));
 
-jest.mock('../shared/payments/stripeNativeStatus', () => {
+jest.mock('../for-both/payments/stripeNativeStatus', () => {
   const stripe = require('@stripe/stripe-react-native');
   return {
     getStripeNativeModule: () => stripe,

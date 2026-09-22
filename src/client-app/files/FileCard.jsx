@@ -12,7 +12,7 @@ import React from 'react';
 import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { formatDateShort, formatFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../shared-utils/formatFileSize';
+import { formatDateShort, formatFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/formatFileSize';
 
 const TYPE_META = {
   image: { icon: 'image', color: '#06B6D4', rgb: '6,182,212', label: 'Photo' },

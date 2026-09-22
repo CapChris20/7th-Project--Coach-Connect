@@ -15,9 +15,9 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getResilientApiBases } from '../../shared/api/baseUrl';
-import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
-import logger from '../../shared/api/logErrorToServer';
+import { getResilientApiBases } from '../../for-both/api/baseUrl';
+import { getApiAuthHeaders } from '../../for-both/api/getAuthHeaders';
+import logger from '../../for-both/api/logErrorToServer';
 const {
   isMenuStyleQuery,
   filterFoodSearchRows,

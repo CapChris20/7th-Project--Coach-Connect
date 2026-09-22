@@ -26,7 +26,7 @@ Firebase project: **`anatrox-auth`** (do not rename in config).
 ## Code entry points
 
 - **Trainer CRM reads/writes:** `src/trainer/lib/trainerClientFirestorePaths.js`, `TrainerApp.js` CRM exports
-- **Client registry read:** `src/shared/services/clientRegistryFirestore.js`
+- **Client registry read:** `src/for-both/services/clientRegistryFirestore.js`
 - **Roster live listener:** `src/trainer/hooks/useTrainerClients.js` → `trainer_clients/{trainerId}/clients`
 - **Server registry merge:** `server/clientProfileFirestore.js`, `server/routes/onboardingRoutes.js`
 

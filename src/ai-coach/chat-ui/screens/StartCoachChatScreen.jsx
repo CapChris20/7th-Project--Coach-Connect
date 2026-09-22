@@ -40,13 +40,13 @@ import { useCoachChatSessions } from '../hooks/useCoachChatSessions';
 import { db } from '../../../app-start/config';
 import BottomNavBar from '../../../navigation/BottomNavBar';
 import { ShellBottomNavAnchor } from '../../../navigation/bottomNavMetrics';
-import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
-import { useTheme } from '../../../shared-ui/ThemeContext';
+import CoachConnectHeader from '../../../for-both/components/shell/CoachConnectHeader';
+import { useTheme } from '../../../theme/ThemeContext';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
 import { useCoachComposerKeyboard, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../chat-thread/useCoachComposerKeyboard';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
-import StableGradientText from '../../../shared-ui/StableGradientText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../../shared-ui/brandGradients';
+import StableGradientText from '../../../theme/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../../theme/brandGradients';
 import {
   buildHourlyCanHelpWith,
   buildHourlyCoachActions,
@@ -58,11 +58,11 @@ import {
   HOME_STAT_SORENESS_GRADIENT,
   HOME_STAT_WATER_GRADIENT,
   HOME_STAT_WORKOUT_GRADIENT,
-} from '../../../shared-ui/homeStatGradients';
-import { getClientDateKey } from '../../../shared-utils/dateKeys';
+} from '../../../theme/homeStatGradients';
+import { getClientDateKey } from '../../../helpers/dateKeys';
 import { calculateMacroTotals, getFoodLogsForDate } from '../../../nutrition/daily-log/logFoodToFirestore';
 import { parseDailyMetricsFromSnapshots } from '../../../metrics/daily-metrics/parseUserDailyMetrics';
-import { getAuroraHeroGreetingPhrase } from '../../../shared/components/home/AuroraHeroBanner';
+import { getAuroraHeroGreetingPhrase } from '../../../for-both/components/home/AuroraHeroBanner';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;

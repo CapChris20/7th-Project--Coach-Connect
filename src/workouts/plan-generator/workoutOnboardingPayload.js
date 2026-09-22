@@ -1,5 +1,5 @@
 /** Fields used by server/lib/workoutPlanPrompt.js — keep payload small and JSON-safe. */
-import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { normalizeClientProfileFields } from '../../helpers/resolveClientProfileFields';
 
 const WORKOUT_ONBOARDING_FIELDS = [
   'age',

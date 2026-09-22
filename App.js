@@ -12,21 +12,21 @@ import {
 import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
 import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 import { CrimsonPro_400Regular, CrimsonPro_600SemiBold, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
-import { ThemeProvider } from './src/shared-ui/ThemeContext';
+import { ThemeProvider } from './src/theme/ThemeContext';
 import AuthGate from './src/app-start/AuthGate';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { AppStripeProvider } from './src/shared/payments/AppStripeProvider';
+import { AppStripeProvider } from './src/for-both/payments/AppStripeProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureNotifications } from './src/notifications/manageNotifications';
-import { initMonitoring } from './src/shared/api/monitorAppHealth';
-import { AIProvider } from './src/shared/contexts/AIContext';
+import { initMonitoring } from './src/for-both/api/monitorAppHealth';
+import { AIProvider } from './src/for-both/contexts/AIContext';
 import { SubscriptionProvider } from './src/subscription/SubscriptionProvider';
 import OnboardingSnapshotRunner from './src/auth/OnboardingSnapshotRunner';
 import {
   BootLoadingOverlay,
   BootLoadingProvider,
   useBootLoading,
-} from './src/shared/components/shell/BootLoading';
+} from './src/for-both/components/shell/BootLoading';
 
 initMonitoring();
 

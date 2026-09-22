@@ -27,7 +27,7 @@ jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));
 
-jest.mock('../../ai-coach/server-logic/tools/runCoachAction', () => ({
+jest.mock('../../ai-coach/logic/tools/runCoachAction', () => ({
   normalizeToolCall: (raw) => {
     if (!raw) return null;
     const nameRaw = raw.name || raw.tool || raw.action;

@@ -15,8 +15,8 @@ import { NavigationContext, NavigationRouteContext } from '@react-navigation/nat
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, getDaysInMonth, set as setDateParts } from 'date-fns';
-import { FormRow } from '../../shared-ui';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { FormRow } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import { FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import {
   useCreateTrainingSession,

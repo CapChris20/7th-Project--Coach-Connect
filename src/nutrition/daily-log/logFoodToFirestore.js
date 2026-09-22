@@ -28,7 +28,7 @@ import {
 import searchFoodsService from '../food-search/searchFoodsService';
 export { FOOD_SEARCH_OFFLINE_HINT } from '../food-search/searchFoodsService';
 import { autoLogErrorSync } from '../../utils/autoLogError';
-import { stripUndefinedForFirestore } from '../../shared-utils/firestoreSanitize';
+import { stripUndefinedForFirestore } from '../../helpers/firestoreSanitize';
 import { normalizeFoodForLog, isLiquidFood } from '../food-search/normalizeFoodQuery';
 import { normalizeFoodRecordForStorage } from '../food-search/makeReadableFoodTitle';
 import { isPer100gSource, resolveServingGrams } from '../food-details/calculateServingSize';

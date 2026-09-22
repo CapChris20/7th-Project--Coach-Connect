@@ -28,7 +28,7 @@ const CORE_FILES = [
     mustInclude: ['Go back', 'Search foods', 'Clear search'],
   },
   {
-    file: 'src/shared/components/home/QuickActionCard.jsx',
+    file: 'src/for-both/components/home/QuickActionCard.jsx',
     mustInclude: ['accessibilityRole="button"'],
   },
 ];

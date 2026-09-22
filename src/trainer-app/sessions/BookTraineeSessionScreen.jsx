@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSessions } from '../hooks/useMyTrainingSessions';
 import { MonthCalendar } from '../components/sessions/MonthCalendar';
 import { SessionCard } from '../components/sessions/SessionCard';
-import { formatDateLong } from '../../lib/sessions';
+import { formatDateLong } from '../../helpers/session-dates';
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
 
 const COLORS = {

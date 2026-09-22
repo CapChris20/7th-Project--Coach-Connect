@@ -41,14 +41,14 @@ const {
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
   deleteLogReasoning,
-} = require('../../src/ai-coach/server-logic/tools/detectDeleteFoodRequest');
+} = require('../../src/ai-coach/logic/tools/detectDeleteFoodRequest');
 const {
   guardCoachToolProposal,
   isValidCoachToolProposal,
   isInformationalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
-} = require('../../src/ai-coach/server-logic/tools/shouldShowCoachAction');
+} = require('../../src/ai-coach/logic/tools/shouldShowCoachAction');
 
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();

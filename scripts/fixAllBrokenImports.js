@@ -72,7 +72,7 @@ function buildIndex() {
     index.get(stem).push(file);
   }
   walk(SRC, []).forEach(indexFile);
-  // also index asset files under src/assets and src/shared/assets
+  // also index asset files under src/assets and src/for-both/assets
   for (const dir of [path.join(SRC, 'assets'), path.join(SRC, 'shared', 'assets')]) {
     if (!fs.existsSync(dir)) continue;
     for (const ent of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {

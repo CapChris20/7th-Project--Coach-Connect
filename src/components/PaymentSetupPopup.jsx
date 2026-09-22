@@ -16,15 +16,15 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStripeConnectFlow } from '../shared/payments/useStripeConnectFlow';
-import { StripeConnectWebViewModal } from '../shared/payments/StripeConnectWebViewModal';
-import { dismissPaymentSetupPopup } from '../shared/payments/paymentSetupPrompt';
+import { useStripeConnectFlow } from '../for-both/payments/useStripeConnectFlow';
+import { StripeConnectWebViewModal } from '../for-both/payments/StripeConnectWebViewModal';
+import { dismissPaymentSetupPopup } from '../for-both/payments/paymentSetupPrompt';
 import {
   HowPaymentsWorkSection,
   EarningsDashboardPreview,
   VenmoComparisonSection,
   TrainerPaymentFaqSnippet,
-} from '../shared/payments/PaymentEducationSections';
+} from '../for-both/payments/PaymentEducationSections';
 import { auth } from '../app-start/config';
 
 const PENDING_DONE_MS = 30000;

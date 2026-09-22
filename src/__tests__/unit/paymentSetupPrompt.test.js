@@ -1,4 +1,4 @@
-const { shouldShowPaymentSetupPopup } = require('../../shared/payments/paymentSetupPrompt');
+const { shouldShowPaymentSetupPopup } = require('../../for-both/payments/paymentSetupPrompt');
 
 describe('shouldShowPaymentSetupPopup', () => {
   it('hides when no account timestamps (avoid login spam)', () => {

@@ -10,8 +10,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Constants from 'expo-constants';
-import { getResilientApiBases } from '../../shared/api/baseUrl';
-import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
+import { getResilientApiBases } from '../../for-both/api/baseUrl';
+import { getApiAuthHeaders } from '../../for-both/api/getAuthHeaders';
 
 const cache = new Map();
 const CACHE_MS = 25 * 60 * 1000;

@@ -1,0 +1,26 @@
+---
+description: Frame-depth inline commenting standard for Coach Connect
+alwaysApply: true
+---
+
+# Inline Comment Style
+
+Every new or significantly edited `.js` / `.jsx` / `.ts` / `.tsx` file under `src/` MUST follow
+`docs/INLINE_COMMENT_STYLE.md`.
+
+Required:
+- File-top summary (2–4 plain `//` lines: what / flow / where used)
+- Block-by-block “what + why” before meaningful logic
+- `// vocab:` on first use of unfamiliar APIs, symbols, libraries, domain jargon
+- `// Manipulate here:` on tweakable numbers, colors, flags, copy lists
+
+Gold standard: the `frame` function example in `docs/INLINE_COMMENT_STYLE.md`.
+
+Do **not** put teaching in a separate explanations dump — keep it inline.
+Do **not** leave the old boilerplate-only `@file-header` block when rewriting a file top;
+replace it with the plain `//` summary (optionally keep a short `Key exports:` line if useful).
+
+Pass/fail: could Chris manipulate this file from comments alone without asking what a weird line means?
+When in doubt → denser. Under-commenting is the failure mode.
+
+Folder renames may still land later — prefer job-based descriptions over brittle path claims when unsure.

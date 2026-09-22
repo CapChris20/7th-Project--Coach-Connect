@@ -15,7 +15,7 @@ const normalizeToolCall = (t) => (t ? { name: t.name || t.tool, params: t.params
 
 /** Same resolution path as ChatWithCoachScreen + server mergeCoachToolCalls. */
 function resolveEffectiveToolCalls(json, userMessage) {
-  const { coerceMisroutedDeleteTool } = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
+  const { coerceMisroutedDeleteTool } = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
   const { mergeCoachToolCalls } = require('../../../server/lib/inferCoachToolCall.js');
   const reply = String(json?.reply || '');
   const rawTools = Array.isArray(json?.toolCalls) ? json.toolCalls : [];
@@ -105,7 +105,7 @@ describe('offline — delete log, personal data, tool inference', () => {
     inferDeleteLogParams,
     coerceMisroutedDeleteTool,
     wantsDeleteAllFoodLogs,
-  } = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
+  } = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
   const { shouldIncludeWeeklyContextInCoachPrompt } = require('../../../server/lib/coachPersonalDataRouting.js');
   const { mergeCoachToolCalls, inferCoachToolCall } = require('../../../server/lib/inferCoachToolCall.js');
   const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');

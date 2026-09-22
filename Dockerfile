@@ -8,7 +8,7 @@ RUN cd server && npm install --omit=dev
 
 COPY server/ ./server/
 COPY functions/lib/ ./functions/lib/
-COPY src/shared/ ./src/shared/
+COPY src/for-both/ ./src/for-both/
 COPY src/ai-coach/ ./src/ai-coach/
 COPY src/nutrition/ ./src/nutrition/
 COPY src/metrics/daily-metrics/ ./src/metrics/daily-metrics/

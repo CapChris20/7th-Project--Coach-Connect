@@ -1,6 +1,6 @@
 import React from 'react';
 import { Linking } from 'react-native';
-import { useTheme } from '../shared-ui/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { useSubscription } from './SubscriptionProvider';
 import TrainerProSubscriptionOffer from './TrainerProSubscriptionOffer';
 

@@ -7,7 +7,7 @@ const { isAiCoachLimitsEnforced } = require('../aiCoachRateLimit');
 const { resolveAiCoachDailyLimit } = require('../aiCoachRateLimit');
 const { serperOrganicSearch } = require('../serperWebSearch');
 const { COACH_VOICE_DIRECTIVE, COACH_WEB_SEARCH_FORMAT } = require('../coachVoice');
-const { filterFitnessWebSources, stripWebSearchPrefix } = require('../coachWebSearch');
+const { filterFitnessWebSources, stripWebSearchPrefix, stripWebMetaInstructions } = require('../coachWebSearch');
 const { stripNotificationEmoji: pushStripNotificationEmoji } = require('../../pushHelpers');
 const logger = require('../logger');
 
@@ -660,7 +660,9 @@ async function callClaudeCoach({
 }
 
 function buildPerplexityWebMessages(messages, searchQuery) {
-  const cleanQuery = stripWebSearchPrefix(searchQuery) || String(searchQuery || '').trim();
+  const cleanQuery =
+    stripWebMetaInstructions(stripWebSearchPrefix(searchQuery) || String(searchQuery || '').trim()) ||
+    String(searchQuery || '').trim();
   if (!cleanQuery) {
     return Array.isArray(messages) ? messages.slice(-4) : [];
   }
@@ -672,8 +674,8 @@ ${COACH_WEB_SEARCH_FORMAT}
 
 WEB SEARCH MODE:
 You have live internet access. Search the web and answer using current sources.
-Follow the WEB SEARCH REPLY FORMAT above — opening line, ## What it is, ## Key findings, ## Practical notes, ## Suggested follow-ups. Never one long paragraph.
-Cite sources as [Source Name] after claims.`;
+Follow the WEB SEARCH REPLY FORMAT above — direct answer first, light structure, inline [Source Name] citations with short verbatim quotes from results when the user asked to quote/cite.
+Never explain APA/MLA or what a "direct quote" is. Never use "Here's a clear breakdown of **…**".`;
 
 async function callPerplexityCoach({ apiKey, systemPrompt, messages, searchQuery = '' }) {
   const url = 'https://api.perplexity.ai/chat/completions';

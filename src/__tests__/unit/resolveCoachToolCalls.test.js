@@ -1,5 +1,5 @@
 const { mergeCoachToolCalls } = require('../../../server/lib/inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../ai-coach/server-logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../ai-coach/logic/tools/shouldShowCoachAction');
 
 function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
   return filterValidCoachToolProposals(

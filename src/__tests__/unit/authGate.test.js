@@ -28,7 +28,7 @@ jest.mock('../../utils/syncErrorsToServer', () => ({
   initializeErrorSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../ai-coach/server-logic/chat-api/chatStorageService', () => ({
+jest.mock('../../ai-coach/logic/chat-api/chatStorageService', () => ({
   clearOldSharedChats: jest.fn(() => Promise.resolve()),
 }));
 
@@ -36,7 +36,7 @@ jest.mock('../../utils/clearDataOnLogout', () => ({
   clearAllUserData: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../shared/api/syncOnboardingToServer', () => ({
+jest.mock('../../for-both/api/syncOnboardingToServer', () => ({
   flushPendingOnboardingSync: jest.fn(() => Promise.resolve()),
 }));
 
@@ -44,7 +44,7 @@ jest.mock('../../notifications/manageNotifications', () => ({
   clearPushTokensForUid: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../shared/api/logErrorToServer', () => ({
+jest.mock('../../for-both/api/logErrorToServer', () => ({
   __esModule: true,
   default: { warn: jest.fn(), error: jest.fn() },
 }));
@@ -52,7 +52,7 @@ jest.mock('../../shared/api/logErrorToServer', () => ({
 jest.mock('../../auth/LoginScreen', () => () => null);
 jest.mock('../../auth/ResetPasswordScreen', () => () => null);
 jest.mock('../../auth/OnboardingWizardScreen', () => () => null);
-jest.mock('../../shared/components/shell/BootLoading', () => ({
+jest.mock('../../for-both/components/shell/BootLoading', () => ({
   BootSuspenseFallback: () => null,
   useBootLoadingLock: () => {},
   BootLoadingProvider: ({ children }) => children,

@@ -27,18 +27,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
-import { useTheme } from '../shared-ui/ThemeContext';
+import BlurBackdropPlate from '../theme/BlurBackdropPlate';
+import { useTheme } from '../theme/ThemeContext';
 import { auth, db } from '../app-start/config';
 import {
   subscribeToConversations,
   subscribeToUnreadByConversation,
   fetchMoreConversations,
-} from '../ai-coach/server-logic/chat-api/loadMoreCoachConversations';
+} from '../ai-coach/logic/chat-api/loadMoreCoachConversations';
 import { getTrainerClients, createOrUpdateClient } from '../trainer-app/clients-list/loadMyTraineeRoster';
-import { getOrCreateConversation, markMessagesAsRead } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+import { getOrCreateConversation, markMessagesAsRead } from '../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 import { doc, getDoc } from 'firebase/firestore';
-import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../for-both/components/shell/CoachConnectHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomNavMetrics';
 

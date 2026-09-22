@@ -35,7 +35,7 @@ import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { deleteDoc, doc } from 'firebase/firestore';
-import { saveTrainerDocument, getTrainerDocument } from '../../shared/notes-files/manageNotesAndFiles';
+import { saveTrainerDocument, getTrainerDocument } from '../../for-both/notes-files/manageNotesAndFiles';
 import { db } from '../../app-start/config';
 import ShareDocumentModal from './ShareDocumentModal';
 import BottomNavBar from '../../navigation/BottomNavBar';

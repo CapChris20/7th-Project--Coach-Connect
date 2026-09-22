@@ -12,12 +12,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Animated, Pressable } from 'react-native';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app-start/config';
-import { postAcceptTrainerClient } from '../../shared/api/trainerClientApi';
+import { postAcceptTrainerClient } from '../../for-both/api/trainerClientApi';
 import { syncClientDataFromUsers } from '../clients-list/loadMyTraineeRoster';
-import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+import { getOrCreateConversation, sendMessage, updateMessageStatus, CLIENT_REQUEST_TYPES, clientRequestTypeLabel } from '../../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../../shared-ui/ThemeContext';
-import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
+import { useTheme } from '../../theme/ThemeContext';
+import { postRemotePushNotify } from '../../for-both/api/sendPushNotification';
 import {
   randomClientRequestAcceptedTitle,
   randomClientRequestAcceptedBody,

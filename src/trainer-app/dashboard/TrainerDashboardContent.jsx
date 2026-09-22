@@ -28,26 +28,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app-start/config';
-import { getProfileDateKey } from '../../shared-utils/dateKeys';
-import { getLocalDateKey } from '../../shared-utils/getLocalDay';
+import { getProfileDateKey } from '../../helpers/dateKeys';
+import { getLocalDateKey } from '../../helpers/getLocalDay';
 import { fetchLatestLoggedWeight } from '../../metrics/daily-metrics/getRecentWeight';
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';
 import {
   filterTrainerDocumentsForClient,
   getTrainerDocuments,
   getNotesAndFiles,
-} from '../../shared/notes-files/manageNotesAndFiles';
-import HoldToConfirmModal from '../../shared/components/modals/HoldToConfirmModal';
-import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
+} from '../../for-both/notes-files/manageNotesAndFiles';
+import HoldToConfirmModal from '../../for-both/components/modals/HoldToConfirmModal';
+import SpreadsheetViewerModal from '../../for-both/components/notes-files/SpreadsheetViewerModal';
 import ShareDocumentModal from '../documents/ShareDocumentModal';
-import QuickActionCard from '../../shared/components/home/QuickActionCard';
+import QuickActionCard from '../../for-both/components/home/QuickActionCard';
 import TrainerWeeklyReportSection from '../weekly-report/TrainerWeeklyReportSection';
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
 import CalendarTab from '../calendar-tab/TrainerCalendarTab';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
-import { mergeTrainerClientProfile } from '../../shared-utils/mergeTrainerClientProfile';
+import { normalizeClientProfileFields } from '../../helpers/resolveClientProfileFields';
+import { mergeTrainerClientProfile } from '../../helpers/mergeTrainerClientProfile';
 import {
   resolveTrainerProgressBeforeWeight,
 } from '../progress-tab/resolveTrainerProgressWeight';
@@ -61,7 +61,7 @@ import {
   getClientRosterStats,
 } from './trainerDashboardUi';
 import { PaymentSetupPopup } from '../../components/PaymentSetupPopup';
-import { shouldShowPaymentSetupPopup } from '../../shared/payments/paymentSetupPrompt';
+import { shouldShowPaymentSetupPopup } from '../../for-both/payments/paymentSetupPrompt';
 
 const DashboardContent = ({
   isDark,

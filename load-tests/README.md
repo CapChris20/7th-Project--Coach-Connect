@@ -9,7 +9,7 @@ Load tests for the CoachConnect Express API. All scripts use fake Firebase token
 
 Local dev server defaults to port **4000** (`npm run server`). Cloud Run uses port **8080**. Pass the correct base URL via `BASE_URL` or the `run-all.sh` argument.
 
-Production API (from `src/shared/api/baseUrl.js`):
+Production API (from `src/for-both/api/baseUrl.js`):
 
 `https://coachconnect-api-421005574501.us-central1.run.app`
 

@@ -21,7 +21,7 @@ import {
   HOME_STAT_MOOD_GRADIENT,
   HOME_STAT_SORENESS_GRADIENT,
   HOME_STAT_WORKOUT_GRADIENT,
-} from '../../shared-ui/homeStatGradients';
+} from '../../theme/homeStatGradients';
 import {
   GlassCard,
   AuroraHeroBanner,

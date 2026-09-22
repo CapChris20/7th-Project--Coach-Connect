@@ -13,19 +13,19 @@ import { Alert, Image, Linking, Platform, SafeAreaView, ScrollView, Share, Style
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, ChevronRight, Download, FileSpreadsheet, FileText, MessageSquare } from 'lucide-react-native';
-import { deleteNotesAndFilesItem, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, spreadsheetRowsHaveContent } from '../../shared/notes-files/manageNotesAndFiles';
+import { deleteNotesAndFilesItem, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, spreadsheetRowsHaveContent } from '../../for-both/notes-files/manageNotesAndFiles';
 import {
   getEmbedViewerUri,
   isImageFile as isNotesImageFile,
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
-} from '../../shared-utils/getFileViewType';
-import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../shared-utils/formatFileSize';
-import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
-import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
-import DocumentViewerModal from '../../shared/components/notes-files/DocumentViewerModal';
-import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';
-import EmbedWebViewModal from '../../shared/components/notes-files/EmbedWebViewModal';
+} from '../../helpers/getFileViewType';
+import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/formatFileSize';
+import PdfViewerModal from '../../for-both/components/notes-files/PdfViewerModal';
+import SpreadsheetViewerModal from '../../for-both/components/notes-files/SpreadsheetViewerModal';
+import DocumentViewerModal from '../../for-both/components/notes-files/DocumentViewerModal';
+import MediaViewerModal from '../../for-both/components/notes-files/MediaViewerModal';
+import EmbedWebViewModal from '../../for-both/components/notes-files/EmbedWebViewModal';
 
 const ACCENT_PINK = '#FF6B9D';
 const ACCENT_CYAN = '#06B6D4';

@@ -9,7 +9,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import ViewMyWorkoutPlanScreen from '../../client-app/workout-plans/ViewMyWorkoutPlanScreen';
 import WorkoutPlanPdfViewerModal from './WorkoutPlanPdfViewerModal';

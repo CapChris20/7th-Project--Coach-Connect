@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import logger from '../shared/api/logErrorToServer';
+import logger from '../for-both/api/logErrorToServer';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {

@@ -48,8 +48,8 @@ const RULES = [
     severity: 'error',
     note: 'Client must prefer Cloud Run for AI Coach + retry failed web search',
     check() {
-      const base = read('src/shared/api/baseUrl.js');
-      const svc = read('src/ai-coach/server-logic/chat-api/sendCoachMessageToServer.js');
+      const base = read('src/for-both/api/baseUrl.js');
+      const svc = read('src/ai-coach/logic/chat-api/sendCoachMessageToServer.js');
       return (
         base.includes('getAICoachApiBases') &&
         base.includes('push(PRODUCTION_API_BASE_URL)') &&
@@ -128,7 +128,7 @@ const RULES = [
     severity: 'warn',
     note: 'firestoreListenerUtils — check if still needed or inlined elsewhere',
     check() {
-      const p = 'src/shared/services/firestoreListenerUtils.js';
+      const p = 'src/for-both/services/firestoreListenerUtils.js';
       if (!exists(p)) return true;
       return grepRepo('firestoreListenerUtils').length > 1;
     },

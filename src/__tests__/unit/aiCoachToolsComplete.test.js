@@ -13,11 +13,11 @@ const {
   filterValidCoachToolProposals,
   guardCoachToolProposal,
   isInformationalUserMessage,
-} = require('../../ai-coach/server-logic/tools/shouldShowCoachAction');
+} = require('../../ai-coach/logic/tools/shouldShowCoachAction');
 const {
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
-} = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
+} = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
 
 function resolveTools(aiText, userMessage, weeklyContext = {}) {
   return filterValidCoachToolProposals(

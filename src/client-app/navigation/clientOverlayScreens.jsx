@@ -23,19 +23,19 @@ import PrivacyPolicyScreen from '../../settings/screens/PrivacyPolicyScreen';
 import ContactSupportScreen from '../../settings/screens/ContactSupportScreen';
 import BugReportScreen from '../../settings/screens/BugReportScreen';
 import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
-import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
 import SearchTrainersScreen, { TrainerProfileSheet } from '../marketplace/SearchTrainersScreen';
 import TrainerRequestConfirmModal from '../marketplace/TrainerRequestConfirmModal';
 import TrainerRequestIntroModal from '../marketplace/TrainerRequestIntroModal';
 import { useTrainerConnectFlow } from '../marketplace/useTrainerConnectFlow';
-import ViewWeekProgressReportScreen from '../../shared/screens/ViewWeekProgressReportScreen';
-import MyProgressPhotosScreen from '../../shared/screens/MyProgressPhotosScreen';
-import BrowseSavedWorkoutsScreen from '../../shared/screens/BrowseSavedWorkoutsScreen';
+import ViewWeekProgressReportScreen from '../../for-both/screens/ViewWeekProgressReportScreen';
+import MyProgressPhotosScreen from '../../for-both/screens/MyProgressPhotosScreen';
+import BrowseSavedWorkoutsScreen from '../../for-both/screens/BrowseSavedWorkoutsScreen';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
 import StartCoachChatScreen from '../../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
 import ChatWithCoachScreen from '../../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import ClientShellBottomNav from './ClientShellBottomNav';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 
 function trainerDocId(trainer) {
   return trainer?.id || trainer?._firebase?.id || trainer?.uid || null;
@@ -57,7 +57,7 @@ if (typeof __DEV__ !== 'undefined' && __DEV__) {
 import { doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../app-start/config';
-import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../helpers/resolveClientProfileFields';
 import { rootNavigate } from '../../navigation/navigationRef';
 import { buildNavigateFromShell } from '../../navigation/shellNavigate';
 

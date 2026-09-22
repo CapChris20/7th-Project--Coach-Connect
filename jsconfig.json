@@ -1,14 +1,37 @@
 {
   "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "src/*": ["src/*"]
+      "@/*": ["./src/*"],
+      "src/*": ["./src/*"]
     },
+    "module": "ESNext",
     "moduleResolution": "node",
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "jsx": "react-native",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "jsx": "react-native"
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true
   },
-  "exclude": ["node_modules", "babel.config.js", "metro.config.js", "expo", "dist", "build", "ios", "android"]
+  "include": ["App.js", "src/**/*", "metro/**/*"],
+  "exclude": [
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "dist",
+    "build",
+    "ios",
+    "android",
+    "coverage",
+    "server",
+    "functions",
+    "load-tests",
+    ".expo"
+  ]
 }

@@ -2,10 +2,10 @@ import React from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
-import PremiumSectionHeader from '../../shared/components/PremiumSectionHeader';
-import { profileCardIconWrapStyle } from '../../shared/workout-profile/profileCardIcons';
-import { filterProfileCardSections, getProfileCardSectionLabels } from '../../shared/workout-profile/shouldShowProfileCard';
+import ProfileCardIcon from '../../for-both/components/icons/ProfileCardIcon';
+import PremiumSectionHeader from '../../for-both/components/PremiumSectionHeader';
+import { profileCardIconWrapStyle } from '../../for-both/workout-profile/profileCardIcons';
+import { filterProfileCardSections, getProfileCardSectionLabels } from '../../for-both/workout-profile/shouldShowProfileCard';
 import {
   LOVABLE_ACCENTS,
   displayForFieldKey,

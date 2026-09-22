@@ -24,10 +24,10 @@ import {
   startAfter,
 } from 'firebase/firestore';
 import { db, storage } from '../../app-start/config';
-import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../shared-utils/getTrainerProfileMedia';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../helpers/getTrainerProfileMedia';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import TrainerRequestConfirmModal from './TrainerRequestConfirmModal';
 import TrainerRequestIntroModal from './TrainerRequestIntroModal';
 import BrowseTrainersScreen from './BrowseTrainersScreen';

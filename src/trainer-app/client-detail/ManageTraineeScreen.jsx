@@ -27,19 +27,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../app-start/config';
-import { getProfileDateKey } from '../../shared-utils/dateKeys';
+import { getProfileDateKey } from '../../helpers/dateKeys';
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/logFoodToFirestore';
 import {
   getTrainerDocuments,
   filterTrainerDocumentsForClient,
   getNotesAndFiles,
-} from '../../shared/notes-files/manageNotesAndFiles';
-import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
-import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
+} from '../../for-both/notes-files/manageNotesAndFiles';
+import PdfViewerModal from '../../for-both/components/notes-files/PdfViewerModal';
+import SpreadsheetViewerModal from '../../for-both/components/notes-files/SpreadsheetViewerModal';
 import DocumentEditorModal from '../documents/DocumentEditorModal';
 import SpreadsheetEditorModal from '../documents/SpreadsheetEditorModal';
 import ShareDocumentModal from '../documents/ShareDocumentModal';
-import RemoveTrainerSheet from '../../shared/components/modals/RemoveTrainerSheet';
+import RemoveTrainerSheet from '../../for-both/components/modals/RemoveTrainerSheet';
 import CalendarTab from '../calendar-tab/TrainerCalendarTab';
 import { isBenignTrainerClientFirestoreError } from '../crm/trainerFirestoreErrors';
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';

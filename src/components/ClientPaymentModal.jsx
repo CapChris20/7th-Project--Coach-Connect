@@ -21,18 +21,18 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../shared-ui/ThemeContext';
-import { postCoachingCharge } from '../shared/api/chargesApi';
+import { useTheme } from '../theme/ThemeContext';
+import { postCoachingCharge } from '../for-both/api/chargesApi';
 import {
   getStripeNativeModule,
   getStripeCardPaymentBlockReason,
-} from '../shared/payments/stripeNativeStatus';
+} from '../for-both/payments/stripeNativeStatus';
 import {
   PLATFORM_FEE_RATE,
   trainerGetsFromAmount,
   platformFeeFromAmount,
   formatPaymentDollars,
-} from '../shared/payments/paymentEducationCopy';
+} from '../for-both/payments/paymentEducationCopy';
 
 const QUICK_AMOUNTS = [50, 100, 150];
 const MIN_AMOUNT = 1;

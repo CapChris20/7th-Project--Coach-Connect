@@ -8,7 +8,7 @@ const FIXED_DATE_KEY = '2026-06-14';
 const mockPostDashboardNotification = jest.fn(() => Promise.resolve({ ok: true }));
 const mockSaveDashboardWorkoutLog = jest.fn(() => Promise.resolve());
 
-jest.mock('../../shared/api/dashboardNotificationApi', () => ({
+jest.mock('../../for-both/api/dashboardNotificationApi', () => ({
   postDashboardNotification: (...args) => mockPostDashboardNotification(...args),
 }));
 
@@ -22,7 +22,7 @@ jest.mock('../../metrics/daily-metrics/useLocalTodayDateKey', () => ({
   useLocalTodayDateKey: () => FIXED_DATE_KEY,
 }));
 
-jest.mock('../../shared-utils/getLocalDay', () => ({
+jest.mock('../../helpers/getLocalDay', () => ({
   getLocalDateKey: () => FIXED_DATE_KEY,
 }));
 

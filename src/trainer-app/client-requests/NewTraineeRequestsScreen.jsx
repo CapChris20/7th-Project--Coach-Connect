@@ -22,12 +22,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { auth } from '../../app-start/config';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import { useTrainerPendingRequests } from './useTrainerPendingRequests';
 import TrainerMarketplaceModal from '../dashboard/TrainerMarketplaceModal';
-import { clientRequestTypeLabel } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+import { clientRequestTypeLabel } from '../../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 
 const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
 

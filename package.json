@@ -21,7 +21,7 @@
     "test:jest:log": "node ./scripts/runJestWithLog.js",
     "baseline:audit": "node ./scripts/baselineMatchAudit.mjs",
     "baseline:audit:fast": "node ./scripts/baselineMatchAudit.mjs --skip-tests",
-    "test:coach-web-search": "node ./scripts/testCoachWebSearchRouting.js",
+    "test:coach-web-search": "node ./scripts/testCoachWebSearchRouting.js && node ./scripts/stressTestAiCoachRouting.js",
     "test:ai-coach-audit-fixes": "node ./scripts/testAiCoachAuditFixes.js",
     "test:daily-metrics": "node ./scripts/testDailyMetricsService.js",
     "test:food-search": "node ./scripts/testFoodSearchAccuracy.js",

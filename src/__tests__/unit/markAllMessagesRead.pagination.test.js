@@ -18,7 +18,7 @@ jest.mock('../../messaging/unreadCountIndex', () => ({
   clearUnreadForConversation: jest.fn(() => Promise.resolve()),
 }));
 
-import { READ_PAGE_SIZE, markConversationMessagesReadPaginated } from '../../ai-coach/server-logic/services/markAllMessagesRead';
+import { READ_PAGE_SIZE, markConversationMessagesReadPaginated } from '../../ai-coach/logic/services/markAllMessagesRead';
 import { getDocs, writeBatch } from 'firebase/firestore';
 
 function makeSnap(docs) {

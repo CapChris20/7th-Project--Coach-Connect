@@ -38,33 +38,33 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { auth, db } from '../../app-start/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { Liquid } from '../../shared-ui/liquid/liquidTokens';
-import StableGradientText from '../../shared-ui/StableGradientText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../shared-ui/brandGradients';
+import { Liquid } from '../../theme/liquid/liquidTokens';
+import StableGradientText from '../../theme/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../theme/brandGradients';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import WorkoutPlanBuilderFieldEditBody from '../plan-builder/workoutPlanBuilderFieldEditBody';
-import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
-import PremiumSectionHeader from '../../shared/components/PremiumSectionHeader';
+import ProfileCardIcon from '../../for-both/components/icons/ProfileCardIcon';
+import PremiumSectionHeader from '../../for-both/components/PremiumSectionHeader';
 import {
   PROFILE_CARD_ICON_SIZE,
   PROFILE_FIELD_ICON_ID,
   profileCardIconWrapStyle,
-} from '../../shared/workout-profile/profileCardIcons';
+} from '../../for-both/workout-profile/profileCardIcons';
 import {
   filterProfileCardSections,
   getProfileCardSectionLabels,
-} from '../../shared/workout-profile/shouldShowProfileCard';
+} from '../../for-both/workout-profile/shouldShowProfileCard';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from './workoutService';
 import { buildCreativeWorkoutPlanName } from './buildCreativeWorkoutPlanName';
 import Markdown from 'react-native-markdown-display';
-import { useAI } from '../../shared/contexts/AIContext';
-import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+import { useAI } from '../../for-both/contexts/AIContext';
+import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 import {
   stripMarkdown,
   stripEmojis,
@@ -93,7 +93,7 @@ import {
   clearWorkoutPlanReadyBadge,
   subscribeWorkoutGenerationSession,
 } from '../plan-generator/workoutPlanGenerationSession';
-import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { normalizeClientProfileFields } from '../../helpers/resolveClientProfileFields';
 
 export {
   WORKOUT_GENERATION_LIMIT,

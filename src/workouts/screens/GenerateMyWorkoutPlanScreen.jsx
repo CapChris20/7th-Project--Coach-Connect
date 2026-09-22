@@ -12,7 +12,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from '../active-workout/workout';
 
 /**

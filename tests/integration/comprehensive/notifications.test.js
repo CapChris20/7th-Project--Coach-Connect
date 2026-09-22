@@ -21,7 +21,7 @@ async function testNotifications() {
     results.push(fail('useUnreadNotificationCount hook exists', 'file missing'));
   }
 
-  const sendPath = path.join(ROOT, 'src/ai-coach/server-logic/trainer-messaging/sendTrainerNotification.js');
+  const sendPath = path.join(ROOT, 'src/ai-coach/logic/trainer-messaging/sendTrainerNotification.js');
   if (fs.existsSync(sendPath)) {
     results.push(pass('sendTrainerNotification module exists'));
   } else {

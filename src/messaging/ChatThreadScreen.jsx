@@ -31,12 +31,12 @@ import {
   ActionSheetIOS,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../theme/BlurBackdropPlate';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { useTheme } from '../shared-ui/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import {
   getOrCreateConversation,
   sendMessage,
@@ -49,11 +49,11 @@ import {
   pulseConversationTyping,
   clearMyConversationTyping,
   TYPING_UI_STALE_MS,
-} from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+} from '../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 import { auth, db, storage } from '../app-start/config';
 import { getTrainerClients, createOrUpdateClient } from '../trainer-app/clients-list/loadMyTraineeRoster';
 import { doc, getDoc } from 'firebase/firestore';
-import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../for-both/components/shell/CoachConnectHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────

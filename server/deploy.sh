@@ -5,7 +5,7 @@ PROJECT_ID="anatrox-auth"
 SERVICE_NAME="coachconnect-api"
 REGION="us-central1"
 
-# Dockerfile lives at repo root and copies server/, src/shared/, etc.
+# Dockerfile lives at repo root and copies server/, src/for-both/, etc.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"

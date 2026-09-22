@@ -15,8 +15,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FileCard } from './FileCard';
-import { addFile, addSpreadsheetFile } from '../../shared/notes-files/manageNotesAndFiles';
-import { getFileTypeFromItem } from '../../shared-utils/formatFileSize';
+import { addFile, addSpreadsheetFile } from '../../for-both/notes-files/manageNotesAndFiles';
+import { getFileTypeFromItem } from '../../helpers/formatFileSize';
 
 const TABS = [
   { id: 'all', label: 'All Files', icon: 'list' },

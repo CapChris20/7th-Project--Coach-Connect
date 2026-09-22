@@ -1,7 +1,7 @@
 /**
  * SERVER copy of client routing logic (same rules, CommonJS export).
  *
- * Keep patterns in sync with: src/ai-coach/server-logic/context/buildCoachPromptData.js
+ * Keep patterns in sync with: src/ai-coach/logic/context/buildCoachPromptData.js
  */
 
 function threadNeedsPersonalDataReload(userText, messages) {

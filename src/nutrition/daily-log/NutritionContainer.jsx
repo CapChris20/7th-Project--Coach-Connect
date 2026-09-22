@@ -11,10 +11,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { auth, db } from '../../app-start/config';
-import { getClientDateKey } from '../../shared-utils/dateKeys';
+import { getClientDateKey } from '../../helpers/dateKeys';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
-import { useTheme } from '../../shared-ui/ThemeContext';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { useTheme } from '../../theme/ThemeContext';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';

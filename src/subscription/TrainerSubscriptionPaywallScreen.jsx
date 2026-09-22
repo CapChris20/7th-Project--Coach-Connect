@@ -1,6 +1,6 @@
 import React from 'react';
 import { Linking, Platform } from 'react-native';
-import { useTheme } from '../shared-ui/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import {
   TRAINER_SUBSCRIPTION_PRICE_LABEL,
   TRAINER_SUBSCRIPTION_TRIAL_LABEL,

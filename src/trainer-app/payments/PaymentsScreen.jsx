@@ -27,21 +27,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { setDoc, serverTimestamp } from 'firebase/firestore';
-import { useTheme } from '../../shared-ui/ThemeContext';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { useTheme } from '../../theme/ThemeContext';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { useTrainerAppShell } from '../navigation/TrainerAppShellContext';
 import { getClientInitials } from '../dashboard/trainerDashboardUi';
-import { resolveStripeStatus, verifyStripeConnectStatus, getStripeConnectBalance } from '../../shared/api/stripeConnectApi';
-import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
-import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
+import { resolveStripeStatus, verifyStripeConnectStatus, getStripeConnectBalance } from '../../for-both/api/stripeConnectApi';
+import { useStripeConnectFlow } from '../../for-both/payments/useStripeConnectFlow';
+import { StripeConnectWebViewModal } from '../../for-both/payments/StripeConnectWebViewModal';
 import {
   HowPaymentsWorkSection,
   EarningsDashboardPreview,
-} from '../../shared/payments/PaymentEducationSections';
-import { useTrainerPaymentHistory } from '../../shared/payments/useTrainerPaymentHistory';
-import { postSetClientRate } from '../../shared/api/trainerClientApi';
+} from '../../for-both/payments/PaymentEducationSections';
+import { useTrainerPaymentHistory } from '../../for-both/payments/useTrainerPaymentHistory';
+import { postSetClientRate } from '../../for-both/api/trainerClientApi';
 import { trainerClientDocRef } from '../crm/trainerClientFirestorePaths';
 import { auth } from '../../app-start/config';
 

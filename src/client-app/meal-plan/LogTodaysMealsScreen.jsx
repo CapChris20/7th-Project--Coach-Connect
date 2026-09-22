@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { auth, db } from '../../app-start/config';
 import { doc, getDoc } from 'firebase/firestore';
 import {
@@ -39,9 +39,9 @@ import BarcodeScannerScreen from '../../nutrition/barcode/BarcodeScannerScreen';
 import NutritionSettingsScreen from '../../nutrition/settings/NutritionSettingsScreen';
 import MealCard from '../../nutrition/daily-log/MealCard';
 import MacroBar from '../../nutrition/daily-log/MacroBar';
-import FluidGlass from '../../shared-ui/FluidGlass';
+import FluidGlass from '../../theme/FluidGlass';
 import BottomNavBar from '../../navigation/BottomNavBar';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 
 const { width } = Dimensions.get('window');
 

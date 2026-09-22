@@ -36,25 +36,25 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   uploadTrainerCertificationSheet,
   deleteTrainerCertificationSheet,
-} from '../../shared/notes-files/manageNotesAndFiles';
+} from '../../for-both/notes-files/manageNotesAndFiles';
 import {
   verifyTrainerCertification,
   certificationStatusLabel,
   certificationStatusDetail,
   certificationStatusTone,
-} from '../../shared/api/verifyTrainerCertification';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+} from '../../for-both/api/verifyTrainerCertification';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import ProfileCardIcon from '../../shared/components/icons/ProfileCardIcon';
+import ProfileCardIcon from '../../for-both/components/icons/ProfileCardIcon';
 import {
   PROFILE_ROW_ICON_SIZE,
   PROFILE_ROW_ICON_WRAP,
   profileCardIconWrapStyle,
-} from '../../shared/workout-profile/profileCardIcons';
-import { useTheme } from '../../shared-ui/ThemeContext';
+} from '../../for-both/workout-profile/profileCardIcons';
+import { useTheme } from '../../theme/ThemeContext';
 import { onUserSignOut } from '../../utils/clearDataOnLogout';
-import { syncTrainerMarketplaceDoc } from '../../shared/marketplace/trainerMarketplaceSync';
+import { syncTrainerMarketplaceDoc } from '../../for-both/marketplace/trainerMarketplaceSync';
 import {
   Camera,
   Dumbbell,
@@ -83,8 +83,8 @@ import {
   formatOnboardingDisplay,
   formatEquipmentFromProfile,
   formatDaysPerWeek,
-} from '../../shared-utils/formatOnboardingDisplay';
-import { resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+} from '../../helpers/formatOnboardingDisplay';
+import { resolveClientProfileFields } from '../../helpers/resolveClientProfileFields';
 
 /** Unified profile chrome — CoachConnect warm accent (dark pink → dark orange). */
 const PROFILE = {

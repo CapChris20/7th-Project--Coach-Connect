@@ -133,6 +133,58 @@ const cases = [
     ],
     expectCount: 1,
   },
+  // Regression: "quote the sources" must NOT become the search topic / definition essay
+  {
+    fn: 'query',
+    msgs: [
+      {
+        role: 'user',
+        content:
+          'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+      },
+    ],
+    last: 'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+    expectIncludes: 'gym',
+    expect: true,
+  },
+  {
+    fn: 'query',
+    msgs: [
+      {
+        role: 'user',
+        content:
+          'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+      },
+    ],
+    last: 'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+    expectIncludes: 'quote the sources',
+    expect: false,
+  },
+  {
+    fn: 'followup',
+    msg: 'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+    msgs: [
+      {
+        role: 'user',
+        content:
+          'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+      },
+    ],
+    expect: false,
+  },
+  {
+    fn: 'simulate',
+    webMode: 'auto',
+    msg: 'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+    msgs: [
+      {
+        role: 'user',
+        content:
+          'If I should be worry of 3 days vs 4 days going to the gym. Go on the web and quote the sources',
+      },
+    ],
+    expect: true,
+  },
 ];
 
 let passed = 0;

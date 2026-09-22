@@ -11,12 +11,12 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { getSupportEmail } from '../supportConfig';
 import { openSupportMailto, offerSupportMailtoFallback } from '../supportMailto';
-import { getApiBase } from '../../shared/api/baseUrl';
+import { getApiBase } from '../../for-both/api/baseUrl';
 import { getAuth } from 'firebase/auth';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';

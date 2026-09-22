@@ -111,13 +111,13 @@ mustInclude(
 console.log('\n── AI Coach (web search routing) ──\n');
 
 mustInclude(
-  'src/shared/api/baseUrl.js',
+  'src/for-both/api/baseUrl.js',
   ['getAICoachApiBases', 'push(PRODUCTION_API_BASE_URL)'],
   'AI Coach API tries Cloud Run before local :4000',
 );
 
 mustInclude(
-  'src/ai-coach/server-logic/chat-api/sendCoachMessageToServer.js',
+  'src/ai-coach/logic/chat-api/sendCoachMessageToServer.js',
   ['getAICoachApiBases', 'web-search-failed', '/api/ai-coach/web-search'],
   'Client retries production when local web search fails',
 );
@@ -125,7 +125,7 @@ mustInclude(
 try {
   const { pathToFileURL } = await import('node:url');
   const mod = await import(
-    pathToFileURL(path.join(ROOT, 'src/ai-coach/server-logic/chat-api/shouldUseWebSearch.js')).href,
+    pathToFileURL(path.join(ROOT, 'src/ai-coach/logic/chat-api/shouldUseWebSearch.js')).href,
   );
   const { shouldUseWebAuto, isWebAnswerFollowUp } = mod;
   const proteinMsg =
@@ -219,10 +219,10 @@ mustInclude(
 // ─── 5. Folder-reorg survivors (common June 14 breakages) ─────────────────────
 console.log('\n── Post-reorg imports ──\n');
 
-mustExist('src/shared/contexts/AIContext.js');
+mustExist('src/for-both/contexts/AIContext.js');
 mustInclude(
   'App.js',
-  ['./src/shared/contexts/AIContext'],
+  ['./src/for-both/contexts/AIContext'],
   'App.js imports AIContext from shared/contexts',
 );
 

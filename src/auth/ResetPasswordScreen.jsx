@@ -1,11 +1,6 @@
-/**
- * Forgot Password Screen
- *
- * Purpose: UI screen or component: Forgot Password Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/auth
- * Key exports: (see file)
- *
- * @file-header
- */
+// Route shim: the "reset password" entry point in auth just forwards to the real forgot-password UI.
+// Flow: navigator asks for ResetPasswordScreen → this re-exports the settings-side ForgotPasswordFlow component.
+// Exists so auth and settings can both link to the same flow without duplicating the screen.
+
+// Note: no logic lives here on purpose. Edit the actual form/steps in the ForgotPasswordFlow component.
 export { default } from '../settings/screens/ForgotPasswordFlow';

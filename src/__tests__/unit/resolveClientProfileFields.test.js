@@ -1,7 +1,7 @@
 import {
   normalizeClientProfileFields,
   resolveClientProfileFields,
-} from '../../shared-utils/resolveClientProfileFields';
+} from '../../helpers/resolveClientProfileFields';
 
 describe('resolveClientProfileFields', () => {
   it('fills profile fields from the first source when merged starts empty', () => {

@@ -27,8 +27,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared-ui/ThemeContext';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { useTheme } from '../../theme/ThemeContext';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import {
   newLocalId,

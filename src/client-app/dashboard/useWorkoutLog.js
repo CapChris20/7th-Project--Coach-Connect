@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../app-start/config';
-import { postDashboardNotification } from '../../shared/api/dashboardNotificationApi';
-import { getLocalDateKey } from '../../shared-utils/getLocalDay';
+import { postDashboardNotification } from '../../for-both/api/dashboardNotificationApi';
+import { getLocalDateKey } from '../../helpers/getLocalDay';
 import { useLocalTodayDateKey } from '../../metrics/daily-metrics/useLocalTodayDateKey';
 import {
   saveDashboardWorkoutLog,
@@ -13,7 +13,7 @@ import {
 import {
   isAllowedClientWorkoutDayLabel,
   WORKOUT_DAY_EXAMPLES_SHORT,
-} from '../../shared-utils/workoutDayLabels';
+} from '../../helpers/workoutDayLabels';
 
 /** Structured workout logger: exercises + sets stored as workoutLog in dailyLogs */
 export function useWorkoutLog(onAfterSave) {

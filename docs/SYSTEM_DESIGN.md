@@ -106,7 +106,7 @@ FoodSearchScreen
 ## 6. Observability
 
 - Server audit logs on `execute-tool` (uid + tool name).
-- `src/shared/services/monitoring.js` + `docs/MONITORING.md`.
+- `src/for-both/services/monitoring.js` + `docs/MONITORING.md`.
 - Client error sync: `utils/syncErrorsToServer.js`.
 
 ## 7. Future reorg (Phase 6–7)

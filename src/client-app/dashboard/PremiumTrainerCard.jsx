@@ -12,7 +12,7 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../helpers/getTrainerProfileMedia';
 
 const ACCENTS = {
   pink: '#BE185D',

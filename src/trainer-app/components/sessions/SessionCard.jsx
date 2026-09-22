@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { formatTime12 } from '../../../lib/sessions';
+import { formatTime12 } from '../../../helpers/session-dates';
 
 const BORDER_GRADIENT = ['#9333EA', '#DB2777'];
 const BG_GRADIENT_DARK = ['#12081f', '#08050f'];

@@ -11,8 +11,8 @@
 import { useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
-import { getLocalDateKey } from '../../shared-utils/getLocalDay';
-import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { getLocalDateKey } from '../../helpers/getLocalDay';
+import { loadCachedOnboardingProfile, resolveClientProfileFields } from '../../helpers/resolveClientProfileFields';
 import { parseDailyMetricsFromSnapshots } from '../../metrics/daily-metrics/saveDailyMetricsToFirestore';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../../nutrition/daily-log/logFoodToFirestore';
 import { fetchWorkoutHistory, getActiveWorkout } from '../../workouts/active-workout/workoutService';

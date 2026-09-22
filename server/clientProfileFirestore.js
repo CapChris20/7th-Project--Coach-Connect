@@ -2,7 +2,7 @@
 
 const {
   buildClientRegistryDoc,
-} = require('../src/shared/services/clientProfileFirestore');
+} = require('../src/for-both/services/clientProfileFirestore');
 
 /**
  * Merge users + onboarding into clients/{uid} (Admin SDK).

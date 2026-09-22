@@ -19,7 +19,7 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import searchFoodsService from '../food-search/searchFoodsService';
 import { normalizeBarcodeForLookup } from '../barcode/normalizeBarcodeForLookup';
 import { cacheFoodProduct } from '../daily-log/logFoodToFirestore';

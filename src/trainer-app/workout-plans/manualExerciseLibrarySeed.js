@@ -1,17 +1,22 @@
-/**
- * manual Exercise Library Seed
- *
- * Purpose: manual Exercise Library Seed — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: searchManualExerciseLibrary, MANUAL_EXERCISE_LIBRARY
- *
- * @file-header
- */
+// Bundled exercise catalog that powers search/autocomplete in the manual plan builder.
+// Flow: MANUAL_EXERCISE_LIBRARY is a static list → searchManualExerciseLibrary() scores it against
+// the trainer's query and returns the best matches.
+// Why bundled instead of fetched: autocomplete must feel instant and keep working offline mid-gym,
+// so there's no network call in this path at all.
+
 /**
  * Offline exercise library for the manual workout plan builder (search + autocomplete).
  * IDs are stable strings for Firestore references; trainers may still save custom names.
  */
+// Manipulate here: this is the exercise catalog — add a row to make a new exercise searchable.
+// Each row is { id, name, muscleGroups, description }:
+//   id            NEVER change an existing one. Saved plans reference these strings, so renaming
+//                 an id orphans every plan that used it.
+//   name          what the trainer sees and searches
+//   muscleGroups  also searchable (typing "chest" finds these), and used for plan balance hints
+//   description   short cue text; searchable at the lowest weight
+// Roughly grouped by movement (push → pull → hinge/squat → arms → core → conditioning), but the
+// order here does NOT affect ranking — the scoring in searchManualExerciseLibrary decides that.
 export const MANUAL_EXERCISE_LIBRARY = [
   { id: 'bb_bench', name: 'Barbell Bench Press', muscleGroups: ['Chest', 'Triceps'], description: 'Flat barbell press; retract scapula, controlled bar path.' },
   { id: 'db_bench', name: 'Dumbbell Bench Press', muscleGroups: ['Chest', 'Triceps'], description: 'Neutral or slight pronation grip; full ROM.' },
@@ -84,22 +89,42 @@ export const MANUAL_EXERCISE_LIBRARY = [
   { id: 'turkish_getup', name: 'Turkish Get-Up', muscleGroups: ['Full Body', 'Core'], description: 'Slow controlled transitions.' },
 ];
 
+// Weighted substring search over the library above. Not fuzzy matching — it's a simple additive
+// score, which is predictable and fast enough to run on every keystroke over ~85 rows.
+// Manipulate here: `limit` caps how many suggestions the dropdown shows.
 export function searchManualExerciseLibrary(query, limit = 24) {
+  // Lowercase once here so the comparisons below never have to case-fold repeatedly.
   const q = String(query || '').trim().toLowerCase();
+  // Empty query = the browse case: show the first `limit` exercises rather than nothing, so the
+  // dropdown has content the instant it opens.
   if (!q) return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
   const scored = MANUAL_EXERCISE_LIBRARY.map((ex) => {
     const name = ex.name.toLowerCase();
     let score = 0;
+    // The four tiers are cumulative, not exclusive — an exact match also starts with and includes
+    // the query, so it collects 100 + 40 + 20 = 160 and lands far above a mid-word hit at 20.
+    // That gap is what makes typing "bench" surface "Bench Press" above "Incline Bench Press".
+    // Manipulate here: these weights are the whole ranking policy.
+    //   100 exact name       — always first
+    //    40 name starts with — strong prefix match, how most people type
+    //    20 name contains    — mid-word match
+    //     8 muscle group     — lets "chest" list every chest exercise
+    //     4 description      — weakest signal, only breaks ties
     if (name === q) score += 100;
     if (name.startsWith(q)) score += 40;
     if (name.includes(q)) score += 20;
+    // Joined into one string so a single includes() covers every group on the exercise.
     const mg = (ex.muscleGroups || []).join(' ').toLowerCase();
     if (mg.includes(q)) score += 8;
     const desc = (ex.description || '').toLowerCase();
     if (desc.includes(q)) score += 4;
     return { ex, score };
   })
+    // Drop non-matches. Score 0 means the query appeared nowhere in the row.
     .filter((x) => x.score > 0)
+    // Highest score first; the `||` is the tiebreaker — equal scores fall back to alphabetical, so
+    // results are stable instead of depending on array order.
     .sort((a, b) => b.score - a.score || a.ex.name.localeCompare(b.ex.name));
+  // Unwrap the { ex, score } envelopes so callers get plain exercise objects.
   return scored.slice(0, limit).map((x) => x.ex);
 }

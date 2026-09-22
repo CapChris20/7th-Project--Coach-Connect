@@ -26,7 +26,7 @@ import RateWorkoutFeelSheet from '../tool-modals/RateWorkoutFeelSheet';
 import OpenWorkoutPlanSheet from '../tool-modals/OpenWorkoutPlanSheet';
 import LogRestDaySheet from '../tool-modals/LogRestDaySheet';
 import ConfirmDeleteLogSheet from '../tool-modals/ConfirmDeleteLogSheet';
-import { normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../server-logic/tools/runCoachAction';
+import { normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../logic/tools/runCoachAction';
 import { ToolModalBody, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 

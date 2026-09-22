@@ -9,11 +9,11 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadCoachContextEnhanced as loadCoachContext } from '../server-logic/context/loadCoachPersonalContext';
-import { sendToAI } from '../server-logic/chat-api/sendCoachMessageToServer';
-import { shouldRouteToPerplexity } from '../server-logic/perplexityService';
-import { TOOL_NAME_ALIASES } from '../server-logic/tools/runCoachAction';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { loadCoachContextEnhanced as loadCoachContext } from '../logic/context/loadCoachPersonalContext';
+import { sendToAI } from '../logic/chat-api/sendCoachMessageToServer';
+import { shouldRouteToPerplexity } from '../logic/perplexityService';
+import { TOOL_NAME_ALIASES } from '../logic/tools/runCoachAction';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 
 const COLORS = {
   bg: '#0A0A0F',

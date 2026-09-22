@@ -26,7 +26,7 @@ const FOLDER_BLURBS = {
   '__tests__/integration': 'Multi-module integration tests that exercise real flows (auth, food log, coach).',
   '__tests__/mocks': 'Module mocks for Expo and third-party dependencies in Jest.',
   '__tests__/unit': 'Pure unit tests for helpers, parsers, scoring, and business logic.',
-  'ai-coach': 'AI Coach feature root — chat UI plus client-side server-logic helpers.',
+  'ai-coach': 'AI Coach feature root — chat UI plus client-side logic helpers.',
   'ai-coach/chat-ui': 'All AI Coach UI — home, chat thread, voice mode, tool confirmation sheets, Firestore persistence.',
   'ai-coach/chat-ui/chat-home': 'Landing screen before entering a coach conversation (prompts, history entry).',
   'ai-coach/chat-ui/chat-thread': 'Main chat screen: message list, composer, attachments, source cards, tool confirmations.',
@@ -37,15 +37,15 @@ const FOLDER_BLURBS = {
   'ai-coach/chat-ui/screens': 'Top-level screen wrappers that re-export or host coach navigation targets.',
   'ai-coach/chat-ui/tool-modals': 'Confirmation sheets for each coach tool (log water, book session, adjust macros, etc.).',
   'ai-coach/chat-ui/voice': 'Voice-to-text coach interface and speech-recognition helpers.',
-  'ai-coach/server-logic': 'Client-side coach backend glue: chat API, context building, tools, vision uploads.',
-  'ai-coach/server-logic/chat-api': 'HTTP clients for coach conversations, titles, web-search detection, and chat storage.',
-  'ai-coach/server-logic/context': 'Builds the prompt context the coach sees — profile, weekly stats, personal data.',
-  'ai-coach/server-logic/macro-recalibration': 'Recalculates macro targets when the coach or user adjusts goals.',
-  'ai-coach/server-logic/services': 'Thin service wrappers (e.g. mark-all-messages-read).',
-  'ai-coach/server-logic/tools': 'Parses coach tool proposals, decides which UI to show, and runs confirmed actions.',
-  'ai-coach/server-logic/trainer-messaging': 'Sends push/in-app notifications from the AI coach to the user\'s trainer.',
-  'ai-coach/server-logic/vision': 'Uploads and stores images the user attaches in coach chat.',
-  'ai-coach/tools': 'Shared coach tool-call parsers used by chat UI and server-logic.',
+  'ai-coach/logic': 'Client-side coach backend glue: chat API, context building, tools, vision uploads.',
+  'ai-coach/logic/chat-api': 'HTTP clients for coach conversations, titles, web-search detection, and chat storage.',
+  'ai-coach/logic/context': 'Builds the prompt context the coach sees — profile, weekly stats, personal data.',
+  'ai-coach/logic/macro-recalibration': 'Recalculates macro targets when the coach or user adjusts goals.',
+  'ai-coach/logic/services': 'Thin service wrappers (e.g. mark-all-messages-read).',
+  'ai-coach/logic/tools': 'Parses coach tool proposals, decides which UI to show, and runs confirmed actions.',
+  'ai-coach/logic/trainer-messaging': 'Sends push/in-app notifications from the AI coach to the user\'s trainer.',
+  'ai-coach/logic/vision': 'Uploads and stores images the user attaches in coach chat.',
+  'ai-coach/tools': 'Shared coach tool-call parsers used by chat UI and logic.',
   'app-start': 'App shell: AuthGate decides client vs trainer vs login; ClientApp and TrainerApp mount role trees.',
   assets: 'Static images, Lottie animations, and icon PNGs bundled with the app.',
   'assets/animations': 'Lottie / loading animation assets (including prism loading art).',
@@ -115,10 +115,10 @@ const FOLDER_BLURBS = {
   'shared/weekly-report/theme': 'Weekly report theme tokens and React context.',
   'shared/workout-plans': 'Browse-saved-workouts screen shared implementation.',
   'shared/workout-profile': 'Workout profile card icons and visibility rules.',
-  'shared-ui': 'Design system: theme, iOS-style tokens, liquid glass, FluidGlass, brand gradients.',
-  'shared-ui/layout': 'Layout primitives (centered two-column grid).',
-  'shared-ui/liquid': 'Liquid glass UI kit (backgrounds, cards, buttons, halos).',
-  'shared-utils': 'Date keys, height conversion, file type detection, Firestore sanitize, workout day labels.',
+  'theme': 'Design system: theme, iOS-style tokens, liquid glass, FluidGlass, brand gradients.',
+  'theme/layout': 'Layout primitives (centered two-column grid).',
+  'theme/liquid': 'Liquid glass UI kit (backgrounds, cards, buttons, halos).',
+  'helpers': 'Date keys, height conversion, file type detection, Firestore sanitize, workout day labels.',
   subscription: 'Trainer Pro subscription gate, IAP/provider wiring, paywall screens, trial banner.',
   'trainer-app': 'Trainer role: CRM, client list, sessions, documents, payments, dashboard, navigation.',
   'trainer-app/calendar-tab': 'Trainer calendar tab showing upcoming sessions.',
@@ -607,7 +607,7 @@ function describeCodeFile(rel, content) {
     if (signals.uiStrings.length) parts.push(`UI labels include "${signals.uiStrings[0]}"`);
 
     if (folder.includes('ai-coach') && folder.includes('tools')) parts.push('part of coach tool parse → validate → confirm → execute flow');
-    if (folder.includes('ai-coach/server-logic/context')) parts.push('builds data the AI coach sees in its system prompt');
+    if (folder.includes('ai-coach/logic/context')) parts.push('builds data the AI coach sees in its system prompt');
     if (folder.startsWith('nutrition/food-search')) parts.push('part of search → pick food → log to daily nutrition');
     if (folder.startsWith('trainer-app/crm')) parts.push('trainer–client linking in Firestore CRM collections');
     if (folder.startsWith('metrics/daily-metrics')) parts.push('writes to users/{uid}/dailyLogs/{date}');
@@ -696,8 +696,8 @@ Firebase production project ID stays \`anatrox-auth\` (do not rename in config /
 | \`subscription/\` | Trainer Pro paywall / IAP / trial gate |
 | \`settings/\` | Settings hub, support, privacy, bug report |
 | \`shared/\` | Cross-role components, API, payments, weekly report, Firestore helpers |
-| \`shared-ui/\` | Design system / liquid glass / theme tokens |
-| \`shared-utils/\` | Pure helpers (dates, height, sanitize, file types) |
+| \`theme/\` | Design system / liquid glass / theme tokens |
+| \`helpers/\` | Pure helpers (dates, height, sanitize, file types) |
 | \`navigation/\` | Route names + shell navigation context |
 | \`components/\` | Root-level components (payments / onboarding leftovers) |
 | \`assets/\` | Images, icons, Lottie JSON (not logic) |

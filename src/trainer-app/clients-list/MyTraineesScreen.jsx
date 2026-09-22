@@ -29,7 +29,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../app-start/config';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import {
   getClientInitials,

@@ -1,23 +1,8 @@
-/**
- * Client App
- *
- * Purpose: Client App — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/app
- * Key exports: ClientApp
- *
- * @file-header
- */
-/**
- * ClientApp - Client-specific application interface with integrated home screen
- * 
- * Responsibilities:
- * - Client dashboard rendering
- * - Client screen navigation and state management
- * - Client-specific data loading (conversations, trainer info, workouts, nutrition)
- * - Real-time conversation updates
- * - Premium home screen UI (iOS 18 Bento Box Design)
- */
+// The client-side app shell: owns all of a client's data and which panel is on screen.
+// Flow: AuthGate mounts this with the signed-in user → effects load profile/trainer/nutrition/workout data and
+//       attach live Firestore listeners → everything is bundled into one `shell` object → published via
+//       ClientAppShellProvider so screens read it from context instead of prop-drilling.
+// Note this file holds almost no UI itself; the navigator inside ClientRootNavigator renders the actual screens.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -45,7 +30,7 @@ import {
 
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../theme/BlurBackdropPlate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
@@ -68,9 +53,9 @@ import {
 import { httpsCallable } from 'firebase/functions';
 
 import { auth, db, functions } from './config';
-import { calculateBMR, calculateTDEE } from '../shared/fitness-calculations/calculations';
-import { getClientDateKey } from '../shared-utils/dateKeys';
-import { getLocalDateKey } from '../shared-utils/getLocalDay';
+import { calculateBMR, calculateTDEE } from '../for-both/fitness-calculations/calculations';
+import { getClientDateKey } from '../helpers/dateKeys';
+import { getLocalDateKey } from '../helpers/getLocalDay';
 import {
   mergeClientDailyMetrics,
   parseDailyMetricsFromSnapshots,
@@ -92,10 +77,18 @@ import {
 import { useClientHomeBootstrap } from '../client-app/home/useClientHomeBootstrap';
 import { useClientScreenNavigation } from '../client-app/navigation/useClientScreenNavigation';
 
+// Re-reads today's food log and pushes the totals into home-screen state.
+// Handed to anything that can change what the user ate (the nutrition screen, the AI coach logging a
+// meal), so the home cards update without a full refresh.
 function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals }) {
+  // vocab: useCallback = keep the SAME function identity between renders unless a dependency changes.
+  // It matters here because this function is passed into the shell object and into child screens —
+  // a new identity every render would retrigger their effects.
   const refetchNutritionData = useCallback(async () => {
     if (!user?.uid || !db) return;
     try {
+      // Local date, not UTC: "today's food" must follow the phone's calendar day or logs jump at
+      // midnight for anyone not on UTC.
       const todayKey = getLocalDateKey();
       const nutritionLogs = await getFoodLogsForDate(user.uid, todayKey);
       const totals = calculateMacroTotals(nutritionLogs);
@@ -103,6 +96,7 @@ function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals 
       setMacroTotals({
         protein: totals.protein || 0,
         carbs: totals.carbs || 0,
+        // Note the rename: the calculator returns `fat` (singular), the UI state uses `fats`.
         fats: totals.fat || 0,
       });
     } catch (e) {
@@ -114,8 +108,8 @@ function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals 
 }
 
 
-import { subscribeToUnreadCount, rebuildUnreadIndexForUser } from '../ai-coach/server-logic/chat-api/loadMoreCoachConversations';
-import { getOrCreateConversation, sendClientRequest } from '../ai-coach/server-logic/trainer-messaging/sendTrainerNotification';
+import { subscribeToUnreadCount, rebuildUnreadIndexForUser } from '../ai-coach/logic/chat-api/loadMoreCoachConversations';
+import { getOrCreateConversation, sendClientRequest } from '../ai-coach/logic/trainer-messaging/sendTrainerNotification';
 import StartCoachChatScreen from '../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
 import ChatWithCoachScreen from '../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import SearchTrainersScreen, { TrainerProfileSheet } from '../client-app/marketplace/SearchTrainersScreen';
@@ -138,29 +132,29 @@ import BottomNavBar from '../navigation/BottomNavBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/logFoodToFirestore';
 import LogTodaysMealsScreen from '../client-app/meal-plan/LogTodaysMealsScreen';
 import NutritionContainer from '../nutrition/daily-log/NutritionContainer';
-import AddNotesFilesModal from '../shared/components/notes-files/AddNotesFilesModal';
-import { useBootLoadingLock } from '../shared/components/shell/BootLoading';
-import CoachConnectHeader from '../shared/components/shell/CoachConnectHeader';
-import DailyQuoteCard, { DailyQuotePill } from '../shared/components/home/DailyQuoteCard';
-import DocumentViewerModal from '../shared/components/notes-files/DocumentViewerModal';
+import AddNotesFilesModal from '../for-both/components/notes-files/AddNotesFilesModal';
+import { useBootLoadingLock } from '../for-both/components/shell/BootLoading';
+import CoachConnectHeader from '../for-both/components/shell/CoachConnectHeader';
+import DailyQuoteCard, { DailyQuotePill } from '../for-both/components/home/DailyQuoteCard';
+import DocumentViewerModal from '../for-both/components/notes-files/DocumentViewerModal';
 import { ClientPaymentModal } from '../components/ClientPaymentModal';
-import EmbedWebViewModal from '../shared/components/notes-files/EmbedWebViewModal';
-import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../shared/components/notes-files/FileGalleryGrid';
-import MediaViewerModal from '../shared/components/notes-files/MediaViewerModal';
-import PdfViewerModal from '../shared/components/notes-files/PdfViewerModal';
-import RemoveTrainerSheet from '../shared/components/modals/RemoveTrainerSheet';
+import EmbedWebViewModal from '../for-both/components/notes-files/EmbedWebViewModal';
+import FileGalleryGrid, { FILE_GALLERY_THEME_COLORS } from '../for-both/components/notes-files/FileGalleryGrid';
+import MediaViewerModal from '../for-both/components/notes-files/MediaViewerModal';
+import PdfViewerModal from '../for-both/components/notes-files/PdfViewerModal';
+import RemoveTrainerSheet from '../for-both/components/modals/RemoveTrainerSheet';
 import ReviewSubmitSheet from '../client-app/dashboard/ReviewSubmitSheet';
-import { SessionMeetingCard } from '../shared/components/home/SessionMeetingCard';
-import SpreadsheetViewerModal from '../shared/components/notes-files/SpreadsheetViewerModal';
+import { SessionMeetingCard } from '../for-both/components/home/SessionMeetingCard';
+import SpreadsheetViewerModal from '../for-both/components/notes-files/SpreadsheetViewerModal';
 import TrainerSharedFilesModal from '../client-app/files/TrainerSharedFilesModal';
 import ClientFilesScreen from '../client-app/files/ClientFilesScreen';
-import MarketplaceHeroCard from '../shared/components/MarketplaceHeroCard';
+import MarketplaceHeroCard from '../for-both/components/MarketplaceHeroCard';
 import DashboardHeroCard from '../client-app/dashboard/DashboardHeroCard';
-import FilesNotesHeroCard from '../shared/components/FilesNotesHeroCard';
+import FilesNotesHeroCard from '../for-both/components/FilesNotesHeroCard';
 import { MyFilesSection } from '../client-app/files/MyFilesSection';
 import { TrainerSharedSection } from '../client-app/files/TrainerSharedSection';
 import { NotesFromTrainerSection } from '../client-app/files/NotesFromTrainerSection';
-import FilesNotesSectionPremium from '../shared/components/notes-files/FilesNotesSectionPremium';
+import FilesNotesSectionPremium from '../for-both/components/notes-files/FilesNotesSectionPremium';
 import {
   persistPushTokensForUid,
   pendingPushTokenStorageKey,
@@ -168,25 +162,25 @@ import {
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
 } from '../notifications/manageNotifications';
-import { postRemotePushNotify } from '../shared/api/sendPushNotification';
-import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, spreadsheetRowsHaveContent } from '../shared/notes-files/manageNotesAndFiles';
-import { useTheme } from '../shared-ui/ThemeContext';
-import { trainerPhotoUri } from '../shared-utils/getTrainerProfileMedia';
+import { postRemotePushNotify } from '../for-both/api/sendPushNotification';
+import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, spreadsheetRowsHaveContent } from '../for-both/notes-files/manageNotesAndFiles';
+import { useTheme } from '../theme/ThemeContext';
+import { trainerPhotoUri } from '../helpers/getTrainerProfileMedia';
 import {
   getEmbedViewerUri,
   isImageFile as isNotesImageFile,
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
-} from '../shared-utils/getFileViewType';
+} from '../helpers/getFileViewType';
 import MyMessagesScreen from '../messaging/MyMessagesScreen';
-import MyProgressPhotosScreen from '../shared/screens/MyProgressPhotosScreen';
+import MyProgressPhotosScreen from '../for-both/screens/MyProgressPhotosScreen';
 import ChatWithTrainerScreen from '../messaging/ChatThreadScreen';
-import BrowseSavedWorkoutsScreen from '../shared/screens/BrowseSavedWorkoutsScreen';
-import ViewWeekProgressReportScreen from '../shared/screens/ViewWeekProgressReportScreen';
+import BrowseSavedWorkoutsScreen from '../for-both/screens/BrowseSavedWorkoutsScreen';
+import ViewWeekProgressReportScreen from '../for-both/screens/ViewWeekProgressReportScreen';
 import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '../workouts/active-workout/workoutService';
 import WorkoutPlanGeneratorScreen from '../workouts/active-workout/workout';
 import { clearAllUserData } from '../utils/clearDataOnLogout';
-import { logSnapshotError, isFirestorePermissionDenied } from '../shared/services/firestoreListenerUtils';
+import { logSnapshotError, isFirestorePermissionDenied } from '../for-both/services/firestoreListenerUtils';
 
 const CARD_GAP = 16;
 /** Kept for any layout/style references; prefer useWindowDimensions() inside components for live width. */
@@ -197,7 +191,9 @@ const STATS_ROW_PAD_H = 40;
 const STATS_ROW_CARD_GAP = 12;
 
 
-// Wellness row empty-state Lotties
+// vocab: Lottie = JSON-described vector animations (exported from After Effects) played natively.
+// These are the "nothing logged yet" illustrations in the wellness row.
+// Manipulate here: swap a path to change which animation shows for an empty metric.
 const LOTTIE_SORENESS_EMPTY = require('../assets/sad reaction.json');
 const LOTTIE_ENERGY_EMPTY = require('../assets/Run Hamster... run.json');
 const LOTTIE_STRESS_EMPTY = require('../assets/Stressed Employee At Work.json');
@@ -205,15 +201,21 @@ const LOTTIE_NUTRITION_EMPTY = require('../assets/animations/legacy/Food squeeze
 const WORKOUT_EMPTY_ICON = require('../assets/icons/workout.png');
 
 
-// Main Component
+// user = the Firebase auth user; userData = their profile document; onRefetchUserData = ask AuthGate
+// to re-read that profile (used after we change something on it, e.g. linking a trainer).
 export default function ClientApp({ user, userData, onRefetchUserData }) {
   const { colors, spacing, isDark, themeMode } = useTheme();
   const t = getPremiumTheme(isDark, colors);
 
+  // --- State: trainer relationship + viewers -------------------------------------------------
+  // trainerData is the linked coach's profile (null = no coach yet, which changes large parts of
+  // the home screen). trainerLinkError means "we think there's a link but couldn't establish it".
   const [trainerData, setTrainerData] = useState(null);
   const [trainerLinkError, setTrainerLinkError] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [notesAndFiles, setNotesAndFiles] = useState([]);
+  // Each *Viewer below is one modal. They're objects rather than booleans because opening a viewer
+  // also needs to carry WHAT to show — so a single setState both opens the modal and loads its content.
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null, rows: null });
   const [documentViewer, setDocumentViewer] = useState({ visible: false, trainerId: null, documentId: null, title: null });
@@ -225,13 +227,17 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [reviewPromptTrainer, setReviewPromptTrainer] = useState(null);
   const [showReviewSheetForPrompt, setShowReviewSheetForPrompt] = useState(false);
 
-  /** Progress Photos: bottom nav "+" calls into gallery (picker + Firebase). Cleared when gallery unmounts. */
+  // Inverted callback: the photo gallery screen registers its own "add photo" function here so the
+  // bottom nav's "+" can trigger the gallery's picker. A ref (not state) because storing it must not
+  // cause a re-render, and it's cleared when the gallery unmounts so "+" doesn't call a dead screen.
   const progressGalleryAddRef = useRef(null);
   const registerProgressPhotoAddHandler = useCallback((fn) => {
     progressGalleryAddRef.current = typeof fn === 'function' ? fn : null;
   }, []);
 
-  // Home screen data state
+  // --- State: home screen data ---------------------------------------------------------------
+  // `refreshing` drives pull-to-refresh; `loading` is the initial cold load, and while it's true the
+  // shared boot overlay stays up so the user never sees a half-populated home screen.
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   useBootLoadingLock(loading);
@@ -239,6 +245,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [todayWorkout, setTodayWorkout] = useState(null);
   const [caloriesConsumed, setCaloriesConsumed] = useState(0);
   const [caloriesBurned, setCaloriesBurned] = useState(0);
+  // Manipulate here: 2000 is the placeholder calorie goal shown before the real goal loads from the
+  // user's profile — it's a display default, not the actual target.
   const [calorieGoal, setCalorieGoal] = useState(2000);
   const [nutritionGoals, setNutritionGoals] = useState(null);
   const [, setStreak] = useState(0);
@@ -255,10 +263,16 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   const [stressLevel, setStressLevel] = useState(null);
   const [goalProgress, setGoalProgress] = useState(null);
   const [dashboardWorkoutSummary, setDashboardWorkoutSummary] = useState(null);
+  // Wellness metrics start as null rather than 0 on purpose: null means "not logged today" (shows
+  // the empty-state Lottie), while 0 is a real answer the user chose.
   const [loadingStartTime, setLoadingStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  // Re-entrancy guard, not UI state: stops a second bootstrap from starting while one is mid-flight.
+  // A ref because flipping it must not re-render.
   const isFetching = useRef(false);
 
+  // The cold-load pipeline. It's a hook in its own file because it fills ~15 pieces of state at
+  // once; passing the setters in keeps that logic out of this already-large component.
   useClientHomeBootstrap({
     user,
     db,
@@ -286,6 +300,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
   const refetchNutritionData = useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals });
 
+  // All "which panel is open" state and every open*/handle* function lives in this hook. The big
+  // destructure below is just unpacking it — the shell object at the bottom republishes most of it
+  // so screens can call these without importing the hook themselves.
   const nav = useClientScreenNavigation({ refetchNutritionData });
   const {
     showTrainerMessaging,
@@ -364,7 +381,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     setMacroTotals,
   });
 
-  // Clear cache and reset state when user changes
+  // Account switch safety net. This component can stay mounted across a user change, so every piece
+  // of state is explicitly reset — otherwise the new user briefly sees the previous user's calories,
+  // trainer, and files. Long and repetitive by design: anything missed here leaks between accounts.
   useEffect(() => {
     if (!user?.uid) return;
     
@@ -400,22 +419,29 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     });
   }, [user?.uid]);
 
-  // Subscribe to unread message count (single Firestore listener)
+  // Badge count for the messages icon. One listener on a precomputed index rather than counting
+  // unread messages across conversations, which would mean many reads on every render.
   useEffect(() => {
     if (!user || !user.uid) return;
 
+    // Rebuild the index first in case it drifted (messages written while the app was closed).
+    // Fire-and-forget: the listener below will pick up the corrected numbers when it lands.
     rebuildUnreadIndexForUser(user.uid).catch(() => {});
 
     const unsubscribe = subscribeToUnreadCount(user.uid, (count) => {
       setUnreadMessageCount(count);
     });
 
+    // Always detach Firestore listeners on unmount or they keep streaming (and billing) forever.
     return () => {
       unsubscribe();
     };
   }, [user]);
 
-  // P1#3: Reconcile trainerId - discover accepted, clear if rejected
+  // Heals a broken client↔trainer link.
+  // Why this exists: the link is stored in two places — `trainerId` on the user doc (fast to read)
+  // and a `trainer_clients` document (the real relationship). They can fall out of sync when a
+  // request is accepted or rejected while the app is closed, so on mount we check and repair.
   useEffect(() => {
     if (!user?.uid || !db || userData?.role !== 'client') return;
 
@@ -423,7 +449,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       try {
         const clientUid = user.uid;
 
-        // Case 1: Has trainerId - verify link exists, clear if rejected, or re-create via Cloud Function
+        // Case 1: we think we have a trainer. Verify the relationship actually exists.
         if (userData.trainerId) {
           const linkDoc = await getDoc(doc(db, `trainer_clients/${userData.trainerId}/clients/${clientUid}`));
           if (linkDoc.exists()) {
@@ -435,9 +461,13 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             setTrainerLinkError(false);
             return;
           }
-          // Link doesn't exist - check if rejected
+          // No link document. Two very different explanations, so look for evidence: did the
+          // trainer REJECT the request (then we must forget them), or is the link merely missing
+          // (then we should try to rebuild it)? A rejected request message is that evidence.
           const conversationId = `conv_${clientUid}_${userData.trainerId}`;
           const messagesRef = collection(db, 'messages');
+          // vocab: query/where = Firestore's filter builder; limit(1) because we only need to know
+          // whether ANY rejection exists, and fetching more would cost reads for nothing.
           const msgQuery = query(
             messagesRef,
             where('conversationId', '==', conversationId),
@@ -449,16 +479,25 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           if (!msgSnap.empty) {
             const status = msgSnap.docs[0].data().status;
             if (status === 'rejected') {
+              // Rejected → scrub the stale trainer fields off the user doc.
+              // vocab: deleteField() = Firestore's "remove this key entirely", as opposed to writing
+              // null, which would leave the key present with an empty value.
+              // Not an error state: being rejected is a normal outcome, so trainerLinkError stays false.
               await updateDoc(doc(db, 'users', clientUid), { trainerId: deleteField(), trainerName: deleteField(), trainerAssignedAt: deleteField() });
               setTrainerData(null);
               setTrainerLinkError(false);
+              // Tell AuthGate to re-read the profile so `userData` here stops carrying the old trainerId.
               onRefetchUserData?.();
             }
             return;
           }
-          // Link doesn't exist and no rejected status - attempt to re-create via Cloud Function
+          // No link and no rejection → the link doc probably failed to write. Ask the server to
+          // rebuild it: security rules don't let a client create that document itself, which is why
+          // this has to go through a Cloud Function.
           if (functions) {
             try {
+              // vocab: httpsCallable = call a Cloud Function like a normal async function, with the
+              // user's auth token attached automatically.
               const linkClient = httpsCallable(functions, 'linkClientWithTrainerCode');
               await linkClient({ clientId: clientUid, trainerId: userData.trainerId });
               const trainerDoc = await getDoc(doc(db, 'users', userData.trainerId));
@@ -467,6 +506,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               }
               setTrainerLinkError(false);
             } catch (linkErr) {
+              // Rebuild refused (usually the trainer removed this client). Clear the fields and
+              // flag it as an error — unlike the rejection path, this one is unexpected.
               await updateDoc(doc(db, 'users', clientUid), { trainerId: deleteField(), trainerName: deleteField(), trainerAssignedAt: deleteField() });
               setTrainerData(null);
               setTrainerLinkError(true);
@@ -478,8 +519,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           return;
         }
 
-        // Case 2: No trainerId - discover if trainer accepted (trainer_clients exists)
+        // Case 2: no trainerId on the profile — but a trainer may have accepted us while the app was
+        // closed. We can't query trainer_clients directly (rules forbid scanning other trainers'
+        // collections), so we walk our own conversations and check each other participant for a link.
         const convsRef = collection(db, 'conversations');
+        // vocab: 'array-contains' = match documents whose `participants` array includes this uid.
         const convQuery = query(convsRef, where('participants', 'array-contains', clientUid));
         const convSnap = await getDocs(convQuery);
         for (const convDoc of convSnap.docs) {
@@ -497,6 +541,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             });
             setTrainerData({ id: trainerUid, ...trainerData });
             onRefetchUserData?.();
+            // break: a client has at most one coach, so stop at the first confirmed link.
             break;
           }
         }
@@ -508,11 +553,12 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     reconcileTrainerId();
   }, [user?.uid, userData?.trainerId, userData?.role, onRefetchUserData]);
 
-  /**
-   * Live trainer link via flat `trainer_client_links` (written when a trainer accepts).
-   * Note: `collectionGroup('clients')` + `where(documentId(), '==', uid)` is invalid — Firestore requires
-   * a full path for documentId() on collection groups (odd segment count error on device).
-   */
+  // Live version of the reconcile above: watches the flat `trainer_client_links` collection so a
+  // trainer accepting you updates the UI immediately, no refresh needed.
+  // The collection is flat (rather than nested under each trainer) specifically so a client can
+  // query it. The obvious alternative — collectionGroup('clients') filtered by documentId() — is
+  // rejected by Firestore, which demands a full path for documentId() on a collection group and
+  // throws an "odd number of segments" error on device.
   useEffect(() => {
     if (!db || !user?.uid || userData?.role !== 'client') return undefined;
 
@@ -531,6 +577,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           return;
         }
 
+        // Treat a missing/empty status as active: older link documents were written before the
+        // status field existed, and excluding them would silently unlink long-standing clients.
         const activeDocs = snap.docs.filter((d) => {
           const st = d.data()?.status;
           if (st == null || st === '') return true;
@@ -541,8 +589,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           return;
         }
 
+        // Take the first active link — one coach per client.
         const linkDoc = activeDocs[0];
         const trainerUid = String(linkDoc.data()?.trainerId || '').trim();
+        // Sanity guard: a link pointing at yourself is corrupt data and would make you your own coach.
         if (!trainerUid || trainerUid === clientUid) {
           setTrainerData(null);
           return;
@@ -555,12 +605,16 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             return;
           }
           const tData = trainerDoc.data();
+          // Refuse to treat a non-trainer account as a coach even if a link points at them.
           if (tData?.role !== 'trainer') {
             setTrainerData(null);
             return;
           }
           setTrainerData({ id: trainerUid, ...tData });
 
+          // Mirror the link back onto our own user doc so the fast path (userData.trainerId) agrees
+          // with the live listener. Guarded by a comparison so we only write when it's actually
+          // different — an unconditional write here would fire on every snapshot.
           try {
             const userRef = doc(db, 'users', clientUid);
             const uSnap = await getDoc(userRef);
@@ -591,7 +645,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     };
   }, [db, user?.uid, userData?.role, onRefetchUserData]);
 
-  // If a CRM link appears while "Find a Trainer" is open, leave that screen — they already have a coach.
+  // If a trainer accepts while the user is browsing "Find a Trainer", close that screen — they have
+  // a coach now, and leaving the marketplace open invites them to request a second one.
   useEffect(() => {
     if (!trainerData?.id || !rootNavigationRef.isReady()) return;
     const route = rootNavigationRef.getCurrentRoute();
@@ -602,10 +657,12 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
 
 
-  // Stopwatch timer for loading screen
+  // Stopwatch showing how long the cold load has taken — a diagnostic for slow launches.
   useEffect(() => {
     let interval;
     if (loading && loadingStartTime) {
+      // Manipulate here: ticks every 100ms but displays whole seconds (Math.floor(ms / 1000)). The
+      // fast tick just keeps the displayed second from lagging behind the real one.
       interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - loadingStartTime) / 1000));
       }, 100);
@@ -614,6 +671,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       setLoadingStartTime(null);
     }
     
+    // Without this cleanup the interval keeps firing after loading ends and leaks a timer.
     return () => clearInterval(interval);
   }, [loading, loadingStartTime]);
 
@@ -621,29 +679,40 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   // When returning from dashboard we previously refetched soreness/energy/stress.
   // The dashboard is now always visible, so the wellness row is kept in sync via direct metric updates.
 
+  // Push-notification token upkeep.
+  // vocab: push token = the address the notification service uses to reach THIS install. It can be
+  // issued before the user is signed in (so we stash it locally) and it can rotate at any time.
   useEffect(() => {
     if (!user?.uid || !db) return undefined;
     let cancelled = false;
 
     (async () => {
       try {
+        // Confirm the user doc exists before writing a token onto it — for a brand-new account the
+        // doc may not be created yet, and the write would fail.
         const snap = await getDoc(doc(db, 'users', user.uid));
         if (!snap.exists() || cancelled) return;
 
+        // Claim any token that was issued before sign-in and parked in local storage, then remove
+        // the local copy so it isn't re-attached to a different account later.
         const pendingToken = await AsyncStorage.getItem(pendingPushTokenStorageKey(user.uid));
         if (pendingToken) {
           await persistPushTokensForUid(user.uid, pendingToken);
           await AsyncStorage.removeItem(pendingPushTokenStorageKey(user.uid));
         }
       } catch (e) {
+        // vocab: __DEV__ = true only in development builds, so this noise never ships to users.
         if (__DEV__) console.warn('[push] pending token flush failed:', e?.message || e);
       }
 
       if (!cancelled) {
+        // Refresh the current token. skipIfDisabled respects the user's notification setting —
+        // without it we'd re-register someone who deliberately turned notifications off.
         persistPushTokensForUid(user.uid, { skipIfDisabled: true }).catch(() => {});
       }
     })();
 
+    // Tokens can rotate while the app is backgrounded, so re-check every time it comes back.
     const unsubResume = subscribePushTokenRefreshOnResume(user.uid, () => true);
     return () => {
       cancelled = true;
@@ -651,12 +720,20 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     };
   }, [user?.uid]);
 
+  // "What happens when the user taps a notification."
+  // Stored in a ref so the handler registered with the notification system (further down, once) can
+  // always call the LATEST version. Registering the function directly would freeze today's state and
+  // navigation functions inside it forever — the classic stale-closure bug.
   const clientNotifTapRef = useRef(async () => {});
 
   useEffect(() => {
     clientNotifTapRef.current = async (data) => {
       try {
         if (!user?.uid || !data || typeof data !== 'object') return;
+        // `type` is set by whatever sent the push; each branch below is one destination.
+        // The repeated rootGoBack() calls are deliberate: this shell stacks panels, and a tap can
+        // arrive with any number of them open, so we pop several times to get back to a known base
+        // before opening the target. (Extra pops on an empty stack are safely ignored.)
         const type = data.type;
         if (type === 'session_scheduled') {
           rootGoBack();
@@ -708,6 +785,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           setShowMyDashboard(true);
           return;
         }
+        // Anything we don't have a specific destination for lands on the conversations list — the
+        // safest generic place, since most unclassified notifications are message-adjacent.
         if (type !== 'message') {
           rootGoBack();
           setShowMyDashboard(false);
@@ -729,6 +808,7 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           setShowConversationsList(true);
           return;
         }
+        // A real message tap: load the conversation and open the thread directly.
         const convSnap = await getDoc(doc(db, 'conversations', conversationId));
         if (!convSnap.exists()) {
           setShowConversationsList(true);
@@ -736,7 +816,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         }
         const convData = convSnap.data();
         const participants = convData?.participants || [];
+        // "The other person" = the participant who isn't us. Two-party conversations only.
         const otherId = participants.find((p) => p !== user.uid);
+        // Start with just the id so the thread can render even if the profile fetch fails; the
+        // enrichment below upgrades it to a full profile (name, photo) when it succeeds.
         let otherParticipant = otherId ? { id: otherId } : null;
         if (otherId) {
           try {
@@ -746,6 +829,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             /* keep minimal otherParticipant */
           }
         }
+        // Close everything else, then open the thread. Setting the conversation and participant
+        // BEFORE flipping showTrainerMessaging avoids a frame of empty chat.
         rootGoBack();
         setShowMyDashboard(false);
         rootGoBack();
@@ -756,11 +841,14 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
         setSelectedTrainer(otherParticipant);
         setShowTrainerMessaging(true);
       } catch (e) {
+        // Any failure still lands somewhere useful rather than leaving the tap doing nothing.
         setShowConversationsList(true);
       }
     };
   }, [user?.uid]);
 
+  // Register the tap handler exactly once. The arrow function reads through the ref each time it
+  // fires, which is what keeps it current even though this effect never re-runs.
   useEffect(() => {
     setNotificationTapHandler((d) => {
       clientNotifTapRef.current?.(d);
@@ -768,12 +856,17 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     return () => setNotificationTapHandler(null);
   }, []);
 
+  // Handles the notification that LAUNCHED the app from a cold start. That tap happened before any
+  // handler existed, so it's queued and replayed here.
+  // Manipulate here: 650ms delay gives the navigator time to mount — replay too early and the
+  // navigation is dropped.
   useEffect(() => {
     if (!user?.uid) return undefined;
     return flushInitialNotificationResponse(650);
   }, [user?.uid]);
 
-  // Notes & Files — same subcollection as trainer; realtime listener so uploads & trainer shares show immediately
+  // Notes & Files live in the same subcollection the trainer writes to, so one realtime listener
+  // covers both the client's own uploads and anything the coach shares.
   useEffect(() => {
     if (!user?.uid || !db) {
       setNotesAndFiles([]);            
@@ -782,6 +875,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     const notesRef = collection(db, 'users', user.uid, 'notes_and_files');
     const unsubscribe = onSnapshot(
       notesRef,
+      // The snapshot argument is ignored on purpose: we use the listener purely as a "something
+      // changed" ping and then re-fetch through getNotesAndFiles, which also resolves download URLs
+      // and trainer metadata that the raw documents don't contain.
       async () => {
         try {
           const list = await getNotesAndFiles(user.uid);
@@ -812,6 +908,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     }
     const todayKey = getClientDateKey();
     const sessionsRef = collection(db, `trainer_clients/${trainerUid}/sessions`);
+    // Manipulate here: limit(5) caps how many pending invites the home card shows.
+    // date >= todayKey hides invites that already passed.
     const primaryQuery = query(
       sessionsRef,
       where('clientId', '==', user.uid),
@@ -822,6 +920,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     const applySnap = (snap) => {
       const next = [];
       snap.forEach((d) => next.push({ id: d.id, ...d.data() }));
+      // Sort chronologically by concatenating date + time into one comparable string. This works
+      // only because both are zero-padded fixed-width values ('2026-09-13' + '09:30'), so plain
+      // text comparison happens to match chronological order — no Date parsing needed.
       next.sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)));
       setPendingSessions(next);
     };
@@ -834,20 +935,30 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       },
       (err) => {
         logSnapshotError(err, 'Client pending sessions listener:');
+        // Permission denied = the trainer link was removed. Not recoverable here, so just empty the
+        // list rather than retrying.
         if (isFirestorePermissionDenied(err)) {
           setPendingSessions([]);
           return;
         }
+        // vocab: composite index = Firestore requires a pre-built index for any query filtering on
+        // several fields at once (here: clientId + status + date). If it hasn't been created in the
+        // console yet, the query fails with failed-precondition. Firebase words this error a few
+        // different ways, hence checking the code AND two message shapes.
         const msg = String(err?.message || '');
         const needsIndex =
           err?.code === 'failed-precondition' ||
           msg.toLowerCase().includes('requires an index') ||
           msg.toLowerCase().includes('create_composite');
 
-        // Fallback: use a simpler query (no composite index) and filter client-side.
-        // This keeps the UI working immediately, even if the composite index isn’t created yet.
+        // Fallback: a single-field query needs no composite index, so fetch a wider set and do the
+        // status/date filtering in JS. Costs a few extra reads but keeps the feature working
+        // immediately instead of showing nothing until someone creates the index.
         if (needsIndex) {
           try {
+            // Manipulate here: 15 is deliberately larger than the 5 we display, because the
+            // status/date filtering happens after the fetch — too small a limit could return 15
+            // past sessions and leave the card empty.
             const fallbackQuery = query(
               sessionsRef,
               where('clientId', '==', user.uid),
@@ -884,6 +995,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     };
   }, [user?.uid, trainerData?.id]);
 
+  // Accept/decline a session invite, then tell the trainer about it.
+  // Note the ordering: the Firestore write happens first and the push is best-effort after — the
+  // trainer's calendar must be correct even if the notification never sends.
   const respondToSession = useCallback(async ({ sessionId, status }) => {
     const trainerUid = trainerData?.id || trainerData?.uid || null;
     if (!trainerUid || !sessionId) return;
@@ -903,8 +1017,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             clientName = d?.firstName || d?.name || d?.displayName || clientName;
           }
         } catch (_) {}
+        // Manipulate here: this phrasing is what the trainer sees in the push banner.
         const verb =
           status === 'accepted' ? 'accepted' : status === 'declined' ? 'declined' : 'updated';
+        // vocab/symbol: `void <promise>` = "start this and explicitly don't wait for it" — it marks
+        // the fire-and-forget as intentional rather than a forgotten await.
         void postRemotePushNotify({
           recipientId: trainerUid,
           senderName: clientName,
@@ -933,6 +1050,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     />
   );
 
+  // One Firestore list feeds two UI sections, split here by who added the item.
+  // Trainer-shared: explicitly tagged as from the trainer, OR a document that carries a trainerId
+  // (older shares predate the addedBy field).
   const trainerSharedFiles = useMemo(
     () =>
       (notesAndFiles || []).filter(
@@ -941,7 +1061,10 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     [notesAndFiles],
   );
 
-  /** Client uploads (plus button) — same Firestore list; previously hidden because home only showed trainer rows */
+  // The client's own uploads (added via the "+" button).
+  // Two exclusions: notes render in their own section, and `addedBy || 'client'` treats untagged
+  // legacy rows as client-owned — with the second condition re-excluding trainer documents that
+  // would otherwise slip through that default.
   const myOwnFiles = useMemo(
     () =>
       (notesAndFiles || []).filter((x) => {
@@ -958,6 +1081,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
 
   const deleteSingleMyFile = useCallback(async (file) => {
     if (!user?.uid || !file?.id) return;
+    // Hard guard: a client may only delete their own uploads. Deleting a trainer's shared file
+    // would also fail at the security-rules layer, but refusing here avoids a confusing error.
     if ((file.addedBy || 'client') !== 'client') return;
     setDeletingMyFiles(true);
     try {
@@ -977,7 +1102,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     if (list.length === 0) return;
     setDeletingMyFiles(true);
     try {
-      // Sequential to avoid hammering Storage/Firestore on large sets.
+      // Sequential rather than Promise.all: each delete touches both Cloud Storage and Firestore,
+      // and firing 50 of those at once gets rate-limited. Slower, but it actually finishes.
       for (const f of list) {
         // eslint-disable-next-line no-await-in-loop
         await deleteNotesAndFilesItem(user.uid, f);
@@ -992,7 +1118,12 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     }
   }, [user?.uid, myOwnFiles, refreshNotesAndFiles]);
 
+  // Router for "the user tapped a file". Every branch ends in a `return`, so the order below IS the
+  // precedence: trainer-authored content first (it needs a server lookup to resolve), then explicit
+  // types, then guesses based on the file extension, then a generic web viewer as the last resort.
   const openNotesFile = useCallback((file) => {
+    // Trainer spreadsheet/document: the row only stores ids, so we have to ask the server what it
+    // actually is before we know which viewer to open.
     if (file?.trainerId && file?.documentId) {
       resolveTrainerSpreadsheetView(file.trainerId, file.documentId)
         .then((res) => {
@@ -1010,6 +1141,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
             return;
           }
           const name = file?.title || file?.name || res.title || 'Spreadsheet';
+          // A spreadsheet can arrive two ways: as parsed rows (render natively, best experience) or
+          // as a stored file URL (render from the download). Prefer rows when they have content —
+          // an empty rows array means the parse produced nothing, so fall through to the URL.
           if (spreadsheetRowsHaveContent(res.rows)) {
             setSpreadsheetViewer({
               visible: true,
@@ -1048,6 +1182,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       });
       return;
     }
+    // From here down we're guessing from the filename/extension, so order matters: image, then
+    // video, then PDF, and finally an embedded web view for anything still unrecognized.
     if (file?.url && isNotesImageFile(file)) {
       setMediaViewer({ visible: true, url: file.url, kind: 'image', name: file?.name || file?.title || 'Photo' });
       return;
@@ -1069,12 +1205,15 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     }
   }, []);
 
+  // Pull-to-refresh on the home screen.
   const onRefresh = async () => {
     setRefreshing(true);
     refreshNotesAndFiles();
     if (user?.uid && db) {
       try {
         const todayKey = getLocalDateKey();
+        // vocab: Promise.all = run both reads at the same time and wait for both. Sequential awaits
+        // here would double the time the spinner stays up for no benefit.
         const [logsDoc, trackingDoc] = await Promise.all([
           getDoc(doc(db, 'users', user.uid, 'dailyLogs', todayKey)),
           // TODO(phase-5): remove legacy daily_tracking read after backfill
@@ -1089,11 +1228,16 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     setRefreshing(false);
   };
 
+  // The price label on the coaching payment card.
   const coachingRateLabel = useMemo(() => {
+    // The rate agreed with THIS client wins over the trainer's public price.
     const rate = userData?.monthlyRate;
     if (rate != null && rate !== '') {
       const n = Number(rate);
       if (Number.isFinite(n) && n > 0) {
+        // Historical data mess: some rates are stored in cents (12000) and some in dollars (120).
+        // The >= 100 heuristic disambiguates them — it assumes nobody charges $100+/month as cents
+        // and nobody charges under $1. Then: whole numbers print as $120, others as $99.50.
         const dollars = n >= 100 ? n / 100 : n;
         return `$${dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2)}`;
       }
@@ -1105,6 +1249,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     return null;
   }, [userData?.monthlyRate, trainerData?.pricing]);
 
+  // Trainer's display name, hunting through every field shape profiles have used over time and
+  // falling back to generic copy so the payment sheet never shows "undefined".
   const coachingTrainerName = useMemo(() => {
     const tr = trainerData;
     if (!tr) return 'Your trainer';
@@ -1114,16 +1260,25 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     return tr.displayName || tr.name || 'Your trainer';
   }, [trainerData]);
 
+  // "Request this coach" from the marketplace.
+  // Throws (rather than returning a flag) so the calling screen can show the message in its own
+  // error UI — each string below is user-facing copy.
   const requestTrainerConnection = useCallback(
     async (trainer, { clientIntro } = {}) => {
       const clientId = user?.uid;
       const trainerId = trainer?.id || trainer?.uid;
       if (!clientId) throw new Error('Please log in first.');
       if (!trainerId) throw new Error('Trainer not found.');
+      // One coach at a time. Requesting a second would create a conflicting link the reconcile
+      // effects above would then fight over.
       if (trainerData?.id && String(trainerData.id) !== String(trainerId)) {
         throw new Error('You already have a coach. Open your dashboard to message them.');
       }
+      // Requests ride on the messaging system, so a conversation must exist first (created if needed).
       const conversationId = await getOrCreateConversation(clientId, trainerId);
+      // The onboarding answers are attached so the trainer can judge the request without asking a
+      // round of questions. Each field has several possible names across profile versions, hence the
+      // || chains, and every one ends in a readable default rather than blank.
       await sendClientRequest(conversationId, clientId, clientIntro || '', {
         clientName: userData?.firstName || user?.displayName || 'Client',
         clientGoals: onboardingData?.goal || onboardingData?.primaryGoal || 'Not specified',
@@ -1135,8 +1290,11 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     [user?.uid, user?.displayName, userData, onboardingData, trainerData?.id],
   );
 
-  // Do not return early before shell useMemo — hooks must run in the same order every render.
+  // IMPORTANT: no early `return` above this point. React requires hooks to run in the same order on
+  // every render, so the `if (loading)` bail-out has to stay below the last hook (the shell useMemo).
 
+  // Navigation handlers given to the AI chat screen. Each one clears aiChatState first: the chat is
+  // an overlay, and navigating away without closing it would leave it floating over the destination.
   const aiChatNavHandlers = {
     onHomePress: () => {
       setAiChatState(null);
@@ -1153,11 +1311,15 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       setAiChatState(null);
       openWorkout();
     },
+    // Called by the AI coach when it decides to show the user a plan ("open my workout plan").
+    // Unlike the other handlers it returns { success, message } — that message is spoken back to the
+    // user by the assistant, which is why every failure path returns readable copy instead of throwing.
     onOpenWorkoutPlan: async ({ planId = 'current', title, todayPreview } = {}) => {
       const uid = user?.uid;
       if (!uid) return { success: false, message: 'Please sign in again.' };
       try {
         let planData = null;
+        // 'current' is a keyword, not a document id — it means "whichever plan is active now".
         if (planId === 'current') {
           const current = await getCurrentWorkoutPlan(uid);
           if (current) planData = { id: 'current', ...current };
@@ -1165,6 +1327,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
           const snap = await getDoc(doc(db, 'users', uid, 'workoutPlans', planId));
           if (snap.exists()) planData = { id: planId, ...snap.data() };
         }
+        // Plans have been stored in three shapes over time; if none of them is present there's
+        // nothing the viewer could render, so treat it as "not found".
         if (!planData?.rawPlan && !planData?.planText && !planData?.structuredPlan) {
           return { success: false, message: 'Could not find that workout plan.' };
         }
@@ -1194,24 +1358,33 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     },
   };
 
+  // Display values derived from whatever data has loaded. Profile name first, then the auth
+  // display name, then the onboarding answer, then a neutral default — so the greeting is never blank.
   const userName = userData?.firstName || user?.displayName || onboardingData?.name || 'User';
   const userRole = userData?.role || 'client';
+  // vocab/symbol: !! = coerce to a real boolean, so children get `false` rather than `null`.
   const hasTrainer = !!trainerData;
 
-  // Prepare workout data for TrainingAgenda
+  // Reshapes workout data into the flat { name, exercises, workoutName } rows TrainingAgenda expects.
+  // Three-way fallback: today's actual workout → the dashboard's one-line summary → nothing at all.
   const agendaWorkouts = todayWorkout
     ? [
         {
           name: todayWorkout.name,
+          // Exercises arrive either as plain strings (older/AI-generated plans) or as objects with
+          // sets. This map flattens both into display strings like "Bench Press (8×135, 8×145)".
           exercises: Array.isArray(todayWorkout.exercises)
             ? todayWorkout.exercises
                 .map((ex) => {
                   if (typeof ex === 'string') return ex;
                   const label = ex?.name || ex?.exerciseName || '';
+                  // No name = unusable row; return '' and let the .filter(Boolean) below drop it.
                   if (!label) return '';
                   if (Array.isArray(ex.sets) && ex.sets.length > 0) {
                     const setsSummary = ex.sets
                       .map((s) => {
+                        // Manipulate here: these three lines are the set label formats —
+                        // both values → "8×135", reps only → "8 reps", weight only → "135".
                         const reps = s.reps != null ? s.reps : '';
                         const weight = s.weight != null ? s.weight : '';
                         if (reps && weight) return `${reps}×${weight}`;
@@ -1219,6 +1392,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
                         if (weight) return `${weight}`;
                         return '';
                       })
+                      // vocab: .filter(Boolean) = drop every falsy entry, i.e. remove the '' rows
+                      // the map produced for unusable data.
                       .filter(Boolean)
                       .join(', ');
                     return setsSummary
@@ -1246,7 +1421,8 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
       ]
     : [];
 
-  // Prepare macro data for NutritionCard
+  // The three headline macros on the nutrition card. Always shown, even at 0.
+  // Manipulate here: the icon/label pairs and the `g` unit suffix are the card's copy.
   const nutritionMacros = [
     { icon: require('../assets/icons/Protein.png'), label: "Protein", value: `${Math.round(macroTotals.protein)}g` },
     { icon: require('../assets/icons/Carbs.png'), label: "Carbs", value: `${Math.round(macroTotals.carbs)}g` },
@@ -1256,7 +1432,9 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
   console.log(`📊 Nutrition macros being passed to card:`, nutritionMacros.map(m => ({ label: m.label, value: m.value })));
   console.log(`🎯 Current nutrition goals:`, nutritionGoals);
 
-  // Prepare additional nutrition data (only show if data exists)
+  // Secondary nutrients, each added only when it's actually above zero — a row of "0g" everywhere
+  // is noise, so the card grows as the user logs more detailed food data.
+  // Manipulate here: the emoji icons, labels, and units (g vs mg) are all display copy.
   const additionalNutrients = [];
   
   if (macroTotals.fiber > 0) {
@@ -1291,6 +1469,13 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     });
   }
 
+  // THE handoff. Everything above — data, panel flags, open*/handle* functions, viewers — is bundled
+  // into one object and published through ClientAppShellProvider, so any screen can pull what it
+  // needs from context instead of having props threaded down through the navigator.
+  // Wrapped in useMemo because a new object identity on every render would re-render every consumer
+  // of that context, i.e. the whole client app. Note the dependency array below is intentionally
+  // shorter than the object: setter functions and useCallback'd handlers are already stable, so
+  // listing them would add noise without changing when this recomputes.
   const shell = useMemo(() => ({
     user,
     userData,
@@ -1466,33 +1651,51 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
     showReviewSheetForPrompt,
   ]);
 
+  // Cold load: blank themed background while the boot overlay (locked above) covers the screen.
   if (loading) {
     return <View style={{ flex: 1, backgroundColor: isDark ? '#0A0A0A' : '#FFFFFF' }} />;
   }
 
   return (
     <ClientAppShellProvider value={shell}>
+      {/* ErrorBoundary catches a render crash anywhere in the navigator and shows a fallback instead
+          of a white screen. It wraps the navigator specifically so the payment modal below survives. */}
       <ErrorBoundary>
+        {/* The actual screens. The ref is the global navigationRef, which is how non-React code
+            (notification taps, the auth listener) can navigate; `linking` wires up deep links. */}
         <NavigationContainer ref={rootNavigationRef} linking={clientLinking}>
           <ClientRootNavigator />
         </NavigationContainer>
       </ErrorBoundary>
 
+      {/* Coaching payment sheet. It lives OUTSIDE the NavigationContainer so it can cover the whole
+          app (including the tab bar) and stay up regardless of which screen is underneath. */}
       <Modal
         visible={showCoachingPaymentModal}
+        // transparent = the modal's own background is see-through, so the dimming layer below is
+        // what darkens the app behind the sheet.
         transparent
         animationType="slide"
+        // Android hardware back button. Without this, back does nothing and the sheet traps the user.
         onRequestClose={closeCoachingPayment}
       >
+        {/* Card fields sit near the bottom, so the sheet has to lift when the keyboard opens.
+            iOS and Android need different strategies for that, hence the platform check. */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // justifyContent 'flex-end' is what pins the sheet to the bottom of the screen.
           style={{ flex: 1, justifyContent: 'flex-end' }}
         >
+          {/* Tap-outside-to-close scrim. activeOpacity={1} stops it flashing on press — it's a
+              backdrop, not a button, so it shouldn't look tappable.
+              Manipulate here: rgba(0,0,0,0.55) is how dark the app behind the sheet goes. */}
           <TouchableOpacity
             style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
             activeOpacity={1}
             onPress={closeCoachingPayment}
           />
+          {/* overflow: 'hidden' is what actually clips the payment form's square corners to these
+              rounded top corners — without it the radius has no visible effect. */}
           <View
             style={{
               borderTopLeftRadius: 24,
@@ -1500,10 +1703,14 @@ export default function ClientApp({ user, userData, onRefetchUserData }) {
               overflow: 'hidden',
             }}
           >
+            {/* Three sources for the trainer id (live data, alternate field name, the profile copy)
+                because the payment can be opened before trainerData has loaded. */}
             <ClientPaymentModal
               trainerId={trainerData?.id || trainerData?.uid || userData?.trainerId || ''}
               trainerName={coachingTrainerName}
               onClose={closeCoachingPayment}
+              // Re-read the profile after paying: the server flips subscription/billing fields on
+              // the user doc, and without this refetch the UI would keep showing "unpaid".
               onSuccess={() => {
                 onRefetchUserData?.();
               }}

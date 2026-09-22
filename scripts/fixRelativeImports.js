@@ -15,9 +15,9 @@ const DIR_RULES = [
     ['../screens/ChatWithTrainerScreen', '../../messaging/ChatThreadScreen'],
     ['../screens/MyMessagesScreen', '../../messaging/MyMessagesScreen'],
     ['../screens/TrainingDashboardScreen', '../dashboard/TrainingDashboardScreen'],
-    ['../screens/ViewWeekProgressReportScreen', '../../shared/screens/ViewWeekProgressReportScreen'],
-    ['../screens/MyProgressPhotosScreen', '../../shared/screens/MyProgressPhotosScreen'],
-    ['../screens/BrowseSavedWorkoutsScreen', '../../shared/screens/BrowseSavedWorkoutsScreen'],
+    ['../screens/ViewWeekProgressReportScreen', '../../for-both/screens/ViewWeekProgressReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../../for-both/screens/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/screens/BrowseSavedWorkoutsScreen'],
     ['../components/home/', '../home/'],
     ['../components/TrainerSharedFilesModal', '../files/TrainerSharedFilesModal'],
     ['../components/ReviewSubmitSheet', '../dashboard/ReviewSubmitSheet'],
@@ -27,9 +27,9 @@ const DIR_RULES = [
     ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
   ]],
   ['src/client-app/navigation/clientOverlayScreens.jsx', [
-    ['../screens/ViewWeekProgressReportScreen', '../../shared/screens/ViewWeekProgressReportScreen'],
-    ['../screens/MyProgressPhotosScreen', '../../shared/screens/MyProgressPhotosScreen'],
-    ['../screens/BrowseSavedWorkoutsScreen', '../../shared/screens/BrowseSavedWorkoutsScreen'],
+    ['../screens/ViewWeekProgressReportScreen', '../../for-both/screens/ViewWeekProgressReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../../for-both/screens/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/screens/BrowseSavedWorkoutsScreen'],
     ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
   ]],
   ['src/client-app/dashboard/', [
@@ -39,7 +39,7 @@ const DIR_RULES = [
   ]],
   ['src/client-app/marketplace/', [
     ['../../../app-start/', '../../app-start/'],
-    ['../../../shared/', '../../shared/'],
+    ['../../../for-both/', '../../for-both/'],
     ['../../../navigation/', '../../navigation/'],
     ['../components/', './'],
     ['../utils/', './'],
@@ -68,7 +68,7 @@ const DIR_RULES = [
   ]],
   ['src/trainer-app/dashboard/', [
     ['../../../assets/', '../../assets/'],
-    ['../../../shared/assets/', '../../shared/assets/'],
+    ['../../../for-both/assets/', '../../for-both/assets/'],
     ['../components/documents/', '../documents/'],
     ['../components/TrainerWeeklyReportSection', '../weekly-report/TrainerWeeklyReportSection'],
     ['../components/dashboard/', './'],
@@ -122,9 +122,9 @@ const DIR_RULES = [
   ]],
   ['src/nutrition/screens/', [
     ['../components/MacroBar', '../daily-log/MacroBar'],
-    ['../../Loader', '../../shared/components/shell/AppLoadingScreen'],
+    ['../../Loader', '../../for-both/components/shell/AppLoadingScreen'],
   ]],
-  ['src/shared/api/', [
+  ['src/for-both/api/', [
     ['../services/baseUrl', './baseUrl'],
     ['../services/getAuthHeaders', './getAuthHeaders'],
   ]],
@@ -211,7 +211,7 @@ const DIR_RULES = [
   ['src/workouts/active-workout/WorkoutProfilePillGrid.jsx', [
     ['../lib/workoutOnboardingFormConfig', '../plan-generator/workoutOnboardingFormConfig'],
   ]],
-  ['src/shared/components/notes-files/', [
+  ['src/for-both/components/notes-files/', [
     ['../../services/notesAndFilesService', '../../notes-files/notesAndFilesService'],
   ]],
 ];

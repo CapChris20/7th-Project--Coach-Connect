@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { ToolModalBody, DetailRow, ConfirmCancelRow } from '../tool-modals/toolModalHelpers';
-import { formatOnboardingDisplay } from '../../../shared-utils/formatOnboardingDisplay';
+import { formatOnboardingDisplay } from '../../../helpers/formatOnboardingDisplay';
 
 export default function UpdateFitnessGoalSheet({ params, reasoning, onConfirm, onCancel, loading }) {
   const goal = formatOnboardingDisplay(params?.newGoal, params?.newGoal || '—');

@@ -25,7 +25,7 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { deleteUser, getAuth, signOut, updatePassword } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../app-start/config';
@@ -33,22 +33,22 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../app-start/config';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { useShellNavigate } from '../../navigation/shellNavigate';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useAI, getAiToggleMeterHint } from '../../shared/contexts/AIContext';
-import HoldToConfirmModal from '../../shared/components/modals/HoldToConfirmModal';
-import { resolveStripeStatus } from '../../shared/api/stripeConnectApi';
-import { useStripeConnectFlow } from '../../shared/payments/useStripeConnectFlow';
-import { StripeConnectWebViewModal } from '../../shared/payments/StripeConnectWebViewModal';
+import { useAI, getAiToggleMeterHint } from '../../for-both/contexts/AIContext';
+import HoldToConfirmModal from '../../for-both/components/modals/HoldToConfirmModal';
+import { resolveStripeStatus } from '../../for-both/api/stripeConnectApi';
+import { useStripeConnectFlow } from '../../for-both/payments/useStripeConnectFlow';
+import { StripeConnectWebViewModal } from '../../for-both/payments/StripeConnectWebViewModal';
 import {
   TRAINER_CLIENT_MESSAGE_RECOMMENDED,
   TRAINER_CLIENT_MESSAGE_VENMO_WARNING,
-} from '../../shared/payments/paymentEducationCopy';
-import { useClientPaymentHistory } from '../../shared/payments/useClientPaymentHistory';
+} from '../../for-both/payments/paymentEducationCopy';
+import { useClientPaymentHistory } from '../../for-both/payments/useClientPaymentHistory';
 
 /** Settings UI — dark pink → dark orange gradient (no purple). */
 const ACCENT_PINK = '#BE185D';

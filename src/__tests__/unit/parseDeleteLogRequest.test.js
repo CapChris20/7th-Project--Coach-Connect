@@ -3,7 +3,7 @@ const {
   coerceMisroutedDeleteTool,
   inferDeleteLogParams,
   inferDeleteLogType,
-} = require('../../ai-coach/server-logic/tools/detectDeleteFoodRequest');
+} = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
 
 describe('userWantsDeleteLog', () => {
   it('accepts explicit delete-food requests', () => {

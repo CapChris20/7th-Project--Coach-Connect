@@ -25,13 +25,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../app-start/config';
-import { getClientDateKey } from '../../shared-utils/dateKeys';
+import { getClientDateKey } from '../../helpers/dateKeys';
 import { mergeClientDailyMetrics } from '../../metrics/daily-metrics/saveDailyMetricsToFirestore';
-import { markNotesAndFilesItemRead } from '../../shared/notes-files/manageNotesAndFiles';
+import { markNotesAndFilesItemRead } from '../../for-both/notes-files/manageNotesAndFiles';
 import ChatWithTrainerScreen from '../../messaging/ChatThreadScreen';
 import MyMessagesScreen from '../../messaging/MyMessagesScreen';
 import TrainingDashboardScreen from '../dashboard/TrainingDashboardScreen';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../navigation/BottomNavBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
 import {
@@ -46,19 +46,19 @@ import {
   TrainingAgenda,
   NutritionCard,
 } from '../home/clientHomeComponents';
-import FilesNotesHeroCard from '../../shared/components/FilesNotesHeroCard';
-import FilesNotesSectionPremium from '../../shared/components/notes-files/FilesNotesSectionPremium';
-import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
+import FilesNotesHeroCard from '../../for-both/components/FilesNotesHeroCard';
+import FilesNotesSectionPremium from '../../for-both/components/notes-files/FilesNotesSectionPremium';
+import { SessionMeetingCard } from '../../for-both/components/home/SessionMeetingCard';
 import TrainerSharedFilesModal from '../files/TrainerSharedFilesModal';
-import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
-import PdfViewerModal from '../../shared/components/notes-files/PdfViewerModal';
-import SpreadsheetViewerModal from '../../shared/components/notes-files/SpreadsheetViewerModal';
-import DocumentViewerModal from '../../shared/components/notes-files/DocumentViewerModal';
-import MediaViewerModal from '../../shared/components/notes-files/MediaViewerModal';
-import EmbedWebViewModal from '../../shared/components/notes-files/EmbedWebViewModal';
-import RemoveTrainerSheet from '../../shared/components/modals/RemoveTrainerSheet';
+import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
+import PdfViewerModal from '../../for-both/components/notes-files/PdfViewerModal';
+import SpreadsheetViewerModal from '../../for-both/components/notes-files/SpreadsheetViewerModal';
+import DocumentViewerModal from '../../for-both/components/notes-files/DocumentViewerModal';
+import MediaViewerModal from '../../for-both/components/notes-files/MediaViewerModal';
+import EmbedWebViewModal from '../../for-both/components/notes-files/EmbedWebViewModal';
+import RemoveTrainerSheet from '../../for-both/components/modals/RemoveTrainerSheet';
 import ReviewSubmitSheet from '../dashboard/ReviewSubmitSheet';
-import MarketplaceHeroCard from '../../shared/components/MarketplaceHeroCard';
+import MarketplaceHeroCard from '../../for-both/components/MarketplaceHeroCard';
 import DashboardHeroCard from '../dashboard/DashboardHeroCard';
 import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';

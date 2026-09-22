@@ -57,7 +57,7 @@ Run automated gates: **`npm run test:quality`**
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Shared helpers | ✅ | `src/shared/accessibility/a11yProps.js` |
+| Shared helpers | ✅ | `src/for-both/accessibility/a11yProps.js` |
 | AI Coach chat (input, send, attach, refresh) | ✅ | `AIChatScreen.jsx` |
 | Tool confirm / cancel | ✅ | `toolModalShared.js` |
 | Food search (back, search, clear) | ✅ | `FoodSearchScreen.js` |

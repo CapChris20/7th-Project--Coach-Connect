@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useShellBottomNavInset, FORM_SCROLL_PROPS } from '../../navigation/bottomNavMetrics';
 
 import NutritionDayPicker from './NutritionDayPicker';

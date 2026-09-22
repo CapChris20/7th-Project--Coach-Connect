@@ -78,15 +78,15 @@ for (const f of unused) {
   byTop[top].push(f);
 }
 
-const usedSharedUi = srcFiles.filter((f) => f.startsWith('src/shared-ui/') && inbound.get(f).length > 0);
-const unusedSharedUi = srcFiles.filter((f) => f.startsWith('src/shared-ui/') && inbound.get(f).length === 0);
+const usedSharedUi = srcFiles.filter((f) => f.startsWith('src/theme/') && inbound.get(f).length > 0);
+const unusedSharedUi = srcFiles.filter((f) => f.startsWith('src/theme/') && inbound.get(f).length === 0);
 
 console.log('=== SUMMARY ===');
 console.log(`Total src modules: ${srcFiles.length}`);
 console.log(`Zero inbound imports: ${unused.length}`);
-console.log(`shared-ui USED (${usedSharedUi.length}):`);
+console.log(`theme USED (${usedSharedUi.length}):`);
 for (const f of usedSharedUi) console.log(`  ✓ ${f.replace(/^src\//, '')}`);
-console.log(`shared-ui UNUSED (${unusedSharedUi.length}):`);
+console.log(`theme UNUSED (${unusedSharedUi.length}):`);
 for (const f of unusedSharedUi) console.log(`  ✗ ${f.replace(/^src\//, '')}`);
 
 console.log('\n=== UNUSED BY TOP FOLDER ===');

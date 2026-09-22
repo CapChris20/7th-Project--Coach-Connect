@@ -24,10 +24,10 @@ import {
   View,
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import StableGradientText from '../../shared-ui/StableGradientText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../shared-ui/brandGradients';
-import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
-import { getClientDateKey } from '../../shared-utils/dateKeys';
+import StableGradientText from '../../theme/StableGradientText';
+import { HERO_TITLE_TEXT_GRADIENT } from '../../theme/brandGradients';
+import BlurBackdropPlate from '../../theme/BlurBackdropPlate';
+import { getClientDateKey } from '../../helpers/dateKeys';
 import {
   HOME_STAT_WORKOUT_GRADIENT,
   HOME_STAT_WATER_GRADIENT,
@@ -36,14 +36,14 @@ import {
   HOME_STAT_ENERGY_GRADIENT,
   HOME_STAT_STRESS_GRADIENT,
   StatGradientText,
-} from '../../shared-ui/homeStatGradients';
-import { DailyQuotePill } from '../../shared/components/home/DailyQuoteCard';
-import AuroraHeroBanner, { getAuroraHeroGreeting } from '../../shared/components/home/AuroraHeroBanner';
+} from '../../theme/homeStatGradients';
+import { DailyQuotePill } from '../../for-both/components/home/DailyQuoteCard';
+import AuroraHeroBanner, { getAuroraHeroGreeting } from '../../for-both/components/home/AuroraHeroBanner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-video';
 import LottieView from 'lottie-react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
-import { calculateBMR, calculateTDEE } from '../../shared/fitness-calculations/calculations';
+import { calculateBMR, calculateTDEE } from '../../for-both/fitness-calculations/calculations';
 import styles, { SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP, CARD_GAP } from './clientAppStyles';
 
 const LOTTIE_SORENESS_EMPTY = require('../../assets/sad reaction.json');
@@ -175,7 +175,7 @@ const CircularProgress = ({ progress = 0, size = 72, strokeWidth = 8, trackColor
   );
 };
 
-// Home stat card value gradients live in ../../../shared-ui/homeStatGradients.js
+// Home stat card value gradients live in ../../../theme/homeStatGradients.js
 
 // Light-mode readability: draw a dark "outline" layer behind the value.
 // We keep it subtle (shadow-based) so it doesn't look chunky.

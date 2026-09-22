@@ -39,7 +39,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../shared-ui/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { auth, db } from '../app-start/config';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -47,37 +47,37 @@ import * as DocumentPicker from 'expo-document-picker';
 import {
   uploadTrainerCertificationSheet,
   uploadTrainerFaceVerification,
-} from '../shared/notes-files/manageNotesAndFiles';
+} from '../for-both/notes-files/manageNotesAndFiles';
 import {
   verifyTrainerCertification,
   certificationStatusLabel,
   certificationStatusDetail,
-} from '../shared/api/verifyTrainerCertification';
-import BlurBackdropPlate from '../shared-ui/BlurBackdropPlate';
+} from '../for-both/api/verifyTrainerCertification';
+import BlurBackdropPlate from '../theme/BlurBackdropPlate';
 import { validateTrainerCodeWithDeps } from './validateTrainerInviteCode';
 import { completeOnboardingClient, buildOnboardingUpdatePayload } from './finishOnboarding';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiBaseCandidates } from '../shared/api/baseUrl';
-import { queuePendingOnboardingSync } from '../shared/api/syncOnboardingToServer';
-import { useAI } from '../shared/contexts/AIContext';
-import { AIOptInStep } from '../shared/components/onboarding/AIOptInStep';
+import { getApiBaseCandidates } from '../for-both/api/baseUrl';
+import { queuePendingOnboardingSync } from '../for-both/api/syncOnboardingToServer';
+import { useAI } from '../for-both/contexts/AIContext';
+import { AIOptInStep } from '../for-both/components/onboarding/AIOptInStep';
 import {
   TrainerSubscriptionOnboardingStep,
   TrainerSubscriptionCtaFooter,
-} from '../shared/components/onboarding/TrainerSubscriptionOnboardingStep';
+} from '../for-both/components/onboarding/TrainerSubscriptionOnboardingStep';
 import { useSubscription } from '../subscription/SubscriptionProvider';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../subscription/constants';
 import ExerciseDislikePicker from '../workouts/exercise-library/ExerciseDislikePicker';
 import LottieView from 'lottie-react-native';
-import LiquidBackground from '../shared-ui/liquid/LiquidBackground';
-import LiquidBackgroundLight from '../shared-ui/liquid/LiquidBackgroundLight';
-import { getOnboardingIconSource } from '../shared/assets/onboardingIconRegistry';
+import LiquidBackground from '../theme/liquid/LiquidBackground';
+import LiquidBackgroundLight from '../theme/liquid/LiquidBackgroundLight';
+import { getOnboardingIconSource } from '../for-both/assets/onboardingIconRegistry';
 import {
   formatHeightInputDisplay,
   parseHeightInputText,
   isHeightComplete,
   finalizeHeightFromDraft,
-} from '../shared-utils/convertHeightUnits';
+} from '../helpers/convertHeightUnits';
 import { Ionicons } from '@expo/vector-icons';
 import lottieClient1 from '../assets/animations/app-flows/personal-info';
 import lottieClient2 from '../assets/animations/app-flows/fitness-experience';
@@ -86,7 +86,7 @@ import lottieClient4 from '../assets/animations/legacy/fitness (1)';
 import lottieClient5 from '../assets/animations/app-flows/training-frequency';
 import lottieClient6 from '../assets/animations/app-flows/injuries';
 import lottieClient7 from '../assets/icons/weightlifting-competition';
-import lottieClientDescribeSituation from '../shared/assets/Walking steps';
+import lottieClientDescribeSituation from '../for-both/assets/Walking steps';
 import lottieTrainer1 from '../assets/animations/app-flows/certifications';
 import lottieTrainer2 from '../assets/animations/app-flows/experience-timeline';
 import lottieTrainer3 from '../assets/animations/app-flows/specialties';
@@ -107,7 +107,7 @@ import {
   IconGradientWrap,
   getOnboardingUiTokens,
   OnboardingPrimaryButton,
-} from '../shared/components/onboarding/onboardingAiDeps';
+} from '../for-both/components/onboarding/onboardingAiDeps';
 
 const { width } = Dimensions.get('window');
 const SCREEN_PAD = 16;

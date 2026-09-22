@@ -12,7 +12,7 @@ import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { FileCard } from './FileCard';
-import { getFileTypeFromItem } from '../../shared-utils/formatFileSize';
+import { getFileTypeFromItem } from '../../helpers/formatFileSize';
 
 const CATEGORIES = [
   { id: 'documents', label: 'Documents', color: '#3B82F6', match: (t) => t === 'document' },

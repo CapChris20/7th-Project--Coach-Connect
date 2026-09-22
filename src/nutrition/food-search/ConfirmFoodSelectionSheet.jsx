@@ -26,8 +26,8 @@ import { normalizeFoodForLog } from '../food-search/normalizeFoodQuery';
 import { normalizeFoodRecordForStorage } from '../food-search/makeReadableFoodTitle';
 import GradientText from '../components/premiumFoodCard/GradientText';
 import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import { useTheme } from '../../shared-ui/ThemeContext';
-import CoachConnectHeader from '../../shared/components/shell/CoachConnectHeader';
+import { useTheme } from '../../theme/ThemeContext';
+import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
 
 const UNIT_OPTIONS = [
   { id: 'servings', label: 'Servings' },

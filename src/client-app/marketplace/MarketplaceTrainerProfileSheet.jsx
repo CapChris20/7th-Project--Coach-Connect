@@ -30,7 +30,7 @@ import {
   SectionLabel,
   GradientText,
 } from './MarketplaceUI';
-import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../helpers/getTrainerProfileMedia';
 
 const FEATURES = [
   { label: 'Custom workouts', icon: 'barbell-outline', color: BRAND.pink },

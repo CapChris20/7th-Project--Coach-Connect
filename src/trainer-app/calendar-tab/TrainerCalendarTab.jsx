@@ -6,10 +6,10 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
 import { CalendarDays, List as ListIcon, Check, ArrowRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useSessions } from '../hooks/useMyTrainingSessions';
 import { MonthCalendar } from '../components/sessions/MonthCalendar';
-import { formatTime12 } from '../../lib/sessions';
+import { formatTime12 } from '../../helpers/session-dates';
 import ScheduleTrainingSessionScreen from '../screens/ScheduleTrainingSessionScreen';
 import {
   ACCENT_GRADIENT,

@@ -45,7 +45,7 @@ import {
 } from '../chat-thread/pickAttachmentType';
 import * as Haptics from 'expo-haptics';
 import { serverTimestamp } from 'firebase/firestore';
-import logger from '../../../shared/api/logErrorToServer';
+import logger from '../../../for-both/api/logErrorToServer';
 import { db } from '../../../app-start/config';
 import {
   deleteAiChatSession,
@@ -55,43 +55,43 @@ import {
   restoreChatMessagesFromSaved,
   upsertAiChatMessages,
 } from '../persistence/saveCoachMessages';
-import { generateCreativeChatTitle } from '../../server-logic/chat-api/generateCreativeChatTitle';
+import { generateCreativeChatTitle } from '../../logic/chat-api/generateCreativeChatTitle';
 import {
   buildCreativeTitleLocal,
   deriveChatTitle,
   needsCreativeTitle,
-} from '../../server-logic/chat-api/chatTitleUtils';
+} from '../../logic/chat-api/chatTitleUtils';
 import CoachChatHistorySidebar from '../components/CoachChatHistorySidebar';
 import { useCoachChatSessions } from '../hooks/useCoachChatSessions';
 import { useCoachComposerInput } from './useCoachComposerInput';
 import CoachPasteSheet from './CoachPasteSheet';
-import CoachConnectHeader from '../../../shared/components/shell/CoachConnectHeader';
+import CoachConnectHeader from '../../../for-both/components/shell/CoachConnectHeader';
 import BottomNavBar from '../../../navigation/BottomNavBar';
 import { ShellBottomNavAnchor } from '../../../navigation/bottomNavMetrics';
-import { useTheme } from '../../../shared-ui/ThemeContext';
+import { useTheme } from '../../../theme/ThemeContext';
 import { coachPlainText, copyCoachText } from '../lib/formatCoachMessageText';
-import { loadCoachContextEnhanced } from '../../server-logic/context/loadCoachPersonalContext';
-import { sendCoachMessageWithRetry } from '../../server-logic/chat-api/sendCoachMessageToServer';
+import { loadCoachContextEnhanced } from '../../logic/context/loadCoachPersonalContext';
+import { sendCoachMessageWithRetry } from '../../logic/chat-api/sendCoachMessageToServer';
 import ToolConfirmationModal from './ToolConfirmationModal';
-import { runCoachAction, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../server-logic/tools/runCoachAction';
-import { inferToolCallFromCoachMessage } from '../../server-logic/tools/findCoachRequestsInText';
+import { runCoachAction, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../logic/tools/runCoachAction';
+import { inferToolCallFromCoachMessage } from '../../logic/tools/findCoachRequestsInText';
 import { useCoachSpeech } from '../voice/useVoiceToCoach';
 import { useCoachComposerKeyboard, COACH_COMPOSER_TEXT_INPUT_PROPS } from './useCoachComposerKeyboard';
-import { shouldShowWebSearchUI } from '../../server-logic/chat-api/shouldUseWebSearch';
-import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../../shared/accessibility/a11yProps';
+import { shouldShowWebSearchUI } from '../../logic/chat-api/shouldUseWebSearch';
+import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../../for-both/accessibility/a11yProps';
 import { AI_COACH_UI } from '../aiCoachUiTokens';
 import AICoachGlassCard from '../components/AICoachGlassCard';
 import { stripCoachToolJsonFromReply, parseCoachToolCalls } from '../../tools/parseCoachToolCalls';
-import { coerceMisroutedDeleteTool } from '../../server-logic/tools/detectDeleteFoodRequest';
+import { coerceMisroutedDeleteTool } from '../../logic/tools/detectDeleteFoodRequest';
 import {
   guardCoachToolProposal,
   isValidCoachToolProposal,
   isInformationalUserMessage,
-} from '../../server-logic/tools/shouldShowCoachAction';
+} from '../../logic/tools/shouldShowCoachAction';
 import {
   shouldAutoExecuteCoachTool,
   shouldAutoOpenCoachToolModal,
-} from '../../server-logic/tools/chooseCoachActionUI';
+} from '../../logic/tools/chooseCoachActionUI';
 import CoachWebSourceCards from '../chat-thread/CoachWebSourceCards';
 import CoachFormattedReply from '../components/CoachFormattedReply';
 import { prepareCoachReplyForDisplay } from '../lib/coachFollowUpPrompts';
@@ -107,7 +107,7 @@ const ACTION_GRAD = AI_COACH_UI.gradient.ctaWarm;
 const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
 const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 
-import { stripUndefinedForFirestore as stripUndefinedDeep } from '../../../shared-utils/firestoreSanitize';
+import { stripUndefinedForFirestore as stripUndefinedDeep } from '../../../helpers/firestoreSanitize';
 
 function serializeChatMessage(m) {
   if (!m) return null;

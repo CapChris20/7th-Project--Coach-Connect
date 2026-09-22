@@ -20,18 +20,18 @@ const REPLACEMENTS = [
   // shared/services → user-profile
   ['shared/services/fetchUserProfile', 'shared/user-profile/fetchUserProfile'],
 
-  // shared/components → shared-ui descriptive subfolders
-  ['shared/components/shell/', 'shared-ui/app-shell/'],
-  ['shared/components/home/', 'shared-ui/home-cards/'],
-  ['shared/components/icons/', 'shared-ui/brand-icons/'],
-  ['shared/components/modals/', 'shared-ui/modals/'],
-  ['shared/components/notes-files/', 'shared-ui/notes-files-viewers/'],
-  ['shared/components/onboarding/', 'shared-ui/onboarding-steps/'],
-  ['shared/components/FilesNotesHeroCard', 'shared-ui/FilesNotesHeroCard'],
-  ['shared/components/MarketplaceHeroCard', 'shared-ui/MarketplaceHeroCard'],
+  // shared/components → theme descriptive subfolders
+  ['shared/components/shell/', 'theme/app-shell/'],
+  ['shared/components/home/', 'theme/home-cards/'],
+  ['shared/components/icons/', 'theme/brand-icons/'],
+  ['shared/components/modals/', 'theme/modals/'],
+  ['shared/components/notes-files/', 'theme/notes-files-viewers/'],
+  ['shared/components/onboarding/', 'theme/onboarding-steps/'],
+  ['shared/components/FilesNotesHeroCard', 'theme/FilesNotesHeroCard'],
+  ['shared/components/MarketplaceHeroCard', 'theme/MarketplaceHeroCard'],
 
   // session date helpers
-  ['lib/sessions', 'shared-utils/session-dates'],
+  ['helpers/session-dates', 'helpers/session-dates'],
 
   // trainer-app sessions colocation
   ['trainer-app/components/WheelPicker', 'trainer-app/sessions/WheelPicker'],
@@ -42,7 +42,7 @@ const REPLACEMENTS = [
   ['ai-coach/chat-ui/screens/StartCoachChatScreen', 'ai-coach/chat-ui/chat-home/StartCoachChatScreen'],
   ['ai-coach/chat-ui/components/', 'ai-coach/chat-ui/reply-ui/'],
   ['ai-coach/chat-ui/lib/', 'ai-coach/chat-ui/chat-formatting/'],
-  ['ai-coach/server-logic/services/markAllMessagesRead', 'ai-coach/server-logic/trainer-messaging/markAllMessagesRead'],
+  ['ai-coach/logic/services/markAllMessagesRead', 'ai-coach/logic/trainer-messaging/markAllMessagesRead'],
 
   // nutrition
   ['nutrition/components/premiumFoodCard/', 'nutrition/food-card/'],

@@ -111,7 +111,7 @@ console.log('Thread gap-fix static verification\n');
 
 // ─── 5. Vision client timeout 120s ──────────────────────────────────────────
 (function testVisionClientTimeout() {
-  const src = read('src/ai-coach/server-logic/chat-api/sendCoachMessageToServer.js');
+  const src = read('src/ai-coach/logic/chat-api/sendCoachMessageToServer.js');
   assert('sendCoachMessageToServer TIMEOUT_MS_VISION is 120000', /TIMEOUT_MS_VISION\s*=\s*120000/.test(src));
   assert(
     'vision timeout used when attachments present',
@@ -130,9 +130,9 @@ console.log('Thread gap-fix static verification\n');
 (function testTrainerLocationLazyLoad() {
   assert(
     'trainerLocationService exists',
-    fileExists('src/shared/trainer-location/trainerLocationService.js'),
+    fileExists('src/for-both/trainer-location/trainerLocationService.js'),
   );
-  const src = read('src/shared/trainer-location/trainerLocationService.js');
+  const src = read('src/for-both/trainer-location/trainerLocationService.js');
   assert('lazy dynamic import of expo-location', /await import\(['"]expo-location['"]\)/.test(src));
   assert('exports ensureLocationPermission', src.includes('export async function ensureLocationPermission'));
   assert('exports resolveCurrentTrainerLocation', src.includes('export async function resolveCurrentTrainerLocation'));
@@ -150,7 +150,7 @@ console.log('Thread gap-fix static verification\n');
   const planViewer = read('src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx');
   assert('PlanViewer uses gradient UI', planViewer.includes('LinearGradient'));
 
-  const notes = read('src/shared/notes-files/manageNotesAndFiles.js');
+  const notes = read('src/for-both/notes-files/manageNotesAndFiles.js');
   assert('notes service syncs sharedWith stubs', notes.includes('sharedWith') && notes.includes('notes_and_files'));
 
   const web = read('server/lib/coachWebSearch.js');

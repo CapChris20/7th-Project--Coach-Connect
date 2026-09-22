@@ -93,11 +93,11 @@ function buildExtendedRemap() {
       remap[`src/ai-coach/chat-ui/lib/${base}`] = to;
       if (base.endsWith('.jsx')) remap[`src/ai-coach/chat-ui/components/${base}`] = to;
     }
-    if (from.startsWith('src/shared/')) {
-      remap[`src/shared/services/${base}`] = to;
+    if (from.startsWith('src/for-both/')) {
+      remap[`src/for-both/services/${base}`] = to;
     }
-    if (from.startsWith('src/ai-coach/server-logic/tools/')) {
-      remap[`src/ai-coach/server-logic/${base}`] = to;
+    if (from.startsWith('src/ai-coach/logic/tools/')) {
+      remap[`src/ai-coach/logic/${base}`] = to;
     }
     if (from.startsWith('src/utils/')) {
       remap[`src/utils/${base}`] = to;
@@ -117,17 +117,17 @@ function buildExtendedRemap() {
   remap['src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
   remap['src/nutrition/screens/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
   remap['src/nutrition/daily-log/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
-  remap['src/shared/services/pushNotifyApi.js'] = 'src/shared/api/sendPushNotification.js';
-  remap['src/shared/services/dailyMetricsService.js'] = 'src/metrics/daily-metrics/saveDailyMetricsToFirestore.js';
-  remap['src/ai-coach/server-logic/normalizeToolParams.js'] = 'src/ai-coach/server-logic/tools/cleanupToolParams.js';
+  remap['src/for-both/services/pushNotifyApi.js'] = 'src/for-both/api/sendPushNotification.js';
+  remap['src/for-both/services/dailyMetricsService.js'] = 'src/metrics/daily-metrics/saveDailyMetricsToFirestore.js';
+  remap['src/ai-coach/logic/normalizeToolParams.js'] = 'src/ai-coach/logic/tools/cleanupToolParams.js';
   remap['src/client-app/home/ClientHomeScreen.jsx'] = 'src/client-app/navigation/ClientMainScreen.jsx';
   remap['src/trainer-app/home/TrainerHomeScreen.jsx'] = 'src/trainer-app/navigation/TrainerMainScreen.jsx';
-  remap['src/client-app/components/FilesNotesHeroCard.jsx'] = 'src/shared/components/FilesNotesHeroCard.jsx';
+  remap['src/client-app/components/FilesNotesHeroCard.jsx'] = 'src/for-both/components/FilesNotesHeroCard.jsx';
   remap['src/ai-coach/chat-ui/lib/coachConversationDebug.js'] = 'src/ai-coach/chat-ui/persistence/coachConversationDebug.js';
   remap['src/ai-coach/chat-ui/components/TrainerCoachClientBar.jsx'] = 'src/ai-coach/chat-ui/trainer-coach-mode/TrainerCoachClientBar.jsx';
   remap['src/ai-coach/chat-ui/lib/coachMarkdownStyles.js'] = 'src/ai-coach/chat-ui/chat-thread/coachMarkdownStyles.js';
   remap['src/ai-coach/chat-ui/components/CoachFormattedReply.jsx'] = 'src/ai-coach/chat-ui/chat-thread/CoachFormattedReply.jsx';
-  remap['src/shared/services/firestoreListenerUtils.js'] = 'src/shared/firestore/firestoreListenerUtils.js';
+  remap['src/for-both/services/firestoreListenerUtils.js'] = 'src/for-both/firestore/firestoreListenerUtils.js';
   remap['src/nutrition/utils/casualMenuSearch.js'] = 'src/nutrition/food-search/casualMenuSearch.js';
 
   return remap;
@@ -313,7 +313,7 @@ function resolvePath(relPath, fileIndex) {
     ['src/nutrition/components/', ['src/nutrition/food-search/']],
     ['src/ai-coach/chat-ui/lib/', ['src/ai-coach/chat-ui/chat-thread/', 'src/ai-coach/chat-ui/persistence/']],
     ['src/ai-coach/chat-ui/components/', ['src/ai-coach/chat-ui/chat-thread/']],
-    ['src/shared/services/', ['src/metrics/daily-metrics/', 'src/shared/api/', 'src/notifications/']],
+    ['src/for-both/services/', ['src/metrics/daily-metrics/', 'src/for-both/api/', 'src/notifications/']],
   ];
   for (const [oldPre, newPres] of prefixTry) {
     if (!normalized.startsWith(oldPre)) continue;
@@ -460,7 +460,7 @@ function runStaticChecks() {
   check('load-tests/ folder', exists('load-tests/run-all.sh'));
   check('coach tool guards test', exists('src/__tests__/unit/coachToolProposalGuards.test.js'));
   check('runJestWithLog writes test-results.txt', exists('scripts/runJestWithLog.js'));
-  check('shouldShowCoachAction (modal guards)', exists('src/ai-coach/server-logic/tools/shouldShowCoachAction.js'));
+  check('shouldShowCoachAction (modal guards)', exists('src/ai-coach/logic/tools/shouldShowCoachAction.js'));
   check('filterValidCoachToolCalls on server', read('server/index.js').includes('filterValidCoachToolProposals'));
   check('EMERGENCY PARSE removed from server', !read('server/index.js').includes('EMERGENCY PARSE'));
   check(
@@ -470,7 +470,7 @@ function runStaticChecks() {
       'src/nutrition/daily-log/NutritionFactsScreen.jsx',
     ]),
   );
-  check('support config file', exists('src/shared/config/supportConfig.js') || read('server/supportEmail.js').includes('coachconnect0@gmail.com'));
+  check('support config file', exists('src/for-both/config/supportConfig.js') || read('server/supportEmail.js').includes('coachconnect0@gmail.com'));
 
   if (exists('src/client-app/home/ClientMainScreen.jsx')) {
     const main = read('src/client-app/home/ClientMainScreen.jsx');

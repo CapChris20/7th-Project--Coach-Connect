@@ -28,7 +28,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getTrainerClients } from '../clients-list/loadMyTraineeRoster';
-import { setDocumentSharedWith } from '../../shared/notes-files/manageNotesAndFiles';
+import { setDocumentSharedWith } from '../../for-both/notes-files/manageNotesAndFiles';
 
 export default function ShareDocumentModal({
   visible,

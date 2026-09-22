@@ -4,7 +4,7 @@ const {
 } = require('../../ai-coach/tools/parseCoachToolCalls');
 const {
   shouldIncludeWeeklyContextInCoachPrompt,
-} = require('../../ai-coach/server-logic/context/buildCoachPromptData');
+} = require('../../ai-coach/logic/context/buildCoachPromptData');
 
 describe('ai coach flow integration', () => {
   test('parses tool payload and keeps readable assistant text', () => {

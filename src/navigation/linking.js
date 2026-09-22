@@ -1,21 +1,26 @@
-/**
- * linking
- *
- * Purpose: linking — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/navigation
- * Key exports: clientLinking, trainerLinking
- *
- * @file-header
- */
+// Deep-link maps: translate an incoming URL into a screen for each app shell.
+// Flow: OS opens `coachconnect://dashboard` → prefix is stripped → the path is matched against `config.screens` → that screen opens.
+// Handed to NavigationContainer's `linking` prop by the client and trainer shells. Currently a stub — universal (https) links aren't wired yet.
+// Key exports: clientLinking, trainerLinking
+
 import { CLIENT_ROUTES, TRAINER_ROUTES } from './routes';
 
-/** Deep linking stub — expand when universal links are configured. */
+// vocab: deep link = a URL that opens a specific screen instead of just launching the app
+// vocab: prefixes = the URL starts React Navigation will accept and strip before path matching.
+//        'coachconnect://' is our custom URL scheme (declared in the native app config — changing it
+//        here alone will not work; the scheme must match what the OS registered).
+// Manipulate here: add an https:// prefix here once universal/app links are set up on the domain.
 export const clientLinking = {
   prefixes: ['coachconnect://'],
   config: {
+    // `screens` mirrors the navigator tree: nesting here must match how screens are actually nested,
+    // otherwise the link resolves to nothing. A string value is the URL path; an object means
+    // "this is a container, keep matching inside it".
     screens: {
       [CLIENT_ROUTES.MainTabs]: {
+        // These five live inside the tab navigator, so their paths are nested under MainTabs.
+        // Manipulate here: the right-hand strings are the URL paths users can be sent to,
+        // e.g. coachconnect://nutrition lands on the Nutrition tab.
         screens: {
           [CLIENT_ROUTES.Home]: 'home',
           [CLIENT_ROUTES.Dashboard]: 'dashboard',
@@ -24,12 +29,15 @@ export const clientLinking = {
           [CLIENT_ROUTES.AI]: 'ai',
         },
       },
+      // Top-level pushed screens — not tabs, so they sit beside MainTabs rather than inside it.
       [CLIENT_ROUTES.Profile]: 'profile',
       [CLIENT_ROUTES.Settings]: 'settings',
     },
   },
 };
 
+// Trainer shell gets its own prefix so the same path words ('profile', 'settings') can't collide with
+// the client map above — the '/trainer' segment is what disambiguates which shell should handle the link.
 export const trainerLinking = {
   prefixes: ['coachconnect://trainer'],
   config: {

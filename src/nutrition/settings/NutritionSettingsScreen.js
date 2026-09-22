@@ -28,7 +28,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
 import { NUT_MACRO_GRADIENTS } from '../nutritionTheme';
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../../app-start/config';
-import { needsCreativeTitle, isJunkChatTitle } from '../../server-logic/chat-api/chatTitleUtils';
-import { refreshStaleChatSessionTitles } from '../../server-logic/chat-api/refreshStaleChatSessionTitles';
+import { needsCreativeTitle, isJunkChatTitle } from '../../logic/chat-api/chatTitleUtils';
+import { refreshStaleChatSessionTitles } from '../../logic/chat-api/refreshStaleChatSessionTitles';
 
 export function toSessionDateLabel(d) {
   try {

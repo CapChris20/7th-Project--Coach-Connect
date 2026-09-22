@@ -1,6 +1,8 @@
-/**
- * Trainer Card — marketplace browse list
- */
+// One trainer's card in the marketplace browse list.
+// Flow: read display fields off the trainer object (with fallbacks) → render avatar, name, rating,
+// bio, price → three actions: View Profile (primary), Message, Connect.
+// Note: `trainer` is a display-shaped object; `trainer._firebase` is the raw Firestore doc, which is
+// where some fields (price, review count) still live.
 import React from 'react';
 import { View, Text, Pressable, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,10 +13,15 @@ import {
   getTrainerPrice,
   MP_FONT,
 } from './marketplaceFilters';
-import { trainerPhotoUri } from '../../shared-utils/getTrainerProfileMedia';
+import { trainerPhotoUri } from '../../helpers/getTrainerProfileMedia';
 
+// Manipulate here: the pink→orange gradient used for BOTH the top accent bar and the primary CTA,
+// so they always match. Change it once here.
 const CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
+// Maps a free-text training mode ("Remote", "In person", "Hybrid") to an icon. Substring matching
+// rather than exact equality because this text is trainer-authored and inconsistently capitalized.
+// Manipulate here: the network icon is the catch-all, which is what "Hybrid"/unknown modes get.
 function modeIcon(mode) {
   const m = String(mode || '').toLowerCase();
   if (m.includes('remote')) return 'videocam-outline';
@@ -24,13 +31,24 @@ function modeIcon(mode) {
 
 export default function TrainerCard({ trainer, t, isDark = true, onMessage, onConnect, onViewProfile }) {
   const firstName = trainerFirstName(trainer.name);
+  // Gradient colors for the initials avatar, derived from the trainer's assigned `grad` key — that's
+  // how each trainer gets a stable, distinct color instead of a random one per render.
   const avatarColors = gradGradient(trainer.grad);
   const photoUri = trainer.photoURL || trainerPhotoUri(trainer._firebase);
+  // Several fields are read with a "display value, else raw Firestore value" fallback chain, because
+  // the marketplace list projection doesn't always carry every field.
+  // vocab/symbol: ?? falls back only on null/undefined, so a legitimate 0 rating survives.
   const price = getTrainerPrice(trainer._firebase) ?? trainer.price;
+  // A price of 0 is treated as "not set" rather than "free" — that's the deliberate product call
+  // behind checking > 0 instead of just != null.
   const showPrice = price != null && Number(price) > 0;
+  // Only the FIRST specialty is shown; the card has one line for it. Full list is on the profile.
+  // Manipulate here: 'General Fitness' is the fallback for trainers who set no specialty.
   const specialty = trainer.specialties?.[0] || 'General Fitness';
   const years = trainer.years ?? 0;
   const reviewCount = trainer.reviewCount ?? trainer._firebase?.reviewCount ?? 0;
+  // rating stays NULL (not 0) when unrated, because the star row below uses null to mean "New"
+  // rather than drawing zero stars.
   const rating = trainer.rating ?? trainer._firebase?.averageRating ?? null;
   const cardBg = isDark ? '#14141C' : '#FFFFFF';
   const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)';

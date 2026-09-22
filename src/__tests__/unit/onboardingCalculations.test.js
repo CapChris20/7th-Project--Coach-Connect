@@ -3,7 +3,7 @@ const {
   calculateTDEE,
   calculateMacros,
   calculateBMI,
-} = require('../../shared/fitness-calculations/calculations');
+} = require('../../for-both/fitness-calculations/calculations');
 
 function macroCalories({ protein, carbs, fat }) {
   return protein * 4 + carbs * 4 + fat * 9;

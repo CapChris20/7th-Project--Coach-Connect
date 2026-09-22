@@ -26,7 +26,7 @@ import {
 import { auth, db } from '../../app-start/config';
 import { useTrainerClients } from '../clients-list/useTrainerClients';
 import { sendSessionScheduledPushToClient } from '../sessions/pushSessionNotification';
-import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
+import { postRemotePushNotify } from '../../for-both/api/sendPushNotification';
 import {
   randomSessionUpdateClientBody,
   randomSessionCancelledClientBody,
@@ -57,7 +57,7 @@ const normalizeTime = (t) => {
   return s;
 };
 
-import { stripUndefinedForFirestore as stripUndefined } from '../../shared-utils/firestoreSanitize';
+import { stripUndefinedForFirestore as stripUndefined } from '../../helpers/firestoreSanitize';
 
 /**
  * useSessions — Trainer-wide session scheduling (across all clients).

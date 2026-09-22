@@ -1,4 +1,4 @@
-jest.mock('../../ai-coach/server-logic/tools/runCoachAction.js', () => ({
+jest.mock('../../ai-coach/logic/tools/runCoachAction.js', () => ({
   normalizeToolCall: (raw) => {
     if (!raw) return null;
     const name = raw.name || raw.tool || raw.action;
@@ -101,7 +101,7 @@ function runSharedGuardTests(getGuards) {
 }
 
 describe('Client coachToolProposalGuards', () => {
-  runSharedGuardTests(() => require('../../ai-coach/server-logic/tools/shouldShowCoachAction'));
+  runSharedGuardTests(() => require('../../ai-coach/logic/tools/shouldShowCoachAction'));
 });
 
 describe('Server coachToolProposalGuards', () => {

@@ -36,15 +36,15 @@ import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggl
 import { resolveFoodBrandLabel } from '../food-details/cleanFoodBrandName';
 import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/cleanFoodCardLabels';
 import { formatServingDisplayLine } from '../food-search/guessServingSize';
-import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
+import BrandGradientStrokeText from '../../for-both/components/icons/BrandGradientStrokeText';
 import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
 import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
-import { HOME_STAT_SLEEP_GRADIENT } from '../../shared-ui/homeStatGradients';
+import { HOME_STAT_SLEEP_GRADIENT } from '../../theme/homeStatGradients';
 import FoodCard from '../components/premiumFoodCard/FoodCard';
 import { gradients, brandGradients } from '../components/premiumFoodCard/theme';
 import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
 import { auth } from '../../app-start/config';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

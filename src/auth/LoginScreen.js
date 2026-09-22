@@ -1,19 +1,8 @@
-/**
- * Auth Screen
- *
- * Purpose: UI screen or component: Auth Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/auth
- * Key exports: LoginScreen
- *
- * @file-header
- */
-/**
- * LoginScreen - Combined authentication screen
- *
- * Combines WelcomeScreen, RoleSelectionScreen, SignupScreen, and LoginScreen
- * into a single file with internal state management for navigation.
- */
+// The entire signed-out experience: welcome screen, sign up, and sign in, in one component.
+// Flow: `currentView` state switches between the three screens → each auth path (email, Google, Apple)
+//       creates/signs in a Firebase user → writes the users/{uid} profile → calls onSignupSuccess or
+//       onLoginSuccess so AuthGate takes over routing.
+// Rendered by AuthGate whenever nobody is signed in. There is no navigator here — the views are just state.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -32,34 +21,36 @@ import {
 import { Animated as RNAnimated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../shared-ui/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCredential, signOut, GoogleAuthProvider, updateProfile, OAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../app-start/config';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { pickImage } from '../ai-coach/server-logic/vision/imageStorageService';
-import { uploadProfileImage } from '../shared/firestore/storageHelpers';
+import { pickImage } from '../ai-coach/logic/vision/imageStorageService';
+import { uploadProfileImage } from '../for-both/firestore/storageHelpers';
 import LottieView from 'lottie-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import LiquidBackground from '../shared-ui/liquid/LiquidBackground';
-import LiquidBackgroundLight from '../shared-ui/liquid/LiquidBackgroundLight';
-import LiquidGlassCard from '../shared-ui/liquid/LiquidGlassCard';
-import ErrorModal from '../shared/components/modals/ErrorModal';
-import LiquidGradientButton from '../shared-ui/liquid/LiquidGradientButton';
-import { Liquid } from '../shared-ui/liquid/liquidTokens';
+import LiquidBackground from '../theme/liquid/LiquidBackground';
+import LiquidBackgroundLight from '../theme/liquid/LiquidBackgroundLight';
+import LiquidGlassCard from '../theme/liquid/LiquidGlassCard';
+import ErrorModal from '../for-both/components/modals/ErrorModal';
+import LiquidGradientButton from '../theme/liquid/LiquidGradientButton';
+import { Liquid } from '../theme/liquid/liquidTokens';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BrandLogo from '../shared/components/brand/BrandLogo';
+import BrandLogo from '../for-both/components/brand/BrandLogo';
 import { cachePendingSignupProfile } from './detectUserRole';
 
-/**
- * expo-auth-session Google: tokens may be camelCase on `authentication`, snake_case on `params`,
- * and may appear only after async code exchange (installed app flow).
- */
+// Digs the Google tokens out of an OAuth response, whichever shape it arrived in.
+// Why this is messy: expo-auth-session returns tokens camelCase on `authentication`, snake_case on
+// `params`, and in the installed-app flow they only appear after an async code exchange. Checking
+// all four spellings is cheaper than guessing which flow ran.
+// vocab: idToken = the signed proof of WHO the user is (this is what Firebase needs).
+// vocab: accessToken = permission to call Google APIs on their behalf (optional for us).
 function extractGoogleOAuthTokens(authentication, params = {}) {
   const idToken =
     authentication?.idToken ||

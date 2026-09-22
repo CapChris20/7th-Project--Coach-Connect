@@ -27,7 +27,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, SHELL_SAFE_AREA_EDGES, useModalScrollBottomPad } from '../../navigation/bottomNavMetrics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import BrandGradientStrokeText from '../../shared/components/icons/BrandGradientStrokeText';
+import BrandGradientStrokeText from '../../for-both/components/icons/BrandGradientStrokeText';
 import {
   HOME_STAT_ENERGY_GRADIENT,
   HOME_STAT_MOOD_GRADIENT,
@@ -36,7 +36,7 @@ import {
   HOME_STAT_STRESS_GRADIENT,
   HOME_STAT_WATER_GRADIENT,
   HOME_STAT_WORKOUT_GRADIENT,
-} from '../../shared-ui/homeStatGradients';
+} from '../../theme/homeStatGradients';
 
 /** Progress bar fill colors — first stop of each metric gradient. */
 export const WR_STAT_BAR = {

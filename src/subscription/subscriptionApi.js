@@ -1,5 +1,5 @@
 import { auth } from '../app-start/config';
-import { getResilientApiBases, isCloudHostedApiBase } from '../shared/api/baseUrl';
+import { getResilientApiBases, isCloudHostedApiBase } from '../for-both/api/baseUrl';
 
 async function getIdToken() {
   const user = auth?.currentUser;

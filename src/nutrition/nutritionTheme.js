@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-import { BRAND_NAV_ICON_GRADIENT } from '../shared-ui/brandGradients';
+import { BRAND_NAV_ICON_GRADIENT } from '../theme/brandGradients';
 import { gradients, brandGradients } from './components/premiumFoodCard/theme';
 
 /** dark orange → purple */

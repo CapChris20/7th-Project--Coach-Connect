@@ -40,9 +40,9 @@ import {
   limit,
 } from 'firebase/firestore';
 import { auth, db } from '../../app-start/config';
-import { postRemotePushNotify } from '../../shared/api/sendPushNotification';
-import { postDashboardNotification } from '../../shared/api/dashboardNotificationApi';
-import { getLocalDateKey, msUntilLocalMidnight } from '../../shared-utils/getLocalDay';
+import { postRemotePushNotify } from '../../for-both/api/sendPushNotification';
+import { postDashboardNotification } from '../../for-both/api/dashboardNotificationApi';
+import { getLocalDateKey, msUntilLocalMidnight } from '../../helpers/getLocalDay';
 import { useLocalTodayDateKey } from '../../metrics/daily-metrics/useLocalTodayDateKey';
 import {
   retryPendingDailyDashboardArchive,
@@ -52,20 +52,20 @@ import {
   saveDashboardMetricField,
 } from '../../metrics/daily-metrics/saveDailyMetricsToFirestore';
 import { useWorkoutLog } from './useWorkoutLog';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import { SessionMeetingCard } from '../../shared/components/home/SessionMeetingCard';
+import { SessionMeetingCard } from '../../for-both/components/home/SessionMeetingCard';
 import PremiumTrainerCard from './PremiumTrainerCard';
 import PremiumStatsSection, { GradientBorderShell, TRAINER_BORDER_GRADIENT } from './PremiumStatsSection';
-import QuickActionCard from '../../shared/components/home/QuickActionCard';
+import QuickActionCard from '../../for-both/components/home/QuickActionCard';
 import {
   HOME_STAT_WORKOUT_GRADIENT,
   HOME_STAT_WATER_GRADIENT,
   HOME_STAT_SORENESS_GRADIENT,
   HOME_STAT_SLEEP_GRADIENT,
   GradientOutlineText,
-} from '../../shared-ui/homeStatGradients';
+} from '../../theme/homeStatGradients';
 
 const BENTO_VALUE_GRADIENT = {
   dashboard_sleep: HOME_STAT_WORKOUT_GRADIENT,
@@ -87,9 +87,9 @@ const bentoGradientValueStyle = (fontSize) => ({
 const bentoValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
 import {
   WORKOUT_DAY_EXAMPLES_SHORT,
-} from '../../shared-utils/workoutDayLabels';
+} from '../../helpers/workoutDayLabels';
 
-const MOOD_EMPTY_LOTTIE = require('../../shared/assets/Happy SUN.json');
+const MOOD_EMPTY_LOTTIE = require('../../for-both/assets/Happy SUN.json');
 
 const formatHMS = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));

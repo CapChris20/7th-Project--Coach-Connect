@@ -22,7 +22,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../../app-start/config';
-import { stripUndefinedForFirestore } from '../../../shared-utils/firestoreSanitize';
+import { stripUndefinedForFirestore } from '../../../helpers/firestoreSanitize';
 
 const sessionRef = (userId, sessionId) => doc(db, 'users', userId, 'aiChats', sessionId);
 const messagesCol = (userId, sessionId) => collection(db, 'users', userId, 'aiChats', sessionId, 'messages');

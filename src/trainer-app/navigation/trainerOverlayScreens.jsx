@@ -26,10 +26,10 @@ import SearchTrainersScreen from '../../client-app/marketplace/SearchTrainersScr
 import VoiceCoachScreen from '../../ai-coach/chat-ui/voice/VoiceCoachScreen';
 import ChatWithCoachScreen from '../../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
 import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
-import TrainerViewWeekProgressReportScreen from '../../shared/weekly-report/ViewWeekProgressReportScreen';
+import TrainerViewWeekProgressReportScreen from '../../for-both/weekly-report/ViewWeekProgressReportScreen';
 import ManualWorkoutPlanBuilderScreen from '../workout-plans/ManualWorkoutPlanBuilderScreen';
 import PaymentsScreen from '../payments/PaymentsScreen';
-import AddNotesFilesModal from '../../shared/components/notes-files/AddNotesFilesModal';
+import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
 import { useSubscription } from '../../subscription/SubscriptionProvider';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../../subscription/constants';
 

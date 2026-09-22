@@ -1,14 +1,8 @@
-/**
- * xlsx native
- *
- * Purpose: xlsx native — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/utils
- * Key exports: (see file)
- *
- * @file-header
- */
-// Native (iOS/Android) — Metro polyfills in metro.config.js allow the real SheetJS build.
+// iOS/Android build of the spreadsheet parser — hands back the real SheetJS library.
+// Metro auto-picks this file over xlsx.js when bundling for device.
+// Note: SheetJS expects Node-ish globals, so this only works because metro.config.js polyfills them.
+
+// vocab: SheetJS = the `xlsx` npm package that reads .xlsx/.csv into plain JS objects
 import * as XLSX from 'xlsx';
 
 export default XLSX;

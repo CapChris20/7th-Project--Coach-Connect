@@ -12,15 +12,15 @@ import { auth, db } from '../../app-start/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { getCurrentWorkoutPlan } from '../active-workout/workoutService';
-import { getApiAuthHeaders } from '../../shared/api/getAuthHeaders';
-import { getWorkoutGenerationApiBases } from '../../shared/api/baseUrl';
-import { postJsonWithTimeout, logApiAttempt } from '../../shared/api/apiFetch';
+import { getApiAuthHeaders } from '../../for-both/api/getAuthHeaders';
+import { getWorkoutGenerationApiBases } from '../../for-both/api/baseUrl';
+import { postJsonWithTimeout, logApiAttempt } from '../../for-both/api/apiFetch';
 import { formatWorkoutLimitResetLabel } from '../plan-generator/trackWorkoutGenerationUsage';
 
 const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
 
 import { buildWorkoutOnboardingPayload } from './workoutOnboardingPayload';
-import { normalizeClientProfileFields } from '../../shared-utils/resolveClientProfileFields';
+import { normalizeClientProfileFields } from '../../helpers/resolveClientProfileFields';
 
 export async function requestWorkoutPlanFromApi(onboardingData, subjectUserId) {
   const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });

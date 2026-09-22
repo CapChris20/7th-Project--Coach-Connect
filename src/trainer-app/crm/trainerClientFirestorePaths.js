@@ -31,7 +31,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../app-start/config';
-import { getDocsWithIndexFallback, sortDocsByMillis } from '../../shared/firestore/firestorePagedQuery';
+import { getDocsWithIndexFallback, sortDocsByMillis } from '../../for-both/firestore/firestorePagedQuery';
 
 export const TRAINER_ROSTER_PAGE_SIZE = 30;
 

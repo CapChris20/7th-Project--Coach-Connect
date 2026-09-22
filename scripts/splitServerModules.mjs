@@ -165,7 +165,7 @@ const {
   filterFitnessWebSources,
 } = require('../coachWebSearch');
 const { mergeCoachToolCalls } = require('../inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../../src/ai-coach/server-logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../../src/ai-coach/logic/tools/shouldShowCoachAction');
 const { sanitizeCoachImageAttachments, runCoachVisionTurn } = require('../coachVision');
 const { parseCoachToolCalls, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/tools/parseCoachToolCalls');
 const {

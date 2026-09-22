@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import StableGradientText from '../../shared-ui/StableGradientText';
+import StableGradientText from '../../theme/StableGradientText';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -26,7 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BRAND, AURORA_GLOWS, MP_FONT, getTheme } from './marketplaceFilters';
 import { MarketplaceGlass } from './MarketplaceGlass';
-import BlurBackdropPlate from '../../shared-ui/BlurBackdropPlate';
+import BlurBackdropPlate from '../../theme/BlurBackdropPlate';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

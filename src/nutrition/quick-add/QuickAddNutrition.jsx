@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
 import { getRecentFoods } from '../daily-log/logFoodToFirestore';
 import { makeReadableFoodTitle } from '../food-search/makeReadableFoodTitle';

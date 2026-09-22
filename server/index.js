@@ -53,7 +53,7 @@ const logger = require('./lib/logger');
 const { initServerMonitoring } = require('./lib/monitoring');
 initServerMonitoring();
 const { mergeCoachToolCalls } = require('./lib/inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../src/ai-coach/server-logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../src/ai-coach/logic/tools/shouldShowCoachAction');
 const { assertCanSendPushNotification } = require('./lib/pushNotificationAuth');
 const { buildWorkoutSystemPrompt, buildWorkoutUserPrompt } = require('./lib/workoutPlanPrompt');
 const { estimateCost, isWithinMonthlyLimit } = require('./config/apiCosts');

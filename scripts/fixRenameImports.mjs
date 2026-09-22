@@ -8,12 +8,12 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Dirs where files are one level deeper than ai-coach root (need ../../../ for src siblings). */
 const NESTED_AI_COACH_DIRS = [
-  'src/ai-coach/server-logic/tools',
-  'src/ai-coach/server-logic/context',
-  'src/ai-coach/server-logic/chat-api',
-  'src/ai-coach/server-logic/services',
-  'src/ai-coach/server-logic/trainer-messaging',
-  'src/ai-coach/server-logic/macro-recalibration',
+  'src/ai-coach/logic/tools',
+  'src/ai-coach/logic/context',
+  'src/ai-coach/logic/chat-api',
+  'src/ai-coach/logic/services',
+  'src/ai-coach/logic/trainer-messaging',
+  'src/ai-coach/logic/macro-recalibration',
   'src/ai-coach/chat-ui/chat-thread',
   'src/ai-coach/chat-ui/screens',
   'src/ai-coach/chat-ui/persistence',
@@ -29,14 +29,14 @@ const GLOBAL_REPLACEMENTS = [
   { dir: 'src/ai-coach', from: "from '../../ai-coach/tools/", to: "from '../../tools/" },
   { dir: 'src/ai-coach', from: "require('../../ai-coach/tools/", to: "require('../../tools/" },
   { dir: 'src/ai-coach', from: "from '../../ai-coach/chat-ui/", to: "from '../../chat-ui/" },
-  { dir: 'src/metrics', from: "from '../utils/", to: "from '../../shared-utils/" },
-  { dir: 'src/metrics', from: "require('../utils/", to: "require('../../shared-utils/" },
+  { dir: 'src/metrics', from: "from '../utils/", to: "from '../../helpers/" },
+  { dir: 'src/metrics', from: "require('../utils/", to: "require('../../helpers/" },
 ];
 
 const NESTED_REPLACEMENTS = [
-  ['../../shared/', '../../../shared/'],
-  ['../../shared-utils/', '../../../shared-utils/'],
-  ['../../shared-ui/', '../../../shared-ui/'],
+  ['../../for-both/', '../../../for-both/'],
+  ['../../helpers/', '../../../helpers/'],
+  ['../../theme/', '../../../theme/'],
   ['../../metrics/', '../../../metrics/'],
   ['../../nutrition/', '../../../nutrition/'],
   ['../../notifications/', '../../../notifications/'],
@@ -74,10 +74,10 @@ function applyReplacements(file, pairs) {
 }
 
 const MESSAGING_REPLACEMENTS = [
-  ['../../server-logic/', '../ai-coach/server-logic/'],
+  ['../../logic/', '../ai-coach/logic/'],
   ['../../app-start/', '../app-start/'],
-  ['../../shared-ui/', '../shared-ui/'],
-  ['../../shared/', '../shared/'],
+  ['../../theme/', '../theme/'],
+  ['../../for-both/', '../for-both/'],
   ['../../trainer-app/', '../trainer-app/'],
   ['../../navigation/', '../navigation/'],
   ['../../metrics/', '../metrics/'],
@@ -85,7 +85,7 @@ const MESSAGING_REPLACEMENTS = [
 ];
 
 const TOP_LEVEL_SRC_REPLACEMENTS = [
-  ['../../server-logic/', '../../ai-coach/server-logic/'],
+  ['../../logic/', '../../ai-coach/logic/'],
 ];
 
 let total = 0;

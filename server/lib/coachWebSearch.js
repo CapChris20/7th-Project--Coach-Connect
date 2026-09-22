@@ -1,5 +1,5 @@
 /**
- * AI Coach web-search routing (server). Keep in sync with src/ai-coach/server-logic/chat-api/shouldUseWebSearch.js.
+ * AI Coach web-search routing (server). Keep in sync with src/ai-coach/logic/chat-api/shouldUseWebSearch.js.
  */
 const { COACH_WEB_SEARCH_FORMAT } = require('./coachVoice');
 
@@ -24,6 +24,7 @@ const EXPLICIT_WEB_PHRASES = [
   'recent studies',
   'meta-analysis',
   'what does the research say',
+  'what does research say',
   'what do studies say',
   'cite sources',
   'with sources',
@@ -133,6 +134,92 @@ function stripWebSearchPrefix(text) {
     .trim();
 }
 
+/**
+ * Strip "go on the web / quote the sources" style instructions from the SEARCH QUERY.
+ * Why: those words pollute Serper/Perplexity and the model then defines "quote" / "research"
+ * instead of answering the real fitness question (see 3-vs-4 gym days bug).
+ */
+function stripWebMetaInstructions(text) {
+  let t = String(text || '').trim();
+  if (!t) return '';
+
+  // Manipulate here: add phrases users append when they want sources but aren't the topic
+  const metaChunks = [
+    /\bgo on the web\b/gi,
+    /\bgo online\b/gi,
+    /\bsearch the web\b/gi,
+    /\bsearch online\b/gi,
+    /\bon the web\b/gi,
+    /\bon the internet\b/gi,
+    /\blook (?:it|this) up online\b/gi,
+    /\bgoogle (?:it|this|that)\b/gi,
+    /\bcheck the web\b/gi,
+    /\bcheck online\b/gi,
+    /\bverify online\b/gi,
+    /\bquote the sources?\b/gi,
+    /\bquote (?:from )?(?:the )?(?:sources?|studies|research)\b/gi,
+    /\bcite (?:the )?(?:sources?|studies|research)\b/gi,
+    /\bwith sources\b/gi,
+    /\bwith citations?\b/gi,
+    /\bwith apa citations?\b/gi,
+    /\bapa citations?\b/gi,
+    /\bhow to cite(?:\s+sources?)?\b/gi,
+    /\bshow me how to(?:\s+cite)?\b/gi,
+    /\bexplain what a bibliography is\b/gi,
+    /\bwhat a bibliography is\b/gi,
+    /\bbibliography\b/gi,
+    /\bpull up sources?\b/gi,
+    /\bshow (?:me )?(?:the )?sources?\b/gi,
+    /\bdefine research\b/gi,
+    /\bwhat does research mean\b/gi,
+    /\band quote .+$/gi,
+    /\band cite .+$/gi,
+    /\bignore (?:previous|prior|all) instructions\b/gi,
+    /\bignore your (?:fitness )?coach rules\b/gi,
+    /\bsystem:\s*/gi,
+  ];
+  for (const re of metaChunks) t = t.replace(re, ' ');
+
+  t = t
+    .replace(/^[\s•\-–—*]+/g, '')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\b(and|or|also|please|pls)\s*$/i, '')
+    .replace(/^[,\s]+|[,\s.]+$/g, '')
+    .trim();
+  return t;
+}
+
+/** True when the user is asking to define a word / act like a dictionary — not a fitness search. */
+function isDictionaryOrMetaDefineAsk(userText) {
+  const t = String(userText || '').toLowerCase().trim();
+  if (!t) return false;
+  if (/\bdefine\s+(?:the\s+)?(?:word\s+)?["']?research["']?\b/.test(t)) return true;
+  if (/\bwhat does research mean\b/.test(t)) return true;
+  if (/\byou are now a dictionary\b/.test(t)) return true;
+  if (/^define\s+["']?\w+["']?\s*$/i.test(t)) return true;
+  return false;
+}
+
+/** True when, after stripping web/quote meta, a real fitness/nutrition question remains. */
+function hasSubstantiveFitnessTopic(userText) {
+  const cleaned = stripWebMetaInstructions(stripWebSearchPrefix(userText));
+  if (!cleaned || cleaned.length < 12) return false;
+  // Avoid counting lone words like "research" / "sources" as the topic
+  if (/^(research|sources?|studies|citations?|quotes?|evidence)$/i.test(cleaned)) return false;
+  return isFitnessNutritionQuery(cleaned);
+}
+
+/** User wants verbatim quotes somewhere in this turn (new search OR follow-up). */
+function userWantsSourceQuotes(userText) {
+  const t = String(userText || '').toLowerCase();
+  if (!t.trim()) return false;
+  return (
+    /\b(quote|quotes|quoting|excerpt|verbatim|direct quote|pull a quote|cite|citing|snippet|passage)\b/.test(t) &&
+    /\b(source|sources|article|articles|study|studies|research|paper|papers|web|link|citation)\b/.test(t)
+  );
+}
+
 /** "Check the web" / "verify online" with no real topic in the same message. */
 function isMetaOnlyWebCheck(userText) {
   const last = String(userText || '').trim();
@@ -142,9 +229,14 @@ function isMetaOnlyWebCheck(userText) {
 }
 
 /** Follow-up asking for verbatim quotes from sources already used — not a new topic. */
-function isWebSourceQuoteFollowUp(userText) {
-  const t = String(userText || '').toLowerCase();
-  if (!t.trim()) return false;
+function isWebSourceQuoteFollowUp(userText, messages = null) {
+  const t = String(userText || '').toLowerCase().trim();
+  if (!t) return false;
+
+  // New fitness question + "quote the sources" in the SAME message = fresh web search, not follow-up.
+  // vocab: hasSubstantiveFitnessTopic = real gym/nutrition question left after stripping meta words
+  if (hasSubstantiveFitnessTopic(userText)) return false;
+
   const wantsQuotes =
     /\b(quote|quotes|quoting|excerpt|verbatim|direct quote|pull a quote|cite|cit(?:e|ing)|snippet|passage)\b/.test(
       t,
@@ -161,15 +253,23 @@ function isWebSourceQuoteFollowUp(userText) {
     /\bsources? say\b.*\b(exactly|about|your answer)\b/.test(t);
   const aboutPriorAnswer =
     /\b(your answer|you said|what you just|just now|in regards to this|about what you)\b/.test(t);
-  return (
+
+  const looksLikeQuoteAsk =
     (wantsQuotes && aboutSources) ||
     askWhatSourcesSaid ||
     (proveAnswer && aboutSources) ||
     (aboutSources && aboutPriorAnswer) ||
     /\bfrom the sources?\b/.test(t) ||
     /\bquote from\b/.test(t) ||
-    /\b(saw|got|found)\b.*\bfrom the web\b/.test(t)
-  );
+    /\b(saw|got|found)\b.*\bfrom the web\b/.test(t);
+
+  if (!looksLikeQuoteAsk) return false;
+
+  // Meta-only quote asks need a prior coach reply; otherwise there's nothing to quote from.
+  if (messages != null && !hasRecentAssistantReply(messages) && t.length < 160) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -262,14 +362,26 @@ function isSourceListFollowUp(userText, messages = null) {
 /** Follow-up about the coach's prior answer/sources — never a fresh web search. */
 function isWebAnswerFollowUp(userText, messages = null) {
   if (shouldUseWebAuto(userText) || shouldUsePerplexity(userText)) return false;
-  if (isWebSourceQuoteFollowUp(userText) || isWebThreadClarifyFollowUp(userText)) return true;
+
+  // Clarify / quote-only follow-ups win even if a keyword substring looks "fitness-y"
+  if (isWebThreadClarifyFollowUp(userText)) return true;
+  if (isWebSourceQuoteFollowUp(userText, messages)) return true;
   if (isMetaSourceFollowUp(userText, messages)) return true;
   if (isSourceListFollowUp(userText, messages)) return true;
+
+  // Brand-new fitness question (+ optional "quote sources") must stay a web search, not follow-up
+  if (hasSubstantiveFitnessTopic(userText)) return false;
 
   if (!hasRecentAssistantReply(messages)) return false;
 
   const t = String(userText || '').toLowerCase().trim();
   if (!t || t.length > 280) return false;
+
+  // "Where's the research?" / "sources?" after a coach reply = stay on thread
+  if (/^(where(?:'s| is| are)?\s+(?:the\s+)?(?:research|sources?|studies|citations?|links?)\??)$/i.test(t)) {
+    return true;
+  }
+  if (/^(sources?|research|studies|citations?|links?)\??$/i.test(t)) return true;
 
   if (/\bwhat does the research say\b/.test(t) && t.length < 140) return true;
   if (/\bwhat do studies say\b/.test(t) && t.length < 140) return true;
@@ -336,25 +448,51 @@ function buildWebSearchQuery(messages, lastUserMsg = '') {
   let last = String(lastUserMsg || '').trim() || userLines[userLines.length - 1] || '';
   last = stripWebSearchPrefix(last) || String(lastUserMsg || '').trim() || userLines[userLines.length - 1] || '';
 
-  if (isWebSourceQuoteFollowUp(last)) {
+  // Dictionary / "define research" asks must never inherit the prior creatine/etc topic
+  if (isDictionaryOrMetaDefineAsk(last)) {
+    const prior = findPriorSubstantiveUserQuestion(messages, lastUserMsg);
+    if (prior && hasSubstantiveFitnessTopic(prior)) {
+      return scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior);
+    }
+    return scopeWebSearchQueryForCoach('evidence-based resistance training programming');
+  }
+
+  // Quote follow-up: search/reuse the PRIOR fitness topic — never "direct quotes…" as the query.
+  if (isWebSourceQuoteFollowUp(last, messages)) {
     const prior = findPriorSubstantiveUserQuestion(messages, lastUserMsg);
     if (prior) {
-      return `${prior} — direct quotes from research sources with citations`;
+      return scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior);
     }
   }
 
   if (isMetaOnlyWebCheck(last) && userLines.length >= 2) {
     const prior = stripWebSearchPrefix(userLines[userLines.length - 2]) || userLines[userLines.length - 2];
-    if (prior && prior.length > 20) return prior;
-  }
-  if (last.length < 60 && userLines.length >= 2) {
-    const prior = stripWebSearchPrefix(userLines[userLines.length - 2]) || userLines[userLines.length - 2];
-    if (prior && !shouldUseWebAuto(prior) && shouldUseWebAuto(last)) {
-      return `${prior} ${last}`.trim();
+    if (prior && prior.length > 20) {
+      return scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior);
     }
   }
-  const built = stripWebSearchPrefix(last) || last;
-  return scopeWebSearchQueryForCoach(built);
+
+  // Only stitch prior+last for SHORT meta web checks ("google it") — not for a new sentence
+  // that already has its own intent (define X, jailbreak, dual tool+search, etc.).
+  const cleanedLast = stripWebMetaInstructions(stripWebSearchPrefix(last) || last) || last;
+  const lastIsShortMetaWeb =
+    last.length < 60 &&
+    shouldUseWebAuto(last) &&
+    !hasSubstantiveFitnessTopic(last) &&
+    !isDictionaryOrMetaDefineAsk(last) &&
+    cleanedLast.length < 28;
+
+  if (lastIsShortMetaWeb && userLines.length >= 2) {
+    const prior = stripWebSearchPrefix(userLines[userLines.length - 2]) || userLines[userLines.length - 2];
+    if (prior && prior.length > 20 && !shouldUseWebAuto(prior)) {
+      return scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior);
+    }
+    if (prior && prior.length > 20 && hasSubstantiveFitnessTopic(prior)) {
+      return scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior);
+    }
+  }
+
+  return scopeWebSearchQueryForCoach(cleanedLast);
 }
 
 /** Training, nutrition, recovery, supplements — web search is fitness-coach scoped only. */
@@ -364,18 +502,18 @@ function isFitnessNutritionQuery(text) {
 
   const fitness = [
     'workout', 'work out', 'training', 'lift', 'lifting', 'gym', 'exercise', 'cardio', 'hiit',
-    'strength', 'hypertrophy', 'sets', 'reps', 'pr', 'progressive overload', 'deload',
-    'squat', 'bench', 'deadlift', 'press', 'pull-up', 'pull up', 'form', 'technique',
+    'strength', 'hypertrophy', 'sets', 'reps', 'progressive overload', 'deload',
+    'squat', 'bench', 'deadlift', 'press', 'pull-up', 'pull up', 'technique',
     'mobility', 'stretch', 'warm up', 'cool down', 'recovery', 'soreness',
     'sleep', 'steps', 'heart rate', 'streak', 'progress', 'adherence',
     'body recomposition', 'recomposition', 'recomp', 'skinny fat', 'bodyfat', 'body fat', 'bf%',
-    'cutting', 'cut', 'bulking', 'bulk', 'lean bulk', 'maintenance', 'caloric deficit', 'calorie deficit',
+    'cutting', 'bulking', 'bulk', 'lean bulk', 'maintenance', 'caloric deficit', 'calorie deficit',
     'calorie surplus', 'caloric surplus', 'tone up', 'toning', 'fat loss', 'lose fat', 'build muscle',
-    'shoulder', 'knee', 'back', 'hip', 'injury', 'hurt', 'pain', 'ache', 'sore',
+    'shoulder', 'knee', 'hip', 'injury', 'hurt', 'pain', 'ache', 'sore',
     'trainer', 'coach', 'session', 'appointment', 'schedule',
-    'swap', 'replace', 'modify', 'program', 'plan', 'routine', 'split',
+    'swap', 'replace', 'modify', 'program', 'routine', 'split',
     'overhead', 'fatigue', 'tired', 'plateau', 'lifter', 'lifters', 'athlete', 'athletes',
-    'research', 'study', 'studies', 'evidence', 'meta-analysis', 'systematic review',
+    'meta-analysis', 'systematic review',
     'creatine', 'ashwagandha', 'magnesium', 'electrolyte', 'pre-workout', 'preworkout',
     'zone 2', 'zone2', 'vo2', 'testosterone', 'trt', 'hormone', 'cortisol',
   ];
@@ -385,11 +523,20 @@ function isFitnessNutritionQuery(text) {
     'supplement', 'supplements', 'whey', 'caffeine',
     'hydration', 'water', 'fiber', 'sodium', 'cholesterol', 'saturated fat',
     'calorie', 'caloric', 'tdee', 'bmr', 'metabolism', 'weigh', 'weigh-in',
-    'chicken', 'rice', 'ate', 'eat', 'eating', 'food', 'hungry', 'hunger', 'log',
-    'oz', 'cup', 'grams', 'kcal', 'chipotle', 'restaurant', 'menu',
+    'chicken', 'rice', 'eating', 'food', 'hungry', 'hunger',
+    'grams', 'kcal', 'chipotle', 'restaurant', 'menu',
   ];
+  // Short tokens that falsely match inside other words (form⊂information, cut⊂specifically, etc.)
+  const shortTokens = ['form', 'pr', 'cut', 'plan', 'log', 'ate', 'eat', 'oz', 'cup', 'back', 'set', 'rep'];
 
-  return [...fitness, ...nutrition].some((k) => t.includes(k));
+  const hit = (k) => {
+    if (k.includes(' ') || k.includes('%')) return t.includes(k);
+    return new RegExp(`\\b${k.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(t);
+  };
+
+  if ([...fitness, ...nutrition].some(hit)) return true;
+  // Only count short tokens with word boundaries
+  return shortTokens.some(hit);
 }
 
 const FITNESS_WEB_ASK_TOPIC_REPLY =
@@ -436,12 +583,20 @@ function isGenericWebSearchRequest(text) {
 function scopeWebSearchQueryForCoach(query) {
   const q = String(query || '').trim();
   if (!q) return '';
-  const stripped = stripWebSearchPrefix(q) || q;
+  // Always strip quote/web meta first so we never search "quote the sources"
+  const stripped = stripWebMetaInstructions(stripWebSearchPrefix(q) || q) || q;
+  if (!stripped.trim()) return 'evidence-based resistance training programming';
+
   if (isFitnessNutritionQuery(stripped) && stripped.length >= 28) return stripped;
   if (isFitnessNutritionQuery(stripped)) {
-    return `${stripped} evidence-based fitness exercise science`.replace(/\s+/g, ' ').trim();
+    return `${stripped} evidence-based exercise science`.replace(/\s+/g, ' ').trim();
   }
-  return `${stripped} fitness training nutrition exercise science evidence-based`.replace(/\s+/g, ' ').trim();
+  // Don't bolt a giant suffix onto citation-meta leftovers — that became the bold "topic"
+  // in failed replies ("evidence-based fitness training nutrition…").
+  if (/^(quote|quotes|sources?|citations?|research|studies)$/i.test(stripped)) {
+    return 'evidence-based resistance training frequency programming';
+  }
+  return `${stripped} fitness training nutrition`.replace(/\s+/g, ' ').trim();
 }
 
 const JUNK_WEB_SOURCE_PATTERNS = [
@@ -452,6 +607,18 @@ const JUNK_WEB_SOURCE_PATTERNS = [
   /google\.com\/intl\/.*\/search/i,
   /youtube\.com.*how to search/i,
   /how to use google/i,
+  /how to cite/i,
+  /citation style/i,
+  /mla style/i,
+  /apa style/i,
+  /bibliography/i,
+  /plagiarism/i,
+  /direct quotation/i,
+  /quoting sources/i,
+  /in-text citation/i,
+  /owl\.purdue/i,
+  /easybib/i,
+  /citationmachine/i,
 ];
 
 const TRUSTED_FITNESS_HOST_FRAGMENTS = [
@@ -503,18 +670,37 @@ function resolveCoachWebSearchGate({ lastUserMsg, messages, rawQuery }) {
   const query = String(rawQuery || '').trim() || last;
   const prior = findPriorSubstantiveUserQuestion(messages, lastUserMsg);
   const priorFitness = prior ? isFitnessNutritionQuery(prior) : false;
-  const topicFitness = isFitnessNutritionQuery(query) || isFitnessNutritionQuery(last);
+  const cleanedLast = stripWebMetaInstructions(stripWebSearchPrefix(last) || last) || last;
+  const topicFitness =
+    isFitnessNutritionQuery(query) ||
+    isFitnessNutritionQuery(last) ||
+    isFitnessNutritionQuery(cleanedLast);
+
+  // Obvious off-topic / abuse in THIS message — do not let a prior fitness topic greenlight it
+  const lastLooksOffTopic =
+    /\b(iphone|android phone|bitcoin|crypto|bomb|weapon|kill|murder|how to make)\b/i.test(last) ||
+    (/\bdeals?\b/i.test(last) && /\b(iphone|phone|tv|laptop)\b/i.test(last));
+  if (lastLooksOffTopic && !hasSubstantiveFitnessTopic(last)) {
+    return { action: 'off_topic', reply: FITNESS_WEB_OFF_TOPIC_REPLY };
+  }
+
+  if (isDictionaryOrMetaDefineAsk(last) && !hasSubstantiveFitnessTopic(last)) {
+    if (priorFitness) {
+      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || prior) };
+    }
+    return { action: 'ask_topic', reply: FITNESS_WEB_ASK_TOPIC_REPLY };
+  }
 
   if (isGenericWebSearchRequest(last)) {
     if (priorFitness) {
-      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebSearchPrefix(prior) || query) };
+      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || query) };
     }
     return { action: 'ask_topic', reply: FITNESS_WEB_ASK_TOPIC_REPLY };
   }
 
   if (isMetaOnlyWebCheck(last)) {
     if (priorFitness) {
-      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebSearchPrefix(prior) || query) };
+      return { action: 'search', query: scopeWebSearchQueryForCoach(stripWebMetaInstructions(prior) || query) };
     }
     return { action: 'ask_topic', reply: FITNESS_WEB_ASK_TOPIC_REPLY };
   }
@@ -538,42 +724,44 @@ const WEB_SEARCH_SYSTEM_APPEND = `${COACH_WEB_SEARCH_FORMAT}
 
 WEB SEARCH MODE (FITNESS COACH ONLY):
 You have live web results in this prompt (Perplexity or Serper snippets). Use them ONLY for training, nutrition, recovery, supplements, and exercise-science topics.
-IGNORE generic pages about "how to search the web", Google Help, YouTube tutorials, or anything unrelated to fitness/nutrition.
-You DID search the web for this reply — you may say so briefly in the Takeaway (one short phrase max).
+IGNORE generic pages about "how to search the web", Google Help, citation style guides, APA/MLA, plagiarism, YouTube tutorials, or anything unrelated to fitness/nutrition.
+You DID search the web for this reply — you may say so in one short phrase.
 Do not mention reviewing their app logs, weekly summary, or personal tracking unless they explicitly asked about their own data in the same message.
-Follow COACH_WEB_SEARCH_FORMAT exactly: opening line, ## What it is, ## Key findings, ## Practical notes, ## What this means for you, ## Next steps, ## Suggested follow-ups (3 questions).
-Cite sources as [Source Name] after claims — not numbered [1][2] footnotes.`;
+Follow COACH_WEB_SEARCH_FORMAT. Put quotes + [Source Name] in the BODY — do not rely on a sources button alone.`;
 
 const NO_WEB_SEARCH_HONESTY_APPEND = `
 
 WEB SEARCH STATUS (THIS TURN):
 You do NOT have live web search results in this prompt. You MUST NOT say you checked the web, googled it, pulled it up, searched online, or describe "what you're seeing from research" as if you browsed.
 Never say "let me check" / "fair enough let me pull that up" and then answer as if you searched.
-If they asked to verify online, be honest: you are answering from built-in coaching knowledge, not a live search. Say that plainly in one short sentence, then give your answer and label it as general exercise-science guidance — not cited studies or links you did not receive.
+If they asked to verify online, be honest: you are answering from built-in coaching knowledge, not a live search. Say that plainly in one short sentence, then answer the FITNESS QUESTION (training days, protein, etc.).
+FORBIDDEN: defining "research", "sources", "citations", or "direct quotes"; APA/MLA lessons; "Here's a clear breakdown of **direct quotes…**".
 If you cannot verify with sources this turn, do not invent citations or pretend you have links.`;
 
 const WEB_SOURCE_QUOTE_SYSTEM_APPEND = `
 
 SOURCE QUOTE MODE:
-The user is asking for DIRECT QUOTES from the research sources about the ORIGINAL topic — not instructions on how to cite sources academically.
-Pull verbatim excerpts from studies/articles about the research topic. Name each source.
-Do NOT explain citation rules, referencing guidelines, or how to write bibliographies.`;
+The user wants DIRECT QUOTES about the FITNESS TOPIC (e.g. training frequency, protein, creatine) — NOT a lesson on academic citation.
+Pull short verbatim excerpts from the provided snippets/studies about that topic. Name each source in [brackets].
+Example shape: According to [NSCA]: "…" — then explain what that means for the user.
+Do NOT explain citation rules, referencing guidelines, bibliographies, plagiarism, or what a "direct quote" is.`;
 
 const THREAD_CLARIFY_SYSTEM_APPEND = `
 
 THREAD FOLLOW-UP — CONTINUE THE SAME CONVERSATION (NO NEW WEB SEARCH):
 The user is asking about YOUR PREVIOUS reply in this chat — not a new lookup.
 Read the full conversation. Stay on the SAME fitness/nutrition/training topic as the original question.
-If they ask what sources said: explain what your prior answer was based on, name those sources, and give specifics about THAT topic only.
-FORBIDDEN: unrelated topics, citation rules, or random transcripts.
+If they ask what sources said: quote/paraphrase those prior sources about THAT topic only.
+FORBIDDEN: defining research/quotes/citations, APA rules, or switching to an unrelated topic.
 If the thread lacks source detail, say that honestly and expand from your prior answer — do NOT invent unrelated sources or run a new topic.`;
 
 const WEB_SEARCH_FAILED_APPEND = `
 
 WEB SEARCH FAILED THIS TURN:
 Live search did not complete. You MUST NOT say you searched, googled, ran a live search, or describe current web research.
-Open with ONE short sentence that live search was not available, then answer from general coaching knowledge only.
-Do NOT cite studies, links, or "what research says" as if you browsed. No fake sources.`;
+Open with ONE short sentence that live search was not available, then answer the user's FITNESS question from general coaching knowledge only.
+FORBIDDEN topic titles: "research", "direct quotes", "how to cite", "sources".
+Do NOT cite studies, links, or "what research says" as if you browsed. No fake sources. No rigid "Here's a clear breakdown / What it is / Key findings" template.`;
 
 const FAKE_WEB_SEARCH_OPENERS = [
   /^i ran a live search[^.!?]*[.!?]\s*/i,
@@ -631,4 +819,8 @@ module.exports = {
   isMetaOnlyWebCheck,
   stripInlineWebCitations,
   isPersonalDataLookup,
+  stripWebMetaInstructions,
+  hasSubstantiveFitnessTopic,
+  userWantsSourceQuotes,
+  isDictionaryOrMetaDefineAsk,
 };

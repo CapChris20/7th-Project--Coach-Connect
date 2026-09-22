@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../app-start/config';
-import { useTheme } from '../../shared-ui/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ACCENT = ['#FF6B9D', '#C084FC'];

@@ -3,7 +3,7 @@ const {
   stripCoachToolJsonFromReply,
 } = require('../../ai-coach/tools/parseCoachToolCalls');
 
-const { normalizeToolParams } = require('../../ai-coach/server-logic/tools/cleanupToolParams');
+const { normalizeToolParams } = require('../../ai-coach/logic/tools/cleanupToolParams');
 
 describe('parseCoachToolCalls', () => {
   it('parses valid JSON at end of reply', () => {

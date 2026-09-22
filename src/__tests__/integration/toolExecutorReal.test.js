@@ -19,11 +19,11 @@ jest.mock('../../app-start/config', () => ({
   db: {},
 }));
 
-jest.mock('../../shared-utils/dateKeys', () => ({
+jest.mock('../../helpers/dateKeys', () => ({
   getClientDateKey: () => FIXED_DATE,
 }));
 
-jest.mock('../../shared/api/baseUrl', () => ({
+jest.mock('../../for-both/api/baseUrl', () => ({
   getAICoachApiBases: jest.fn(() => ['https://api.test']),
 }));
 
@@ -63,7 +63,7 @@ global.fetch = jest.fn(() =>
   }),
 );
 
-const { runCoachAction } = require('../../ai-coach/server-logic/tools/runCoachAction');
+const { runCoachAction } = require('../../ai-coach/logic/tools/runCoachAction');
 
 function dailyLogsWrite() {
   return mockSetDoc.mock.calls.find(([ref, payload]) =>

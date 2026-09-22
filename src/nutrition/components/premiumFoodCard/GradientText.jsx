@@ -1,5 +1,5 @@
 import React from 'react';
-import StableGradientText from '../../../shared-ui/StableGradientText';
+import StableGradientText from '../../../theme/StableGradientText';
 
 /**
  * Gradient text — re-exported stable SVG implementation (no MaskedView).

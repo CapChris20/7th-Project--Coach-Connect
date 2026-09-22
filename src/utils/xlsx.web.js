@@ -1,14 +1,7 @@
-/**
- * xlsx web
- *
- * Purpose: xlsx web — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/utils
- * Key exports: (see file)
- *
- * @file-header
- */
-// Web build uses the real `xlsx` package.
+// Web build of the spreadsheet parser — hands back the real SheetJS library unmodified.
+// Metro auto-picks this file over xlsx.js when bundling for browser.
+// No polyfills needed here; SheetJS ships a browser-ready build.
+
 import * as XLSX from 'xlsx';
 
 export default XLSX;

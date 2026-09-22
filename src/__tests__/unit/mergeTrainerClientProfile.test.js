@@ -1,4 +1,4 @@
-import { mergeTrainerClientProfile } from '../../shared-utils/mergeTrainerClientProfile';
+import { mergeTrainerClientProfile } from '../../helpers/mergeTrainerClientProfile';
 
 describe('mergeTrainerClientProfile', () => {
   it('prefers live users/{uid} weight over stale CRM copy', () => {

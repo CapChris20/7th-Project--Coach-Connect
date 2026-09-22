@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   getOnboardingUiTokens,
   OnboardingPrimaryButton,
-} from '../shared/components/onboarding/onboardingAiDeps';
+} from '../for-both/components/onboarding/onboardingAiDeps';
 import {
   TRAINER_SUBSCRIPTION_BENEFITS,
   TRAINER_SUBSCRIPTION_PRICE_LABEL,

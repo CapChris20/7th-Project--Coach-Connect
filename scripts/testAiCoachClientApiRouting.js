@@ -31,8 +31,8 @@ function extractFunctionBody(src, fnName) {
   console.log(' AI COACH CLIENT API ROUTING');
   console.log('═══════════════════════════════════════════════════════════\n');
 
-  const baseUrlSrc = read('src/shared/api/baseUrl.js');
-  const serviceSrc = read('src/ai-coach/server-logic/chat-api/sendCoachMessageToServer.js');
+  const baseUrlSrc = read('src/for-both/api/baseUrl.js');
+  const serviceSrc = read('src/ai-coach/logic/chat-api/sendCoachMessageToServer.js');
 
   t.assert('getAICoachApiBases pushes PRODUCTION first', /push\(PRODUCTION_API_BASE_URL\)/.test(baseUrlSrc));
   t.assert(

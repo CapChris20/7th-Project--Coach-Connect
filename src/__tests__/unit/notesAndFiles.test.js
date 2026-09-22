@@ -4,8 +4,8 @@ const {
   isPdfFile,
   getEmbedViewerUri,
   notesFileDedupeKey,
-} = require('../../shared-utils/getFileViewType');
-const { serializeSpreadsheetRows } = require('../../shared/notes-files/spreadsheetRows');
+} = require('../../helpers/getFileViewType');
+const { serializeSpreadsheetRows } = require('../../for-both/notes-files/spreadsheetRows');
 
 describe('notes file helpers', () => {
   test('identifies media and pdf files', () => {

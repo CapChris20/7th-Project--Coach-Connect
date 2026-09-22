@@ -7,12 +7,12 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../shared/api/baseUrl', () => ({
+jest.mock('../../for-both/api/baseUrl', () => ({
   getResilientApiBases: jest.fn(() => ['https://api.test']),
   getApiBaseCandidates: jest.fn(() => ['https://api.test']),
 }));
 
-jest.mock('../../shared/api/getAuthHeaders', () => ({
+jest.mock('../../for-both/api/getAuthHeaders', () => ({
   getApiAuthHeaders: jest.fn(() =>
     Promise.resolve({
       Authorization: 'Bearer test-token',
@@ -21,7 +21,7 @@ jest.mock('../../shared/api/getAuthHeaders', () => ({
   ),
 }));
 
-jest.mock('../../shared/api/logErrorToServer', () => ({
+jest.mock('../../for-both/api/logErrorToServer', () => ({
   __esModule: true,
   default: { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));

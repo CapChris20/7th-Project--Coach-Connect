@@ -1,7 +1,10 @@
 node_modules/
 .expo/
 .expo-shared/
+.next/
+.turbo/
 dist/
+build/
 npm-debug.*
 *.jks
 *.p8
@@ -12,6 +15,9 @@ npm-debug.*
 web-build/
 .DS_Store
 .claude/
+.qodo/
+.yarn/
+.firebase/
 **/.DS_Store
 *.swp
 *.swo
@@ -22,13 +28,17 @@ src_backup_*/
 backups/
 coverage/
 test-results.txt
+TEST_RESULTS.md
+FOLDER_STRUCTURE.txt
+FOLDER_STRUCTURE_SRC.txt
 pglite-debug.log
 firestore-debug.log
 functions/pglite-debug.log
 
-# Env files
+# Env files / local secrets
 .env
 .env.local
+.env.development.local
 .env.production
 .env.maestro
 
