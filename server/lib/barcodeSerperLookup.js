@@ -4,10 +4,10 @@
  */
 
 const axios = require('axios');
-const { resolveBarcodeBrand: resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
+const { resolveBarcodeBrand: resolveFoodBrandLabel } = require('../../src/nutrition/food-details/tidyBrandName');
 
 const SERPER_JUNK_PATTERN =
-  /barcode tracker|fooddata central|gs1 us|dietagram|calorie content of products|search by barcode|food and nutrition information center|\bfnic\b|nutritionix|largest verified nutrition|nutrition facts search tool|nutrition calculator|mcdonald'?s nutrition/i;
+  /barcode tracker|fooddata central|gs1 us|dietagram|calorie content of products|search by barcode|food and nutrition incellFormattingion center|\bfnic\b|nutritionix|largest verified nutrition|nutrition facts search tool|nutrition calculator|mcdonald'?s nutrition/i;
 
 const RETAILER_HOST_PATTERN =
   /kroger|walmart|target|heb|safeway|albertsons|qfc|instacart|ghostlifestyle|priceplow/i;

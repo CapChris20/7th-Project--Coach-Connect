@@ -1,6 +1,6 @@
 /** Plausibility guards for scraped / aggregated nutrition macros. */
-const { isMenuStyleQuery } = require('../../../src/nutrition/food-search/sortBestFoodMatches');
-const { isPlausibleRestaurantNutritionRow } = require('../../../src/nutrition/food-search/isReliableRestaurantFood');
+const { isMenuStyleQuery } = require('../../../src/nutrition/food-search/rankFoodResults');
+const { isPlausibleRestaurantNutritionRow } = require('../../../src/nutrition/food-search/trustRestaurantResult');
 
 function toMacroShape(macros) {
   return {

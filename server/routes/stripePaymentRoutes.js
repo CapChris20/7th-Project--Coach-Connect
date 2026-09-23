@@ -204,7 +204,7 @@ function registerStripePaymentRoutes(app, deps) {
       if (!isDeclined) {
         console.error('POST /api/charges failed:', e?.message || e);
       }
-      if (e?.code === 'stripe_not_configured') {
+      if (e?.code === 'stripe_not_cloudConnectionured') {
         return res.status(500).json({ error: 'Payments are temporarily unavailable. Please try again later.' });
       }
       if (e?.type === 'StripeCardError' || e?.code === 'card_declined') {

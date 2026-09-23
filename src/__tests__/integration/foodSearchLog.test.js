@@ -1,5 +1,5 @@
 /**
- * Food search → log flow (logFoodToFirestore + searchFoodsService).
+ * Food search → log flow (saveLoggedFood + searchFoods).
  */
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(() => Promise.resolve(null)),
@@ -7,12 +7,12 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../for-both/api/baseUrl', () => ({
+jest.mock('../../for-both/online-connection/whereToConnect', () => ({
   getResilientApiBases: jest.fn(() => ['https://api.test']),
   getApiBaseCandidates: jest.fn(() => ['https://api.test']),
 }));
 
-jest.mock('../../for-both/api/getAuthHeaders', () => ({
+jest.mock('../../for-both/online-connection/attachLoginProof', () => ({
   getApiAuthHeaders: jest.fn(() =>
     Promise.resolve({
       Authorization: 'Bearer test-token',
@@ -21,17 +21,17 @@ jest.mock('../../for-both/api/getAuthHeaders', () => ({
   ),
 }));
 
-jest.mock('../../for-both/api/logErrorToServer', () => ({
+jest.mock('../../for-both/online-connection/sendCrashReport', () => ({
   __esModule: true,
   default: { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   db: {},
 }));
 
-jest.mock('../../utils/autoLogError', () => ({
-  autoLogErrorSync: jest.fn(),
+jest.mock('../../crash-reports/reportCrashAutomatically', () => ({
+  reportCrashAutomaticallySync: jest.fn(),
 }));
 
 const mockAddDoc = jest.fn(() => Promise.resolve({ id: 'log-doc-1' }));
@@ -53,8 +53,8 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 const AsyncStorage = require('@react-native-async-storage/async-storage');
-const searchFoodsService = require('../../nutrition/food-search/searchFoodsService').default;
-const { searchFoods, addFoodLog } = require('../../nutrition/daily-log/logFoodToFirestore');
+const searchFoods = require('../../nutrition/food-search/searchFoods').default;
+const { searchFoods, addFoodLog } = require('../../nutrition/daily-log/saveLoggedFood');
 
 const SERVER_SEARCH = 'https://api.test/api/food/search';
 const NUTRITION_SEARCH = 'https://api.test/api/nutrition/search';
@@ -120,7 +120,7 @@ function jsonResponse(body, status = 200) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  searchFoodsService.clearAllCaches();
+  searchFoods.clearAllCaches();
   AsyncStorage.getItem.mockResolvedValue(null);
 });
 

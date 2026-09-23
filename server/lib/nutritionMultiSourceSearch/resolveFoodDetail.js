@@ -1,11 +1,11 @@
 /**
  * Search-result ranking and brand slug helpers for nutrition detail resolution.
  */
-const { isMenuStyleQuery } = require('../../../src/nutrition/food-search/sortBestFoodMatches');
+const { isMenuStyleQuery } = require('../../../src/nutrition/food-search/rankFoodResults');
 const {
   isJunkFoodTitle,
   stripLegacyFoodTitleDecorations,
-} = require('../../../src/nutrition/food-search/cleanFoodCardLabels');
+} = require('../../../src/nutrition/food-search/tidyFoodTitles');
 
 const RESTAURANT_BRAND_SLUGS = {
   "mcdonald's": 'mcdonalds',
@@ -99,14 +99,14 @@ function extractSizeToken(query) {
 }
 
 /**
- * Score a search candidate (link label + href) against query tokens.
+ * Score a search candidate (link label + href) against query reportColors.
  */
-function scoreSearchCandidate(label, href, tokens, restaurantSlug) {
+function scoreSearchCandidate(label, href, reportColors, restaurantSlug) {
   const text = normalizeText(`${label} ${href}`).replace(/-/g, ' ');
   if (!text) return 0;
 
   let score = 0;
-  for (const token of tokens) {
+  for (const token of reportColors) {
     const t = token.replace(/-/g, ' ');
     if (text.includes(t)) score += 2;
     if (t.length >= 4 && text.includes(t.slice(0, Math.max(4, t.length - 1)))) score += 1;
@@ -117,7 +117,7 @@ function scoreSearchCandidate(label, href, tokens, restaurantSlug) {
     if (text.includes(restaurantSlug) || text.includes(slugSpaced)) score += 6;
   }
 
-  const size = extractSizeToken(tokens.join(' '));
+  const size = extractSizeToken(reportColors.join(' '));
   if (size && text.includes(size.replace('-', ' '))) score += 8;
   if (/\/search|\/category|\/brand\/?$/i.test(href || '')) score -= 10;
   if (/\/foods\/f\/|fastfoodnutrition\.org\/[^/]+\/[^/]+\//i.test(href || '')) score += 3;
@@ -126,12 +126,12 @@ function scoreSearchCandidate(label, href, tokens, restaurantSlug) {
 }
 
 function rankSearchCandidates(candidates, query, restaurant) {
-  const tokens = queryTokens(query, restaurant);
+  const reportColors = queryTokens(query, restaurant);
   const restaurantSlug = restaurantToBrandSlug(restaurant);
   const scored = candidates
     .map((c) => ({
       ...c,
-      score: scoreSearchCandidate(c.label || c.text || '', c.href || c.url || '', tokens, restaurantSlug),
+      score: scoreSearchCandidate(c.label || c.text || '', c.href || c.url || '', reportColors, restaurantSlug),
     }))
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -144,11 +144,11 @@ function pickBestCandidate(candidates, query, restaurant) {
 }
 
 function rankFatSecretFoods(foods, query, restaurant) {
-  const tokens = queryTokens(query, restaurant);
+  const reportColors = queryTokens(query, restaurant);
   const restaurantSlug = restaurantToBrandSlug(restaurant);
   const scored = (foods || []).map((food) => {
     const label = `${food.brand_name || food.brand || ''} ${food.food_name || food.name || ''}`;
-    const score = scoreSearchCandidate(label, '', tokens, restaurantSlug);
+    const score = scoreSearchCandidate(label, '', reportColors, restaurantSlug);
     return { food, score };
   });
   scored.sort((a, b) => b.score - a.score);

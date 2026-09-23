@@ -3,7 +3,7 @@ const {
   faviconUrl,
   screenshotPreviewUrl,
   resolveSourcePreviewUri,
-} = require('../../ai-coach/chat-ui/chat-thread/renderSourcePreview');
+} = require('../../ai-coach/conversation/sourceLinkPreview');
 
 test('coach source preview helpers resolve expected URLs', () => {
   expect(hostLabel('https://www.example.com/page')).toBe('example.com');

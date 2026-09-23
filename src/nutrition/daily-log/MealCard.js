@@ -10,10 +10,10 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { LinearGradient } from 'expo-linear-gradient';
 import FoodItem from '../food-details/FoodItem';
-import FluidGlass from '../../theme/FluidGlass';
+import GlassPanel from '../../look-and-feel/GlassPanel';
 
 const ACCENT = '#7C3AED';
 
@@ -24,7 +24,7 @@ export default function MealCard({ mealType, mealKey, items = [], onAddPress, on
   const mealTotal = items.reduce((sum, item) => sum + (item.calories || 0), 0);
 
   return (
-    <FluidGlass
+    <GlassPanel
       transmission={0.88}
       roughness={0.2}
       tint={isDark ? '#111111' : '#FFFFFF'}
@@ -89,7 +89,7 @@ export default function MealCard({ mealType, mealKey, items = [], onAddPress, on
           </LinearGradient>
         </TouchableOpacity>
       </View>
-    </FluidGlass>
+    </GlassPanel>
   );
 }
 

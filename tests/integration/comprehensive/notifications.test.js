@@ -9,7 +9,7 @@ async function testNotifications() {
   const results = [];
   const cleanup = [];
 
-  const hookPath = path.join(ROOT, 'src/notifications/useUnreadNotificationCount.js');
+  const hookPath = path.join(ROOT, 'src/notifications/unreadAlertCount.js');
   if (fs.existsSync(hookPath)) {
     const text = fs.readFileSync(hookPath, 'utf8');
     if (text.includes('subscribeToUnreadCount')) {
@@ -21,7 +21,7 @@ async function testNotifications() {
     results.push(fail('useUnreadNotificationCount hook exists', 'file missing'));
   }
 
-  const sendPath = path.join(ROOT, 'src/ai-coach/logic/trainer-messaging/sendTrainerNotification.js');
+  const sendPath = path.join(ROOT, 'src/ai-coach/coach-actions/alertTrainer.js');
   if (fs.existsSync(sendPath)) {
     results.push(pass('sendTrainerNotification module exists'));
   } else {

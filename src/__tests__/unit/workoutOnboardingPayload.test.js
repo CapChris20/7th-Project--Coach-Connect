@@ -1,4 +1,4 @@
-import { buildWorkoutOnboardingPayload } from '../../workouts/plan-generator/workoutOnboardingPayload';
+import { buildWorkoutOnboardingPayload } from '../../workouts/create-plan/planRequestAnswers';
 
 describe('buildWorkoutOnboardingPayload', () => {
   it('includes normalized daysPerWeek and omits null fields', () => {

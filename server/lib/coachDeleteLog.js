@@ -3,7 +3,7 @@
  */
 const admin = require('firebase-admin');
 const { mergeUserDailyMetrics } = require('./dailyMetricsServer');
-const { sanitizeDeleteFoodQuery } = require('../../src/ai-coach/logic/tools/detectDeleteFoodRequest');
+const { sanitizeDeleteFoodQuery } = require('../../src/ai-coach/coach-actions/spotDeleteRequests');
 
 const FieldValue = admin.firestore.FieldValue;
 
@@ -45,8 +45,8 @@ function foodNameMatchesServer(logName, query) {
   if (!a || !b) return false;
   if (a.includes(b) || b.includes(a)) return true;
   if (/pizza|domino/.test(b) && /pizza|domino/.test(a)) return true;
-  const tokens = b.split(/[\s,]+/).filter((w) => w.length >= 4);
-  return tokens.some((t) => a.includes(t));
+  const reportColors = b.split(/[\s,]+/).filter((w) => w.length >= 4);
+  return reportColors.some((t) => a.includes(t));
 }
 
 function foodNameMatches(logName, query) {

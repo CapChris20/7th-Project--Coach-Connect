@@ -9,7 +9,7 @@ const {
   extractMultipleSerperRowsFromOrganic,
   rankSerperFoodResultRows,
 } = require('../../../nutritionSearchHelpers');
-const { isPlausibleNutritionRow } = require('../../../../src/nutrition/food-search/cleanFoodCardLabels');
+const { isPlausibleNutritionRow } = require('../../../../src/nutrition/food-search/tidyFoodTitles');
 
 async function fetchSerperOrganic(query, timeoutMs) {
   const apiKey = process.env.SERPER_API_KEY;

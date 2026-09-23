@@ -20,7 +20,7 @@ async function testAuth() {
   const cleanup = [];
 
   try {
-    const mod = await importEsm(path.join(ROOT, 'src/auth/authSessionTransition.js'));
+    const mod = await importEsm(path.join(ROOT, 'src/login-and-signup/signOutCleanupSteps.js'));
     const calls = [];
     const deps = {
       clearPushTokensForUid: async (uid) => calls.push(`push:${uid}`),
@@ -41,7 +41,7 @@ async function testAuth() {
   }
 
   try {
-    const mod = await importEsm(path.join(ROOT, 'src/auth/authSessionTransition.js'));
+    const mod = await importEsm(path.join(ROOT, 'src/login-and-signup/signOutCleanupSteps.js'));
     let cleared = false;
     await mod.handleAuthUidTransition('u1', null, {
       clearPushTokensForUid: async () => {},

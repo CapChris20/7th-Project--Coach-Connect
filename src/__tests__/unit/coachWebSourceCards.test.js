@@ -2,9 +2,9 @@ const {
   hostLabel,
   faviconUrl,
   resolveSourcePreviewUri,
-} = require('../../ai-coach/chat-ui/chat-thread/renderSourcePreview');
+} = require('../../ai-coach/conversation/sourceLinkPreview');
 
-describe('CoachWebSourceCards helpers', () => {
+describe('SourceLinkCards helpers', () => {
   test('extracts host and preview URLs for web source cards', () => {
     const url = 'https://www.example.com/article';
     expect(hostLabel(url)).toBe('example.com');

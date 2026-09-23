@@ -1,9 +1,9 @@
 import {
   resolveTrainerProgressCurrentWeight,
   resolveTrainerProgressBeforeWeight,
-} from '../../trainer-app/progress-tab/resolveTrainerProgressWeight';
+} from '../../trainer-app/progress-tab/pickWeightToShow';
 
-describe('resolveTrainerProgressWeight', () => {
+describe('pickWeightToShow', () => {
   it('prefers today log, then recent log, then profile weight', () => {
     expect(
       resolveTrainerProgressCurrentWeight({

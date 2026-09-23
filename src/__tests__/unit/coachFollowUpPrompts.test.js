@@ -2,9 +2,9 @@ const {
   extractFollowUpSection,
   buildContextualFollowUps,
   prepareCoachReplyForDisplay,
-} = require('../../ai-coach/chat-ui/lib/coachFollowUpPrompts');
+} = require('../../ai-coach/reply-display/suggestedQuestionMaker');
 
-describe('coachFollowUpPrompts', () => {
+describe('suggestedQuestionMaker', () => {
   it('extracts ## Suggested follow-ups from reply and strips from display', () => {
     const raw = `## What it is
 Sleep matters.

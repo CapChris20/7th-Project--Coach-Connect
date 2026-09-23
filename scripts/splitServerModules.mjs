@@ -88,7 +88,7 @@ const llmCore = llmBody.includes('module.exports')
 const axios = require('axios');
 const { randomUUID } = require('crypto');
 const { isoDateKey, serverTs } = require('../serverCommon');
-const { estimateCost, isWithinMonthlyLimit } = require('../../config/apiCosts');
+const { estimateCost, isWithinMonthlyLimit } = require('../../cloudConnection/apiCosts');
 const { isAiCoachLimitsEnforced } = require('../aiCoachRateLimit');
 const { resolveAiCoachDailyLimit } = require('../aiCoachRateLimit');
 const { serperOrganicSearch } = require('../serperWebSearch');
@@ -165,9 +165,9 @@ const {
   filterFitnessWebSources,
 } = require('../coachWebSearch');
 const { mergeCoachToolCalls } = require('../inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../../src/ai-coach/logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../../src/ai-coach/coach-actions/shouldAskFirst');
 const { sanitizeCoachImageAttachments, runCoachVisionTurn } = require('../coachVision');
-const { parseCoachToolCalls, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/tools/parseCoachToolCalls');
+const { parseCoachToolCalls, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/coach-actions/readActionsFromReply');
 const {
   buildCoachSystemPrompt,
   buildWeeklyContextSystemPrompt,

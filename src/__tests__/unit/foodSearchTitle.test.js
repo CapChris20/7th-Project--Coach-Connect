@@ -2,7 +2,7 @@ const {
   sanitizeFoodCardTitle,
   applyFoodCardPresentation,
   applyFoodCardPresentationToRows,
-} = require('../../nutrition/food-search/cleanFoodCardLabels');
+} = require('../../nutrition/food-search/tidyFoodTitles');
 
 describe('sanitizeFoodCardTitle (all sources)', () => {
   it('strips legacy source suffixes from cached titles', () => {
@@ -32,7 +32,7 @@ describe('sanitizeFoodCardTitle (all sources)', () => {
 describe('applyFoodCardPresentation (every provider)', () => {
   const query = 'chipotle chicken bowl';
 
-  it('formats nutrition pipeline rows', () => {
+  it('cellFormattings nutrition pipeline rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'fatSecret',
@@ -46,7 +46,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via FatSecret');
   });
 
-  it('formats legacy Serper rows', () => {
+  it('cellFormattings legacy Serper rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'serper',
@@ -59,7 +59,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via Web');
   });
 
-  it('formats USDA rows', () => {
+  it('cellFormattings USDA rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'usda',
@@ -72,7 +72,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via USDA');
   });
 
-  it('formats Open Food Facts rows', () => {
+  it('cellFormattings Open Food Facts rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'openfoodfacts',

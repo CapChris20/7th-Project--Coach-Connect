@@ -1,14 +1,14 @@
-const { shouldShowPaymentSetupPopup } = require('../../for-both/payments/paymentSetupPrompt');
+const { shouldShowPayoutSetupReminderPopup } = require('../../for-both/payments/whenToAskForPayoutSetup');
 
-describe('shouldShowPaymentSetupPopup', () => {
+describe('shouldShowPayoutSetupReminderPopup', () => {
   it('hides when no account timestamps (avoid login spam)', () => {
-    expect(shouldShowPaymentSetupPopup({})).toBe(false);
-    expect(shouldShowPaymentSetupPopup({ paymentPromptDismissed: false })).toBe(false);
+    expect(shouldShowPayoutSetupReminderPopup({})).toBe(false);
+    expect(shouldShowPayoutSetupReminderPopup({ paymentPromptDismissed: false })).toBe(false);
   });
 
   it('shows for recent onboarded trainers without Stripe', () => {
     expect(
-      shouldShowPaymentSetupPopup({
+      shouldShowPayoutSetupReminderPopup({
         onboardingCompletedAt: new Date().toISOString(),
       }),
     ).toBe(true);
@@ -16,13 +16,13 @@ describe('shouldShowPaymentSetupPopup', () => {
 
   it('hides when stripe account exists or is active', () => {
     expect(
-      shouldShowPaymentSetupPopup({
+      shouldShowPayoutSetupReminderPopup({
         onboardingCompletedAt: new Date().toISOString(),
         stripeAccountId: 'acct_123',
       }),
     ).toBe(false);
     expect(
-      shouldShowPaymentSetupPopup({
+      shouldShowPayoutSetupReminderPopup({
         onboardingCompletedAt: new Date().toISOString(),
         stripeStatus: 'active',
       }),
@@ -31,7 +31,7 @@ describe('shouldShowPaymentSetupPopup', () => {
 
   it('hides when dismissed recently', () => {
     expect(
-      shouldShowPaymentSetupPopup({
+      shouldShowPayoutSetupReminderPopup({
         onboardingCompletedAt: new Date().toISOString(),
         paymentPromptDismissed: true,
         paymentPromptDismissedAt: new Date().toISOString(),
@@ -42,7 +42,7 @@ describe('shouldShowPaymentSetupPopup', () => {
   it('shows again when dismissed more than 30 days ago', () => {
     const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
     expect(
-      shouldShowPaymentSetupPopup({
+      shouldShowPayoutSetupReminderPopup({
         onboardingCompletedAt: new Date().toISOString(),
         paymentPromptDismissed: true,
         paymentPromptDismissedAt: old,
@@ -52,6 +52,6 @@ describe('shouldShowPaymentSetupPopup', () => {
 
   it('hides for accounts older than 7 days that never dismissed', () => {
     const old = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
-    expect(shouldShowPaymentSetupPopup({ createdAt: old })).toBe(false);
+    expect(shouldShowPayoutSetupReminderPopup({ createdAt: old })).toBe(false);
   });
 });

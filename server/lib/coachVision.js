@@ -79,7 +79,7 @@ async function resolveReplicateDeepSeekVL2Version(token) {
   return version;
 }
 
-function formatReplicateError(resp) {
+function cellFormattingReplicateError(resp) {
   const status = resp?.status;
   const detail = resp?.data?.detail || resp?.data?.title || resp?.data?.error || '';
   if (status === 402) {
@@ -159,7 +159,7 @@ async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 90
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.6,
-    max_tokens: maxTokens,
+    max_reportColors: maxTokens,
   };
   const resp = await axios.post(url, payload, {
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -175,7 +175,7 @@ async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 90
   return String(text);
 }
 
-async function callDeepSeekVLViaOpenAICompat({ baseUrl, apiKey, systemPrompt, messages, imageDataUrls }) {
+async function callDeepSeekVLViaOpenAICompat({ whereToConnect, apiKey, systemPrompt, messages, imageDataUrls }) {
   const model = process.env.DEEPSEEK_VISION_MODEL || 'deepseek-ai/deepseek-vl2';
   const visionMessages = injectVisionIntoMessages(messages, imageDataUrls);
   const openAiMessages = visionMessages.map((m) => ({
@@ -183,12 +183,12 @@ async function callDeepSeekVLViaOpenAICompat({ baseUrl, apiKey, systemPrompt, me
     content: Array.isArray(m.content) ? m.content : String(m.content || ''),
   }));
 
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const url = `${whereToConnect.replace(/\/$/, '')}/chat/completions`;
   const payload = {
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...openAiMessages],
     temperature: 0.6,
-    max_tokens: 900,
+    max_reportColors: 900,
   };
 
   const resp = await axios.post(url, payload, {
@@ -219,7 +219,7 @@ async function callOpenAIVisionForAnalysis({ apiKey, userText, imageDataUrls }) 
   const url = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
   const payload = {
     model,
-    max_tokens: 1024,
+    max_reportColors: 1024,
     temperature: 0.2,
     messages: [
       {
@@ -266,7 +266,7 @@ async function pollReplicatePrediction({ token, predictionId, maxWaitMs = 110000
       validateStatus: () => true,
     });
     if (resp.status < 200 || resp.status >= 300) {
-      throw new Error(formatReplicateError(resp));
+      throw new Error(cellFormattingReplicateError(resp));
     }
     const status = String(resp?.data?.status || '').toLowerCase();
     if (status === 'succeeded') {
@@ -294,7 +294,7 @@ async function callDeepSeekVLViaReplicate({ token, userText, imageDataUrls }) {
     prompt,
     image: imageDataUrls[0],
     temperature: 0.4,
-    max_length_tokens: 1024,
+    max_length_reportColors: 1024,
   };
 
   const resp = await axios.post(
@@ -312,7 +312,7 @@ async function callDeepSeekVLViaReplicate({ token, userText, imageDataUrls }) {
   );
 
   if (resp.status < 200 || resp.status >= 300) {
-    throw new Error(formatReplicateError(resp));
+    throw new Error(cellFormattingReplicateError(resp));
   }
 
   const pred = resp?.data || {};
@@ -442,7 +442,7 @@ async function runCoachVisionTurn({
   if (visionBaseUrl && visionApiKey) {
     try {
       const response = await callDeepSeekVLViaOpenAICompat({
-        baseUrl: visionBaseUrl,
+        whereToConnect: visionBaseUrl,
         apiKey: visionApiKey,
         systemPrompt: prompt,
         messages,

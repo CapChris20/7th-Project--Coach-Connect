@@ -2,8 +2,8 @@
 // Start: npm run server
 // Env: ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, optional SERPER_API_KEY
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-require('dotenv').config();
+require('dotenv').cloudConnection({ path: path.join(__dirname, '..', '.env') });
+require('dotenv').cloudConnection();
 
 // Local `npm run server` must never enforce AI Coach caps/guardrails — .env or Cloud Run vars must not win.
 if (!process.env.K_SERVICE) {
@@ -42,7 +42,7 @@ const {
 } = require('./lib/coachWebSearch');
 const { shouldIncludeWeeklyContextInCoachPrompt } = require('./lib/coachPersonalDataRouting');
 const { fetchOpenWorkoutPlanPayload, fetchWorkoutPlanContext } = require('./lib/coachExtendedContext');
-const { parseBookSessionFields, formatSessionLabel } = require('./lib/bookSessionParse');
+const { parseBookSessionFields, cellFormattingSessionLabel } = require('./lib/bookSessionParse');
 const {
   COACH_VOICE_DIRECTIVE,
   COACH_WEB_SEARCH_FORMAT,
@@ -53,10 +53,10 @@ const logger = require('./lib/logger');
 const { initServerMonitoring } = require('./lib/monitoring');
 initServerMonitoring();
 const { mergeCoachToolCalls } = require('./lib/inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../src/ai-coach/logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../src/ai-coach/coach-actions/shouldAskFirst');
 const { assertCanSendPushNotification } = require('./lib/pushNotificationAuth');
 const { buildWorkoutSystemPrompt, buildWorkoutUserPrompt } = require('./lib/workoutPlanPrompt');
-const { estimateCost, isWithinMonthlyLimit } = require('./config/apiCosts');
+const { estimateCost, isWithinMonthlyLimit } = require('./cloudConnection/apiCosts');
 const { randomUUID } = require('crypto');
 const {
   COPY: PUSH_COPY,
@@ -65,7 +65,7 @@ const {
   localDateTimeInIANA,
   hasDashboardWorkoutLog,
   minutesDiffClock,
-  stripNotificationEmoji: pushStripNotificationEmoji,
+  removeEmojiFromAlerts: pushStripNotificationEmoji,
 } = require('./pushHelpers');
 const {
   tryInitializeFirebaseAdmin,
@@ -81,24 +81,24 @@ const {
   devOnlyRoute,
   verifyFirebaseBearerToken,
 } = require('./middleware/auth');
-const { registerHealthRoutes, registerApiHealthRoute } = require('./routes/healthRoutes');
-const { registerAICoachRoutes } = require('./routes/aiCoachRoutes');
-const { registerNotificationRoutes } = require('./routes/notificationsRoutes');
-const { registerMediaRoutes } = require('./routes/mediaRoutes');
-const { registerUserRoutes, isTrainerOfClient } = require('./routes/userRoutes');
-const { registerSupportRoutes } = require('./routes/supportRoutes');
-const { registerOnboardingRoutes } = require('./routes/onboardingRoutes');
-const { registerTrainerRoutes } = require('./routes/trainerRoutes');
-const { registerWorkoutRoutes } = require('./routes/workoutRoutes');
-const { registerFoodRoutes } = require('./routes/foodRoutes');
-const { registerNutritionSearchRoutes } = require('./routes/nutritionSearchRoutes');
+const { registerHealthRoutes, registerApiHealthRoute } = require('./screenNames/healthRoutes');
+const { registerAICoachRoutes } = require('./screenNames/aiCoachRoutes');
+const { registerNotificationRoutes } = require('./screenNames/notificationsRoutes');
+const { registerMediaRoutes } = require('./screenNames/mediaRoutes');
+const { registerUserRoutes, isTrainerOfClient } = require('./screenNames/userRoutes');
+const { registerSupportRoutes } = require('./screenNames/supportRoutes');
+const { registerOnboardingRoutes } = require('./screenNames/onboardingRoutes');
+const { registerTrainerRoutes } = require('./screenNames/trainerRoutes');
+const { registerWorkoutRoutes } = require('./screenNames/workoutRoutes');
+const { registerFoodRoutes } = require('./screenNames/foodRoutes');
+const { registerNutritionSearchRoutes } = require('./screenNames/nutritionSearchRoutes');
 const { createTokenBucketLimiter } = require('./middleware/tokenBucketRateLimit');
-const { registerDevRoutes } = require('./routes/devRoutes');
-const { registerMarketplaceRoutes } = require('./routes/marketplaceRoutes');
-const { registerAuthRoutes } = require('./routes/authRoutes');
-const { registerSubscriptionRoutes } = require('./routes/subscriptionRoutes');
-const { registerStripePaymentRoutes } = require('./routes/stripePaymentRoutes');
-const { registerStripeConnectRoutes } = require('./routes/stripeConnectRoutes');
+const { registerDevRoutes } = require('./screenNames/devRoutes');
+const { registerMarketplaceRoutes } = require('./screenNames/marketplaceRoutes');
+const { registerAuthRoutes } = require('./screenNames/authRoutes');
+const { registerSubscriptionRoutes } = require('./screenNames/subscriptionRoutes');
+const { registerStripePaymentRoutes } = require('./screenNames/stripePaymentRoutes');
+const { registerStripeConnectRoutes } = require('./screenNames/stripeConnectRoutes');
 const { renderPasswordResetPageHtml } = require('./lib/passwordResetPage');
 const { mergeUserDailyMetrics } = require('./lib/dailyMetricsServer');
 const { executeDeleteLogServer } = require('./lib/coachDeleteLog');
@@ -150,7 +150,7 @@ if (process.env.K_SERVICE) {
 }
 
 // Stripe webhooks need the raw body for signature verification — before JSON parser.
-const { handleStripeWebhook } = require('./routes/stripeWebhookRoutes');
+const { handleStripeWebhook } = require('./screenNames/stripeWebhookRoutes');
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
 // CORS — restrict to known origins (dev + prod)
@@ -229,7 +229,7 @@ const nutritionSearchLimiter = createTokenBucketLimiter({
 
 app.use(generalLimiter);
 
-// Apply strict limiters to specific routes
+// Apply strict limiters to specific screenNames
 // ─────────────────────────────────────────────
 // Simple app-level shared secret (defence in depth)
 // ─────────────────────────────────────────────
@@ -586,8 +586,8 @@ listenWithPortCheck()
     }`
   );
   console.log(`🌐 HTTP endpoints: http://localhost:${PORT}`);
-  console.log(`🔐 Serper API: ${process.env.SERPER_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
-  console.log(`🥬 USDA API: ${process.env.USDA_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
+  console.log(`🔐 Serper API: ${process.env.SERPER_API_KEY ? '✅ Configured' : '❌ Not cloudConnectionured'}`);
+  console.log(`🥬 USDA API: ${process.env.USDA_API_KEY ? '✅ Configured' : '❌ Not cloudConnectionured'}`);
   const supportEmailReady =
     !!process.env.RESEND_API_KEY ||
     !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);

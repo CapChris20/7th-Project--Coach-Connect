@@ -83,7 +83,7 @@ function parseBookSessionFields(params = {}) {
   return { date, time, durationMin };
 }
 
-function formatSessionLabel({ date, time }) {
+function cellFormattingSessionLabel({ date, time }) {
   if (!date) return 'your requested time';
   const [y, m, d] = date.split('-').map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1);
@@ -97,5 +97,5 @@ function formatSessionLabel({ date, time }) {
 
 module.exports = {
   parseBookSessionFields,
-  formatSessionLabel,
+  cellFormattingSessionLabel,
 };

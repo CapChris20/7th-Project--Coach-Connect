@@ -1,0 +1,69 @@
+/**
+ * User profile fetch — Firestore-first (production project anatrox-auth).
+ */
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../app-start/cloudConnection';
+
+/**
+ * Load users/{uid} from Firestore.
+ * @param {string} uid
+ * @returns {Promise<object|null>}
+ */
+export async function loadMyProfileFromFirestore(uid) {
+  if (!uid || !db) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    return { uid, ...(snap.data() || {}) };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Optional server fallback when Firestore read fails (legacy /api/me).
+ * @param {import('firebase/auth').User} user
+ * @returns {Promise<object|null>}
+ */
+export async function loadMyProfileFromApi(user) {
+  if (!user?.uid) return null;
+  const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  const fallbackBaseUrls = [
+    'http://localhost:4002',
+    'http://127.0.0.1:4002',
+    'http://localhost:4001',
+    'http://127.0.0.1:4001',
+  ];
+  const whereToConnects = apiBaseUrl ? [apiBaseUrl, ...fallbackBaseUrls] : fallbackBaseUrls;
+
+  await user.reload();
+  const idToken = await user.getIdToken(true);
+
+  for (const whereToConnect of whereToConnects) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    try {
+      const resp = await fetch(`${whereToConnect}/api/me`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!resp.ok) throw new Error(`/api/me failed (${resp.status})`);
+      const json = await resp.json();
+      return json?.user || json || null;
+    } catch (_) {
+      /* try next base */
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+/** Firestore first, then /api/me. */
+export async function loadMyProfile(user) {
+  const uid = user?.uid;
+  const fromFs = await loadMyProfileFromFirestore(uid);
+  if (fromFs) return fromFs;
+  return loadMyProfileFromApi(user);
+}

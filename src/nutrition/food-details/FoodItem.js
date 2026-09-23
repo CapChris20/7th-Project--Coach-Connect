@@ -12,7 +12,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 export default function FoodItem({ food, onAdd, onDelete, showDelete = false }) {
   const { isDark } = useTheme();

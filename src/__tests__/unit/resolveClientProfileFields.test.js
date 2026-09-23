@@ -1,11 +1,11 @@
 import {
   normalizeClientProfileFields,
-  resolveClientProfileFields,
-} from '../../helpers/resolveClientProfileFields';
+  fillTraineeProfile,
+} from '../../helpers/fillTraineeProfile';
 
-describe('resolveClientProfileFields', () => {
+describe('fillTraineeProfile', () => {
   it('fills profile fields from the first source when merged starts empty', () => {
-    const merged = resolveClientProfileFields({
+    const merged = fillTraineeProfile({
       age: 28,
       height: { feet: 5, inches: 11 },
       weight: 180,
@@ -24,7 +24,7 @@ describe('resolveClientProfileFields', () => {
   });
 
   it('prefers later non-empty sources (Firestore over local cache)', () => {
-    const merged = resolveClientProfileFields(
+    const merged = fillTraineeProfile(
       { age: 25, primaryGoal: 'lose_fat', fitnessLevel: 'beginner' },
       { age: 30, fitnessLevel: 'advanced' },
     );
@@ -35,7 +35,7 @@ describe('resolveClientProfileFields', () => {
   });
 
   it('keeps cached values when Firestore fields are empty', () => {
-    const merged = resolveClientProfileFields(
+    const merged = fillTraineeProfile(
       { age: 25, daysPerWeek: 3, equipmentAccess: ['bodyweight'] },
       { age: null, daysPerWeek: null, equipmentAccess: [] },
     );

@@ -1,9 +1,9 @@
-const { formatLoggedFoodDisplay, DEMO_YOGURT_BOWL } = require('../../nutrition/components/premiumFoodCard/formatLoggedFoodDisplay');
-const { hexToRgba, pillBackgroundGradient, getFoodCardPalette, getNutritionPanelPalette, gradients } = require('../../nutrition/components/premiumFoodCard/theme');
+const { foodCardText, DEMO_YOGURT_BOWL } = require('../../nutrition/food-cards/foodCardText');
+const { hexToRgba, pillBackgroundGradient, getFoodCardPalette, getNutritionPanelPalette, gradients } = require('../../nutrition/food-cards/foodCardColors');
 
 describe('premiumFoodCard', () => {
   it('maps logged food to card shape with calorie-based macro percents', () => {
-    const food = formatLoggedFoodDisplay({
+    const food = foodCardText({
       food_name: 'Yogurt Bowl',
       brand_name: 'Chobani',
       calories: 412,

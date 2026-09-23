@@ -1,7 +1,7 @@
-const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');
+const { readActionsFromReply } = require('../../ai-coach/coach-actions/readActionsFromReply');
 
 test('parses named-key bookSession payload', () => {
-  const calls = parseCoachToolCalls(
+  const calls = readActionsFromReply(
     '{"bookSession":{"date":"2026-06-20","time":"9:00 AM"}}'
   );
   expect(calls).toHaveLength(1);

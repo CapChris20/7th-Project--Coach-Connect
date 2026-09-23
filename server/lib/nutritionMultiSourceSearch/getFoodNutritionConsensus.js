@@ -24,7 +24,7 @@ function removeOutliersIqr(values) {
   return filtered.length ? filtered : values;
 }
 
-function formatVariancePct(mean, min, max) {
+function cellFormattingVariancePct(mean, min, max) {
   if (!Number.isFinite(mean) || mean <= 0) return '0%';
   const pct = ((max - min) / mean) * 100;
   return `${pct.toFixed(1)}%`;
@@ -42,7 +42,7 @@ function buildNutrientConsensus(values) {
   const min = Math.min(...filtered);
   const max = Math.max(...filtered);
   const mean = filtered.reduce((a, b) => a + b, 0) / filtered.length;
-  const varianceStr = formatVariancePct(mean, min, max);
+  const varianceStr = cellFormattingVariancePct(mean, min, max);
   const variancePct = mean > 0 ? ((max - min) / mean) * 100 : 0;
 
   if (variancePct > 20) return null;
@@ -205,7 +205,7 @@ module.exports = {
   getFoodNutritionConsensus,
   removeOutliersIqr,
   buildNutrientConsensus,
-  formatVariancePct,
+  cellFormattingVariancePct,
   classifyCalorieSources,
   buildSourceResultRow,
 };

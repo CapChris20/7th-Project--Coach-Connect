@@ -32,20 +32,20 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggleFavoriteFood } from '../daily-log/logFoodToFirestore';
-import { resolveFoodBrandLabel } from '../food-details/cleanFoodBrandName';
-import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/cleanFoodCardLabels';
-import { formatServingDisplayLine } from '../food-search/guessServingSize';
-import BrandGradientStrokeText from '../../for-both/components/icons/BrandGradientStrokeText';
-import FoodSearchAccuracyHeroCard from '../food-search/SearchQualityCard';
-import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
-import { HOME_STAT_SLEEP_GRADIENT } from '../../theme/homeStatGradients';
-import FoodCard from '../components/premiumFoodCard/FoodCard';
-import { gradients, brandGradients } from '../components/premiumFoodCard/theme';
-import { formatLoggedFoodDisplay } from '../components/premiumFoodCard/formatLoggedFoodDisplay';
-import { auth } from '../../app-start/config';
-import { useTheme } from '../../theme/ThemeContext';
-import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
+import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggleFavoriteFood } from '../daily-log/saveLoggedFood';
+import { resolveFoodBrandLabel } from '../food-details/tidyBrandName';
+import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/tidyFoodTitles';
+import { cellFormattingServingDisplayLine } from '../food-search/guessServingLabel';
+import OutlinedColorText from '../../for-both/icons/OutlinedColorText';
+import FoodSearchAccuracyHeroCard from '../food-search/SearchDisclaimerCard';
+import FoodConfirmSheet from '../food-search/ConfirmFoodPopup';
+import { HOME_STAT_SLEEP_GRADIENT } from '../../look-and-feel/homeStatColors';
+import FoodCard from '../food-cards/FoodCard';
+import { gradients, brandColors } from '../food-cards/foodCardColors';
+import { foodCardText } from '../food-cards/foodCardText';
+import { auth } from '../../app-start/cloudConnection';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HERO_TOP_BORDER = ['#BE185D', '#C2410C'];
@@ -55,11 +55,11 @@ const HERO_CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 function getColors(isDark) {
   const shared = {
-    pink: brandGradients.orangePink[1],
-    orange: brandGradients.orangePink[0],
-    purple: brandGradients.orangePurple[1],
-    cyan: brandGradients.cyanPurple[0],
-    gold: brandGradients.goldPink[0],
+    pink: brandColors.orangePink[1],
+    orange: brandColors.orangePink[0],
+    purple: brandColors.orangePurple[1],
+    cyan: brandColors.cyanPurple[0],
+    gold: brandColors.goldPink[0],
     proteinGradient: gradients.protein,
     carbsGradient: gradients.carbs,
     fatGradient: gradients.fat,
@@ -98,10 +98,10 @@ function getColors(isDark) {
 const DARK = {
   text: '#ffffff',
   textMuted: '#A6A6A6',
-  pink: brandGradients.orangePink[1],
-  orange: brandGradients.orangePink[0],
-  purple: brandGradients.orangePurple[1],
-  cyan: brandGradients.cyanPurple[0],
+  pink: brandColors.orangePink[1],
+  orange: brandColors.orangePink[0],
+  purple: brandColors.orangePurple[1],
+  cyan: brandColors.cyanPurple[0],
   proteinGradient: gradients.protein,
   carbsGradient: gradients.carbs,
   fatGradient: gradients.fat,
@@ -168,15 +168,15 @@ const normalizeFood = (item, searchQuery = '') => {
   };
 };
 
-function formatServingLine(item, userQuery = '') {
-  return formatServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
+function cellFormattingServingLine(item, userQuery = '') {
+  return cellFormattingServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
 }
 
-/** Saved / recent history — same premium card as logged foods on NutritionScreen. */
+/** Saved / recent history — same premium card as logged foods on DailyFoodLogScreen. */
 const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
   const [expanded, setExpanded] = useState(false);
-  const amount = formatServingLine(item);
-  const food = useMemo(() => formatLoggedFoodDisplay(item, amount), [item, amount]);
+  const amount = cellFormattingServingLine(item);
+  const food = useMemo(() => foodCardText(item, amount), [item, amount]);
 
   return (
     <View style={premiumSearchCardStyles.wrap}>
@@ -195,8 +195,8 @@ const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
 /** Search hits — same logged-food card layout, plus to open confirm/log. */
 const FoodResultRow = ({ item, onAdd, isDark = true, isFavorite = false, onToggleFavorite, query = '' }) => {
   const [expanded, setExpanded] = useState(false);
-  const amount = formatServingLine(item, query);
-  const food = useMemo(() => formatLoggedFoodDisplay(item, amount), [item, amount]);
+  const amount = cellFormattingServingLine(item, query);
+  const food = useMemo(() => foodCardText(item, amount), [item, amount]);
 
   return (
     <View style={premiumSearchCardStyles.wrap}>
@@ -239,7 +239,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
   const isNoResults = Boolean(query?.trim());
   const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
 
-  const accentColor = () => c.purple || brandGradients.orangePurple[1];
+  const accentColor = () => c.purple || brandColors.orangePurple[1];
 
   return (
     <View style={empty.wrap}>
@@ -286,7 +286,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
               {isNoResults ? 'NO MATCHES' : 'QUICK PICKS'}
             </Text>
 
-            <BrandGradientStrokeText
+            <OutlinedColorText
               fontSize={isNoResults ? 18 : 22}
               fontWeight="800"
               fillColor={titleFill}
@@ -294,7 +294,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
               style={empty.title}
             >
               {isNoResults ? `Nothing for "${query}"` : 'What are you eating?'}
-            </BrandGradientStrokeText>
+            </OutlinedColorText>
 
             <Text style={[empty.subtitle, { color: subColor }]}>
               {isNoResults

@@ -3,10 +3,10 @@ import {
   isPersonalDataLookup,
   hasExplicitWebIntent,
   isWebAnswerFollowUp,
-} from '../../ai-coach/logic/chat-api/shouldUseWebSearch';
+} from '../../ai-coach/internet-lookup/shouldLookUpOnInternet';
 
-describe('shouldUseWebSearch routing', () => {
-  it('routes pizza-on-cut web questions when user says on the web', () => {
+describe('shouldLookUpOnInternet routing', () => {
+  it('screenNames pizza-on-cut web questions when user says on the web', () => {
     const msg =
       'Look up on the web, can I have pizza during a cut if I hit my calories and protein?';
     expect(hasExplicitWebIntent(msg)).toBe(true);

@@ -34,7 +34,7 @@ function registerDevRoutes(app, deps) {
  * Test a single API (DeepSeek or Claude) against all test cases
  */
   async function runSingleAPITest(apiName, testCases) {
-  const { estimateCost } = require('../config/apiCosts');
+  const { estimateCost } = require('../cloudConnection/apiCosts');
   const results = [];
   
   const resolveKeyDirect = (name) => {
@@ -68,7 +68,7 @@ function registerDevRoutes(app, deps) {
       apiName,
       response: null,
       speed_ms: 0,
-      tokens: { input: 0, output: 0 },
+      reportColors: { input: 0, output: 0 },
       cost: '$0.00',
       cost_usd: 0,
       quality_score: null,
@@ -116,7 +116,7 @@ Your response should be:
 
       testResult.response = response;
       testResult.speed_ms = Date.now() - startTime;
-      testResult.tokens = { input: inputTokens, output: outputTokens };
+      testResult.reportColors = { input: inputTokens, output: outputTokens };
       
       // Calculate cost
       const pricingApiName = apiName === 'claude' ? 'anthropic' : apiName;
@@ -203,7 +203,7 @@ app.get('/api/test-deepseek-vs-claude', devOnlyRoute, async (req, res) => {
     for (let i = 0; i < TEST_CASES.length; i++) {
       const deepseekResult = deepseekResults[i];
       const claudeResult = claudeResults[i];
-      const { estimateCost } = require('../config/apiCosts');
+      const { estimateCost } = require('../cloudConnection/apiCosts');
 
       // Determine winners for each metric
       const speedWinner = deepseekResult.speed_ms < claudeResult.speed_ms ? 'deepseek' : 'claude';
@@ -216,7 +216,7 @@ app.get('/api/test-deepseek-vs-claude', devOnlyRoute, async (req, res) => {
         deepseek: {
           response: deepseekResult.response?.substring(0, 200) + '...',
           speed_ms: deepseekResult.speed_ms,
-          tokens: deepseekResult.tokens,
+          reportColors: deepseekResult.reportColors,
           cost: deepseekResult.cost,
           quality_score: deepseekResult.quality_score,
           toolCalls: deepseekResult.toolCalls,
@@ -224,7 +224,7 @@ app.get('/api/test-deepseek-vs-claude', devOnlyRoute, async (req, res) => {
         claude: {
           response: claudeResult.response?.substring(0, 200) + '...',
           speed_ms: claudeResult.speed_ms,
-          tokens: claudeResult.tokens,
+          reportColors: claudeResult.reportColors,
           cost: claudeResult.cost,
           quality_score: claudeResult.quality_score,
           toolCalls: claudeResult.toolCalls,
@@ -256,7 +256,7 @@ app.get('/api/test-deepseek-vs-claude', devOnlyRoute, async (req, res) => {
         ? `DeepSeek is ${costSavings}% cheaper and quality is comparable (${deepseekAvgQuality}/10 vs ${claudeAvgQuality}/10).`
         : claudeTotalCost > 0
           ? `Claude quality: ${claudeAvgQuality}/10 vs DeepSeek: ${deepseekAvgQuality}/10. Cost DeepSeek: $${(deepseekTotalCost / TEST_CASES.length).toFixed(6)} per test vs Claude: $${(claudeTotalCost / TEST_CASES.length).toFixed(6)} per test.`
-          : `Claude cost could not be estimated; verify pricing config and re-run.`;
+          : `Claude cost could not be estimated; verify pricing cloudConnection and re-run.`;
 
     return res.json({
       timestamp: new Date().toISOString(),

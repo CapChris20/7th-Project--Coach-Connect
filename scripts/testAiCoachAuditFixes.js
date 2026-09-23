@@ -32,7 +32,7 @@ function read(relPath) {
 
 // ─── FIX 1 & 2: static imports ───────────────────────────────────────────────
 (function testStaticImports() {
-  const chatScreen = read('src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx');
+  const chatScreen = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
   assert(
     'FIX 1: ChatWithCoachScreen imports logger',
     /import\s+logger\s+from\s+['"]\.\.\/\.\.\/shared\/services\/logger['"]/.test(chatScreen),
@@ -42,7 +42,7 @@ function read(relPath) {
     chatScreen.includes('logger.debug(') && !chatScreen.includes('logger is not defined'),
   );
 
-  const toolExecutor = read('src/ai-coach/logic/tools/runCoachAction.js');
+  const toolExecutor = read('src/ai-coach/coach-actions/carryOutAction.js');
   assert(
     'FIX 2: toolExecutor imports getDoc',
     /import\s*\{[^}]*\bgetDoc\b[^}]*\}\s*from\s*['"]firebase\/firestore['"]/.test(toolExecutor),
@@ -95,7 +95,7 @@ function read(relPath) {
     /buildCoachPromptForUser\(\s*targetUid,\s*userProfile,\s*lastUserMsg,\s*options/.test(indexSrc),
   );
 
-  const clientRouting = require(path.join(ROOT, 'src/ai-coach/logic/context/buildCoachPromptData.js'));
+  const clientRouting = require(path.join(ROOT, 'src/ai-coach/coach-knowledge/decideWhatCoachShouldKnow.js'));
   const serverRouting = require(path.join(ROOT, 'server/lib/coachPersonalDataRouting.js'));
   assert(
     'FIX 3: client sends personal data for "what did I log today"',

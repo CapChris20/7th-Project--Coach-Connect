@@ -22,13 +22,13 @@ const {
   userWantsSourceQuotes,
 } = require('../coachWebSearch');
 const { mergeCoachToolCalls } = require('../inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../../src/ai-coach/logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../../src/ai-coach/coach-actions/shouldAskFirst');
 const { sanitizeCoachImageAttachments, runCoachVisionTurn } = require('../coachVision');
-const { parseCoachToolCalls, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/tools/parseCoachToolCalls');
+const { readActionsFromReply, stripCoachToolJsonFromReply: stripToolJsonFromReply } = require('../../../src/ai-coach/coach-actions/readActionsFromReply');
 const {
   buildCoachSystemPrompt,
   buildWeeklyContextSystemPrompt,
-  formatWorkoutPlanSection,
+  cellFormattingWorkoutPlanSection,
 } = require('../coachPrompt/coachPromptBuilders');
 const {
   resolveDeepSeekKey,
@@ -66,7 +66,7 @@ function isAiCoachTestOrDev(req) {
 }
 
 function parseToolCalls(aiResponse) {
-  return parseCoachToolCalls(aiResponse);
+  return readActionsFromReply(aiResponse);
 }
 
 function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
@@ -203,11 +203,11 @@ async function buildCoachPromptForUser(
     systemPrompt = buildCoachSystemPrompt(userProfile, { generalMode: false });
     systemPrompt += WEEKLY_FETCH_FAILURE_NOTE;
     if (workoutPlanCtx) {
-      systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
+      systemPrompt += cellFormattingWorkoutPlanSection(workoutPlanCtx);
     }
   }
   } else if (workoutPlanCtx) {
-    systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
+    systemPrompt += cellFormattingWorkoutPlanSection(workoutPlanCtx);
   }
 
   return { systemPrompt, weeklyContext, usedWeeklyContext };

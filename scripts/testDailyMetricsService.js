@@ -7,7 +7,7 @@ const {
   parseDailyMetricsFromSnapshots,
   trackingMirrorFromLogs,
   buildWorkoutLogHydration,
-} = require('../src/metrics/daily-metrics/parseUserDailyMetrics.js');
+} = require('../src/daily-stats/readDailyStats.js');
 
 function mockSnap(data) {
   if (data == null) return { exists: () => false, data: () => ({}) };

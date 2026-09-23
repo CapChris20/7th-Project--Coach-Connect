@@ -1,8 +1,8 @@
 /**
  * Barcode result guards + multi-source merge (prefer label-serving FatSecret/OFF over USDA per-100g).
  */
-const { finalizeBarcodeFood } = require('../../src/nutrition/food-details/calculateServingSize');
-const { isUsableBarcodeFood } = require('../../src/nutrition/barcode/validateBarcodeFood');
+const { finalizeBarcodeFood } = require('../../src/nutrition/food-details/servingSizeMath');
+const { isUsableBarcodeFood } = require('../../src/nutrition/barcode/rejectBadBarcodeResults');
 
 const LIQUID_UNITS = new Set(['ml', 'milliliter', 'milliliters', 'fl oz', 'fluid ounce']);
 

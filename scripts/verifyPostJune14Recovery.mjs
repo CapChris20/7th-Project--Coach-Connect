@@ -74,15 +74,15 @@ function mustInclude(rel, patterns, label) {
 // ─── 1. AI Coach: Metro [AI Coach Chat] logging ─────────────────────────────
 console.log('\n── AI Coach (logging + UI) ──\n');
 
-mustExist('src/ai-coach/chat-ui/lib/coachConversationDebug.js');
+mustExist('src/ai-coach/reply-display/developerChatLog.js');
 mustInclude(
-  'src/ai-coach/chat-ui/lib/coachConversationDebug.js',
+  'src/ai-coach/reply-display/developerChatLog.js',
   ['[AI Coach Chat]', 'logCoachUserMessage', 'logCoachTurnBundle', '__DEV__'],
   'coachConversationDebug exports dev-only Metro logs',
 );
 
 mustInclude(
-  'src/ai-coach/chat-ui/components/CoachFormattedReply.jsx',
+  'src/ai-coach/reply-display/CoachReplyText.jsx',
   ["from '../lib/formatCoachMessageText'", 'stripInlineWebCitations'],
   'CoachFormattedReply imports stripInlineWebCitations',
 );
@@ -94,7 +94,7 @@ mustInclude(
 );
 
 mustInclude(
-  'src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx',
+  'src/ai-coach/conversation/CoachConversationScreen.jsx',
   [
     "from '../lib/coachConversationDebug'",
     'logCoachUserMessage(',
@@ -111,13 +111,13 @@ mustInclude(
 console.log('\n── AI Coach (web search routing) ──\n');
 
 mustInclude(
-  'src/for-both/api/baseUrl.js',
+  'src/for-both/online-connection/whereToConnect.js',
   ['getAICoachApiBases', 'push(PRODUCTION_API_BASE_URL)'],
   'AI Coach API tries Cloud Run before local :4000',
 );
 
 mustInclude(
-  'src/ai-coach/logic/chat-api/sendCoachMessageToServer.js',
+  'src/ai-coach/conversation/sendMessageToCoach.js',
   ['getAICoachApiBases', 'web-search-failed', '/api/ai-coach/web-search'],
   'Client retries production when local web search fails',
 );
@@ -125,7 +125,7 @@ mustInclude(
 try {
   const { pathToFileURL } = await import('node:url');
   const mod = await import(
-    pathToFileURL(path.join(ROOT, 'src/ai-coach/logic/chat-api/shouldUseWebSearch.js')).href,
+    pathToFileURL(path.join(ROOT, 'src/ai-coach/internet-lookup/shouldLookUpOnInternet.js')).href,
   );
   const { shouldUseWebAuto, isWebAnswerFollowUp } = mod;
   const proteinMsg =
@@ -168,15 +168,15 @@ try {
 // ─── 3. Nutrition (daily facts, logging, search paths) ────────────────────────
 console.log('\n── Nutrition ──\n');
 
-mustExist('src/nutrition/food-details/nutritionFactsModel.js');
+mustExist('src/nutrition/food-details/nutritionFactsData.js');
 mustInclude(
-  'src/nutrition/food-details/nutritionFactsModel.js',
+  'src/nutrition/food-details/nutritionFactsData.js',
   ['buildDailyNutritionFactsCardData', 'calculateDailyNutrientTotals'],
   'Daily nutrition facts model',
 );
 
 mustInclude(
-  'src/nutrition/daily-log/NutritionContainer.jsx',
+  'src/nutrition/daily-log/DailyLogContent.jsx',
   [
     "from '../food-details/NutritionFactsScreen'",
     "from '../food-search/FoodSearchScreen'",
@@ -187,27 +187,27 @@ mustInclude(
 );
 
 mustInclude(
-  'src/nutrition/daily-log/logFoodToFirestore.js',
+  'src/nutrition/daily-log/saveLoggedFood.js',
   ['Invalid date passed to food log'],
   'Food log rejects NaN-NaN-NaN dates',
 );
 
-mustExist('src/nutrition/barcode/normalizeBarcodeForLookup.js');
-mustExist('src/nutrition/food-details/cleanFoodBrandName.js');
+mustExist('src/nutrition/barcode/fixBarcodeDigits.js');
+mustExist('src/nutrition/food-details/tidyBrandName.js');
 
 // ─── 4. Onboarding + auth paths ─────────────────────────────────────────────
 console.log('\n── Onboarding + auth ──\n');
 
 mustInclude(
-  'src/auth/OnboardingWizardScreen.jsx',
+  'src/login-and-signup/NewUserSetupScreen.jsx',
   ['completeOnboardingClient', 'buildOnboardingUpdatePayload'],
   'OnboardingWizardScreen uses extracted completeOnboardingClient',
 );
 
 mustInclude(
-  'src/app-start/AuthGate.js',
+  'src/app-start/LoginGate.js',
   ['ResetPasswordScreen', 'onForgotPasswordFlowPress'],
-  'Forgot password flow wired in AuthGate',
+  'Forgot password flow wired in LoginGate',
 );
 
 mustInclude(
@@ -219,21 +219,21 @@ mustInclude(
 // ─── 5. Folder-reorg survivors (common June 14 breakages) ─────────────────────
 console.log('\n── Post-reorg imports ──\n');
 
-mustExist('src/for-both/contexts/AIContext.js');
+mustExist('src/for-both/app-wide-settings/AIPermission.js');
 mustInclude(
   'App.js',
-  ['./src/for-both/contexts/AIContext'],
+  ['./src/for-both/app-wide-settings/AIPermission'],
   'App.js imports AIContext from shared/contexts',
 );
 
 mustInclude(
-  'src/ai-coach/chat-ui/chat-thread/ToolConfirmationModal.jsx',
+  'src/ai-coach/conversation/ConfirmActionPopup.jsx',
   ['../tool-modals/'],
   'ToolConfirmationModal uses tool-modals/ folder (not stale toolModals)',
 );
 
 mustInclude(
-  'src/client-app/navigation/clientOverlayScreens.jsx',
+  'src/client-app/navigation/clientExtraScreens.jsx',
   ['__DEV__', 'AICoachTestSuite'],
   'AICoachTestSuite gated behind __DEV__',
 );

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Behavioral tests for workout plan generation session state machine.
- * Mirrors src/workouts/plan-generator/workoutPlanGenerationSession.js in Node
+ * Mirrors src/workouts/create-plan/keepPlanBuildingInBackground.js in Node
  * (in-memory AsyncStorage). Update both if session logic changes.
  *
  * Run: node scripts/testWorkoutPlanGenerationSession.js

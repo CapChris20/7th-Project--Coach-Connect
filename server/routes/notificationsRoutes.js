@@ -5,7 +5,7 @@ const {
   COPY: PUSH_COPY,
   pickRandom: pushPickRandom,
   sub: pushSub,
-  stripNotificationEmoji: pushStripNotificationEmoji,
+  removeEmojiFromAlerts: pushStripNotificationEmoji,
 } = require('../pushHelpers');
 
 function registerNotificationRoutes(app, deps) {
@@ -121,8 +121,8 @@ app.post('/api/notifications/send', verifyFirebaseBearerToken, async (req, res) 
     }
 
     if (!expoPushToken.startsWith('ExponentPushToken[') && !expoPushToken.startsWith('ExpoPushToken[')) {
-      console.warn(`⚠️ Invalid Expo push token format for ${recipientId}`);
-      return res.json({ success: false, message: 'Invalid push token format' });
+      console.warn(`⚠️ Invalid Expo push token cellFormatting for ${recipientId}`);
+      return res.json({ success: false, message: 'Invalid push token cellFormatting' });
     }
 
     const nowMs = Date.now();

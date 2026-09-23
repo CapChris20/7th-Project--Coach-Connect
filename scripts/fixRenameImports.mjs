@@ -41,7 +41,7 @@ const NESTED_REPLACEMENTS = [
   ['../../nutrition/', '../../../nutrition/'],
   ['../../notifications/', '../../../notifications/'],
   ['../../messaging/', '../../../messaging/'],
-  ['../../auth/', '../../../auth/'],
+  ['../../login-and-signup/', '../../../login-and-signup/'],
   ['../../client-app/', '../../../client-app/'],
   ['../../trainer-app/', '../../../trainer-app/'],
   ['../../workouts/', '../../../workouts/'],

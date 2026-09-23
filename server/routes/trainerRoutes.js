@@ -1,6 +1,6 @@
 /** Trainer CRM actions (server-only writes that bypass Firestore rules). */
 const admin = require('firebase-admin');
-const { verifyTrainerCertification } = require('../lib/verifyTrainerCertification');
+const { checkTrainerCertificate } = require('../lib/checkTrainerCertificate');
 
 async function isTrainerOfClient(db, trainerUid, clientUid) {
   if (!trainerUid || !clientUid) return false;
@@ -240,7 +240,7 @@ function registerTrainerRoutes(app, deps) {
         return res.status(400).json({ error: 'imageBase64 or imageUrl is required' });
       }
 
-      const result = await verifyTrainerCertification({
+      const result = await checkTrainerCertificate({
         trainerId,
         trainerName,
         imageBase64,

@@ -1,5 +1,5 @@
 /**
- * AI Coach web-search routing (server). Keep in sync with src/ai-coach/logic/chat-api/shouldUseWebSearch.js.
+ * AI Coach web-search routing (server). Keep in sync with src/ai-coach/internet-lookup/shouldLookUpOnInternet.js.
  */
 const { COACH_WEB_SEARCH_FORMAT } = require('./coachVoice');
 
@@ -526,7 +526,7 @@ function isFitnessNutritionQuery(text) {
     'chicken', 'rice', 'eating', 'food', 'hungry', 'hunger',
     'grams', 'kcal', 'chipotle', 'restaurant', 'menu',
   ];
-  // Short tokens that falsely match inside other words (form⊂information, cut⊂specifically, etc.)
+  // Short reportColors that falsely match inside other words (form⊂incellFormattingion, cut⊂specifically, etc.)
   const shortTokens = ['form', 'pr', 'cut', 'plan', 'log', 'ate', 'eat', 'oz', 'cup', 'back', 'set', 'rep'];
 
   const hit = (k) => {
@@ -535,7 +535,7 @@ function isFitnessNutritionQuery(text) {
   };
 
   if ([...fitness, ...nutrition].some(hit)) return true;
-  // Only count short tokens with word boundaries
+  // Only count short reportColors with word boundaries
   return shortTokens.some(hit);
 }
 

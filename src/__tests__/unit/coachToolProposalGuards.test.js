@@ -1,4 +1,4 @@
-jest.mock('../../ai-coach/logic/tools/runCoachAction.js', () => ({
+jest.mock('../../ai-coach/coach-actions/carryOutAction.js', () => ({
   normalizeToolCall: (raw) => {
     if (!raw) return null;
     const name = raw.name || raw.tool || raw.action;
@@ -56,7 +56,7 @@ const MIXED_PROPOSALS = [
 function runSharedGuardTests(getGuards) {
   const { isValidCoachToolProposal, filterValidCoachToolProposals } = getGuards();
 
-  describe('informational questions reject tool proposals', () => {
+  describe('incellFormattingional questions reject tool proposals', () => {
     it.each(INFORMATIONAL_QUESTIONS)('%s', (userText) => {
       const toolCall = INFORMATIONAL_TOOL_BY_TEXT[userText];
       expect(isValidCoachToolProposal(toolCall, userText)).toBe(false);
@@ -101,7 +101,7 @@ function runSharedGuardTests(getGuards) {
 }
 
 describe('Client coachToolProposalGuards', () => {
-  runSharedGuardTests(() => require('../../ai-coach/logic/tools/shouldShowCoachAction'));
+  runSharedGuardTests(() => require('../../ai-coach/coach-actions/shouldAskFirst'));
 });
 
 describe('Server coachToolProposalGuards', () => {

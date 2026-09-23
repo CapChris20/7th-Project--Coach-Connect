@@ -1,8 +1,8 @@
-import { mergeTrainerClientProfile } from '../../helpers/mergeTrainerClientProfile';
+import { combineTraineeProfile } from '../../helpers/combineTraineeProfile';
 
-describe('mergeTrainerClientProfile', () => {
+describe('combineTraineeProfile', () => {
   it('prefers live users/{uid} weight over stale CRM copy', () => {
-    const merged = mergeTrainerClientProfile(
+    const merged = combineTraineeProfile(
       { id: 'client_a', weight: 170, age: 30 },
       { weight: 152, age: 28 },
     );
@@ -11,25 +11,25 @@ describe('mergeTrainerClientProfile', () => {
   });
 
   it('does not copy one client CRM weight to another user profile', () => {
-    const clientA = mergeTrainerClientProfile({ id: 'a', weight: 170 }, { weight: 145 });
-    const clientB = mergeTrainerClientProfile({ id: 'b', weight: 170 }, { weight: 198 });
+    const clientA = combineTraineeProfile({ id: 'a', weight: 170 }, { weight: 145 });
+    const clientB = combineTraineeProfile({ id: 'b', weight: 170 }, { weight: 198 });
     expect(clientA.weight).toBe(145);
     expect(clientB.weight).toBe(198);
   });
 
   it('falls back to CRM weight when user profile has no weight yet', () => {
-    const merged = mergeTrainerClientProfile({ weight: 170, daysPerWeek: 4 }, {});
+    const merged = combineTraineeProfile({ weight: 170, daysPerWeek: 4 }, {});
     expect(merged.weight).toBe(170);
     expect(merged.daysPerWeek).toBe(4);
   });
 
   it('resolves daysPerWeek from legacy frequency on user doc', () => {
-    const merged = mergeTrainerClientProfile({ daysPerWeek: 5 }, { frequency: 4 });
+    const merged = combineTraineeProfile({ daysPerWeek: 5 }, { frequency: 4 });
     expect(merged.daysPerWeek).toBe(4);
   });
 
   it('keeps CRM-only fields like programName', () => {
-    const merged = mergeTrainerClientProfile(
+    const merged = combineTraineeProfile(
       { programName: 'Hypertrophy Block', weight: 180 },
       { weight: 176 },
     );

@@ -78,7 +78,7 @@ function checkDevBuildWiring(tally) {
   includesAll(readText('app.config.js'), ["'expo-iap'", `bundleIdentifier: '${BUNDLE_ID}'`], 'app.config.js IAP + bundle id', tally);
 
   includesAll(
-    readText('src/subscription/constants.js'),
+    readText('src/trainer-pro-plan/proPlanSwitches.js'),
     [PRODUCT_ID],
     'client product id constant',
     tally,
@@ -96,14 +96,14 @@ function checkDevBuildWiring(tally) {
   );
 
   includesAll(
-    readText('src/subscription/SubscriptionProviderIap.jsx'),
+    readText('src/trainer-pro-plan/ProPlanPurchases.jsx'),
     ['useIAP', 'fetchProducts', 'requestPurchase', PRODUCT_ID, 'verifyAppleSubscriptionOnServer'],
     'SubscriptionProviderIap StoreKit flow',
     tally,
   );
 
   includesAll(
-    readText('src/subscription/constants.js'),
+    readText('src/trainer-pro-plan/proPlanSwitches.js'),
     ['TRAINER_PLATFORM_SUBSCRIPTION_ENABLED', PRODUCT_ID],
     'subscription constants + IAP flag',
     tally,

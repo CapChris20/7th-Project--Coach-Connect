@@ -1,4 +1,4 @@
-describe('accept-client batch linking', () => {
+describe('accept-client batch webLinks', () => {
   it('commits all three surfaces in a single batch', async () => {
     const batchOps = [];
     const batch = {

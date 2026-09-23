@@ -1,4 +1,4 @@
-jest.mock('../../app-start/config', () => ({ db: {} }));
+jest.mock('../../app-start/cloudConnection', () => ({ db: {} }));
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn(() => 'messages'),
@@ -14,11 +14,11 @@ jest.mock('firebase/firestore', () => ({
   doc: jest.fn((_db, _col, id) => ({ id })),
 }));
 
-jest.mock('../../messaging/unreadCountIndex', () => ({
+jest.mock('../../messaging/unreadMessageCounts', () => ({
   clearUnreadForConversation: jest.fn(() => Promise.resolve()),
 }));
 
-import { READ_PAGE_SIZE, markConversationMessagesReadPaginated } from '../../ai-coach/logic/services/markAllMessagesRead';
+import { READ_PAGE_SIZE, markConversationMessagesReadPaginated } from '../../messaging/markMessagesRead';
 import { getDocs, writeBatch } from 'firebase/firestore';
 
 function makeSnap(docs) {

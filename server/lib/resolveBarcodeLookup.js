@@ -2,15 +2,15 @@
  * Shared barcode resolution: USDA + FatSecret + OFF → merge → Serper → validate.
  */
 const axios = require('axios');
-const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/fixFoodNutritionNumbers');
-const { finalizeBarcodeFood } = require('../../src/nutrition/food-details/calculateServingSize');
-const { servingUnitGuard, usdaDescriptionLooksLiquid } = require('../../src/nutrition/food-search/normalizeFoodQuery');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/cleanFoodBrandName');
+const { normalizeOpenFoodFactsProduct } = require('../../src/nutrition/food-details/fixPackageAmounts');
+const { finalizeBarcodeFood } = require('../../src/nutrition/food-details/servingSizeMath');
+const { servingUnitGuard, usdaDescriptionLooksLiquid } = require('../../src/nutrition/food-search/cleanSearchText');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/tidyBrandName');
 const { pickBestBarcodeCandidate } = require('./barcodeMerge');
 const { lookupBarcodeFatSecret } = require('./fatSecretClient');
 const { lookupBarcodeWithSerper, barcodeGtinVariants } = require('./barcodeSerperLookup');
 const { variableWeightBarcodeHint } = require('./variableWeightBarcode');
-const { isUsableBarcodeFood, barcodeNotFoundPayload } = require('../../src/nutrition/barcode/validateBarcodeFood');
+const { isUsableBarcodeFood, barcodeNotFoundPayload } = require('../../src/nutrition/barcode/rejectBadBarcodeResults');
 
 function normalizeGtinDigits(barcode) {
   const d = String(barcode || '').replace(/\D/g, '');

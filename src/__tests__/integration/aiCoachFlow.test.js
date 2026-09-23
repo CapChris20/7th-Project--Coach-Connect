@@ -1,15 +1,15 @@
 const {
-  parseCoachToolCalls,
+  readActionsFromReply,
   stripCoachToolJsonFromReply,
-} = require('../../ai-coach/tools/parseCoachToolCalls');
+} = require('../../ai-coach/coach-actions/readActionsFromReply');
 const {
   shouldIncludeWeeklyContextInCoachPrompt,
-} = require('../../ai-coach/logic/context/buildCoachPromptData');
+} = require('../../ai-coach/coach-knowledge/decideWhatCoachShouldKnow');
 
 describe('ai coach flow integration', () => {
   test('parses tool payload and keeps readable assistant text', () => {
     const reply = `Great, I can do that.\n{"toolCalls":[{"name":"logWater","params":{"amountOz":32}}]}`;
-    const calls = parseCoachToolCalls(reply);
+    const calls = readActionsFromReply(reply);
     const text = stripCoachToolJsonFromReply(reply);
     expect(calls[0].name).toBe('logWater');
     expect(text).toBe('Great, I can do that.');
@@ -20,7 +20,7 @@ describe('ai coach flow integration', () => {
     expect(stripCoachToolJsonFromReply(reply)).toBe('Protein helps recovery.');
   });
 
-  test('routes personal-history prompts to weekly context path', () => {
+  test('screenNames personal-history prompts to weekly context path', () => {
     expect(shouldIncludeWeeklyContextInCoachPrompt('How am I doing this week?')).toBe(true);
   });
 });

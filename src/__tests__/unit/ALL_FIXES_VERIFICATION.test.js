@@ -3,11 +3,11 @@
  */
 describe('ALL_FIXES_VERIFICATION', () => {
   const fixSuites = [
-    'TrainerApp.unreadListener.test.js',
-    'ErrorBoundary.test.js',
-    'AuthGate.logout.test.js',
-    'markAllMessagesRead.pagination.test.js',
-    'ScheduleTrainingSessionScreen.listeners.test.js',
+    'TrainerAppStart.unreadListener.test.js',
+    'CrashCatcher.test.js',
+    'LoginGate.logout.test.js',
+    'markMessagesRead.pagination.test.js',
+    'ScheduleSessionScreen.listeners.test.js',
     'repo.cleanliness.test.js',
   ];
 

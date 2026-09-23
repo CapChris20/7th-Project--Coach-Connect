@@ -15,40 +15,40 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as XLSX from 'xlsx';
-import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
-import ChatWithTraineeScreen from '../../messaging/ChatThreadScreen';
-import MyMessagesScreen from '../../messaging/MyMessagesScreen';
-import NewTraineeRequestsScreen from '../client-requests/NewTraineeRequestsScreen';
-import ClientsListScreen from '../clients-list/MyTraineesScreen';
-import DashboardContent from '../dashboard/TrainerDashboardContent';
-import MyProgressPhotosScreen from '../../for-both/screens/MyProgressPhotosScreen';
-import BrowseSavedWorkoutsScreen from '../../for-both/screens/BrowseSavedWorkoutsScreen';
-import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
-import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
-import PdfViewerModal from '../../for-both/components/notes-files/PdfViewerModal';
-import SpreadsheetEditorModal from '../documents/SpreadsheetEditorModal';
-import DocumentEditorModal from '../documents/DocumentEditorModal';
-import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../dashboard/trainerDashboardUi';
-import { useTrainerAppShell } from './TrainerAppShellContext';
-import TrainerSubscriptionGate from '../../subscription/TrainerSubscriptionGate';
-import SubscriptionTrialBanner from '../../subscription/SubscriptionTrialBanner';
+import * as XLSX from 'spreadsheetReader';
+import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import BottomMenuBar from '../../navigation/BottomMenuBar';
+import ChatWithTraineeScreen from '../../messaging/ChatScreen';
+import InboxScreen from '../../messaging/InboxScreen';
+import NewTraineeRequestsScreen from '../new-requests/NewTraineeRequestsScreen';
+import ClientsListScreen from '../my-trainees/MyTraineesScreen';
+import DashboardContent from '../home/TrainerHomeContent';
+import MyProgressPhotosScreen from '../../for-both/photo-gallery/MyProgressPhotosScreen';
+import SavedWorkoutsScreen from '../../for-both/workout-plans/SavedWorkoutsScreen';
+import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
+import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
+import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
+import SpreadsheetEditor from '../documents/SpreadsheetEditor';
+import DocumentEditor from '../documents/DocumentEditor';
+import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../home/trainerHomePieces';
+import { useTrainerAppStartShell } from './TrainerOpenScreenTracker';
+import ProAccessCheck from '../../trainer-pro-plan/ProAccessCheck';
+import FreeTrialBanner from '../../trainer-pro-plan/FreeTrialBanner';
 
 export default function TrainerMainScreen() {
-  const s = useTrainerAppShell();
+  const s = useTrainerAppStartShell();
   return (
-    <TrainerSubscriptionGate
+    <ProAccessCheck
       onOpenSettings={s.openSettings}
       onOpenTerms={s.openTerms}
       onOpenPrivacy={s.openPrivacy}
     >
       <LinearGradient colors={s.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
-        <SubscriptionTrialBanner />
+        <FreeTrialBanner />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
         <StatusBar barStyle={s.isDark ? 'light-content' : 'dark-content'} />
         {!s.showWorkoutGenerator &&
@@ -59,7 +59,7 @@ export default function TrainerMainScreen() {
           !s.showClientsList &&
           !s.showAIWorkouts &&
           !s.showPhotoGallery && (
-          <CoachConnectHeader
+          <TopHeader
             isDark={s.isDark}
             skipTopSafeInset
             onBack={s.showClientsList ? () => s.setShowClientsList(false) : undefined}
@@ -83,7 +83,7 @@ export default function TrainerMainScreen() {
         )}
         {!s.showTrainerMessaging && s.showConversationsList && (
           <View style={{ flex: 1 }}>
-            <MyMessagesScreen
+            <InboxScreen
               embedInLayout
               onClose={() => s.setShowConversationsList(false)}
               onSelectConversation={(c, o) => { s.setSelectedConversation(c); s.setSelectedTrainer(o); s.setShowConversationsList(false); s.setShowTrainerMessaging(true); }}
@@ -211,7 +211,7 @@ export default function TrainerMainScreen() {
 
         {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showAIWorkouts && s.day6Client?.id && !s.showWorkoutGenerator && !s.showPlanViewer && (
           <>
-            <CoachConnectHeader
+            <TopHeader
               title=""
               isDark={s.isDark}
               skipTopSafeInset
@@ -220,7 +220,7 @@ export default function TrainerMainScreen() {
               onSettingsPress={() => s.openSettings()}
             />
             <View style={{ flex: 1 }}>
-          <BrowseSavedWorkoutsScreen
+          <SavedWorkoutsScreen
             key={`aiwp-${s.day6Client.id}-${s.aiWorkoutsListKey}`}
             embedInLayout
             client={s.day6Client}
@@ -260,7 +260,7 @@ export default function TrainerMainScreen() {
         )}
 
         {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showWorkoutGenerator && s.generatorClient?.id && (
-          <WorkoutPlanGeneratorScreen
+          <CreateWorkoutPlanScreen
             userId={s.generatorClient.id}
             coachCanGeneratePlans
             hideBottomNav={true}
@@ -278,7 +278,7 @@ export default function TrainerMainScreen() {
         )}
 
         {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showPlanViewer && s.viewingPlan && (
-          <WorkoutPlanGeneratorScreen
+          <CreateWorkoutPlanScreen
             userId={s.day6Client?.id}
             plan={s.viewingPlan}
             readOnly={true}
@@ -300,7 +300,7 @@ export default function TrainerMainScreen() {
           !s.showPlanViewer &&
           !s.showTrainerMessaging && (
           <ShellBottomNavAnchor>
-            <BottomNavBar
+            <BottomMenuBar
               onHomePress={s.handleHomePress}
               onPlusPress={s.handlePlusPress}
               onVoicePress={s.openVoiceAI}
@@ -311,10 +311,10 @@ export default function TrainerMainScreen() {
           </ShellBottomNavAnchor>
         )}
 
-        <AddNotesFilesModal
-          visible={s.showAddNotesFilesModal}
-          onClose={() => { s.setShowAddNotesFilesModal(false); s.setAddNotesFilesClientId(null); }}
-          onAdded={() => { s.setShowAddNotesFilesModal(false); s.setAddNotesFilesClientId(null); s.refreshClients(); }}
+        <AddFilePopup
+          visible={s.showAddFilePopup}
+          onClose={() => { s.setShowAddFilePopup(false); s.setAddNotesFilesClientId(null); }}
+          onAdded={() => { s.setShowAddFilePopup(false); s.setAddNotesFilesClientId(null); s.refreshClients(); }}
           isDark={s.isDark}
           clientId={s.addNotesFilesClientId}
           addedBy="trainer"
@@ -324,7 +324,7 @@ export default function TrainerMainScreen() {
             try {
               const result = await DocumentPicker.getDocumentAsync({
                 type: [
-                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  'application/vnd.openxmlcellFormattings-officedocument.spreadsheetml.sheet',
                   'text/csv',
                 ],
                 copyToCacheDirectory: true,
@@ -353,14 +353,14 @@ export default function TrainerMainScreen() {
           }}
         />
         
-        <PdfViewerModal
+        <PdfViewer
           visible={s.pdfViewer.visible}
           url={s.pdfViewer.url}
           name={s.pdfViewer.name}
           isDark={s.isDark}
           onClose={() => s.setPdfViewer({ visible: false, url: null, name: null })}
         />
-        <SpreadsheetEditorModal
+        <SpreadsheetEditor
           visible={s.spreadsheetEditor.visible}
           trainerId={s.user?.uid}
           documentId={s.spreadsheetEditor.documentId}
@@ -374,7 +374,7 @@ export default function TrainerMainScreen() {
           }}
           trainerNavChrome={s.getTrainerEditorNavChrome()}
         />
-        <DocumentEditorModal
+        <DocumentEditor
           visible={s.documentEditor.visible}
           trainerId={s.user?.uid}
           documentId={s.documentEditor.documentId}
@@ -388,6 +388,6 @@ export default function TrainerMainScreen() {
         />
       </SafeAreaView>
     </LinearGradient>
-    </TrainerSubscriptionGate>
+    </ProAccessCheck>
   );
 }

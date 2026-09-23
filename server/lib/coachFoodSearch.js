@@ -3,7 +3,7 @@
 const admin = require('firebase-admin');
 const { normalizeSearchKey, searchResultsDocId } = require('../nutritionSearchHelpers');
 const { searchFoodWithSerper } = require('./serperMenuFoodSearch');
-const { FOOD_SEARCH_PIPELINE_VERSION } = require('../routes/foodRoutes');
+const { FOOD_SEARCH_PIPELINE_VERSION } = require('../screenNames/foodRoutes');
 
 const COACH_FOOD_SEARCH_APPEND = `
 
@@ -14,7 +14,7 @@ The user asked about food nutrition facts. You may have APP_FOOD_SEARCH_RESULTS 
 - If no results matched: give a cautious labeled estimate and suggest confirming in the Nutrition tab search.
 Never confuse this with Perplexity web search — this is the app's food lookup system.`;
 
-function formatCoachFoodRow(r) {
+function cellFormattingCoachFoodRow(r) {
   const calories = Math.round(Number(r.nf_calories ?? r.calories ?? 0));
   if (!Number.isFinite(calories) || calories <= 0) return null;
   return {
@@ -44,7 +44,7 @@ async function fetchCoachFoodSearchTopResults(query, limit = 3) {
           const results = data.results;
           if (Array.isArray(results) && results.length) {
             return results
-              .map(formatCoachFoodRow)
+              .map(cellFormattingCoachFoodRow)
               .filter(Boolean)
               .slice(0, limit);
           }
@@ -57,7 +57,7 @@ async function fetchCoachFoodSearchTopResults(query, limit = 3) {
 
   const serperRows = await searchFoodWithSerper(q);
   return serperRows
-    .map(formatCoachFoodRow)
+    .map(cellFormattingCoachFoodRow)
     .filter(Boolean)
     .slice(0, limit);
 }

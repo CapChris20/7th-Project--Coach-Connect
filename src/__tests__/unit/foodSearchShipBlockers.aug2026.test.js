@@ -14,31 +14,31 @@ const {
   isPlausibleNutritionRow,
   dedupeFoodRows,
   applyFoodCardPresentation,
-} = require('../../nutrition/food-search/cleanFoodCardLabels');
+} = require('../../nutrition/food-search/tidyFoodTitles');
 const {
   servingConflictsWithFood,
   resolveFoodServingLabel,
   isWeakServingLabel,
   looksLikeMultiBreadOrder,
-} = require('../../nutrition/food-search/guessServingSize');
+} = require('../../nutrition/food-search/guessServingLabel');
 const {
   isPlausibleRestaurantNutritionRow,
   hasImplausibleZeroMacros,
   filterUsableSerperRows,
   rankSerperFoodResultRows,
   scoreSerperFoodResultRow,
-} = require('../../nutrition/food-search/isReliableRestaurantFood');
+} = require('../../nutrition/food-search/trustRestaurantResult');
 const {
   filterFoodSearchRows,
   scoreFoodSearchRelevance,
   isMenuStyleQuery,
   hasUnrequestedFoodFamilyMismatch,
-} = require('../../nutrition/food-search/sortBestFoodMatches');
-const { lookupTrustedFoods } = require('../../nutrition/food-search/trustedFoodCatalog');
-const { makeReadableFoodTitle } = require('../../nutrition/food-search/makeReadableFoodTitle');
+} = require('../../nutrition/food-search/rankFoodResults');
+const { lookupTrustedFoods } = require('../../nutrition/food-search/knownRestaurantFoods');
+const { readableFoodTitle } = require('../../nutrition/food-search/readableFoodTitle');
 const {
   mapNutritionSearchToFoodRows,
-} = require('../../nutrition/food-search/mergeFoodNutritionSources');
+} = require('../../nutrition/food-search/combineFoodSources');
 
 function row(partial) {
   return {
@@ -80,8 +80,8 @@ describe('SHIP: junk / tracker titles never win the card', () => {
     expect(cleaned.toLowerCase()).not.toMatch(/myfitnesspal|million foods/);
   });
 
-  test('makeReadableFoodTitle rewrites junk brand pages to the query', () => {
-    const { name } = makeReadableFoodTitle({
+  test('readableFoodTitle rewrites junk brand pages to the query', () => {
+    const { name } = readableFoodTitle({
       name: 'CalorieKing Food Search Results Page',
       brand: 'CalorieKing',
       userQuery: 'five guys little cheeseburger',

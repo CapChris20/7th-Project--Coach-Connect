@@ -8,8 +8,8 @@
  *   node server/scripts/seedUserDoc.js SPHkiuTpEbX85ek8rgzLODpuF0r1 "Cade Cunnignham"
  */
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
-require('dotenv').config();
+require('dotenv').cloudConnection({ path: path.join(__dirname, '..', '..', '.env') });
+require('dotenv').cloudConnection();
 
 const admin = require('firebase-admin');
 

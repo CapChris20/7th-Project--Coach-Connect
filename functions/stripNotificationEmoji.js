@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Same as server/stripNotificationEmoji.js — keep in sync when changing rules.
+ * Same as server/removeEmojiFromAlerts.js — keep in sync when changing rules.
  */
-function stripNotificationEmoji(input) {
+function removeEmojiFromAlerts(input) {
   let s = String(input ?? '');
   if (!s) return '';
 
@@ -19,4 +19,4 @@ function stripNotificationEmoji(input) {
   return s;
 }
 
-module.exports = { stripNotificationEmoji };
+module.exports = { removeEmojiFromAlerts };

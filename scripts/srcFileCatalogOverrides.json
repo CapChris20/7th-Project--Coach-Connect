@@ -3,208 +3,304 @@
     "Animated loading spinner (five bouncing dots) shown while async work completes.",
     "Used as a lightweight loading indicator anywhere the app needs a visual wait state."
   ],
-  "ai-coach/logic/chat-api/sendCoachMessageToServer.js": [
-    "Client-side HTTP client for the AI coach chat API — sends messages, handles retries, and parses server responses.",
-    "Called from ChatWithCoachScreen; routes to your Cloud Run backend, not directly to DeepSeek."
+  "ai-coach/conversation/sendMessageToCoach.js": [
+    "Sends what you typed to the Coach Connect server and brings back the coach’s reply (with retries if the network fails).",
+    "Used by the coach conversation screen — talks to your server, not directly to the AI model."
   ],
-  "ai-coach/logic/services/markAllMessagesRead.js": [
+  "messaging/markMessagesRead.js": [
     "Marks all unread trainer/client messages as read in Firestore when the user opens the inbox.",
     "Prevents stale unread badges after the user views their conversations."
   ],
-  "ai-coach/logic/tools/cleanupToolParams.js": [
+  "ai-coach/coach-actions/cleanUpActionDetails.js": [
     "Sanitizes and normalizes parameters on AI coach tool calls before execution (strips junk, fixes types).",
     "Runs in the tool pipeline so bad model output does not crash Firestore writes."
   ],
-  "ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx": [
-    "The main AI Coach chat screen — message thread, composer, photo attach, voice input, and tool confirmations.",
-    "Sends messages to the server, saves history to Firestore, and opens modals when the coach wants to log food, water, sessions, etc."
+  "ai-coach/conversation/CoachConversationScreen.jsx": [
+    "The screen where you and the AI Coach text back and forth (message bubbles, type box, send, attach photo).",
+    "Sends what you type to the Coach Connect server, saves the chat, and opens confirm popups when the coach wants to log food, water, sessions, etc."
   ],
-  "ai-coach/chat-ui/chat-thread/CoachWebSourceCards.jsx": [
+  "ai-coach/conversation/SourceLinkCards.jsx": [
     "Renders collapsible citation cards under coach replies that used web search.",
     "Each card links to the source URL so users can verify nutrition or fitness claims."
   ],
-  "ai-coach/chat-ui/components/CoachFormattedReply.jsx": [
+  "ai-coach/reply-display/CoachReplyText.jsx": [
     "Renders coach text replies with markdown formatting (bold, lists, links) and strips hidden tool-call JSON.",
     "Sits in the message bubble so users see clean prose instead of raw model output."
   ],
-  "ai-coach/chat-ui/components/CoachWebSearchReply.jsx": [
-    "Special renderer for coach answers that came from web search — preserves headings and structured nutrition info.",
-    "Used instead of plain markdown when the reply includes search-sourced facts."
+  "ai-coach/reply-display/InternetAnswerReply.jsx": [
+    "How a coach answer looks when it came from an internet lookup (clear headings and structured text).",
+    "Shown inside the conversation bubble instead of plain text for those replies."
   ],
-  "ai-coach/chat-ui/lib/formatCoachMessageText.js": [
+  "ai-coach/reply-display/copyableReplyText.js": [
     "Copy/paste helpers for coach messages — long-press to copy plain text from a reply.",
     "Shared between ChatWithCoachScreen and CoachPasteSheet."
   ],
-  "ai-coach/chat-ui/lib/coachMarkdownStyles.js": [
+  "ai-coach/reply-display/replyTextStyles.js": [
     "StyleSheet rules for rendering markdown inside coach bubbles (headings, code, links, citations).",
     "Also turns inline [Source Name] tags into tappable citation pills."
   ],
-  "ai-coach/chat-ui/tool-modals/toolModalHelpers.js": [
+  "ai-coach/confirm-popups/sharedPopupParts.js": [
     "Shared building blocks for all coach tool modals: title row, confirm/cancel buttons, detail rows, colors.",
     "Not a modal itself — imported by LogWaterIntakeSheet, BookTraineeSessionSheet, etc. so they look consistent."
   ],
-  "app-start/AuthGate.js": [
-    "Top-level auth router: listens to Firebase auth, shows splash/login/signup/forgot-password, checks onboarding, then mounts TrainerApp or ClientApp by role inside SubscriptionProvider.",
-    "Also clears coach chat/local caches and push tokens on logout and flushes pending onboarding sync — this is the real app entry after Expo loads."
+  "app-start/LoginGate.js": [
+    "The real front door of the app: watches who is signed in, shows login/onboarding if needed, then opens the trainee app or trainer app.",
+    "Also clears local data on logout. This is what runs after the app finishes launching."
   ],
-  "nutrition/settings/NutritionSettingsScreen.js": [
+  "nutrition/targets/NutritionSettingsScreen.js": [
     "Settings screen to edit daily calorie goal, macro split, and nutrition preferences after initial onboarding.",
     "Changes here update what the daily log rings and AI coach context use as targets."
   ],
-  "auth/detectUserRole.js": [
+  "login-and-signup/decideTraineeOrTrainer.js": [
     "Helper functions for AuthGate: normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser.",
     "Exported for unit tests in authGate.test.js — not UI, just boolean routing decisions."
   ],
-  "auth/normalizeOnboardingRole.js": [
+  "login-and-signup/cleanUpRoleName.js": [
     "Normalizes whether the user chose client or trainer during onboarding into values AuthGate expects.",
     "Prevents role string mismatches ('Client' vs 'client') from routing to the wrong app shell."
   ],
-  "auth/services/sendPasswordResetEmail.js": [
+  "login-and-signup/resetPasswordByEmail.js": [
     "Thin wrapper that triggers password-reset email via Firebase or the backend API.",
     "Called from ForgotPasswordFlow screens when the user submits their email."
   ],
-  "client-app/dashboard/PremiumStatsSection.jsx": [
+  "client-app/home/TodayStatsCards.jsx": [
     "Dashboard grid of premium stat cards (workouts, nutrition, hydration, sleep) on the client home/dashboard.",
     "Wraps each stat in gradient borders and pulls live values from daily metrics hooks."
   ],
-  "client-app/navigation/ClientAppShellContext.jsx": [
+  "client-app/navigation/ClientOpenScreenTracker.jsx": [
     "React context holding client shell state: which overlay screen is open, back handlers, and tab visibility.",
     "ClientMainScreen and overlay screens read this instead of prop-drilling navigation state."
   ],
-  "client-app/navigation/ClientShellBottomNav.jsx": [
+  "client-app/navigation/ClientBottomMenu.jsx": [
     "Floating bottom navigation bar on client stack screens (Profile, Settings, etc.) when not on the main tab bar.",
     "Lets users jump back to Home or Coach without losing their place in a sub-screen."
   ],
-  "client-app/navigation/clientOverlayScreens.jsx": [
+  "client-app/navigation/clientExtraScreens.jsx": [
     "Maps overlay route names to screens: Profile, Settings, FAQ, Terms, Nutrition, Marketplace, Weekly Report, etc.",
     "Rendered on top of ClientMainScreen when user opens settings or support from the client shell."
   ],
-  "helpers/session-dates.js": [
+  "helpers/sessionTimeText.js": [
     "Date/time formatting helpers for trainer session scheduling (pad2, long date, 12-hour time).",
     "Used by session cards and calendar views to display human-readable session times."
   ],
-  "navigation/navigationRef.js": [
+  "navigation/openScreenFromAnywhere.js": [
     "Global React Navigation ref so code outside components can navigate (rootNavigate, goBack, reset).",
     "Used by push notifications and deep links that need to open a specific screen."
   ],
-  "nutrition/nutritionTheme.js": [
+  "nutrition/nutritionColors.js": [
     "Color gradients and tokens for nutrition UI (calorie ring, macro bars, action buttons).",
     "Import NUT_* constants so food cards and the daily log share the same visual language."
   ],
-  "nutrition/food-search/searchFoodsService.js": [
-    "Singleton class that runs all food search: server API, consensus search, Open Food Facts fallback, and local cache.",
-    "FoodSearchScreen calls search() here — you should not call food APIs directly from UI components."
+  "nutrition/food-search/searchFoods.js": [
+    "Runs food search against the app’s food sources and returns ranked matches.",
+    "The food search screen calls this instead of talking to food databases directly."
   ],
-  "nutrition/barcode/normalizeBarcodeForLookup.js": [
+  "nutrition/barcode/fixBarcodeDigits.js": [
     "Fixes barcode digits from the camera (leading zeros, UPC-A vs EAN-13) before server lookup.",
     "Mobile scanners often drop check digits; this prevents false 'product not found' results."
   ],
-  "nutrition/barcode/renderScannedBarcode.js": [
+  "nutrition/barcode/scannedProductSummary.js": [
     "Formats scanned barcode results for display: macro summary, source label, and confidence badge.",
     "Used after a successful barcode lookup to show what the user scanned before they log it."
   ],
-  "nutrition/components/premiumFoodCard/GradientText.jsx": [
+  "nutrition/food-cards/ColorText.jsx": [
     "Renders gradient-colored text using MaskedView (React Native has no CSS background-clip).",
     "Used on premium food cards for stylized calorie/macro numbers."
   ],
-  "nutrition/components/premiumFoodCard/LoggedFoodCard.jsx": [
+  "nutrition/food-cards/LoggedFoodRow.jsx": [
     "Single logged-food row in the daily meal list — transparent card over the meal section background.",
     "Shows food name, serving, calories, and tap-to-edit; used inside NutritionContainer meal cards."
   ],
-  "nutrition/components/premiumFoodCard/index.js": [
+  "nutrition/food-cards/FoodCard/index.js": [
     "Barrel export file — re-exports FoodCard, LoggedFoodCard, NutritionFactsSection for clean imports.",
     "Import from this index instead of individual files when using the premium food card kit."
   ],
-  "shared/assets/onboardingIconRegistry.js": [
-    "Maps onboarding option keys (e.g. 'full_gym', 'beginner') to bundled PNG icon require() paths.",
-    "OnboardingWizardScreen uses getOnboardingIconSource() so icon paths live in one place."
-  ],
-  "shared/components/MarketplaceHeroCard.jsx": [
-    "Hero card on home that promotes finding a trainer — tap opens marketplace search.",
-    "Shown to clients who are not yet linked to a trainer."
-  ],
-  "shared/components/FilesNotesHeroCard.jsx": [
-    "Hero header for the Files & Notes section with gradient background and add button.",
-    "Used on both client and trainer dashboards above the file gallery grid."
-  ],
-  "shared/notes-files/spreadsheetRows.js": [
-    "Encodes spreadsheet rows for Firestore — flattens nested arrays because Firestore forbids them.",
-    "Used when trainers edit shared spreadsheets in DocumentEditorModal."
-  ],
-  "theme/ThemeContext.js": [
+  "look-and-feel/lightDarkMode.js": [
     "React context for light/dark theme — ThemeProvider wraps the app, useTheme() reads colors in screens.",
     "Drives text/background colors across Coach Connect without hardcoding hex values in every file."
   ],
-  "theme/homeStatGradients.js": [
+  "look-and-feel/homeStatColors.js": [
     "Gradient color arrays for home stat pills (workout, water, sleep, soreness, etc.).",
     "PremiumStatsSection and dashboard cards import these for consistent stat card styling."
   ],
-  "helpers/formatFileSize.js": [
+  "helpers/fileSizeAndDateText.js": [
     "Formats byte sizes (KB/MB), short dates, and friendly filenames for the files gallery.",
     "Also detects auto-generated upload names so the UI can show cleaner labels."
   ],
-  "trainer-app/navigation/TrainerAppShellContext.jsx": [
+  "trainer-app/navigation/TrainerOpenScreenTracker.jsx": [
     "React context for trainer shell navigation: overlay stack, selected client, and back behavior.",
     "TrainerMainScreen and trainer overlay screens consume this context."
   ],
-  "trainer-app/navigation/trainerOverlayScreens.jsx": [
+  "trainer-app/navigation/trainerExtraScreens.jsx": [
     "Maps trainer overlay routes to Profile, Settings, FAQ, Legal, Bug Report, and similar stack screens.",
     "Same pattern as clientOverlayScreens but for the trainer app shell."
   ],
-  "utils/dataCacheCleanup.js": [
-    "Old cache-clearing helper — deprecated in favor of clearDataOnLogout.js.",
-    "Do not use in new code; call clearDataOnLogout on sign-out instead."
+  "logout-cleanup/clearDataOnLogout.js": [
+    "Fake/old name that just points at clearDataOnLogout — does nothing extra.",
+    "Delete after every import uses clearDataOnLogout."
   ],
-  "utils/logError.js": [
+  "crash-reports/recordError.js": [
     "Client-side error logger — captures JS errors and optionally forwards them to the server.",
     "Wraps console.error and integrates with autoLogError for crash reporting."
   ],
-  "workouts/plan-generator/requestWorkoutPlan.js": [
+  "workouts/create-plan/askForWorkoutPlan.js": [
     "Calls the server to generate an AI workout plan from onboarding answers and Claude/DeepSeek.",
     "Also loads saved onboarding artifacts and plan history from AsyncStorage/Firestore."
   ],
-  "workouts/plan-generator/workoutOnboardingFormConfig.js": [
+  "workouts/create-plan/planQuestionLabels.js": [
     "Field labels, icons, and display config for the workout plan generator onboarding form.",
     "Drives the profile pill grid on GenerateMyWorkoutPlanScreen."
   ],
-  "workouts/plan-viewer/workoutPlanUiComponents.jsx": [
+  "workouts/view-plan/planViewPieces.jsx": [
     "Shared JSX pieces for rendering a generated workout plan (day headers, exercise blocks, rest notes).",
     "Used by WorkoutPlanResult and the PDF export pipeline."
   ],
-  "ai-coach/chat-ui/hooks/useCoachChatSessions.js": [
+  "ai-coach/past-chats/chatHistoryList.js": [
     "React hook that subscribes to the user AI coach chat sessions in Firestore (ordered, limited), formats sidebar titles/dates, groups sessions (today/earlier), and triggers refresh of stale or junk creative titles.",
     "Used by StartCoachChatScreen and CoachChatHistorySidebar so the coach home can list and open past threads without inlining Firestore queries."
   ],
-  "shared/payments/useTrainerPaymentHistory.js": [
-    "React hook that loads a trainer payment history rows from the Firestore payments collection (by trainerId), formatting dates and status labels for the UI.",
-    "Consumed by trainer PaymentsScreen to show completed/pending/failed payouts and charges."
+  "app-start/ClientAppStart.js": [
+    "Root of the trainee experience after login — wires home, messages, workouts, nutrition, and navigation.",
+    "Opened by AuthGate when the signed-in person is a trainee."
   ],
-  "shared/payments/useClientPaymentHistory.js": [
-    "React hook that loads a client payment history from the Firestore payments collection (by clientId), with date/status formatting for list rows.",
-    "Used on the client payments/history UI when reviewing charges to a linked trainer."
+  "app-start/TrainerAppStart.js": [
+    "Root of the trainer experience after login — wires dashboard, clients, sessions, and navigation.",
+    "Opened by AuthGate when the signed-in person is a trainer."
   ],
-  "app-start/ClientApp.js": [
-    "Client-role app root: owns client dashboard rendering, navigation/state, loading conversations/trainer/workouts/nutrition, and real-time conversation updates for the trainee experience.",
-    "Mounted by AuthGate when the signed-in user is a client; wraps the client navigation shell rather than being a single screen."
-  ],
-  "app-start/TrainerApp.js": [
-    "Trainer-role app root: mounts the trainer navigation shell and trainer-specific data wiring after AuthGate confirms trainer role.",
-    "Counterpart to ClientApp — keep trainer-only CRM/session/payment screens under trainer-app/, not here."
-  ],
-  "app-start/config.js": [
-    "Firebase app initialization and exports for auth/db/storage used across the client — projectId must remain anatrox-auth in production.",
-    "Imported almost everywhere; renaming is fine but never swap the Firebase project id when rebranding display names."
+  "app-start/cloudConnection.js": [
+    "Starts the cloud login/database connection for the whole app. Production project id must stay anatrox-auth.",
+    "Imported almost everywhere — you can rename the file, but never change the live Firebase project id when rebranding."
   ],
   "nutrition/food-search/FoodSearchScreen.js": [
-    "Main food search UI: query input, recent/favorites, ranked multi-source results, and navigation into confirm/log flows for daily nutrition.",
-    "Talks to server search pipelines (FatSecret/USDA/OFF/Serper) via search helpers; part of search → pick → log."
+    "Screen to search for foods, see results, and start logging a meal.",
+    "Part of search → pick food → add to today’s log."
   ],
-  "nutrition/food-search/guessServingSize.js": [
+  "nutrition/food-search/guessServingLabel.js": [
     "Infers human-readable serving labels for food search cards across sources using food-family allowlists and a cross-family conflict matrix so junk units (nugget/wing/piece) do not attach to bread/pizza/burger-style foods.",
     "Pure ranking/label helper imported by food search/confirm UI — safe rename target if you update imports."
   ],
-  "auth/LoginScreen.js": [
-    "Combined auth UI (welcome, role selection, signup, login) with internal step state — the screen users see when signed out.",
-    "AuthGate mounts this during the unauthenticated flow; Firebase email/password and social sign-in live here."
+  "login-and-signup/LoginScreen.js": [
+    "The signed-out welcome / login / signup screen (pick trainee vs trainer, create account, sign in).",
+    "Shown by AuthGate when nobody is signed in."
+  ],
+  "for-both/setup-icons/onboardingIconRegistry.js": [
+    "Maps onboarding option keys (e.g. 'full_gym', 'beginner') to bundled PNG icon require() paths.",
+    "OnboardingWizardScreen uses getOnboardingIconSource() so icon paths live in one place."
+  ],
+  "for-both/home-cards/FindTrainerBanner.jsx": [
+    "Hero card on home that promotes finding a trainer — tap opens marketplace search.",
+    "Shown to clients who are not yet linked to a trainer."
+  ],
+  "for-both/home-cards/FilesHeaderCard.jsx": [
+    "Hero header for the Files & Notes section with gradient background and add button.",
+    "Used on both client and trainer dashboards above the file gallery grid."
+  ],
+  "for-both/files-and-notes/packSpreadsheetRows.js": [
+    "Encodes spreadsheet rows for Firestore — flattens nested arrays because Firestore forbids them.",
+    "Used when trainers edit shared spreadsheets in DocumentEditorModal."
+  ],
+  "for-both/payments/trainerPaymentHistory.js": [
+    "React hook that loads a trainer payment history rows from the Firestore payments collection (by trainerId), formatting dates and status labels for the UI.",
+    "Consumed by trainer PaymentsScreen to show completed/pending/failed payouts and charges."
+  ],
+  "for-both/payments/traineePaymentHistory.js": [
+    "React hook that loads a client payment history from the Firestore payments collection (by clientId), with date/status formatting for list rows.",
+    "Used on the client payments/history UI when reviewing charges to a linked trainer."
+  ],
+  "for-both/loading-and-header/BouncingDots.js": [
+    "Animated bouncing-dots loading spinner shown while something is loading.",
+    "Used as a simple “please wait” visual anywhere in the app."
+  ],
+  "ai-coach/home-screen/CoachHomeScreen.jsx": [
+    "The first page when someone taps AI Coach: welcome, idea buttons, list of past chats, and a box to start typing.",
+    "This is the landing page — not the deep back-and-forth conversation yet."
+  ],
+  "ai-coach/home-screen/CoachHomeScreen.jsx": [
+    "Fake twin of the AI Coach home page — this file only points at the real StartCoachChatScreen in screens/.",
+    "Safe to delete after every import points at the real file."
+  ],
+  "ai-coach/past-chats/saveAndLoadChats.js": [
+    "Saves and loads AI Coach chats so past conversations are still there next time you open the app.",
+    "Used by the coach home and conversation screens."
+  ],
+  "ai-coach/internet-lookup/shouldLookUpOnInternet.js": [
+    "Decides whether the coach should look something up on the public internet (vs answer from your personal logs).",
+    "Example: “latest research on creatine” → web search; “what did I eat today?” → personal data."
+  ],
+  "ai-coach/chat-ui/voice/speechRecognitionSafe.js": [
+    "Old helper for phone speech-to-text used by voice coach experiments.",
+    "Likely removable if voice coaching is no longer a product feature."
+  ],
+  "ai-coach/chat-ui/voice/useVoiceToCoach.js": [
+    "Reusable helper that wired microphone speech into the AI Coach screens.",
+    "Likely removable with the rest of the voice folder if voice is unused."
+  ],
+  "ai-coach/home-screen/CoachHomeScreen.jsx": [
+    "Fake pointer that used to open a voice coach screen; now just re-exports the coach home.",
+    "Safe delete candidate with the voice folder."
+  ],
+  "for-both/online-connection/whereToConnect.js": [
+    "Picks which Coach Connect server address the phone should talk to (production cloud vs your computer while developing).",
+    "Almost every server request starts here."
+  ],
+  "for-both/online-connection/sendOnlineRequest.js": [
+    "Shared helper to call the Coach Connect server with the right URL and headers.",
+    "Prefer this over writing raw network calls in screens."
+  ],
+  "for-both/online-connection/attachLoginProof.js": [
+    "Builds the “who is signed in” headers so the server knows which user is calling.",
+    "Used before talking to protected server routes."
+  ],
+  "for-both/payments/chargeCard.js": [
+    "Charges a trainee’s card and pays their trainer (coaching session payment).",
+    "Used from payment popups — not a screen itself."
+  ],
+  "for-both/payments/trainerPayoutSetup.js": [
+    "Talks to the server about connecting a trainer’s Stripe payout account.",
+    "Part of “trainers get paid” setup."
+  ],
+  "for-both/online-connection/linkTrainerAndTrainee.js": [
+    "Server helpers for linking / managing the trainer–client relationship.",
+    "Used when connecting a trainee to a trainer."
+  ],
+  "for-both/online-connection/loadHomeAlerts.js": [
+    "Loads dashboard notification items from the server for home badges/alerts.",
+    "Used by home/dashboard screens for both roles."
+  ],
+  "for-both/online-connection/sendCrashReport.js": [
+    "Sends an app error report to the Coach Connect server so developers can debug crashes.",
+    "Called from error-logging helpers."
+  ],
+  "for-both/online-connection/checkConnectionHealth.js": [
+    "Checks whether the Coach Connect server is healthy / reachable.",
+    "Used for diagnostics and resilient startup."
+  ],
+  "for-both/online-connection/sendPhoneAlert.js": [
+    "Asks the server to send a push notification to a user’s phone.",
+    "Used for session reminders, messages, and similar alerts."
+  ],
+  "for-both/online-connection/uploadSetupAnswers.js": [
+    "Uploads onboarding answers to the server after signup so the backend has the same profile.",
+    "Runs after onboarding finishes or when pending sync is flushed."
+  ],
+  "for-both/online-connection/checkTrainerCertificate.js": [
+    "Asks the server to verify a trainer’s certification documents.",
+    "Part of trainer onboarding / trust checks."
+  ],
+  "for-both/workout-plans/SavedWorkoutsScreen.jsx": [
+    "Fake pointer — re-exports the real browse-saved-workouts screen.",
+    "Safe to delete after imports point at the real file."
+  ],
+  "for-both/photo-gallery/MyProgressPhotosScreen.jsx": [
+    "Fake pointer — re-exports the real progress photos screen.",
+    "Safe to delete after imports point at the real file."
+  ],
+  "for-both/weekly-report/WeeklyReportScreen.jsx": [
+    "Fake pointer — re-exports the real weekly progress report screen.",
+    "Safe to delete after imports point at the real file."
+  ],
+  "logout-cleanup/clearDataOnLogout.js": [
+    "Wipes local saved data (caches, tokens, coach chat leftovers) when the user logs out.",
+    "Called from the login gate on sign-out so the next person on the phone does not see old data."
   ]
 }

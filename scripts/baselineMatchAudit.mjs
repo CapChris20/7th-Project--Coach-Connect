@@ -51,12 +51,12 @@ const BASENAME_ALIASES = {
 /** Present if any target exists (split refactors). */
 const MULTI_REMAP = {
   'src/ai-coach/chat-ui/components/CoachComposerInput.jsx': [
-    'src/ai-coach/chat-ui/chat-thread/useCoachComposerInput.js',
-    'src/ai-coach/chat-ui/chat-thread/CoachPasteSheet.jsx',
+    'src/ai-coach/conversation/typingBox.js',
+    'src/ai-coach/conversation/PasteTextPopup.jsx',
   ],
-  'src/ai-coach/chat-ui/lib/pasteTextIntoComposer.js': [
-    'src/ai-coach/chat-ui/chat-thread/useCoachComposerInput.js',
-    'src/ai-coach/chat-ui/chat-thread/CoachPasteSheet.jsx',
+  'src/ai-coach/chat-ui/helpers/pasteTextIntoComposer.js': [
+    'src/ai-coach/conversation/typingBox.js',
+    'src/ai-coach/conversation/PasteTextPopup.jsx',
   ],
   'src/client-app/marketplace/screens/MarketplaceScreen.jsx': [
     'src/client-app/marketplace/components/MarketplaceUI.jsx',
@@ -90,7 +90,7 @@ function buildExtendedRemap() {
       if (base.endsWith('.jsx')) remap[`src/nutrition/components/${base}`] = to;
     }
     if (from.startsWith('src/ai-coach/chat-ui/')) {
-      remap[`src/ai-coach/chat-ui/lib/${base}`] = to;
+      remap[`src/ai-coach/chat-ui/helpers/${base}`] = to;
       if (base.endsWith('.jsx')) remap[`src/ai-coach/chat-ui/components/${base}`] = to;
     }
     if (from.startsWith('src/for-both/')) {
@@ -114,21 +114,21 @@ function buildExtendedRemap() {
 
   // Correct stale manual entries from pre-reorg layout
   remap['src/client-app/screens/ViewMyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
-  remap['src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
+  remap['src/client-app/workout-plans/MyWorkoutPlanScreen.jsx'] = 'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx';
   remap['src/nutrition/screens/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
   remap['src/nutrition/daily-log/NutritionFactsScreen.jsx'] = 'src/nutrition/food-details/NutritionFactsScreen.jsx';
-  remap['src/for-both/services/pushNotifyApi.js'] = 'src/for-both/api/sendPushNotification.js';
-  remap['src/for-both/services/dailyMetricsService.js'] = 'src/metrics/daily-metrics/saveDailyMetricsToFirestore.js';
-  remap['src/ai-coach/logic/normalizeToolParams.js'] = 'src/ai-coach/logic/tools/cleanupToolParams.js';
+  remap['src/for-both/services/pushNotifyApi.js'] = 'src/for-both/online-connection/sendPhoneAlert.js';
+  remap['src/for-both/services/dailyMetricsService.js'] = 'src/daily-stats/saveDailyStats.js';
+  remap['src/ai-coach/logic/normalizeToolParams.js'] = 'src/ai-coach/coach-actions/cleanUpActionDetails.js';
   remap['src/client-app/home/ClientHomeScreen.jsx'] = 'src/client-app/navigation/ClientMainScreen.jsx';
   remap['src/trainer-app/home/TrainerHomeScreen.jsx'] = 'src/trainer-app/navigation/TrainerMainScreen.jsx';
-  remap['src/client-app/components/FilesNotesHeroCard.jsx'] = 'src/for-both/components/FilesNotesHeroCard.jsx';
-  remap['src/ai-coach/chat-ui/lib/coachConversationDebug.js'] = 'src/ai-coach/chat-ui/persistence/coachConversationDebug.js';
+  remap['src/client-app/components/FilesNotesHeroCard.jsx'] = 'src/for-both/home-cards/FilesHeaderCard.jsx';
+  remap['src/ai-coach/reply-display/developerChatLog.js'] = 'src/ai-coach/chat-ui/persistence/coachConversationDebug.js';
   remap['src/ai-coach/chat-ui/components/TrainerCoachClientBar.jsx'] = 'src/ai-coach/chat-ui/trainer-coach-mode/TrainerCoachClientBar.jsx';
-  remap['src/ai-coach/chat-ui/lib/coachMarkdownStyles.js'] = 'src/ai-coach/chat-ui/chat-thread/coachMarkdownStyles.js';
-  remap['src/ai-coach/chat-ui/components/CoachFormattedReply.jsx'] = 'src/ai-coach/chat-ui/chat-thread/CoachFormattedReply.jsx';
-  remap['src/for-both/services/firestoreListenerUtils.js'] = 'src/for-both/firestore/firestoreListenerUtils.js';
-  remap['src/nutrition/utils/casualMenuSearch.js'] = 'src/nutrition/food-search/casualMenuSearch.js';
+  remap['src/ai-coach/reply-display/replyTextStyles.js'] = 'src/ai-coach/chat-ui/chat-thread/coachMarkdownStyles.js';
+  remap['src/ai-coach/reply-display/CoachReplyText.jsx'] = 'src/ai-coach/chat-ui/chat-thread/CoachFormattedReply.jsx';
+  remap['src/for-both/cloud-database/handleLiveUpdateErrors.js'] = 'src/for-both/firestore/firestoreListenerUtils.js';
+  remap['src/nutrition/food-search/restaurantMenuSearch.js'] = 'src/nutrition/food-search/casualMenuSearch.js';
 
   return remap;
 }
@@ -311,7 +311,7 @@ function resolvePath(relPath, fileIndex) {
     ['src/nutrition/utils/', ['src/nutrition/food-details/', 'src/nutrition/food-search/', 'src/nutrition/barcode/']],
     ['src/nutrition/services/', ['src/nutrition/food-search/']],
     ['src/nutrition/components/', ['src/nutrition/food-search/']],
-    ['src/ai-coach/chat-ui/lib/', ['src/ai-coach/chat-ui/chat-thread/', 'src/ai-coach/chat-ui/persistence/']],
+    ['src/ai-coach/chat-ui/helpers/', ['src/ai-coach/chat-ui/chat-thread/', 'src/ai-coach/chat-ui/persistence/']],
     ['src/ai-coach/chat-ui/components/', ['src/ai-coach/chat-ui/chat-thread/']],
     ['src/for-both/services/', ['src/metrics/daily-metrics/', 'src/for-both/api/', 'src/notifications/']],
   ];
@@ -454,13 +454,13 @@ function runStaticChecks() {
     'ViewMyWorkoutPlanScreen exists',
     existsAny([
       'src/client-app/screens/ViewMyWorkoutPlanScreen.jsx',
-      'src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx',
+      'src/client-app/workout-plans/MyWorkoutPlanScreen.jsx',
     ]),
   );
   check('load-tests/ folder', exists('load-tests/run-all.sh'));
   check('coach tool guards test', exists('src/__tests__/unit/coachToolProposalGuards.test.js'));
   check('runJestWithLog writes test-results.txt', exists('scripts/runJestWithLog.js'));
-  check('shouldShowCoachAction (modal guards)', exists('src/ai-coach/logic/tools/shouldShowCoachAction.js'));
+  check('shouldShowCoachAction (modal guards)', exists('src/ai-coach/coach-actions/shouldAskFirst.js'));
   check('filterValidCoachToolCalls on server', read('server/index.js').includes('filterValidCoachToolProposals'));
   check('EMERGENCY PARSE removed from server', !read('server/index.js').includes('EMERGENCY PARSE'));
   check(

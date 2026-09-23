@@ -2,24 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../theme/ThemeContext';
-import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import CenteredTwoColumnGrid from '../../theme/layout/CenteredTwoColumnGrid';
-import { StatGradientText } from '../../theme/homeStatGradients';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
+import TwoColumnGrid from '../../look-and-feel/TwoColumnGrid';
+import { StatColorText } from '../../look-and-feel/homeStatColors';
 import {
   NUT_ACTION_GRADIENT,
   NUT_CALORIES_GRADIENT,
   NUT_SECTION_GRADIENT,
-} from '../nutritionTheme';
-import searchFoodsService from '../food-search/searchFoodsService';
-import { updateFoodLog } from '../daily-log/logFoodToFirestore';
+} from '../nutritionColors';
+import searchFoods from '../food-search/searchFoods';
+import { updateFoodLog } from '../daily-log/saveLoggedFood';
 import {
   buildDailyNutritionFactsCardData,
   buildLogEnrichmentPatch,
   calculateDailyNutrientTotals,
   cleanFoodDisplayName,
   logNeedsNutrientEnrichment,
-} from './nutritionFactsModel';
+} from './nutritionFactsData';
 
 /** Muted accents — Nutrition Facts screen only (do not change global theme). */
 const FACTS_MUTED = {
@@ -103,9 +103,9 @@ function GradientLabel({ children, style, colors: gradientColors, align = 'cente
   const muted = factsMutedGradient(gradientColors);
   return (
     <View style={{ alignSelf: align }}>
-      <StatGradientText style={style} colors={muted} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+      <StatColorText style={style} colors={muted} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
         {children}
-      </StatGradientText>
+      </StatColorText>
     </View>
   );
 }
@@ -227,7 +227,7 @@ export default function NutritionFactsScreen({
           let nutrients = cache.get(name);
           if (nutrients === undefined) {
             try {
-              nutrients = await searchFoodsService.fetchNutritionDetails(name);
+              nutrients = await searchFoods.fetchNutritionDetails(name);
             } catch (_) {
               nutrients = null;
             }
@@ -352,7 +352,7 @@ export default function NutritionFactsScreen({
               {data.minerals.title}
             </Text>
           </View>
-          <CenteredTwoColumnGrid
+          <TwoColumnGrid
             items={data.minerals.items}
             keyExtractor={(m) => m.key}
             gap={12}

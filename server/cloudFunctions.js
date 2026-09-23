@@ -1,4 +1,4 @@
-const { stripNotificationEmoji } = require('./stripNotificationEmoji');
+const { removeEmojiFromAlerts } = require('./removeEmojiFromAlerts');
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
@@ -67,14 +67,14 @@ exports.sendNewMessageNotification = functions.firestore
         return;
       }
 
-      const cleanSender = stripNotificationEmoji(senderName) || 'Someone';
-      let cleanText = stripNotificationEmoji(String(text || ''));
+      const cleanSender = removeEmojiFromAlerts(senderName) || 'Someone';
+      let cleanText = removeEmojiFromAlerts(String(text || ''));
       if (!cleanText.trim()) cleanText = 'You have a new message.';
 
       // Construct the notification payload (FCM device token only)
       const payload = {
         notification: {
-          title: stripNotificationEmoji(`New message from ${cleanSender}`) || 'New message',
+          title: removeEmojiFromAlerts(`New message from ${cleanSender}`) || 'New message',
           body: cleanText,
           sound: 'default',
         },

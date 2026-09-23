@@ -7,7 +7,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 const AsyncStorage = require('@react-native-async-storage/async-storage');
-const { completeOnboardingClient } = require('../../auth/finishOnboarding');
+const { completeOnboardingClient } = require('../../login-and-signup/finishSetup');
 const {
   applyOnboardingCompleteServer,
 } = require('../../../server/lib/onboardingCompleteLinks');

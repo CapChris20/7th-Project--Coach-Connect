@@ -1,10 +1,10 @@
 /**
  * Full offline regression for all 15 AI Coach tools.
  * Covers: inference fallback, model JSON merge, delete metric routing,
- * misroute fixes, and informational (no-tool) guards.
+ * misroute fixes, and incellFormattingional (no-tool) guards.
  */
-const { COACH_TOOL_NAMES } = require('../../ai-coach/tools/parseCoachToolCalls');
-const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');
+const { COACH_TOOL_NAMES } = require('../../ai-coach/coach-actions/readActionsFromReply');
+const { readActionsFromReply } = require('../../ai-coach/coach-actions/readActionsFromReply');
 const {
   inferCoachToolCall,
   mergeCoachToolCalls,
@@ -12,12 +12,12 @@ const {
 const {
   filterValidCoachToolProposals,
   guardCoachToolProposal,
-  isInformationalUserMessage,
-} = require('../../ai-coach/logic/tools/shouldShowCoachAction');
+  isIncellFormattingionalUserMessage,
+} = require('../../ai-coach/coach-actions/shouldAskFirst');
 const {
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
-} = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
+} = require('../../ai-coach/coach-actions/spotDeleteRequests');
 
 function resolveTools(aiText, userMessage, weeklyContext = {}) {
   return filterValidCoachToolProposals(
@@ -208,7 +208,7 @@ describe('AI Coach tools — complete regression', () => {
     });
   });
 
-  describe('informational questions must not propose tools', () => {
+  describe('incellFormattingional questions must not propose tools', () => {
     const questions = [
       'Is 10 hours of sleep too much?',
       'How much protein should I eat?',
@@ -217,7 +217,7 @@ describe('AI Coach tools — complete regression', () => {
     ];
 
     it.each(questions)('no tools for: %s', (user) => {
-      expect(isInformationalUserMessage(user)).toBe(true);
+      expect(isIncellFormattingionalUserMessage(user)).toBe(true);
       expect(resolveTools('Here is some advice about your question.', user)).toEqual([]);
       expect(inferCoachToolCall(user, {})).toBeNull();
     });
@@ -241,7 +241,7 @@ describe('AI Coach tools — complete regression', () => {
     });
   });
 
-  describe('parseCoachToolCalls accepts every registered tool name', () => {
+  describe('readActionsFromReply accepts every registered tool name', () => {
     it.each(COACH_TOOL_NAMES)('parses %s from reply tail JSON', (name) => {
       const params =
         name === 'logSleep'
@@ -251,7 +251,7 @@ describe('AI Coach tools — complete regression', () => {
             : name === 'adjustMacroTargets'
               ? { calories: 2000, protein: 150, carbs: 180, fat: 60 }
               : {};
-      const parsed = parseCoachToolCalls(`Okay.\n${modelJson(name, params)}`);
+      const parsed = readActionsFromReply(`Okay.\n${modelJson(name, params)}`);
       expect(parsed.some((t) => t.name === name)).toBe(true);
     });
   });

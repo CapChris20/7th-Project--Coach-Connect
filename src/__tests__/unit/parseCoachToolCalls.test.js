@@ -1,15 +1,15 @@
 const {
-  parseCoachToolCalls,
+  readActionsFromReply,
   stripCoachToolJsonFromReply,
-} = require('../../ai-coach/tools/parseCoachToolCalls');
+} = require('../../ai-coach/coach-actions/readActionsFromReply');
 
-const { normalizeToolParams } = require('../../ai-coach/logic/tools/cleanupToolParams');
+const { normalizeToolParams } = require('../../ai-coach/coach-actions/cleanUpActionDetails');
 
-describe('parseCoachToolCalls', () => {
+describe('readActionsFromReply', () => {
   it('parses valid JSON at end of reply', () => {
     const reply =
       'I can log that for you.\n{"toolCalls":[{"name":"logWater","params":{"amountOz":32}}]}';
-    const calls = parseCoachToolCalls(reply);
+    const calls = readActionsFromReply(reply);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       name: 'logWater',
@@ -19,7 +19,7 @@ describe('parseCoachToolCalls', () => {
 
   it('parses fenced JSON inside backticks', () => {
     const reply = 'Done.\n```json\n{"tool":"logSleep","params":{"hours":7}}\n```';
-    const calls = parseCoachToolCalls(reply);
+    const calls = readActionsFromReply(reply);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       name: 'logSleep',
@@ -28,27 +28,27 @@ describe('parseCoachToolCalls', () => {
   });
 
   it('returns empty array for plain text with no JSON', () => {
-    expect(parseCoachToolCalls('Just a friendly reply with no tools.')).toEqual([]);
+    expect(readActionsFromReply('Just a friendly reply with no tools.')).toEqual([]);
   });
 
   it('returns empty array for malformed JSON without throwing', () => {
-    expect(() => parseCoachToolCalls('{"toolCalls":[{broken json')).not.toThrow();
-    expect(parseCoachToolCalls('{"toolCalls":[{broken json')).toEqual([]);
+    expect(() => readActionsFromReply('{"toolCalls":[{broken json')).not.toThrow();
+    expect(readActionsFromReply('{"toolCalls":[{broken json')).toEqual([]);
   });
 
   it('returns all tool calls when multiple are present', () => {
     const reply =
       '{"toolCalls":[{"name":"logWater","params":{"amountOz":16}},{"name":"logSteps","params":{"steps":5000}}]}';
-    const calls = parseCoachToolCalls(reply);
+    const calls = readActionsFromReply(reply);
     expect(calls).toHaveLength(2);
     expect(calls.map((c) => c.name)).toEqual(['logWater', 'logSteps']);
   });
 
   it('returns empty array for empty string without throwing', () => {
-    expect(() => parseCoachToolCalls('')).not.toThrow();
-    expect(parseCoachToolCalls('')).toEqual([]);
-    expect(() => parseCoachToolCalls(null)).not.toThrow();
-    expect(parseCoachToolCalls(null)).toEqual([]);
+    expect(() => readActionsFromReply('')).not.toThrow();
+    expect(readActionsFromReply('')).toEqual([]);
+    expect(() => readActionsFromReply(null)).not.toThrow();
+    expect(readActionsFromReply(null)).toEqual([]);
   });
 });
 

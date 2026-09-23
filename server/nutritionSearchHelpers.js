@@ -8,7 +8,7 @@ const {
   significantQueryTokens,
   isGroceryIngredientQuery,
   filterFoodSearchRows,
-} = require('../src/nutrition/food-search/sortBestFoodMatches');
+} = require('../src/nutrition/food-search/rankFoodResults');
 
 const EMPTY_SEARCH_HINT =
   "Can't find that. Try searching differently or add manually";
@@ -305,7 +305,7 @@ function portionDescriptionFromText(text) {
     return line.length > 110 ? `${line.slice(0, 107)}…` : line;
   }
 
-  m = s.match(/nutrition\s*(?:facts|information)?\s+for\s+([^\n.;]{3,75})/i);
+  m = s.match(/nutrition\s*(?:facts|incellFormattingion)?\s+for\s+([^\n.;]{3,75})/i);
   if (m) return m[1].trim().replace(/\s+/g, ' ');
 
   const wordNum = (w) => {
@@ -594,12 +594,12 @@ function buildSerperFallbackQueries(userQuery) {
     add('dairy queen oreo blizzard medium calories');
   }
 
-  const tokens = significantQueryTokens(primary);
-  if (tokens.length >= 3) {
-    add(tokens.slice(-3).join(' '));
+  const reportColors = significantQueryTokens(primary);
+  if (reportColors.length >= 3) {
+    add(reportColors.slice(-3).join(' '));
   }
-  if (tokens.length >= 2) {
-    add(tokens.slice(-2).join(' '));
+  if (reportColors.length >= 2) {
+    add(reportColors.slice(-2).join(' '));
   }
 
   return out;
@@ -627,11 +627,11 @@ const {
   scoreOrganicNutritionHit,
   isPlausibleRestaurantNutritionRow,
   rankSerperFoodResultRows,
-} = require('../src/nutrition/food-search/isReliableRestaurantFood');
+} = require('../src/nutrition/food-search/trustRestaurantResult');
 const {
   displayNameForSerperRow,
   isJunkWebSearchTitle,
-} = require('../src/nutrition/food-search/cleanFoodCardLabels');
+} = require('../src/nutrition/food-search/tidyFoodTitles');
 
 const MIN_ORGANIC_HIT_SCORE = 18;
 const MIN_ORGANIC_HIT_SCORE_RELAXED = 8;

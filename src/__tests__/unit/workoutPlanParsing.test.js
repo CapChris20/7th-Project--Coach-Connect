@@ -18,7 +18,7 @@ jest.mock('firebase/firestore', () => ({
   orderBy: jest.fn(),
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   storage: {},
   db: {},
 }));
@@ -28,9 +28,9 @@ const {
   stripEmojis,
   stripMarkdown,
   buildPdfHtml,
-} = require('../../workouts/plan-viewer/workoutPlanPdfService');
+} = require('../../workouts/view-plan/makePlanPdf');
 
-describe('workoutPlanPdfService parsing', () => {
+describe('makePlanPdf parsing', () => {
   test('parses simple day/exercise plan text', () => {
     const parsed = parsePlanForPdf(
       'Workout Plan\nDay 1: Push\n1. Bench Press - 4 x 8, 90s rest'

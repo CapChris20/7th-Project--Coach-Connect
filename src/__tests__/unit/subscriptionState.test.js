@@ -1,8 +1,8 @@
 const {
   resolveSubscriptionAccess,
-  formatTrialCountdown,
+  cellFormattingTrialCountdown,
   SUBSCRIPTION_STATUSES,
-} = require('../../subscription/subscriptionState');
+} = require('../../trainer-pro-plan/proAccessRules');
 
 describe('resolveSubscriptionAccess', () => {
   const now = new Date('2026-06-24T12:00:00.000Z');
@@ -62,8 +62,8 @@ describe('resolveSubscriptionAccess', () => {
   });
 });
 
-describe('formatTrialCountdown', () => {
-  it('formats days and hours', () => {
-    expect(formatTrialCountdown(2 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000)).toMatch(/2d 5h/);
+describe('cellFormattingTrialCountdown', () => {
+  it('cellFormattings days and hours', () => {
+    expect(cellFormattingTrialCountdown(2 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000)).toMatch(/2d 5h/);
   });
 });

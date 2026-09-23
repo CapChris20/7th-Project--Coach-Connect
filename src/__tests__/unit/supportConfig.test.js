@@ -7,25 +7,25 @@ jest.mock('expo-constants', () => ({
   default: mockConstants,
 }));
 
-describe('supportConfig', () => {
+describe('supportContact', () => {
   beforeEach(() => {
     jest.resetModules();
     mockConstants.expoConfig = { extra: {} };
   });
 
   test('returns default support email', () => {
-    const { getSupportEmail, DEFAULT_SUPPORT_EMAIL } = require('../../settings/supportConfig');
+    const { getSupportEmail, DEFAULT_SUPPORT_EMAIL } = require('../../settings/supportContact');
     expect(getSupportEmail()).toBe(DEFAULT_SUPPORT_EMAIL);
   });
 
   test('returns default privacy policy URL', () => {
-    const { getPrivacyPolicyUrl, DEFAULT_PRIVACY_POLICY_URL } = require('../../settings/supportConfig');
+    const { getPrivacyPolicyUrl, DEFAULT_PRIVACY_POLICY_URL } = require('../../settings/supportContact');
     expect(getPrivacyPolicyUrl()).toBe(DEFAULT_PRIVACY_POLICY_URL);
   });
 
   test('supports privacy URL override from expo extra', () => {
     mockConstants.expoConfig = { extra: { privacyPolicyUrl: 'https://example.com/privacy' } };
-    const { getPrivacyPolicyUrl } = require('../../settings/supportConfig');
+    const { getPrivacyPolicyUrl } = require('../../settings/supportContact');
     expect(getPrivacyPolicyUrl()).toBe('https://example.com/privacy');
   });
 });

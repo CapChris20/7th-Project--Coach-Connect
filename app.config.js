@@ -1,10 +1,22 @@
 const path = require('path');
+const fs = require('fs');
 // Ensure root .env is loaded when evaluating config (so REACT_NATIVE_* / YOUTUBE_* reach `extra`).
 try {
   require('dotenv').config({ path: path.join(__dirname, '.env') });
 } catch (_) {
   /* optional dep path */
 }
+
+// Optional Firebase Android config — download from Console and drop at either path (do not force-commit).
+function resolveAndroidGoogleServicesFile() {
+  const rootPath = path.join(__dirname, 'google-services.json');
+  const appPath = path.join(__dirname, 'android/app/google-services.json');
+  if (fs.existsSync(rootPath)) return './google-services.json';
+  if (fs.existsSync(appPath)) return './android/app/google-services.json';
+  return null;
+}
+
+const androidGoogleServicesFile = resolveAndroidGoogleServicesFile();
 
 module.exports = {
   expo: {
@@ -98,7 +110,14 @@ module.exports = {
         foregroundImage: './assets/icon.png',
         backgroundColor: '#000000',
       },
-      permissions: ['CAMERA', 'RECORD_AUDIO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'],
+      ...(androidGoogleServicesFile ? { googleServicesFile: androidGoogleServicesFile } : {}),
+      // Camera / mic for progress photos, barcode, AI Coach voice. Prefer modern media/notification perms.
+      permissions: [
+        'CAMERA',
+        'RECORD_AUDIO',
+        'POST_NOTIFICATIONS',
+        'READ_MEDIA_IMAGES',
+      ],
     },
     extra: {
       eas: {

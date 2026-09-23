@@ -41,14 +41,14 @@ const {
   inferDeleteLogParams,
   coerceMisroutedDeleteTool,
   deleteLogReasoning,
-} = require('../../src/ai-coach/logic/tools/detectDeleteFoodRequest');
+} = require('../../src/ai-coach/coach-actions/spotDeleteRequests');
 const {
   guardCoachToolProposal,
   isValidCoachToolProposal,
-  isInformationalUserMessage,
+  isIncellFormattingionalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
-} = require('../../src/ai-coach/logic/tools/shouldShowCoachAction');
+} = require('../../src/ai-coach/coach-actions/shouldAskFirst');
 
 function wantsFoodLog(text) {
   const t = String(text || '').toLowerCase();
@@ -76,7 +76,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   if (!t) return null;
 
   // Advice / questions should never invent Confirm chips.
-  if (isInformationalUserMessage(raw) && !userExplicitlyRequestsAction(raw)) {
+  if (isIncellFormattingionalUserMessage(raw) && !userExplicitlyRequestsAction(raw)) {
     return null;
   }
 
@@ -438,7 +438,7 @@ function serverNormalizeToolCall(raw) {
 
 function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
   const user = String(userMessage || '').trim();
-  if (isInformationalUserMessage(user)) return [];
+  if (isIncellFormattingionalUserMessage(user)) return [];
 
   const parsed = [];
   const seen = new Set();
@@ -453,8 +453,8 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
     parsed.push(guarded);
   };
 
-  const { parseCoachToolCalls } = require('../../src/ai-coach/tools/parseCoachToolCalls');
-  for (const c of parseCoachToolCalls(modelText)) {
+  const { readActionsFromReply } = require('../../src/ai-coach/coach-actions/readActionsFromReply');
+  for (const c of readActionsFromReply(modelText)) {
     add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));
   }
 

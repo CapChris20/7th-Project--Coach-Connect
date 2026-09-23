@@ -2,7 +2,7 @@ const {
   isGenericClientDisplayName,
   isWeakClientDisplayName,
   resolveTrainerClientDisplayName,
-} = require('../../trainer-app/crm/getTraineeDisplayName');
+} = require('../../trainer-app/trainee-records/getTraineeDisplayName');
 
 describe('trainer client display name resolver', () => {
   test('detects generic placeholders', () => {

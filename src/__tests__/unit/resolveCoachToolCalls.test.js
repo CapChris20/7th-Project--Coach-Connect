@@ -1,5 +1,5 @@
 const { mergeCoachToolCalls } = require('../../../server/lib/inferCoachToolCall');
-const { filterValidCoachToolProposals } = require('../../ai-coach/logic/tools/shouldShowCoachAction');
+const { filterValidCoachToolProposals } = require('../../ai-coach/coach-actions/shouldAskFirst');
 
 function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
   return filterValidCoachToolProposals(
@@ -9,7 +9,7 @@ function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
 }
 
 describe('resolveCoachToolCalls (server)', () => {
-  it('returns no tools for informational protein web-search questions', () => {
+  it('returns no tools for incellFormattingional protein web-search questions', () => {
     const user =
       'Search the web: what does research say about protein intake for lifters? Cite sources.';
     const coach =

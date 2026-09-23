@@ -1,16 +1,16 @@
-const { ErrorBoundary } = require('../../components/ErrorBoundary');
+const { CrashCatcher } = require('../../crash-reports/CrashCatcher');
 
-describe('ErrorBoundary', () => {
+describe('CrashCatcher', () => {
   it('getDerivedStateFromError captures the error', () => {
     const err = new Error('boom');
-    expect(ErrorBoundary.getDerivedStateFromError(err)).toEqual({
+    expect(CrashCatcher.getDerivedStateFromError(err)).toEqual({
       hasError: true,
       error: err,
     });
   });
 
   it('componentDidCatch logs without throwing', () => {
-    const boundary = new ErrorBoundary({ children: null });
+    const boundary = new CrashCatcher({ children: null });
     expect(() =>
       boundary.componentDidCatch(new Error('boom'), { componentStack: 'stack' }),
     ).not.toThrow();

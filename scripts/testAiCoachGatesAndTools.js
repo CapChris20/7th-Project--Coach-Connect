@@ -60,7 +60,7 @@ const GATE_CASES = [
 
   const { parseCoachToolCalls, stripCoachToolJsonFromReply } = require(path.join(
     ROOT,
-    'src/ai-coach/tools/parseCoachToolCalls.js',
+    'src/ai-coach/coach-actions/readActionsFromReply.js',
   ));
   const localCalls = parseCoachToolCalls(fakeReply);
   const localReply = stripCoachToolJsonFromReply(fakeReply);

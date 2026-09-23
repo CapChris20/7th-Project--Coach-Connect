@@ -3,7 +3,7 @@ const {
   coerceMisroutedDeleteTool,
   inferDeleteLogParams,
   inferDeleteLogType,
-} = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
+} = require('../../ai-coach/coach-actions/spotDeleteRequests');
 
 describe('userWantsDeleteLog', () => {
   it('accepts explicit delete-food requests', () => {
@@ -21,7 +21,7 @@ describe('userWantsDeleteLog', () => {
 });
 
 describe('inferDeleteLogParams metric routing', () => {
-  it('routes sleep removes to logType sleep', () => {
+  it('screenNames sleep removes to logType sleep', () => {
     expect(inferDeleteLogType('Can u remove the log I put for sleeping 12 hours')).toBe('sleep');
     const params = inferDeleteLogParams('No not a food entry a dashboard log for sleep', '');
     expect(params.logType).toBe('sleep');

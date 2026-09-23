@@ -1,10 +1,10 @@
 /**
- * Trainer invite code validation (validateTrainerInviteCode module).
+ * Trainer invite code validation (checkTrainerCode module).
  */
 const {
   normalizeInviteCodeForQuery,
   validateTrainerCodeWithDeps,
-} = require('../../auth/validateTrainerInviteCode');
+} = require('../../login-and-signup/checkTrainerCode');
 
 function createValidationHarness() {
   const state = {
@@ -44,7 +44,7 @@ function createValidationHarness() {
 }
 
 describe('normalizeInviteCodeForQuery', () => {
-  it('formats a 6-character code as XXX-XXX', () => {
+  it('cellFormattings a 6-character code as XXX-XXX', () => {
     expect(normalizeInviteCodeForQuery('ABC123')).toBe('ABC-123');
     expect(normalizeInviteCodeForQuery('abc-123')).toBe('ABC-123');
   });

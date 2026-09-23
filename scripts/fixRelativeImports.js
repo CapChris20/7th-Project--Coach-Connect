@@ -12,25 +12,25 @@ const DIR_RULES = [
     ['../components/home/', './'],
   ]],
   ['src/client-app/navigation/', [
-    ['../screens/ChatWithTrainerScreen', '../../messaging/ChatThreadScreen'],
-    ['../screens/MyMessagesScreen', '../../messaging/MyMessagesScreen'],
-    ['../screens/TrainingDashboardScreen', '../dashboard/TrainingDashboardScreen'],
-    ['../screens/ViewWeekProgressReportScreen', '../../for-both/screens/ViewWeekProgressReportScreen'],
-    ['../screens/MyProgressPhotosScreen', '../../for-both/screens/MyProgressPhotosScreen'],
-    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/screens/BrowseSavedWorkoutsScreen'],
+    ['../screens/ChatWithTrainerScreen', '../../messaging/ChatScreen'],
+    ['../screens/MyMessagesScreen', '../../messaging/InboxScreen'],
+    ['../screens/TrainingDashboardScreen', '../home/TrainingHomeScreen'],
+    ['../screens/ViewWeekProgressReportScreen', '../../for-both/weekly-report/WeeklyReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../../for-both/photo-gallery/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/workout-plans/SavedWorkoutsScreen'],
     ['../components/home/', '../home/'],
-    ['../components/TrainerSharedFilesModal', '../files/TrainerSharedFilesModal'],
-    ['../components/ReviewSubmitSheet', '../dashboard/ReviewSubmitSheet'],
-    ['../components/DashboardHeroCard', '../dashboard/DashboardHeroCard'],
-    ['../hooks/useClientScreenNavigation', './useClientScreenNavigation'],
-    ['../hooks/useClientHomeDailyMetrics', '../home/useClientHomeDailyMetrics'],
-    ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
+    ['../components/TrainerSharedFilesModal', '../files-and-notes/TrainerSharedFilesPopup'],
+    ['../components/ReviewSubmitSheet', '../home/WriteTrainerReviewPopup'],
+    ['../components/DashboardHeroCard', '../home/TopBannerCard'],
+    ['../hooks/useClientScreenNavigation', './goToClientScreen'],
+    ['../hooks/useClientHomeDailyMetrics', '../home/keepDailyStatsFresh'],
+    ['../find-a-trainer/screens/SearchTrainersScreen', '../find-a-trainer/SearchTrainersScreen'],
   ]],
-  ['src/client-app/navigation/clientOverlayScreens.jsx', [
-    ['../screens/ViewWeekProgressReportScreen', '../../for-both/screens/ViewWeekProgressReportScreen'],
-    ['../screens/MyProgressPhotosScreen', '../../for-both/screens/MyProgressPhotosScreen'],
-    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/screens/BrowseSavedWorkoutsScreen'],
-    ['../marketplace/screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
+  ['src/client-app/navigation/clientExtraScreens.jsx', [
+    ['../screens/ViewWeekProgressReportScreen', '../../for-both/weekly-report/WeeklyReportScreen'],
+    ['../screens/MyProgressPhotosScreen', '../../for-both/photo-gallery/MyProgressPhotosScreen'],
+    ['../screens/BrowseSavedWorkoutsScreen', '../../for-both/workout-plans/SavedWorkoutsScreen'],
+    ['../find-a-trainer/screens/SearchTrainersScreen', '../find-a-trainer/SearchTrainersScreen'],
   ]],
   ['src/client-app/dashboard/', [
     ['../components/PremiumTrainerCard', './PremiumTrainerCard'],
@@ -47,7 +47,7 @@ const DIR_RULES = [
   ]],
   ['src/trainer-app/navigation/', [
     ['../screens/ChatWithTraineeScreen', '../messaging/ChatWithTraineeScreen'],
-    ['../screens/MyMessagesScreen', '../messaging/MyMessagesScreen'],
+    ['../screens/MyMessagesScreen', '../messaging/InboxScreen'],
     ['../screens/NewTraineeRequestsScreen', '../client-requests/NewTraineeRequestsScreen'],
     ['../screens/MyTraineesScreen', '../clients-list/MyTraineesScreen'],
     ['../screens/TrainerDashboardContent', '../dashboard/TrainerDashboardContent'],
@@ -56,11 +56,11 @@ const DIR_RULES = [
     ['../components/documents/', '../documents/'],
     ['../components/dashboard/', '../dashboard/'],
   ]],
-  ['src/trainer-app/navigation/trainerOverlayScreens.jsx', [
-    ['../screens/SearchTrainersScreen', '../marketplace/SearchTrainersScreen'],
+  ['src/trainer-app/navigation/trainerExtraScreens.jsx', [
+    ['../screens/SearchTrainersScreen', '../find-a-trainer/SearchTrainersScreen'],
     ['../screens/TrainerViewWeekProgressReportScreen', '../weekly-report/TrainerViewWeekProgressReportScreen'],
     ['../screens/ManualWorkoutPlanBuilderScreen', '../workout-plans/ManualWorkoutPlanBuilderScreen'],
-    ['../screens/PaymentsScreen', '../payments/PaymentsScreen'],
+    ['../screens/PaymentsScreen', '../earnings/EarningsScreen'],
   ]],
   ['src/trainer-app/weekly-report/', [
     ['../../../assets/', '../../assets/'],
@@ -72,13 +72,13 @@ const DIR_RULES = [
     ['../components/documents/', '../documents/'],
     ['../components/TrainerWeeklyReportSection', '../weekly-report/TrainerWeeklyReportSection'],
     ['../components/dashboard/', './'],
-    ['../lib/trainerFirestoreErrors', '../crm/trainerFirestoreErrors'],
+    ['../lib/trainerFirestoreErrors', '../client-records/trainerFirestoreErrors'],
     ['../services/clientCRMService', '../clients-list/clientCRMService'],
   ]],
   ['src/trainer-app/client-detail/', [
     ['../components/documents/', '../documents/'],
     ['../components/dashboard/', '../dashboard/'],
-    ['../lib/trainerFirestoreErrors', '../crm/trainerFirestoreErrors'],
+    ['../lib/trainerFirestoreErrors', '../client-records/trainerFirestoreErrors'],
   ]],
   ['src/trainer-app/progress-tab/', [['../components/dashboard/', '../dashboard/']]],
   ['src/trainer-app/nutrition-tab/', [['../components/dashboard/', '../dashboard/']]],
@@ -97,8 +97,8 @@ const DIR_RULES = [
     ['../services/loadPendingTraineeRequests', './loadPendingTraineeRequests'],
   ]],
   ['src/trainer-app/clients-list/', [
-    ['../lib/trainerClientFirestorePaths', '../crm/trainerClientFirestorePaths'],
-    ['../lib/loadMyLinkedTrainees', '../crm/loadMyLinkedTrainees'],
+    ['../lib/trainerClientFirestorePaths', '../client-records/trainerClientFirestorePaths'],
+    ['../lib/loadMyLinkedTrainees', '../client-records/loadMyLinkedTrainees'],
   ]],
   ['src/trainer-app/workout-plans/', [
     ['../services/manualWorkoutPlanService', './manualWorkoutPlanService'],
@@ -122,7 +122,7 @@ const DIR_RULES = [
   ]],
   ['src/nutrition/screens/', [
     ['../components/MacroBar', '../daily-log/MacroBar'],
-    ['../../Loader', '../../for-both/components/shell/AppLoadingScreen'],
+    ['../../Loader', '../../for-both/loading-and-header/AppLoadingScreen'],
   ]],
   ['src/for-both/api/', [
     ['../services/baseUrl', './baseUrl'],
@@ -188,7 +188,7 @@ const DIR_RULES = [
     ['../services/workoutPlanPdfService', '../plan-viewer/workoutPlanPdfService'],
     ['../components/WorkoutPlanPdfViewerModal', '../plan-viewer/WorkoutPlanPdfViewerModal'],
     ['../components/WorkoutExerciseLibraryTab', '../exercise-library/WorkoutExerciseLibraryTab'],
-    ['../components/EditModalForm_RN', './EditModalForm_RN'],
+    ['../components/EditWorkoutModalForm', './EditWorkoutModalForm'],
     ['../components/WorkoutProfilePillGrid', './WorkoutProfilePillGrid'],
     ['../components/WorkoutPlanResult', '../plan-viewer/WorkoutPlanResult'],
     ['../components/workoutPlanUiComponents', '../plan-viewer/workoutPlanUiComponents'],
@@ -208,7 +208,7 @@ const DIR_RULES = [
   ['src/workouts/exercise-library/', [
     ['../hooks/useYouTubeAPI', './useYouTubeAPI'],
   ]],
-  ['src/workouts/active-workout/WorkoutProfilePillGrid.jsx', [
+  ['src/workouts/create-plan/WorkoutProfileTags.jsx', [
     ['../lib/workoutOnboardingFormConfig', '../plan-generator/workoutOnboardingFormConfig'],
   ]],
   ['src/for-both/components/notes-files/', [

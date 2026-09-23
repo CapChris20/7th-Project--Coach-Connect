@@ -1,21 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 
-describe('ScheduleTrainingSessionScreen listener sharing', () => {
-  it('wraps TrainerApp in SessionsProvider', () => {
+describe('ScheduleSessionScreen listener sharing', () => {
+  it('wraps TrainerAppStart in SessionsProvider', () => {
     const source = fs.readFileSync(
-      path.join(__dirname, '../../app-start/TrainerApp.js'),
+      path.join(__dirname, '../../app-start/TrainerAppStart.js'),
       'utf8',
     );
     expect(source).toContain('SessionsProvider');
   });
 
-  it('thin session hooks require SessionsContext', () => {
+  it('thin session hooks require SharedSessionList', () => {
     const source = fs.readFileSync(
-      path.join(__dirname, '../../trainer-app/hooks/useMyTrainingSessions.js'),
+      path.join(__dirname, '../../trainer-app/scheduling/mySessions.js'),
       'utf8',
     );
-    expect(source).toContain('useSessionsContext');
+    expect(source).toContain('useSharedSessionList');
     expect(source).not.toMatch(/useCreateTrainingSession[\s\S]*useSessions\(\)/);
   });
 });

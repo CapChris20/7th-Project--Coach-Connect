@@ -9,14 +9,14 @@ async function testSessionScheduling() {
   const results = [];
   const cleanup = [];
 
-  const sessionsHook = path.join(ROOT, 'src/trainer-app/hooks/useMyTrainingSessions.js');
+  const sessionsHook = path.join(ROOT, 'src/trainer-app/scheduling/mySessions.js');
   if (fs.existsSync(sessionsHook) && fs.readFileSync(sessionsHook, 'utf8').includes('trainer_clients')) {
     results.push(pass('useMyTrainingSessions listens on trainer_clients sessions'));
   } else {
     results.push(fail('useMyTrainingSessions listens on trainer_clients sessions', 'pattern missing'));
   }
 
-  const ctx = path.join(ROOT, 'src/trainer-app/hooks/SessionsContext.jsx');
+  const ctx = path.join(ROOT, 'src/trainer-app/scheduling/SharedSessionList.jsx');
   if (fs.existsSync(ctx)) {
     results.push(pass('SessionsContext provider exists'));
   } else {

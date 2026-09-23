@@ -125,6 +125,31 @@ async function purgeUserFirestore(db, uid) {
     await batch.commit();
     trainerLinkDeleted = trainerLinks.size;
   }
+
+  // Top-level nutrition PII (not under users/{uid}/)
+  await deleteAllMatching(db, () =>
+    db.collection('nutrition_logs').where('user_id', '==', uid),
+  );
+  try {
+    await db.collection('nutrition_goals').doc(uid).delete();
+  } catch (_) {
+    /* ignore */
+  }
+
+  // Safety reports mentioning this user
+  await deleteAllMatching(db, () =>
+    db.collection('contentReports').where('reporterId', '==', uid),
+  );
+  await deleteAllMatching(db, () =>
+    db.collection('contentReports').where('targetUid', '==', uid),
+  );
+
+  // Sign in with Apple revoke cache (also cleared in deleteAccount after revoke)
+  try {
+    await db.collection('appleAuthTokens').doc(uid).delete();
+  } catch (_) {
+    /* ignore */
+  }
 }
 
 module.exports = { purgeUserFirestore, PAGE_SIZE, deleteQueryPage, deleteAllMatching };

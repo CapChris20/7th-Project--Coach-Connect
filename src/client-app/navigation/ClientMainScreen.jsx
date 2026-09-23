@@ -24,52 +24,52 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../../app-start/config';
-import { getClientDateKey } from '../../helpers/dateKeys';
-import { mergeClientDailyMetrics } from '../../metrics/daily-metrics/saveDailyMetricsToFirestore';
-import { markNotesAndFilesItemRead } from '../../for-both/notes-files/manageNotesAndFiles';
-import ChatWithTrainerScreen from '../../messaging/ChatThreadScreen';
-import MyMessagesScreen from '../../messaging/MyMessagesScreen';
-import TrainingDashboardScreen from '../dashboard/TrainingDashboardScreen';
-import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
-import BottomNavBar from '../../navigation/BottomNavBar';
-import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomNavMetrics';
+import { auth, db } from '../../app-start/cloudConnection';
+import { getClientDateKey } from '../../helpers/dateStrings';
+import { mergeClientDailyMetrics } from '../../daily-stats/saveDailyStats';
+import { markNotesAndFilesItemRead } from '../../for-both/files-and-notes/saveNotesAndFiles';
+import ChatWithTrainerScreen from '../../messaging/ChatScreen';
+import InboxScreen from '../../messaging/InboxScreen';
+import TrainingHomeScreen from '../home/TrainingHomeScreen';
+import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import BottomMenuBar from '../../navigation/BottomMenuBar';
+import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import {
   readWorkoutGenerationSession,
   subscribeWorkoutGenerationSession,
-} from '../../workouts/plan-generator/workoutPlanGenerationSession';
-import { AppNavigationProvider } from '../../navigation/AppNavigationContext';
+} from '../../workouts/create-plan/keepPlanBuildingInBackground';
+import { AppNavigationProvider } from '../../navigation/whichScreenIsOpen';
 import {
-  AuroraHeroBanner,
+  HomeTopBanner,
   TopStatsRow,
   WellnessStatsRow,
   TrainingAgenda,
   NutritionCard,
-} from '../home/clientHomeComponents';
-import FilesNotesHeroCard from '../../for-both/components/FilesNotesHeroCard';
-import FilesNotesSectionPremium from '../../for-both/components/notes-files/FilesNotesSectionPremium';
-import { SessionMeetingCard } from '../../for-both/components/home/SessionMeetingCard';
-import TrainerSharedFilesModal from '../files/TrainerSharedFilesModal';
-import AddNotesFilesModal from '../../for-both/components/notes-files/AddNotesFilesModal';
-import PdfViewerModal from '../../for-both/components/notes-files/PdfViewerModal';
-import SpreadsheetViewerModal from '../../for-both/components/notes-files/SpreadsheetViewerModal';
-import DocumentViewerModal from '../../for-both/components/notes-files/DocumentViewerModal';
-import MediaViewerModal from '../../for-both/components/notes-files/MediaViewerModal';
-import EmbedWebViewModal from '../../for-both/components/notes-files/EmbedWebViewModal';
-import RemoveTrainerSheet from '../../for-both/components/modals/RemoveTrainerSheet';
-import ReviewSubmitSheet from '../dashboard/ReviewSubmitSheet';
-import MarketplaceHeroCard from '../../for-both/components/MarketplaceHeroCard';
-import DashboardHeroCard from '../dashboard/DashboardHeroCard';
-import NutritionContainer from '../../nutrition/daily-log/NutritionContainer';
-import WorkoutPlanGeneratorScreen from '../../workouts/active-workout/workout';
-import StartCoachChatScreen from '../../ai-coach/chat-ui/chat-home/StartCoachChatScreen';
-import ChatWithCoachScreen from '../../ai-coach/chat-ui/chat-thread/ChatWithCoachScreen';
+} from '../home/homeScreenPieces';
+import FilesHeaderCard from '../../for-both/home-cards/FilesHeaderCard';
+import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
+import { UpcomingSessionCard } from '../../for-both/home-cards/UpcomingSessionCard';
+import TrainerSharedFilesPopup from '../files-and-notes/TrainerSharedFilesPopup';
+import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
+import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
+import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
+import DocumentViewer from '../../for-both/files-and-notes/viewers/DocumentViewer';
+import PhotoVideoViewer from '../../for-both/files-and-notes/viewers/PhotoVideoViewer';
+import WebPageViewer from '../../for-both/files-and-notes/viewers/WebPageViewer';
+import RemoveTrainerPopup from '../../for-both/popups/RemoveTrainerPopup';
+import WriteTrainerReviewPopup from '../home/WriteTrainerReviewPopup';
+import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
+import TopBannerCard from '../home/TopBannerCard';
+import DailyLogContent from '../../nutrition/daily-log/DailyLogContent';
+import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
+import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
+import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
 import { useIsFocused } from '@react-navigation/native';
-import { CLIENT_MAIN_TABS } from './useClientScreenNavigation';
-import { useClientAppShell } from './ClientAppShellContext';
+import { CLIENT_MAIN_TABS } from './goToClientScreen';
+import { useClientAppStartShell } from './ClientOpenScreenTracker';
 
 export default function ClientMainScreen() {
-  const s = useClientAppShell();
+  const s = useClientAppStartShell();
   const {
     navProviderProps,
     isDark,
@@ -87,7 +87,7 @@ export default function ClientMainScreen() {
     openProfile,
     openSettings,
     handleHomePress,
-    setShowAddNotesFilesModal,
+    setShowAddFilePopup,
     openAIChatHome,
     openNutrition,
     openWorkout,
@@ -97,7 +97,7 @@ export default function ClientMainScreen() {
     showMyDashboard,
     trainerData,
     unreadMessageCount,
-    setShowRemoveTrainerSheet,
+    setShowRemoveTrainerPopup,
     setProfileTrainer,
     setShowMyDashboard,
     openTrainerProfile,
@@ -130,10 +130,10 @@ export default function ClientMainScreen() {
     deleteSingleMyFile,
     deletingMyFiles,
     refreshNotesAndFiles,
-    showTrainerSharedFilesModal,
-    setShowTrainerSharedFilesModal,
+    showTrainerSharedFilesPopup,
+    setShowTrainerSharedFilesPopup,
     trainerSharedFiles,
-    showAddNotesFilesModal,
+    showAddFilePopup,
     pdfViewer,
     setPdfViewer,
     spreadsheetViewer,
@@ -144,7 +144,7 @@ export default function ClientMainScreen() {
     setMediaViewer,
     embedWebViewer,
     setEmbedWebViewer,
-    showRemoveTrainerSheet,
+    showRemoveTrainerPopup,
     showReviewSheetForPrompt,
     userName,
     userRole,
@@ -209,7 +209,7 @@ export default function ClientMainScreen() {
   const isMainFocused = useIsFocused();
   const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
   const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
-  // Keep shell BottomNavBar on Dashboard, Messages list, Goals, etc.
+  // Keep shell BottomMenuBar on Dashboard, Messages list, Goals, etc.
   // Only hide for focused flows: nutrition onboarding, or an open chat thread.
   const hideBottomNav =
     (mainTab === CLIENT_MAIN_TABS.nutrition && nutritionOnboardingActive) ||
@@ -237,7 +237,7 @@ export default function ClientMainScreen() {
         <View
           style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
         >
-          <MyMessagesScreen
+          <InboxScreen
             embedInLayout
             onSelectConversation={handleSelectConversation}
             onClose={handleCloseConversationsList}
@@ -247,20 +247,20 @@ export default function ClientMainScreen() {
         </View>
       ) : showMyDashboard ? (
         <View style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}>
-          <CoachConnectHeader
+          <TopHeader
               title="Dashboard"
               skipTopSafeInset
               onBack={() => setShowMyDashboard(false)}
               onProfilePress={() => openProfile()}
               onSettingsPress={() => openSettings()}
             />
-            <TrainingDashboardScreen
+            <TrainingHomeScreen
               embedInLayout
               trainer={trainerData}
               userData={userData}
               onOpenCoachingPayment={openCoachingPayment}
               unreadMessageCount={unreadMessageCount}
-              onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerSheet(true) : undefined}
+              onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerPopup(true) : undefined}
               onPressViewProfile={() => {
                 if (!trainerData) return;
                 setProfileTrainer(trainerData);
@@ -366,7 +366,7 @@ export default function ClientMainScreen() {
         <View
           style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
         >
-          <CoachConnectHeader
+          <TopHeader
             title="Notes & Files"
             skipTopSafeInset
             onBack={() => setShowNotesFiles(false)}
@@ -381,7 +381,7 @@ export default function ClientMainScreen() {
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
-            <FilesNotesSectionPremium
+            <FilesSection
               items={notesAndFiles}
               isDark={isDark}
               onOpenItem={openNotesFile}
@@ -395,12 +395,12 @@ export default function ClientMainScreen() {
                 if (!user?.uid || !x?.id) return;
                 try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
               }}
-              onUploadPress={() => setShowAddNotesFilesModal(true)}
+              onUploadPress={() => setShowAddFilePopup(true)}
             />
           </ScrollView>
         </View>
       ) : mainTab === CLIENT_MAIN_TABS.nutrition ? (
-        <NutritionContainer
+        <DailyLogContent
           hideBottomNav
           onOnboardingActiveChange={setNutritionOnboardingActive}
           onBack={() => {
@@ -411,7 +411,7 @@ export default function ClientMainScreen() {
           onProfilePress={openProfile}
           onSettingsPress={openSettings}
           onHomePress={handleHomePress}
-          onPlusPress={() => setShowAddNotesFilesModal(true)}
+          onPlusPress={() => setShowAddFilePopup(true)}
           onVoicePress={openAIChatHome}
           onNutritionPress={openNutrition}
           onWorkoutPress={openWorkout}
@@ -419,7 +419,7 @@ export default function ClientMainScreen() {
         />
       ) : mainTab === CLIENT_MAIN_TABS.ai ? null : mainTab === CLIENT_MAIN_TABS.workout ? null : (
       <View style={{ flex: 1 }}>
-        <CoachConnectHeader
+        <TopHeader
           isDark={isDark}
           skipTopSafeInset
           onProfilePress={() => openProfile()}
@@ -455,9 +455,9 @@ export default function ClientMainScreen() {
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <AuroraHeroBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
+        <HomeTopBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
         {userRole !== 'trainer' && !hasTrainer && (
-          <MarketplaceHeroCard
+          <FindTrainerBanner
             onPress={() => openTrainerSearch()}
             notificationCount={0}
             isDark={isDark}
@@ -485,7 +485,7 @@ export default function ClientMainScreen() {
           </TouchableOpacity>
         ) : null}
         {userRole !== 'trainer' && (
-          <DashboardHeroCard
+          <TopBannerCard
             onPress={() => setShowMyDashboard(true)}
             unreadMessageCount={unreadMessageCount}
             isDark={isDark}
@@ -525,7 +525,7 @@ export default function ClientMainScreen() {
           compact
         />
         {/* Notes & Files hero card */}
-        <FilesNotesHeroCard
+        <FilesHeaderCard
           onPress={() => setShowNotesFiles(true)}
           fileCount={Array.isArray(notesAndFiles) ? notesAndFiles.length : 0}
           newCount={Array.isArray(notesAndFiles) ? notesAndFiles.filter((f) => f?.isRead === false).length : 0}
@@ -586,7 +586,7 @@ export default function ClientMainScreen() {
           </View>
 
           {pendingSessions.map((s) => (
-            <SessionMeetingCard
+            <UpcomingSessionCard
               key={s.id}
               mode="invite"
               isDark={isDark}
@@ -598,7 +598,7 @@ export default function ClientMainScreen() {
         </View>
         )}
 
-        {/* Trainer shared + notes are rendered inside FilesNotesSectionPremium */}
+        {/* Trainer shared + notes are rendered inside FilesSection */}
       </ScrollView>
       </View>
       )}
@@ -612,7 +612,7 @@ export default function ClientMainScreen() {
           pointerEvents={mainTab === CLIENT_MAIN_TABS.workout ? 'auto' : 'none'}
           collapsable={false}
         >
-          <WorkoutPlanGeneratorScreen
+          <CreateWorkoutPlanScreen
             hideBottomNav
             onBack={handleHomePress}
             onNavigate={onNavigate}
@@ -632,7 +632,7 @@ export default function ClientMainScreen() {
           collapsable={false}
         >
           {aiChatPayload ? (
-            <ChatWithCoachScreen
+            <CoachConversationScreen
               hideBottomNav
               key={JSON.stringify({
                 sid: aiChatPayload.sessionId ?? null,
@@ -658,7 +658,7 @@ export default function ClientMainScreen() {
               {...aiChatNavHandlers}
             />
           ) : (
-            <StartCoachChatScreen
+            <CoachHomeScreen
               hideBottomNav
               userId={user?.uid}
               onStartChat={(payload = {}) => openAIChatSession(payload)}
@@ -672,30 +672,30 @@ export default function ClientMainScreen() {
       ) : null}
       </View>
 
-      <TrainerSharedFilesModal
-        visible={showTrainerSharedFilesModal}
-        onClose={() => setShowTrainerSharedFilesModal(false)}
+      <TrainerSharedFilesPopup
+        visible={showTrainerSharedFilesPopup}
+        onClose={() => setShowTrainerSharedFilesPopup(false)}
         isDark={isDark}
         files={trainerSharedFiles}
         onPressItem={(file) => {
-          setShowTrainerSharedFilesModal(false);
+          setShowTrainerSharedFilesPopup(false);
           openNotesFile(file);
         }}
       />
-      <AddNotesFilesModal
-        visible={showAddNotesFilesModal}
-        onClose={() => setShowAddNotesFilesModal(false)}
+      <AddFilePopup
+        visible={showAddFilePopup}
+        onClose={() => setShowAddFilePopup(false)}
         onAdded={refreshNotesAndFiles}
         isDark={isDark}
       />
-      <PdfViewerModal
+      <PdfViewer
         visible={pdfViewer.visible}
         url={pdfViewer.url}
         name={pdfViewer.name}
         isDark={isDark}
         onClose={() => setPdfViewer({ visible: false, url: null, name: null })}
       />
-      <SpreadsheetViewerModal
+      <SpreadsheetViewer
         visible={spreadsheetViewer.visible}
         url={spreadsheetViewer.url}
         rows={spreadsheetViewer.rows}
@@ -703,7 +703,7 @@ export default function ClientMainScreen() {
         isDark={isDark}
         onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null, rows: null })}
       />
-      <DocumentViewerModal
+      <DocumentViewer
         visible={documentViewer.visible}
         trainerId={documentViewer.trainerId}
         documentId={documentViewer.documentId}
@@ -711,7 +711,7 @@ export default function ClientMainScreen() {
         isDark={isDark}
         onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })}
       />
-      <MediaViewerModal
+      <PhotoVideoViewer
         visible={mediaViewer.visible}
         url={mediaViewer.url}
         kind={mediaViewer.kind}
@@ -719,22 +719,22 @@ export default function ClientMainScreen() {
         isDark={isDark}
         onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
       />
-      <EmbedWebViewModal
+      <WebPageViewer
         visible={embedWebViewer.visible}
         uri={embedWebViewer.uri}
         title={embedWebViewer.title}
         isDark={isDark}
         onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
       />
-      <RemoveTrainerSheet
-        visible={showRemoveTrainerSheet}
-        onClose={() => setShowRemoveTrainerSheet(false)}
+      <RemoveTrainerPopup
+        visible={showRemoveTrainerPopup}
+        onClose={() => setShowRemoveTrainerPopup(false)}
         onRemovalComplete={() => {
           if (trainerData) {
             setReviewPromptTrainer({ id: trainerData.id, name: trainerData.displayName || trainerData.name || 'Your trainer' });
           }
           setTrainerData(null);
-          setShowRemoveTrainerSheet(false);
+          setShowRemoveTrainerPopup(false);
         }}
         trainerName={trainerData?.displayName || trainerData?.name}
         clientName={user?.displayName || userData?.firstName}
@@ -743,7 +743,7 @@ export default function ClientMainScreen() {
         clientId={user?.uid}
       />
       {reviewPromptTrainer && (
-        <ReviewSubmitSheet
+        <WriteTrainerReviewPopup
           visible={showReviewSheetForPrompt}
           onClose={() => setShowReviewSheetForPrompt(false)}
           onSubmitComplete={() => {
@@ -759,7 +759,7 @@ export default function ClientMainScreen() {
       )}
       {isMainFocused && !hideBottomNav ? (
         <ShellBottomNavAnchor>
-          <BottomNavBar
+          <BottomMenuBar
             {...navProviderProps}
             activeTabKey={mainTabActiveKey}
             workoutTabBadge={workoutPlanReadyBadge}

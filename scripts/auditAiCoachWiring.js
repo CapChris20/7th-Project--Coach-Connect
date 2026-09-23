@@ -17,7 +17,7 @@ const RULES = [
     severity: 'error',
     note: 'ChatWithCoachScreen must import coachConversationDebug (June 11 Metro logs)',
     check() {
-      const src = read('src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx');
+      const src = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
       return src.includes('coachConversationDebug') && src.includes('logCoachUserMessage');
     },
   },
@@ -26,7 +26,7 @@ const RULES = [
     severity: 'error',
     note: 'ChatWithCoachScreen must call logCoachUserMessage + logCoachTurnBundle on each turn',
     check() {
-      const src = read('src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx');
+      const src = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
       return (
         src.includes('logCoachUserMessage(') &&
         src.includes('logCoachAssistantMessage(') &&
@@ -40,7 +40,7 @@ const RULES = [
     severity: 'error',
     note: 'coachConversationDebug.js must exist',
     check() {
-      return exists('src/ai-coach/chat-ui/lib/coachConversationDebug.js');
+      return exists('src/ai-coach/reply-display/developerChatLog.js');
     },
   },
   {
@@ -48,8 +48,8 @@ const RULES = [
     severity: 'error',
     note: 'Client must prefer Cloud Run for AI Coach + retry failed web search',
     check() {
-      const base = read('src/for-both/api/baseUrl.js');
-      const svc = read('src/ai-coach/logic/chat-api/sendCoachMessageToServer.js');
+      const base = read('src/for-both/online-connection/whereToConnect.js');
+      const svc = read('src/ai-coach/conversation/sendMessageToCoach.js');
       return (
         base.includes('getAICoachApiBases') &&
         base.includes('push(PRODUCTION_API_BASE_URL)') &&
@@ -92,7 +92,7 @@ const RULES = [
     severity: 'error',
     note: 'CoachFormattedReply should be imported in ChatWithCoachScreen',
     check() {
-      return read('src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx').includes('CoachFormattedReply');
+      return read('src/ai-coach/conversation/CoachConversationScreen.jsx').includes('CoachFormattedReply');
     },
   },
   {
@@ -100,7 +100,7 @@ const RULES = [
     severity: 'error',
     note: 'CoachWebSourceCards should be imported in ChatWithCoachScreen',
     check() {
-      return read('src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx').includes('CoachWebSourceCards');
+      return read('src/ai-coach/conversation/CoachConversationScreen.jsx').includes('CoachWebSourceCards');
     },
   },
   {
@@ -108,7 +108,7 @@ const RULES = [
     severity: 'error',
     note: 'StartCoachChatScreen should use hourly coach prompts',
     check() {
-      const src = read('src/ai-coach/chat-ui/screens/StartCoachChatScreen.jsx');
+      const src = read('src/ai-coach/home-screen/CoachHomeScreen.jsx');
       return src.includes('buildHourlySpotlightSuggestions') && src.includes('buildHourlyCanHelpWith');
     },
   },
@@ -117,7 +117,7 @@ const RULES = [
     severity: 'warn',
     note: 'coachQuickActionsList.js exists but may be unused (home has inline tiles)',
     check() {
-      const cap = exists('src/ai-coach/chat-ui/lib/coachQuickActionsList.js');
+      const cap = exists('src/ai-coach/chat-ui/helpers/coachQuickActionsList.js');
       if (!cap) return true;
       const used = grepRepo('coachQuickActionsList').some((f) => !f.endsWith('coachQuickActionsList.js'));
       return used;
@@ -128,7 +128,7 @@ const RULES = [
     severity: 'warn',
     note: 'firestoreListenerUtils — check if still needed or inlined elsewhere',
     check() {
-      const p = 'src/for-both/services/firestoreListenerUtils.js';
+      const p = 'src/for-both/cloud-database/handleLiveUpdateErrors.js';
       if (!exists(p)) return true;
       return grepRepo('firestoreListenerUtils').length > 1;
     },
@@ -138,7 +138,7 @@ const RULES = [
     severity: 'warn',
     note: 'AICoachTestSuite.jsx for in-app dev testing',
     check() {
-      return exists('src/ai-coach/chat-ui/AICoachTestSuite.jsx');
+      return exists('src/ai-coach/CoachSelfTest.jsx');
     },
   },
 ];

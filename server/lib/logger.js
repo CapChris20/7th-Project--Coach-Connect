@@ -1,13 +1,13 @@
-/** Minimal server logger — routes to console for Cloud Run / local dev. */
+/** Minimal server logger — screenNames to console for Cloud Run / local dev. */
 const PREFIX = '[coach-connect]';
 
-function formatArgs(args) {
+function cellFormattingArgs(args) {
   return args.map((a) => (a instanceof Error ? a.message : a));
 }
 
 module.exports = {
-  debug: (...args) => console.log(PREFIX, ...formatArgs(args)),
-  info: (...args) => console.log(PREFIX, ...formatArgs(args)),
-  warn: (...args) => console.warn(PREFIX, ...formatArgs(args)),
-  error: (...args) => console.error(PREFIX, ...formatArgs(args)),
+  debug: (...args) => console.log(PREFIX, ...cellFormattingArgs(args)),
+  info: (...args) => console.log(PREFIX, ...cellFormattingArgs(args)),
+  warn: (...args) => console.warn(PREFIX, ...cellFormattingArgs(args)),
+  error: (...args) => console.error(PREFIX, ...cellFormattingArgs(args)),
 };

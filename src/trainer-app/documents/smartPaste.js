@@ -4,7 +4,7 @@
 // Why it exists: pasting a plan from Notes or an email would otherwise arrive as one flat blob;
 // this recovers the structure the user could see but the clipboard didn't carry.
 
-// Smart paste transformations applied to clipboard plain-text and HTML.
+// Smart paste transcellFormattingions applied to clipboard plain-text and HTML.
 // Returns an HTML string ready to be inserted into TipTap.
 
 // vocab: \b = word boundary. The character class excludes whitespace and the closing punctuation
@@ -54,7 +54,7 @@ function linkifyAndPhones(line) {
   // reach back into this one via window.opener.
   out = out.replace(URL_RE, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
   out = out.replace(PHONE_RE, (m) => {
-    // The href needs digits and a leading + only; the visible text keeps the user's formatting.
+    // The href needs digits and a leading + only; the visible text keeps the user's cellFormattingting.
     const tel = m.replace(/[^\d+]/g, "");
     // Manipulate here: under 7 digits it's probably a date, price, or ID, not a phone — leave it
     // as plain text. This is the main defense against the loose PHONE_RE over-matching.

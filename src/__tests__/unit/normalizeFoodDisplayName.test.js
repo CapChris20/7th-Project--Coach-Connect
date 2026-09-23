@@ -1,20 +1,20 @@
 const {
-  makeReadableFoodTitle,
+  readableFoodTitle,
   normalizeFoodRecordForStorage,
   collapseRepeatedNameSegments,
   smartTitleCase,
-} = require('../../nutrition/food-search/makeReadableFoodTitle');
+} = require('../../nutrition/food-search/readableFoodTitle');
 
-describe('makeReadableFoodTitle', () => {
+describe('readableFoodTitle', () => {
   it('title-cases ALL CAPS packaged foods', () => {
-    expect(makeReadableFoodTitle({ name: 'KIND BAR DARK CHOCOLATE NUTS & SEA SALT' }).name).toBe(
+    expect(readableFoodTitle({ name: 'KIND BAR DARK CHOCOLATE NUTS & SEA SALT' }).name).toBe(
       'Kind Bar Dark Chocolate Nuts & Sea Salt',
     );
   });
 
   it('collapses repeated comma segments', () => {
     expect(
-      makeReadableFoodTitle({
+      readableFoodTitle({
         name: 'Real Chocolate Chip Cookies, Real Chocolate Chip',
       }).name,
     ).toBe('Real Chocolate Chip Cookies');
@@ -22,7 +22,7 @@ describe('makeReadableFoodTitle', () => {
 
   it('strips site suffixes and uses user query for junk titles', () => {
     expect(
-      makeReadableFoodTitle({
+      readableFoodTitle({
         name: 'CalorieKing',
         userQuery: "wendy's small frosty vanilla",
       }).name,
@@ -30,7 +30,7 @@ describe('makeReadableFoodTitle', () => {
   });
 
   it('shortens USDA scientific descriptions', () => {
-    const { name } = makeReadableFoodTitle({
+    const { name } = readableFoodTitle({
       name: 'Chicken, broiler or fryers, breast, meat only, cooked, roasted',
       source: 'usda',
     });
@@ -40,14 +40,14 @@ describe('makeReadableFoodTitle', () => {
 
   it('strips trademark symbols and retailer suffixes', () => {
     expect(
-      makeReadableFoodTitle({
+      readableFoodTitle({
         name: 'Ghost® Whey Protein — Walmart',
       }).name,
     ).toBe('Ghost Whey Protein');
   });
 
   it('removes brand prefix when brand field is explicit', () => {
-    const { name, brand } = makeReadableFoodTitle({
+    const { name, brand } = readableFoodTitle({
       name: 'Chobani Greek Yogurt, Plain',
       brand: 'Chobani',
     });
@@ -72,7 +72,7 @@ describe('helpers', () => {
     expect(collapseRepeatedNameSegments('Big Mac, Big Mac')).toBe('Big Mac');
   });
 
-  it('smartTitleCase preserves short uppercase tokens', () => {
+  it('smartTitleCase preserves short uppercase reportColors', () => {
     expect(smartTitleCase('IN-N-OUT DOUBLE-DOUBLE')).toBe('IN-N-OUT Double-Double');
   });
 });

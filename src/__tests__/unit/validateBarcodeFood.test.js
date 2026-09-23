@@ -2,9 +2,9 @@ const {
   isBarcodeJunkName,
   isUsableBarcodeFood,
   barcodeNotFoundPayload,
-} = require('../../nutrition/barcode/validateBarcodeFood');
+} = require('../../nutrition/barcode/rejectBadBarcodeResults');
 
-describe('validateBarcodeFood', () => {
+describe('rejectBadBarcodeResults', () => {
   test('rejects GS1 barcode tracker junk', () => {
     expect(
       isUsableBarcodeFood({

@@ -1,6 +1,6 @@
-const { stripUndefinedForFirestore } = require('../../helpers/firestoreSanitize');
+const { stripUndefinedForFirestore } = require('../../helpers/cleanDataBeforeSaving');
 
-describe('saveCoachMessages Firestore payloads', () => {
+describe('saveAndLoadChats Firestore payloads', () => {
   test('stripUndefinedForFirestore removes nested undefined in attachments', () => {
     const payload = stripUndefinedForFirestore({
       id: 'm1',

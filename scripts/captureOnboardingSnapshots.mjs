@@ -21,7 +21,7 @@ const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'docs/onboarding-snapshots');
 
 const CAPTURES = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'src/auth/onboardingSnapshotManifest.json'), 'utf8'),
+  fs.readFileSync(path.join(ROOT, 'src/login-and-signup/setupScreenshotList.json'), 'utf8'),
 );
 const TOTAL = CAPTURES.length;
 

@@ -4,7 +4,7 @@
 const {
   decideVerificationOutcome,
   normalizeMediaType,
-} = require('../lib/verifyTrainerCertification');
+} = require('../lib/checkTrainerCertificate');
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -35,4 +35,4 @@ assert(o.status === 'rejected' && o.isVerified === false, 'not legit rejects');
 o = decideVerificationOutcome({ isLegit: true, confidence: 0.4, issues: ['Blurry'] });
 assert(o.status === 'rejected', 'low confidence rejects');
 
-console.log('verifyTrainerCertification decision tests passed');
+console.log('checkTrainerCertificate decision tests passed');

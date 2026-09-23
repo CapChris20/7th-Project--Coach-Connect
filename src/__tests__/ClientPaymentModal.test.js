@@ -34,7 +34,7 @@ jest.mock('@expo/vector-icons', () => {
   };
 });
 
-jest.mock('../theme/ThemeContext', () => ({
+jest.mock('../look-and-feel/lightDarkMode', () => ({
   useTheme: () => ({
     colors: {
       text: '#FFFFFF',
@@ -48,11 +48,11 @@ jest.mock('../theme/ThemeContext', () => ({
   }),
 }));
 
-jest.mock('../for-both/api/chargesApi', () => ({
+jest.mock('../for-both/payments/chargeCard', () => ({
   postCoachingCharge: (...args) => mockPostCoachingCharge(...args),
 }));
 
-jest.mock('../for-both/payments/stripeNativeStatus', () => {
+jest.mock('../for-both/payments/canThisPhoneTakeCards', () => {
   const stripe = require('@stripe/stripe-react-native');
   return {
     getStripeNativeModule: () => stripe,
@@ -77,7 +77,7 @@ jest.mock('@stripe/stripe-react-native', () => {
   };
 });
 
-const { ClientPaymentModal } = require('../components/ClientPaymentModal');
+const { PayTrainerPopup } = require('../for-both/payments/PayTrainerPopup');
 
 function textContent(tree) {
   return tree.root
@@ -115,7 +115,7 @@ function renderModal(props = {}) {
 
   act(() => {
     tree = TestRenderer.create(
-      <ClientPaymentModal
+      <PayTrainerPopup
         trainerId="trainer123"
         trainerName="John"
         onClose={onClose}
@@ -134,7 +134,7 @@ async function flushPromises() {
   });
 }
 
-describe('ClientPaymentModal', () => {
+describe('PayTrainerPopup', () => {
   beforeEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();

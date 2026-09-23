@@ -28,11 +28,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 const mockClearPushTokensForUid = jest.fn(() => Promise.resolve());
 
-jest.mock('../../notifications/manageNotifications', () => ({
+jest.mock('../../notifications/manageAlerts', () => ({
   clearPushTokensForUid: (...args) => mockClearPushTokensForUid(...args),
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   auth: { currentUser: { uid: 'user-old' } },
 }));
 
@@ -41,7 +41,7 @@ const {
   onUserSignOut,
   onUserSwitch,
   clearAllUserData,
-} = require('../../utils/clearDataOnLogout');
+} = require('../../logout-cleanup/clearDataOnLogout');
 
 const OLD_UID = 'user-old';
 const NEW_UID = 'user-new';

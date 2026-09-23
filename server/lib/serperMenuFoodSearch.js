@@ -19,7 +19,7 @@ const {
   dedupeFoodRows,
 } = require('../../src/nutrition/utils/foodSearchTitle');
 const { rankSerperFoodResultRows } = require('../../src/nutrition/utils/restaurantSerperQuality');
-const { servingLabelFromQueryStructure } = require('../../src/nutrition/utils/casualMenuSearch');
+const { servingLabelFromQueryStructure } = require('../../src/nutrition/food-search/restaurantMenuSearch');
 
 const SERPER_ORGANIC_MAX = 10;
 

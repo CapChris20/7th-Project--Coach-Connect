@@ -13,8 +13,8 @@ const zlib = require('zlib');
 
 try {
   // eslint-disable-next-line import/no-extraneous-dependencies
-  require('dotenv').config({ path: path.join(__dirname, '../.env') });
-  require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+  require('dotenv').cloudConnection({ path: path.join(__dirname, '../.env') });
+  require('dotenv').cloudConnection({ path: path.join(__dirname, '../../.env') });
 } catch (_) {
   /* optional */
 }
@@ -22,7 +22,7 @@ try {
 const {
   analyzeCertificationWithClaude,
   decideVerificationOutcome,
-} = require('../lib/verifyTrainerCertification');
+} = require('../lib/checkTrainerCertificate');
 
 /** Minimal valid 1x1 PNG, then we build a larger solid PNG via raw scanlines (simple test fixture). */
 function buildSolidPng(width, height, rgb = [255, 255, 255]) {
@@ -67,8 +67,8 @@ function buildSolidPng(width, height, rgb = [255, 255, 255]) {
 }
 
 async function main() {
-  require('dotenv').config({ path: path.join(__dirname, '../../.env') });
-  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+  require('dotenv').cloudConnection({ path: path.join(__dirname, '../../.env') });
+  require('dotenv').cloudConnection({ path: path.join(__dirname, '../.env') });
   if (!process.env.ANTHROPIC_API_KEY) {
     process.env.ANTHROPIC_API_KEY =
       process.env.CLAUDE_API_KEY || process.env.EXPO_PUBLIC_CLAUDE_API_KEY || '';

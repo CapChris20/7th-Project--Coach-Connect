@@ -26,14 +26,14 @@ loadEnvFile(path.join(__dirname, '../server/.env'));
 loadEnvFile(path.join(__dirname, '../.env'));
 
 const { FOOD_SEARCH_ACCURACY_CASES, MUST_PASS_CASES } = require('./data/foodSearchAccuracyCases');
-const { lookupTrustedFoods } = require('../src/nutrition/food-search/trustedFoodCatalog');
-const { filterFoodSearchRows } = require('../src/nutrition/food-search/sortBestFoodMatches');
-const { applyFoodCardPresentationToRows } = require('../src/nutrition/food-search/cleanFoodCardLabels');
+const { lookupTrustedFoods } = require('../src/nutrition/food-search/knownRestaurantFoods');
+const { filterFoodSearchRows } = require('../src/nutrition/food-search/rankFoodResults');
+const { applyFoodCardPresentationToRows } = require('../src/nutrition/food-search/tidyFoodTitles');
 const {
   rankSerperFoodResultRows,
   scoreOrganicNutritionHit,
   macroCalorieConsistencyScore,
-} = require('../src/nutrition/food-search/isReliableRestaurantFood');
+} = require('../src/nutrition/food-search/trustRestaurantResult');
 
 function parseArgs(argv) {
   const args = { live: false, only: null, limit: null, verbose: false };

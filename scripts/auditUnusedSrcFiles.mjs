@@ -62,9 +62,9 @@ for (const file of scanFiles) {
 // Entry points always "used"
 for (const e of [
   'App.js',
-  'src/app-start/AuthGate.js',
-  'src/app-start/ClientApp.js',
-  'src/app-start/TrainerApp.js',
+  'src/app-start/LoginGate.js',
+  'src/app-start/ClientAppStart.js',
+  'src/app-start/TrainerAppStart.js',
   'src/Loader.js',
 ]) {
   if (srcSet.has(e)) inbound.get(e)?.push('ENTRY');

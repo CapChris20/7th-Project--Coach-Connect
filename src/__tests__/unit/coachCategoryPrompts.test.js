@@ -5,7 +5,7 @@ const {
   buildHourlyCanHelpWith,
   buildHourlyCoachActions,
   CAN_HELP_WITH_ITEMS,
-} = require('../../ai-coach/chat-ui/chat-thread/coachQuickPrompts');
+} = require('../../ai-coach/conversation/suggestedQuestions');
 
 describe('coach category prompts', () => {
   test('builds deterministic hour slot', () => {

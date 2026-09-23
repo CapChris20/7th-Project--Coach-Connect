@@ -12,10 +12,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../theme/ThemeContext';
-import { useShellBottomNavInset } from '../../navigation/bottomNavMetrics';
-import { getRecentFoods } from '../daily-log/logFoodToFirestore';
-import { makeReadableFoodTitle } from '../food-search/makeReadableFoodTitle';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
+import { getRecentFoods } from '../daily-log/saveLoggedFood';
+import { readableFoodTitle } from '../food-search/readableFoodTitle';
 
 const initialMacros = {
   protein: '',
@@ -106,7 +106,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
   const handleLog = () => {
     if (!isValid) return;
-    const { name } = makeReadableFoodTitle({ name: foodName.trim(), source: 'manual' });
+    const { name } = readableFoodTitle({ name: foodName.trim(), source: 'manual' });
     const entry = {
       name,
       quantity,

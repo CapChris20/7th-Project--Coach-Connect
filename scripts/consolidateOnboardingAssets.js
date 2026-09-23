@@ -1,5 +1,5 @@
 /**
- * Copies all icons + lottie JSONs used by `src/auth/OnboardingWizardScreen.jsx`
+ * Copies all icons + lottie JSONs used by `src/login-and-signup/NewUserSetupScreen.jsx`
  * into a single folder for easier organization.
  *
  * Run:

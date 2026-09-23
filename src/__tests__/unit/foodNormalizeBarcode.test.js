@@ -1,4 +1,4 @@
-const { normalizeFoodItem } = require('../../nutrition/food-search/normalizeFoodQuery');
+const { normalizeFoodItem } = require('../../nutrition/food-search/cleanSearchText');
 const { guardBarcodeResult } = require('../../../server/lib/barcodeMerge');
 
 describe('foodNormalizeBarcode', () => {

@@ -2,7 +2,7 @@ const {
   profileNeedsOnboarding,
   normalizeAppRole,
   isLikelyNewFirebaseUser,
-} = require('../../auth/detectUserRole');
+} = require('../../login-and-signup/decideTraineeOrTrainer');
 
 describe('onboarding gate', () => {
   test('explicit incomplete onboarding needs gate', () => {

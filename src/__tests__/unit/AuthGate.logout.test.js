@@ -1,7 +1,7 @@
-const { handleAuthUidTransition } = require('../../auth/authSessionTransition');
+const { handleAuthUidTransition } = require('../../login-and-signup/signOutCleanupSteps');
 
-describe('AuthGate logout cleanup', () => {
-  it('clears push tokens and local data on sign-out using previous uid ref', async () => {
+describe('LoginGate logout cleanup', () => {
+  it('clears push reportColors and local data on sign-out using previous uid ref', async () => {
     const clearPushTokensForUid = jest.fn(() => Promise.resolve());
     const clearAllUserData = jest.fn(() => Promise.resolve());
 

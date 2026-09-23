@@ -113,6 +113,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Blocked peers for messaging / marketplace safety (owner-only)
+    match /users/{userId}/blockedUsers/{blockedUid} {
+      allow read, list, create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Progress photos (users/{clientId}/progressPhotos/*) — client or linked trainer can read/write
     match /users/{userId}/progressPhotos/{photoId} {
       allow read, list: if request.auth != null && (
@@ -874,6 +879,16 @@ service cloud.firestore {
       allow read, create, update: if request.auth != null && request.auth.uid == userId;
       allow list: if request.auth != null && request.auth.uid == userId;
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Safety reports (Apple 1.2 UGC) — authenticated create only; no client list of others' reports
+    match /contentReports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.keys().hasAll(['reporterId', 'type', 'targetUid', 'reason', 'status'])
+        && request.resource.data.status == 'open'
+        && request.resource.data.type in ['user', 'message', 'trainer_profile'];
+      allow read, list, update, delete: if false;
     }
   }
 }

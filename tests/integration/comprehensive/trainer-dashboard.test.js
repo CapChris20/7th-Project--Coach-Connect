@@ -9,14 +9,14 @@ async function testTrainerDashboard() {
   const results = [];
   const cleanup = [];
 
-  const trainerApp = path.join(ROOT, 'src/app-start/TrainerApp.js');
+  const trainerApp = path.join(ROOT, 'src/app-start/TrainerAppStartStart.js');
   if (fs.existsSync(trainerApp) && fs.readFileSync(trainerApp, 'utf8').includes('ErrorBoundary')) {
     results.push(pass('TrainerApp wrapped in ErrorBoundary'));
   } else {
     results.push(fail('TrainerApp wrapped in ErrorBoundary', 'not found'));
   }
 
-  const pendingLoader = path.join(ROOT, 'src/trainer-app/client-requests/loadPendingTraineeRequests.js');
+  const pendingLoader = path.join(ROOT, 'src/trainer-app/new-requests/loadPendingTraineeRequests.js');
   if (fs.existsSync(pendingLoader)) {
     results.push(pass('loadPendingTraineeRequests module exists'));
   } else {

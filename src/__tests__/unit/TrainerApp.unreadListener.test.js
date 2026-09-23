@@ -1,7 +1,7 @@
 const mockUnsub = jest.fn();
 let capturedCallback;
 
-jest.mock('../../messaging/unreadCountIndex', () => ({
+jest.mock('../../messaging/unreadMessageCounts', () => ({
   subscribeToUnreadCount: jest.fn((_uid, cb) => {
     capturedCallback = cb;
     return mockUnsub;
@@ -9,16 +9,16 @@ jest.mock('../../messaging/unreadCountIndex', () => ({
   rebuildUnreadIndexForUser: jest.fn(() => Promise.resolve()),
 }));
 
-const { subscribeToUnreadCount, rebuildUnreadIndexForUser } = require('../../messaging/unreadCountIndex');
+const { subscribeToUnreadCount, rebuildUnreadIndexForUser } = require('../../messaging/unreadMessageCounts');
 
-/** Mirrors useUnreadNotificationCount subscription contract used by TrainerApp. */
+/** Mirrors unreadAlertCount subscription contract used by TrainerAppStart. */
 function attachUnreadListener(userId, onCount) {
   if (!userId) return () => {};
   rebuildUnreadIndexForUser(userId).catch(() => {});
   return subscribeToUnreadCount(userId, onCount);
 }
 
-describe('TrainerApp unread listener contract', () => {
+describe('TrainerAppStart unread listener contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedCallback = null;
@@ -42,15 +42,15 @@ describe('TrainerApp unread listener contract', () => {
   });
 });
 
-describe('TrainerApp wiring', () => {
-  it('imports useUnreadNotificationCount hook', () => {
+describe('TrainerAppStart wiring', () => {
+  it('imports unreadAlertCount hook', () => {
     const fs = require('fs');
     const path = require('path');
     const source = fs.readFileSync(
-      path.join(__dirname, '../../app-start/TrainerApp.js'),
+      path.join(__dirname, '../../app-start/TrainerAppStart.js'),
       'utf8',
     );
-    expect(source).toContain('useUnreadNotificationCount');
+    expect(source).toContain('unreadAlertCount');
     expect(source).not.toContain('subscribeToUnreadCount');
   });
 });

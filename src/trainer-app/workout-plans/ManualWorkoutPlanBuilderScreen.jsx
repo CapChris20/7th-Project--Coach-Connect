@@ -27,16 +27,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../theme/ThemeContext';
-import CoachConnectHeader from '../../for-both/components/shell/CoachConnectHeader';
-import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomNavMetrics';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
   newLocalId,
   saveManualPlanDraft,
   getManualWorkoutPlan,
   draftFromTrainerPlanDoc,
   searchExercisesForBuilder,
-} from './manualWorkoutPlanService';
+} from './manualPlanToWorkoutPlan';
 
 function buildDefaultSetDetails(ex) {
   const n = Math.max(1, parseInt(String(ex?.sets), 10) || 3);
@@ -149,11 +149,11 @@ function getBuilderPalette(isDark) {
   };
 }
 
-const BuilderThemeContext = React.createContext(null);
+const BuilderlightDarkMode = React.createContext(null);
 
 function useBuilderTheme() {
-  const ctx = useContext(BuilderThemeContext);
-  if (!ctx) throw new Error('useBuilderTheme must be used within BuilderThemeContext.Provider');
+  const ctx = useContext(BuilderlightDarkMode);
+  if (!ctx) throw new Error('useBuilderTheme must be used within BuilderlightDarkMode.Provider');
   return ctx;
 }
 
@@ -743,12 +743,12 @@ export default function ManualWorkoutPlanBuilderScreen({
     [planName, planType, duration, description, workoutDays, assignedClients, trainerId, savedPlanId],
   );
 
-  const formatReps = (ex) => {
+  const cellFormattingReps = (ex) => {
     if (ex.repMode === 'fixed') return `${ex.repsSingle} reps`;
     return `${ex.repsMin}-${ex.repsMax} reps`;
   };
 
-  const formatRest = (sec) => {
+  const cellFormattingRest = (sec) => {
     const s = Number(sec);
     if (!Number.isFinite(s) || s <= 0) return '—';
     if (s >= 60 && s % 60 === 0) return `${s / 60} min`;
@@ -757,7 +757,7 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   const renderCoachHeader = () =>
     embedInLayout ? null : (
-      <CoachConnectHeader
+      <TopHeader
         title=""
         isDark={isDark}
         skipTopSafeInset
@@ -769,7 +769,7 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   if (loadingPlan) {
     return (
-      <BuilderThemeContext.Provider value={themeValue}>
+      <BuilderlightDarkMode.Provider value={themeValue}>
         <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
           {renderCoachHeader()}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -777,7 +777,7 @@ export default function ManualWorkoutPlanBuilderScreen({
             <Text style={{ color: c.textSecondary, marginTop: 12 }}>Loading plan…</Text>
           </View>
         </SafeAreaView>
-      </BuilderThemeContext.Provider>
+      </BuilderlightDarkMode.Provider>
     );
   }
 
@@ -855,7 +855,7 @@ export default function ManualWorkoutPlanBuilderScreen({
   };
 
   return (
-    <BuilderThemeContext.Provider value={themeValue}>
+    <BuilderlightDarkMode.Provider value={themeValue}>
     <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1000,7 +1000,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                           {ex.exerciseName}
                         </Text>
                         <Text style={styles.exMeta}>
-                          {ex.sets} sets × {formatReps(ex)} · Rest {formatRest(ex.restSeconds)}
+                          {ex.sets} sets × {cellFormattingReps(ex)} · Rest {cellFormattingRest(ex.restSeconds)}
                         </Text>
                       </View>
                       <View style={styles.exActions}>
@@ -1035,7 +1035,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                       >
                         <Text style={{ color: c.textSecondary, fontSize: 13, flex: 1 }}>
                           Set {row.setNumber}: {row.reps} reps
-                          {row.weight ? ` @ ${row.weight}` : ''} · Rest {formatRest(row.restSeconds)}
+                          {row.weight ? ` @ ${row.weight}` : ''} · Rest {cellFormattingRest(row.restSeconds)}
                         </Text>
                         <Ionicons name="pencil" size={16} color={c.pink} />
                       </TouchableOpacity>
@@ -1094,7 +1094,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                         {i + 1}. {ex.exerciseName}
                       </Text>
                       <Text style={styles.exMeta}>
-                        {ex.sets} sets × {formatReps(ex)} · Rest {formatRest(ex.restSeconds)}
+                        {ex.sets} sets × {cellFormattingReps(ex)} · Rest {cellFormattingRest(ex.restSeconds)}
                       </Text>
                     </GradientCard>
                   ))}
@@ -1265,7 +1265,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <Text style={styles.label}>Rest between sets</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
                   {REST_PRESETS.map((sec) => (
-                    <Pill key={sec} label={formatRest(sec)} active={restSeconds === sec} onPress={() => setRestSeconds(sec)} />
+                    <Pill key={sec} label={cellFormattingRest(sec)} active={restSeconds === sec} onPress={() => setRestSeconds(sec)} />
                   ))}
                 </ScrollView>
                 <Text style={styles.label}>Tempo (optional)</Text>
@@ -1362,7 +1362,7 @@ export default function ManualWorkoutPlanBuilderScreen({
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
-    </BuilderThemeContext.Provider>
+    </BuilderlightDarkMode.Provider>
   );
 }
 

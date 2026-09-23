@@ -109,7 +109,7 @@ Rules:
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model,
-    max_tokens: 800,
+    max_reportColors: 800,
     temperature: 0,
     system,
     messages: [
@@ -197,7 +197,7 @@ function decideVerificationOutcome(analysis) {
 /**
  * Analyze certification, persist to trainers/{trainerId}/aiVerification, apply auto-approval rules.
  */
-async function verifyTrainerCertification({
+async function checkTrainerCertificate({
   trainerId,
   trainerName,
   imageBase64,
@@ -288,7 +288,7 @@ async function verifyTrainerCertification({
 }
 
 module.exports = {
-  verifyTrainerCertification,
+  checkTrainerCertificate,
   analyzeCertificationWithClaude,
   decideVerificationOutcome,
   normalizeMediaType,

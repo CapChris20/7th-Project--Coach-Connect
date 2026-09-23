@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 const {
   assertWorkoutGenerationAllowed,
   recordSuccessfulWorkoutGeneration,
-  formatLimitMessage,
+  cellFormattingLimitMessage,
   WORKOUT_GENERATION_LIMIT,
 } = require('../lib/workoutGenerationLimit');
 const {
@@ -166,7 +166,7 @@ Day 2: Pull
       if (!gate.allowed) {
         return res.status(429).json({
           error: 'monthly_limit_reached',
-          message: formatLimitMessage(gate.resets_at),
+          message: cellFormattingLimitMessage(gate.resets_at),
           limit: WORKOUT_GENERATION_LIMIT,
           used: gate.used,
           resets_at: gate.resets_at,

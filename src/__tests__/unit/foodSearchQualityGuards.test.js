@@ -4,30 +4,30 @@ const {
   sanitizeFoodCardTitle,
   applyFoodCardPresentation,
   dedupeFoodRows,
-} = require('../../nutrition/food-search/cleanFoodCardLabels');
+} = require('../../nutrition/food-search/tidyFoodTitles');
 const {
   servingConflictsWithFood,
   servingLabelFromQueryStructure,
   resolveFoodServingLabel,
   looksLikeMultiBreadOrder,
-} = require('../../nutrition/food-search/guessServingSize');
+} = require('../../nutrition/food-search/guessServingLabel');
 const {
   filterUsableSerperRows,
   scoreSerperFoodResultRow,
   rankSerperFoodResultRows,
-} = require('../../nutrition/food-search/isReliableRestaurantFood');
+} = require('../../nutrition/food-search/trustRestaurantResult');
 const {
   filterFoodSearchRows,
   scoreFoodSearchRelevance,
   isMenuStyleQuery,
   menuItemTokensFromQuery,
-} = require('../../nutrition/food-search/sortBestFoodMatches');
+} = require('../../nutrition/food-search/rankFoodResults');
 const {
   mapNutritionSearchToFoodRows,
-} = require('../../nutrition/food-search/mergeFoodNutritionSources');
+} = require('../../nutrition/food-search/combineFoodSources');
 
-describe('trustedFoodCatalog', () => {
-  const { lookupTrustedFoods } = require('../../nutrition/food-search/trustedFoodCatalog');
+describe('knownRestaurantFoods', () => {
+  const { lookupTrustedFoods } = require('../../nutrition/food-search/knownRestaurantFoods');
 
   it('returns Crazy Bread for Little Caesars crazy bread', () => {
     const rows = lookupTrustedFoods("Little Caesar's crazy bread");
@@ -291,7 +291,7 @@ describe('branded restaurant ranking', () => {
     expect(isMenuStyleQuery('Chipotle chicken bowl')).toBe(true);
   });
 
-  it('extracts item tokens without the chain', () => {
+  it('extracts item reportColors without the chain', () => {
     expect(menuItemTokensFromQuery("Little Caesar's crazy bread")).toEqual(
       expect.arrayContaining(['crazy', 'bread']),
     );
@@ -334,7 +334,7 @@ describe('branded restaurant ranking', () => {
   });
 
   it('drops diet / 12oz / seltzer junk for cherry coke 20oz', () => {
-    const { hasUnrequestedBeverageMismatch } = require('../../nutrition/food-search/sortBestFoodMatches');
+    const { hasUnrequestedBeverageMismatch } = require('../../nutrition/food-search/rankFoodResults');
     const q = 'cherry coke 20oz';
     expect(hasUnrequestedBeverageMismatch('Diet Cherry Coke Can, 12 Fl Oz', q)).toBe(true);
     expect(hasUnrequestedBeverageMismatch('Feisty Cherry Bottle Diet Coke', q)).toBe(true);
@@ -356,7 +356,7 @@ describe('branded restaurant ranking', () => {
     const {
       hasUnrequestedFoodFamilyMismatch,
       hasUnrequestedVariantMismatch,
-    } = require('../../nutrition/food-search/sortBestFoodMatches');
+    } = require('../../nutrition/food-search/rankFoodResults');
 
     expect(hasUnrequestedFoodFamilyMismatch('Pepperoni Pizza', 'crazy bread')).toBe(true);
     expect(hasUnrequestedFoodFamilyMismatch('Crazy Bread', 'crazy bread')).toBe(false);

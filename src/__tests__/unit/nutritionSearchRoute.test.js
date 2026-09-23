@@ -1,4 +1,4 @@
-const { handleNutritionSearch } = require('../../../server/routes/nutritionSearchRoutes');
+const { handleNutritionSearch } = require('../../../server/screenNames/nutritionSearchRoutes');
 const { clearNutritionSearchCache } = require('../../../server/lib/nutritionMultiSourceSearch/nutritionSearchCache');
 const { runScraperSafe } = require('../../../server/lib/nutritionMultiSourceSearch/scrapeNutritionSources');
 const { SCRAPE_TIMEOUT_MS } = require('../../../server/lib/nutritionMultiSourceSearch/constants');

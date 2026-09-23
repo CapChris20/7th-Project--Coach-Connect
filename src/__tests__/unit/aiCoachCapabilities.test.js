@@ -13,9 +13,9 @@ jest.mock('firebase-admin', () => ({
 
 const normalizeToolCall = (t) => (t ? { name: t.name || t.tool, params: t.params || {} } : null);
 
-/** Same resolution path as ChatWithCoachScreen + server mergeCoachToolCalls. */
+/** Same resolution path as CoachConversationScreen + server mergeCoachToolCalls. */
 function resolveEffectiveToolCalls(json, userMessage) {
-  const { coerceMisroutedDeleteTool } = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
+  const { coerceMisroutedDeleteTool } = require('../../ai-coach/coach-actions/spotDeleteRequests');
   const { mergeCoachToolCalls } = require('../../../server/lib/inferCoachToolCall.js');
   const reply = String(json?.reply || '');
   const rawTools = Array.isArray(json?.toolCalls) ? json.toolCalls : [];
@@ -105,10 +105,10 @@ describe('offline — delete log, personal data, tool inference', () => {
     inferDeleteLogParams,
     coerceMisroutedDeleteTool,
     wantsDeleteAllFoodLogs,
-  } = require('../../ai-coach/logic/tools/detectDeleteFoodRequest');
+  } = require('../../ai-coach/coach-actions/spotDeleteRequests');
   const { shouldIncludeWeeklyContextInCoachPrompt } = require('../../../server/lib/coachPersonalDataRouting.js');
   const { mergeCoachToolCalls, inferCoachToolCall } = require('../../../server/lib/inferCoachToolCall.js');
-  const { parseCoachToolCalls } = require('../../ai-coach/tools/parseCoachToolCalls');
+  const { readActionsFromReply } = require('../../ai-coach/coach-actions/readActionsFromReply');
   const { isCoachVisionConfigured } = require('../../../server/lib/coachVision.js');
 
   describe('inferDeleteLogParams', () => {
@@ -222,9 +222,9 @@ describe('offline — delete log, personal data, tool inference', () => {
     });
   });
 
-  describe('parseCoachToolCalls', () => {
-    it('parseCoachToolCalls deleteLog', () => {
-      const parsed = parseCoachToolCalls(
+  describe('readActionsFromReply', () => {
+    it('readActionsFromReply deleteLog', () => {
+      const parsed = readActionsFromReply(
         'Done.\n{"toolCalls": [{"name": "deleteLog", "params": {"logType": "nutrition", "deleteAll": true}}]}',
       );
       expect(parsed[0]?.name).toBe('deleteLog');
@@ -232,12 +232,12 @@ describe('offline — delete log, personal data, tool inference', () => {
   });
 
   describe('isCoachVisionConfigured', () => {
-    it('vision configured check runs', () => {
+    it('vision cloudConnectionured check runs', () => {
       expect(typeof isCoachVisionConfigured()).toBe('boolean');
     });
 
     const hasVisionEnv = Boolean(process.env.REPLICATE_API_TOKEN && process.env.DEEPSEEK_API_KEY);
-    (hasVisionEnv ? it : it.skip)('vision: Replicate + DeepSeek configured', () => {
+    (hasVisionEnv ? it : it.skip)('vision: Replicate + DeepSeek cloudConnectionured', () => {
       expect(isCoachVisionConfigured()).toBe(true);
     });
   });
@@ -476,7 +476,7 @@ describe('Vision — DeepSeek-VL2 + coach polish', () => {
   const TINY_PNG =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-  it('vision config OK when configured', () => {
+  it('vision cloudConnection OK when cloudConnectionured', () => {
     const { isCoachVisionConfigured } = require('../../../server/lib/coachVision.js');
     if (!isCoachVisionConfigured()) {
       return;
@@ -486,8 +486,8 @@ describe('Vision — DeepSeek-VL2 + coach polish', () => {
 
   it('vision: got reply', async () => {
     const coachVision = require('../../../server/lib/coachVision.js');
-    const configured = coachVision.isCoachVisionConfigured();
-    if (!configured) {
+    const cloudConnectionured = coachVision.isCoachVisionConfigured();
+    if (!cloudConnectionured) {
       return;
     }
 

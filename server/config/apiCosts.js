@@ -33,7 +33,7 @@ const ACTIVE_APIS = {
     name: 'Serper',
     status: 'active',
     priority: 'secondary',
-    description: 'Web search for fitness articles, restaurant nutrition, and current information',
+    description: 'Web search for fitness articles, restaurant nutrition, and current incellFormattingion',
     monthlyBudget: 20,
   },
   usda: {
@@ -80,14 +80,14 @@ const DAILY_HARD_CAP = 20; // Stop all APIs if $20/day reached
 const PRICING = {
   anthropic: {
     // Claude Sonnet 4 pricing (as of 2026)
-    input: 3,          // $3 per 1M input tokens
-    output: 15,        // $15 per 1M output tokens
+    input: 3,          // $3 per 1M input reportColors
+    output: 15,        // $15 per 1M output reportColors
     notes: 'Using Claude Sonnet models for balance of cost/quality'
   },
   deepseek: {
     // DeepSeek pricing (competitive, low-cost LLM)
-    input: 0.28,       // $0.28 per 1M input tokens
-    output: 0.42,      // $0.42 per 1M output tokens
+    input: 0.28,       // $0.28 per 1M input reportColors
+    output: 0.42,      // $0.42 per 1M output reportColors
     notes: 'Most cost-effective primary LLM'
   },
   serper: {
@@ -96,8 +96,8 @@ const PRICING = {
   },
   perplexity: {
     // Perplexity pricing (estimate)
-    input: 1,          // $1 per 1M input tokens
-    output: 1,         // $1 per 1M output tokens
+    input: 1,          // $1 per 1M input reportColors
+    output: 1,         // $1 per 1M output reportColors
     notes: 'Higher cost but useful as fallback'
   }
 };
@@ -118,8 +118,8 @@ const USER_LIMITS = {
 /**
  * Estimate cost for Claude/DeepSeek/Perplexity calls based on token count
  * @param {string} apiName - API name (anthropic, deepseek, perplexity)
- * @param {number} inputTokens - Number of input tokens
- * @param {number} outputTokens - Number of output tokens
+ * @param {number} inputTokens - Number of input reportColors
+ * @param {number} outputTokens - Number of output reportColors
  * @returns {number} Estimated cost in USD
  */
 function estimateCost(apiName, inputTokens = 0, outputTokens = 0) {
@@ -181,7 +181,7 @@ function isWithinDailyLimit(todaySpent = 0) {
  * @param {number} cost - Cost in USD
  * @returns {string} Formatted cost (e.g., "$1.23")
  */
-function formatCost(cost) {
+function cellFormattingCost(cost) {
   return `$${cost.toFixed(2)}`;
 }
 
@@ -220,6 +220,6 @@ module.exports = {
   getAPIStatus,
   isWithinMonthlyLimit,
   isWithinDailyLimit,
-  formatCost,
+  cellFormattingCost,
   getAPIsSummary,
 };

@@ -57,7 +57,7 @@ Run automated gates: **`npm run test:quality`**
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Shared helpers | ✅ | `src/for-both/accessibility/a11yProps.js` |
+| Shared helpers | ✅ | `src/for-both/accessibility/accessibilityProps.js` |
 | AI Coach chat (input, send, attach, refresh) | ✅ | `AIChatScreen.jsx` |
 | Tool confirm / cancel | ✅ | `toolModalShared.js` |
 | Food search (back, search, clear) | ✅ | `FoodSearchScreen.js` |
@@ -87,5 +87,24 @@ Run automated gates: **`npm run test:quality`**
 1. **Sentry** — crashes + slow `/api/ai-coach` spans  
 2. **Firestore indexes** — fix any console index links from production logs  
 3. **A11y pass** — onboarding + Settings + trainer client detail (reuse `a11yProps.js`)
+
+---
+
+## App Store / Play review checklist
+
+Use this when submitting a build. Keep backends live for the whole review window.
+
+| Item | Where / notes |
+|------|----------------|
+| Demo **client** account | App Review notes — email + password; has a linked trainer if possible |
+| Demo **trainer** account | App Review notes — email + password; Pro IAP reachable from onboarding/Settings on iOS |
+| Privacy URL | `https://anatrox-auth.web.app/privacy.html` (also in-app Settings → Privacy Policy) |
+| Support | Settings → Contact Support / `coachconnect0@gmail.com` |
+| Account deletion | Settings → Delete Account (hold to confirm). Warns that Apple Pro billing is separate |
+| Report / Block | Chat thread header ⋮ → Report/Block; long-press received message → Report; marketplace trainer → Report or block; Settings → Blocked users |
+| IAP (iOS trainers) | StoreKit Pro monthly/annual; Restore purchases; Terms + Privacy on paywall |
+| Stripe | Client→trainer coaching payments (person-to-person); not for digital Pro unlock |
+| AI disclaimer | Optional AI Coach — not medical advice |
+| Sign in with Apple | Required alongside Google on iOS |
 
 Update this file when you check an item off.

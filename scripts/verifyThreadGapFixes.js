@@ -87,15 +87,15 @@ console.log('Thread gap-fix static verification\n');
 (function testWorkoutPlanGenerationSessionWiring() {
   assert(
     'workoutPlanGenerationSession module exists',
-    fileExists('src/workouts/plan-generator/workoutPlanGenerationSession.js'),
+    fileExists('src/workouts/create-plan/keepPlanBuildingInBackground.js'),
   );
-  const session = read('src/workouts/plan-generator/workoutPlanGenerationSession.js');
+  const session = read('src/workouts/create-plan/keepPlanBuildingInBackground.js');
   assert('session exports markWorkoutGenerationStarted', session.includes('export async function markWorkoutGenerationStarted'));
   assert('session exports markWorkoutGenerationSucceeded', session.includes('export async function markWorkoutGenerationSucceeded'));
   assert('session exports subscribeWorkoutGenerationSession', session.includes('export function subscribeWorkoutGenerationSession'));
   assert('session supports userAwayFromWorkout', session.includes('userAwayFromWorkout'));
 
-  const workout = read('src/workouts/active-workout/workout.js');
+  const workout = read('src/workouts/create-plan/CreateWorkoutPlanScreen.js');
   assert('workout.js imports session helpers', workout.includes('workoutPlanGenerationSession'));
   assert('workout.js tracks planReadyPending', workout.includes('planReadyPending'));
   assert('workout.js has handleOpenReadyPlan', workout.includes('handleOpenReadyPlan'));
@@ -104,14 +104,14 @@ console.log('Thread gap-fix static verification\n');
   assert('ClientMainScreen subscribes to session', main.includes('subscribeWorkoutGenerationSession'));
   assert('ClientMainScreen passes workoutTabBadge', main.includes('workoutTabBadge={workoutPlanReadyBadge}'));
 
-  const nav = read('src/navigation/BottomNavBar.js');
+  const nav = read('src/navigation/BottomMenuBar.js');
   assert('BottomNavBar accepts workoutTabBadge prop', nav.includes('workoutTabBadge'));
   assert('BottomNavBar renders tab badge dot', nav.includes('tabBadgeDot'));
 })();
 
 // ─── 5. Vision client timeout 120s ──────────────────────────────────────────
 (function testVisionClientTimeout() {
-  const src = read('src/ai-coach/logic/chat-api/sendCoachMessageToServer.js');
+  const src = read('src/ai-coach/conversation/sendMessageToCoach.js');
   assert('sendCoachMessageToServer TIMEOUT_MS_VISION is 120000', /TIMEOUT_MS_VISION\s*=\s*120000/.test(src));
   assert(
     'vision timeout used when attachments present',
@@ -130,9 +130,9 @@ console.log('Thread gap-fix static verification\n');
 (function testTrainerLocationLazyLoad() {
   assert(
     'trainerLocationService exists',
-    fileExists('src/for-both/trainer-location/trainerLocationService.js'),
+    fileExists('src/for-both/trainerCity.js'),
   );
-  const src = read('src/for-both/trainer-location/trainerLocationService.js');
+  const src = read('src/for-both/trainerCity.js');
   assert('lazy dynamic import of expo-location', /await import\(['"]expo-location['"]\)/.test(src));
   assert('exports ensureLocationPermission', src.includes('export async function ensureLocationPermission'));
   assert('exports resolveCurrentTrainerLocation', src.includes('export async function resolveCurrentTrainerLocation'));
@@ -146,11 +146,11 @@ console.log('Thread gap-fix static verification\n');
   assert('Dockerfile copies food-details path', docker.includes('src/nutrition/food-details/'));
   assert('Dockerfile does not copy stale services path', !docker.includes('src/nutrition/services/'));
 
-  assert('ViewMyWorkoutPlanScreen exists', fileExists('src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx'));
-  const planViewer = read('src/client-app/workout-plans/ViewMyWorkoutPlanScreen.jsx');
+  assert('ViewMyWorkoutPlanScreen exists', fileExists('src/client-app/workout-plans/MyWorkoutPlanScreen.jsx'));
+  const planViewer = read('src/client-app/workout-plans/MyWorkoutPlanScreen.jsx');
   assert('PlanViewer uses gradient UI', planViewer.includes('LinearGradient'));
 
-  const notes = read('src/for-both/notes-files/manageNotesAndFiles.js');
+  const notes = read('src/for-both/files-and-notes/saveNotesAndFiles.js');
   assert('notes service syncs sharedWith stubs', notes.includes('sharedWith') && notes.includes('notes_and_files'));
 
   const web = read('server/lib/coachWebSearch.js');

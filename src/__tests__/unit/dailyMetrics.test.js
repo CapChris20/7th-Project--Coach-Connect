@@ -14,7 +14,7 @@ jest.mock('firebase/firestore', () => ({
   deleteField: () => mockDeleteField(),
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   db: {},
 }));
 
@@ -24,13 +24,13 @@ describe('dailyMetricsService', () => {
   });
 
   test('saves a dashboard metric field', async () => {
-    const { saveDashboardMetricField } = require('../../metrics/daily-metrics/saveDailyMetricsToFirestore');
+    const { saveDashboardMetricField } = require('../../daily-stats/saveDailyStats');
     await saveDashboardMetricField('uid1', 'dashboard_sleep', '7.5', '2026-06-14');
     expect(mockSetDoc).toHaveBeenCalled();
   });
 
   test('clears known log type and subcollection doc', async () => {
-    const { clearClientDailyMetric } = require('../../metrics/daily-metrics/saveDailyMetricsToFirestore');
+    const { clearClientDailyMetric } = require('../../daily-stats/saveDailyStats');
     await clearClientDailyMetric('uid1', 'sleep', '2026-06-14');
     expect(mockDeleteDoc).toHaveBeenCalled();
   });

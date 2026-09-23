@@ -27,7 +27,7 @@ jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));
 
-jest.mock('../../ai-coach/logic/tools/runCoachAction', () => ({
+jest.mock('../../ai-coach/coach-actions/carryOutAction', () => ({
   normalizeToolCall: (raw) => {
     if (!raw) return null;
     const nameRaw = raw.name || raw.tool || raw.action;
@@ -56,14 +56,14 @@ jest.mock('firebase/firestore', () => ({
   getDoc: jest.fn(() => Promise.resolve({ exists: () => false })),
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   auth: { currentUser: { uid: 'user-1' } },
   db: {},
 }));
 
 const passthroughModal = () => () => null;
 
-jest.mock('../../ai-coach/chat-ui/tool-modals/toolModalHelpers', () => {
+jest.mock('../../ai-coach/confirm-popups/sharedPopupParts', () => {
   const ReactLocal = require('react');
   return {
     ToolModalBody: ({ children }) => ReactLocal.createElement('ToolModalBody', null, children),
@@ -86,24 +86,24 @@ jest.mock('../../ai-coach/chat-ui/tool-modals/toolModalHelpers', () => {
   };
 });
 
-jest.mock('../../ai-coach/chat-ui/tool-modals/UpdateWorkoutSessionSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/BookTraineeSessionSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/UpdateFitnessGoalSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/SendTrainerMessageSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogWaterIntakeSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogDailyStepsSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/RateEnergyLevelSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogMoodRatingSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/RateWorkoutFeelSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/OpenWorkoutPlanSheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogRestDaySheet', () => passthroughModal());
-jest.mock('../../ai-coach/chat-ui/tool-modals/ConfirmDeleteLogSheet', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/EditWorkoutPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/BookSessionPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/UpdateGoalPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/MessageTrainerPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/LogWaterPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/LogStepsPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/RateEnergyPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/LogMoodPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/RateWorkoutPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/OpenWorkoutPlanPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/MarkRestDayPopup', () => passthroughModal());
+jest.mock('../../ai-coach/confirm-popups/ConfirmDeletePopup', () => passthroughModal());
 
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogSleepHoursSheet', () => {
+jest.mock('../../ai-coach/confirm-popups/LogSleepPopup', () => {
   const ReactLocal = require('react');
-  return function LogSleepHoursSheet({ params, onConfirm, onCancel, loading }) {
+  return function LogSleepPopup({ params, onConfirm, onCancel, loading }) {
     return ReactLocal.createElement(
-      'LogSleepHoursSheet',
+      'LogSleepPopup',
       null,
       ReactLocal.createElement('Text', null, String(params?.hours)),
       ReactLocal.createElement('Text', null, 'hours'),
@@ -121,12 +121,12 @@ jest.mock('../../ai-coach/chat-ui/tool-modals/LogSleepHoursSheet', () => {
   };
 });
 
-jest.mock('../../ai-coach/chat-ui/tool-modals/LogMealSheet', () => {
+jest.mock('../../ai-coach/confirm-popups/LogMealPopup', () => {
   const ReactLocal = require('react');
-  return function LogMealSheet({ params }) {
+  return function LogMealPopup({ params }) {
     const food = params?.name || params?.food || params?.foodName || 'Food';
     return ReactLocal.createElement(
-      'LogMealSheet',
+      'LogMealPopup',
       null,
       ReactLocal.createElement('Text', null, food),
       ReactLocal.createElement('Text', null, String(params?.calories ?? '')),
@@ -134,11 +134,11 @@ jest.mock('../../ai-coach/chat-ui/tool-modals/LogMealSheet', () => {
   };
 });
 
-jest.mock('../../ai-coach/chat-ui/tool-modals/AdjustMacroTargetsSheet', () => {
+jest.mock('../../ai-coach/confirm-popups/ChangeFoodTargetsPopup', () => {
   const ReactLocal = require('react');
-  return function AdjustMacroTargetsSheet({ params }) {
+  return function ChangeFoodTargetsPopup({ params }) {
     return ReactLocal.createElement(
-      'AdjustMacroTargetsSheet',
+      'ChangeFoodTargetsPopup',
       null,
       ReactLocal.createElement('Text', null, String(params?.calories ?? '')),
       ReactLocal.createElement('Text', null, String(params?.protein ?? '')),
@@ -146,13 +146,13 @@ jest.mock('../../ai-coach/chat-ui/tool-modals/AdjustMacroTargetsSheet', () => {
   };
 });
 
-const ToolConfirmationModal = require('../../ai-coach/chat-ui/chat-thread/ToolConfirmationModal').default;
+const ConfirmActionPopup = require('../../ai-coach/conversation/ConfirmActionPopup').default;
 
 function renderModal(props = {}) {
   let tree;
   act(() => {
     tree = TestRenderer.create(
-      <ToolConfirmationModal
+      <ConfirmActionPopup
         visible={true}
         toolCall={null}
         onConfirm={jest.fn()}
@@ -172,10 +172,10 @@ function textContent(tree) {
     .join(' ');
 }
 
-describe('ToolConfirmationModal rendering', () => {
+describe('ConfirmActionPopup rendering', () => {
   it('does not render when no tool is present', () => {
     const tree = renderModal({ toolCall: null });
-    expect(tree.root.findAllByType('LogSleepHoursSheet')).toHaveLength(0);
+    expect(tree.root.findAllByType('LogSleepPopup')).toHaveLength(0);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirm' })).toHaveLength(0);
   });
 

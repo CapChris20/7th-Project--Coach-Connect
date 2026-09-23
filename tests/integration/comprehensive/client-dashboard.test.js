@@ -9,14 +9,14 @@ async function testClientDashboard() {
   const results = [];
   const cleanup = [];
 
-  const clientApp = path.join(ROOT, 'src/app-start/ClientApp.js');
+  const clientApp = path.join(ROOT, 'src/app-start/ClientAppStartStart.js');
   if (fs.existsSync(clientApp) && fs.readFileSync(clientApp, 'utf8').includes('ErrorBoundary')) {
     results.push(pass('ClientApp wrapped in ErrorBoundary'));
   } else {
     results.push(fail('ClientApp wrapped in ErrorBoundary', 'not found'));
   }
 
-  const authGate = path.join(ROOT, 'src/app-start/AuthGate.js');
+  const authGate = path.join(ROOT, 'src/app-start/LoginGate.js');
   const authText = fs.readFileSync(authGate, 'utf8');
   if (authText.includes('role') && authText.includes('trainer')) {
     results.push(pass('AuthGate routes by user role'));

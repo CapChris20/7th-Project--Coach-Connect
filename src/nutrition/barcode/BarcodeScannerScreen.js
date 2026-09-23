@@ -19,13 +19,13 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../theme/ThemeContext';
-import searchFoodsService from '../food-search/searchFoodsService';
-import { normalizeBarcodeForLookup } from '../barcode/normalizeBarcodeForLookup';
-import { cacheFoodProduct } from '../daily-log/logFoodToFirestore';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import searchFoods from '../food-search/searchFoods';
+import { fixBarcodeDigits } from '../barcode/fixBarcodeDigits';
+import { cacheFoodProduct } from '../daily-log/saveLoggedFood';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
-import FoodConfirmSheet from '../food-search/ConfirmFoodSelectionSheet';
+import FoodConfirmSheet from '../food-search/ConfirmFoodPopup';
 
 const ACCENT = {
   hotPink: '#FF6B9D', // Keep your hot pink
@@ -93,7 +93,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
   }, [permission?.status]);
 
   const lookupBarcode = async (barcode) => {
-    const normalized = normalizeBarcodeForLookup(barcode);
+    const normalized = fixBarcodeDigits(barcode);
     if (!normalized || normalized.length < 8) {
       Alert.alert('Invalid Barcode', 'Please enter a valid barcode number');
       return;
@@ -108,7 +108,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     try {
       console.log('Looking up barcode:', normalized);
       setLastScannedBarcode(normalized);
-      const raw = await searchFoodsService.lookupBarcode(normalized);
+      const raw = await searchFoods.lookupBarcode(normalized);
       const isFoodHit = raw && !raw.notFound && !raw.variableWeightBarcode;
       const result = isFoodHit
         ? { success: true, data: { ...raw, scannedBarcode: normalized } }
@@ -181,7 +181,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     const gtin = adjustedFood.scannedBarcode || lastScannedBarcode || pendingBarcodeFood?.scannedBarcode;
     if (gtin) {
       try {
-        await searchFoodsService.saveVerifiedBarcode(gtin, adjustedFood);
+        await searchFoods.saveVerifiedBarcode(gtin, adjustedFood);
       } catch (e) {
         console.warn('Failed to save verified barcode:', e?.message || e);
       }

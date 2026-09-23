@@ -5,11 +5,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../app-start/config';
-import WeeklyReportHeroCard from './WeeklyReportHeroCard';
+import { db } from '../../app-start/cloudConnection';
+import WeeklyReportBanner from './WeeklyReportBanner';
 
 // Turns two ISO dates into the short "Mar 3 – Mar 9" chip label.
-function formatWeekChip(weekStart, weekEnd) {
+function cellFormattingWeekChip(weekStart, weekEnd) {
   const ws = String(weekStart || '').trim();
   // If no end date was stored, treat the week as a single day rather than rendering "– Invalid Date".
   const we = String(weekEnd || ws).trim();
@@ -19,7 +19,7 @@ function formatWeekChip(weekStart, weekEnd) {
   // keeps the date correct no matter the user's offset.
   const s = new Date(`${ws}T12:00:00`);
   const e = new Date(`${we}T12:00:00`);
-  // Manipulate here: 'en-US' + short month/numeric day is the chip's date format. Switch to
+  // Manipulate here: 'en-US' + short month/numeric day is the chip's date cellFormatting. Switch to
   // undefined for the device locale, or add year: 'numeric' to include the year.
   const a = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const b = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -58,7 +58,7 @@ export default function TrainerWeeklyReportSection({ clientId, clientName, isDar
         .map((r) => ({
           ...r,
           // Older summaries stored the week under `weekId`; normalize both shapes to weekStart so
-          // the sort and the chip formatter only ever deal with one field name.
+          // the sort and the chip cellFormattingter only ever deal with one field name.
           weekStart: r.weekStart || r.weekId,
           weekEnd: r.weekEnd || r.weekEnd,
         }))
@@ -94,12 +94,12 @@ export default function TrainerWeeklyReportSection({ clientId, clientName, isDar
     <View style={styles.wrap}>
       {/* One shared hero card component serves both apps; `variant` and `audience` switch it to
           the small trainer-facing presentation instead of the client's full-size version. */}
-      <WeeklyReportHeroCard
+      <WeeklyReportBanner
         variant="compact"
         audience="trainer"
         clientDisplayName={clientName}
         // Empty label when there's no report yet — the card renders its own empty state.
-        weekRangeLabel={latest ? formatWeekChip(latest.weekStart, latest.weekEnd) : ''}
+        weekRangeLabel={latest ? cellFormattingWeekChip(latest.weekStart, latest.weekEnd) : ''}
         isDark={isDark}
         hasReport={reports.length > 0}
         loading={loading}

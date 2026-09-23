@@ -8,25 +8,25 @@ const FIXED_DATE_KEY = '2026-06-14';
 const mockPostDashboardNotification = jest.fn(() => Promise.resolve({ ok: true }));
 const mockSaveDashboardWorkoutLog = jest.fn(() => Promise.resolve());
 
-jest.mock('../../for-both/api/dashboardNotificationApi', () => ({
+jest.mock('../../for-both/online-connection/loadHomeAlerts', () => ({
   postDashboardNotification: (...args) => mockPostDashboardNotification(...args),
 }));
 
-jest.mock('../../metrics/daily-metrics/saveDailyMetricsToFirestore', () => ({
+jest.mock('../../daily-stats/saveDailyStats', () => ({
   saveDashboardWorkoutLog: (...args) => mockSaveDashboardWorkoutLog(...args),
   buildWorkoutLogHydration: jest.fn(() => ({ d: {}, fromLogs: false })),
   fetchLegacyDailyTrackingSnap: jest.fn(() => Promise.resolve(null)),
 }));
 
-jest.mock('../../metrics/daily-metrics/useLocalTodayDateKey', () => ({
-  useLocalTodayDateKey: () => FIXED_DATE_KEY,
+jest.mock('../../daily-stats/todaysDate', () => ({
+  todaysDate: () => FIXED_DATE_KEY,
 }));
 
 jest.mock('../../helpers/getLocalDay', () => ({
   getLocalDateKey: () => FIXED_DATE_KEY,
 }));
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   auth: { currentUser: { uid: TEST_UID } },
   db: {},
 }));
@@ -43,10 +43,10 @@ jest.mock('firebase/firestore', () => ({
   }),
 }));
 
-const { useWorkoutLog } = require('../../client-app/dashboard/useWorkoutLog');
+const { workoutDiary } = require('../../client-app/home/workoutDiary');
 
 async function seedWorkoutHook() {
-  const hook = renderHook(() => useWorkoutLog());
+  const hook = renderHook(() => workoutDiary());
   await waitFor(() => expect(hook.result.current.loaded).toBe(true));
   const exId = hook.result.current.workoutExercises[0].id;
   const setId = hook.result.current.workoutExercises[0].sets[0].id;
@@ -66,7 +66,7 @@ describe('dashboard save integration', () => {
   });
 
   it('saveDashboardWorkoutLog writes canonical dailyLogs payload', async () => {
-    const { saveDashboardWorkoutLog } = require('../../metrics/daily-metrics/saveDailyMetricsToFirestore');
+    const { saveDashboardWorkoutLog } = require('../../daily-stats/saveDailyStats');
     await saveDashboardWorkoutLog(
       'uid123',
       {
@@ -80,7 +80,7 @@ describe('dashboard save integration', () => {
   });
 });
 
-describe('useWorkoutLog save', () => {
+describe('workoutDiary save', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });

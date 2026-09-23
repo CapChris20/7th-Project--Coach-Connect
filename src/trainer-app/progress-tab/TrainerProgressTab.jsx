@@ -13,7 +13,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
-import ProgressHeroMetricCard from './ProgressHeroMetricCard';
+import ProgressTopCard from './ProgressTopCard';
 import {
   GradientOutlineText,
   HOME_STAT_ENERGY_GRADIENT,
@@ -21,10 +21,10 @@ import {
   HOME_STAT_MOOD_GRADIENT,
   HOME_STAT_SORENESS_GRADIENT,
   HOME_STAT_WORKOUT_GRADIENT,
-} from '../../theme/homeStatGradients';
+} from '../../look-and-feel/homeStatColors';
 import {
   GlassCard,
-  AuroraHeroBanner,
+  HomeTopBanner,
   Icon,
   ICON_ACCENT,
   SCREEN_WIDTH,
@@ -40,7 +40,7 @@ import {
   getTrainerDashboardLottieCaption,
   getClientInitials,
   getClientRosterStats,
-  formatClientHeightDisplay,
+  cellFormattingClientHeightDisplay,
   getClientSubtext,
   useTrainerTheme,
   CARD_BORDER_PROGRESS,
@@ -50,10 +50,10 @@ import {
   GRADIENT_NUTRITION_CARBS,
   GRADIENT_NUTRITION_FAT,
   GRADIENT_CALENDAR,
-} from '../dashboard/trainerDashboardUi';
+} from '../home/trainerHomePieces';
 import {
   resolveTrainerProgressCurrentWeight,
-} from './resolveTrainerProgressWeight';
+} from './pickWeightToShow';
 
 
 const metricValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
@@ -289,7 +289,7 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
   return (
     <View style={{ paddingTop: 4 }}>
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
-        <ProgressHeroMetricCard
+        <ProgressTopCard
           isDark={isDark}
           icon="scale-outline"
           metric={hasCurrent ? `${currentWeight}` : '—'}
@@ -312,7 +312,7 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
             </View>
           }
         />
-        <ProgressHeroMetricCard
+        <ProgressTopCard
           isDark={isDark}
           icon="barbell-outline"
           metric={

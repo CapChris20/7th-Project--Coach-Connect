@@ -2,10 +2,10 @@ const {
   isWeakServingLabel,
   servingLabelFromQueryStructure,
   resolveFoodServingLabel,
-  formatServingDisplayLine,
-} = require('../../nutrition/food-search/guessServingSize');
+  cellFormattingServingDisplayLine,
+} = require('../../nutrition/food-search/guessServingLabel');
 
-describe('guessServingSize', () => {
+describe('guessServingLabel', () => {
   it('flags generic gram labels as weak', () => {
     expect(isWeakServingLabel('100g serving')).toBe(true);
     expect(isWeakServingLabel('per 100g')).toBe(true);
@@ -73,7 +73,7 @@ describe('guessServingSize', () => {
 
   it('keeps pizza serving when name mentions wings', () => {
     expect(
-      formatServingDisplayLine(
+      cellFormattingServingDisplayLine(
         {
           food_name: 'Buffalo Wing Pizza',
           serving_label: '8 pc wings',
@@ -94,9 +94,9 @@ describe('guessServingSize', () => {
     ).toBe('1 slice');
   });
 
-  it('formats display line without 100g serving for menu items', () => {
+  it('cellFormattings display line without 100g serving for menu items', () => {
     expect(
-      formatServingDisplayLine(
+      cellFormattingServingDisplayLine(
         {
           source: 'fatSecret',
           food_name: 'Large Cheese Pizza',

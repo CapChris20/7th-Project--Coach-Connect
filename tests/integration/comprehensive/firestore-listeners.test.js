@@ -16,22 +16,22 @@ async function testFirestoreListeners() {
   const checks = [
     {
       name: 'Unread index single listener (subscribeToUnreadIndex)',
-      file: 'src/messaging/unreadCountIndex.js',
+      file: 'src/messaging/unreadMessageCounts.js',
       patterns: ['subscribeToUnreadIndex', 'onSnapshot', 'unreadCount', 'INDEX_DOC'],
     },
     {
       name: 'Trainer unread hook (useUnreadNotificationCount)',
-      file: 'src/notifications/useUnreadNotificationCount.js',
+      file: 'src/notifications/unreadAlertCount.js',
       patterns: ['subscribeToUnreadCount', 'useEffect'],
     },
     {
       name: 'SessionsContext dedupes training sessions listener',
-      file: 'src/trainer-app/hooks/useMyTrainingSessions.js',
+      file: 'src/trainer-app/scheduling/mySessions.js',
       patterns: ['onSnapshot', 'trainer_clients'],
     },
     {
       name: 'Mark all messages read pagination (READ_PAGE_SIZE 50)',
-      file: 'src/ai-coach/logic/services/markAllMessagesRead.js',
+      file: 'src/messaging/markMessagesRead.js',
       patterns: ['READ_PAGE_SIZE', 'markConversationMessagesReadPaginated', 'writeBatch'],
     },
     {

@@ -18,11 +18,11 @@ async function handleStripeWebhook(req, res) {
 
     if (!stripe) {
       console.error('POST /api/stripe/webhook: STRIPE_SECRET_KEY missing');
-      return res.status(500).json({ error: 'Stripe not configured' });
+      return res.status(500).json({ error: 'Stripe not cloudConnectionured' });
     }
     if (!webhookSecret) {
       console.error('POST /api/stripe/webhook: STRIPE_WEBHOOK_SECRET missing');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
+      return res.status(500).json({ error: 'Webhook secret not cloudConnectionured' });
     }
     if (!admin.apps.length) {
       return res.status(503).json({ error: 'Service unavailable' });

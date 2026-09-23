@@ -9,7 +9,7 @@ const CATALOG = {
     tests: {
       'Auth uid transition clears session on switch': {
         what: 'Switching Firebase UID clears local session data (prevents stale client state).',
-        how: 'Calls `handleAuthUidTransition(prevUid, nextUser)` from `src/auth/authSessionTransition.js` with mock deps.',
+        how: 'Calls `handleAuthUidTransition(prevUid, nextUser)` from `src/login-and-signup/signOutCleanupSteps.js` with mock deps.',
         expects: '`clearAllUserData()` invoked when uid changes from u1 → u2.',
       },
       'Auth logout clears local user data': {
@@ -164,12 +164,12 @@ const CATALOG = {
     tests: {
       'Unread index single listener (subscribeToUnreadIndex)': {
         what: 'One listener on `users/{uid}/unreadCount/index` instead of N per conversation.',
-        how: 'Source scan: `src/messaging/unreadCountIndex.js`.',
+        how: 'Source scan: `src/messaging/unreadMessageCounts.js`.',
         expects: 'Exports `subscribeToUnreadIndex` using `onSnapshot`.',
       },
       'Trainer unread hook (useUnreadNotificationCount)': {
         what: 'Trainer badge uses shared unread hook.',
-        how: 'Source scan: `src/notifications/useUnreadNotificationCount.js`.',
+        how: 'Source scan: `src/notifications/unreadAlertCount.js`.',
         expects: 'Uses `subscribeToUnreadCount` + `useEffect` cleanup.',
       },
       'SessionsContext dedupes training sessions listener': {
@@ -258,7 +258,7 @@ const CATALOG = {
     tests: {
       'TrainerApp wrapped in ErrorBoundary': {
         what: 'Trainer app crashes are caught by error boundary.',
-        how: 'Source scan: `src/app-start/TrainerApp.js`.',
+        how: 'Source scan: `src/app-start/TrainerAppStartStart.js`.',
         expects: 'Contains `<ErrorBoundary>`.',
       },
       'loadPendingTraineeRequests module exists': {
@@ -279,12 +279,12 @@ const CATALOG = {
     tests: {
       'ClientApp wrapped in ErrorBoundary': {
         what: 'Client app crashes are caught.',
-        how: 'Source scan: `src/app-start/ClientApp.js`.',
+        how: 'Source scan: `src/app-start/ClientAppStartStart.js`.',
         expects: 'Contains `<ErrorBoundary>`.',
       },
       'AuthGate routes by user role': {
         what: 'AuthGate sends trainers vs clients to correct app shell.',
-        how: 'Source scan: `src/app-start/AuthGate.js`.',
+        how: 'Source scan: `src/app-start/LoginGate.js`.',
         expects: 'Role-based routing logic present.',
       },
       'Client daily log write/read': {

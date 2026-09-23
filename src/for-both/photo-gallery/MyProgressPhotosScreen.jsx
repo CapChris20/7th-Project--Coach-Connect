@@ -39,7 +39,7 @@ import AnimatedRe, {
   clamp,
   runOnJS,
 } from 'react-native-reanimated';
-import { db, storage, auth } from '../../app-start/config';
+import { db, storage, auth } from '../../app-start/cloudConnection';
 import {
   collection,
   addDoc,
@@ -51,9 +51,9 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { useTheme } from '../../theme/ThemeContext';
-import CoachConnectHeader from '../components/shell/CoachConnectHeader';
-import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomNavMetrics';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import TopHeader from '../loading-and-header/TopHeader';
+import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 
 const GRADIENT_PRIMARY = ['#C1265A', '#D84315'];
 const GRADIENT_CARD_BORDER = ['#C1265A', '#663399'];
@@ -362,7 +362,7 @@ export default function MyProgressPhotosScreen({
       return;
     }
     if (!db || !storage) {
-      Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is configured with Firebase Storage, then try again.');
+      Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is cloudConnectionured with Firebase Storage, then try again.');
       return;
     }
     const user = auth?.currentUser;
@@ -529,7 +529,7 @@ export default function MyProgressPhotosScreen({
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       {useShellHeader ? (
-        <CoachConnectHeader
+        <TopHeader
           title="Progress Photos"
           skipTopSafeInset
           onBack={handleBack}

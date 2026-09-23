@@ -4,8 +4,8 @@ const {
   isPdfFile,
   getEmbedViewerUri,
   notesFileDedupeKey,
-} = require('../../helpers/getFileViewType');
-const { serializeSpreadsheetRows } = require('../../for-both/notes-files/spreadsheetRows');
+} = require('../../helpers/whichViewerForFile');
+const { serializeSpreadsheetRows } = require('../../for-both/files-and-notes/packSpreadsheetRows');
 
 describe('notes file helpers', () => {
   test('identifies media and pdf files', () => {
@@ -15,7 +15,7 @@ describe('notes file helpers', () => {
   });
 
   test('builds office viewer url and stable dedupe key', () => {
-    const uri = getEmbedViewerUri({ name: 'sheet.xlsx' }, 'https://example.com/sheet.xlsx');
+    const uri = getEmbedViewerUri({ name: 'sheet.spreadsheetReader' }, 'https://example.com/sheet.spreadsheetReader');
     expect(uri).toContain('officeapps');
     expect(notesFileDedupeKey({ id: 'abc' })).toBe('id:abc');
   });

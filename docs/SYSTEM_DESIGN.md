@@ -107,7 +107,7 @@ FoodSearchScreen
 
 - Server audit logs on `execute-tool` (uid + tool name).
 - `src/for-both/services/monitoring.js` + `docs/MONITORING.md`.
-- Client error sync: `utils/syncErrorsToServer.js`.
+- Client error sync: `error-logging/syncErrorsToServer.js`.
 
 ## 7. Future reorg (Phase 6–7)
 

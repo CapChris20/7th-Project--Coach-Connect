@@ -3,7 +3,7 @@ const {
   mapConsensusToFoodRow,
   mapNutritionSearchToFoodRows,
   mergeNutritionSearchWithLegacy,
-} = require('../../nutrition/food-search/mergeFoodNutritionSources');
+} = require('../../nutrition/food-search/combineFoodSources');
 
 describe('parseNutritionSearchQuery', () => {
   it('splits Jet\'s pizza queries into restaurant + item', () => {

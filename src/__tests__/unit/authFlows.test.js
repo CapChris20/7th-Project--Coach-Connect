@@ -6,8 +6,8 @@ const {
   profileNeedsOnboarding,
   isLikelyNewFirebaseUser,
   omitRestrictedUserDocFields,
-} = require('../../auth/detectUserRole');
-const { buildOnboardingUpdatePayload } = require('../../auth/finishOnboarding');
+} = require('../../login-and-signup/decideTraineeOrTrainer');
+const { buildOnboardingUpdatePayload } = require('../../login-and-signup/finishSetup');
 const { sanitizeOnboardingData } = require('../../../server/lib/onboardingSanitize');
 
 describe('Authentication flows', () => {

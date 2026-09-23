@@ -1,6 +1,6 @@
 const {
   shouldIncludeWeeklyContextInCoachPrompt,
-} = require('../../ai-coach/logic/context/buildCoachPromptData');
+} = require('../../ai-coach/coach-knowledge/decideWhatCoachShouldKnow');
 
 describe('coach personal-data routing', () => {
   test('includes weekly context for personal log intent', () => {

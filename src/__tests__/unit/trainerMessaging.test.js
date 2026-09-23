@@ -9,7 +9,7 @@ const mockOnSnapshot = jest.fn();
 const mockPostRemotePushNotify = jest.fn();
 const mockGetDocsWithIndexFallback = jest.fn();
 
-jest.mock('../../app-start/config', () => ({ db: {} }));
+jest.mock('../../app-start/cloudConnection', () => ({ db: {} }));
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn((...s) => ({ kind: 'collection', path: s.join('/') })),
@@ -29,11 +29,11 @@ jest.mock('firebase/firestore', () => ({
   deleteField: jest.fn(),
 }));
 
-jest.mock('../../for-both/firestore/firestorePagedQuery', () => ({
+jest.mock('../../for-both/cloud-database/loadInPages', () => ({
   getDocsWithIndexFallback: (...args) => mockGetDocsWithIndexFallback(...args),
 }));
 
-jest.mock('../../for-both/api/sendPushNotification', () => ({
+jest.mock('../../for-both/online-connection/sendPhoneAlert', () => ({
   postRemotePushNotify: (...args) => mockPostRemotePushNotify(...args),
 }));
 
@@ -44,7 +44,7 @@ const {
   markMessagesAsRead,
   subscribeToMessages,
   CLIENT_REQUEST_TYPES,
-} = require('../../ai-coach/logic/trainer-messaging/sendTrainerNotification');
+} = require('../../ai-coach/coach-actions/alertTrainer');
 
 beforeEach(() => {
   jest.clearAllMocks();

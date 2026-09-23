@@ -9,7 +9,7 @@ const { pickBestCandidate, wrapScraperResult } = require('../resolveFoodDetail')
 const {
   resolveFoodServingLabel,
   extractServingLabelFromPageText,
-} = require('../../../../src/nutrition/food-search/guessServingSize');
+} = require('../../../../src/nutrition/food-search/guessServingLabel');
 
 function collectCalorieKingCandidates($) {
   const candidates = [];

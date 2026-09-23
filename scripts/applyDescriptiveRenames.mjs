@@ -31,30 +31,30 @@ const REPLACEMENTS = [
   ['shared/components/MarketplaceHeroCard', 'theme/MarketplaceHeroCard'],
 
   // session date helpers
-  ['helpers/session-dates', 'helpers/session-dates'],
+  ['helpers/sessionTimeText', 'helpers/sessionTimeText'],
 
   // trainer-app sessions colocation
-  ['trainer-app/components/WheelPicker', 'trainer-app/sessions/WheelPicker'],
+  ['trainer-app/scheduling/WheelPicker', 'trainer-app/sessions/WheelPicker'],
   ['trainer-app/components/sessions/', 'trainer-app/sessions/'],
-  ['trainer-app/hooks/useMyTrainingSessions', 'trainer-app/sessions/useMyTrainingSessions'],
+  ['trainer-app/scheduling/mySessions', 'trainer-app/sessions/useMyTrainingSessions'],
 
   // ai-coach chat-ui
-  ['ai-coach/chat-ui/screens/StartCoachChatScreen', 'ai-coach/chat-ui/chat-home/StartCoachChatScreen'],
+  ['ai-coach/home-screen/CoachHomeScreen', 'ai-coach/home-screen/CoachHomeScreen'],
   ['ai-coach/chat-ui/components/', 'ai-coach/chat-ui/reply-ui/'],
-  ['ai-coach/chat-ui/lib/', 'ai-coach/chat-ui/chat-formatting/'],
-  ['ai-coach/logic/services/markAllMessagesRead', 'ai-coach/logic/trainer-messaging/markAllMessagesRead'],
+  ['ai-coach/chat-ui/helpers/', 'ai-coach/chat-ui/chat-formatting/'],
+  ['messaging/markMessagesRead', 'ai-coach/logic/trainer-messaging/markAllMessagesRead'],
 
   // nutrition
-  ['nutrition/components/premiumFoodCard/', 'nutrition/food-card/'],
-  ['nutrition/components/GradientFieldFrame', 'nutrition/food-card/GradientFieldFrame'],
-  ['nutrition/utils/casualMenuSearch', 'nutrition/food-search/casualMenuSearch'],
+  ['nutrition/food-cards/FoodCard/', 'nutrition/food-card/'],
+  ['nutrition/food-cards/ColorFieldFrame', 'nutrition/food-card/GradientFieldFrame'],
+  ['nutrition/food-search/restaurantMenuSearch', 'nutrition/food-search/casualMenuSearch'],
 
   // workouts
-  ['workouts/components/ExerciseSection', 'workouts/exercise-library/ExerciseSection'],
+  ['workouts/exercise-rows/ExerciseSection', 'workouts/exercise-library/ExerciseSection'],
 
   // auth
-  ['auth/services/requestPasswordReset', 'auth/password-reset/requestPasswordReset'],
-  ['auth/services/sendPasswordResetEmail', 'auth/password-reset/sendPasswordResetEmail'],
+  ['login-and-signup/resetPasswordByEmail', 'auth/password-reset/requestPasswordReset'],
+  ['login-and-signup/resetPasswordByEmail', 'auth/password-reset/sendPasswordResetEmail'],
 ];
 
 const SCAN_DIRS = ['src', 'scripts', 'server'];

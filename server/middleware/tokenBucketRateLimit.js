@@ -9,16 +9,16 @@ function createTokenBucketLimiter({
 
   function refillBucket(bucket, now) {
     if (!bucket) {
-      return { tokens: capacity - 1, lastRefill: now };
+      return { reportColors: capacity - 1, lastRefill: now };
     }
     const elapsed = now - bucket.lastRefill;
     if (elapsed >= refillIntervalMs) {
       const periods = Math.floor(elapsed / refillIntervalMs);
-      const refilled = Math.min(capacity, bucket.tokens + periods * capacity);
-      return { tokens: refilled - 1, lastRefill: now };
+      const refilled = Math.min(capacity, bucket.reportColors + periods * capacity);
+      return { reportColors: refilled - 1, lastRefill: now };
     }
-    if (bucket.tokens <= 0) return null;
-    return { tokens: bucket.tokens - 1, lastRefill: bucket.lastRefill };
+    if (bucket.reportColors <= 0) return null;
+    return { reportColors: bucket.reportColors - 1, lastRefill: bucket.lastRefill };
   }
 
   return function tokenBucketRateLimit(req, res, next) {

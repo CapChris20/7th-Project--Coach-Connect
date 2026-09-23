@@ -66,12 +66,12 @@ async function checkAndIncrement(limitKey, uid, { perMinute, perHour, perDay } =
 }
 
 function createSharedRateLimiter(limitKey) {
-  const config = LIMITS[limitKey];
+  const cloudConnection = LIMITS[limitKey];
   return async function sharedRateLimit(req, res, next) {
-    if (!config) return next();
+    if (!cloudConnection) return next();
     const uid = String(req.firebaseAuth?.uid || req.ip || 'anon').trim();
     try {
-      const result = await checkAndIncrement(limitKey, uid, config);
+      const result = await checkAndIncrement(limitKey, uid, cloudConnection);
       if (!result.allowed) {
         return res.status(429).json({
           error: 'Rate limit exceeded',

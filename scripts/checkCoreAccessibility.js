@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..');
 
 const CORE_FILES = [
   {
-    file: 'src/ai-coach/chat-ui/chat-thread/ChatWithCoachScreen.jsx',
+    file: 'src/ai-coach/conversation/CoachConversationScreen.jsx',
     mustInclude: [
       'Refresh coach context',
       'Message input',
@@ -20,7 +20,7 @@ const CORE_FILES = [
     ],
   },
   {
-    file: 'src/ai-coach/chat-ui/tool-modals/toolModalHelpers.js',
+    file: 'src/ai-coach/confirm-popups/sharedPopupParts.js',
     mustInclude: ['accessibilityLabel="Cancel"', 'accessibilityLabel="Confirm"'],
   },
   {
@@ -28,7 +28,7 @@ const CORE_FILES = [
     mustInclude: ['Go back', 'Search foods', 'Clear search'],
   },
   {
-    file: 'src/for-both/components/home/QuickActionCard.jsx',
+    file: 'src/for-both/home-cards/QuickActionCard.jsx',
     mustInclude: ['accessibilityRole="button"'],
   },
 ];

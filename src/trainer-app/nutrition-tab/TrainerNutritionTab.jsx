@@ -15,21 +15,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import {
   GlassCard,
-  GradientText,
+  ColorText,
   PremiumTabEmptyState,
   SCREEN_WIDTH,
   LOTTIE_FOOD_AROUND_CITY,
   PINK,
   ORANGE,
-} from '../dashboard/trainerDashboardUi';
-import { gradientForNutrientLabel } from '../../nutrition/nutritionTheme';
+} from '../home/trainerHomePieces';
+import { gradientForNutrientLabel } from '../../nutrition/nutritionColors';
 
 const NUT_TRACK = {
   dark: 'rgba(255,255,255,0.12)',
   light: 'rgba(0,0,0,0.08)',
 };
 
-function formatNutrientValue(value, unit = 'g') {
+function cellFormattingNutrientValue(value, unit = 'g') {
   const n = Number(value) || 0;
   if (unit === 'mg') return `${Math.round(n)}mg`;
   if (n >= 100) return `${Math.round(n)}g`;
@@ -85,7 +85,7 @@ function TrainerMacroRing({ value, goal, label, unit = 'g', isDark }) {
         </View>
         <View style={[StyleSheet.absoluteFill, styles.ringCenter]}>
           <Text style={[styles.ringValue, { color: textColor }]} numberOfLines={1}>
-            {formatNutrientValue(numericValue, unit)}
+            {cellFormattingNutrientValue(numericValue, unit)}
           </Text>
           {numericGoal > 0 ? (
             <Text style={[styles.ringPct, { color: mutedColor }]}>{Math.round(pct)}%</Text>
@@ -203,9 +203,9 @@ const NutritionTab = ({ isDark, clientData }) => {
       <GlassCard isDark={isDark} style={{ padding: 18 }}>
         <Text style={styles.sectionLabel}>Daily Calories</Text>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 10 }}>
-          <GradientText colors={[PINK, ORANGE]} style={{ fontSize: 36, fontWeight: '900', lineHeight: 40 }}>
+          <ColorText colors={[PINK, ORANGE]} style={{ fontSize: 36, fontWeight: '900', lineHeight: 40 }}>
             {(clientData.nutrition.calories || 0).toLocaleString()}
-          </GradientText>
+          </ColorText>
           <Text style={{ color: mutedColor, fontSize: 13, fontWeight: '600', marginBottom: 4 }}>kcal</Text>
           {caloriesGoal > 0 ? (
             <Text style={{ color: mutedColor, fontSize: 12, marginBottom: 4, marginLeft: 4 }}>

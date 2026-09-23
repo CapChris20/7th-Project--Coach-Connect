@@ -1,10 +1,10 @@
 const {
-  parseWebSearchReply,
+  splitInternetAnswer,
   parseSectionBlocks,
   preprocessWebSearchLayout,
-} = require('../../ai-coach/chat-ui/lib/parseWebSearchReply');
+} = require('../../ai-coach/reply-display/splitInternetAnswer');
 
-describe('parseWebSearchReply', () => {
+describe('splitInternetAnswer', () => {
   it('parses ## sections without dropping content', () => {
     const raw = `## Summary
 Body recomp needs lifting plus a small deficit with adequate protein intake over time.
@@ -20,7 +20,7 @@ You need consistency on protein and training volume to recomp effectively.
 ## Next steps
 Track protein for two weeks and adjust based on scale and gym performance.`;
 
-    const { summaryLead, sections, fullText } = parseWebSearchReply(raw);
+    const { summaryLead, sections, fullText } = splitInternetAnswer(raw);
     expect(summaryLead).toMatch(/Body recomp/);
     expect(sections.some((s) => /Key finding/i.test(s.title))).toBe(true);
     expect(sections.some((s) => s.title === 'What this means for you')).toBe(true);
@@ -32,7 +32,7 @@ Track protein for two weeks and adjust based on scale and gym performance.`;
   it('preserves full wall-of-text when unstructured', () => {
     const wall =
       'First sentence with detail. Second sentence with more detail. Third finding one with numbers. Fourth finding two. Fifth finding three.';
-    const { fallbackMarkdown, fullText } = parseWebSearchReply(wall);
+    const { fallbackMarkdown, fullText } = splitInternetAnswer(wall);
     expect(fallbackMarkdown || fullText).toBe(wall);
   });
 

@@ -4,7 +4,7 @@
  * Remove emoji / pictographs from push notification title and body.
  * Strips ZWJ / variation selectors left behind after pictographs; collapses spaces.
  */
-function stripNotificationEmoji(input) {
+function removeEmojiFromAlerts(input) {
   let s = String(input ?? '');
   if (!s) return '';
 
@@ -22,4 +22,4 @@ function stripNotificationEmoji(input) {
   return s;
 }
 
-module.exports = { stripNotificationEmoji };
+module.exports = { removeEmojiFromAlerts };

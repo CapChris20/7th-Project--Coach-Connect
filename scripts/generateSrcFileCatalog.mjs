@@ -13,10 +13,49 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 const OUT = path.join(SRC, 'SRC_FILE_CATALOG.md');
+const OUT_DOCS = path.join(ROOT, 'docs', 'SRC_FILE_CATALOG.md');
 const OVERRIDES_PATH = path.join(__dirname, 'srcFileCatalogOverrides.json');
 const OVERRIDES = fs.existsSync(OVERRIDES_PATH)
   ? JSON.parse(fs.readFileSync(OVERRIDES_PATH, 'utf8'))
   : {};
+
+/** Folder name pieces that confuse non-tech readers */
+const JARGON_FOLDER_BITS = new Set([
+  'persistence',
+  'logic',
+  'context',
+  'vision',
+  'chat-api',
+  'macro-recalibration',
+  'services',
+  'hooks',
+  'api',
+  'firestore',
+  'premiumFoodCard',
+  'liquid',
+  'utils',
+  'lib',
+]);
+
+/** Paths that are known fake re-exports or dead product areas */
+const KNOWN_STUBS = new Set([
+  'ai-coach/home-screen/CoachHomeScreen.jsx',
+  'ai-coach/home-screen/CoachHomeScreen.jsx',
+  'for-both/workout-plans/SavedWorkoutsScreen.jsx',
+  'for-both/photo-gallery/MyProgressPhotosScreen.jsx',
+  'for-both/weekly-report/WeeklyReportScreen.jsx',
+  'logout-cleanup/clearDataOnLogout.js',
+  'nutrition/food-cards/FoodCard/index.js',
+  'block-and-report/blockUser.js',
+  'look-and-feel/lightDarkMode.js',
+]);
+
+const KNOWN_DEAD = new Set([
+  'ai-coach/chat-ui/voice/speechRecognitionSafe.js',
+  'ai-coach/chat-ui/voice/useVoiceToCoach.js',
+  'ai-coach/home-screen/CoachHomeScreen.jsx',
+]);
+
 
 const FOLDER_BLURBS = {
   '': 'Root of the React Native / Expo app source. Contains the app entry loader, architecture docs, and this catalog.',
@@ -26,27 +65,32 @@ const FOLDER_BLURBS = {
   '__tests__/integration': 'Multi-module integration tests that exercise real flows (auth, food log, coach).',
   '__tests__/mocks': 'Module mocks for Expo and third-party dependencies in Jest.',
   '__tests__/unit': 'Pure unit tests for helpers, parsers, scoring, and business logic.',
-  'ai-coach': 'AI Coach feature root — chat UI plus client-side logic helpers.',
-  'ai-coach/chat-ui': 'All AI Coach UI — home, chat thread, voice mode, tool confirmation sheets, Firestore persistence.',
-  'ai-coach/chat-ui/chat-home': 'Landing screen before entering a coach conversation (prompts, history entry).',
-  'ai-coach/chat-ui/chat-thread': 'Main chat screen: message list, composer, attachments, source cards, tool confirmations.',
-  'ai-coach/chat-ui/components': 'Reusable coach UI pieces — formatted replies, follow-up bubbles, glass cards, history sidebar.',
-  'ai-coach/chat-ui/hooks': 'React hooks for coach chat sessions and related UI state.',
-  'ai-coach/chat-ui/lib': 'Coach UI helpers: markdown styles, clipboard, follow-up prompts, web-search reply parsing.',
-  'ai-coach/chat-ui/persistence': 'Saves and loads coach message threads to/from Firestore.',
-  'ai-coach/chat-ui/screens': 'Top-level screen wrappers that re-export or host coach navigation targets.',
-  'ai-coach/chat-ui/tool-modals': 'Confirmation sheets for each coach tool (log water, book session, adjust macros, etc.).',
-  'ai-coach/chat-ui/voice': 'Voice-to-text coach interface and speech-recognition helpers.',
-  'ai-coach/logic': 'Client-side coach backend glue: chat API, context building, tools, vision uploads.',
-  'ai-coach/logic/chat-api': 'HTTP clients for coach conversations, titles, web-search detection, and chat storage.',
-  'ai-coach/logic/context': 'Builds the prompt context the coach sees — profile, weekly stats, personal data.',
-  'ai-coach/logic/macro-recalibration': 'Recalculates macro targets when the coach or user adjusts goals.',
-  'ai-coach/logic/services': 'Thin service wrappers (e.g. mark-all-messages-read).',
-  'ai-coach/logic/tools': 'Parses coach tool proposals, decides which UI to show, and runs confirmed actions.',
-  'ai-coach/logic/trainer-messaging': 'Sends push/in-app notifications from the AI coach to the user\'s trainer.',
-  'ai-coach/logic/vision': 'Uploads and stores images the user attaches in coach chat.',
-  'ai-coach/tools': 'Shared coach tool-call parsers used by chat UI and logic.',
-  'app-start': 'App shell: AuthGate decides client vs trainer vs login; ClientApp and TrainerApp mount role trees.',
+  'ai-coach': 'Everything for the in-app AI Coach: home page, texting screen, popups to log food/water, and helpers that talk to the coach server.',
+  'ai-coach/chat-ui': 'Screens and pieces you see when using the AI Coach (home, conversation, popups).',
+  'ai-coach/chat-ui/chat-home': 'JARGON / mostly fake: intended as coach home, but one file here is only a pointer to the real home screen.',
+  'ai-coach/chat-ui/chat-thread': 'The back-and-forth texting screen with the coach (messages, type box, attach photo).',
+  'ai-coach/chat-ui/components': 'Small reusable coach UI pieces (reply formatting, follow-up suggestion bubbles, chat history side panel).',
+  'ai-coach/chat-ui/helpers': 'Small text/formatting helpers for coach replies (copy text, markdown look, web-search reply parsing).',
+  'ai-coach/chat-ui/hooks': 'Reusable “memory” pieces for coach screens (e.g. load list of past chats).',
+  'ai-coach/chat-ui/lib': 'Older helper folder name for the same kind of coach text helpers (if present).',
+  'ai-coach/chat-ui/persistence': 'JARGON folder name — means “save/load coach chats so they are still there next time.”',
+  'ai-coach/chat-ui/screens': 'Holds the real AI Coach home / landing screen.',
+  'ai-coach/chat-ui/tool-modals': 'Popups that ask you to confirm before the coach logs water, food, sleep, books a session, etc.',
+  'ai-coach/chat-ui/voice': 'Voice / speak-to-coach experiments — likely removable if voice is no longer a product feature.',
+  'ai-coach/logic': 'JARGON folder — behind-the-scenes coach helpers (send message, decide web search, load your stats for the coach).',
+  'ai-coach/logic/chat-api': 'JARGON — helpers that send coach messages and related chat requests to your app server.',
+  'ai-coach/logic/context': 'JARGON — gathers your profile/stats so the coach knows who you are when answering.',
+  'ai-coach/logic/macro-recalibration': 'JARGON — recalculates protein/carbs/fats when goals change from the coach.',
+  'ai-coach/logic/services': 'Thin helpers (e.g. mark messages as read).',
+  'ai-coach/logic/tools': 'When the coach wants to take an action (log food, etc.), these decide what popup to show and run it after you confirm.',
+  'ai-coach/logic/trainer-messaging': 'Lets the AI coach notify your human trainer.',
+  'ai-coach/logic/vision': 'Saves photos you attach in coach chat.',
+  'ai-coach/tools': 'Reads hidden “action instructions” inside coach replies so the app can show the right confirm popup.',
+  'app-start': 'App launch: decides login vs onboarding vs open the trainee app or trainer app.',
+  'error-logging': 'Captures app crashes/errors and can send them to the server for debugging.',
+  'logout-cleanup': 'Wipes local saved data when the user logs out.',
+  'safety': 'Block people and report bad content.',
+  'spreadsheet-files': 'Spreadsheet library wiring so Excel-like files work on phone and web.',
   assets: 'Static images, Lottie animations, and icon PNGs bundled with the app.',
   'assets/animations': 'Lottie / loading animation assets (including prism loading art).',
   'assets/animations/app-flows': 'Lottie animations played during onboarding and app-flow steps.',
@@ -78,7 +122,7 @@ const FOLDER_BLURBS = {
   nutrition: 'Full nutrition feature: daily log, food search, barcode, facts, settings, premium food cards.',
   'nutrition/barcode': 'Barcode scanner flow and Serper/USDA lookup for packaged foods.',
   'nutrition/components': 'Shared nutrition UI widgets (gradient frames, etc.).',
-  'nutrition/components/premiumFoodCard': 'Premium-styled food card, nutrition facts section, logged-food display.',
+  'nutrition/food-cards/FoodCard': 'Premium-styled food card, nutrition facts section, logged-food display.',
   'nutrition/daily-log': 'Daily nutrition log screen, meal cards, Firestore write helpers.',
   'nutrition/food-details': 'Food detail / nutrition facts screen, serving editor, label parsing.',
   'nutrition/food-search': 'Food search screen, ranking, consensus search, confirm-selection sheet.',
@@ -87,69 +131,71 @@ const FOLDER_BLURBS = {
   'nutrition/utils': 'Nutrition-specific search helpers (casual menu search).',
   settings: 'App-wide settings screens, support config, and legal pages.',
   'settings/screens': 'Settings hub and sub-screens (password, FAQ, bug report, privacy, etc.).',
-  shared: 'Cross-cutting code used by both client and trainer: API, components, Firestore, payments, reports.',
-  'shared/accessibility': 'a11y prop helpers for screen readers.',
-  'shared/api': 'Base URL, auth headers, apiFetch, error logging, push notifications, onboarding sync.',
-  'shared/assets': 'Shared Lottie assets and generated onboarding icon registry.',
-  'shared/components': 'Reusable components: hero cards, home widgets, modals, notes/files sections.',
-  'shared/components/brand': 'Brand logo component.',
-  'shared/components/home': 'Home tab shared widgets (aurora banner, daily quote, session card).',
-  'shared/components/icons': 'Gradient/icon components for nav and profile cards.',
-  'shared/components/modals': 'Generic modals (error, hold-to-confirm, remove trainer).',
-  'shared/components/notes-files': 'Files & notes section: PDF/spreadsheet viewers, gallery grid, add modal.',
-  'shared/components/onboarding': 'Onboarding form fields (AI opt-in, trainer subscription step).',
-  'shared/components/shell': 'App loading screen, boot loading, Coach Connect header, prism flip.',
-  'shared/contexts': 'React contexts (AI context provider wrapper).',
-  'shared/firestore': 'Generic Firestore pagination and storage upload helpers.',
-  'shared/fitness-calculations': 'BMR, TDEE, macro calculations from onboarding inputs.',
-  'shared/marketplace': 'Trainer marketplace profile sync to Firestore.',
-  'shared/notes-files': 'CRUD helpers for trainer/client notes and file attachments.',
-  'shared/payments': 'Stripe Connect / native payment hooks, education copy, payment history.',
-  'shared/photo-gallery': 'Shared progress photo gallery screen.',
-  'shared/screens': 'Screens used by both roles (weekly report, workout plans, photo gallery re-exports).',
-  'shared/services': 'User profile fetch, client registry, Firestore listener utilities.',
-  'shared/trainer-location': 'Geocoding / location picker service for trainer profiles.',
-  'shared/weekly-report': 'Weekly report screen body, theme, and data builders shared by client/trainer.',
-  'shared/weekly-report/components': 'Weekly report UI building blocks (day cards, charts, insights).',
-  'shared/weekly-report/data': 'Fetch/map week nutrition, daily logs, and coaching insights for the report.',
-  'shared/weekly-report/theme': 'Weekly report theme tokens and React context.',
-  'shared/workout-plans': 'Browse-saved-workouts screen shared implementation.',
-  'shared/workout-profile': 'Workout profile card icons and visibility rules.',
-  'theme': 'Design system: theme, iOS-style tokens, liquid glass, FluidGlass, brand gradients.',
-  'theme/layout': 'Layout primitives (centered two-column grid).',
-  'theme/liquid': 'Liquid glass UI kit (backgrounds, cards, buttons, halos).',
-  'helpers': 'Date keys, height conversion, file type detection, Firestore sanitize, workout day labels.',
-  subscription: 'Trainer Pro subscription gate, IAP/provider wiring, paywall screens, trial banner.',
-  'trainer-app': 'Trainer role: CRM, client list, sessions, documents, payments, dashboard, navigation.',
-  'trainer-app/calendar-tab': 'Trainer calendar tab showing upcoming sessions.',
-  'trainer-app/client-detail': 'Single-client detail / manage-trainee screen.',
-  'trainer-app/client-requests': 'Pending client connection requests and approval flow.',
-  'trainer-app/clients-list': 'Roster of linked clients with Firestore load hook.',
-  'trainer-app/components': 'Trainer UI widgets (wheel picker, session calendar pieces).',
-  'trainer-app/components/sessions': 'Month calendar and session card components.',
-  'trainer-app/crm': 'Firestore paths, client name formatting, linked-client resolution, CRM errors.',
-  'trainer-app/dashboard': 'Trainer home dashboard content and marketplace modal.',
-  'trainer-app/documents': 'Rich document/spreadsheet editor modals for trainer notes and files.',
-  'trainer-app/documents/spreadsheet': 'Spreadsheet grid, formulas, format helpers for DocFlow editors.',
-  'trainer-app/hooks': 'Trainer session scheduling hooks and SessionsContext.',
-  'trainer-app/navigation': 'Trainer shell, stack, overlay screens, navigation hook.',
-  'trainer-app/nutrition-tab': 'Trainer view of a client\'s nutrition tab.',
-  'trainer-app/payments': 'Payments/billing screen for trainers (Stripe payouts & history).',
-  'trainer-app/progress-tab': 'Trainer view of client progress metrics and weight resolution.',
-  'trainer-app/screens': 'Misc trainer full screens (scheduling wrappers).',
-  'trainer-app/screens/components': 'Picker widgets used by trainer scheduling screens.',
-  'trainer-app/sessions': 'Book/schedule training sessions and session push notifications.',
-  'trainer-app/weekly-report': 'Trainer weekly report cards/sections for a selected client.',
-  'trainer-app/workout-plans': 'Trainer manual workout plan builder screens and services.',
-  utils: 'App-wide utilities: error logging, cache cleanup, logout cleanup, xlsx platform shims.',
-  workouts: 'Workout plans, active workout tracking, exercise library, plan generation and PDF export.',
-  'workouts/active-workout': 'In-gym active workout screen, set logging, workout service, creative plan names.',
-  'workouts/components': 'Exercise row and section UI used in plans and active workout.',
-  'workouts/exercise-library': 'YouTube exercise library tab, video player, dislike picker.',
-  'workouts/plan-builder': 'Manual plan builder field edit forms.',
-  'workouts/plan-generator': 'AI workout plan generation: onboarding form, API request, parsing, usage tracking.',
-  'workouts/plan-viewer': 'Rendered workout plan result, PDF viewer modal and export service.',
-  'workouts/screens': 'Workout plan generator onboarding UI screen.',
+  'for-both': 'Code used by both trainees and trainers (shared screens, payments, notes/files, talking to the server).',
+  'for-both/accessibility': 'Extra labels so screen readers can describe buttons and screens.',
+  'for-both/api': 'Talking to the Coach Connect server (backend URL, signed-in requests, push, charges, health check).',
+  'for-both/assets': 'Shared icons/animations registry used in onboarding for both roles.',
+  'for-both/components': 'Reusable UI used by both roles (hero cards, home widgets, popups, notes/files viewers).',
+  'for-both/components/brand': 'Brand logo display.',
+  'for-both/components/home': 'Home-tab widgets both roles can show (quote card, session card, banners).',
+  'for-both/components/icons': 'Colored/branded icons for navigation and profile cards.',
+  'for-both/components/modals': 'Generic popups (error, hold-to-confirm, remove trainer).',
+  'for-both/components/notes-files': 'UI for viewing PDFs, spreadsheets, media, and file galleries.',
+  'for-both/components/onboarding': 'Shared onboarding steps (AI opt-in, trainer subscription step).',
+  'for-both/components/shell': 'Loading screens and the top Coach Connect header bar.',
+  'for-both/contexts': 'Shared app-wide switches (e.g. AI opt-in state).',
+  'for-both/firestore': 'JARGON — helpers for reading/writing the cloud database and uploading files.',
+  'for-both/fitness-calculations': 'Math for calories and macros from onboarding answers.',
+  'for-both/marketplace': 'Keeps trainer marketplace profiles in sync with the cloud database.',
+  'for-both/notes-files': 'Create/update/delete notes and file attachments between trainer and client.',
+  'for-both/payments': 'Paying a trainer / Stripe Connect flows, payment history, education copy.',
+  'for-both/photo-gallery': 'Progress photo gallery screen used by both roles.',
+  'for-both/screens': 'Mostly fake pointers that re-export the real weekly report / photos / workouts screens.',
+  'for-both/services': 'JARGON — fetch profile and listen for live database updates.',
+  'for-both/trainer-location': 'Trainer location / map-related helpers for profiles.',
+  'for-both/weekly-report': 'Weekly progress report screen shared by client and trainer views.',
+  'for-both/weekly-report/components': 'Pieces inside the weekly report (day cards, charts, insight rows).',
+  'for-both/weekly-report/data': 'Loads the week’s food/workout numbers that fill the report.',
+  'for-both/weekly-report/theme': 'Colors/styles for the weekly report.',
+  'for-both/workout-plans': 'Browse saved workout plans (shared implementation).',
+  'for-both/workout-profile': 'Icons and rules for workout profile cards.',
+  theme: 'Look-and-feel of the app: colors, dark/light mode, glass-style cards and backgrounds.',
+  'theme/layout': 'Simple layout helpers (e.g. two-column grid).',
+  'theme/liquid': '“Liquid glass” visual pieces (blurry backgrounds, glass cards, gradient buttons).',
+  helpers: 'Tiny shared helpers (today’s date key, height conversion, clean data for the database, file type).',
+  subscription: 'Trainer Pro paywall, trial banner, and “are they subscribed?” checks.',
+  'trainer-app': 'Everything only trainers see: client list, sessions, documents, payments, dashboard.',
+  'trainer-app/calendar-tab': 'Trainer calendar tab of upcoming sessions.',
+  'trainer-app/client-detail': 'Manage one trainee’s detail screen.',
+  'trainer-app/client-records': 'Load linked trainees and related database paths/errors.',
+  'trainer-app/client-requests': 'New people asking to connect with the trainer.',
+  'trainer-app/clients-list': 'Roster of the trainer’s linked clients.',
+  'trainer-app/components': 'Trainer widgets (wheel picker, session calendar pieces).',
+  'trainer-app/components/sessions': 'Month calendar and session card UI.',
+  'trainer-app/dashboard': 'Trainer home dashboard and marketplace modal.',
+  'trainer-app/documents': 'Document and spreadsheet editors trainers use for notes/files.',
+  'trainer-app/documents/spreadsheet': 'Spreadsheet grid, formulas, and formatting for the editor.',
+  'trainer-app/hooks': 'Reusable session list / scheduling state for trainer screens.',
+  'trainer-app/navigation': 'Trainer tabs, overlays, and how screens open.',
+  'trainer-app/nutrition-tab': 'Trainer looking at a client’s nutrition.',
+  'trainer-app/payments': 'Trainer payments / payouts screen.',
+  'trainer-app/progress-tab': 'Trainer looking at a client’s progress and weight.',
+  'trainer-app/screens': 'Extra trainer full screens (scheduling wrappers).',
+  'trainer-app/screens/components': 'Pickers used by trainer scheduling screens.',
+  'trainer-app/sessions': 'Book / schedule training sessions and notify the client.',
+  'trainer-app/weekly-report': 'Weekly report cards the trainer sees for a client.',
+  'trainer-app/workout-plans': 'Trainer builds workout plans by hand.',
+  workouts: 'Workouts feature: active session, exercise videos, AI plan generate/view.',
+  'workouts/active-workout': 'In-the-gym workout logging (sets/reps) and related helpers.',
+  'workouts/components': 'Exercise row/section UI used in plans and active workout.',
+  'workouts/exercise-library': 'Exercise video library (YouTube), dislike picker, player.',
+  'workouts/plan-builder': 'Manual plan builder edit forms.',
+  'workouts/plan-generator': 'Ask the server to generate an AI workout plan.',
+  'workouts/plan-viewer': 'Show a finished workout plan and export PDF.',
+  'workouts/screens': 'Screen to start generating “my workout plan.”',
+  'nutrition/restaurant-search': 'Search restaurant / casual menu foods.',
+  'nutrition/food-cards/FoodCard': 'Fancy food cards and nutrition facts UI.',
+  'metrics/daily-quotes': 'List of motivational quotes for the home quote card.',
 };
 
 /** Coach tool modal → plain English action */
@@ -423,15 +469,76 @@ function describeCoachToolModal(base) {
   const action = TOOL_MODAL_ACTIONS[stem];
   if (action) {
     return [
-      `Bottom sheet modal shown when the AI coach proposes a "${humanize(stem)}" tool action.`,
-      `User reviews the form, confirms, then the app calls the server to ${action}.`,
+      `Popup that slides up when the AI Coach wants you to confirm: ${action}.`,
+      'You review the details, tap confirm, then the app saves it — or cancel to do nothing.',
     ];
   }
   return [
-    `Confirmation modal for an AI coach tool action (${humanize(stem)}).`,
-    'Part of the coach chat flow — user must approve before data is written to Firestore.',
+    `Popup to confirm a coach action (${humanize(stem)}) before anything is saved.`,
+    'Part of the coach chat flow — nothing is written until you approve.',
   ];
 }
+
+function isStubReexport(content) {
+  const stripped = content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+    .trim();
+  if (stripped.length > 400) return false;
+  if (/export\s*\{\s*default\s*\}\s*from\s*['"]/.test(stripped)) return true;
+  if (/^module\.exports\s*=\s*require\(/.test(stripped)) return true;
+  if (/^export\s*\{[^}]+\}\s*from\s*['"][^'"]+['"]\s*;?\s*$/.test(stripped)) return true;
+  return false;
+}
+
+function detectFlags(rel, content) {
+  const flags = [];
+  const folder = dirKey(rel);
+  if (KNOWN_STUBS.has(rel) || isStubReexport(content)) flags.push('STUB');
+  if (KNOWN_DEAD.has(rel) || folder.includes('/voice') || folder.endsWith('/voice')) flags.push('DEAD');
+  const parts = folder.split('/');
+  if (parts.some((p) => JARGON_FOLDER_BITS.has(p))) flags.push('JARGON FOLDER');
+  return flags;
+}
+
+function whoUsesIt(rel) {
+  if (rel.startsWith('client-app/')) return 'Trainee (client) app';
+  if (rel.startsWith('trainer-app/')) return 'Trainer app';
+  if (rel.startsWith('ai-coach/')) return 'Both roles (AI Coach tab)';
+  if (rel.startsWith('for-both/') || rel.startsWith('helpers/') || rel.startsWith('theme/')) {
+    return 'Both roles';
+  }
+  if (rel.startsWith('auth/') || rel.startsWith('app-start/')) return 'Everyone (login / app start)';
+  if (rel.startsWith('nutrition/') || rel.startsWith('workouts/') || rel.startsWith('metrics/')) {
+    return 'Mostly trainees; trainers may view related data';
+  }
+  if (rel.startsWith('subscription/')) return 'Trainers (paid Coach Connect Pro)';
+  if (rel.startsWith('__tests__/')) return 'Developers only (automated tests)';
+  if (rel.startsWith('assets/')) return 'Everyone (pictures / animations)';
+  return 'Shared / cross-app';
+}
+
+/** Soften common jargon so a recruiter can skim */
+function recruiterize(text) {
+  if (!text) return '';
+  return text
+    .replace(/\bFirestore\b/gi, 'cloud database')
+    .replace(/\bHTTP client\b/gi, 'code that talks to the app server')
+    .replace(/\bAPI calls?\b/gi, 'requests to the app server')
+    .replace(/\bReact Native\b/g, 'phone app')
+    .replace(/\bReact hook\b/gi, 'reusable screen helper')
+    .replace(/\bReact context\b/gi, 'shared app setting')
+    .replace(/\bJSX\b/g, 'screen code')
+    .replace(/\bmodal\b/gi, 'popup')
+    .replace(/\bbottom sheet\b/gi, 'popup that slides up')
+    .replace(/\bpersistence\b/gi, 'saving data for next time')
+    .replace(/\bCloud Run backend\b/gi, 'Coach Connect server')
+    .replace(/\bDeepSeek\b/gi, 'the AI model')
+    .replace(/\bfetch\/Firestore\b/gi, 'load/save')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 
 function describeScreen(rel, base, folder, content, importHints) {
   const h = humanize(base.replace(/\.(jsx?|tsx?)$/, ''));
@@ -512,7 +619,7 @@ function describeByFilename(rel, base, folder, content = '') {
     [/Helpers?\.(js|jsx)$/, () => [`Pure helper functions for ${h} — no UI, no side effects.`, `Imported by screens and services in \`${folder}\`.`]],
     [/Theme\.(js|jsx)$/, () => [`Color, spacing, and typography tokens for ${folder}.`, 'Import these constants to keep visual styling consistent across related screens.']],
     [/routes\.(js|jsx)$/, () => ['Central registry of route/screen names used by React Navigation.', 'Prevents typos when pushing screens — import ROUTES.X instead of raw strings.']],
-    [/config\.(js|jsx)$/, () => ['App configuration constants (Firebase keys reference, feature flags, env-driven values).', 'Read by AuthGate and app entry — do not commit secrets here; use EXPO_PUBLIC_ env vars.']],
+    [/config\.(js|jsx)$/, () => ['App configuration constants (Firebase keys reference, feature flags, env-driven values).', 'Read by LoginGate and app entry — do not commit secrets here; use EXPO_PUBLIC_ env vars.']],
   ];
 
   for (const [re, fn] of patterns) {
@@ -606,14 +713,14 @@ function describeCodeFile(rel, content) {
     if (signals.firestore.length) parts.push(`uses Firestore (\`${signals.firestore[0]}\`)`);
     if (signals.uiStrings.length) parts.push(`UI labels include "${signals.uiStrings[0]}"`);
 
-    if (folder.includes('ai-coach') && folder.includes('tools')) parts.push('part of coach tool parse → validate → confirm → execute flow');
-    if (folder.includes('ai-coach/logic/context')) parts.push('builds data the AI coach sees in its system prompt');
-    if (folder.startsWith('nutrition/food-search')) parts.push('part of search → pick food → log to daily nutrition');
-    if (folder.startsWith('trainer-app/crm')) parts.push('trainer–client linking in Firestore CRM collections');
-    if (folder.startsWith('metrics/daily-metrics')) parts.push('writes to users/{uid}/dailyLogs/{date}');
-    if (folder.startsWith('shared/api')) parts.push('shared authenticated HTTP — prefer over raw fetch');
-    if (folder.startsWith('shared/payments')) parts.push('Stripe Connect / client–trainer payment flows');
-    if (folder.startsWith('subscription')) parts.push('Trainer Pro / IAP subscription gating');
+    if (folder.startsWith('for-both/api')) parts.push('talks to the Coach Connect server with the signed-in user');
+    if (folder.startsWith('for-both/payments')) parts.push('paying a trainer / Stripe Connect flows');
+    if (folder.startsWith('subscription')) parts.push('Trainer Pro paywall / trial');
+    if (folder.includes('ai-coach') && folder.includes('tools')) parts.push('coach wants an action → show popup → you confirm → app saves');
+    if (folder.includes('ai-coach/logic/context')) parts.push('builds what the AI coach knows about you before answering');
+    if (folder.startsWith('nutrition/food-search')) parts.push('search food → pick one → log to today’s meals');
+    if (folder.startsWith('trainer-app/client-records')) parts.push('trainer–client linking in the cloud database');
+    if (folder.startsWith('metrics/daily-metrics')) parts.push('saves daily steps/sleep/water/weight for the signed-in user');
 
     if (!s2 && parts.length) {
       s2 = parts.slice(0, 2).join('; ') + '.';
@@ -659,7 +766,10 @@ function inferFolderBlurb(dir) {
 }
 
 function build() {
-  const files = walk(SRC).map(relFromSrc).sort();
+  const files = walk(SRC)
+    .map(relFromSrc)
+    .filter((rel) => rel !== 'SRC_FILE_CATALOG.md')
+    .sort();
   const byDir = new Map();
   for (const rel of files) {
     const d = dirKey(rel);
@@ -668,44 +778,69 @@ function build() {
   }
 
   const codeCount = files.filter((f) => /\.(jsx?|tsx?)$/.test(f)).length;
+  const today = new Date().toISOString().slice(0, 10);
 
   let md = `# Coach Connect — Complete \`src/\` File Catalog
 
-**${files.length} files** (${codeCount} JS/JSX modules) — generated ${new Date().toISOString().slice(0, 10)}.
+**${files.length} files** (${codeCount} JS/JSX modules) — generated ${today}.
 
 Regenerate: \`node scripts/generateSrcFileCatalog.mjs\`
 
-Every file under \`src/\` is listed below (no summaries, no skipped files). Each folder has a purpose blurb; each file has a full paragraph on what it does and how it fits the app — useful before renaming.
+Copies: \`src/SRC_FILE_CATALOG.md\` and \`docs/SRC_FILE_CATALOG.md\`
 
-Firebase production project ID stays \`anatrox-auth\` (do not rename in config / \`.env\`).
+---
+
+## Brief for Claude (or any rename helper)
+
+**Product:** Coach Connect — fitness app for trainees and trainers (React Native / Expo).
+
+**Owner goal:** Make the codebase readable to a **non-technical recruiter**. Folder and file names should sound like everyday product language, not developer jargon.
+
+**What this catalog is for:** Each entry explains **what the file actually does** in plain English. Use that to propose better names and which subfolders to delete/flatten. **Do not invent renames from the old filename alone.**
+
+**Constraints when proposing renames later:**
+
+- Keep the main top-level folders (\`ai-coach\`, \`client-app\`, \`trainer-app\`, \`for-both\`, \`nutrition\`, etc.).
+- Prefer fewer subfolders; kill jargon folders (\`persistence\`, \`logic\`, \`chat-api\`, \`voice\` if unused, fake \`screens/\` stubs).
+- Prefer short everyday names over long technical ones.
+- **Never** change Firebase production project id \`anatrox-auth\` or live \`EXPO_PUBLIC_FIREBASE_*\` / \`.env\` project identity.
+- Leave \`Suggested name:\` blank in this catalog — fill names in a separate rename plan Chris approves.
+
+**Flags you will see:**
+
+- \`STUB\` — fake file that only re-exports another file (safe delete after retargeting imports).
+- \`DEAD\` — likely unused product area (e.g. voice/speech).
+- \`JARGON FOLDER\` — parent folder name is confusing to non-tech readers.
+
+---
 
 ## Architecture map (how \`src/\` is organized)
 
-| Top-level folder | Role |
+| Top-level folder | What it is (plain English) |
 |---|---|
-| \`app-start/\` | Boot + role gate: \`AuthGate\` → \`ClientApp\` or \`TrainerApp\` |
+| \`app-start/\` | App launch — login gate, then open trainee app or trainer app |
 | \`auth/\` | Login, signup, onboarding, password reset |
-| \`client-app/\` | Trainee UI: home, dashboard, marketplace, files, client navigation |
-| \`trainer-app/\` | Trainer UI: CRM, sessions, documents, payments, trainer navigation |
-| \`ai-coach/\` | AI Coach chat UI + client-side coach API/tools/context |
-| \`nutrition/\` | Food search, barcode, daily log, food details, nutrition settings |
-| \`workouts/\` | Active workout, exercise library, AI plan generate/view |
-| \`messaging/\` | Shared chat list + thread screens |
-| \`metrics/\` | Daily metrics (steps/sleep/water/weight) + daily quotes |
-| \`notifications/\` | Push notification helpers |
-| \`subscription/\` | Trainer Pro paywall / IAP / trial gate |
-| \`settings/\` | Settings hub, support, privacy, bug report |
-| \`shared/\` | Cross-role components, API, payments, weekly report, Firestore helpers |
-| \`theme/\` | Design system / liquid glass / theme tokens |
-| \`helpers/\` | Pure helpers (dates, height, sanitize, file types) |
-| \`navigation/\` | Route names + shell navigation context |
-| \`components/\` | Root-level components (payments / onboarding leftovers) |
-| \`assets/\` | Images, icons, Lottie JSON (not logic) |
-| \`utils/\` | Error logging, logout cache clear, xlsx shims |
-| \`__tests__/\` | Jest unit / integration / component tests |
-| \`lib/\` | Tiny root libs (e.g. sessions) |
-
-**Rename tip:** Prefer renaming folders first with a clear map (\`client\`→\`client-app\` style), then files. Grep for the old basename before renaming — many screens have duplicate re-export wrappers under \`shared/screens\` or \`*/screens\`.
+| \`client-app/\` | Everything only trainees see |
+| \`trainer-app/\` | Everything only trainers see |
+| \`ai-coach/\` | In-app AI Coach (home + conversation + confirm popups) |
+| \`nutrition/\` | Food search, barcode, daily food log |
+| \`workouts/\` | Active workout, exercise videos, AI workout plans |
+| \`messaging/\` | Texting between trainee and trainer |
+| \`metrics/\` | Daily steps/sleep/water/weight + home quotes |
+| \`notifications/\` | Push notification wording and unread counts |
+| \`subscription/\` | Trainer Pro paywall / trial |
+| \`settings/\` | Settings, FAQ, privacy, bug report |
+| \`for-both/\` | Shared by both roles (payments, notes, weekly report, server calls) |
+| \`logout-cleanup/\` | Clear local data on logout |
+| \`error-logging/\` | Capture and send error reports |
+| \`safety/\` | Block / report |
+| \`spreadsheet-files/\` | Spreadsheet library for phone vs web |
+| \`theme/\` | Colors, dark mode, glass look |
+| \`helpers/\` | Tiny shared helpers (dates, height, file types) |
+| \`navigation/\` | Bottom nav and screen routing helpers |
+| \`components/\` | A few leftover shared payment/onboarding pieces |
+| \`assets/\` | Pictures, icons, animations (not logic) |
+| \`__tests__/\` | Automated tests (developers only) |
 
 ---
 
@@ -723,8 +858,9 @@ Firebase production project ID stays \`anatrox-auth\` (do not rename in config /
 
   for (const d of dirs) {
     const anchor = d.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '') || 'root';
-    md += `## ${d || 'src/ (root)'} {#${anchor}}\n\n`;
-    md += `**Folder purpose:** ${inferFolderBlurb(d)}\n\n`;
+    md += `## ${d || 'src/ (root)'}\n\n`;
+    md += `<a id="${anchor}"></a>\n\n`;
+    md += `**Folder purpose:** ${recruiterize(inferFolderBlurb(d))}\n\n`;
 
     for (const rel of byDir.get(d)) {
       const abs = path.join(SRC, rel);
@@ -735,12 +871,21 @@ Firebase production project ID stays \`anatrox-auth\` (do not rename in config /
         content = '';
       }
       const [s1, s2] = twoSentences(rel, content);
-      const paragraph = stripBoilerplate([s1, s2].filter(Boolean).join(' '))
-        .replace(/\s+/g, ' ')
-        .replace(/\s+\./g, '.')
-        .trim();
-      md += `### \`${rel}\`\n\n`;
-      md += `${paragraph.endsWith('.') ? paragraph : `${paragraph}.`}\n\n`;
+      const what = recruiterize(
+        stripBoilerplate([s1, s2].filter(Boolean).join(' '))
+          .replace(/\s+/g, ' ')
+          .replace(/\s+\./g, '.')
+          .trim()
+      );
+      const flags = detectFlags(rel, content);
+      const base = path.basename(rel);
+
+      md += `### \`${base}\`\n\n`;
+      md += `- **Path:** \`src/${rel}\`\n`;
+      md += `- **What it is:** ${what.endsWith('.') ? what : `${what}.`}\n`;
+      md += `- **Who uses it:** ${whoUsesIt(rel)}\n`;
+      if (flags.length) md += `- **Flags:** ${flags.map((f) => `\`${f}\``).join(', ')}\n`;
+      md += `- **Suggested name:** ___\n\n`;
     }
   }
 
@@ -748,5 +893,9 @@ Firebase production project ID stays \`anatrox-auth\` (do not rename in config /
   return md;
 }
 
-fs.writeFileSync(OUT, build());
+const markdown = build();
+fs.writeFileSync(OUT, markdown);
+fs.mkdirSync(path.dirname(OUT_DOCS), { recursive: true });
+fs.writeFileSync(OUT_DOCS, markdown);
 console.log(`Wrote ${OUT}`);
+console.log(`Wrote ${OUT_DOCS}`);

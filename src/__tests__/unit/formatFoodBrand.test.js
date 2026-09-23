@@ -6,9 +6,9 @@ const {
   resolveFoodBrandLabel,
   stripRetailerSuffix,
   shouldShowFoodBrandSubtitle,
-} = require('../../nutrition/food-details/cleanFoodBrandName');
+} = require('../../nutrition/food-details/tidyBrandName');
 
-describe('cleanFoodBrandName', () => {
+describe('tidyBrandName', () => {
   test('normalizeBrandLabel strips corporate suffixes', () => {
     expect(normalizeBrandLabel('GENERAL MILLS, INC.')).toBe('General Mills');
   });

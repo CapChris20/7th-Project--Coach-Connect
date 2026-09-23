@@ -86,7 +86,7 @@ ${COACH_TOOL_VOICE_NOTE}
 
 Tool routing:
 - Calorie/macro goal changes → adjustMacroTargets with explicit calories
-- User explicitly asks to LOG/TRACK sleep → logSleep (not for informational sleep questions)
+- User explicitly asks to LOG/TRACK sleep → logSleep (not for incellFormattingional sleep questions)
 - User explicitly asks to LOG/TRACK water → logWater
 - User explicitly asks to LOG/TRACK steps → logSteps
 - User explicitly asks to LOG/TRACK energy → rateEnergy (1-10 rating)
@@ -105,7 +105,7 @@ Tool routing:
 
 CRITICAL RULES FOR DASHBOARD METRICS:
 - Only propose dashboard log tools (logSleep, logWater, logSteps, rateEnergy, logMood, rateWorkout, logRestDay) when the user explicitly wants to log, track, record, or save that metric.
-- Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?", "How much protein should I eat?").
+- Do NOT propose log tools for incellFormattingional questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?", "How much protein should I eat?").
 - When user explicitly asks to log a dashboard metric → use the matching tool. Never say "I can't log sleep/water/steps".
 
 ${COACH_DATA_INTEGRITY_RULE}`;
@@ -123,7 +123,7 @@ ${COACH_DATA_INTEGRITY_RULE}`;
   return systemPrompt;
 }
 
-function formatMonthlyNutritionLines(monthlyRollup) {
+function cellFormattingMonthlyNutritionLines(monthlyRollup) {
   if (!Array.isArray(monthlyRollup) || !monthlyRollup.length) return '';
   return monthlyRollup
     .map(
@@ -133,12 +133,12 @@ function formatMonthlyNutritionLines(monthlyRollup) {
     .join('\n');
 }
 
-function formatWorkoutMonthlyLines(workoutTimeline) {
+function cellFormattingWorkoutMonthlyLines(workoutTimeline) {
   if (!Array.isArray(workoutTimeline) || !workoutTimeline.length) return '';
   return workoutTimeline.map((m) => `- ${m.month}: ${m.sessions} sessions`).join('\n');
 }
 
-function formatProgressCycleBlock(progressCycleSummary, accountCreatedAt) {
+function cellFormattingProgressCycleBlock(progressCycleSummary, accountCreatedAt) {
   if (!Array.isArray(progressCycleSummary) || !progressCycleSummary.length) {
     return accountCreatedAt
       ? `Progress cycle: account since ${accountCreatedAt} — not enough logged history yet to compare phases.`
@@ -147,7 +147,7 @@ function formatProgressCycleBlock(progressCycleSummary, accountCreatedAt) {
   return `Progress cycle (since account start${accountCreatedAt ? ` ${accountCreatedAt}` : ''}):\n${progressCycleSummary.map((l) => `- ${l}`).join('\n')}`;
 }
 
-function formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays } = {}) {
+function cellFormattingDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays } = {}) {
   if (!Array.isArray(dailyBreakdown) || !dailyBreakdown.length) {
     const hint =
       totalLoggedDaysAllTime > 0
@@ -173,14 +173,14 @@ function formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, det
     .join('\n');
 }
 
-function formatWeightLogLines(weightLog) {
+function cellFormattingWeightLogLines(weightLog) {
   if (!Array.isArray(weightLog) || !weightLog.length) {
     return 'No weight entries logged since joining.';
   }
   return weightLog.map((w) => `- ${w.date}: ${w.weightLbs} lbs`).join('\n');
 }
 
-function formatActivityWellnessSection(wellness) {
+function cellFormattingActivityWellnessSection(wellness) {
   if (!wellness || typeof wellness !== 'object') return '';
   const lines = [];
   const { steps, water, energy, mood } = wellness;
@@ -220,7 +220,7 @@ function formatActivityWellnessSection(wellness) {
   return `\n\nACTIVITY & WELLNESS (since you joined — lifetime averages, recent daily detail):\n${lines.join('\n')}`;
 }
 
-function formatWorkoutPlanSection(workoutPlan) {
+function cellFormattingWorkoutPlanSection(workoutPlan) {
   if (!workoutPlan?.activePlan && !(workoutPlan?.plans || []).length) return '';
   const active = workoutPlan.activePlan;
   const lines = [
@@ -259,7 +259,7 @@ function formatWorkoutPlanSection(workoutPlan) {
   return `\n\nWORKOUT PROGRAM (from app — every exercise below is real logged data; do not invent or say details are missing):\n${lines.join('\n')}`;
 }
 
-function formatNotesAndFilesSection(notesAndFiles, trainerDocuments) {
+function cellFormattingNotesAndFilesSection(notesAndFiles, trainerDocuments) {
   const lines = [];
   if (notesAndFiles?.notes?.length) {
     lines.push('Notes:');
@@ -346,17 +346,17 @@ Targets: ${targetCal} cal, ${targetP}g protein, ${targetC}g carbs, ${targetF}g f
 ACCOUNT HISTORY (${historySpan} days since joining):
 Nutrition lifetime avg ${avgCal} cal vs ${targetCal} target (${calGap > 0 ? '+' : ''}${calGap}), protein ${avgP}g vs ${targetP}g (${proGap > 0 ? '+' : ''}${proGap}), carbs ${avgC}g, fat ${avgF}g. Logged on ${totalLoggedDaysAllTime || daysLogged || 0} days (${consistency}% of days since joining).${firstLogDate ? ` First log: ${firstLogDate}.` : ''}${lastLogDate ? ` Last log: ${lastLogDate}.` : ''} Calorie trend vs target: ${avgCal > targetCal ? 'over' : avgCal < targetCal ? 'under' : 'on target'}.
 
-${formatProgressCycleBlock(progressCycleSummary, accountCreatedAt)}
+${cellFormattingProgressCycleBlock(progressCycleSummary, accountCreatedAt)}
 
-${nutritionTimeline?.length ? `Nutrition by month (full history since first log):\n${formatMonthlyNutritionLines(nutritionTimeline)}\n\n` : ''}${workoutMonthlyTimeline?.length ? `Training by month (full history${firstSessionDate && lastSessionDate ? `, ${firstSessionDate} → ${lastSessionDate}` : ''}):\n${formatWorkoutMonthlyLines(workoutMonthlyTimeline)}\n\n` : ''}Recent daily food log${foodLogMeta}:
-${formatDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays: mealDetailDays })}
+${nutritionTimeline?.length ? `Nutrition by month (full history since first log):\n${cellFormattingMonthlyNutritionLines(nutritionTimeline)}\n\n` : ''}${workoutMonthlyTimeline?.length ? `Training by month (full history${firstSessionDate && lastSessionDate ? `, ${firstSessionDate} → ${lastSessionDate}` : ''}):\n${cellFormattingWorkoutMonthlyLines(workoutMonthlyTimeline)}\n\n` : ''}Recent daily food log${foodLogMeta}:
+${cellFormattingDailyNutritionLines(dailyBreakdown, { totalLoggedDaysAllTime, detailDays: mealDetailDays })}
 
 Weight (trend ${weightTrend}):
-${formatWeightLogLines(weightLog)}
+${cellFormattingWeightLogLines(weightLog)}
 
 ${trainingLine}
 
-Recovery: sleep ~${avgHours}h/night${sleepDeficit ? `, about ${sleepDeficit}h under 7.5h target` : ''}, quality ${sleepQuality}${isDepleted ? ', depleted' : ''}. ${fatigueNote}.${formatActivityWellnessSection(wellness)}${formatWorkoutPlanSection(workoutPlan)}${formatNotesAndFilesSection(notesAndFiles, trainerDocuments)}${streakLine}
+Recovery: sleep ~${avgHours}h/night${sleepDeficit ? `, about ${sleepDeficit}h under 7.5h target` : ''}, quality ${sleepQuality}${isDepleted ? ', depleted' : ''}. ${fatigueNote}.${cellFormattingActivityWellnessSection(wellness)}${cellFormattingWorkoutPlanSection(workoutPlan)}${cellFormattingNotesAndFilesSection(notesAndFiles, trainerDocuments)}${streakLine}
 
 Weight trend ${weightTrend}.
 
@@ -364,7 +364,7 @@ COACHING:
 When they ask about progress, results, or "since I started", tie outcomes to the monthly timelines and progress cycle block above — name the phase/month where behavior shifted. Only cite their logged numbers when the user asked about their progress, logs, habits, or personal situation — not for general fitness/nutrition questions (sodium, protein timing, supplements, form). If they asked a general question, answer it directly without dragging in calorie averages or log gaps.
 
 YOUR JOB:
-- Give information and answer questions
+- Give incellFormattingion and answer questions
 - EXECUTE their requests via tool JSON immediately
 - NOT override their choices with judgment
 - NOT refuse requests
@@ -397,7 +397,7 @@ Tool routing:
 
 CRITICAL RULES FOR DASHBOARD METRICS:
 - Only propose dashboard log tools when the user explicitly wants to log, track, record, or save that metric.
-- Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?").
+- Do NOT propose log tools for incellFormattingional questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?").
 - When user explicitly asks to log a dashboard metric → use the matching tool. Never say you can't log sleep/water/steps.
 
 ${COACH_DATA_INTEGRITY_RULE}
@@ -412,13 +412,13 @@ Allowed tools: adjustMacroTargets, logNutrition, logSleep, logWater, logSteps, r
 
 module.exports = {
   buildCoachSystemPrompt,
-  formatMonthlyNutritionLines,
-  formatWorkoutMonthlyLines,
-  formatProgressCycleBlock,
-  formatDailyNutritionLines,
-  formatWeightLogLines,
-  formatActivityWellnessSection,
-  formatWorkoutPlanSection,
-  formatNotesAndFilesSection,
+  cellFormattingMonthlyNutritionLines,
+  cellFormattingWorkoutMonthlyLines,
+  cellFormattingProgressCycleBlock,
+  cellFormattingDailyNutritionLines,
+  cellFormattingWeightLogLines,
+  cellFormattingActivityWellnessSection,
+  cellFormattingWorkoutPlanSection,
+  cellFormattingNotesAndFilesSection,
   buildWeeklyContextSystemPrompt,
 };

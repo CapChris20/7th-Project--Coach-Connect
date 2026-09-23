@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 require('dotenv').config();
-const { logError } = require('../src/utils/logError');
+const { logError } = require('../src/crash-reports/recordError');
 
 const args = process.argv.slice(2);
 

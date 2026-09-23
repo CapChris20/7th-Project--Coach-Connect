@@ -1,6 +1,6 @@
-import { serializeExerciseDislikes, parseExerciseDislikes } from '../../workouts/exercise-library/exerciseDislikeHelpers';
+import { serializeExerciseDislikes, parseExerciseDislikes } from '../../workouts/exercise-videos/dislikedExercisesText';
 
-describe('exerciseDislikeHelpers', () => {
+describe('dislikedExercisesText', () => {
   test('serialize selected ids to comma-separated names', () => {
     expect(serializeExerciseDislikes(['burpee', 'leg_press'], '')).toBe('Burpee, Leg Press');
   });

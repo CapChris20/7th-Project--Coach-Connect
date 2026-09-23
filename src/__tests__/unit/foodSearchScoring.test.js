@@ -4,9 +4,9 @@ const {
   itemMatchesQuery,
   isMenuStyleQuery,
   filterFoodSearchRows,
-} = require('../../nutrition/food-search/sortBestFoodMatches');
+} = require('../../nutrition/food-search/rankFoodResults');
 
-const { scoreSerperFoodResultRow } = require('../../nutrition/food-search/isReliableRestaurantFood');
+const { scoreSerperFoodResultRow } = require('../../nutrition/food-search/trustRestaurantResult');
 
 const { extractMacrosFromText } = require('../../../server/nutritionSearchHelpers.js');
 
@@ -31,7 +31,7 @@ describe('normalizeQueryText', () => {
 });
 
 describe('significantQueryTokens', () => {
-  it('returns content tokens and drops stop words', () => {
+  it('returns content reportColors and drops stop words', () => {
     expect(significantQueryTokens('jets pizza buffalo chicken')).toEqual([
       'jets',
       'pizza',
@@ -56,7 +56,7 @@ describe('significantQueryTokens', () => {
 });
 
 describe('itemMatchesQuery', () => {
-  it('matches menu item titles containing all query tokens', () => {
+  it('matches menu item titles containing all query reportColors', () => {
     expect(itemMatchesQuery("Big Mac by McDonald's", 'big mac')).toBe(true);
   });
 
@@ -64,18 +64,18 @@ describe('itemMatchesQuery', () => {
     expect(itemMatchesQuery('GUMMI JETS candy', 'jets pizza')).toBe(false);
   });
 
-  it('requires all tokens for multi-word menu queries', () => {
+  it('requires all reportColors for multi-word menu queries', () => {
     expect(itemMatchesQuery('Big Mac', 'big mac')).toBe(true);
     expect(itemMatchesQuery('Mac sauce only', 'big mac')).toBe(false);
   });
 
-  it('requires distinctive tokens for packaged grocery (cereal may be omitted)', () => {
+  it('requires distinctive reportColors for packaged grocery (cereal may be omitted)', () => {
     expect(itemMatchesQuery('Apple Jacks', 'apple jacks cereal')).toBe(true);
     expect(itemMatchesQuery('Kelloggs Apple Jacks Cereal', 'apple jacks cereal')).toBe(true);
     expect(itemMatchesQuery('Apple Cinnamon Cheerios', 'apple jacks cereal')).toBe(false);
   });
 
-  it('rejects partial token matches when other tokens are missing', () => {
+  it('rejects partial token matches when other reportColors are missing', () => {
     expect(itemMatchesQuery('Big Fries', 'big mac')).toBe(false);
   });
 
@@ -88,13 +88,13 @@ describe('itemMatchesQuery', () => {
     ).toBe(true);
   });
 
-  it('keeps numeric tokens like 14 shake', () => {
+  it('keeps numeric reportColors like 14 shake', () => {
     expect(itemMatchesQuery('14 Shake', '14 shake')).toBe(true);
     expect(itemMatchesQuery('Protein Shake', '14 shake')).toBe(false);
     expect(itemMatchesQuery('15 Shake', '14 shake')).toBe(false);
   });
 
-  it('matches Ghost brand products on distinctive tokens', () => {
+  it('matches Ghost brand products on distinctive reportColors', () => {
     expect(itemMatchesQuery('Ghost whey protein', 'Ghost Whey Protein Cereal')).toBe(true);
     expect(itemMatchesQuery('Ghost Whey Protein Cereal Milk', 'Ghost Whey Protein Cereal')).toBe(true);
     expect(itemMatchesQuery('Myprotein whey isolate', 'Ghost Whey Protein Cereal')).toBe(false);

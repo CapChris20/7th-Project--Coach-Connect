@@ -2,7 +2,7 @@ const {
   scaleNutritionByServings,
   totalGramsFromServing,
   parseServingQtyInput,
-} = require('../../nutrition/food-details/calculateServingSize');
+} = require('../../nutrition/food-details/servingSizeMath');
 
 describe('servingMath', () => {
   it('scales macros by serving count', () => {

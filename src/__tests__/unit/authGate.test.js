@@ -2,7 +2,7 @@ import React from 'react';
 
 let authStateCallback;
 
-jest.mock('../../app-start/config', () => ({
+jest.mock('../../app-start/cloudConnection', () => ({
   auth: {},
   db: {},
 }));
@@ -24,57 +24,57 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../utils/syncErrorsToServer', () => ({
+jest.mock('../../crash-reports/sendSavedErrors', () => ({
   initializeErrorSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../ai-coach/logic/chat-api/chatStorageService', () => ({
+jest.mock('../../ai-coach/past-chats/savedChatShape', () => ({
   clearOldSharedChats: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../utils/clearDataOnLogout', () => ({
+jest.mock('../../logout-cleanup/clearDataOnLogout', () => ({
   clearAllUserData: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../for-both/api/syncOnboardingToServer', () => ({
+jest.mock('../../for-both/online-connection/uploadSetupAnswers', () => ({
   flushPendingOnboardingSync: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../notifications/manageNotifications', () => ({
+jest.mock('../../notifications/manageAlerts', () => ({
   clearPushTokensForUid: jest.fn(() => Promise.resolve()),
 }));
 
-jest.mock('../../for-both/api/logErrorToServer', () => ({
+jest.mock('../../for-both/online-connection/sendCrashReport', () => ({
   __esModule: true,
   default: { warn: jest.fn(), error: jest.fn() },
 }));
 
-jest.mock('../../auth/LoginScreen', () => () => null);
-jest.mock('../../auth/ResetPasswordScreen', () => () => null);
-jest.mock('../../auth/OnboardingWizardScreen', () => () => null);
-jest.mock('../../for-both/components/shell/BootLoading', () => ({
+jest.mock('../../login-and-signup/LoginScreen', () => () => null);
+jest.mock('../../login-and-signup/ForgotPasswordFlow', () => () => null);
+jest.mock('../../login-and-signup/NewUserSetupScreen', () => () => null);
+jest.mock('../../for-both/loading-and-header/StartupLoadingCover', () => ({
   BootSuspenseFallback: () => null,
-  useBootLoadingLock: () => {},
-  BootLoadingProvider: ({ children }) => children,
-  BootLoadingOverlay: () => null,
-  useBootLoading: () => ({ acquire: () => {}, release: () => {}, visible: false }),
+  useStartupLoadingCoverLock: () => {},
+  StartupLoadingCoverProvider: ({ children }) => children,
+  StartupLoadingCoverOverlay: () => null,
+  useStartupLoadingCover: () => ({ acquire: () => {}, release: () => {}, visible: false }),
 }));
 
-jest.mock('../../app-start/TrainerApp', () => {
+jest.mock('../../app-start/TrainerAppStart', () => {
   const ReactLocal = require('react');
-  return () => ReactLocal.createElement('TrainerApp', { testID: 'trainer-app' }, null);
+  return () => ReactLocal.createElement('TrainerAppStart', { testID: 'trainer-app' }, null);
 });
 
-jest.mock('../../app-start/ClientApp', () => {
+jest.mock('../../app-start/ClientAppStart', () => {
   const ReactLocal = require('react');
-  return () => ReactLocal.createElement('ClientApp', { testID: 'client-app' }, null);
+  return () => ReactLocal.createElement('ClientAppStart', { testID: 'client-app' }, null);
 });
 
 const {
   normalizeAppRole,
   profileNeedsOnboarding,
   isLikelyNewFirebaseUser,
-} = require('../../auth/detectUserRole');
+} = require('../../login-and-signup/decideTraineeOrTrainer');
 
 function firebaseUserWithSignInGap(createdMsAgo, lastSignInMsAgo = createdMsAgo) {
   const now = Date.now();
