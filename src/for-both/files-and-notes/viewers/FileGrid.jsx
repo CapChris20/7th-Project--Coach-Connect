@@ -103,7 +103,7 @@ function buildEmbedStrategies(file, url) {
   const strategies = [];
   const isPdf = file.type === 'pdf' || name.endsWith('.pdf') || mime.includes('pdf');
   const isOffice =
-    /\.(doc|docx|ppt|pptx|xls|spreadsheetReader|csv)$/i.test(name) ||
+    /\.(doc|docx|ppt|pptx|xls|xlsx|csv)$/i.test(name) ||
     file.type === 'spreadsheet' ||
     mime.includes('spreadsheet') ||
     mime.includes('word') ||
@@ -216,7 +216,7 @@ function displayTypeForFile(file) {
   if (file.type === 'video') return 'Video';
   const n = (file.name || file.title || '').toLowerCase();
   if (n.endsWith('.pdf')) return 'PDF';
-  if (n.endsWith('.csv') || n.endsWith('.spreadsheetReader') || n.endsWith('.xls')) return 'Spreadsheet';
+  if (n.endsWith('.csv') || n.endsWith('.xlsx') || n.endsWith('.xls')) return 'Spreadsheet';
   if (n.endsWith('.doc') || n.endsWith('.docx')) return 'Document';
   return 'File';
 }
@@ -259,7 +259,7 @@ function shouldEmbedDocumentPreview(file) {
   if (t === 'photo' || t === 'video') return false;
   if (t === 'pdf' || t === 'spreadsheet' || t === 'document' || t === 'doc') return true;
   const n = (file.name || file.title || '').toLowerCase();
-  if (/\.(pdf|doc|docx|spreadsheetReader|xls|csv|ppt|pptx)(\?|$)/i.test(n)) return true;
+  if (/\.(pdf|doc|docx|xlsx|xls|csv|ppt|pptx)(\?|$)/i.test(n)) return true;
   if (mime.includes('pdf')) return true;
   if (mime.includes('word') || mime.includes('officedocument') || mime.includes('msword')) return true;
   if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return true;

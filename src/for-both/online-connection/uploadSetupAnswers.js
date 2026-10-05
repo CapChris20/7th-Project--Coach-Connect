@@ -33,13 +33,13 @@ export async function queuePendingOnboardingSync(uid, payload) {
 
 async function postWithAuth(firebaseUser, path, body) {
   const bases = getApiBaseCandidates();
-  for (const whereToConnect of bases) {
+  for (const baseUrl of bases) {
     try {
       await firebaseUser.reload();
       const idToken = await firebaseUser.getIdToken(true);
       if (!idToken) throw new Error('Missing ID token');
 
-      const resp = await fetch(`${whereToConnect}${path}`, {
+      const resp = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,

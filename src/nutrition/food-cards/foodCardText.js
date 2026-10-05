@@ -1,9 +1,9 @@
 /**
  * Maps a logged food entry (Firestore / meal list) to premium FoodCard shape.
  */
-const { readableFoodTitle } = require('../../food-search/readableFoodTitle');
+const { readableFoodTitle } = require('../food-search/readableFoodTitle');
 
-function cellFormattingNutrient(n, decimals = 1) {
+function formatNutrient(n, decimals = 1) {
   const x = Number(n);
   if (!Number.isFinite(x)) return '0';
   const oneDec = Math.round(x * 10 ** decimals) / 10 ** decimals;
@@ -23,7 +23,7 @@ function macroCaloriePercents(carbs, protein, fat, calories) {
   };
 }
 
-function cellFormattingSource(log) {
+function formatSource(log) {
   const src = log?.source || log?.metadata?.source || '';
   const fdc = log?.metadata?.fdcId || log?.fdc_id || log?.fdcId;
   if (src === 'usda' || src === 'usdaFdc') {
@@ -41,7 +41,7 @@ function buildMicronutrients(log) {
   const pick = (value, unit) => {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return null;
-    return { value: cellFormattingNutrient(n), unit };
+    return { value: formatNutrient(n), unit };
   };
 
   return {
@@ -63,7 +63,7 @@ function buildSubtitle(brand, serving, weightG) {
 
 /**
  * @param {object} log — meal food row from DailyFoodLogScreen
- * @param {string} [amountDisplay] — precellFormattingted serving string
+ * @param {string} [amountDisplay] — preformatted serving string
  */
 export function foodCardText(log, amountDisplay) {
   const carbs = Number(log?.carbs) || 0;
@@ -106,7 +106,7 @@ export function foodCardText(log, amountDisplay) {
     fat,
     macroPercents: macroCaloriePercents(carbs, protein, fat, calories),
     micronutrients: buildMicronutrients(log),
-    source: cellFormattingSource(log),
+    source: formatSource(log),
   };
 }
 

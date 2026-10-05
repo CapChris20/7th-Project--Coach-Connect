@@ -14,7 +14,7 @@ const COACH_REPLY_WITH_REMOVE =
   'For muscle building, aim for 1.6–2.2 g/kg. You may want to remove ultra-processed snacks and focus on whole food protein sources like chicken, eggs, and Greek yogurt.';
 
 describe('inferToolCallFromCoachMessage', () => {
-  it('does not infer deleteLog from coach prose on incellFormattingional web-search questions', () => {
+  it('does not infer deleteLog from coach prose on informational web-search questions', () => {
     expect(inferToolCallFromCoachMessage(COACH_REPLY_WITH_REMOVE, WEB_SEARCH_USER)).toBeNull();
   });
 

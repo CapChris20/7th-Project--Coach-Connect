@@ -1,6 +1,6 @@
 // Owns the whole push-notification lifecycle on the device.
-// Flow: cloudConnectionureNotifications() once at startup (display rules + Android channel + tap
-//       listener) → ask permission → fetch the Expo and native reportColors → save them on the
+// Flow: configureNotifications() once at startup (display rules + Android channel + tap
+//       listener) → ask permission → fetch the Expo and native tokens → save them on the
 //       user doc so the server can target this device → refresh on foreground, clear on logout.
 // Called from ClientAppStart/TrainerAppStart and the settings screen. Notification COPY lives in
 // writeAlertText.js; this file only deals with plumbing.
@@ -82,7 +82,7 @@ export function flushInitialNotificationResponse(delayMs = 500) {
 
 // One-time startup setup. The `isConfigured` guard makes it safe to call from several
 // places (both app shells, settings screen) without re-registering anything.
-export function cloudConnectionureNotifications() {
+export function configureNotifications() {
   if (isConfigured) return;
 
   // Decides what happens when a push arrives while the app is in the FOREGROUND.
@@ -115,7 +115,7 @@ export function cloudConnectionureNotifications() {
       enableLights: true,
       lightColor: '#FF6B9D',   // notification LED color on phones that have one
       enableVibrate: true,
-    // Swallow failures: an uncloudConnectionurable channel shouldn't block app startup.
+    // Swallow failures: an unconfigurable channel shouldn't block app startup.
     }).catch(() => {});
   }
 
@@ -158,7 +158,7 @@ export async function openSystemSettingsAsync() {
   }
 }
 
-// Dev-only token peek. Logs just the first 24 characters — push reportColors are device
+// Dev-only token peek. Logs just the first 24 characters — push tokens are device
 // credentials, so the full value should never be printed.
 function logTokenDebug(label, value) {
   if (__DEV__ && value && typeof value === 'string') {
@@ -172,7 +172,7 @@ function logTokenDebug(label, value) {
  */
 // Token #1 of 2: the RAW platform token (FCM registration token on Android, APNs device
 // token on iOS). Needed because our server sends some notifications through Firebase Admin
-// `messaging().send`, which speaks native reportColors, not Expo ones.
+// `messaging().send`, which speaks native tokens, not Expo ones.
 // Returns null instead of throwing — this token is optional, and the Expo token below is
 // enough to deliver a notification on its own.
 export async function getNativeDevicePushTokenAsync() {
@@ -224,7 +224,7 @@ export async function getExpoPushTokenAsync() {
 }
 
 /**
- * Persist Expo + native reportColors. Keeps legacy `pushToken` mirroring Expo for older readers.
+ * Persist Expo + native tokens. Keeps legacy `pushToken` mirroring Expo for older readers.
  * @param {string} uid
  * @param {{ skipIfDisabled?: boolean, pendingExpoToken?: string } | string} [optionsOrPendingToken]
  *   skipIfDisabled defaults true — respects `notificationsEnabled: false`.
@@ -280,7 +280,7 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
     // Save succeeded → drop any pending breadcrumb from an earlier failed attempt.
     await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid)).catch(() => {});
     if (__DEV__) {
-      console.log('[push] reportColors saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
+      console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
     }
   } catch (error) {
     // Usually offline. Warn rather than throw — failing to save a token must never
@@ -311,7 +311,7 @@ export async function clearPushTokensForUid(uid) {
       fcmToken: deleteField(),
       pushToken: deleteField(),
     });
-    if (__DEV__) console.log('[push] reportColors cleared for user');
+    if (__DEV__) console.log('[push] tokens cleared for user');
   } catch (e) {
     // Swallowed because this runs during sign-out — see clearDataOnLogout.js. A failure
     // here must not block the user from logging out.
@@ -320,10 +320,10 @@ export async function clearPushTokensForUid(uid) {
 }
 
 /**
- * Subscribe to app foreground: re-persist reportColors (handles token rotation / permission changes).
+ * Subscribe to app foreground: re-persist tokens (handles token rotation / permission changes).
  */
-// Re-saves reportColors whenever the app comes back to the foreground.
-// Why: push reportColors ROTATE (OS reinstalls, restores, backups) and permission can be
+// Re-saves tokens whenever the app comes back to the foreground.
+// Why: push tokens ROTATE (OS reinstalls, restores, backups) and permission can be
 // revoked in system settings while the app is backgrounded. Without this, a stale token
 // would silently stop receiving notifications with no visible error.
 export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
@@ -344,8 +344,8 @@ export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
 // OS permission and channel setup work without needing the backend involved.
 export async function sendTestLocalNotificationAsync() {
   // Ensures the Android channel exists even if the user reached settings before startup
-  // cloudConnectionuration ran; without a channel Android would silently drop this.
-  cloudConnectionureNotifications();
+  // configuration ran; without a channel Android would silently drop this.
+  configureNotifications();
 
   await Notifications.scheduleNotificationAsync({
     // Manipulate here: the test notification's title/body copy

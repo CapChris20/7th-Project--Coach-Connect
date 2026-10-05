@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 const { randomUUID } = require('crypto');
 const { isoDateKey, serverTs } = require('../serverCommon');
-const { estimateCost, isWithinMonthlyLimit } = require('../../cloudConnection/apiCosts');
+const { estimateCost, isWithinMonthlyLimit } = require('../../config/apiCosts');
 const { isAiCoachLimitsEnforced } = require('../aiCoachRateLimit');
 const { resolveAiCoachDailyLimit } = require('../aiCoachRateLimit');
 const { serperOrganicSearch } = require('../serperWebSearch');
@@ -27,7 +27,7 @@ async function callPerplexity({ apiKey, systemPrompt, messages }) {
     model: 'pplx-70b-online',
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.7,
-    max_reportColors: 1200,
+    max_tokens: 1200,
   };
 
   const resp = await axios.post(url, payload, {
@@ -60,7 +60,7 @@ async function callDeepSeek({ apiKey, systemPrompt, messages }) {
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.7,
-    max_reportColors: 900,
+    max_tokens: 900,
   };
   const resp = await axios.post(url, payload, {
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -91,7 +91,7 @@ async function callClaude({ systemPrompt, messages }) {
 
   const payload = {
     model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620',
-    max_reportColors: 1200,
+    max_tokens: 1200,
     temperature: 0.7,
     system: String(systemPrompt || ''),
     messages: anthropicMessages,
@@ -344,7 +344,7 @@ async function createAlert(userId, alert) {
 
   await db.collection('users').doc(userId).collection('alerts').doc(alertId).set(payload, { merge: true });
 
-  // Remote push: Expo first (matches ClientAppStart reportColors); FCM fallback for legacy installs.
+  // Remote push: Expo first (matches ClientAppStart tokens); FCM fallback for legacy installs.
   try {
     const userSnap = await db.collection('users').doc(userId).get();
     const userData = userSnap.exists ? userSnap.data() : {};
@@ -523,7 +523,7 @@ async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     temperature: 0.7,
-    max_reportColors: 1200,
+    max_tokens: 1200,
   };
 
   const resp = await axios.post(url, payload, {
@@ -558,7 +558,7 @@ async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 60
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.7,
-    max_reportColors: maxTokens,
+    max_tokens: maxTokens,
   };
 
   const resp = await axios.post(url, payload, {
@@ -619,7 +619,7 @@ async function callClaudeCoach({
   for (const model of modelList) {
     const payload = {
       model,
-      max_reportColors: maxTokens,
+      max_tokens: maxTokens,
       temperature: 0.7,
       system: String(systemPrompt || ''),
       messages: anthropicMessages,
@@ -687,7 +687,7 @@ async function callPerplexityCoach({ apiKey, systemPrompt, messages, searchQuery
       ...perplexityMessages,
     ],
     temperature: 0.5,
-    max_reportColors: 1400,
+    max_tokens: 1400,
     return_citations: true,
   };
 

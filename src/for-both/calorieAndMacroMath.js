@@ -91,7 +91,7 @@ export const calculateMacros = (calories, goal, bodyWeight) => {
   }
 };
 
-/** Body fat percentage estimation using Deurenberg formulaCalculator. */
+/** Body fat percentage estimation using Deurenberg formula. */
 export const estimateBodyFat = (gender, age, bmi) => {
   try {
     console.log('Estimating body fat for:', { gender, age, bmi });

@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-// Theme cloudConnectionuration for React Native styling with Light and Dark mode support
+// Theme configuration for React Native styling with Light and Dark mode support
 
 // Light mode colors (Modern Neutral theme)
 export const lightColors = {

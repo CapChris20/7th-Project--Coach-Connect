@@ -330,7 +330,7 @@ function buildEditorHtml2({ theme, initialHtml }) {
             const { name, value } = p;
             if (name === 'heading') {
               const tag = value === 1 ? 'H1' : value === 2 ? 'H2' : value === 3 ? 'H3' : 'P';
-              return exec('cellFormattingBlock', tag);
+              return exec('formatBlock', tag);
             }
             if (name === 'fontSize') return applyFontSize(Number(value) || 16);
             if (name === 'foreColor') return exec('foreColor', value);
@@ -339,8 +339,8 @@ function buildEditorHtml2({ theme, initialHtml }) {
             if (name === 'alignCenter') return exec('justifyCenter');
             if (name === 'alignRight') return exec('justifyRight');
             if (name === 'alignJustify') return exec('justifyFull');
-            if (name === 'blockquote') return exec('cellFormattingBlock', 'BLOCKQUOTE');
-            if (name === 'codeblock') return exec('cellFormattingBlock', 'PRE');
+            if (name === 'blockquote') return exec('formatBlock', 'BLOCKQUOTE');
+            if (name === 'codeblock') return exec('formatBlock', 'PRE');
             if (name === 'divider') return exec('insertHorizontalRule');
             if (name === 'table') {
               return exec('insertHTML', '<table><tbody><tr><th>Header</th><th>Header</th></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table>');
@@ -356,7 +356,7 @@ function buildEditorHtml2({ theme, initialHtml }) {
             if (name === 'ol') return exec('insertOrderedList');
             if (name === 'undo') return exec('undo');
             if (name === 'redo') return exec('redo');
-            if (name === 'clear') { exec('removeFormat'); exec('cellFormattingBlock', 'P'); return; }
+            if (name === 'clear') { exec('removeFormat'); exec('formatBlock', 'P'); return; }
             if (name === 'link') { if (!value) return; exec('createLink', value); return; }
             if (name === 'unlink') return exec('unlink');
             if (name === 'image') { if (!value) return; exec('insertImage', value); return; }
@@ -728,7 +728,7 @@ export default function DocumentEditor({
   const iconColor = (active) => (active ? theme.text : theme.textMuted);
 
   const renderFormatToolbar = () => (
-    <View style={styles.cellFormattingDock}>
+    <View style={styles.formatDock}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -989,7 +989,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     zIndex: 10,
   },
-  cellFormattingDock: {
+  formatDock: {
     minHeight: 44,
     flexGrow: 0,
     flexShrink: 0,

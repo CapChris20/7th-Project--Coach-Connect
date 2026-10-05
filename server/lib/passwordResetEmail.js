@@ -148,7 +148,7 @@ async function sendBrandedPasswordResetEmail(email) {
   }
 
   if (!isTransactionalEmailConfigured()) {
-    console.warn('[password-reset] Email provider not cloudConnectionured — client will use Firebase SDK', {
+    console.warn('[password-reset] Email provider not configured — client will use Firebase SDK', {
       email: maskEmail(normalized),
     });
     return { sent: false, useClientFirebase: true };

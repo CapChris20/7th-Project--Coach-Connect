@@ -134,7 +134,7 @@ const GOAL_COLOR_MAP = {
   recovery: 'green',
 };
 
-function cellFormattingDate(raw) {
+function formatDate(raw) {
   if (!raw) return '';
   const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
   if (!d || isNaN(d.getTime())) return '';
@@ -142,7 +142,7 @@ function cellFormattingDate(raw) {
 }
 
 /** "MAY 5, 2026" for history card headers */
-function cellFormattingCreatedUpper(raw) {
+function formatCreatedUpper(raw) {
   if (!raw) return '';
   const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
   if (!d || isNaN(d.getTime())) return '';
@@ -244,8 +244,8 @@ function normalizePlan(item) {
     weeksCompleted,
     daysPerWeek,
     sessionMinutes,
-    createdAt:       cellFormattingDate(item.generatedAt || item.createdAt),
-    createdUpper:    cellFormattingCreatedUpper(item.generatedAt || item.createdAt),
+    createdAt:       formatDate(item.generatedAt || item.createdAt),
+    createdUpper:    formatCreatedUpper(item.generatedAt || item.createdAt),
     exerciseCount:   deriveExerciseCount(item),
     muscleTags:      deriveMuscleTags(item, displayFocus),
     trainingDays,

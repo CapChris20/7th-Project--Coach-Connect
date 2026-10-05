@@ -108,8 +108,8 @@ function createAuthMiddleware(defaultUid = 'user-test', defaultEmail = 'user@tes
 }
 
 function buildStripeTestApp({ uid = 'user-test', email = 'user@test.com', authMiddleware } = {}) {
-  const { registerStripeConnectRoutes } = require('../../screenNames/stripeConnectRoutes');
-  const { registerStripePaymentRoutes } = require('../../screenNames/stripePaymentRoutes');
+  const { registerStripeConnectRoutes } = require('../../routes/stripeConnectRoutes');
+  const { registerStripePaymentRoutes } = require('../../routes/stripePaymentRoutes');
 
   const app = express();
   app.use(express.json());

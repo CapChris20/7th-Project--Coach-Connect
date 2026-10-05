@@ -3,10 +3,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { removeEmojiFromAlerts } = require('./removeEmojiFromAlerts');
+const { removeEmojiFromAlerts } = require('./stripNotificationEmoji');
 
 const COPY = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'cloudConnection', 'pushNotificationCopy.json'), 'utf8')
+  fs.readFileSync(path.join(__dirname, '..', 'config', 'pushNotificationCopy.json'), 'utf8')
 );
 
 function pickRandom(arr) {
@@ -32,7 +32,7 @@ function localDateTimeInIANA(timeZone, date = new Date()) {
     minute: '2-digit',
     hour12: false,
   });
-  const parts = f.cellFormattingToParts(date);
+  const parts = f.formatToParts(date);
   const get = (type) => parts.find((p) => p.type === type)?.value || '00';
   const y = get('year');
   const mo = get('month');

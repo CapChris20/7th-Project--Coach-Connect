@@ -95,7 +95,7 @@ const ClientsListScreen = ({
   const confirmRemove = useCallback(async () => {
     if (!deletePending?.id || !trainerId) return;
     if (!functions) {
-      Alert.alert('Unavailable', 'Cloud Functions are not cloudConnectionured.');
+      Alert.alert('Unavailable', 'Cloud Functions are not configured.');
       return;
     }
       const clientId = deletePending.id;

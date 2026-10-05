@@ -17,7 +17,7 @@ const REVERTS = [
   ['src/ActiveWorkoutScreens/', 'src/workouts/'],
   ['active-ActiveWorkoutScreen', 'active-workout'],
   ['fitness-calculateFitnessMetrics', 'fitness-calculations'],
-  ['../../../firebaseConfig/pushNotificationCopy.json', '../../../cloudConnection/pushNotificationCopy.json'],
+  ['../../../firebaseConfig/pushNotificationCopy.json', '../../../config/pushNotificationCopy.json'],
   ['server/lib/buildCoachPromptData.js', 'server/lib/coachPersonalDataRouting.js'],
   ['server/lib/shouldShowCoachAction.js', 'server/lib/coachToolProposalGuards.js'],
   ['dashboard_ActiveWorkoutScreens', 'dashboard_workouts'],

@@ -43,7 +43,7 @@ export function googleEmbedUrl(url) {
 }
 
 // Microsoft's Office Web Viewer — noticeably better than Google's at Word/Excel layout,
-// which is why Office cellFormattings are routed here in getEmbedViewerUri below.
+// which is why Office formats are routed here in getEmbedViewerUri below.
 export function officeEmbedUrl(url) {
   if (!url || typeof url !== 'string') return '';
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
@@ -77,18 +77,18 @@ export function notesFileDedupeKey(x) {
  * First fullscreen WebView URI for generic docs (Office → Google).
  * PDFs should use PdfViewer with raw URL.
  */
-// The router for everything that isn't an image, video, or PDF: Office cellFormattings go to
+// The router for everything that isn't an image, video, or PDF: Office formats go to
 // Microsoft's viewer, everything else falls back to Google's.
 export function getEmbedViewerUri(file, url) {
   if (!url) return '';
   const name = (file?.name || file?.title || '').toLowerCase();
   const mime = (file?.mimeType && String(file.mimeType).toLowerCase()) || '';
-  // Wide net on purpose — Office MIME spreadsheetConstants are numerous and inconsistent across
+  // Wide net on purpose — Office MIME types are numerous and inconsistent across
   // uploaders, so extension, our own tag, and several MIME fragments are all accepted.
   // Manipulate here: add an extension to the regex or a MIME fragment to send more
-  //                  cellFormattings to the Office viewer instead of Google's
+  //                  formats to the Office viewer instead of Google's
   const isOffice =
-    /\.(doc|docx|ppt|pptx|xls|spreadsheetReader|csv)$/i.test(name) ||
+    /\.(doc|docx|ppt|pptx|xls|xlsx|csv)$/i.test(name) ||
     file?.type === 'spreadsheet' ||
     mime.includes('spreadsheet') ||
     mime.includes('word') ||

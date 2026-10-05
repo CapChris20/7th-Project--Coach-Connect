@@ -1,6 +1,6 @@
 // Single design-token source for the trainer's document + spreadsheet editors ("DocFlow").
 // Flow: getEditorTheme(isDark) returns one flat object of colors → every editor component reads
-// reportColors off it instead of hardcoding hexes, so light/dark stays consistent across both editors.
+// tokens off it instead of hardcoding hexes, so light/dark stays consistent across both editors.
 // Also exports the picker option lists (font sizes, text/highlight swatches) and a "saved Xs ago" helper.
 import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 import {
@@ -52,7 +52,7 @@ export const EDITOR_HIGHLIGHT_COLORS = [
   'rgba(147,51,234,0.28)',
 ];
 
-/** Shared light/dark reportColors for document + spreadsheet editors. */
+/** Shared light/dark tokens for document + spreadsheet editors. */
 export function getEditorTheme(isDark) {
   // Start from the app-wide palette so the editor inherits global text/border/success colors
   // rather than redefining them — only editor-specific surfaces are overridden below.
@@ -66,8 +66,8 @@ export function getEditorTheme(isDark) {
     accent: isDark ? EDITOR_ACCENT : '#0A0A0F',
     accentSoft: isDark ? EDITOR_ACCENT_SOFT : 'rgba(0,0,0,0.06)',
     accentBorder: isDark ? EDITOR_ACCENT_BORDER : 'rgba(0,0,0,0.22)',
-    // Muted color for the "fx" formulaCalculator-bar label.
-    formulaCalculator: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)',
+    // Muted color for the "fx" formula-bar label.
+    formula: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)',
 
     // Surfaces, back to front: bg (screen) → canvasBg (the gray desk) → pageBg (the document).
     // Manipulate here: these greys are deliberately Google-Docs-like; changing canvasBg vs pageBg
@@ -76,7 +76,7 @@ export function getEditorTheme(isDark) {
     canvasBg: isDark ? '#202124' : '#E8EAED',
     pageBg: isDark ? '#303134' : '#FFFFFF',
     /** Google Docs print layout: white page on gray canvas regardless of app chrome theme. */
-    // The print* reportColors intentionally IGNORE dark mode for the page itself: the page is a preview
+    // The print* tokens intentionally IGNORE dark mode for the page itself: the page is a preview
     // of paper, and paper is white with black ink. Only the surrounding desk dims in dark mode.
     printCanvasBg: isDark ? '#3C4043' : '#E8EAED',
     printPageBg: '#FFFFFF',
@@ -106,8 +106,8 @@ export function getEditorTheme(isDark) {
     selectionBorder: isDark ? '#E0408A' : '#D4297A',
     // Manipulate here: the pink→purple gradient on the sheet tab bar.
     sheetGradient: isDark ? ['#E0408A', '#9333EA'] : ['#E8367A', '#7C3AED'],
-    // Green used for formulaCalculator text, so "=SUM(...)" reads as code rather than content.
-    formulaCalculatorGreen: isDark ? '#6EE7A0' : '#2D8A55',
+    // Green used for formula text, so "=SUM(...)" reads as code rather than content.
+    formulaGreen: isDark ? '#6EE7A0' : '#2D8A55',
     inputBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
     divider: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
 
@@ -132,7 +132,7 @@ export function getEditorTheme(isDark) {
 // mattering after a minute, and a vague label re-renders far less often than a ticking clock.
 // Manipulate here: the 5-second "just now" window, then seconds under a minute, then minutes.
 // There's no hour tier because an editing session that idles that long shows a stale-doc state.
-export function cellFormattingEditorSavedAgo(lastSaved) {
+export function formatEditorSavedAgo(lastSaved) {
   // Em dash rather than 'Never' — this shows before the first save, when "never" would read as an error.
   if (!lastSaved) return '—';
   // Round to whole seconds so the label doesn't flicker between fractional values.

@@ -5,10 +5,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import NewUserSetupScreen from './NewUserSetupScreen';
-import {
-  ONBOARDING_SNAPSHOT_CAPTURES,
-  ONBOARDING_SNAPSHOT_TOTAL,
-} from './setupScreenshotList.json';
+import manifest from './setupScreenshotList.json';
+
+// The JSON file is the capture list itself. Length is the step count the status line shows.
+const ONBOARDING_SNAPSHOT_CAPTURES = manifest;
+const ONBOARDING_SNAPSHOT_TOTAL = manifest.length;
 
 // The little HTTP server started by `npm run snapshot:onboarding`; it's what actually runs the
 // screenshot command on the Mac. 127.0.0.1 works from the simulator because the simulator shares the

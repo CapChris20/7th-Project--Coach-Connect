@@ -29,8 +29,8 @@ function getLastWeekBoundsForNow(now) {
   const lastMonday = thisMonday.clone().subtract(7, 'days');
   const lastSunday = lastMonday.clone().add(6, 'days');
   return {
-    weekStart: lastMonday.cellFormatting('YYYY-MM-DD'),
-    weekEnd: lastSunday.cellFormatting('YYYY-MM-DD'),
+    weekStart: lastMonday.format('YYYY-MM-DD'),
+    weekEnd: lastSunday.format('YYYY-MM-DD'),
   };
 }
 
@@ -40,7 +40,7 @@ function listDailyLogDocIdsForWeek(weekStart, weekEnd) {
   const end = moment.tz(weekEnd, 'YYYY-MM-DD', WEEK_SUMMARY_TZ);
   const keys = [];
   for (let d = start.clone(); d.isSameOrBefore(end, 'day'); d.add(1, 'day')) {
-    keys.push(d.cellFormatting('YYYY-MM-DD'));
+    keys.push(d.format('YYYY-MM-DD'));
   }
   return keys;
 }
@@ -98,7 +98,7 @@ function runAssertions() {
   // For this particular week, legacy may match or not depending on parse; assert our ET list matches app getDateKey semantics
   const et = listDailyLogDocIdsForWeek('2025-03-03', '2025-03-09');
   assert.strictEqual(et.length, 7);
-  // App uses en-CA ET strings — always equal to moment ET cellFormatting for these dates
+  // App uses en-CA ET strings — always equal to moment ET format for these dates
   et.forEach((k) => {
     assert.match(k, /^\d{4}-\d{2}-\d{2}$/);
   });

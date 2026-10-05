@@ -14,8 +14,8 @@ import {
 import { NavigationContext, NavigationRouteContext } from '@react-navigation/native';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { cellFormatting, getDaysInMonth, set as setDateParts } from 'date-fns';
-import { LabeledRow } from '../../look-and-feel/lightDarkMode';
+import { format, getDaysInMonth, set as setDateParts } from 'date-fns';
+import LabeledRow from '../../look-and-feel/LabeledRow';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
@@ -187,8 +187,8 @@ export function ScheduleSessionScreen(props = {}) {
     const payload = {
       clientId,
       clientName: clientName || undefined,
-      date: cellFormatting(merged, 'yyyy-MM-dd'),
-      time: cellFormatting(merged, 'HH:mm'),
+      date: format(merged, 'yyyy-MM-dd'),
+      time: format(merged, 'HH:mm'),
       startAtMs: merged.getTime(),
       durationMin: duration,
       status: isEdit ? editing?.status || 'pending' : 'pending',

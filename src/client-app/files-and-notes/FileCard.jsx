@@ -12,7 +12,7 @@ import React from 'react';
 import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { cellFormattingDateShort, cellFormattingFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
+import { formatDateShort, formatFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
 
 const TYPE_META = {
   image: { icon: 'image', color: '#06B6D4', rgb: '6,182,212', label: 'Photo' },
@@ -145,10 +145,10 @@ export function FileCard({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
           <Text style={{ fontSize: 11, color: mutedColor, fontWeight: '500' }} numberOfLines={1}>
             {meta.label}
-            {createdAt ? ` \u00B7 ${cellFormattingDateShort(createdAt)}` : ''}
+            {createdAt ? ` \u00B7 ${formatDateShort(createdAt)}` : ''}
           </Text>
           <Text style={{ fontSize: 11, color: mutedColor, fontWeight: '500' }} numberOfLines={1}>
-            {cellFormattingFileSize(size)}
+            {formatFileSize(size)}
           </Text>
         </View>
       </View>

@@ -278,7 +278,7 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
   });
 
   const toggle = (key) => {
-    LayoutAnimation.cloudConnectionureNext(LayoutAnimation.Presets.easeInEaseOut);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setOpenKey((prev) => (prev === key ? null : key));
   };
 

@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import ColorText from '../../look-and-feel/ColorText';
+import BaseColorText from '../../look-and-feel/ColorText';
 import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
 import BlurredBackground from '../../look-and-feel/BlurredBackground';
@@ -303,9 +303,9 @@ const GlassCard = ({ children, style, isDark, borderVariant }) => {
 // GRADIENT TEXT
 // ─────────────────────────────────────────────
 const ColorText = ({ children, style, colors = ACCENT }) => (
-  <ColorText style={style} colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+  <BaseColorText style={style} colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
     {children}
-  </ColorText>
+  </BaseColorText>
 );
 
 // Hero banner: Welcome message + logo gradient + daily quote pill.
@@ -382,7 +382,7 @@ const getClientInitials = (name) => {
 };
 
 /** Roster / cards: show feet/inches; treat plain numbers as total inches (legacy onboarding). */
-const cellFormattingClientHeightDisplay = (h) => {
+const formatClientHeightDisplay = (h) => {
   if (h == null || h === '') return null;
   if (typeof h === 'object' && h?.feet != null) {
     const inch = Number(h.inches) || 0;
@@ -411,7 +411,7 @@ const getClientSubtext = (client) => {
   if (goalLabel) parts.push(goalLabel);
   if (client.age) parts.push(`${client.age}y`);
   if (client.weight) parts.push(`${client.weight} lbs`);
-  const heightLabel = cellFormattingClientHeightDisplay(client.height);
+  const heightLabel = formatClientHeightDisplay(client.height);
   if (heightLabel) parts.push(heightLabel);
   return parts.length ? parts.join(' · ') : '—';
 };
@@ -427,7 +427,7 @@ const getClientRosterStats = (client) => {
     goal,
     age: client.age != null && client.age !== '' ? String(client.age) : null,
     weight: client.weight != null && client.weight !== '' ? String(client.weight) : null,
-    height: cellFormattingClientHeightDisplay(client.height),
+    height: formatClientHeightDisplay(client.height),
   };
 };
 
@@ -894,7 +894,7 @@ export {
   ArcProgress,
   BorderedCard,
   getClientInitials,
-  cellFormattingClientHeightDisplay,
+  formatClientHeightDisplay,
   getClientSubtext,
   getClientRosterStats,
   PremiumTabEmptyState,

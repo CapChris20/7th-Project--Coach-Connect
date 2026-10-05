@@ -13,8 +13,8 @@ function getStripe() {
 }
 
 function stripeNotConfiguredError() {
-  const err = new Error('Stripe is not cloudConnectionured on the server');
-  err.code = 'stripe_not_cloudConnectionured';
+  const err = new Error('Stripe is not configured on the server');
+  err.code = 'stripe_not_configured';
   return err;
 }
 

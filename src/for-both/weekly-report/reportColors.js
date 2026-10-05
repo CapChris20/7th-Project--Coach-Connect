@@ -1,4 +1,4 @@
-/** Design reportColors — matches poop-main.zip reference exactly. */
+/** Design tokens — matches poop-main.zip reference exactly. */
 
 export const GRADIENTS = {
   g1: ['#ff6b35', '#ff1493'],

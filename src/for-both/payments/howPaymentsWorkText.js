@@ -15,7 +15,7 @@ export function platformFeeFromAmount(amountDollars) {
   return n * PLATFORM_FEE_RATE;
 }
 
-export function cellFormattingPaymentDollars(amount) {
+export function formatPaymentDollars(amount) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return '$0';
   return `$${n.toFixed(n % 1 === 0 ? 0 : 2)}`;

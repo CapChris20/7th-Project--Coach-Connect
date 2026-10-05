@@ -65,9 +65,9 @@ export function goToTrainerScreen() {
     setShowPlanViewer(false);
     setWeeklyReportScreen(null);
     setAiChatState('home');
-    if (rootNavigationRef.isReady() && rootNavigationRef.getState()?.screenNames?.length > 1) {
+    if (rootNavigationRef.isReady() && rootNavigationRef.getState()?.routes?.length > 1) {
       rootNavigationRef.dispatch(
-        CommonActions.reset({ index: 0, screenNames: [{ name: TRAINER_ROUTES.Main }] }),
+        CommonActions.reset({ index: 0, routes: [{ name: TRAINER_ROUTES.Main }] }),
       );
     }
   }, []);

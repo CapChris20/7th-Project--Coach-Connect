@@ -20,7 +20,7 @@ import {
   isPdfFile as isNotesPdfFile,
   isVideoFile as isNotesVideoFile,
 } from '../../helpers/whichViewerForFile';
-import { cellFormattingDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
+import { formatDateShort, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import DocumentViewer from '../../for-both/files-and-notes/viewers/DocumentViewer';
@@ -233,7 +233,7 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
     const fType = getFileTypeFromItem(file);
     const Icon = fType === 'spreadsheet' ? FileSpreadsheet : FileText;
     const typeLabel = fType === 'spreadsheet' ? 'Sheet' : fType === 'pdf' ? 'PDF' : 'Doc';
-    const when = file?.createdAt ? cellFormattingDateShort(file.createdAt?.toDate?.() || file.createdAt) : '';
+    const when = file?.createdAt ? formatDateShort(file.createdAt?.toDate?.() || file.createdAt) : '';
     return (
       <TouchableOpacity
         activeOpacity={0.88}
@@ -270,7 +270,7 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
   function NoteCard({ note }) {
     const coach = note?.coach || note?.fromName || 'Coach';
     const preview = String(note?.content || note?.preview || '').trim();
-    const when = note?.createdAt ? cellFormattingDateShort(note.createdAt?.toDate?.() || note.createdAt) : null;
+    const when = note?.createdAt ? formatDateShort(note.createdAt?.toDate?.() || note.createdAt) : null;
     return (
       <TouchableOpacity
         activeOpacity={0.88}

@@ -1,7 +1,7 @@
 import { Alert, Linking } from 'react-native';
 import { getSupportEmail } from './supportContact';
 
-/** Opens the device mail app to coachconnect0@gmail.com (or cloudConnectionured support inbox). */
+/** Opens the device mail app to coachconnect0@gmail.com (or configured support inbox). */
 export function openSupportMailto({ subject = '', body = '' } = {}) {
   const email = getSupportEmail();
   if (!email) {

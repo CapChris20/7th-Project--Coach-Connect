@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { AI_COACH_UI } from '../coachColors';
 import {
-  cellFormattingSessionDisplayTitle,
+  formatSessionDisplayTitle,
   groupSessionsForSidebar,
 } from './chatHistoryList';
 
@@ -93,7 +93,7 @@ function SessionRow({
       >
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ color: t.textPrimary, fontSize: 14, fontWeight: '600' }} numberOfLines={2}>
-            {cellFormattingSessionDisplayTitle(session.title)}
+            {formatSessionDisplayTitle(session.title)}
           </Text>
           <Text style={{ color: t.meta, fontSize: 11, marginTop: 3 }}>{session.date}</Text>
         </View>

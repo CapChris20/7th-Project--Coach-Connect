@@ -2,7 +2,7 @@
 // Flow: for each column, resolve its cached display text + styling → render either a TextInput (that
 // one cell being edited) or a tappable Text cell.
 // Perf note: this is the hottest component in the editor — one instance per visible row, each
-// rendering COLS cells. It's memoized, and all expensive work (formulaCalculator evaluation, text measuring)
+// rendering COLS cells. It's memoized, and all expensive work (formula evaluation, text measuring)
 // happens upstream so this file only reads precomputed values.
 import React, { memo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
@@ -90,13 +90,13 @@ function SpreadsheetGridRow({
         {Array.from({ length: COLS }, (_, c) => {
           // `cell` is the stored data (may be undefined for a blank cell); `d` is the precomputed
           // display text from the cache. Both are needed: styling comes from the cell, text from
-          // the cache (which already resolved formulaCalculators and number cellFormattings).
+          // the cache (which already resolved formulas and number formats).
           const cell = cells[keyOf(rowIndex, c)];
           const d = lookupDisplay(displayCache, rowIndex, c);
           // Three related but distinct states, and each drives different visuals:
           //   inSel     — inside the selection rectangle → tinted background
           //   isFocus   — THE one active cell within that selection → border ring, no tint
-          //   isEditing — actively being typed into, and only via the cell (not the formulaCalculator bar)
+          //   isEditing — actively being typed into, and only via the cell (not the formula bar)
           const inSel = rowIndex >= sel.r1 && rowIndex <= sel.r2 && c >= sel.c1 && c <= sel.c2;
           const isFocus = rowIndex === focusR && c === focusC;
           const isEditing = rowIndex === editingR && c === editingC && editVia === 'cell';
@@ -105,7 +105,7 @@ function SpreadsheetGridRow({
           // numbers right (so decimal points line up down a column), checkboxes centered, text left.
           // vocab/symbol: ?? means a stored align of '' would be respected, unlike || which would
           // fall through to the default.
-          const align = cell?.style?.align ?? (isNum ? 'right' : cell?.cellFormatting === 'checkbox' ? 'center' : 'left');
+          const align = cell?.style?.align ?? (isNum ? 'right' : cell?.format === 'checkbox' ? 'center' : 'left');
           // Translate the text alignment into the flexbox equivalent for the wrapper View.
           const justify = align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
           // Taller-than-default rows hold multi-line content, so text starts at the TOP; standard
@@ -137,7 +137,7 @@ function SpreadsheetGridRow({
           // Text styling for the EDIT input. It reads from `editSeed` (the in-progress text) rather
           // than the stored cell, so typing "=" turns the text green immediately.
           const inputStyle = {
-            color: String(editSeed).startsWith('=') ? theme.formulaCalculatorGreen : (cell?.style?.color || theme.text),
+            color: String(editSeed).startsWith('=') ? theme.formulaGreen : (cell?.style?.color || theme.text),
             fontWeight: cell?.style?.bold ? '700' : '400',
             fontStyle: cell?.style?.italic ? 'italic' : 'normal',
             textDecorationLine: textDec.join(' ') || 'none',
@@ -203,8 +203,8 @@ function SpreadsheetGridRow({
               >
                 {/* numberOfLines: undefined (unlimited) on tall rows so multi-line content shows;
                     clamped to 1 on standard rows so long text can't overflow into the row below.
-                    Text color precedence: a formulaCalculator error wins (warning color), then the user's own
-                    color, then green for formulaCalculator source text, then normal. */}
+                    Text color precedence: a formula error wins (warning color), then the user's own
+                    color, then green for formula source text, then normal. */}
                 <Text
                   numberOfLines={rh > DEFAULT_ROW_HEIGHT ? undefined : 1}
                   style={{
@@ -212,7 +212,7 @@ function SpreadsheetGridRow({
                     color: d.error
                       ? theme.warning
                       : cell?.style?.color ||
-                        (String(cell?.raw || '').startsWith('=') ? theme.formulaCalculatorGreen : theme.text),
+                        (String(cell?.raw || '').startsWith('=') ? theme.formulaGreen : theme.text),
                     fontWeight: cell?.style?.bold ? '700' : '400',
                     fontStyle: cell?.style?.italic ? 'italic' : 'normal',
                     textDecorationLine: textDec.join(' ') || 'none',
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     // Manipulate here: lineHeight 22 must stay in step with the 22 used by measureRowHeight, or
     // auto-sized tall rows won't match the text they were sized for.
     lineHeight: 22,
-    // Monospace on iOS so formulaCalculators and numbers align; undefined on Android because 'Menlo' doesn't
+    // Monospace on iOS so formulas and numbers align; undefined on Android because 'Menlo' doesn't
     // exist there and naming a missing font can break text rendering.
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined,
   },

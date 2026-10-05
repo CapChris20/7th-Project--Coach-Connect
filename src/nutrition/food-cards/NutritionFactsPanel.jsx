@@ -79,15 +79,15 @@ function CompositionBar({ percents, np }) {
   );
 }
 
-function MicroStatTile({ cloudConnection, data, np }) {
-  const Icon = cloudConnection.icon;
+function MicroStatTile({ config, data, np }) {
+  const Icon = config.icon;
   const raw = Number(data?.value);
   if (!Number.isFinite(raw) || raw <= 0) return null;
 
-  const gradient = microGradientForKey(cloudConnection.key);
+  const gradient = microGradientForKey(config.key);
   const unit = data?.unit || 'g';
-  const dvPct = cloudConnection.dailyValue
-    ? Math.min(999, Math.round((raw / cloudConnection.dailyValue) * 100))
+  const dvPct = config.dailyValue
+    ? Math.min(999, Math.round((raw / config.dailyValue) * 100))
     : null;
   const barPct = dvPct != null ? Math.min(100, dvPct) : 0;
 
@@ -103,7 +103,7 @@ function MicroStatTile({ cloudConnection, data, np }) {
       </LinearGradient>
 
       <View style={styles.microTileBody}>
-        <Text style={[styles.microTileLabel, { color: np.textMuted }]}>{cloudConnection.label}</Text>
+        <Text style={[styles.microTileLabel, { color: np.textMuted }]}>{config.label}</Text>
         <View style={styles.microValueRow}>
           <Text style={[styles.microTileValue, { color: np.text }]}>{data.value}</Text>
           <Text style={[styles.microTileUnit, { color: np.textMuted }]}>{unit}</Text>
@@ -213,7 +213,7 @@ export default function NutritionFactsPanel({
               {MICRO_CONFIG.map((cfg) => (
                 <MicroStatTile
                   key={cfg.key}
-                  cloudConnection={cfg}
+                  config={cfg}
                   data={micronutrients[cfg.key]}
                   np={np}
                 />

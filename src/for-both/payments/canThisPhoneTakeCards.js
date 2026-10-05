@@ -46,7 +46,7 @@ export function getStripeCardPaymentBlockReason() {
 
   if (!PUBLISHABLE_KEY) {
     return {
-      title: 'Stripe publishable key not cloudConnectionured',
+      title: 'Stripe publishable key not configured',
       detail: 'Add EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY to .env, restart Metro (npm start), and reload.',
     };
   }

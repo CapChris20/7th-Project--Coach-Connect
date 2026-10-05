@@ -92,7 +92,7 @@ function uriToBlob(uri) {
   });
 }
 
-const spreadsheetReaderExportTimers = new Map();
+const xlsxExportTimers = new Map();
 const stubSyncTimers = new Map();
 
 function base64ToUploadBlob(base64, contentType) {
@@ -100,15 +100,15 @@ function base64ToUploadBlob(base64, contentType) {
   return fetch(dataUri).then((response) => response.blob());
 }
 
-/** Upload spreadsheetReader via data-uri blob — avoids expo-file-system Base64 write (ERR_ARGUMENT_CAST on SDK 54). */
+/** Upload xlsx via data-uri blob — avoids expo-file-system Base64 write (ERR_ARGUMENT_CAST on SDK 54). */
 async function uploadSpreadsheetXlsx(trainerId, docId, dataRows) {
   if (!storage) return null;
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(dataRows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  const base64 = XLSX.write(wb, { bookType: 'spreadsheetReader', type: 'base64' });
-  const contentType = 'application/vnd.openxmlcellFormattings-officedocument.spreadsheetml.sheet';
-  const path = `users/${trainerId}/notes_and_files/spreadsheets/${docId}.spreadsheetReader`;
+  const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  const contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const path = `users/${trainerId}/notes_and_files/spreadsheets/${docId}.xlsx`;
   const storageRef = ref(storage, path);
   const blob = await base64ToUploadBlob(base64, contentType);
   await uploadBytes(storageRef, blob, { contentType });
@@ -117,19 +117,19 @@ async function uploadSpreadsheetXlsx(trainerId, docId, dataRows) {
 
 function scheduleSpreadsheetXlsxExport(trainerId, docId, dataRows, docRef) {
   const key = String(docId);
-  if (spreadsheetReaderExportTimers.has(key)) clearTimeout(spreadsheetReaderExportTimers.get(key));
+  if (xlsxExportTimers.has(key)) clearTimeout(xlsxExportTimers.get(key));
   const timer = setTimeout(() => {
-    spreadsheetReaderExportTimers.delete(key);
+    xlsxExportTimers.delete(key);
     void uploadSpreadsheetXlsx(trainerId, docId, dataRows)
       .then((storageUrl) => {
         if (storageUrl) return updateDoc(docRef, { storageUrl });
         return null;
       })
       .catch((e) => {
-        console.warn('saveTrainerSpreadsheet: spreadsheetReader export skipped', e?.code || e?.message || e);
+        console.warn('saveTrainerSpreadsheet: xlsx export skipped', e?.code || e?.message || e);
       });
   }, 2500);
-  spreadsheetReaderExportTimers.set(key, timer);
+  xlsxExportTimers.set(key, timer);
 }
 
 /** Debounced client stub preview sync — avoids N Firestore reads/writes on every autosave keystroke. */
@@ -232,7 +232,7 @@ export async function addFile(clientId, { localUri, filename, mimeType, type, si
       const manipulated = await ImageManipulator.manipulateAsync(
         localUri,
         [{ resize: { width: 480 } }],
-        { compress: 0.82, cellFormatting: ImageManipulator.SaveFormat.JPEG },
+        { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG },
       );
       const thumbName = `thumb_${Date.now()}_${(filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60)}.jpg`;
       thumbnailUrl = await uploadNotesFile(clientId, manipulated.uri, thumbName, 'image/jpeg');
@@ -517,10 +517,10 @@ export async function saveTrainerDocument(trainerId, { id, title, body, bodyHtml
   return { id: docRef.id, ...payload, createdAt: new Date() };
 }
 
-// Save spreadsheet-style trainer document with rows/columns and spreadsheetReader export.
+// Save spreadsheet-style trainer document with rows/columns and xlsx export.
 export async function saveTrainerSpreadsheet(
   trainerId,
-  { id, title, rows, columnCount, rowCount, cellFormattings, colWidths, rowHeights, sheets, isFavorite, syncClientStubs = false },
+  { id, title, rows, columnCount, rowCount, formats, colWidths, rowHeights, sheets, isFavorite, syncClientStubs = false },
 ) {
   if (!db || !trainerId) throw new Error('Firestore or trainerId not ready');
 
@@ -540,7 +540,7 @@ export async function saveTrainerSpreadsheet(
     rows: serializeSpreadsheetRows(dataRows),
     columnCount: cols,
     rowCount: rCount,
-    ...(cellFormattings && typeof cellFormattings === 'object' ? { cellFormattings } : {}),
+    ...(formats && typeof formats === 'object' ? { formats } : {}),
     ...(colWidths && typeof colWidths === 'object' ? { colWidths } : {}),
     ...(rowHeights && typeof rowHeights === 'object' ? { rowHeights } : {}),
     ...(Array.isArray(sheets) && sheets.length ? { sheets } : {}),

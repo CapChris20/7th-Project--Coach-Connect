@@ -15,7 +15,7 @@ import { getCurrentWorkoutPlan } from '../create-plan/saveAndLoadWorkoutPlan';
 import { getApiAuthHeaders } from '../../for-both/online-connection/attachLoginProof';
 import { getWorkoutGenerationApiBases } from '../../for-both/online-connection/whereToConnect';
 import { postJsonWithTimeout, logApiAttempt } from '../../for-both/online-connection/sendOnlineRequest';
-import { cellFormattingWorkoutLimitResetLabel } from '../create-plan/countPlansCreated';
+import { formatWorkoutLimitResetLabel } from '../create-plan/countPlansCreated';
 
 const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
 
@@ -47,7 +47,7 @@ export async function askForWorkoutPlanFromApi(onboardingData, subjectUserId) {
       if (res.status === 429 && payload?.error === 'monthly_limit_reached') {
         const err = new Error(
           payload.message ||
-            `You've used all your workout generations for this month. Resets ${cellFormattingWorkoutLimitResetLabel(payload.resets_at)}.`
+            `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(payload.resets_at)}.`
         );
         err.code = 'monthly_limit_reached';
         err.limitPayload = payload;

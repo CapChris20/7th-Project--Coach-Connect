@@ -291,7 +291,7 @@ describe('branded restaurant ranking', () => {
     expect(isMenuStyleQuery('Chipotle chicken bowl')).toBe(true);
   });
 
-  it('extracts item reportColors without the chain', () => {
+  it('extracts item tokens without the chain', () => {
     expect(menuItemTokensFromQuery("Little Caesar's crazy bread")).toEqual(
       expect.arrayContaining(['crazy', 'bread']),
     );

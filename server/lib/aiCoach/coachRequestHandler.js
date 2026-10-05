@@ -28,7 +28,7 @@ const { readActionsFromReply, stripCoachToolJsonFromReply: stripToolJsonFromRepl
 const {
   buildCoachSystemPrompt,
   buildWeeklyContextSystemPrompt,
-  cellFormattingWorkoutPlanSection,
+  formatWorkoutPlanSection,
 } = require('../coachPrompt/coachPromptBuilders');
 const {
   resolveDeepSeekKey,
@@ -203,11 +203,11 @@ async function buildCoachPromptForUser(
     systemPrompt = buildCoachSystemPrompt(userProfile, { generalMode: false });
     systemPrompt += WEEKLY_FETCH_FAILURE_NOTE;
     if (workoutPlanCtx) {
-      systemPrompt += cellFormattingWorkoutPlanSection(workoutPlanCtx);
+      systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
     }
   }
   } else if (workoutPlanCtx) {
-    systemPrompt += cellFormattingWorkoutPlanSection(workoutPlanCtx);
+    systemPrompt += formatWorkoutPlanSection(workoutPlanCtx);
   }
 
   return { systemPrompt, weeklyContext, usedWeeklyContext };

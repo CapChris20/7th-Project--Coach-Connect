@@ -31,7 +31,7 @@ const MIN_LOGGED_DAYS = 8;
 const ERROR_THRESHOLD_PERCENT = 15;
 const RECALIBRATION_DAYS = 14;
 
-function cellFormattingDateKey(date = new Date()) {
+function formatDateKey(date = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
   return [
     d.getFullYear(),
@@ -64,7 +64,7 @@ function goalAdjustMultiplier(goalRaw) {
 async function fetchDailyCalorieStats(userId, lookbackDays = RECALIBRATION_DAYS) {
   const start = new Date();
   start.setDate(start.getDate() - lookbackDays);
-  const startKey = cellFormattingDateKey(start);
+  const startKey = formatDateKey(start);
 
   const snap = await getDocs(
     query(

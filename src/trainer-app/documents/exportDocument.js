@@ -1,5 +1,5 @@
 // Export a trainer document (rich-text HTML) as PDF, Markdown, HTML, or plain text, then share it.
-// Flow: editor HTML → convert/wrap for the target cellFormatting → write to the cache dir → open the OS
+// Flow: editor HTML → convert/wrap for the target format → write to the cache dir → open the OS
 // share sheet so the trainer can AirDrop / email / save it.
 // Used by the document editor's export menu.
 import 'react-native-url-polyfill/auto';

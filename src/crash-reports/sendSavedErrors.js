@@ -94,9 +94,9 @@ const ERROR_LOG_FILE = isNode ? (() => {
   return path ? path.join(process.cwd(), 'ERRORS.txt') : null;
 })() : null;
 
-// Human-readable stamp for the log file — same cellFormatting recordError.js uses, kept local
+// Human-readable stamp for the log file — same format recordError.js uses, kept local
 // so this module has no import-time dependency on it.
-function cellFormattingTimestamp(date) {
+function formatTimestamp(date) {
   const now = date || new Date();
   const dateStr = now.toLocaleDateString('en-US', { 
     month: 'short', 
@@ -197,7 +197,7 @@ export async function syncErrorsToFile() {
 
     // Build new content with queued errors
     const now = new Date();
-    const readableUpdateTime = cellFormattingTimestamp(now);
+    const readableUpdateTime = formatTimestamp(now);
     
     let newContent = `🔥 ANATROX ERROR LOG
 ================================================================================
@@ -223,7 +223,7 @@ ERROR ${errorNum}
 Message: ${errorData.message || "Unknown error"}
 Code: ${errorData.code || "None"}
 Context: ${errorData.context || "Unknown"}
-Time: ${errorData.readableTime || errorData.queuedAt || cellFormattingTimestamp(new Date(errorData.timestamp))}
+Time: ${errorData.readableTime || errorData.queuedAt || formatTimestamp(new Date(errorData.timestamp))}
 Timestamp: ${errorData.timestamp || errorData.queuedAt || new Date().toISOString()}
 Stack Trace:
 ${errorData.stack || "No stack trace"}

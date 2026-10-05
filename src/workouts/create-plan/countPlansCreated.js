@@ -4,7 +4,7 @@
  * Purpose: UI screen or component: workout Generation Usage. Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/workouts
- * Key exports: cellFormattingWorkoutLimitResetLabel, buildDefaultWorkoutUsage, loadWorkoutGenerationUsage, resolveWorkoutGenerationUsage, PLAN_LIMIT_TOTAL, nextMonthResetDate, nextMonthResetsAtIso
+ * Key exports: formatWorkoutLimitResetLabel, buildDefaultWorkoutUsage, loadWorkoutGenerationUsage, resolveWorkoutGenerationUsage, PLAN_LIMIT_TOTAL, nextMonthResetDate, nextMonthResetsAtIso
  *
  * @file-header
  */
@@ -25,7 +25,7 @@ export const nextMonthResetsAtIso = (d = new Date()) => {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
 };
 
-export function cellFormattingWorkoutLimitResetLabel(resetsAt) {
+export function formatWorkoutLimitResetLabel(resetsAt) {
   const raw = String(resetsAt || nextMonthResetsAtIso()).trim();
   const d = new Date(`${raw.slice(0, 10)}T12:00:00`);
   if (Number.isNaN(d.getTime())) return raw;

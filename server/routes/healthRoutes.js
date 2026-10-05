@@ -1,4 +1,4 @@
-/** Health / readiness screenNames */
+/** Health / readiness routes */
 function registerHealthRoutes(app) {
   app.get('/health', (_req, res) => {
     res.json({

@@ -27,7 +27,7 @@ function ytThumb(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-function cellFormattingShortDuration(seconds) {
+function formatShortDuration(seconds) {
   const s = typeof seconds === 'number' ? seconds : null;
   if (!s || s <= 0) return 'Shorts';
   if (s < 60) return `${Math.max(1, Math.round(s))} sec`;
@@ -50,7 +50,7 @@ export default function ShortVideoCard({
   const [pressed, setPressed] = useState(false);
 
   const height = useMemo(() => Math.round(width * 1.78), [width]);
-  const durationText = useMemo(() => cellFormattingShortDuration(item?.durationSeconds), [item?.durationSeconds]);
+  const durationText = useMemo(() => formatShortDuration(item?.durationSeconds), [item?.durationSeconds]);
   const rim = accentGradient?.length >= 2 ? accentGradient : DEFAULT_RIM;
 
   const animateTo = (down) => {

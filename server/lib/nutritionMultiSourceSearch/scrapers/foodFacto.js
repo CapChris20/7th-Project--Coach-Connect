@@ -59,12 +59,12 @@ function parseFoodFactoMenuItems(html) {
 }
 
 function pickFoodFactoItem(items, query) {
-  const reportColors = queryTokens(query, null);
+  const tokens = queryTokens(query, null);
   let best = null;
   let bestScore = 0;
 
   for (const item of items) {
-    const score = scoreSearchCandidate(item.name, '', reportColors, null);
+    const score = scoreSearchCandidate(item.name, '', tokens, null);
     if (score > bestScore) {
       bestScore = score;
       best = item;

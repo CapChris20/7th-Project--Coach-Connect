@@ -47,11 +47,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const popStackToMainTabs = useCallback(() => {
     if (rootNavigationRef.isReady()) {
       const state = rootNavigationRef.getState();
-      if (state?.screenNames?.length > 1) {
+      if (state?.routes?.length > 1) {
         rootNavigationRef.dispatch(
           CommonActions.reset({
             index: 0,
-            screenNames: [{ name: CLIENT_ROUTES.MainTabs }],
+            routes: [{ name: CLIENT_ROUTES.MainTabs }],
           }),
         );
       }

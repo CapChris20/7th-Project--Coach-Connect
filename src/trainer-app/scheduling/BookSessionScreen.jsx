@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSessions } from '../scheduling/mySessions';
 import { MonthCalendar } from './MonthCalendar';
 import { SessionCard } from './SessionCard';
-import { cellFormattingDateLong } from '../../helpers/sessionTimeText';
+import { formatDateLong } from '../../helpers/sessionTimeText';
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 
 const COLORS = {
@@ -89,7 +89,7 @@ export const BookSessionScreen = ({ theme = 'dark', embedded = true, onNavigate,
     tab === 'list'
       ? `Upcoming · ${clientLabel}`
       : selectedDate
-        ? cellFormattingDateLong(selectedDate)
+        ? formatDateLong(selectedDate)
         : 'Tap a day';
 
   const newSessionPath = (dateKey) => {

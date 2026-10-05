@@ -362,7 +362,7 @@ export default function MyProgressPhotosScreen({
       return;
     }
     if (!db || !storage) {
-      Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is cloudConnectionured with Firebase Storage, then try again.');
+      Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is configured with Firebase Storage, then try again.');
       return;
     }
     const user = auth?.currentUser;

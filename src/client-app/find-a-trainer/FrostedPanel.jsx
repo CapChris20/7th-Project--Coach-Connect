@@ -27,7 +27,7 @@ export function FrostedPanel({
   borderRadius = 22,
   overflow = 'hidden',
 }) {
-  // Shared glass reportColors (blur amount, surface tint, border color) so every marketplace panel matches.
+  // Shared glass tokens (blur amount, surface tint, border color) so every marketplace panel matches.
   const glass = getGlass(isDark);
   const tint = isDark ? 'dark' : 'light';
   // vocab/symbol: ?? = use glass.blur only when `intensity` is null/undefined, so a caller can pass

@@ -76,7 +76,7 @@ function inferTrainingDayFlags(dayNames) {
   return flags;
 }
 
-function cellFormattingRepsLabel(reps) {
+function formatRepsLabel(reps) {
   if (reps == null) return '—';
   if (typeof reps === 'number' && Number.isFinite(reps)) return String(reps);
   if (typeof reps === 'object' && reps.min != null && reps.max != null) {
@@ -86,7 +86,7 @@ function cellFormattingRepsLabel(reps) {
   return String(reps);
 }
 
-function cellFormattingRestLabel(restSeconds) {
+function formatRestLabel(restSeconds) {
   const sec = Number(restSeconds);
   if (!Number.isFinite(sec) || sec <= 0) return '—';
   if (sec % 60 === 0) return `${sec / 60} min`;
@@ -125,8 +125,8 @@ export function buildStructuredWorkoutPlanFromManualDraft({
     const exercises = (d.exercises || []).map((ex) => {
       const sets = Number(ex.sets);
       const setsStr = Number.isFinite(sets) && sets > 0 ? String(sets) : '1';
-      const repsStr = cellFormattingRepsLabel(ex.reps);
-      const restStr = cellFormattingRestLabel(ex.restSeconds);
+      const repsStr = formatRepsLabel(ex.reps);
+      const restStr = formatRestLabel(ex.restSeconds);
       const notes = [
         ex.notes,
         ex.tempo ? `Tempo: ${ex.tempo}` : '',

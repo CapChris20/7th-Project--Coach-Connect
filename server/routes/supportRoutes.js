@@ -101,7 +101,7 @@ app.post('/api/log-error', verifyFirebaseBearerToken, async (req, res) => {
     }
 
     // Format timestamp
-    const cellFormattingTimestamp = (date) => {
+    const formatTimestamp = (date) => {
       const now = date || new Date();
       const dateStr = now.toLocaleDateString('en-US', { 
         month: 'short', 
@@ -134,7 +134,7 @@ app.post('/api/log-error', verifyFirebaseBearerToken, async (req, res) => {
 
     // Format error entry
     const now = new Date();
-    const readableTime = errorData.readableTime || cellFormattingTimestamp(now);
+    const readableTime = errorData.readableTime || formatTimestamp(now);
     const timestamp = errorData.timestamp || now.toISOString();
     
     const errorEntry = `================================================================================
@@ -152,7 +152,7 @@ ${errorData.stack || "No stack trace"}
 `;
 
     // Build new content
-    const readableUpdateTime = cellFormattingTimestamp(now);
+    const readableUpdateTime = formatTimestamp(now);
     let newContent = `🔥 ANATROX ERROR LOG
 ================================================================================
 
@@ -199,7 +199,7 @@ app.post('/api/sync-errors', verifyFirebaseBearerToken, async (req, res) => {
     }
 
     // Format timestamp helper
-    const cellFormattingTimestamp = (date) => {
+    const formatTimestamp = (date) => {
       const now = date || new Date();
       const dateStr = now.toLocaleDateString('en-US', { 
         month: 'short', 
@@ -231,7 +231,7 @@ app.post('/api/sync-errors', verifyFirebaseBearerToken, async (req, res) => {
 
     // Build new content
     const now = new Date();
-    const readableUpdateTime = cellFormattingTimestamp(now);
+    const readableUpdateTime = formatTimestamp(now);
     let newContent = `🔥 ANATROX ERROR LOG
 ================================================================================
 
@@ -247,7 +247,7 @@ Last updated: ${readableUpdateTime}
     // Add all queued errors
     queuedErrors.forEach((errorData, index) => {
       const errorNum = currentCount + index + 1;
-      const readableTime = errorData.readableTime || cellFormattingTimestamp(new Date(errorData.timestamp || errorData.queuedAt || Date.now()));
+      const readableTime = errorData.readableTime || formatTimestamp(new Date(errorData.timestamp || errorData.queuedAt || Date.now()));
       const timestamp = errorData.timestamp || errorData.queuedAt || new Date().toISOString();
       
       newContent += `================================================================================

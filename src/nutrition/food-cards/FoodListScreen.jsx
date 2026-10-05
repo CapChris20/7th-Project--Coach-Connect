@@ -14,7 +14,7 @@ import FoodCard from './FoodCard';
 import { colors, fonts } from './foodCardColors';
 import { DEMO_YOGURT_BOWL } from './foodCardText';
 
-function cellFormattingTodayHeader() {
+function formatTodayHeader() {
   const now = new Date();
   const day = now.toLocaleDateString('en-US', { weekday: 'short' });
   const month = now.toLocaleDateString('en-US', { month: 'short' });
@@ -58,7 +58,7 @@ export default function FoodListScreen({ foods, totalCalories }) {
     <SafeAreaView style={styles.safe} edges={SHELL_SAFE_AREA_EDGES}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>{cellFormattingTodayHeader()}</Text>
+          <Text style={styles.eyebrow}>{formatTodayHeader()}</Text>
           <Text style={styles.title}>Nutrition</Text>
         </View>
         <View style={styles.headerRight}>

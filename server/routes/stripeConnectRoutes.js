@@ -71,7 +71,7 @@ function registerStripeConnectRoutes(app, deps) {
       const stripe = getStripe();
       if (!stripe) {
         console.error('POST /api/stripe/create-account: STRIPE_SECRET_KEY missing');
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
 
       if (!admin.apps.length) {
@@ -132,8 +132,8 @@ function registerStripeConnectRoutes(app, deps) {
       return res.json({ url: accountLink.url });
     } catch (e) {
       console.error('POST /api/stripe/create-account failed:', e?.message || e);
-      if (e?.code === 'stripe_not_cloudConnectionured') {
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+      if (e?.code === 'stripe_not_configured') {
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
       const stripeMsg = String(e?.raw?.message || e?.message || '');
       if (/signed up for Connect|connect\.stripe\.com\/connect/i.test(stripeMsg)) {
@@ -154,7 +154,7 @@ function registerStripeConnectRoutes(app, deps) {
       const stripe = getStripe();
       if (!stripe) {
         console.error('POST /api/stripe/verify-status: STRIPE_SECRET_KEY missing');
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
 
       if (!admin.apps.length) {
@@ -192,8 +192,8 @@ function registerStripeConnectRoutes(app, deps) {
       });
     } catch (e) {
       console.error('POST /api/stripe/verify-status failed:', e?.message || e);
-      if (e?.code === 'stripe_not_cloudConnectionured') {
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+      if (e?.code === 'stripe_not_configured') {
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
       return res.status(500).json({
         error: 'Could not verify payout status. Please try again.',
@@ -206,7 +206,7 @@ function registerStripeConnectRoutes(app, deps) {
       const stripe = getStripe();
       if (!stripe) {
         console.error('POST /api/stripe/get-balance: STRIPE_SECRET_KEY missing');
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
 
       if (!admin.apps.length) {
@@ -241,8 +241,8 @@ function registerStripeConnectRoutes(app, deps) {
       });
     } catch (e) {
       console.error('POST /api/stripe/get-balance failed:', e?.message || e);
-      if (e?.code === 'stripe_not_cloudConnectionured') {
-        return res.status(500).json({ error: 'Stripe is not cloudConnectionured. Contact support.' });
+      if (e?.code === 'stripe_not_configured') {
+        return res.status(500).json({ error: 'Stripe is not configured. Contact support.' });
       }
       return res.status(500).json({
         error: 'Could not load balance. Please try again.',

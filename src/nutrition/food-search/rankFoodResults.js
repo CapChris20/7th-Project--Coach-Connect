@@ -172,9 +172,9 @@ function significantQueryTokens(query) {
 
 /** Tokens the result title must contain (category words like "cereal" may be omitted). */
 function requiredQueryTokens(query) {
-  const reportColors = significantQueryTokens(query);
-  const required = reportColors.filter((t) => !OPTIONAL_CATEGORY_TOKENS.has(t));
-  return required.length ? required : reportColors;
+  const tokens = significantQueryTokens(query);
+  const required = tokens.filter((t) => !OPTIONAL_CATEGORY_TOKENS.has(t));
+  return required.length ? required : tokens;
 }
 
 function isMenuStyleQuery(query) {
@@ -195,15 +195,15 @@ function isMenuStyleQuery(query) {
     return true;
   }
 
-  const reportColors = significantQueryTokens(query);
-  if (reportColors.length === 1 && MENU_STYLE_PATTERN.test(q)) return true;
+  const tokens = significantQueryTokens(query);
+  if (tokens.length === 1 && MENU_STYLE_PATTERN.test(q)) return true;
   return false;
 }
 
-function countTokenHits(text, reportColors) {
+function countTokenHits(text, tokens) {
   const hay = normalizeQueryText(text);
   let hits = 0;
-  for (const t of reportColors) {
+  for (const t of tokens) {
     if (tokenHitsInHay(hay, t)) hits += 1;
   }
   return hits;
@@ -224,7 +224,7 @@ function brandTokensFromQuery(query) {
   return normalizeQueryText(brand).split(' ').filter((w) => w.length > 1);
 }
 
-/** Common US chain reportColors for branded menu ranking (avoids circular require with restaurantMenuSearch). */
+/** Common US chain tokens for branded menu ranking (avoids circular require with restaurantMenuSearch). */
 const CHAIN_TOKEN_PATTERNS = [
   /\blittle\s*caesars?\b/i,
   /\bmcdonald'?s?\b/i,
@@ -244,7 +244,7 @@ const CHAIN_TOKEN_PATTERNS = [
   /\bin[\s-]?n[\s-]?out\b/i,
 ];
 
-/** Item reportColors after stripping chain/brand (e.g. crazy + bread from "little caesars crazy bread"). */
+/** Item tokens after stripping chain/brand (e.g. crazy + bread from "little caesars crazy bread"). */
 function menuItemTokensFromQuery(query) {
   const brandParts = new Set(brandTokensFromQuery(query));
   let qNorm = normalizeQueryText(query);
@@ -350,7 +350,7 @@ function hasUnrequestedMenuModifiers(itemText, query) {
   return rowMods.some((m) => !qMods.has(m));
 }
 
-/** Diet / zero / pack / wrong-drink reportColors that must appear in the query to keep a result. */
+/** Diet / zero / pack / wrong-drink tokens that must appear in the query to keep a result. */
 const EXTRA_VARIANT_MODIFIERS = [
   'diet',
   'zero',
@@ -512,18 +512,18 @@ function isCloseNameMatch(itemText, query, nameBrandText = '') {
  * Higher = better match. Used for ranking; thresholds vary by query type.
  */
 function scoreFoodSearchRelevance(itemText, query) {
-  const reportColors = significantQueryTokens(query);
+  const tokens = significantQueryTokens(query);
   const hay = normalizeQueryText(itemText);
   const qNorm = normalizeQueryText(query);
-  if (!reportColors.length) return 1;
+  if (!tokens.length) return 1;
 
-  let score = countTokenHits(itemText, reportColors) * 12;
+  let score = countTokenHits(itemText, tokens) * 12;
 
-  const phrase = reportColors.join(' ');
+  const phrase = tokens.join(' ');
   if (phrase.length >= 4 && hay.includes(phrase)) score += 45;
-  if (reportColors.length >= 2 && hay.includes(reportColors.slice(0, 2).join(' '))) score += 22;
+  if (tokens.length >= 2 && hay.includes(tokens.slice(0, 2).join(' '))) score += 22;
 
-  // Exact / near-exact title match for the item phrase (not just shared brand reportColors).
+  // Exact / near-exact title match for the item phrase (not just shared brand tokens).
   const itemTokens = menuItemTokensFromQuery(query);
   if (itemTokens.length >= 2) {
     const itemPhrase = itemTokens.join(' ');
@@ -586,7 +586,7 @@ function scoreFoodSearchRelevance(itemText, query) {
     else if (gotPc != null) score -= 90;
   }
 
-  if (reportColors.length >= 2 && countTokenHits(itemText, reportColors) === 0) score -= 40;
+  if (tokens.length >= 2 && countTokenHits(itemText, tokens) === 0) score -= 40;
 
   return score;
 }
@@ -605,7 +605,7 @@ function itemMatchesQuery(itemText, query) {
 }
 
 /**
- * Strict close-name filter for ALL query spreadsheetConstants. Better empty than unrelated cousins.
+ * Strict close-name filter for ALL query types. Better empty than unrelated cousins.
  */
 function filterFoodSearchRows(query, rows, limit = 8) {
   const list = Array.isArray(rows) ? rows : [];

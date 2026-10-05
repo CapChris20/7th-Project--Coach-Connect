@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-// Document cellFormatting presets (APA, MLA, Chicago, Resume, Essay, Letter, Report).
+// Document format presets (APA, MLA, Chicago, Resume, Essay, Letter, Report).
 // Applied as RN StyleSheet objects + optional content scaffold (only added if doc is empty).
 
 export const PRESETS = [

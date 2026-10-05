@@ -38,7 +38,7 @@ const {
   countPayments,
   resetFirestoreStore,
 } = require('./helpers/stripeRouteTestHarness');
-const { PLATFORM_FEE_RATE } = require('../screenNames/stripePaymentRoutes');
+const { PLATFORM_FEE_RATE } = require('../routes/stripePaymentRoutes');
 
 const TRAINER_ID = 'trainer_flow_1';
 const CLIENT_ID = 'client_flow_1';

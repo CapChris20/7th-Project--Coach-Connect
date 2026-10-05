@@ -1120,7 +1120,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
 
   // Router for "the user tapped a file". Every branch ends in a `return`, so the order below IS the
   // precedence: trainer-authored content first (it needs a server lookup to resolve), then explicit
-  // spreadsheetConstants, then guesses based on the file extension, then a generic web viewer as the last resort.
+  // types, then guesses based on the file extension, then a generic web viewer as the last resort.
   const openNotesFile = useCallback((file) => {
     // Trainer spreadsheet/document: the row only stores ids, so we have to ask the server what it
     // actually is before we know which viewer to open.
@@ -1383,7 +1383,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
                   if (Array.isArray(ex.sets) && ex.sets.length > 0) {
                     const setsSummary = ex.sets
                       .map((s) => {
-                        // Manipulate here: these three lines are the set label cellFormattings —
+                        // Manipulate here: these three lines are the set label formats —
                         // both values → "8×135", reps only → "8 reps", weight only → "135".
                         const reps = s.reps != null ? s.reps : '';
                         const weight = s.weight != null ? s.weight : '';

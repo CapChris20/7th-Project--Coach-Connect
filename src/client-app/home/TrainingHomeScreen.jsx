@@ -91,7 +91,7 @@ import {
 
 const MOOD_EMPTY_LOTTIE = require('../../for-both/assets/Happy SUN.json');
 
-const cellFormattingHMS = (ms) => {
+const formatHMS = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -157,22 +157,22 @@ const TAG_MAP = {
   cardio: 'Cardio',
   hiit: 'HIIT',
 };
-const cellFormattingTag = (raw) => {
+const formatTag = (raw) => {
   if (raw == null || raw === '') return '';
   const key = String(raw).trim();
   if (TAG_MAP[key]) return TAG_MAP[key];
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 };
-const cellFormattingTagString = (raw) => {
+const formatTagString = (raw) => {
   if (raw == null || raw === '') return '';
   const s = String(raw).trim();
   const keys = Object.keys(TAG_MAP).filter((k) => s.includes(k));
-  if (keys.length === 0) return cellFormattingTag(s);
+  if (keys.length === 0) return formatTag(s);
   const ordered = keys.sort((a, b) => s.indexOf(a) - s.indexOf(b));
-  return ordered.map((k) => cellFormattingTag(k)).join(' · ');
+  return ordered.map((k) => formatTag(k)).join(' · ');
 };
 
-function cellFormattingClientWeeklyRange(weekStart, weekEnd) {
+function formatClientWeeklyRange(weekStart, weekEnd) {
   const ws = String(weekStart || '').trim();
   const we = String(weekEnd || ws).trim();
   if (!ws) return '';
@@ -1620,7 +1620,7 @@ export const TrainingHomeScreen = ({
         const we = latest?.weekEnd || ws;
         setWeeklyReportCard({
           hasReport: rows.length > 0,
-          weekRangeLabel: rows.length > 0 ? cellFormattingClientWeeklyRange(ws, we) : '',
+          weekRangeLabel: rows.length > 0 ? formatClientWeeklyRange(ws, we) : '',
         });
       } catch (e) {
         if (!cancelled) {
@@ -2097,7 +2097,7 @@ export const TrainingHomeScreen = ({
                 >
                   <Ionicons name="time-outline" size={14} color={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)'} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.65)' }}>
-                    {cellFormattingHMS(untilResetMs)}
+                    {formatHMS(untilResetMs)}
                   </Text>
                 </View>
               </View>

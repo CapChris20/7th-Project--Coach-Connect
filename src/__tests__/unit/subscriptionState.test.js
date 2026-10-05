@@ -1,6 +1,6 @@
 const {
   resolveSubscriptionAccess,
-  cellFormattingTrialCountdown,
+  formatTrialCountdown,
   SUBSCRIPTION_STATUSES,
 } = require('../../trainer-pro-plan/proAccessRules');
 
@@ -62,8 +62,8 @@ describe('resolveSubscriptionAccess', () => {
   });
 });
 
-describe('cellFormattingTrialCountdown', () => {
-  it('cellFormattings days and hours', () => {
-    expect(cellFormattingTrialCountdown(2 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000)).toMatch(/2d 5h/);
+describe('formatTrialCountdown', () => {
+  it('formats days and hours', () => {
+    expect(formatTrialCountdown(2 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000)).toMatch(/2d 5h/);
   });
 });

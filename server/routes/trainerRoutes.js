@@ -1,6 +1,6 @@
 /** Trainer CRM actions (server-only writes that bypass Firestore rules). */
 const admin = require('firebase-admin');
-const { checkTrainerCertificate } = require('../lib/checkTrainerCertificate');
+const { checkTrainerCertificate } = require('../lib/verifyTrainerCertification');
 
 async function isTrainerOfClient(db, trainerUid, clientUid) {
   if (!trainerUid || !clientUid) return false;

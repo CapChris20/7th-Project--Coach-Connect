@@ -30,7 +30,7 @@ import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bo
 import ShareDocumentPopup from './ShareDocumentPopup';
 import SaveStatusLabel from './SaveStatusLabel';
 import { EditorIconButton, EditorTitleField, DEFAULT_SAVE_TITLE_SPREADSHEET } from './EditorTopButtons';
-import { cellFormattingEditorSavedAgo, getEditorTheme } from './editorColors';
+import { formatEditorSavedAgo, getEditorTheme } from './editorColors';
 import {
   ROWS,
   COLS,
@@ -41,7 +41,7 @@ import {
   newSheet,
   normalizeSel,
 } from './spreadsheet-grid/spreadsheetConstants';
-import { detectFormat, cellFormattingNumberNice } from './spreadsheet-grid/cellFormatting';
+import { detectFormat, formatNumberNice } from './spreadsheet-grid/cellFormatting';
 import { prepareCellText, lookupDisplay } from './spreadsheet-grid/prepareCellText';
 import FormulaBar from './spreadsheet-grid/FormulaBar';
 import { syncCellDims, syncDimsForRange } from './spreadsheet-grid/columnWidths';
@@ -100,7 +100,7 @@ function SavedAgoLabel({ at, theme }) {
   }, []);
   return (
     <Text style={{ color: theme.textMuted, fontSize: 11, marginLeft: 8 }}>
-      {cellFormattingEditorSavedAgo(at)}
+      {formatEditorSavedAgo(at)}
     </Text>
   );
 }
@@ -118,7 +118,7 @@ export default function SpreadsheetEditor({
 }) {
   const mounted = useRef(false);
   const titleInputRef = useRef(null);
-  const formulaCalculatorInputRef = useRef(null);
+  const formulaInputRef = useRef(null);
   const cellEditRef = useRef(null);
   const editDraftRef = useRef('');
   const editingRef = useRef(null);
@@ -372,7 +372,7 @@ export default function SpreadsheetEditor({
               const ex = cells[key] ?? { raw: '' };
               let raw = ex.raw;
               if (fmt === 'checkbox' && raw === '') raw = 'false';
-              cells[key] = { ...ex, raw, cellFormatting: fmt, currency: currency ?? ex.currency };
+              cells[key] = { ...ex, raw, format: fmt, currency: currency ?? ex.currency };
             }
           }
           return { ...s, cells };
@@ -492,7 +492,7 @@ export default function SpreadsheetEditor({
               const ex = cells[k] ?? { raw: '' };
               const det = detectFormat(val);
               if (det) {
-                cells[k] = { ...ex, raw: det.normalized, cellFormatting: det.cellFormatting, currency: det.currency ?? ex.currency };
+                cells[k] = { ...ex, raw: det.normalized, format: det.format, currency: det.currency ?? ex.currency };
               } else cells[k] = { ...ex, raw: val };
             });
           });
@@ -529,7 +529,7 @@ export default function SpreadsheetEditor({
       setEditing(next);
       setSelection({ anchor: { r, c }, focus: { r, c } });
       requestAnimationFrame(() => {
-        if (via === 'formulaCalculator') formulaCalculatorInputRef.current?.focus();
+        if (via === 'formula') formulaInputRef.current?.focus();
         else cellEditRef.current?.focus();
       });
     },
@@ -582,7 +582,7 @@ export default function SpreadsheetEditor({
       setEditDraft(v);
       const { r, c } = selection.focus;
       syncDraftDims(r, c, v);
-      if (!editing) startEdit(selection.focus.r, selection.focus.c, v, 'formulaCalculator');
+      if (!editing) startEdit(selection.focus.r, selection.focus.c, v, 'formula');
     },
     [editing, selection.focus.c, selection.focus.r, startEdit, syncDraftDims],
   );
@@ -598,7 +598,7 @@ export default function SpreadsheetEditor({
   const onCellPress = useCallback(
     (r, c) => {
       const cell = active?.cells?.[keyOf(r, c)];
-      if (cell?.cellFormatting === 'checkbox') {
+      if (cell?.format === 'checkbox') {
         if (editing) commitEdit(0, 0);
         const checked = String(cell.raw).toLowerCase() === 'true' || cell.raw === '1';
         setCell(r, c, checked ? 'false' : 'true');
@@ -667,7 +667,7 @@ export default function SpreadsheetEditor({
           rowsData.forEach((row, ri) => {
             row.forEach((cell, ci) => {
               const k = keyOf(s2.r1 + ri, s2.c1 + ci);
-              if (cell.raw === '' && !cell.style && !cell.cellFormatting) delete cells[k];
+              if (cell.raw === '' && !cell.style && !cell.format) delete cells[k];
               else cells[k] = cell;
             });
           });
@@ -787,7 +787,7 @@ export default function SpreadsheetEditor({
           rows: payload.rows,
           columnCount: payload.columnCount,
           rowCount: payload.rowCount,
-          cellFormattings: payload.cellFormattings,
+          formats: payload.formats,
           colWidths: payload.colWidths,
           rowHeights: payload.rowHeights,
           sheets: payload.sheets,
@@ -922,7 +922,7 @@ export default function SpreadsheetEditor({
         rows: payload.rows,
         columnCount: payload.columnCount,
         rowCount: payload.rowCount,
-        cellFormattings: payload.cellFormattings,
+        formats: payload.formats,
         colWidths: payload.colWidths,
         rowHeights: payload.rowHeights,
         sheets: payload.sheets,
@@ -968,8 +968,8 @@ export default function SpreadsheetEditor({
   const sel = normalizeSel(selection);
   const focusCell = active?.cells?.[keyOf(selection.focus.r, selection.focus.c)];
   const focusDisp = lookupDisplay(displayCache, selection.focus.r, selection.focus.c);
-  const formulaCalculatorBarValue =
-    editing?.via === 'formulaCalculator' ? editDraft : String(focusCell?.raw ?? '');
+  const formulaBarValue =
+    editing?.via === 'formula' ? editDraft : String(focusCell?.raw ?? '');
 
   const menuSections = useMemo(
     () => ({
@@ -1008,7 +1008,7 @@ export default function SpreadsheetEditor({
           { label: 'Column right', run: () => shiftCells('col', sel.c1 + 1, 1) },
         ],
       },
-      cellFormatting: {
+      format: {
         label: 'Format',
         items: [
           { label: 'Bold', shortcut: '⌘B', run: () => toggleStyle('bold') },
@@ -1183,19 +1183,19 @@ export default function SpreadsheetEditor({
             theme={theme}
             focusR={selection.focus.r}
             focusC={selection.focus.c}
-            value={formulaCalculatorBarValue}
+            value={formulaBarValue}
             editing={!!editing}
             focusError={focusDisp.error}
-            inputRef={formulaCalculatorInputRef}
+            inputRef={formulaInputRef}
             onChangeText={onFormulaChange}
             onCommit={commitEdit}
             onCancel={cancelEdit}
             onBeginEdit={() => {
               setEditDraft(editDraftRef.current);
               if (!editing) {
-                startEdit(selection.focus.r, selection.focus.c, focusCell?.raw ?? '', 'formulaCalculator');
-              } else if (editing.via !== 'formulaCalculator') {
-                const next = { r: editing.r, c: editing.c, via: 'formulaCalculator' };
+                startEdit(selection.focus.r, selection.focus.c, focusCell?.raw ?? '', 'formula');
+              } else if (editing.via !== 'formula') {
+                const next = { r: editing.r, c: editing.c, via: 'formula' };
                 editingRef.current = next;
                 setEditing(next);
               }
@@ -1236,14 +1236,14 @@ export default function SpreadsheetEditor({
                 {stats.hasNums ? (
                   <StatChip
                     label="Sum"
-                    val={cellFormattingNumberNice(stats.sum)}
+                    val={formatNumberNice(stats.sum)}
                     onPress={() => Clipboard.setStringAsync(String(stats.sum)).then(() => showToast('Copied'))}
                   />
                 ) : null}
                 {stats.avg !== null ? (
                   <StatChip
                     label="Avg"
-                    val={cellFormattingNumberNice(stats.avg)}
+                    val={formatNumberNice(stats.avg)}
                     onPress={() => Clipboard.setStringAsync(String(stats.avg)).then(() => showToast('Copied'))}
                   />
                 ) : null}
@@ -1455,7 +1455,7 @@ const styles = StyleSheet.create({
   toolBtn: { width: TOUCH_MIN, height: TOUCH_MIN, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   toolBtnActive: {},
   divider: { width: 1, height: 22, marginHorizontal: 4 },
-  formulaCalculatorBar: {
+  formulaBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1465,7 +1465,7 @@ const styles = StyleSheet.create({
     minHeight: TOUCH_MIN + 8,
   },
   refPill: { minWidth: 52, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-  formulaCalculatorInput: { flex: 1, minHeight: TOUCH_MIN, fontSize: 14, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined },
+  formulaInput: { flex: 1, minHeight: TOUCH_MIN, fontSize: 14, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined },
   statsChip: {
     position: 'absolute',
     bottom: 12,

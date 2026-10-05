@@ -1,4 +1,4 @@
-const { removeEmojiFromAlerts } = require('./removeEmojiFromAlerts');
+const { removeEmojiFromAlerts } = require('./stripNotificationEmoji');
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');

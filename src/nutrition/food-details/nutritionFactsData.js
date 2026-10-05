@@ -372,12 +372,12 @@ function pctOfDv(value, dv) {
   return Math.min(100, Math.round((num(value) / dv) * 100));
 }
 
-function cellFormattingGrams(g) {
+function formatGrams(g) {
   const n = num(g);
   return n % 1 === 0 ? `${Math.round(n)}g` : `${n.toFixed(1)}g`;
 }
 
-function cellFormattingMgMg(mg, unit = 'mg') {
+function formatMgMg(mg, unit = 'mg') {
   const n = num(mg);
   const rounded = n >= 100 ? Math.round(n) : Math.round(n * 10) / 10;
   return `${rounded}${unit}`;
@@ -449,14 +449,14 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
 
   const listRow = (label, value, unit = 'g') => ({
     label,
-    display: unit === 'mg' || unit === 'mcg' ? cellFormattingMgMg(value, unit) : cellFormattingGrams(value),
+    display: unit === 'mg' || unit === 'mcg' ? formatMgMg(value, unit) : formatGrams(value),
     raw: num(value),
   });
 
   const micro = (key, name, unit = 'mg') => ({
     key,
     name,
-    value: num(n[key]) > 0 ? cellFormattingMgMg(n[key], unit) : '—',
+    value: num(n[key]) > 0 ? formatMgMg(n[key], unit) : '—',
     raw: num(n[key]),
   });
 
@@ -469,7 +469,7 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
       {
         label: 'Protein',
         value: n.protein,
-        display: cellFormattingGrams(n.protein),
+        display: formatGrams(n.protein),
         goal: proteinGoal,
         goalLabel: `${num(n.protein) % 1 === 0 ? Math.round(n.protein) : n.protein.toFixed(1)} / ${proteinGoal}g`,
         pct: pctOfGoal(n.protein, proteinGoal),
@@ -478,7 +478,7 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
       {
         label: 'Carbs',
         value: n.carbs,
-        display: cellFormattingGrams(n.carbs),
+        display: formatGrams(n.carbs),
         goal: carbsGoal,
         goalLabel: `${num(n.carbs) % 1 === 0 ? Math.round(n.carbs) : n.carbs.toFixed(1)} / ${carbsGoal}g`,
         pct: pctOfGoal(n.carbs, carbsGoal),
@@ -487,7 +487,7 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
       {
         label: 'Fat',
         value: n.fat,
-        display: cellFormattingGrams(n.fat),
+        display: formatGrams(n.fat),
         goal: fatGoal,
         goalLabel: `${num(n.fat) % 1 === 0 ? Math.round(n.fat) : n.fat.toFixed(1)} / ${fatGoal}g`,
         pct: pctOfGoal(n.fat, fatGoal),
@@ -498,7 +498,7 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
     fats: {
       title: 'FATS',
       gradient: NUT_MACRO_RING_GRADIENTS.Fat,
-      total: cellFormattingGrams(n.fat),
+      total: formatGrams(n.fat),
       rows: [
         listRow('Saturated Fat', n.saturatedFat),
         listRow('Trans Fat', n.transFat),
@@ -509,7 +509,7 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
     carbs: {
       title: 'CARBOHYDRATES',
       gradient: NUT_MACRO_RING_GRADIENTS.Carbs,
-      total: cellFormattingGrams(n.carbs),
+      total: formatGrams(n.carbs),
       rows: [
         listRow('Dietary Fiber', n.fiber),
         listRow('Sugars', n.sugar),
@@ -538,7 +538,7 @@ export function buildNutritionFactsCardData(nutrients) {
   const macroBar = (label, value, max, color, unit = 'g') => ({
     label,
     value: num(value),
-    display: unit === 'mg' || unit === 'mcg' ? cellFormattingMgMg(value, unit) : cellFormattingGrams(value),
+    display: unit === 'mg' || unit === 'mcg' ? formatMgMg(value, unit) : formatGrams(value),
     fillPct: max > 0 ? Math.min((num(value) / max) * 100, 100) : 0,
     color,
   });
@@ -546,7 +546,7 @@ export function buildNutritionFactsCardData(nutrients) {
   const micro = (key, name, unit = 'mg') => ({
     key,
     name,
-    value: cellFormattingMgMg(n[key], unit),
+    value: formatMgMg(n[key], unit),
     raw: num(n[key]),
   });
 
@@ -556,7 +556,7 @@ export function buildNutritionFactsCardData(nutrients) {
       {
         label: 'Protein',
         value: n.protein,
-        display: cellFormattingGrams(n.protein),
+        display: formatGrams(n.protein),
         pct: pctOfDv(n.protein, DAILY_VALUES.protein),
         gradient: ['#6D28D9', '#FDE68A'],
         barColor: '#FF6B9D',
@@ -564,7 +564,7 @@ export function buildNutritionFactsCardData(nutrients) {
       {
         label: 'Carbs',
         value: n.carbs,
-        display: cellFormattingGrams(n.carbs),
+        display: formatGrams(n.carbs),
         pct: pctOfDv(n.carbs, DAILY_VALUES.carbs),
         gradient: ['#FBBF24', '#FB7185'],
         barColor: '#F97316',
@@ -572,7 +572,7 @@ export function buildNutritionFactsCardData(nutrients) {
       {
         label: 'Fat',
         value: n.fat,
-        display: cellFormattingGrams(n.fat),
+        display: formatGrams(n.fat),
         pct: pctOfDv(n.fat, DAILY_VALUES.fat),
         gradient: ['#6D28D9', '#DB2777'],
         barColor: '#64D2FF',
@@ -603,6 +603,6 @@ export function buildNutritionFactsCardData(nutrients) {
   };
 }
 
-export function cellFormattingAmount(value, unit) {
+export function formatAmount(value, unit) {
   return fmtValue(value, unit);
 }

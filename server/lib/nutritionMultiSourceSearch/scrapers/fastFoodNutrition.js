@@ -17,14 +17,14 @@ const {
   extractServingLabelFromPageText,
 } = require('../../../../src/nutrition/food-search/guessServingLabel');
 
-function collectFfnCandidates($, whereToConnect = 'https://fastfoodnutrition.org') {
+function collectFfnCandidates($, baseUrl = 'https://fastfoodnutrition.org') {
   const seen = new Set();
   const candidates = [];
 
   $('a[href]').each((_, el) => {
     const href = $(el).attr('href') || '';
     if (!href || href.includes('/search') || href === '/') return;
-    const path = href.startsWith('http') ? href : `${whereToConnect}${href.startsWith('/') ? '' : '/'}${href}`;
+    const path = href.startsWith('http') ? href : `${baseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
     if (!/\/[a-z0-9-]+\/[a-z0-9-]+/i.test(path)) return;
     if (seen.has(path)) return;
     seen.add(path);

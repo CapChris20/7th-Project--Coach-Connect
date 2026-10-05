@@ -32,7 +32,7 @@ function isRestWorkout(workouts = []) {
   return workouts.every((w) => /\brest\b|recovery|off day/i.test(String(w?.name || '')));
 }
 
-function cellFormattingSteps(steps) {
+function formatSteps(steps) {
   if (!steps) return '0';
   if (steps >= 1000) return `${(steps / 1000).toFixed(1)}k`;
   return String(steps);
@@ -233,7 +233,7 @@ export function DayCard({ day, index }) {
           <View style={styles.previewGrid}>
             <PreviewChip metricKey="sleep" value={`${day.sleepHours || 0}h`} label="Sleep" />
             <PreviewChip metricKey="water" value={`${day.waterOz || 0}oz`} label="Water" />
-            <PreviewChip metricKey="steps" value={cellFormattingSteps(day.steps)} label="Steps" />
+            <PreviewChip metricKey="steps" value={formatSteps(day.steps)} label="Steps" />
             <PreviewChip metricKey="nutrition" value={`${day.calories || 0}`} label="Cal" />
           </View>
 

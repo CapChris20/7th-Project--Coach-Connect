@@ -21,7 +21,7 @@ import {
 } from '../../trainer-pro-plan/proPlanSwitches';
 import ProLegalFooter from '../../trainer-pro-plan/ProLegalFooter';
 
-const SUBSCRIPTION_HERO = require('../../../assets/icons/digital-gift-card-abstract-concept-illustration.png');
+const SUBSCRIPTION_HERO = require('../../assets/icons/digital-gift-card-abstract-concept-illustration.png');
 
 /** FitFlow paywall gradient: orange → pink → magenta. */
 const PAYWALL_GRADIENT = ['#FF8C42', '#FF4F7B', '#E63FA8'];
@@ -58,7 +58,7 @@ const PAYWALL_FEATURES = [
   {
     icon: 'barbell',
     label: 'Scheduling & booking',
-    detail: 'Availability, session cellFormattings, and invite codes in one place.',
+    detail: 'Availability, session formats, and invite codes in one place.',
   },
 ];
 

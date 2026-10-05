@@ -56,7 +56,7 @@ const MIXED_PROPOSALS = [
 function runSharedGuardTests(getGuards) {
   const { isValidCoachToolProposal, filterValidCoachToolProposals } = getGuards();
 
-  describe('incellFormattingional questions reject tool proposals', () => {
+  describe('informational questions reject tool proposals', () => {
     it.each(INFORMATIONAL_QUESTIONS)('%s', (userText) => {
       const toolCall = INFORMATIONAL_TOOL_BY_TEXT[userText];
       expect(isValidCoachToolProposal(toolCall, userText)).toBe(false);

@@ -35,7 +35,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods, toggleFavoriteFood } from '../daily-log/saveLoggedFood';
 import { resolveFoodBrandLabel } from '../food-details/tidyBrandName';
 import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/tidyFoodTitles';
-import { cellFormattingServingDisplayLine } from '../food-search/guessServingLabel';
+import { formatServingDisplayLine } from '../food-search/guessServingLabel';
 import OutlinedColorText from '../../for-both/icons/OutlinedColorText';
 import FoodSearchAccuracyHeroCard from '../food-search/SearchDisclaimerCard';
 import FoodConfirmSheet from '../food-search/ConfirmFoodPopup';
@@ -168,14 +168,14 @@ const normalizeFood = (item, searchQuery = '') => {
   };
 };
 
-function cellFormattingServingLine(item, userQuery = '') {
-  return cellFormattingServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
+function formatServingLine(item, userQuery = '') {
+  return formatServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
 }
 
 /** Saved / recent history — same premium card as logged foods on DailyFoodLogScreen. */
 const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
   const [expanded, setExpanded] = useState(false);
-  const amount = cellFormattingServingLine(item);
+  const amount = formatServingLine(item);
   const food = useMemo(() => foodCardText(item, amount), [item, amount]);
 
   return (
@@ -195,7 +195,7 @@ const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
 /** Search hits — same logged-food card layout, plus to open confirm/log. */
 const FoodResultRow = ({ item, onAdd, isDark = true, isFavorite = false, onToggleFavorite, query = '' }) => {
   const [expanded, setExpanded] = useState(false);
-  const amount = cellFormattingServingLine(item, query);
+  const amount = formatServingLine(item, query);
   const food = useMemo(() => foodCardText(item, amount), [item, amount]);
 
   return (

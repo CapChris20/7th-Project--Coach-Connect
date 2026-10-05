@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { cellFormattingTime12 } from '../../helpers/sessionTimeText';
+import { formatTime12 } from '../../helpers/sessionTimeText';
 
 const BORDER_GRADIENT = ['#9333EA', '#DB2777'];
 const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
@@ -39,7 +39,7 @@ const STATUS_META = {
   },
 };
 
-function cellFormattingDateChip(dateKey) {
+function formatDateChip(dateKey) {
   if (!dateKey) return '';
   const d = new Date(`${String(dateKey).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(d.getTime())) return String(dateKey);
@@ -68,9 +68,9 @@ export const SessionCard = ({ session, theme = 'dark', showDate = false }) => {
   const iconColor = isDark ? '#E9D5FF' : '#7C3AED';
   const bgGrad = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
 
-  const time = useMemo(() => cellFormattingTime12(session?.time), [session?.time]);
+  const time = useMemo(() => formatTime12(session?.time), [session?.time]);
   const durationMin = session?.durationMin || session?.duration || 60;
-  const dateChip = useMemo(() => cellFormattingDateChip(session?.date), [session?.date]);
+  const dateChip = useMemo(() => formatDateChip(session?.date), [session?.date]);
   const statusMeta = resolveStatusMeta(session?.status, isDark);
 
   const notePreview = session?.notes

@@ -6,7 +6,7 @@ import {
 } from '../../ai-coach/internet-lookup/shouldLookUpOnInternet';
 
 describe('shouldLookUpOnInternet routing', () => {
-  it('screenNames pizza-on-cut web questions when user says on the web', () => {
+  it('routes pizza-on-cut web questions when user says on the web', () => {
     const msg =
       'Look up on the web, can I have pizza during a cut if I hit my calories and protein?';
     expect(hasExplicitWebIntent(msg)).toBe(true);

@@ -15,7 +15,7 @@ function nextMonthResetsAt(d = new Date()) {
   return `${y}-${m}-01`;
 }
 
-function cellFormattingLimitMessage(resetsAt) {
+function formatLimitMessage(resetsAt) {
   const d = new Date(`${resetsAt}T12:00:00`);
   const label = Number.isNaN(d.getTime())
     ? resetsAt
@@ -93,7 +93,7 @@ module.exports = {
   WORKOUT_GENERATION_LIMIT,
   currentMonthKey,
   nextMonthResetsAt,
-  cellFormattingLimitMessage,
+  formatLimitMessage,
   buildUsagePayload,
   getWorkoutGenerationUsage,
   assertWorkoutGenerationAllowed,

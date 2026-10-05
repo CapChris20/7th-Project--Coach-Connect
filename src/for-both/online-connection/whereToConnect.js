@@ -135,7 +135,7 @@ function getDevLanHost() {
 
 /**
  * Primary API base (no trailing slash).
- * Set EXPO_PUBLIC_API_BASE_URL or app.cloudConnection extra.apiBaseUrl to override.
+ * Set EXPO_PUBLIC_API_BASE_URL or app.config extra.apiBaseUrl to override.
  */
 export const getApiBase = () => {
   // Explicit env var always wins (e.g. Cloud Run URL in production)

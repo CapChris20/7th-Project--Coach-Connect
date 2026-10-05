@@ -15,7 +15,7 @@ describe('notes file helpers', () => {
   });
 
   test('builds office viewer url and stable dedupe key', () => {
-    const uri = getEmbedViewerUri({ name: 'sheet.spreadsheetReader' }, 'https://example.com/sheet.spreadsheetReader');
+    const uri = getEmbedViewerUri({ name: 'sheet.xlsx' }, 'https://example.com/sheet.xlsx');
     expect(uri).toContain('officeapps');
     expect(notesFileDedupeKey({ id: 'abc' })).toBe('id:abc');
   });

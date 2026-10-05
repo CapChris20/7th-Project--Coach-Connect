@@ -85,7 +85,7 @@ export default function ClientScreenList() {
       <Stack.Screen name={CLIENT_ROUTES.AIWorkouts} component={ClientAIWorkoutsScreen} options={modalOptions} />
       <Stack.Screen name={CLIENT_ROUTES.PlanViewer} component={ClientMyWorkoutPlanScreen} options={modalOptions} />
       {/* Two-step AI coach flow: `AI` is the entry/landing screen, `AIChat` is the live
-          conversation. They're separate screenNames so the back gesture returns to the launcher. */}
+          conversation. They're separate routes so the back gesture returns to the launcher. */}
       <Stack.Screen name={CLIENT_ROUTES.AI} component={ClientCoachHomeScreen} options={modalOptions} />
       <Stack.Screen name={CLIENT_ROUTES.AIChat} component={ClientCoachConversationScreen} options={modalOptions} />
       {/* Internal QA harness for the AI coach. The name is a raw string rather than a

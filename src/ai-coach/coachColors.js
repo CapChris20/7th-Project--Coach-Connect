@@ -9,7 +9,7 @@
  * @file-header
  */
 /**
- * AI Coach UI reportColors — aligned with design-system.md (premium dark neon glass).
+ * AI Coach UI tokens — aligned with design-system.md (premium dark neon glass).
  * Use only inside src/ai-coach/chat-ui/*
  */
 

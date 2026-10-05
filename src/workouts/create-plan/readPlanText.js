@@ -1012,6 +1012,13 @@ function mapStructuredDaysToPlanViewerRows(structured) {
   });
 }
 
+// True when the parsed plan has at least one day the viewer can turn into a card.
+function structuredPlanHasViewerContent(s) {
+  if (!s || typeof s !== 'object') return false;
+  const days = Array.isArray(s.days) ? s.days.length : 0;
+  return days > 0;
+}
+
 export {
   tryParseJsonObject,
   normalizeStructuredPlanForViewer,

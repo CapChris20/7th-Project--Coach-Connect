@@ -3,13 +3,13 @@
  */
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { cellFormatting } from 'date-fns';
+import { format } from 'date-fns';
 import { CalendarDays, List as ListIcon, Check, ArrowRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useSessions } from '../scheduling/mySessions';
 import { MonthCalendar } from './MonthCalendar';
-import { cellFormattingTime12 } from '../../helpers/sessionTimeText';
+import { formatTime12 } from '../../helpers/sessionTimeText';
 import ScheduleSessionScreen from '../scheduling/ScheduleSessionScreen';
 import {
   ACCENT_GRADIENT,
@@ -32,7 +32,7 @@ function parseQuery(path) {
   return params;
 }
 
-function cellFormattingDurationMin(min) {
+function formatDurationMin(min) {
   const n = Number(min) || 60;
   if (n < 60) return `${n}m`;
   if (n % 60 === 0) return `${n / 60}h`;
@@ -49,7 +49,7 @@ function SessionStrip({ session, colors, onPress }) {
       style={[styles.sessionStrip, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
     >
       <Text style={[styles.sessionStripTime, { color: colors.text }]}>
-        {cellFormattingTime12(session?.time) || '—'} – {cellFormattingDurationMin(session?.durationMin || session?.duration)}
+        {formatTime12(session?.time) || '—'} – {formatDurationMin(session?.durationMin || session?.duration)}
       </Text>
       <Text style={[styles.sessionStripStatus, { color: colors.muted }]}>Status: {statusLabel}</Text>
     </TouchableOpacity>
@@ -92,9 +92,9 @@ const CalendarTab = ({ clientId, clientName }) => {
         .sort((a, b) => String(a.time).localeCompare(String(b.time)))
     : [];
 
-  const monthLabel = cellFormatting(calendarMonth, 'MMM yyyy');
+  const monthLabel = format(calendarMonth, 'MMM yyyy');
   const daySectionTitle = selectedDate
-    ? `${cellFormatting(new Date(`${selectedDate}T12:00:00`), 'MMM d')} Sessions:`
+    ? `${format(new Date(`${selectedDate}T12:00:00`), 'MMM d')} Sessions:`
     : null;
 
   const newSessionPath = (dateKey) => {

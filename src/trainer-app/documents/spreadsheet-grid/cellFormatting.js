@@ -1,5 +1,5 @@
-// Spreadsheet value cellFormattingting: guess a cell's type from what was typed, and render it back out.
-// Flow: detectFormat(raw) runs on entry/paste to tag the cell → cellFormattingValue(value, cell) runs on
+// Spreadsheet value formatting: guess a cell's type from what was typed, and render it back out.
+// Flow: detectFormat(raw) runs on entry/paste to tag the cell → formatValue(value, cell) runs on
 // render to turn the stored value into display text using that tag.
 // Used by the display cache and the paste pipeline in the spreadsheet editor.
 
@@ -16,23 +16,23 @@ export function detectFormat(raw) {
   // vocab: .exec() returns null on no-match, or an array where [1], [2] are the ( ) capture groups
   // Manipulate here: add a symbol to [$€£¥] to recognize another currency.
   const cm = /^([$€£¥])\s*(-?[\d,]+(?:\.\d+)?)$/.exec(s);
-  if (cm) return { cellFormatting: 'currency', normalized: cm[2].replace(/,/g, ''), currency: cm[1] };
+  if (cm) return { format: 'currency', normalized: cm[2].replace(/,/g, ''), currency: cm[1] };
 
   // Percent: we store the MATH value, not the typed one — "50%" is saved as 0.5 so SUM/AVG
-  // work correctly. cellFormattingValue multiplies by 100 again on the way out.
+  // work correctly. formatValue multiplies by 100 again on the way out.
   const pm = /^(-?[\d,]+(?:\.\d+)?)\s*%$/.exec(s);
-  if (pm) return { cellFormatting: 'percent', normalized: String(parseFloat(pm[1].replace(/,/g, '')) / 100) };
+  if (pm) return { format: 'percent', normalized: String(parseFloat(pm[1].replace(/,/g, '')) / 100) };
 
   // Email / URL: deliberately loose "good enough for a spreadsheet" checks, not RFC validation.
   // Their only job is to decide whether the cell renders as a tappable link.
-  if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(s)) return { cellFormatting: 'email', normalized: s };
-  if (/^https?:\/\/\S+$/i.test(s)) return { cellFormatting: 'url', normalized: s };
+  if (/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(s)) return { format: 'email', normalized: s };
+  if (/^https?:\/\/\S+$/i.test(s)) return { format: 'url', normalized: s };
 
   // Phone: the regex allows spaces, dashes, dots and parens, then we count the DIGITS only.
   // Manipulate here: 7–15 digits is the accepted range (short local numbers up to the E.164
   // maximum). Without that digit count, a long dash-separated ID would be mistaken for a phone.
   if (/^\+?[\d][\d\s\-().]{6,}\d$/.test(s) && s.replace(/\D/g, '').length >= 7 && s.replace(/\D/g, '').length <= 15) {
-    return { cellFormatting: 'phone', normalized: s };
+    return { format: 'phone', normalized: s };
   }
 
   // Date: only two shapes are accepted (M/D/YYYY and YYYY-M-D) to avoid guessing wildly.
@@ -41,23 +41,23 @@ export function detectFormat(raw) {
     const d = new Date(s);
     // vocab: an invalid Date's getTime() is NaN — that's the standard "did this parse?" test
     // Stored as YYYY-MM-DD (slice(0,10) of the ISO string) so dates sort correctly as strings.
-    if (!Number.isNaN(d.getTime())) return { cellFormatting: 'date', normalized: d.toISOString().slice(0, 10) };
+    if (!Number.isNaN(d.getTime())) return { format: 'date', normalized: d.toISOString().slice(0, 10) };
   }
 
   // Formatted number, e.g. "1,234.5". Bare digits are NOT tagged here — they're already numeric,
-  // so they fall through to the default branch of cellFormattingValue with no cellFormatting at all.
-  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return { cellFormatting: 'number', normalized: s.replace(/,/g, '') };
+  // so they fall through to the default branch of formatValue with no format at all.
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return { format: 'number', normalized: s.replace(/,/g, '') };
   return null;
 }
 
-// Render side: stored value + the cell's cellFormatting tag → the string shown in the grid.
-// Every branch defensively falls back to String(value) when the value doesn't match its cellFormatting,
+// Render side: stored value + the cell's format tag → the string shown in the grid.
+// Every branch defensively falls back to String(value) when the value doesn't match its format,
 // so bad data shows the raw text instead of "NaN" or a crash.
-export function cellFormattingValue(value, cell) {
+export function formatValue(value, cell) {
   if (value == null || value === '') return '';
-  // vocab: ?. = optional chaining — `cell` may be undefined when cellFormattingting a formulaCalculator result
-  const fmt = cell?.cellFormatting;
-  // Booleans come from formulaCalculators (e.g. =A1>5). Uppercase TRUE/FALSE is the spreadsheet convention.
+  // vocab: ?. = optional chaining — `cell` may be undefined when formatting a formula result
+  const fmt = cell?.format;
+  // Booleans come from formulas (e.g. =A1>5). Uppercase TRUE/FALSE is the spreadsheet convention.
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   switch (fmt) {
     case 'currency': {
@@ -65,7 +65,7 @@ export function cellFormattingValue(value, cell) {
       if (Number.isNaN(n)) return String(value);
       // Manipulate here: '$' is the fallback symbol when the cell didn't record one.
       const sym = cell?.currency || '$';
-      // vocab: toLocaleString = cellFormatting a number using the device's locale (comma/period rules).
+      // vocab: toLocaleString = format a number using the device's locale (comma/period rules).
       // Passing `undefined` as the locale means "use the device's". Forcing min AND max to 2
       // is what makes money always show cents — "5" renders as "$5.00".
       return sym + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -89,7 +89,7 @@ export function cellFormattingValue(value, cell) {
       // Displayed in the device's local date style even though it's stored as ISO.
       return d.toLocaleDateString();
     }
-    // These three are stored and shown verbatim — the cellFormatting tag only affects tap behavior
+    // These three are stored and shown verbatim — the format tag only affects tap behavior
     // and styling elsewhere, not the text itself.
     case 'phone':
     case 'email':
@@ -102,7 +102,7 @@ export function cellFormattingValue(value, cell) {
     default:
       // Untagged numbers: keep small whole numbers exactly as typed (no thousands separator on
       // "1234", which would look wrong for things like a year or a rep count), and only switch
-      // to locale cellFormattingting for large or fractional values.
+      // to locale formatting for large or fractional values.
       if (typeof value === 'number') {
         // Manipulate here: 1e6 is the "big enough to deserve separators" threshold.
         if (Number.isInteger(value) && Math.abs(value) < 1e6) return String(value);
@@ -118,7 +118,7 @@ export function cellFormattingValue(value, cell) {
 // Big or whole numbers get 2 decimals; small fractions get 4 so a value like 0.0125 doesn't
 // collapse to "0.01" and look like zero movement.
 // Manipulate here: the 1000 threshold and the 2 / 4 decimal caps.
-export function cellFormattingNumberNice(n) {
+export function formatNumberNice(n) {
   // vocab: Number.isFinite = a real number, excluding NaN and Infinity
   if (!Number.isFinite(n)) return String(n);
   if (Math.abs(n) >= 1000 || Number.isInteger(n)) {

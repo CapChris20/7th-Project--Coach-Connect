@@ -144,7 +144,7 @@ function parseSetsRepsRest(ex) {
   return { sets, reps, rest };
 }
 
-function cellFormattingExerciseMeta(ex) {
+function formatExerciseMeta(ex) {
   const { sets, reps, rest } = parseSetsRepsRest(ex);
   const mid = `${sets}×${reps}`;
   if (!rest || rest === "—") return mid;
@@ -381,7 +381,7 @@ function TrainingDayCard({ day, onPress, isDark, dayIndex = 0 }) {
                 key={`${ex.name}-${i}`}
                 index={String(i + 1).padStart(2, "0")}
                 title={ex.name}
-                meta={cellFormattingExerciseMeta(ex)}
+                meta={formatExerciseMeta(ex)}
                 grad={accent.grad}
                 isDark={isDark}
               />
@@ -504,7 +504,7 @@ function DayDetailScreen({ day, onBack, onOpenExercise, isDark, dayIndex = 0 }) 
                   <IndexBadge index={String(i + 1).padStart(2, "0")} grad={accent.grad} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[styles.previewTitle, { color: text }]}>{ex.name}</Text>
-                    <Text style={[styles.previewMeta, { color: tertiary }]}>{cellFormattingExerciseMeta(ex)}</Text>
+                    <Text style={[styles.previewMeta, { color: tertiary }]}>{formatExerciseMeta(ex)}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={tertiary} />
                 </View>

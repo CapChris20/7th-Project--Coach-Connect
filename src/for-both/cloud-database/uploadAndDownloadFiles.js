@@ -37,7 +37,7 @@ export const uploadFile = async (file, path, metadata = {}) => {
       const response = await fetch(file.uri);
       fileBlob = await response.blob();
     } else {
-      throw new Error('Invalid file cellFormatting');
+      throw new Error('Invalid file format');
     }
     
     const uploadResult = await uploadBytes(storageRef, fileBlob, metadata);

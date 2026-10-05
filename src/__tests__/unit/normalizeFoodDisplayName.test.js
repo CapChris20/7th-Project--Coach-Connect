@@ -72,7 +72,7 @@ describe('helpers', () => {
     expect(collapseRepeatedNameSegments('Big Mac, Big Mac')).toBe('Big Mac');
   });
 
-  it('smartTitleCase preserves short uppercase reportColors', () => {
+  it('smartTitleCase preserves short uppercase tokens', () => {
     expect(smartTitleCase('IN-N-OUT DOUBLE-DOUBLE')).toBe('IN-N-OUT Double-Double');
   });
 });

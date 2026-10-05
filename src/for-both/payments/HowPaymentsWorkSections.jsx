@@ -9,7 +9,7 @@ import {
   VENMO_VS_COACHCONNECT,
   TRAINER_CLIENT_PAYMENT_FAQ,
   EARNINGS_MOCK,
-  cellFormattingPaymentDollars,
+  formatPaymentDollars,
 } from './howPaymentsWorkText';
 
 export function HowPaymentsWorkSection({ compact = false, textColor = '#FFFFFF', mutedColor = 'rgba(255,255,255,0.6)' }) {
@@ -45,7 +45,7 @@ export function EarningsDashboardPreview({
           <Text style={[styles.txName, { color: textColor }]} numberOfLines={1}>
             {row.name}
           </Text>
-          <Text style={[styles.txAmount, { color: textColor }]}>{cellFormattingPaymentDollars(row.amount)}</Text>
+          <Text style={[styles.txAmount, { color: textColor }]}>{formatPaymentDollars(row.amount)}</Text>
           <Text
             style={[
               styles.txStatus,

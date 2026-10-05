@@ -11,7 +11,7 @@
 import { auth } from '../../app-start/cloudConnection';
 
 /**
- * Bearer token headers for Coach Connect API screenNames (Firebase ID token).
+ * Bearer token headers for Coach Connect API routes (Firebase ID token).
  */
 export async function getApiAuthHeaders(extraHeaders = {}) {
   const headers = {

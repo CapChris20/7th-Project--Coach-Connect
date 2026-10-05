@@ -131,7 +131,7 @@ export default function DocumentViewer({
     }
   };
 
-  const cellFormattingDate = (date) => {
+  const formatDate = (date) => {
     if (!date) return '';
     const d = date instanceof Date ? date : new Date(date);
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -212,7 +212,7 @@ export default function DocumentViewer({
             )}
             <View style={{ marginTop: 24, alignItems: 'center' }}>
               <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
-                Shared by {trainerName || 'your trainer'} on {cellFormattingDate(createdAt || new Date())}
+                Shared by {trainerName || 'your trainer'} on {formatDate(createdAt || new Date())}
               </Text>
             </View>
           </ScrollView>

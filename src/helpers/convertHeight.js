@@ -1,4 +1,4 @@
-// US height input engine — one text field where the user spreadsheetConstants 5'11" (or 5,11 / 5-11 / 5 11).
+// US height input engine — one text field where the user types 5'11" (or 5,11 / 5-11 / 5 11).
 // Flow: raw keystrokes → normalize odd punctuation → strip to digits + ' " → parse into { feet, inches }.
 // Used by onboarding and profile height fields; `height: null` means "keep typing, not valid yet".
 
@@ -32,7 +32,7 @@ function sanitizeHeightDraft(raw) {
 
 // Renders a stored height back into the field. Handles both storage shapes the app has used:
 // the current { feet, inches } object and legacy total-inches numbers.
-export function cellFormattingHeightInputDisplay(h) {
+export function formatHeightInputDisplay(h) {
   // vocab/symbol: == null = true for BOTH null and undefined (the one place loose equality is useful)
   if (h == null) return '';
   // Shape A — the object form. The `!Array.isArray` guard matters because arrays are
@@ -129,7 +129,7 @@ export function parseHeightInputText(raw) {
   }
 
   // Success: hand back the canonical `5'11"` string, not the raw draft, so the field
-  // snaps to clean cellFormattingting the moment the value becomes valid.
+  // snaps to clean formatting the moment the value becomes valid.
   return {
     text: `${feet}'${inches}"`,
     height,

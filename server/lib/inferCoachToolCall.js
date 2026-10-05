@@ -45,7 +45,7 @@ const {
 const {
   guardCoachToolProposal,
   isValidCoachToolProposal,
-  isIncellFormattingionalUserMessage,
+  isInformationalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
 } = require('../../src/ai-coach/coach-actions/shouldAskFirst');
@@ -76,7 +76,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   if (!t) return null;
 
   // Advice / questions should never invent Confirm chips.
-  if (isIncellFormattingionalUserMessage(raw) && !userExplicitlyRequestsAction(raw)) {
+  if (isInformationalUserMessage(raw) && !userExplicitlyRequestsAction(raw)) {
     return null;
   }
 
@@ -438,7 +438,7 @@ function serverNormalizeToolCall(raw) {
 
 function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
   const user = String(userMessage || '').trim();
-  if (isIncellFormattingionalUserMessage(user)) return [];
+  if (isInformationalUserMessage(user)) return [];
 
   const parsed = [];
   const seen = new Set();

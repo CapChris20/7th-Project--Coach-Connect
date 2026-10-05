@@ -828,7 +828,7 @@ export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingDat
                         <Ionicons name="cloud-offline-outline" size={24} color={COLORS.pink} />
                         <Text style={[styles.emptyTitle, { color: COLORS.text }]}>No videos loaded</Text>
                         <Text style={[styles.emptyBody, { color: COLORS.textMuted }]}>
-                          Sign in and ensure your YouTube API key is cloudConnectionured, then reload.
+                          Sign in and ensure your YouTube API key is configured, then reload.
                         </Text>
                       </View>
                     </LinearGradient>

@@ -45,8 +45,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
 
-// Digs the Google reportColors out of an OAuth response, whichever shape it arrived in.
-// Why this is messy: expo-auth-session returns reportColors camelCase on `authentication`, snake_case on
+// Digs the Google tokens out of an OAuth response, whichever shape it arrived in.
+// Why this is messy: expo-auth-session returns tokens camelCase on `authentication`, snake_case on
 // `params`, and in the installed-app flow they only appear after an async code exchange. Checking
 // all four spellings is cheaper than guessing which flow ran.
 // vocab: idToken = the signed proof of WHO the user is (this is what Firebase needs).
@@ -96,7 +96,7 @@ let roleMismatchNextViewInMemory = null;
 
 const GOOGLE_OAUTH_NOT_READY_TITLE = 'Google Sign-In Not Ready';
 const GOOGLE_OAUTH_NOT_READY_MESSAGE =
-  'Google Sign-In is not cloudConnectionured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains';
+  'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains';
 
 async function readNormalizedFirestoreRole(uid) {
   if (!db || !uid) return null;
@@ -548,7 +548,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [isLoadingApple, setIsLoadingApple] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
 
-  // Google OAuth cloudConnectionuration (shared for signup and login)
+  // Google OAuth configuration (shared for signup and login)
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
   const googleRedirectUri = useMemo(
     () => getGoogleIosOAuthRedirectUri(googleIosClientId),
@@ -698,7 +698,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       console.error('❌ Firebase not initialized:', { auth: !!auth, db: !!db });
       setErrorPopup({
         title: 'Error',
-        message: 'Firebase is not initialized. Please check your cloudConnectionuration.',
+        message: 'Firebase is not initialized. Please check your configuration.',
       });
       return;
     }
@@ -866,7 +866,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       } else if (error.code === 'auth/operation-not-allowed') {
         errorMessage += 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
       } else if (error.message?.includes('blocked') || error.message?.includes('disabled')) {
-        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is cloudConnectionured\n3. Authorized domains include your app domain';
+        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
       } else {
         errorMessage += error.message || 'Please try again.';
       }
@@ -910,7 +910,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     if (!auth) {
       setErrorPopup({
         title: 'Error',
-        message: 'Firebase authentication is not initialized. Please check your cloudConnectionuration.',
+        message: 'Firebase authentication is not initialized. Please check your configuration.',
       });
       return;
     }
@@ -1067,7 +1067,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       } else if (error.code === 'auth/operation-not-allowed') {
         errorMessage += 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
       } else if (error.message?.includes('blocked') || error.message?.includes('disabled')) {
-        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is cloudConnectionured\n3. Authorized domains include your app domain';
+        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
       } else {
         errorMessage += error.message || 'Please try again.';
       }

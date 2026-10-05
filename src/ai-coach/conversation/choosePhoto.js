@@ -28,7 +28,7 @@ async function normalizePickedImage(asset, fallbackName = 'photo.jpg') {
       [{ resize: { width: 1024 } }],
       {
         compress: 0.72,
-        cellFormatting: ImageManipulator.SaveFormat.JPEG,
+        format: ImageManipulator.SaveFormat.JPEG,
         base64: true,
       }
     );

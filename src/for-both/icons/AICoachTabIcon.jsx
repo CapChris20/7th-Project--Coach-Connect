@@ -12,7 +12,7 @@ import {
   BRAND_ICON_GRADIENT_END,
 } from '../../look-and-feel/brandColors';
 
-const GEMINI_MARK = require('../../../assets/icons/google_gemini.png');
+const GEMINI_MARK = require('../../assets/icons/google_gemini.png');
 
 export default function AICoachTabIcon({
   size = 36,

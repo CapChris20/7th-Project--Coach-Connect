@@ -149,7 +149,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
   const handleUploadDocument = async () => {
     if (!requireUid()) return;
     const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'application/msword', 'application/vnd.openxmlcellFormattings-officedocument.*', 'text/plain', '*/*'],
+      type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.*', 'text/plain', '*/*'],
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
@@ -174,7 +174,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
   const handleUploadSpreadsheet = async () => {
     if (!requireUid()) return;
     const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/vnd.openxmlcellFormattings-officedocument.spreadsheetml.sheet', 'text/csv', '*/*'],
+      type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', '*/*'],
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;

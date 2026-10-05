@@ -31,7 +31,7 @@ import {
   PLATFORM_FEE_RATE,
   trainerGetsFromAmount,
   platformFeeFromAmount,
-  cellFormattingPaymentDollars,
+  formatPaymentDollars,
 } from './howPaymentsWorkText';
 
 const QUICK_AMOUNTS = [50, 100, 150];
@@ -45,8 +45,8 @@ const useStripeHook =
   typeof stripeModule?.useStripe === 'function' ? stripeModule.useStripe : () => null;
 const cardPaymentBlock = getStripeCardPaymentBlockReason();
 
-function cellFormattingMoney(value) {
-  return cellFormattingPaymentDollars(value);
+function formatMoney(value) {
+  return formatPaymentDollars(value);
 }
 
 function newChargeIdempotencyKey() {
@@ -205,8 +205,8 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
           <Ionicons name="checkmark-circle" size={52} color="#30D158" />
         </View>
         <Text style={styles.successTitle}>Payment successful</Text>
-        <Text style={styles.successLine}>You paid {cellFormattingMoney(success.amount)}</Text>
-        <Text style={styles.successLine}>Coach receives {cellFormattingMoney(success.trainerGets)}</Text>
+        <Text style={styles.successLine}>You paid {formatMoney(success.amount)}</Text>
+        <Text style={styles.successLine}>Coach receives {formatMoney(success.trainerGets)}</Text>
         <Text style={styles.successSub}>Saved to your payment history.</Text>
       </View>
     );
@@ -256,7 +256,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
                 activeOpacity={0.85}
               >
                 <Text style={[styles.quickBtnText, active && styles.quickBtnTextActive]}>
-                  {cellFormattingMoney(value)}
+                  {formatMoney(value)}
                 </Text>
               </TouchableOpacity>
             );
@@ -265,8 +265,8 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
 
         {amountOk ? (
           <Text style={styles.feeOneLiner}>
-            Coach gets {cellFormattingMoney(trainerGets)} · {Math.round(PLATFORM_FEE_RATE * 100)}% platform fee (
-            {cellFormattingMoney(platformFee)})
+            Coach gets {formatMoney(trainerGets)} · {Math.round(PLATFORM_FEE_RATE * 100)}% platform fee (
+            {formatMoney(platformFee)})
           </Text>
         ) : null}
 
@@ -331,7 +331,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
                 {error
                   ? 'Try again'
                   : amountOk
-                    ? `Pay ${cellFormattingMoney(numericAmount)}`
+                    ? `Pay ${formatMoney(numericAmount)}`
                     : 'Pay now'}
               </Text>
             )}

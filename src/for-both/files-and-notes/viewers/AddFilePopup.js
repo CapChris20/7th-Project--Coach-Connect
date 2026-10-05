@@ -174,7 +174,7 @@ export default function AddFilePopup({
         type: [
           'application/pdf',
           'application/msword',
-          'application/vnd.openxmlcellFormattings-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           '*/*',
         ],
         copyToCacheDirectory: true,
@@ -227,7 +227,7 @@ export default function AddFilePopup({
         type: [
           'application/pdf',
           'application/msword',
-          'application/vnd.openxmlcellFormattings-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           '*/*',
         ],
         copyToCacheDirectory: true,
@@ -318,7 +318,7 @@ export default function AddFilePopup({
     if (!uid) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/vnd.openxmlcellFormattings-officedocument.spreadsheetml.sheet', 'text/csv', '*/*'],
+        type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', '*/*'],
         copyToCacheDirectory: true,
       });
       if (result.canceled) return;

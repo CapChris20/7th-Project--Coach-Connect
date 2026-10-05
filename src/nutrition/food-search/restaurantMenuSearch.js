@@ -183,7 +183,7 @@ function parseCasualMenuIntent(userQuery) {
   const q = normalizeQueryText(userQuery);
   const chain = detectRestaurantChain(q);
   const itemPhrase = chain ? extractItemPhrase(q, chain) : q;
-  const reportColors = itemTokens(itemPhrase);
+  const tokens = itemTokens(itemPhrase);
   const size = detectSize(q);
   const topping = detectTopping(q);
   const hasSlice = /\b(slice|slices)\b/.test(q);
@@ -197,13 +197,13 @@ function parseCasualMenuIntent(userQuery) {
 
   const hasMenuSignal = MENU_ITEM_SIGNAL.test(itemPhrase) || MENU_ITEM_SIGNAL.test(q);
   const isCasualMenuQuery =
-    !!chain && (hasMenuSignal || reportColors.length >= 1 || isCasualPizzaSlice);
+    !!chain && (hasMenuSignal || tokens.length >= 1 || isCasualPizzaSlice);
 
   return {
     chain,
     kind: chain?.kind || null,
     itemPhrase,
-    itemTokens: reportColors,
+    itemTokens: tokens,
     size,
     topping,
     hasSlice,

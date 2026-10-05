@@ -34,7 +34,7 @@ function pctTrend(current, previous) {
   return Math.round(((current - previous) / Math.abs(previous)) * 100);
 }
 
-function cellFormattingSteps(n) {
+function formatSteps(n) {
   if (n == null) return null;
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
   return String(round0(n));
@@ -375,7 +375,7 @@ function computeStats(days, report) {
     display: {
       sleep: avgSleep != null ? String(round1(avgSleep)) : '—',
       water: avgWater != null ? String(round1(avgWater)) : '—',
-      steps: avgSteps != null ? cellFormattingSteps(avgSteps) : '—',
+      steps: avgSteps != null ? formatSteps(avgSteps) : '—',
       calories: avgCalories != null ? String(round0(avgCalories)) : '—',
       protein: avgProtein != null ? String(round1(avgProtein)) : '—',
     },
@@ -412,9 +412,9 @@ export function prepareReportForScreenToWeekReport(
 ) {
   if (!report || !parsers) return null;
 
-  const { parseDayNote, parseStructuredDayNote, cellFormattingDateRange } = parsers;
+  const { parseDayNote, parseStructuredDayNote, formatDateRange } = parsers;
   const weekStart = report.weekStart || report.weekId || '';
-  const dates = cellFormattingDateRange(report);
+  const dates = formatDateRange(report);
   const days = parseWeekDays(
     report,
     parseDayNote,
@@ -484,7 +484,7 @@ export function prepareReportForScreensToWeeks(
 }
 
 /** Plain-text day line for share / export. */
-export function cellFormattingDayForShare(day) {
+export function formatDayForShare(day) {
   const parts = [`${day.fullDayName} (${day.date})`];
   if (!day.hasCheckIn && !dayHasData(day)) {
     parts.push('No check-in');

@@ -148,7 +148,7 @@ export default function LoginGate() {
 
   // The heart of this file: Firebase's auth listener.
   useEffect(() => {
-    // Firebase never initialized (missing cloudConnection — see cloudConnection.js). Drop the loading state so the
+    // Firebase never initialized (missing config — see config.js). Drop the loading state so the
     // login screen at least renders instead of hanging on a black overlay.
     if (!auth) {
       setAuthLoading(false);
@@ -161,7 +161,7 @@ export default function LoginGate() {
       const prevUid = prevUidRef.current;
 
       // FIRST, before any state update: if the identity changed, wipe the previous user's cached
-      // data and push reportColors off this device. Doing this before setUser is what stops account B
+      // data and push tokens off this device. Doing this before setUser is what stops account B
       // from briefly rendering with account A's cached profile.
       await handleAuthUidTransition(prevUid, firebaseUser, {
         clearPushTokensForUid,
@@ -195,7 +195,7 @@ export default function LoginGate() {
         flushPendingOnboardingSync(firebaseUser).catch(() => {});
 
         // --- Profile bootstrap, attempt 1 of 4: Firestore with a timeout -------------------
-        // We read Firestore directly instead of asking our backend `/api/me`, so a miscloudConnectionured or
+        // We read Firestore directly instead of asking our backend `/api/me`, so a misconfigured or
         // down API can't break sign-in. The whole point of the next ~80 lines is that the user gets
         // INTO the app no matter which of these sources is available.
         try {

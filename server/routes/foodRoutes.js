@@ -28,7 +28,7 @@ const {
   isJunkWebSearchTitle,
   isPlausibleNutritionRow,
   dedupeFoodRows,
-  cellFormattingUserQueryAsFoodName,
+  formatUserQueryAsFoodName,
   applyFoodCardPresentationToRows,
 } = require('../../src/nutrition/food-search/tidyFoodTitles');
 const { lookupBarcodeFatSecret, fatSecretConfigured, searchFoodsFatSecret } = require('../lib/fatSecretClient');
@@ -667,15 +667,15 @@ async function lookupUsdaBrandedByName(productName, brandHint = '') {
     const foods = res.data?.foods || [];
     if (!foods.length) return null;
 
-    const reportColors = distinctiveNameTokens(q);
-    if (reportColors.length < 2) return null;
+    const tokens = distinctiveNameTokens(q);
+    if (tokens.length < 2) return null;
 
     const brandTok = distinctiveNameTokens(brandHint)[0] || '';
     const scored = foods.map((f) => {
       const desc = `${f.description || ''} ${f.brandOwner || ''} ${f.brandName || ''}`.toLowerCase();
       let score = 0;
       let matched = 0;
-      for (const t of reportColors) {
+      for (const t of tokens) {
         if (desc.includes(t)) {
           score += 2;
           matched += 1;
@@ -692,8 +692,8 @@ async function lookupUsdaBrandedByName(productName, brandHint = '') {
     }).sort((a, b) => b.score - a.score);
 
     const best = scored[0];
-    // Require most distinctive reportColors to appear — stops yeast/Chomps poisoning
-    const needMatched = Math.max(2, Math.ceil(reportColors.length * 0.6));
+    // Require most distinctive tokens to appear — stops yeast/Chomps poisoning
+    const needMatched = Math.max(2, Math.ceil(tokens.length * 0.6));
     if (!best || best.matched < needMatched || best.score < 6) return null;
     console.log('[Barcode] USDA name fallback:', best.f.description, 'score:', best.score, 'matched:', best.matched);
     return mapUsdaBrandedSearchHitToBarcodeFood(best.f);
@@ -779,7 +779,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
   let source = '';
   let searchHint = null;
   
-  // --- Matching & ranking (query reportColors — no hardcoded restaurant name list) ---
+  // --- Matching & ranking (query tokens — no hardcoded restaurant name list) ---
   const PACKAGED_BEVERAGE_BRANDS = ['coca cola', 'coca-cola', 'coke', 'pepsi', 'sprite', 'dr pepper'];
 
   const normalizeText = (s) =>
@@ -1163,7 +1163,7 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
         pushFoods(dBrand.foods);
       }
 
-      console.log('[Food Search] USDA mixed dataspreadsheetConstants (full query)...');
+      console.log('[Food Search] USDA mixed datatypes (full query)...');
       const rMix = await fetchWithTimeout(
         apiUrl,
         {

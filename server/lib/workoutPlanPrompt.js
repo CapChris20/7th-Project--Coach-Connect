@@ -205,8 +205,8 @@ EXERCISE tips (tips[] must be EXACTLY 3 strings, each 1–2 sentences max):
 
 WARMUP (warmup string):
 - Must be more specific than a generic list.
-- Include the WHY for each warmup step using a simple arrow cellFormatting.
-- Example cellFormatting: "5 min easy row (blood flow) → 15 band pull-aparts (rear delt activation) → 10 arm circles (shoulder mobility)".
+- Include the WHY for each warmup step using a simple arrow format.
+- Example format: "5 min easy row (blood flow) → 15 band pull-aparts (rear delt activation) → 10 arm circles (shoulder mobility)".
 
 REST DAY FORMAT (VERY IMPORTANT):
 Rest days MUST use a "recoveryActivities" array instead of a long "recoveryNote" paragraph.

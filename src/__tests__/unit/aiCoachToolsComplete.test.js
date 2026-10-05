@@ -1,7 +1,7 @@
 /**
  * Full offline regression for all 15 AI Coach tools.
  * Covers: inference fallback, model JSON merge, delete metric routing,
- * misroute fixes, and incellFormattingional (no-tool) guards.
+ * misroute fixes, and informational (no-tool) guards.
  */
 const { COACH_TOOL_NAMES } = require('../../ai-coach/coach-actions/readActionsFromReply');
 const { readActionsFromReply } = require('../../ai-coach/coach-actions/readActionsFromReply');
@@ -12,7 +12,7 @@ const {
 const {
   filterValidCoachToolProposals,
   guardCoachToolProposal,
-  isIncellFormattingionalUserMessage,
+  isInformationalUserMessage,
 } = require('../../ai-coach/coach-actions/shouldAskFirst');
 const {
   inferDeleteLogParams,
@@ -208,7 +208,7 @@ describe('AI Coach tools — complete regression', () => {
     });
   });
 
-  describe('incellFormattingional questions must not propose tools', () => {
+  describe('informational questions must not propose tools', () => {
     const questions = [
       'Is 10 hours of sleep too much?',
       'How much protein should I eat?',
@@ -217,7 +217,7 @@ describe('AI Coach tools — complete regression', () => {
     ];
 
     it.each(questions)('no tools for: %s', (user) => {
-      expect(isIncellFormattingionalUserMessage(user)).toBe(true);
+      expect(isInformationalUserMessage(user)).toBe(true);
       expect(resolveTools('Here is some advice about your question.', user)).toEqual([]);
       expect(inferCoachToolCall(user, {})).toBeNull();
     });

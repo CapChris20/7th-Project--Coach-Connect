@@ -73,7 +73,7 @@ import GlassBackgroundDark from '../look-and-feel/GlassBackgroundDark';
 import GlassBackgroundLight from '../look-and-feel/GlassBackgroundLight';
 import { getOnboardingIconSource } from '../for-both/setup-icons/onboardingIconRegistry';
 import {
-  cellFormattingHeightInputDisplay,
+  formatHeightInputDisplay,
   parseHeightInputText,
   isHeightComplete,
   finalizeHeightFromDraft,
@@ -114,7 +114,7 @@ const SCREEN_PAD = 16;
 const GRID_GUTTER = 16;
 const TWO_COL_ITEM = (width - SCREEN_PAD * 2 - GRID_GUTTER) / 2;
 
-// --- Onboarding UI primitives (rest of components live in this file; reportColors + primary CTA in setupStepPieces.jsx) ---
+// --- Onboarding UI primitives (rest of components live in this file; tokens + primary CTA in setupStepPieces.jsx) ---
 
 function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -1734,13 +1734,13 @@ export default function NewUserSetupScreen({
   };
 
   const postOnboardingApi = async (path, body) => {
-    const whereToConnects = getApiBaseCandidates();
+    const baseUrls = getApiBaseCandidates();
 
     const firebaseUser = auth?.currentUser;
     if (!firebaseUser) throw new Error('Missing Firebase auth user.');
 
     let lastErr = null;
-    const fetchWithToken = async (whereToConnect) => {
+    const fetchWithToken = async (baseUrl) => {
       await firebaseUser.reload();
       const idToken = await firebaseUser.getIdToken(true);
       if (!idToken || typeof idToken !== 'string') {
@@ -1750,7 +1750,7 @@ export default function NewUserSetupScreen({
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
       try {
-        return await fetch(`${whereToConnect}${path}`, {
+        return await fetch(`${baseUrl}${path}`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${idToken}`,
@@ -1766,15 +1766,15 @@ export default function NewUserSetupScreen({
     };
 
     const tried = [];
-    for (const whereToConnect of whereToConnects) {
+    for (const baseUrl of baseUrls) {
       try {
-        tried.push(whereToConnect);
-        let resp = await fetchWithToken(whereToConnect);
+        tried.push(baseUrl);
+        let resp = await fetchWithToken(baseUrl);
 
         if (!resp.ok) {
           const text = await resp.text().catch(() => '');
           if (resp.status === 401) {
-            resp = await fetchWithToken(whereToConnect);
+            resp = await fetchWithToken(baseUrl);
             if (!resp.ok) {
               const retryText = await resp.text().catch(() => '');
               throw new Error(`Server ${path} failed (${resp.status}) ${retryText}`.trim());
@@ -1789,9 +1789,9 @@ export default function NewUserSetupScreen({
         const msg = e?.message || String(e);
         // Add a bit more context for the common RN error: "Network request failed"
         if (msg.includes('Network request failed')) {
-          lastErr = new Error(`Network request failed for ${whereToConnect}${path}`);
+          lastErr = new Error(`Network request failed for ${baseUrl}${path}`);
         } else if (msg.includes('aborted') || msg.includes('AbortError')) {
-          lastErr = new Error(`Request timed out for ${whereToConnect}${path}`);
+          lastErr = new Error(`Request timed out for ${baseUrl}${path}`);
         } else {
           lastErr = e;
         }
@@ -1841,7 +1841,7 @@ export default function NewUserSetupScreen({
     setGeneratingCode(false);
   };
 
-  /** Normalize client input to match stored cellFormatting (XXX-XXX). Returns null if invalid. */
+  /** Normalize client input to match stored format (XXX-XXX). Returns null if invalid. */
   const normalizeInviteCodeForQuery = (raw) => {
     let s = String(raw || '').trim();
     if (!s) return null;
@@ -1849,7 +1849,7 @@ export default function NewUserSetupScreen({
     if (/^trainer/i.test(s)) s = s.replace(/^trainer[\-\s]*/i, '').trim();
     // Remove ALL non-alphanumeric characters, uppercase
     const cleaned = s.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    // Must be exactly 6 alphanumeric chars for XXX-XXX cellFormatting
+    // Must be exactly 6 alphanumeric chars for XXX-XXX format
     if (cleaned.length !== 6) return null;
     const result = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}`;
     return result.length === 7 ? result : null;
@@ -1926,7 +1926,7 @@ export default function NewUserSetupScreen({
 
   useEffect(() => {
     if (role === 'client' && currentStep === 1) {
-      setHeightDraft(cellFormattingHeightInputDisplay(onboardingData.height));
+      setHeightDraft(formatHeightInputDisplay(onboardingData.height));
     }
   }, [role, currentStep]);
 
@@ -1993,7 +1993,7 @@ export default function NewUserSetupScreen({
         case 4:
           return true; // Training philosophy — optional
         case 5:
-          // Availability + session cellFormatting required
+          // Availability + session format required
           return !!onboardingData.trainerAvailabilityStatus && !!onboardingData.sessionType;
         case 6:
           return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
@@ -2013,7 +2013,7 @@ export default function NewUserSetupScreen({
       const finalizedHeight = resolveClientHeight();
       if (finalizedHeight && !isHeightComplete(onboardingData.height)) {
         setOnboardingData((prev) => ({ ...prev, height: finalizedHeight }));
-        setHeightDraft(cellFormattingHeightInputDisplay(finalizedHeight));
+        setHeightDraft(formatHeightInputDisplay(finalizedHeight));
       }
     }
     if (!validateStep()) return;
@@ -2215,7 +2215,7 @@ export default function NewUserSetupScreen({
         'How long have you been training clients?',
         'What are your specialties?',
         'Describe your training philosophy',
-        'Availability & session cellFormatting',
+        'Availability & session format',
         'Almost done!',
         'Your client invite code',
         'Coach Connect Pro',
@@ -2254,15 +2254,15 @@ export default function NewUserSetupScreen({
               label="HEIGHT"
               value={heightDraft}
               onChangeText={(text) => {
-                const { text: cellFormattingted, height } = parseHeightInputText(text);
-                setHeightDraft(cellFormattingted);
+                const { text: formatted, height } = parseHeightInputText(text);
+                setHeightDraft(formatted);
                 setOnboardingData((prev) => ({ ...prev, height }));
               }}
               onBlur={() => {
                 const finalized = finalizeHeightFromDraft(heightDraft);
                 if (!finalized) return;
                 setOnboardingData((prev) => ({ ...prev, height: finalized }));
-                setHeightDraft(cellFormattingHeightInputDisplay(finalized));
+                setHeightDraft(formatHeightInputDisplay(finalized));
               }}
               placeholder={'e.g., 5\'11" or 5,11'}
               keyboardType="default"
@@ -2748,7 +2748,7 @@ Examples:
                     type: [
                       'application/pdf',
                       'application/msword',
-                      'application/vnd.openxmlcellFormattings-officedocument.wordprocessingml.document',
+                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                       'image/*',
                       '*/*',
                     ],

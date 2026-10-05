@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { cellFormattingDateShort } from '../../helpers/fileSizeAndDateText';
+import { formatDateShort } from '../../helpers/fileSizeAndDateText';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 export function NotesFromTrainerSection({ items, onMarkRead }) {
@@ -27,7 +27,7 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
         ...x,
         // createdAt arrives in three shapes depending on where it came from: an already-converted
         // Date, a Firestore Timestamp (which needs .toDate()), or a raw string from cache.
-        // Normalizing here means the sort and the cellFormattingter below only deal with one type.
+        // Normalizing here means the sort and the formatter below only deal with one type.
         // vocab: ?.toDate?.() = call toDate only if the value exists AND has that method
         createdAt: x?.createdAt instanceof Date ? x.createdAt : x?.createdAt?.toDate?.() || x?.createdAt,
       }));
@@ -128,7 +128,7 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
                     {body || '—'}
                   </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.45)', fontWeight: '800', fontSize: 11 }}>
-                    {note?.createdAt ? cellFormattingDateShort(note.createdAt) : ''}
+                    {note?.createdAt ? formatDateShort(note.createdAt) : ''}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={18} color="rgba(255,255,255,0.28)" />
@@ -202,7 +202,7 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
                       {String(note?.content || '').trim() || '—'}
                     </Text>
                     <Text style={{ color: 'rgba(255,255,255,0.45)', fontWeight: '800', fontSize: 11, marginTop: 6 }}>
-                      {note?.createdAt ? cellFormattingDateShort(note.createdAt) : ''}
+                      {note?.createdAt ? formatDateShort(note.createdAt) : ''}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -214,7 +214,7 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
                  measure for long note text. */
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <Text style={{ color: 'rgba(255,255,255,0.55)', fontWeight: '800', fontSize: 12 }}>
-                  {selected?.createdAt ? cellFormattingDateShort(selected.createdAt) : ''}
+                  {selected?.createdAt ? formatDateShort(selected.createdAt) : ''}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.86)', fontWeight: '700', fontSize: 14, lineHeight: 22, marginTop: 10 }}>
                   {String(selected?.content || '').trim() || '—'}

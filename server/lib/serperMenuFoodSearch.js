@@ -10,15 +10,15 @@ const {
   fixTypoForSerperQuery,
   buildSerperFallbackQueries,
 } = require('../nutritionSearchHelpers');
-const { resolveFoodBrandLabel } = require('../../src/nutrition/utils/foodBrandDisplay');
+const { resolveFoodBrandLabel } = require('../../src/nutrition/food-details/tidyBrandName');
 const {
   cleanSerperFoodTitle,
   displayNameForSerperRow,
   isJunkWebSearchTitle,
   isPlausibleNutritionRow,
   dedupeFoodRows,
-} = require('../../src/nutrition/utils/foodSearchTitle');
-const { rankSerperFoodResultRows } = require('../../src/nutrition/utils/restaurantSerperQuality');
+} = require('../../src/nutrition/food-search/tidyFoodTitles');
+const { rankSerperFoodResultRows } = require('../../src/nutrition/food-search/trustRestaurantResult');
 const { servingLabelFromQueryStructure } = require('../../src/nutrition/food-search/restaurantMenuSearch');
 
 const SERPER_ORGANIC_MAX = 10;

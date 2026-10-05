@@ -49,7 +49,7 @@ const ACCENT_PINK = '#BE185D';
 const ACCENT_ORANGE = '#C2410C';
 const PLATFORM_FEE_RATE = 0.1;
 
-function cellFormattingUsdFromCents(cents) {
+function formatUsdFromCents(cents) {
   const n = Number(cents);
   if (!Number.isFinite(n)) return '$0.00';
   return `$${(n / 100).toFixed(2)}`;
@@ -64,10 +64,10 @@ function monthlyRateToCents(rate) {
   return Math.round(n * 100);
 }
 
-function cellFormattingMonthlyRate(rate) {
+function formatMonthlyRate(rate) {
   const cents = monthlyRateToCents(rate);
   if (!cents) return null;
-  return cellFormattingUsdFromCents(cents);
+  return formatUsdFromCents(cents);
 }
 
 function isBillingEnabled(paymentStatus, rateCents) {
@@ -565,16 +565,16 @@ export default function EarningsScreen() {
           <Text style={sectionLabelStyle}>EARNINGS THIS MONTH</Text>
           <View style={styles.earningsRow}>
             <Text style={[styles.earningsLabel, { color: mutedColor }]}>Gross earnings</Text>
-            <Text style={[styles.earningsValue, { color: textColor }]}>{cellFormattingUsdFromCents(grossCents)}</Text>
+            <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(grossCents)}</Text>
           </View>
           <View style={styles.earningsRow}>
             <Text style={[styles.earningsLabel, { color: mutedColor }]}>Platform fees (10%)</Text>
-            <Text style={[styles.earningsValue, { color: textColor }]}>{cellFormattingUsdFromCents(feesCents)}</Text>
+            <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(feesCents)}</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border }]} />
           <View style={styles.earningsRow}>
             <Text style={[styles.earningsLabelNet, { color: textColor }]}>Your net</Text>
-            <Text style={[styles.earningsValueNet, { color: textColor }]}>{cellFormattingUsdFromCents(netCents)}</Text>
+            <Text style={[styles.earningsValueNet, { color: textColor }]}>{formatUsdFromCents(netCents)}</Text>
           </View>
           <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, marginTop: 12 }]} />
           <View style={[styles.earningsRow, { marginTop: 12, marginBottom: 0 }]}>
@@ -601,11 +601,11 @@ export default function EarningsScreen() {
             const rateCents = monthlyRateToCents(monthlyRate);
             const name = client.name || client.displayName || 'Client';
             const initials = getClientInitials(name);
-            const rateLabel = cellFormattingMonthlyRate(monthlyRate);
+            const rateLabel = formatMonthlyRate(monthlyRate);
             const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
             const billingOn = isBillingEnabled(payStatus, rateCents);
             const youKeep = rateCents
-              ? cellFormattingUsdFromCents(Math.round(rateCents * (1 - PLATFORM_FEE_RATE)))
+              ? formatUsdFromCents(Math.round(rateCents * (1 - PLATFORM_FEE_RATE)))
               : null;
             const statusTone =
               !rateCents || !billingOn

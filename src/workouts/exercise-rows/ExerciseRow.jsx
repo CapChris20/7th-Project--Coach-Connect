@@ -47,7 +47,7 @@ export default function ExerciseRow({
     setIsEditing(false);
   };
 
-  const cellFormattingRestTime = (seconds) => {
+  const formatRestTime = (seconds) => {
     if (seconds < 60) return `${seconds}s`;
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -122,7 +122,7 @@ export default function ExerciseRow({
               selectTextOnFocus
             />
           ) : (
-            <Text style={styles.detailValue}>{cellFormattingRestTime(exercise.restSeconds || 60)}</Text>
+            <Text style={styles.detailValue}>{formatRestTime(exercise.restSeconds || 60)}</Text>
           )}
         </View>
       </View>

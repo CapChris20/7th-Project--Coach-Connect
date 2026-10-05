@@ -3,7 +3,7 @@
  * Used as an authoritative first hit so Serper junk cannot crowd out famous items.
  *
  * Macros sourced from public chain nutrition pages / FastFoodNutrition (approx 2024–2026).
- * Ranges are intentional — restaurant formulaCalculators change; we store a representative serving.
+ * Ranges are intentional — restaurant formulas change; we store a representative serving.
  */
 
 const { normalizeQueryText, significantQueryTokens, countTokenHits } = require('./rankFoodResults');
@@ -370,9 +370,9 @@ function lookupTrustedFoods(query, limit = 3) {
       if (qNorm === a) score += 100;
       else if (qNorm.includes(a) || a.includes(qNorm)) score += 40;
     }
-    const reportColors = significantQueryTokens(`${food.brand} ${food.name}`);
-    const hits = countTokenHits(q, reportColors);
-    if (hits >= Math.min(2, reportColors.length)) score += hits * 8;
+    const tokens = significantQueryTokens(`${food.brand} ${food.name}`);
+    const hits = countTokenHits(q, tokens);
+    if (hits >= Math.min(2, tokens.length)) score += hits * 8;
     if (score > 0) scored.push({ food, score });
   }
 

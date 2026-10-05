@@ -14,7 +14,7 @@ export function toSessionDateLabel(d) {
   }
 }
 
-export function cellFormattingSessionDisplayTitle(title) {
+export function formatSessionDisplayTitle(title) {
   let s = String(title || 'Coach Check-In')
     .replace(/\{[\s\S]*?\}/g, '')
     .replace(/\s+/g, ' ')

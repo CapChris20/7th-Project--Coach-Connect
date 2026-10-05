@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { cellFormattingDateShort, cellFormattingFileSize, getFileTypeFromItem } from '../../../helpers/fileSizeAndDateText';
+import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../helpers/fileSizeAndDateText';
 
 /** Dark orange → dark purple accent gradient */
 const ORANGE_PURPLE_GRAD = ['#C2410C', '#4C1D95'];
@@ -143,8 +143,8 @@ export default function FilesSection({
     const meta = FILE_TYPE_META[fType] || FILE_TYPE_META.file;
     const name = file?.name || file?.title || 'File';
     const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
-    const when = createdAt ? cellFormattingDateShort(createdAt) : '';
-    const size = file?.size ? cellFormattingFileSize(file.size) : '';
+    const when = createdAt ? formatDateShort(createdAt) : '';
+    const size = file?.size ? formatFileSize(file.size) : '';
     const datePart = when ? when.replace(/,?\s*\d{4}$/, '').toUpperCase() : '';
     return { ...meta, name, when: datePart, size, fType };
   };
@@ -249,7 +249,7 @@ export default function FilesSection({
   const NoteCard = ({ note }) => {
     const preview = String(note?.content || note?.preview || '').trim();
     const createdAt = note?.createdAt?.toDate?.() || note?.createdAt;
-    const when = createdAt ? cellFormattingDateShort(createdAt) : null;
+    const when = createdAt ? formatDateShort(createdAt) : null;
     const noteTitle = isTrainer
       ? (note?.addedBy === 'trainer' ? 'Your note' : 'From client')
       : 'From your coach';

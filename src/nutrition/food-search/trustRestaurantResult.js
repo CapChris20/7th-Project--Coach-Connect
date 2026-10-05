@@ -338,8 +338,8 @@ function variantPreferenceScore(row, userQuery) {
   }
   if (sizesWanted.length === 0 && /\b(medium|regular|grande)\b/i.test(text)) score += 10;
 
-  const reportColors = significantQueryTokens(userQuery);
-  for (const t of reportColors) {
+  const tokens = significantQueryTokens(userQuery);
+  for (const t of tokens) {
     if (!DISTINGUISHING_TOKENS.has(t)) continue;
     if (new RegExp(`\\b${escapeRe(t)}\\b`, 'i').test(text)) score += 38;
     else score -= 30;
@@ -378,7 +378,7 @@ function variantPreferenceScore(row, userQuery) {
   else if (TRUSTED_DB_SOURCES.has(row.source) || TRUSTED_DB_SOURCES.has(src)) score += 55;
   if (WEAK_WEB_SOURCES.has(src) || WEAK_WEB_SOURCES.has(row.source)) score -= 25;
 
-  // Branded item queries: exact item reportColors beat related menu items (pizza vs breadsticks).
+  // Branded item queries: exact item tokens beat related menu items (pizza vs breadsticks).
   const queryCategory = inferFoodServingCategory(userQuery, '', '');
   const rowCategory = inferFoodServingCategory('', text, '');
   if (queryCategory !== 'generic' && rowCategory !== 'generic' && queryCategory !== rowCategory) {
@@ -405,20 +405,20 @@ function variantPreferenceScore(row, userQuery) {
 function scoreOrganicNutritionHit(hit, userQuery) {
   const text = `${hit.title || ''} ${hit.snippet || ''} ${hit.link || ''}`;
   const low = text.toLowerCase();
-  const reportColors = significantQueryTokens(userQuery);
+  const tokens = significantQueryTokens(userQuery);
   let score = 0;
 
-  if (reportColors.length === 0) return 0;
+  if (tokens.length === 0) return 0;
 
-  const hits = countTokenHits(text, reportColors);
+  const hits = countTokenHits(text, tokens);
   const need =
-    reportColors.length >= 4
-      ? Math.max(2, Math.ceil(reportColors.length * 0.5))
-      : reportColors.length >= 2
+    tokens.length >= 4
+      ? Math.max(2, Math.ceil(tokens.length * 0.5))
+      : tokens.length >= 2
         ? 2
         : 1;
 
-  if (hits >= reportColors.length) score += 75;
+  if (hits >= tokens.length) score += 75;
   else if (hits >= need) score += 35 + hits * 10;
   else score -= 55;
 
@@ -462,10 +462,10 @@ function macroCalorieConsistencyScore(macros) {
 }
 
 function brandTokenBonus(row, userQuery) {
-  const reportColors = significantQueryTokens(userQuery);
-  if (reportColors.length < 2) return 0;
+  const tokens = significantQueryTokens(userQuery);
+  if (tokens.length < 2) return 0;
   const text = getRowText(row).toLowerCase();
-  const brandish = reportColors.slice(0, Math.min(2, reportColors.length));
+  const brandish = tokens.slice(0, Math.min(2, tokens.length));
   let bonus = 0;
   for (const t of brandish) {
     if (text.includes(t.replace(/-/g, ' ')) || text.includes(t)) bonus += 14;
@@ -476,12 +476,12 @@ function brandTokenBonus(row, userQuery) {
 /** Final sort key for Serper food cards returned to the app. */
 function scoreSerperFoodResultRow(row, userQuery) {
   const text = getRowText(row).toLowerCase();
-  const reportColors = significantQueryTokens(userQuery);
+  const tokens = significantQueryTokens(userQuery);
   const macros = getRowMacros(row);
   const consistency = macroCalorieConsistencyScore(macros);
 
   let score = Number(row._organicScore) || 0;
-  score += countTokenHits(text, reportColors) * 12;
+  score += countTokenHits(text, tokens) * 12;
   score += consistency;
   score += variantPreferenceScore(row, userQuery);
   score += brandTokenBonus(row, userQuery);

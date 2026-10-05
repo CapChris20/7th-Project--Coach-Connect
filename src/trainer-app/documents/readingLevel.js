@@ -60,9 +60,9 @@ export function computeStats(text) {
   const syllablesPerWord = totalSyllables / wordCount;
 
   // Flesch Reading Ease
-  // vocab: Flesch Reading Ease = standard readability formulaCalculator. Higher = easier to read
+  // vocab: Flesch Reading Ease = standard readability formula. Higher = easier to read
   // (~100 is grade-school simple, ~30 is dense academic prose). It punishes two things only:
-  // long sentences and long words. Those constants are from the published formulaCalculator —
+  // long sentences and long words. Those constants are from the published formula —
   // don't tune them or the score stops matching every other tool that reports Flesch.
   const flesch = 206.835 - 1.015 * avgWordsPerSentence - 84.6 * syllablesPerWord;
 

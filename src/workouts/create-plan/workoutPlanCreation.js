@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { auth } from '../../app-start/cloudConnection';
 import {
-  cellFormattingWorkoutLimitResetLabel,
+  formatWorkoutLimitResetLabel,
   nextMonthResetsAtIso,
   nextMonthResetDate,
   resolveWorkoutGenerationUsage,
@@ -103,7 +103,7 @@ export function workoutPlanCreation({ profileSubjectUid, readOnly, onHydratePlan
     planGenerationLimit,
     plansRemaining,
     nextResetDate,
-    cellFormattingWorkoutLimitResetLabel,
+    formatWorkoutLimitResetLabel,
     fetchWorkoutPlanFromServer,
     refreshUsage,
   };

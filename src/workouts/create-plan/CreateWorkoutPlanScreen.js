@@ -77,7 +77,7 @@ import {
   PLAN_LIMIT_TOTAL,
   nextMonthResetDate,
   nextMonthResetsAtIso,
-  cellFormattingWorkoutLimitResetLabel,
+  formatWorkoutLimitResetLabel,
   resolveWorkoutGenerationUsage,
 } from '../create-plan/countPlansCreated';
 import {
@@ -100,7 +100,7 @@ export {
   PLAN_LIMIT_TOTAL,
   nextMonthResetDate,
   nextMonthResetsAtIso,
-  cellFormattingWorkoutLimitResetLabel,
+  formatWorkoutLimitResetLabel,
   resolveWorkoutGenerationUsage,
   loadWorkoutGenerationUsage,
 } from '../create-plan/countPlansCreated';
@@ -116,7 +116,7 @@ let workoutPlanGenerationInFlight = false;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 /** Profile height: `{ feet, inches }` or legacy total inches (number). */
-function cellFormattingProfileHeightDisplay(h) {
+function formatProfileHeightDisplay(h) {
   if (h == null) return '—';
   if (typeof h === 'object') {
     const ftRaw = h.feet;
@@ -1540,7 +1540,7 @@ function parseTableRow(line) {
 /**
  * Parse raw AI plan into { overview, days: [{ label, type, isRest, warmUp, exercises, coolDown }], notes }.
  * Exercises: "A1 — Bench Press - Sets x Reps: 4 x 8-10 - Rest: 90 seconds - Form Cues: - cue1 - cue2"
- * Warm-up/cool-down: table cellFormatting "| Exercise | Duration | Notes |"
+ * Warm-up/cool-down: table format "| Exercise | Duration | Notes |"
  */
 function parsePlan(rawText) {
   const result = { overview: '', days: [], notes: '' };
@@ -2449,7 +2449,7 @@ export default function CreateWorkoutPlanScreen({
     if (plansRemaining <= 0) {
       Alert.alert(
         'Monthly limit reached',
-        `You've used all your workout generations for this month. Resets ${cellFormattingWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
       );
       return;
     }
@@ -2463,7 +2463,7 @@ export default function CreateWorkoutPlanScreen({
           scrollViewRef.current?.scrollTo({ y: 0, animated: true });
         }, 100);
       }
-      Alert.alert('Validation Error', 'Please complete all required incellFormattingion');
+      Alert.alert('Validation Error', 'Please complete all required information');
       return;
     }
 
@@ -2528,7 +2528,7 @@ export default function CreateWorkoutPlanScreen({
       } catch (parseErr) {
         console.warn('Workout plan parse failed:', parseErr);
         const truncated =
-          stopReason === 'max_reportColors' ||
+          stopReason === 'max_tokens' ||
           (typeof planText === 'string' && !planText.trimEnd().endsWith('}'));
         const parseMsg = truncated
           ? 'The response was cut off. Tap Generate again to retry.'
@@ -2667,7 +2667,7 @@ export default function CreateWorkoutPlanScreen({
     if (plansRemaining <= 0) {
       Alert.alert(
         'Monthly limit reached',
-        `You've used all your workout generations for this month. Resets ${cellFormattingWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
       );
       return;
     }
@@ -2914,7 +2914,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const cellFormattingDisplayValue = (raw) => {
+  const formatDisplayValue = (raw) => {
     if (raw == null || raw === undefined || raw === '') return null;
     let s = String(raw).trim();
     if (!s) return null;
@@ -3048,7 +3048,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           >
             {plansUsedThisMonth} of {planGenerationLimit} plans used this month
             {plansRemaining <= 0
-              ? ` · Resets ${cellFormattingWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}`
+              ? ` · Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}`
               : ''}
           </Text>
         ) : null}
@@ -3117,7 +3117,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                 if (plansRemaining <= 0) {
                   Alert.alert(
                     'Monthly limit reached',
-                    `You've used all your workout generations for this month. Resets ${cellFormattingWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
+                    `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
                   );
                   return;
                 }
@@ -3399,8 +3399,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   // Using useCallback/useMemo here would change hook order between renders.
   const displayForFieldKey = (fieldKey) => {
     const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
-    const cellFormattingted = cellFormattingDisplayValue(raw);
-    const s = cellFormattingted != null ? String(cellFormattingted).trim() : '';
+    const formatted = formatDisplayValue(raw);
+    const s = formatted != null ? String(formatted).trim() : '';
     return s && s !== 'null' && s !== 'undefined' ? s : '—';
   };
 
@@ -3434,8 +3434,8 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     const meta = WORKOUT_BUILDER_ROW_META[fieldKey];
     if (!meta) return null;
     const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
-    const cellFormattingted = cellFormattingDisplayValue(raw);
-    const displayValue = cellFormattingted != null && String(cellFormattingted).trim() !== '' ? String(cellFormattingted) : '';
+    const formatted = formatDisplayValue(raw);
+    const displayValue = formatted != null && String(formatted).trim() !== '' ? String(formatted) : '';
     const expanded = expandedCard === fieldKey;
     const hasError = validationErrors[fieldKey];
     const shakeAnim = shakeAnimations.current[fieldKey] || new Animated.Value(0);
@@ -4156,7 +4156,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             const usableW = Math.max(280, screenW - SIDE_PAD * 2);
             const gridCardW = Math.floor((usableW - GRID_GAP) / 2);
 
-            const heightText = cellFormattingProfileHeightDisplay(onboardingData?.height);
+            const heightText = formatProfileHeightDisplay(onboardingData?.height);
 
             const weightText =
               onboardingData?.weight != null && onboardingData?.weight !== '' ? `${onboardingData.weight} lbs` : '—';

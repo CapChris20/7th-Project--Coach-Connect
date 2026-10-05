@@ -1,4 +1,4 @@
-// Display cellFormattingters for booked trainer/client sessions.
+// Display formatters for booked trainer/client sessions.
 // Flow: raw stored values ("2026-03-14", "14:30") → human strings ("Saturday, March 14, 2026", "2:30 PM").
 // Used by session cards and meeting rows; never used to do date math, only to print.
 
@@ -7,7 +7,7 @@
 export const pad2 = (n) => String(n).padStart(2, '0');
 
 // Turns a stored date key into a long spelled-out date.
-export const cellFormattingDateLong = (dateKey) => {
+export const formatDateLong = (dateKey) => {
   if (!dateKey) return '';
   // Accept either a real Date or a "YYYY-MM-DD" string.
   // The 'T12:00:00' is deliberate: parsing a bare "YYYY-MM-DD" is treated as UTC midnight,
@@ -17,7 +17,7 @@ export const cellFormattingDateLong = (dateKey) => {
   const d = dateKey instanceof Date ? dateKey : new Date(String(dateKey).slice(0, 10) + 'T12:00:00');
   // Garbage in → show the raw value rather than the literal string "Invalid Date".
   if (Number.isNaN(d.getTime())) return String(dateKey);
-  // vocab: toLocaleDateString(undefined, ...) = cellFormatting using the *device's* locale
+  // vocab: toLocaleDateString(undefined, ...) = format using the *device's* locale
   // Manipulate here: drop 'weekday' for a shorter label, or use month: 'short' for "Mar 14, 2026"
   return d.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -28,7 +28,7 @@ export const cellFormattingDateLong = (dateKey) => {
 };
 
 // Converts a stored 24-hour "HH:MM" into a 12-hour clock label.
-export const cellFormattingTime12 = (hhmm) => {
+export const formatTime12 = (hhmm) => {
   if (!hhmm) return '';
   const [hStr, mStr] = String(hhmm).split(':');
   const h = parseInt(hStr, 10);

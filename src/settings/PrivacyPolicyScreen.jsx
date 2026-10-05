@@ -159,7 +159,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </GradientCard>
 
           <Text style={styles.pageSub}>
-            Plain-language summary of how Coach Connect handles personal incellFormattingion. This is not personal legal advice.
+            Plain-language summary of how Coach Connect handles personal information. This is not personal legal advice.
           </Text>
           {privacyUrl ? (
             <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: 16 }}>
@@ -182,19 +182,19 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>2. What we collect</Text>
             <Text style={styles.sectionText}>
-              Account and profile incellFormattingion you provide (such as name, email, role as client or trainer, and profile
+              Account and profile information you provide (such as name, email, role as client or trainer, and profile
               fields you choose to fill in). Fitness-related content you enter or upload, such as workouts, nutrition
               logs, progress metrics, photos, notes, and files. Messages and other content shared in the product.
               Preferences such as theme and whether optional AI features are on. Technical data needed to run the app,
-              including device push reportColors for notifications you allow, authentication identifiers, and diagnostic
-              incellFormattingion when something fails.
+              including device push tokens for notifications you allow, authentication identifiers, and diagnostic
+              information when something fails.
             </Text>
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>3. How and why we use incellFormattingion</Text>
+            <Text style={styles.sectionTitle}>3. How and why we use information</Text>
             <Text style={styles.sectionText}>
-              We use personal incellFormattingion to provide the service you asked for (accounts, dashboards, messaging, file
+              We use personal information to provide the service you asked for (accounts, dashboards, messaging, file
               sharing, reminders, and optional AI coaching when you turn it on), to secure accounts, to fix bugs, to
               respond to support requests, and to comply with law where required. Depending on where you live, the legal
               basis for some processing may include performing a contract with you, legitimate interests in running and
@@ -203,9 +203,9 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           </PolicySectionCard>
 
           <PolicySectionCard styles={styles}>
-            <Text style={styles.sectionTitle}>4. Health and fitness-related incellFormattingion</Text>
+            <Text style={styles.sectionTitle}>4. Health and fitness-related information</Text>
             <Text style={styles.sectionText}>
-              Coach Connect is built for coaching and fitness workflows. IncellFormattingion you add can be sensitive (for
+              Coach Connect is built for coaching and fitness workflows. Information you add can be sensitive (for
               example weight, injuries, goals, or meal details). Do not use the app as a substitute for medical advice,
               diagnosis, or treatment. We do not use this policy to label the app as a regulated medical device; if your
               situation requires professional healthcare or compliance with specific health laws, speak with qualified
@@ -216,7 +216,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>5. Coaches and clients</Text>
             <Text style={styles.sectionText}>
-              If you connect with a trainer or client inside the product, incellFormattingion the app is designed to share with
+              If you connect with a trainer or client inside the product, information the app is designed to share with
               that person (such as progress, messages, shared files, and similar) may be visible to them as part of using
               Coach Connect. You should only share what you are comfortable having that other person see.
             </Text>
@@ -239,7 +239,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>7. If you use the app outside the United States</Text>
             <Text style={styles.sectionText}>
-              Your incellFormattingion may be stored or processed in the United States or in other regions where our providers
+              Your information may be stored or processed in the United States or in other regions where our providers
               operate. That can mean your data is transferred across borders. Laws such as the GDPR in the European
               Economic Area or the UK GDPR may give you additional rights depending on your situation. We describe how to
               reach us below; we are not claiming a specific legal status in every country in this screen.
@@ -273,7 +273,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
             <Text style={styles.sectionTitle}>10. Your privacy rights and requests</Text>
             <Text style={styles.sectionText}>
               Depending on where you live, you may have rights to access, correct, delete, or export personal
-              incellFormattingion, to object to or restrict certain processing, or to withdraw consent where processing was based
+              information, to object to or restrict certain processing, or to withdraw consent where processing was based
               on consent. You can delete your account from in-app Settings; that is intended to remove your personal data
               from the live product subject to limited exceptions (for example short-term backups, fraud prevention, or
               where the law requires retention). Account deletion does not cancel Coach Connect Pro billed through Apple
@@ -286,7 +286,7 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>11. Security</Text>
             <Text style={styles.sectionText}>
-              We use reasonable technical and organizational measures to protect personal incellFormattingion. No online service
+              We use reasonable technical and organizational measures to protect personal information. No online service
               can guarantee perfect security. Help protect your account by using a strong password and keeping your device
               updated.
             </Text>
@@ -295,8 +295,8 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>12. Retention</Text>
             <Text style={styles.sectionText}>
-              We keep incellFormattingion for as long as your account is active and as needed to operate Coach Connect, resolve
-              disputes, enforce agreements, and meet legal obligations. After account deletion, some incellFormattingion may
+              We keep information for as long as your account is active and as needed to operate Coach Connect, resolve
+              disputes, enforce agreements, and meet legal obligations. After account deletion, some information may
               persist for a limited period in backups or logs before it ages out.
             </Text>
           </PolicySectionCard>
@@ -313,8 +313,8 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
           <PolicySectionCard styles={styles}>
             <Text style={styles.sectionTitle}>14. Children</Text>
             <Text style={styles.sectionText}>
-              Coach Connect is not directed at children under 13, and we do not knowingly collect personal incellFormattingion
-              from children under 13. If you believe we have collected incellFormattingion from a child under 13, contact us and
+              Coach Connect is not directed at children under 13, and we do not knowingly collect personal information
+              from children under 13. If you believe we have collected information from a child under 13, contact us and
               we will take appropriate steps.
             </Text>
           </PolicySectionCard>

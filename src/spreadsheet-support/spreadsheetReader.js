@@ -1,9 +1,9 @@
-// Fallback spreadsheet shim for the spreadsheetReader (SheetJS) library.
-// Flow: Metro picks spreadsheetReader.web.js on web and spreadsheetReader.native.js on device; this plain spreadsheetReader.js is
+// Fallback spreadsheet shim for the xlsx (SheetJS) library.
+// Flow: Metro picks xlsx.web.js on web and xlsx.native.js on device; this plain xlsx.js is
 //       only reached in odd build targets, where it returns empty data instead of crashing.
 // Imported by the spreadsheet viewer/parsers, which just need `read` and `utils.sheet_to_json` to exist.
 
-// vocab: platform extensions = Metro resolves `./spreadsheetReader` to spreadsheetReader.web.js / spreadsheetReader.native.js first,
+// vocab: platform extensions = Metro resolves `./spreadsheetReader` to xlsx.web.js / xlsx.native.js first,
 //        and only falls back to this bare file when neither matches.
 // The empty shapes below are chosen to match what real SheetJS returns, so callers can
 // map over the results without null checks.
