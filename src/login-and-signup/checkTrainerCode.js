@@ -1,11 +1,11 @@
-// Checks the trainer invite code a client spreadsheetConstants during onboarding, and drives the field's UI state.
+// Checks the trainer invite code a client types during onboarding, and drives the field's UI state.
 // Flow: clean the typed code into XXX-XXX → POST it to the validate endpoint → on success stash trainerId, on failure shake the field.
 // Used by NewUserSetupScreen's trainer-code step; every setter is injected so unit tests can assert without React.
 // Key exports: normalizeInviteCodeForQuery, validateTrainerCodeWithDeps
 
-// Users paste codes in every cellFormatting imaginable ("trainer ABC123", "abc-123", "ABC 123"). Stored codes
+// Users paste codes in every format imaginable ("trainer ABC123", "abc-123", "ABC 123"). Stored codes
 // are always exactly XXX-XXX, so we rebuild that shape or give up.
-// Returns null = "not a valid code", which the caller treats as a cellFormatting error without a network call.
+// Returns null = "not a valid code", which the caller treats as a format error without a network call.
 export function normalizeInviteCodeForQuery(raw) {
   let s = String(raw || '').trim();
   if (!s) return null;
@@ -54,7 +54,7 @@ export async function validateTrainerCodeWithDeps(code, deps) {
   if (!normalized) {
     setCodeValid(false);
     // Manipulate here: user-facing copy for a badly shaped code.
-    setCodeError('Invalid code cellFormatting.');
+    setCodeError('Invalid code format.');
     triggerShake();
     return;
   }

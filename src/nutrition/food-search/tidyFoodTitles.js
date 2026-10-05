@@ -4,12 +4,12 @@
  * Purpose: food Search Title — Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/nutrition
- * Key exports: cellFormattingUserQueryAsFoodName, isJunkWebSearchTitle, cleanSerperFoodTitle, displayNameForSerperRow, isPlausibleNutritionRow, dedupeFoodRows
+ * Key exports: formatUserQueryAsFoodName, isJunkWebSearchTitle, cleanSerperFoodTitle, displayNameForSerperRow, isPlausibleNutritionRow, dedupeFoodRows
  *
  * @file-header
  */
 /**
- * Clean web-search (Serper) titles for food cards — never show [PDF] / "Nutrition IncellFormattingion".
+ * Clean web-search (Serper) titles for food cards — never show [PDF] / "Nutrition Information".
  */
 const { significantQueryTokens, countTokenHits } = require('../food-search/rankFoodResults');
 const {
@@ -80,7 +80,7 @@ function titleCaseWords(s) {
 }
 
 /** User-facing name from their search (e.g. cottage inn garlic cheese bread). */
-function cellFormattingUserQueryAsFoodName(query) {
+function formatUserQueryAsFoodName(query) {
   const q = String(query || '')
     .trim()
     .replace(/\s+nutrition\s+facts.*$/i, '')
@@ -119,12 +119,12 @@ function isJunkWebSearchTitle(title) {
  * @param {string} userQuery - what the user typed (not the Serper-expanded query)
  */
 function cleanSerperFoodTitle(rawTitle, userQuery) {
-  const queryName = cellFormattingUserQueryAsFoodName(userQuery);
-  const reportColors = significantQueryTokens(userQuery);
+  const queryName = formatUserQueryAsFoodName(userQuery);
+  const tokens = significantQueryTokens(userQuery);
   const minHits =
-    reportColors.length >= 4
-      ? Math.max(3, Math.ceil(reportColors.length * 0.55))
-      : reportColors.length >= 2
+    tokens.length >= 4
+      ? Math.max(3, Math.ceil(tokens.length * 0.55))
+      : tokens.length >= 2
         ? 2
         : 1;
 
@@ -133,7 +133,7 @@ function cleanSerperFoodTitle(rawTitle, userQuery) {
     .replace(/^PDF\s+Nutrition\s+Facts\s+/i, '')
     .replace(/^Calories in\s+/i, '')
     .replace(/^Carbs in\s+/i, '')
-    .replace(/^Nutrition (?:IncellFormattingion|Facts|Guide)(?:\s+for)?\s*[-–:]\s*/i, '')
+    .replace(/^Nutrition (?:Information|Facts|Guide)(?:\s+for)?\s*[-–:]\s*/i, '')
     .replace(/\s*[-–|]\s*CalorieKing.*$/i, '')
     .replace(/\s*[-–|]\s*MyFitnessPal.*$/i, '')
     .replace(/\s*\.pdf\s*$/i, '')
@@ -143,13 +143,13 @@ function cleanSerperFoodTitle(rawTitle, userQuery) {
   if (parts.length > 1) {
     const scored = parts
       .filter((p) => !isJunkWebSearchTitle(p))
-      .map((p) => ({ p, hits: countTokenHits(p, reportColors) }))
+      .map((p) => ({ p, hits: countTokenHits(p, tokens) }))
       .sort((a, b) => b.hits - a.hits);
     if (scored[0]?.hits >= minHits) t = scored[0].p;
     else if (scored[0]?.p.length > 10) t = scored[0].p;
   }
 
-  if (isJunkWebSearchTitle(t) || countTokenHits(t, reportColors) < minHits) {
+  if (isJunkWebSearchTitle(t) || countTokenHits(t, tokens) < minHits) {
     return queryName;
   }
   return t.length > 90 ? `${t.slice(0, 87)}…` : t;
@@ -283,7 +283,7 @@ function applyFoodCardPresentationToRows(rows, userQuery = '') {
 /** Card title — base name plus portion when several web hits share the same dish name. */
 function displayNameForSerperRow(rawTitle, userQuery, macros) {
   const base = isJunkWebSearchTitle(rawTitle)
-    ? cellFormattingUserQueryAsFoodName(userQuery)
+    ? formatUserQueryAsFoodName(userQuery)
     : cleanSerperFoodTitle(rawTitle, userQuery);
   const label = String(macros?.servingLabel || '').trim();
   if (!label) return base;
@@ -382,7 +382,7 @@ function dedupeFoodRows(rows) {
 }
 
 module.exports = {
-  cellFormattingUserQueryAsFoodName,
+  formatUserQueryAsFoodName,
   isJunkWebSearchTitle,
   isJunkFoodTitle,
   cleanSerperFoodTitle,

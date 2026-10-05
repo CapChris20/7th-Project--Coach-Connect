@@ -20,7 +20,7 @@ describe('ai coach flow integration', () => {
     expect(stripCoachToolJsonFromReply(reply)).toBe('Protein helps recovery.');
   });
 
-  test('screenNames personal-history prompts to weekly context path', () => {
+  test('routes personal-history prompts to weekly context path', () => {
     expect(shouldIncludeWeeklyContextInCoachPrompt('How am I doing this week?')).toBe(true);
   });
 });

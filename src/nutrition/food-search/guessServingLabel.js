@@ -528,7 +528,7 @@ function resolveFoodServingLabelDetailed(opts = {}) {
 }
 
 /** UI line under the food title on search cards — single authority for display. */
-function cellFormattingServingDisplayLine(item, userQuery = '') {
+function formatServingDisplayLine(item, userQuery = '') {
   const foodName = item?.food_name || item?.name;
   const restaurant = item?.restaurant || item?.brand_name || item?.brand;
   const calories = item?.nf_calories ?? item?.calories;
@@ -583,7 +583,7 @@ module.exports = {
   extractServingLabelFromPageText,
   resolveFoodServingLabel,
   resolveFoodServingLabelDetailed,
-  cellFormattingServingDisplayLine,
+  formatServingDisplayLine,
   inferFoodServingCategory,
   servingConflictsWithFood,
   looksLikeMultiBreadOrder,

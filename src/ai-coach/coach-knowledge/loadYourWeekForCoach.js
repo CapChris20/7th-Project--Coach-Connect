@@ -350,7 +350,7 @@ async function runMacroRecalibrationViaServer(userId) {
   const idToken = await auth?.currentUser?.getIdToken?.();
   if (!idToken) return { success: true, skipped: true, reason: 'not_signed_in' };
 
-  const { shouldRecalibrateMacros } = await import('../targets/recalculateFoodTargets');
+  const { shouldRecalibrateMacros } = await import('../../nutrition/targets/recalculateFoodTargets');
   const eligible = await shouldRecalibrateMacros(userId);
   if (!eligible) return { success: true, skipped: true, reason: 'not_eligible' };
 
@@ -417,7 +417,7 @@ export async function loadCoachContextEnhanced(userId, userProfile = {}, options
   return enriched;
 }
 
-function cellFormattingDailyFoodLogForPrompt(dailyFoodLog) {
+function formatDailyFoodLogForPrompt(dailyFoodLog) {
   if (!Array.isArray(dailyFoodLog) || !dailyFoodLog.length) return '';
   return dailyFoodLog
     .map((d) => {
@@ -431,7 +431,7 @@ function cellFormattingDailyFoodLogForPrompt(dailyFoodLog) {
 
 export function buildContextSystemBlock(context) {
   if (!context) return '';
-  const dailyLines = cellFormattingDailyFoodLogForPrompt(context.dailyFoodLog);
+  const dailyLines = formatDailyFoodLogForPrompt(context.dailyFoodLog);
   return `CLIENT ACCOUNT SNAPSHOT (from app):
 User: ${context.userName}
 Goal: ${context.goal}

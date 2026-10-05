@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const { isoDateKey, serverTs } = require('../serverCommon');
 const { mergeUserDailyMetrics } = require('../dailyMetricsServer');
 const { executeDeleteLogServer } = require('../coachDeleteLog');
-const { parseBookSessionFields, cellFormattingSessionLabel } = require('../bookSessionParse');
+const { parseBookSessionFields, formatSessionLabel } = require('../bookSessionParse');
 const { fetchOpenWorkoutPlanPayload } = require('../coachExtendedContext');
 const logger = require('../logger');
 
@@ -412,7 +412,7 @@ async function executeTool(userId, toolCall) {
         },
         { merge: true }
       );
-      const label = cellFormattingSessionLabel({ date, time });
+      const label = formatSessionLabel({ date, time });
       return {
         success: true,
         message: `Session request sent for ${label}. Your trainer will confirm it — check Home for pending invites.`,

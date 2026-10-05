@@ -162,7 +162,7 @@ exports.auth = functions.https.onRequest(
 );
 
 /** Format HH:mm (24h) for notification body */
-function cellFormattingTime12(hhmm) {
+function formatTime12(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return '';
   const parts = hhmm.split(':');
   const h = parseInt(parts[0], 10);
@@ -174,7 +174,7 @@ function cellFormattingTime12(hhmm) {
 }
 
 /** Format YYYY-MM-DD for notification body */
-function cellFormattingDateShort(isoDate) {
+function formatDateShort(isoDate) {
   if (!isoDate || typeof isoDate !== 'string') return '';
   const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
   if (Number.isNaN(d.getTime())) return isoDate;
@@ -182,15 +182,15 @@ function cellFormattingDateShort(isoDate) {
 }
 
 /**
- * Send push via Expo Push API (same token cellFormatting as ClientAppStart — ExponentPushToken[...]).
+ * Send push via Expo Push API (same token format as ClientAppStart — ExponentPushToken[...]).
  */
-const { removeEmojiFromAlerts } = require('./removeEmojiFromAlerts');
+const { removeEmojiFromAlerts } = require('./stripNotificationEmoji');
 
 async function sendExpoPushNotification(to, title, body, data = {}) {
   if (!to || typeof to !== 'string') return { skipped: true, reason: 'no_token' };
   if (!to.startsWith('ExponentPushToken[') && !to.startsWith('ExpoPushToken[')) {
     logger.warn('sendExpoPushNotification: non-Expo token', { prefix: to.slice(0, 24) });
-    return { skipped: true, reason: 'invalid_token_cellFormatting' };
+    return { skipped: true, reason: 'invalid_token_format' };
   }
 
   const cleanTitle = removeEmojiFromAlerts(title) || 'CoachConnect';
@@ -231,13 +231,13 @@ app.use(cors());
 const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
 
 /**
- * Get OpenAI API key from Firebase Functions cloudConnection
+ * Get OpenAI API key from Firebase Functions config
  * Falls back to environment variable for local development
  */
 function getOpenAIApiKey() {
   try {
-    const cloudConnection = functions.cloudConnection();
-    return cloudConnection?.openai?.key || process.env.OPENAI_API_KEY;
+    const config = functions.config();
+    return config?.openai?.key || process.env.OPENAI_API_KEY;
   } catch (error) {
     console.error('Error getting OpenAI API key:', error);
     return process.env.OPENAI_API_KEY;
@@ -251,7 +251,7 @@ function createOpenAIWebSocket() {
   const apiKey = getOpenAIApiKey();
   
   if (!apiKey) {
-    throw new Error('OpenAI API key not cloudConnectionured. Set with: firebase functions:cloudConnection:set openai.key="sk-..."');
+    throw new Error('OpenAI API key not configured. Set with: firebase functions:config:set openai.key="sk-..."');
   }
 
   const openaiSocket = new WebSocket(OPENAI_REALTIME_URL, {
@@ -486,8 +486,8 @@ function getLastWeekBounds() {
   const lastMonday = thisMonday.clone().subtract(7, 'days');
   const lastSunday = lastMonday.clone().add(6, 'days');
   return {
-    weekStart: lastMonday.cellFormatting('YYYY-MM-DD'),
-    weekEnd: lastSunday.cellFormatting('YYYY-MM-DD'),
+    weekStart: lastMonday.format('YYYY-MM-DD'),
+    weekEnd: lastSunday.format('YYYY-MM-DD'),
   };
 }
 
@@ -500,7 +500,7 @@ async function fetchDailyLogsForWeek(clientId, weekStart, weekEnd) {
   const end = moment.tz(weekEnd, 'YYYY-MM-DD', WEEK_SUMMARY_TZ);
   const logByDay = [];
   for (let d = start.clone(); d.isSameOrBefore(end, 'day'); d.add(1, 'day')) {
-    const dateKey = d.cellFormatting('YYYY-MM-DD');
+    const dateKey = d.format('YYYY-MM-DD');
     const dailySnap = await db.collection('users').doc(clientId).collection('dailyLogs').doc(dateKey).get();
     logByDay.push(dailySnap.exists ? dailySnap.data() : null);
   }
@@ -578,7 +578,7 @@ function dayLineForWeeklyReport(dayLabel, dateStr, log) {
 function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep, avgWater, avgSteps, avgEnergy, avgWeight }) {
   const startM = moment.tz(weekStart, 'YYYY-MM-DD', WEEK_SUMMARY_TZ);
   const dayBreakdown = logByDay.map((l, i) => {
-    const dateStr = startM.clone().add(i, 'days').cellFormatting('YYYY-MM-DD');
+    const dateStr = startM.clone().add(i, 'days').format('YYYY-MM-DD');
     const label = WEEKDAY_LABELS[i] || `Day ${i + 1}`;
     return dayLineForWeeklyReport(label, dateStr, l);
   });
@@ -589,7 +589,7 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
       if (!l) return null;
       const n = parseMetricNumber(l.dashboard_sleep);
       if (n == null) return null;
-      return { n, d: startM.clone().add(i, 'days').cellFormatting('YYYY-MM-DD') };
+      return { n, d: startM.clone().add(i, 'days').format('YYYY-MM-DD') };
     })
     .filter(Boolean);
   const waterVals = logByDay
@@ -597,7 +597,7 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
       if (!l) return null;
       const n = parseMetricNumber(l.dashboard_water);
       if (n == null) return null;
-      return { n, d: startM.clone().add(i, 'days').cellFormatting('YYYY-MM-DD') };
+      return { n, d: startM.clone().add(i, 'days').format('YYYY-MM-DD') };
     })
     .filter(Boolean);
   const stepVals = logByDay
@@ -605,7 +605,7 @@ function buildDeterministicWeeklyReport({ logByDay, weekStart, weekEnd, avgSleep
       if (!l) return null;
       const n = parseMetricNumber(l.dashboard_steps);
       if (n == null) return null;
-      return { n, d: startM.clone().add(i, 'days').cellFormatting('YYYY-MM-DD') };
+      return { n, d: startM.clone().add(i, 'days').format('YYYY-MM-DD') };
     })
     .filter(Boolean);
   const highWaterDays = waterVals.filter((x) => x.n >= 64).length;
@@ -775,8 +775,8 @@ exports.getWeekBounds = onCall(async (request) => {
     const weekEndMoment = m.clone().endOf('isoWeek');
 
     return {
-      weekStart: weekStartMoment.cellFormatting('YYYY-MM-DD'),
-      weekEnd: weekEndMoment.cellFormatting('YYYY-MM-DD'),
+      weekStart: weekStartMoment.format('YYYY-MM-DD'),
+      weekEnd: weekEndMoment.format('YYYY-MM-DD'),
     };
   } catch (error) {
     logger.error('getWeekBounds error', { error: error?.message || String(error) });
@@ -896,8 +896,8 @@ async function generateWeeklySummaryForClient(clientId, weekStartOverride) {
     if (!start.isValid()) {
       throw new Error('Invalid weekStart; use YYYY-MM-DD');
     }
-    weekStart = start.cellFormatting('YYYY-MM-DD');
-    weekEnd = start.clone().add(6, 'days').cellFormatting('YYYY-MM-DD');
+    weekStart = start.format('YYYY-MM-DD');
+    weekEnd = start.clone().add(6, 'days').format('YYYY-MM-DD');
   } else {
     ({ weekStart, weekEnd } = getLastWeekBounds());
   }
@@ -1239,8 +1239,8 @@ exports.onTrainerSessionCreated = onDocumentCreated(
         trainerSnap.data()?.name ||
         'Your coach';
 
-      const dateLabel = cellFormattingDateShort(String(data.date || ''));
-      const timeLabel = cellFormattingTime12(String(data.time || ''));
+      const dateLabel = formatDateShort(String(data.date || ''));
+      const timeLabel = formatTime12(String(data.time || ''));
 
       let body = `${coachLabel} scheduled a session with you.`;
       const bits = [];

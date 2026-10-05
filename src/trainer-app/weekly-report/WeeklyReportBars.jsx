@@ -4,7 +4,7 @@
  * Purpose: Weekly Report Premium — Feature module for Coach Connect.
  * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
  * Area: src/trainer
- * Key exports: getWRTheme, cellFormattingDateRange, parseDayNote, parseStructuredDayNote, WRPremiumCard, WRHeroShell, WeeklyReportScrollBody, WeeklyReportDetailModal
+ * Key exports: getWRTheme, formatDateRange, parseDayNote, parseStructuredDayNote, WRPremiumCard, WRHeroShell, WeeklyReportScrollBody, WeeklyReportDetailModal
  *
  * @file-header
  */
@@ -276,7 +276,7 @@ function textForReport(value) {
   return String(value);
 }
 
-function cellFormattingStepsShort(raw) {
+function formatStepsShort(raw) {
   if (raw == null || raw === '' || raw === 'N/A') return null;
   const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/,/g, ''));
   if (!Number.isFinite(n)) return String(raw);
@@ -316,7 +316,7 @@ function buildMetricTiles(report) {
   const water =
     report?.avgWater != null && report.avgWater !== 'N/A' ? `${String(report.avgWater).replace(/\.0$/, '')}oz` : null;
   const steps =
-    report?.avgSteps != null && report.avgSteps !== 'N/A' ? cellFormattingStepsShort(report.avgSteps) : null;
+    report?.avgSteps != null && report.avgSteps !== 'N/A' ? formatStepsShort(report.avgSteps) : null;
   const energy = report?.avgEnergy != null && report.avgEnergy !== 'N/A' ? `${report.avgEnergy}/8` : null;
   const tiles = [
     { key: 'sleep', label: 'AVG SLEEP', value: sleep ?? '—', accent: WR_STAT_BAR.sleep },
@@ -327,7 +327,7 @@ function buildMetricTiles(report) {
   return tiles.map((t) => ({ ...t, progress: metricProgressPct(t.key, report) }));
 }
 
-export function cellFormattingDateRange(report) {
+export function formatDateRange(report) {
   if (!report?.weekStart) return { compact: 'Week', full: '' };
   const start = new Date(`${report.weekStart}T12:00:00`);
   const end = report.weekEnd ? new Date(`${report.weekEnd}T12:00:00`) : start;
@@ -362,7 +362,7 @@ function countLoggedDays(report) {
   }).length;
 }
 
-function cellFormattingHeroMetricValue(key, report) {
+function formatHeroMetricValue(key, report) {
   const raw = report?.[`avg${key.charAt(0).toUpperCase()}${key.slice(1)}`];
   if (raw == null || raw === '' || raw === 'N/A') return null;
   switch (key) {
@@ -371,7 +371,7 @@ function cellFormattingHeroMetricValue(key, report) {
     case 'water':
       return `${String(raw).replace(/\.0$/, '')} oz`;
     case 'steps':
-      return cellFormattingStepsShort(raw) || String(raw);
+      return formatStepsShort(raw) || String(raw);
     case 'energy':
       return `${raw}/8`;
     case 'weight':
@@ -438,10 +438,10 @@ function buildHeroSnapshot(report) {
     { key: 'steps', label: 'Steps', icon: 'footsteps-outline', accent: WR_STAT_BAR.steps },
     { key: 'energy', label: 'Energy', icon: 'flash-outline', accent: WR_STAT_BAR.energy },
   ]
-    .map((m) => ({ ...m, value: cellFormattingHeroMetricValue(m.key, report), pct: metricProgressPct(m.key, report) }))
+    .map((m) => ({ ...m, value: formatHeroMetricValue(m.key, report), pct: metricProgressPct(m.key, report) }))
     .filter((m) => m.value);
 
-  const weight = cellFormattingHeroMetricValue('weight', report);
+  const weight = formatHeroMetricValue('weight', report);
   const highlights = buildHeroHighlights(report);
   if (weight) {
     highlights.unshift({ icon: 'scale-outline', text: `Average weight ${weight}` });
@@ -515,7 +515,7 @@ function HeroHighlightRow({ icon, text }) {
   );
 }
 
-function cellFormattingDisplayDate(iso) {
+function formatDisplayDate(iso) {
   const s = String(iso || '').trim();
   if (!s) return '';
   const d = new Date(`${s}T12:00:00`);
@@ -607,7 +607,7 @@ export function parseStructuredDayNote(note) {
       key: 'steps',
       label: 'Steps',
       re: /^([\d,]+)\s*steps$/i,
-      fmt: (m) => cellFormattingStepsShort(m[1].replace(/,/g, '')),
+      fmt: (m) => formatStepsShort(m[1].replace(/,/g, '')),
     },
     {
       key: 'energy',
@@ -981,7 +981,7 @@ function StatHeroCard({ label, value, accent, progress }) {
 
 function WeeklyReportHero({ report, clientName = '' }) {
   const t = useWRTheme();
-  const dates = useMemo(() => cellFormattingDateRange(report), [report]);
+  const dates = useMemo(() => formatDateRange(report), [report]);
   const snapshot = useMemo(() => buildHeroSnapshot(report), [report]);
   const first = firstNameFromReport(report, clientName);
   const headline = first ? `${first}'s week in review` : 'Your week in review';
@@ -1056,7 +1056,7 @@ function DayCard({ index, dayLine }) {
   const recovery = isRecoveryDay(parsed.note);
   const empty = isEmptyCheckIn(parsed.note);
   const dayTitle = DAY_LABELS[index] || parsed.day;
-  const dateLabel = cellFormattingDisplayDate(parsed.date) || parsed.date;
+  const dateLabel = formatDisplayDate(parsed.date) || parsed.date;
   const detail = useMemo(() => parseStructuredDayNote(parsed.note), [parsed.note]);
   const pills = detail.pills.length > 0
     ? detail.pills
@@ -1066,7 +1066,7 @@ function DayCard({ index, dayLine }) {
   const [open, setOpen] = useState(!empty);
 
   const toggle = () => {
-    LayoutAnimation.cloudConnectionureNext(LayoutAnimation.Presets.easeInEaseOut);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setOpen((v) => !v);
   };
 
@@ -1325,7 +1325,7 @@ export function WeeklyReportScrollBody({ report, isDark = true, clientName = '' 
 
 function WeeklyReportCard({ report, metricTiles, onOpen, isDark = true }) {
   const theme = getWRTheme(isDark);
-  const dates = useMemo(() => cellFormattingDateRange(report), [report]);
+  const dates = useMemo(() => formatDateRange(report), [report]);
 
   return (
     <WRlightDarkMode.Provider value={theme}>

@@ -16,7 +16,7 @@ function normalizeInviteCodeForServer(raw) {
   if (/^trainer/i.test(s)) s = s.replace(/^trainer[\-\s]*/i, '').trim();
   // Remove ALL non-alphanumeric characters, uppercase.
   const cleaned = s.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  // Must be exactly 6 alphanumeric chars for XXX-XXX cellFormatting.
+  // Must be exactly 6 alphanumeric chars for XXX-XXX format.
   if (cleaned.length !== 6) return null;
   return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}`;
 }
@@ -25,7 +25,7 @@ app.post('/api/onboarding/check-invite-code', verifyFirebaseBearerToken, async (
   try {
     const code = req.body?.code;
     const normalized = normalizeInviteCodeForServer(code);
-    if (!normalized) return res.status(400).json({ error: 'Invalid code cellFormatting.' });
+    if (!normalized) return res.status(400).json({ error: 'Invalid code format.' });
 
     const qSnap = await admin
       .firestore()
@@ -45,7 +45,7 @@ app.post('/api/onboarding/validate-trainer-code', verifyFirebaseBearerToken, asy
   try {
     const code = req.body?.code;
     const normalized = normalizeInviteCodeForServer(code);
-    if (!normalized) return res.status(400).json({ error: 'Invalid code cellFormatting.' });
+    if (!normalized) return res.status(400).json({ error: 'Invalid code format.' });
 
     const qSnap = await admin
       .firestore()

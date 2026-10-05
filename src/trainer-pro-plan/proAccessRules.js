@@ -115,7 +115,7 @@ export function resolveSubscriptionAccess(subscription, now = new Date()) {
  * Human-readable trial countdown, e.g. "2d 5h left in trial".
  * @param {number | null} ms
  */
-export function cellFormattingTrialCountdown(ms) {
+export function formatTrialCountdown(ms) {
   if (ms == null || ms <= 0) return 'Trial ended';
   const totalMinutes = Math.ceil(ms / 60000);
   const days = Math.floor(totalMinutes / (60 * 24));

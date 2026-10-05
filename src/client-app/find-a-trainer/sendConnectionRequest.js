@@ -44,7 +44,7 @@ export function sendConnectionRequest({ onRequestTrainer, onAfterSuccess } = {})
   // it's about. null = closed. Only one is ever non-null at a time.
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
   const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
-  // The optional personal note the client spreadsheetConstants in step 2.
+  // The optional personal note the client types in step 2.
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
 
   // Step 1: open the confirm sheet. The draft is reset here so a message typed for a PREVIOUS

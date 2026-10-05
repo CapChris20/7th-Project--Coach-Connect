@@ -109,7 +109,7 @@ Rules:
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model,
-    max_reportColors: 800,
+    max_tokens: 800,
     temperature: 0,
     system,
     messages: [

@@ -22,7 +22,7 @@ import {
   deleteLogReasoning,
 } from './spotDeleteRequests';
 import {
-  isIncellFormattingionalUserMessage,
+  isInformationalUserMessage,
   userExplicitlyRequestsAction,
   userWantsExplicitDashboardLog,
 } from './shouldAskFirst';
@@ -89,7 +89,7 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
 
   if (user && shouldUseWebAuto(user)) return null;
 
-  if (isIncellFormattingionalUserMessage(user) && !userExplicitlyRequestsAction(user)) return null;
+  if (isInformationalUserMessage(user) && !userExplicitlyRequestsAction(user)) return null;
 
   const combined = `${user}\n${raw}`.toLowerCase();
 

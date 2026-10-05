@@ -27,7 +27,7 @@ function weekStartKey(dateKey) {
   return getClientDateKey(d);
 }
 
-function cellFormattingMonthLabel(weekStart) {
+function formatMonthLabel(weekStart) {
   const d = new Date(`${weekStart}T12:00:00`);
   return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
@@ -86,7 +86,7 @@ export default function DayPicker({
         <TouchableOpacity onPress={() => shiftWeek(-1)} hitSlop={10} style={styles.chevronBtn}>
           <Ionicons name="chevron-back" size={18} color={colors.chevron} />
         </TouchableOpacity>
-        <Text style={[styles.monthLabel, { color: colors.text }]}>{cellFormattingMonthLabel(weekStart)}</Text>
+        <Text style={[styles.monthLabel, { color: colors.text }]}>{formatMonthLabel(weekStart)}</Text>
         <TouchableOpacity
           onPress={() => shiftWeek(1)}
           disabled={!canGoForward}

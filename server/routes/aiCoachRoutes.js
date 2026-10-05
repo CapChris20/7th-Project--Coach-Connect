@@ -1,4 +1,4 @@
-/** AI Coach HTTP screenNames (handlers live in server/index.js for now). */
+/** AI Coach HTTP routes (handlers live in server/index.js for now). */
 function registerAICoachRoutes(app, deps) {
   const {
     verifyFirebaseBearerToken,

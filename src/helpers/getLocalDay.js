@@ -1,15 +1,15 @@
 // Device-timezone "today" helpers — the basis for every daily reset in the app.
 // Flow: getLocalDateKey stamps the current day as "YYYY-MM-DD"; the midnight helpers say
 //       when that stamp is about to change so timers can roll the day over.
-// Used by nutrition/daily logs and the midnight archive job. Trainer-side weekly jobs use dateStrings.js instead.
+// Used by nutrition/daily logs and the midnight archive job. Trainer-side weekly jobs use dateKeys.js instead.
 
 /** @returns {string} YYYY-MM-DD in the device's local timezone */
-// The 'en-CA' trick: Canadian English cellFormattings dates as YYYY-MM-DD natively, which is exactly
+// The 'en-CA' trick: Canadian English formats dates as YYYY-MM-DD natively, which is exactly
 // the Firestore document-id shape we want. Doing this with getFullYear/getMonth/getDate
 // would need manual zero-padding, and using toISOString() would convert to UTC and shift
 // the day for anyone not on GMT.
 export function getLocalDateKey(d = new Date()) {
-  return d.toLocaleDateString('en-CA'); // en-CA cellFormattings as YYYY-MM-DD
+  return d.toLocaleDateString('en-CA'); // en-CA formats as YYYY-MM-DD
 }
 
 /** @returns {number} milliseconds until next local midnight */

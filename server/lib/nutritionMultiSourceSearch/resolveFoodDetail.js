@@ -99,14 +99,14 @@ function extractSizeToken(query) {
 }
 
 /**
- * Score a search candidate (link label + href) against query reportColors.
+ * Score a search candidate (link label + href) against query tokens.
  */
-function scoreSearchCandidate(label, href, reportColors, restaurantSlug) {
+function scoreSearchCandidate(label, href, tokens, restaurantSlug) {
   const text = normalizeText(`${label} ${href}`).replace(/-/g, ' ');
   if (!text) return 0;
 
   let score = 0;
-  for (const token of reportColors) {
+  for (const token of tokens) {
     const t = token.replace(/-/g, ' ');
     if (text.includes(t)) score += 2;
     if (t.length >= 4 && text.includes(t.slice(0, Math.max(4, t.length - 1)))) score += 1;
@@ -117,7 +117,7 @@ function scoreSearchCandidate(label, href, reportColors, restaurantSlug) {
     if (text.includes(restaurantSlug) || text.includes(slugSpaced)) score += 6;
   }
 
-  const size = extractSizeToken(reportColors.join(' '));
+  const size = extractSizeToken(tokens.join(' '));
   if (size && text.includes(size.replace('-', ' '))) score += 8;
   if (/\/search|\/category|\/brand\/?$/i.test(href || '')) score -= 10;
   if (/\/foods\/f\/|fastfoodnutrition\.org\/[^/]+\/[^/]+\//i.test(href || '')) score += 3;
@@ -126,12 +126,12 @@ function scoreSearchCandidate(label, href, reportColors, restaurantSlug) {
 }
 
 function rankSearchCandidates(candidates, query, restaurant) {
-  const reportColors = queryTokens(query, restaurant);
+  const tokens = queryTokens(query, restaurant);
   const restaurantSlug = restaurantToBrandSlug(restaurant);
   const scored = candidates
     .map((c) => ({
       ...c,
-      score: scoreSearchCandidate(c.label || c.text || '', c.href || c.url || '', reportColors, restaurantSlug),
+      score: scoreSearchCandidate(c.label || c.text || '', c.href || c.url || '', tokens, restaurantSlug),
     }))
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -144,11 +144,11 @@ function pickBestCandidate(candidates, query, restaurant) {
 }
 
 function rankFatSecretFoods(foods, query, restaurant) {
-  const reportColors = queryTokens(query, restaurant);
+  const tokens = queryTokens(query, restaurant);
   const restaurantSlug = restaurantToBrandSlug(restaurant);
   const scored = (foods || []).map((food) => {
     const label = `${food.brand_name || food.brand || ''} ${food.food_name || food.name || ''}`;
-    const score = scoreSearchCandidate(label, '', reportColors, restaurantSlug);
+    const score = scoreSearchCandidate(label, '', tokens, restaurantSlug);
     return { food, score };
   });
   scored.sort((a, b) => b.score - a.score);

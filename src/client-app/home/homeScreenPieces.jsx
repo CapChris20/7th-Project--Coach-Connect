@@ -52,7 +52,7 @@ const LOTTIE_STRESS_EMPTY = require('../../assets/Stressed Employee At Work.json
 const LOTTIE_NUTRITION_EMPTY = require('../../assets/animations/legacy/Food squeeze_With Burger and hot dog.json');
 const WORKOUT_EMPTY_ICON = require('../../assets/icons/workout.png');
 
-// Builds light/dark style reportColors from `isDark` (theme state). 
+// Builds light/dark style tokens from `isDark` (theme state). 
 const getPremiumTheme = (isDark, colors) => {
   const text = isDark ? '#FFFFFF' : 'rgba(15,23,42,0.92)';
   const subtext = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(15,23,42,0.58)';
@@ -88,7 +88,7 @@ const hexToRgba = (hex, alpha) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
-const cellFormattingGoalLabel = (primaryGoal) => {
+const formatGoalLabel = (primaryGoal) => {
   if (!primaryGoal) return 'Active Goal';
   const g = String(primaryGoal);
   if (g === 'lose_fat') return 'Lose Fat';
@@ -347,7 +347,7 @@ const TopStatsRow = ({
 
   const sleepVal = typeof sleepHours === 'number' ? sleepHours : null;
 
-  const goalLabel = cellFormattingGoalLabel(primaryGoal);
+  const goalLabel = formatGoalLabel(primaryGoal);
   const gp = typeof goalProgress === 'number' ? clamp(goalProgress, 0, 1) : null;
 
   const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
@@ -501,7 +501,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
   );
   const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
   const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
-  const cellFormattingScore = (v, max) => {
+  const formatScore = (v, max) => {
     if (v == null || v === '') return null;
     const raw = String(v).trim();
     if (raw.includes('%')) return raw;
@@ -525,10 +525,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {cellFormattingScore(soreness, 8) || soreness}
+                      {formatScore(soreness, 8) || soreness}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_SORENESS_GRADIENT}>
-                      {cellFormattingScore(soreness, 8) || soreness}
+                      {formatScore(soreness, 8) || soreness}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>muscle soreness</Text>
@@ -553,10 +553,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {cellFormattingScore(energyLevel, 8) || energyLevel}
+                      {formatScore(energyLevel, 8) || energyLevel}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_ENERGY_GRADIENT}>
-                      {cellFormattingScore(energyLevel, 8) || energyLevel}
+                      {formatScore(energyLevel, 8) || energyLevel}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -581,10 +581,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {cellFormattingScore(stressLevel, 8) || stressLevel}
+                      {formatScore(stressLevel, 8) || stressLevel}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_STRESS_GRADIENT}>
-                      {cellFormattingScore(stressLevel, 8) || stressLevel}
+                      {formatScore(stressLevel, 8) || stressLevel}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -1274,7 +1274,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
     else if (url) Linking.openURL(url).catch(() => {});
   };
 
-  const cellFormattingDate = (d) => {
+  const formatDate = (d) => {
     if (!d) return '';
     const t = d instanceof Date ? d : new Date(d);
     return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1320,7 +1320,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
             {(notes || []).map((n, i) => (
               <View key={n.id || i} style={[styles.notesNoteCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
                 <Text style={[styles.notesNoteText, { color: textColor }]}>{n.content}</Text>
-                <Text style={[styles.notesNoteDate, { color: mutedColor }]}>{cellFormattingDate(n.createdAt)}</Text>
+                <Text style={[styles.notesNoteDate, { color: mutedColor }]}>{formatDate(n.createdAt)}</Text>
               </View>
             ))}
           </>
@@ -1367,7 +1367,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
                 </View>
                 <View style={styles.notesFileInfo}>
                   <Text style={[styles.notesDocName, { color: textColor }]} numberOfLines={1}>{f.name || f.title || 'File'}</Text>
-                  <Text style={[styles.notesFileMeta, { color: mutedColor }]}>{cellFormattingDate(f.createdAt)} · <Text style={{ color: fileTypeLabelColor(f), fontWeight: '600' }}>{fileTypeLabel(f)}</Text></Text>
+                  <Text style={[styles.notesFileMeta, { color: mutedColor }]}>{formatDate(f.createdAt)} · <Text style={{ color: fileTypeLabelColor(f), fontWeight: '600' }}>{fileTypeLabel(f)}</Text></Text>
                 </View>
                 {f.type !== 'document' && f.type !== 'spreadsheet' && <Feather name="external-link" size={18} color={mutedColor} />}
                 {(f.type === 'document' || f.type === 'spreadsheet' || (f.documentId && f.trainerId)) && <Ionicons name="chevron-forward" size={20} color={mutedColor} />}
@@ -1468,7 +1468,7 @@ const calculateStreak = (completedWorkouts) => {
 
 export {
   getPremiumTheme,
-  cellFormattingGoalLabel,
+  formatGoalLabel,
   inferWorkoutType,
   calculateCalorieGoal,
   calculateStreak,

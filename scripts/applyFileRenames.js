@@ -39,7 +39,7 @@ const LEGACY = {
   'src/ai-coach/chat-ui/tool-modals/toolModalShared.js': 'src/ai-coach/chat-ui/tool-modals/toolModalShared.js',
   'src/ai-coach/chat-ui/voice/useCoachSpeech.js': 'src/ai-coach/chat-ui/voice/useCoachSpeech.js',
   'src/app-start/authGateLogic.js': 'src/login-and-signup/decideTraineeOrTrainer.js',
-  'src/app-start/cloudConnection.js': 'src/app-start/cloudConnection.js',
+  'src/app-start/config.js': 'src/app-start/config.js',
   'src/client-app/home/homeScreenPieces.jsx': 'src/client-app/home/homeScreenPieces.jsx',
   'src/client-app/home/homeLooks.js': 'src/client-app/home/homeLooks.js',
   'src/client-app/home/loadHomeScreenData.js': 'src/client-app/home/loadHomeScreenData.js',

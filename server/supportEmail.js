@@ -83,7 +83,7 @@ async function sendSupportInquiryEmail({ subject, text, html, replyTo }) {
   }
 
   throw new Error(
-    'Email is not cloudConnectionured on this server. Set RESEND_API_KEY or SMTP_HOST+SMTP_USER+SMTP_PASS in the API .env (see server/supportEmail.js).'
+    'Email is not configured on this server. Set RESEND_API_KEY or SMTP_HOST+SMTP_USER+SMTP_PASS in the API .env (see server/supportEmail.js).'
   );
 }
 
@@ -99,7 +99,7 @@ function isTransactionalEmailConfigured() {
  */
 async function sendTransactionalEmail({ to, subject, text, html }) {
   if (!isTransactionalEmailConfigured()) {
-    throw new Error('Transactional email is not cloudConnectionured');
+    throw new Error('Transactional email is not configured');
   }
 
   if (process.env.RESEND_API_KEY) {

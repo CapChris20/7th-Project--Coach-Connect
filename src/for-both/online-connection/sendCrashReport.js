@@ -12,7 +12,7 @@
  * Centralized logging for CoachConnect.
  * - debug/info: development only
  * - warn: development only (keeps production logs quiet)
- * - error: always emitted; forwarded to Sentry when cloudConnectionured (see monitoring.js)
+ * - error: always emitted; forwarded to Sentry when configured (see monitoring.js)
  */
 import { captureException } from './checkConnectionHealth';
 

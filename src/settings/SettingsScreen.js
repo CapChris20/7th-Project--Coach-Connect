@@ -211,7 +211,7 @@ function PaymentStatusChip({ label, tone, colors, isDark }) {
   );
 }
 
-function cellFormattingMonthlyRateLabel(rate) {
+function formatMonthlyRateLabel(rate) {
   if (rate == null || rate === '') return null;
   const n = Number(rate);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -358,7 +358,7 @@ export default function SettingsScreen({
       trainerDataProp?.price ??
       null;
     const effectiveRate = assignedRate ?? trainerListedRate;
-    const rateLabel = cellFormattingMonthlyRateLabel(effectiveRate);
+    const rateLabel = formatMonthlyRateLabel(effectiveRate);
     const status = paymentStatus || userDataProp?.paymentStatus || 'inactive';
     const hasTrainer = !!(userDataProp?.trainerId || trainerDataProp?.id);
 

@@ -9,7 +9,7 @@ import { filterProfileCardSections, getProfileCardSectionLabels } from '../../fo
 import {
   LOVABLE_ACCENTS,
   displayForFieldKey,
-  cellFormattingProfileHeightDisplay,
+  formatProfileHeightDisplay,
 } from '../create-plan/planQuestionLabels';
 
 export default function WorkoutProfileTags({
@@ -34,7 +34,7 @@ export default function WorkoutProfileTags({
   const usableW = Math.max(280, screenW - SIDE_PAD * 2);
   const gridCardW = Math.floor((usableW - GRID_GAP) / 2);
 
-  const heightText = cellFormattingProfileHeightDisplay(onboardingData?.height);
+  const heightText = formatProfileHeightDisplay(onboardingData?.height);
   const weightText =
     onboardingData?.weight != null && onboardingData?.weight !== '' ? `${onboardingData.weight} lbs` : '—';
   const ageText =

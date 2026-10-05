@@ -21,7 +21,7 @@ import { removeEmojiFromAlerts } from '../../notifications/removeEmojiFromAlerts
  * @param {string} p.recipientId - Firebase uid to receive the push
  * @param {string} p.senderName - Shown as notification title
  * @param {string} [p.messageText] - Body (truncated server-side)
- * @param {string} [p.senderId] - Coalescing key for chat-like spreadsheetConstants; use stable id for system spreadsheetConstants
+ * @param {string} [p.senderId] - Coalescing key for chat-like types; use stable id for system types
  * @param {string} [p.conversationId]
  * @param {string} [p.messageId]
  * @param {string} [p.notificationType] - default 'message'; other values skip chat burst coalescing

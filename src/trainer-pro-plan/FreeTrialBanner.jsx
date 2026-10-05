@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { cellFormattingTrialCountdown } from './proAccessRules';
+import { formatTrialCountdown } from './proAccessRules';
 import { useSubscription } from './ProPlanSetup';
 
 const ACCENT_PINK = '#BE185D';
@@ -21,7 +21,7 @@ export default function FreeTrialBanner() {
   if (accessState.access !== 'free_trial') return null;
 
   const countdown = accessState.trialEndsAt
-    ? cellFormattingTrialCountdown(accessState.trialEndsAt.getTime() - now)
+    ? formatTrialCountdown(accessState.trialEndsAt.getTime() - now)
     : 'Free trial active';
 
   return (

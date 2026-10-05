@@ -342,11 +342,8 @@ Drop scrapers whose terms forbid automated access, in favour of licensed APIs. I
 
 ---
 
-# Known issue: find-and-replace damage from the latest rename commit
+# Resolved: find-and-replace damage from the plain-English rename commit
 
-**Found while writing these ADRs.** The commit *"Rename src to plain-English folders and files for recruiter readability"* (`ff5c7d0`) did a global text replace that also changed code. Examples:
-- `config` → `cloudConnection`: `server/index.js:59` requires `./cloudConnection/apiCosts`, but the file is `server/config/apiCosts.js`. **The API will crash at startup.**
-- `tokens` → `reportColors` (for example, Perplexity's `max_tokens` became `max_reportColors`).
-- `format` → `cellFormatting` (for example, "information" became "incellFormattingion").
+The commit *"Rename src to plain-English folders and files for recruiter readability"* (`ff5c7d0`) also did a blind text replace inside code. For example, `config` became `cloudConnection`, `tokens` became `reportColors` and `format` became `cellFormatting`. It also left `App.js`, server route imports and asset paths pointing at old locations, and created duplicate identifiers (`searchFoods`, `ColorText`). The API crashed on boot and the app couldn't bundle.
 
-Grepping for those three strings in `server/` and `src/` matches about **256 files**. Fix this before the next deploy, and do future renames with an AST-aware codemod or TypeScript's rename refactoring rather than plain text replacement.
+The follow-up fix keeps every new file and folder name. It restores the accidentally replaced words, re-points imports to the renamed files, and resolves the name collisions. Afterwards the server boots and Jest results match the pre-rename baseline (709 passed). **Lesson:** do renames with an AST-aware codemod or IDE refactoring, and run the test suite before committing.

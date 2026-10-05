@@ -264,7 +264,7 @@ const DASHBOARD_METRIC_PATTERNS = {
 function userExplicitlyRequestsAction(userText) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t) return false;
-  if (isIncellFormattingionalUserMessage(userText)) return false;
+  if (isInformationalUserMessage(userText)) return false;
   return (
     EXPLICIT_LOG_RE.test(t) ||
     /\b(set|change|update|adjust)\s+my\b/.test(t) ||
@@ -296,7 +296,7 @@ function isPoliteActionRequest(raw) {
   );
 }
 
-function isIncellFormattingionalUserMessage(userText) {
+function isInformationalUserMessage(userText) {
   const raw = String(userText || '').trim();
   if (!raw) return false;
   if (isPoliteActionRequest(raw)) return false;
@@ -330,7 +330,7 @@ function isValidCoachToolProposal(rawCall, userText) {
     return toolAlignsWithUserMessage(guarded, userText);
   }
 
-  if (isIncellFormattingionalUserMessage(userText)) return false;
+  if (isInformationalUserMessage(userText)) return false;
 
   return false;
 }
@@ -358,5 +358,5 @@ module.exports = {
   filterValidCoachToolProposals,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
-  isIncellFormattingionalUserMessage,
+  isInformationalUserMessage,
 };

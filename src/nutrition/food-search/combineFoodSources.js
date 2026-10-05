@@ -7,7 +7,7 @@ const {
 } = require('../food-search/restaurantMenuSearch');
 const { significantQueryTokens } = require('./rankFoodResults');
 const {
-  cellFormattingUserQueryAsFoodName,
+  formatUserQueryAsFoodName,
   stripLegacyFoodTitleDecorations,
   isJunkFoodTitle,
   sanitizeFoodCardTitle,
@@ -90,12 +90,12 @@ function mapConsensusNutrient(consensus, key) {
 function buildDisplayName(payload, displayQuery) {
   const raw = String(displayQuery || '').trim();
   const query = payload?.query || {};
-  const fromUser = cellFormattingUserQueryAsFoodName(raw);
+  const fromUser = formatUserQueryAsFoodName(raw);
   if (fromUser && !isJunkFoodTitle(fromUser)) return fromUser;
 
   const fromParsed = query.restaurant
-    ? cellFormattingUserQueryAsFoodName(`${query.restaurant} ${query.foodName || ''}`.trim())
-    : cellFormattingUserQueryAsFoodName(query.foodName || '');
+    ? formatUserQueryAsFoodName(`${query.restaurant} ${query.foodName || ''}`.trim())
+    : formatUserQueryAsFoodName(query.foodName || '');
   if (fromParsed && !isJunkFoodTitle(fromParsed)) return fromParsed;
 
   return fromUser || fromParsed || 'Food';
@@ -327,11 +327,11 @@ function isSameFoodCandidate(a, b) {
   if (!nameA || !nameB) return false;
   if (nameA === nameB) return true;
 
-  const reportColorsA = significantQueryTokens(nameA);
-  const reportColorsB = significantQueryTokens(nameB);
-  if (reportColorsA.length && reportColorsB.length) {
-    const overlap = reportColorsA.filter((t) => reportColorsB.includes(t)).length;
-    const minLen = Math.min(reportColorsA.length, reportColorsB.length);
+  const tokensA = significantQueryTokens(nameA);
+  const tokensB = significantQueryTokens(nameB);
+  if (tokensA.length && tokensB.length) {
+    const overlap = tokensA.filter((t) => tokensB.includes(t)).length;
+    const minLen = Math.min(tokensA.length, tokensB.length);
     if (minLen >= 2 && overlap >= minLen - 1) return true;
   }
 

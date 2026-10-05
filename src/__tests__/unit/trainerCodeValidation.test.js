@@ -44,7 +44,7 @@ function createValidationHarness() {
 }
 
 describe('normalizeInviteCodeForQuery', () => {
-  it('cellFormattings a 6-character code as XXX-XXX', () => {
+  it('formats a 6-character code as XXX-XXX', () => {
     expect(normalizeInviteCodeForQuery('ABC123')).toBe('ABC-123');
     expect(normalizeInviteCodeForQuery('abc-123')).toBe('ABC-123');
   });

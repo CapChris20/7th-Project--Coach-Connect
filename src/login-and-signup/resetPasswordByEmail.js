@@ -33,7 +33,7 @@ function maskEmail(email) {
 // Authorized-domains list, which is why this points at the Firebase-hosted auth domain and not at an
 // API path that may not be deployed — an unlisted URL throws auth/unauthorized-continue-uri.
 function getPasswordResetActionCodeSettings() {
-  // Three sources, most-specific first: env var → the value baked into app cloudConnection → hardcoded
+  // Three sources, most-specific first: env var → the value baked into app config → hardcoded
   // fallback so a missing env var still produces a working link.
   // Note: 'anatrox-auth' is the live Firebase project id; it doesn't match the app's display name on
   // purpose and must not be renamed to match branding.
@@ -74,10 +74,10 @@ function mapFirebaseResetError(err) {
   const code = err?.code || '';
   if (code === 'auth/invalid-email') return 'Please enter a valid email address.';
   if (code === 'auth/missing-email') return 'Email is required.';
-  // This one is a developer/cloudConnection problem, not a user problem — the message names the exact fix
+  // This one is a developer/config problem, not a user problem — the message names the exact fix
   // because it's the failure most likely to show up right after a domain change.
   if (code === 'auth/unauthorized-continue-uri') {
-    return 'Password reset is miscloudConnectionured. Add your app domain in Firebase Console → Authentication → Settings → Authorized domains.';
+    return 'Password reset is misconfigured. Add your app domain in Firebase Console → Authentication → Settings → Authorized domains.';
   }
   if (code === 'auth/too-many-requests') {
     return 'Too many attempts. Wait a few minutes and try again.';
@@ -95,7 +95,7 @@ function mapFirebaseResetError(err) {
 
 // The fallback path: ask Firebase to send its own (unbranded) reset email.
 async function sendFirebasePasswordReset(email) {
-  // `auth` is null when Firebase cloudConnection was missing at startup (see app-start/cloudConnection.js). Throw a
+  // `auth` is null when Firebase config was missing at startup (see app-start/config.js). Throw a
   // human instruction rather than letting "cannot read property of null" surface.
   if (!auth) {
     throw new Error('Sign-in is not ready. Close and reopen the app, then try again.');
@@ -144,7 +144,7 @@ export async function resetPasswordByEmail(email) {
         provider: data?.provider ?? null,
       });
       // The server can answer "I verified this account, but you send the actual email" — it has no
-      // way to trigger a Firebase reset link itself for some account spreadsheetConstants.
+      // way to trigger a Firebase reset link itself for some account types.
       if (data?.useClientFirebase === true) {
         await sendFirebasePasswordReset(trimmed);
       }
@@ -185,7 +185,7 @@ export async function resetPasswordByEmail(email) {
     await sendFirebasePasswordReset(trimmed);
     return { success: true, message: GENERIC_SUCCESS };
   } catch (e) {
-    // Both screenNames failed — now the user genuinely needs to know, in plain language.
+    // Both routes failed — now the user genuinely needs to know, in plain language.
     console.error('[password-reset] Firebase failed:', e?.code, e?.message);
     throw new Error(mapFirebaseResetError(e));
   }

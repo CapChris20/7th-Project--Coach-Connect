@@ -32,7 +32,7 @@ describe('sanitizeFoodCardTitle (all sources)', () => {
 describe('applyFoodCardPresentation (every provider)', () => {
   const query = 'chipotle chicken bowl';
 
-  it('cellFormattings nutrition pipeline rows', () => {
+  it('formats nutrition pipeline rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'fatSecret',
@@ -46,7 +46,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via FatSecret');
   });
 
-  it('cellFormattings legacy Serper rows', () => {
+  it('formats legacy Serper rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'serper',
@@ -59,7 +59,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via Web');
   });
 
-  it('cellFormattings USDA rows', () => {
+  it('formats USDA rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'usda',
@@ -72,7 +72,7 @@ describe('applyFoodCardPresentation (every provider)', () => {
     expect(row.source_subtitle).toBe('via USDA');
   });
 
-  it('cellFormattings Open Food Facts rows', () => {
+  it('formats Open Food Facts rows', () => {
     const row = applyFoodCardPresentation(
       {
         source: 'openfoodfacts',

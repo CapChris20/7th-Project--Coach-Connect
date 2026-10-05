@@ -25,7 +25,7 @@ import {
   serverTimestamp,
   limit as limitFn,
 } from 'firebase/firestore';
-import searchFoods from '../food-search/searchFoods';
+import foodSearchApi from '../food-search/searchFoods';
 export { FOOD_SEARCH_OFFLINE_HINT } from '../food-search/searchFoods';
 import { reportCrashAutomaticallySync } from '../../crash-reports/reportCrashAutomatically';
 import { stripUndefinedForFirestore } from '../../helpers/cleanDataBeforeSaving';
@@ -126,7 +126,7 @@ export function buildFoodHistoryEntry(food) {
   return entry;
 }
 
-function cellFormattingDateKey(date = new Date()) {
+function formatDateKey(date = new Date()) {
   if (typeof date === 'string' && YYYY_MM_DD.test(date)) return date;
   const d = typeof date === 'string' ? new Date(date) : date;
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
@@ -194,7 +194,7 @@ export async function upsertDailyGoals(userId, goals) {
 const YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/;
 function toDateKey(date) {
   if (typeof date === 'string' && YYYY_MM_DD.test(date)) return date;
-  return cellFormattingDateKey(date);
+  return formatDateKey(date);
 }
 
 export async function getFoodLogsForDate(userId, date = new Date()) {
@@ -455,8 +455,8 @@ function foodNameMatches(logName, query) {
 
   if (a.includes(b) || b.includes(a)) return true;
 
-  const reportColors = b.split(/[\s,]+/).filter((w) => w.length >= 4);
-  if (reportColors.some((t) => a.includes(t))) return true;
+  const tokens = b.split(/[\s,]+/).filter((w) => w.length >= 4);
+  if (tokens.some((t) => a.includes(t))) return true;
 
   if (/pizza|domino/.test(b) && /pizza|domino/.test(a)) return true;
   if (/chicken/.test(b) && /chicken/.test(a)) return true;
@@ -536,7 +536,7 @@ export function calculateMacroTotals(logs = []) {
   );
   
   // Ensure proper units: calories (kcal), macros (g), sodium/potassium (mg)
-  const cellFormattingtedTotals = {
+  const formattedTotals = {
     calories: Math.round(totals.calories), // kcal, rounded to nearest integer
     protein: Math.round(totals.protein * 10) / 10, // g, rounded to 1 decimal
     carbs: Math.round(totals.carbs * 10) / 10, // g, rounded to 1 decimal
@@ -547,8 +547,8 @@ export function calculateMacroTotals(logs = []) {
     potassium: Math.round(totals.potassium), // mg, rounded to nearest integer
   };
   
-  if (__DEV__) console.log('🧮 calculateMacroTotals: Processed', logs.length, 'logs, totals:', cellFormattingtedTotals);
-  return cellFormattingtedTotals;
+  if (__DEV__) console.log('🧮 calculateMacroTotals: Processed', logs.length, 'logs, totals:', formattedTotals);
+  return formattedTotals;
 }
 
 export function splitLogsByMeal(logs = []) {
@@ -574,7 +574,7 @@ export async function cacheFoodProduct(product) {
     const name = String(product.name || product.food_name || '').trim();
     if (!name) return;
 
-    const cachedFoods = await searchFoods.getCachedFoods();
+    const cachedFoods = await foodSearchApi.getCachedFoods();
     const filtered = cachedFoods.filter(
       (item) => item.id !== id && normalizeHistoryName(item.name || item.food_name) !== normalizeHistoryName(name),
     );
@@ -584,7 +584,7 @@ export async function cacheFoodProduct(product) {
       filtered.splice(MAX_CACHE_ITEMS);
     }
 
-    await searchFoods.saveCachedFoods(filtered);
+    await foodSearchApi.saveCachedFoods(filtered);
   } catch (error) {
     if (__DEV__) console.warn('Failed to cache food product', error.message);
   }
@@ -592,7 +592,7 @@ export async function cacheFoodProduct(product) {
 
 export async function getCachedFoods() {
   try {
-    return await searchFoods.getCachedFoods();
+    return await foodSearchApi.getCachedFoods();
   } catch (error) {
     if (__DEV__) console.error('Error getting cached foods:', error);
     // Return sample foods even if cache fails
@@ -623,13 +623,13 @@ function getDefaultGoals() {
 
 // Food search functions using unified provider
 export function getFoodSearchHint() {
-  return searchFoods.getLastSearchHint?.() ?? null;
+  return foodSearchApi.getLastSearchHint?.() ?? null;
 }
 
 export async function searchFoods(query, maxResults = 20) {
   try {
     if (__DEV__) console.log('🍔 Starting unified food search for:', query);
-    const results = await searchFoods.searchFoods(query, maxResults);
+    const results = await foodSearchApi.searchFoods(query, maxResults);
     if (__DEV__) console.log(`🍔 Unified search returned ${results.length} results`);
     return results;
   } catch (error) {
@@ -637,7 +637,7 @@ export async function searchFoods(query, maxResults = 20) {
     // Fallback to cached foods only
     if (__DEV__) console.log('🍔 Falling back to local cache only');
     try {
-      const cachedFoods = await searchFoods.getCachedFoods();
+      const cachedFoods = await foodSearchApi.getCachedFoods();
       // Ensure cachedFoods is an array before filtering
       const foodsArray = Array.isArray(cachedFoods) ? cachedFoods : [];
       return foodsArray.filter(food => 
@@ -654,7 +654,7 @@ export async function searchFoods(query, maxResults = 20) {
 export async function lookupBarcode(barcode) {
   try {
     if (__DEV__) console.log('🍔 Looking up barcode:', barcode);
-    const result = await searchFoods.lookupBarcode(barcode);
+    const result = await foodSearchApi.lookupBarcode(barcode);
     if (__DEV__) console.log(`🍔 Barcode lookup result:`, result ? 'Found' : 'Not found');
     return result;
   } catch (error) {
@@ -667,7 +667,7 @@ export async function getFoodDetails(foodId, source = 'cache') {
   try {
     // For now, just return cached food details
     // This can be enhanced later to call server endpoints
-    const cachedFoods = await searchFoods.getCachedFoods();
+    const cachedFoods = await foodSearchApi.getCachedFoods();
     return cachedFoods.find(food => food.id === foodId) || null;
   } catch (error) {
     if (__DEV__) console.error('Error getting food details:', error);
@@ -678,7 +678,7 @@ export async function getFoodDetails(foodId, source = 'cache') {
 export async function getPopularFoods(limit = 10) {
   try {
     // Return cached foods sorted by recent usage
-    const cachedFoods = await searchFoods.getCachedFoods();
+    const cachedFoods = await foodSearchApi.getCachedFoods();
     return cachedFoods.slice(0, limit);
   } catch (error) {
     if (__DEV__) console.error('Error getting popular foods:', error);
@@ -912,10 +912,10 @@ export async function toggleFavoriteFood(userId, food) {
 // Clean up old functions
 export async function clearFatSecretTokens() {
   try {
-    // No reportColors to clear with new provider
-    if (__DEV__) console.log('No reportColors to clear (using unified food search provider)');
+    // No tokens to clear with new provider
+    if (__DEV__) console.log('No tokens to clear (using unified food search provider)');
   } catch (error) {
-    if (__DEV__) console.error('Error clearing reportColors:', error);
+    if (__DEV__) console.error('Error clearing tokens:', error);
   }
 }
 

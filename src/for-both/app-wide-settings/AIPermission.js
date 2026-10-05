@@ -50,7 +50,7 @@ function monthKeyFromTs(ts) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function cellFormattingShortDate(ts) {
+function formatShortDate(ts) {
   try {
     return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch (_) {
@@ -62,7 +62,7 @@ function cellFormattingShortDate(ts) {
 export function getAiToggleMeterHint(m) {
   if (!m) return '';
   if (m.isFrozenFromChurn) {
-    return `AI stays off until ${cellFormattingShortDate(m.freezeOffUntil)} after repeated off switches this month.`;
+    return `AI stays off until ${formatShortDate(m.freezeOffUntil)} after repeated off switches this month.`;
   }
   if (m.remaining <= 0) {
     return "You've used your full allowance for flipping this switch this month. It resets next month.";
@@ -291,7 +291,7 @@ export function AIProvider({ children }) {
       if (next === true && freezeOffUntil > now) {
         Alert.alert(
           'AI stays off for now',
-          `You turned AI off several times this month. It will stay off until ${cellFormattingShortDate(freezeOffUntil)}. Your coach and the rest of the app still work.`,
+          `You turned AI off several times this month. It will stay off until ${formatShortDate(freezeOffUntil)}. Your coach and the rest of the app still work.`,
         );
         return;
       }

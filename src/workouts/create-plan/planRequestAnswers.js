@@ -59,7 +59,7 @@ function resolveDaysPerWeek(data) {
   return rounded >= 1 && rounded <= 7 ? rounded : null;
 }
 
-/** Strip Firestore spreadsheetConstants / extra user-doc fields before POSTing to /api/workout/generate. */
+/** Strip Firestore types / extra user-doc fields before POSTing to /api/workout/generate. */
 export function buildWorkoutOnboardingPayload(data) {
   const src = normalizeClientProfileFields(data && typeof data === 'object' ? data : {});
   const out = {};

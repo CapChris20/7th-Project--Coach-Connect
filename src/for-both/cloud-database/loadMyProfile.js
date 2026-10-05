@@ -34,16 +34,16 @@ export async function loadMyProfileFromApi(user) {
     'http://localhost:4001',
     'http://127.0.0.1:4001',
   ];
-  const whereToConnects = apiBaseUrl ? [apiBaseUrl, ...fallbackBaseUrls] : fallbackBaseUrls;
+  const baseUrls = apiBaseUrl ? [apiBaseUrl, ...fallbackBaseUrls] : fallbackBaseUrls;
 
   await user.reload();
   const idToken = await user.getIdToken(true);
 
-  for (const whereToConnect of whereToConnects) {
+  for (const baseUrl of baseUrls) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
     try {
-      const resp = await fetch(`${whereToConnect}/api/me`, {
+      const resp = await fetch(`${baseUrl}/api/me`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' },
         signal: controller.signal,

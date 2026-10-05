@@ -111,7 +111,7 @@ mustInclude(
 console.log('\n── AI Coach (web search routing) ──\n');
 
 mustInclude(
-  'src/for-both/online-connection/whereToConnect.js',
+  'src/for-both/online-connection/baseUrl.js',
   ['getAICoachApiBases', 'push(PRODUCTION_API_BASE_URL)'],
   'AI Coach API tries Cloud Run before local :4000',
 );

@@ -1,5 +1,5 @@
 /**
- * Onboarding color reportColors — literal values from food-cards/foodCardColors.js.
+ * Onboarding color tokens — literal values from food-cards/foodCardColors.js.
  * Kept in a dependency-free module so onboarding screens never crash on import order.
  */
 

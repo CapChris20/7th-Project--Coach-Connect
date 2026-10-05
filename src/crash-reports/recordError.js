@@ -63,7 +63,7 @@ function getDb() {
       }
     }
   } catch (e) {
-    console.warn('⚠️ Could not load Firestore cloudConnection:', e.message);
+    console.warn('⚠️ Could not load Firestore config:', e.message);
   }
   return db;
 }
@@ -71,7 +71,7 @@ function getDb() {
 // "Sep 13, 2026 at 2:48 AM" — the human-skimmable stamp in ERRORS.md.
 // The machine-sortable ISO string is stored separately; this one is for eyeballs only.
 // Manipulate here: tweak these options to change how ERRORS.md entries read
-function cellFormattingTimestamp(date) {
+function formatTimestamp(date) {
   const now = date || new Date();
   const dateStr = now.toLocaleDateString('en-US', {
     month: 'short',
@@ -91,7 +91,7 @@ function cellFormattingTimestamp(date) {
 async function recordError(error, context) {
   const now = new Date();
   const timestamp = now.toISOString();
-  const readableTime = cellFormattingTimestamp(now);
+  const readableTime = formatTimestamp(now);
   // Normalize once, up front. Every sink below consumes this exact shape, so the
   // ERRORS.md entry, the API payload, and the Firestore doc all stay in sync.
   // `|| 'Unknown error'` / `|| null` keep the object's keys stable even for weird throws.
@@ -142,7 +142,7 @@ ${errorData.stack || 'No stack trace'}
 
 `;
 
-      const readableUpdateTime = cellFormattingTimestamp(now);
+      const readableUpdateTime = formatTimestamp(now);
       let newContent = `🔥 ANATROX ERROR LOG
 ================================================================================
 
@@ -177,7 +177,7 @@ Last updated: ${readableUpdateTime}
   } else {
     // ── Sink 1b: the mobile/web app POSTs to our own API instead ──
     try {
-      const whereToConnect = getApiBase();
+      const baseUrl = getApiBase();
       // Fired inside a self-calling async function and deliberately NOT awaited: logging
       // an error must never make the caller wait on the network.
       // vocab: (async () => { ... })() = IIFE — define an async function and immediately run it
@@ -188,7 +188,7 @@ Last updated: ${readableUpdateTime}
           // No auth token → the server would reject it anyway, so bail and let the
           // outer .catch() hand it to the offline queue.
           if (!headers.Authorization) return;
-          await fetch(`${whereToConnect}/api/log-error`, {
+          await fetch(`${baseUrl}/api/log-error`, {
             method: 'POST',
             headers,
             body: JSON.stringify(errorData),

@@ -62,7 +62,7 @@ export function evaluateCell(raw, cells, visiting = new Set(), selfKey) {
   }
 
   let expr = String(raw).slice(1).trim();
-  if (!expr) return { value: null, error: 'Empty formulaCalculator' };
+  if (!expr) return { value: null, error: 'Empty formula' };
 
   let bal = 0;
   for (const ch of expr) {

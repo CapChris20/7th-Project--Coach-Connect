@@ -1,5 +1,5 @@
 // Sets up the rich-text editor ("DocFlow") and the command helpers its toolbar calls.
-// Flow: useDocFlowEditor cloudConnectionures the TenTap bridges and returns the editor instance; every other
+// Flow: useDocFlowEditor configures the TenTap bridges and returns the editor instance; every other
 // export sends a command down into the editor for a feature the starter kit doesn't expose.
 // Key thing to understand: the editor runs inside a WebView. The helpers below work by INJECTING
 // JavaScript into that web page — that's why they're strings of DOM code, not React calls.
@@ -21,7 +21,7 @@ import {
 const PLACEHOLDER = "Start writing… or paste from anywhere. We'll tidy it up.";
 
 export function useDocFlowEditor({ initialContent, onUpdate, isDark }) {
-  // Take the default bridge set and swap in a cloudConnectionured version of the ones we care about,
+  // Take the default bridge set and swap in a configured version of the ones we care about,
   // passing everything else through untouched. Matching on bridge.name (rather than rebuilding the
   // list by hand) means a TenTap upgrade that adds new bridges keeps working automatically.
   // useMemo with [] because this list must be built exactly once — a new array identity would
@@ -30,29 +30,29 @@ export function useDocFlowEditor({ initialContent, onUpdate, isDark }) {
     () => [
       ...TenTapStartKit.map((bridge) => {
         if (bridge.name === 'placeholder') {
-          return PlaceholderBridge.cloudConnectionureExtension({ placeholder: PLACEHOLDER });
+          return PlaceholderBridge.configureExtension({ placeholder: PLACEHOLDER });
         }
         // openOnClick false: tapping a link inside the editor should place the cursor for editing,
         // not navigate away. autolink true turns a typed URL into a link automatically.
         if (bridge.name === 'link') {
-          return LinkBridge.cloudConnectionureExtension({ openOnClick: false, autolink: true });
+          return LinkBridge.configureExtension({ openOnClick: false, autolink: true });
         }
         // inline false = images are their own block (not sitting in a line of text).
         // allowBase64 is required for pasted/embedded images, which arrive as data URLs.
         if (bridge.name === 'image') {
-          return ImageBridge.cloudConnectionureExtension({ inline: false, allowBase64: true });
+          return ImageBridge.configureExtension({ inline: false, allowBase64: true });
         }
         // multicolor true is what enables the highlight-color palette rather than one fixed yellow.
         if (bridge.name === 'highlight') {
-          return HighlightBridge.cloudConnectionureExtension({ multicolor: true });
+          return HighlightBridge.configureExtension({ multicolor: true });
         }
         // Manipulate here: enable all six heading levels. Trim this array to restrict the H-menu.
         if (bridge.name === 'heading') {
-          return HeadingBridge.cloudConnectionureExtension({ levels: [1, 2, 3, 4, 5, 6] });
+          return HeadingBridge.configureExtension({ levels: [1, 2, 3, 4, 5, 6] });
         }
         // Manipulate here: undo depth. 100 steps trades a little memory for a forgiving undo stack.
         if (bridge.name === 'history') {
-          return HistoryBridge.cloudConnectionureExtension({ depth: 100 });
+          return HistoryBridge.configureExtension({ depth: 100 });
         }
         return bridge;
       }),
@@ -102,7 +102,7 @@ export function injectEditorCommand(editor, js) {
   editor?.injectJS?.(`(function(){ try { ${js} } catch(e) {} })(); true;`);
 }
 
-// Inserts raw HTML at the caret. JSON.stringify is doing security work here, not cellFormattingting: it
+// Inserts raw HTML at the caret. JSON.stringify is doing security work here, not formatting: it
 // escapes quotes, backslashes, and newlines so the HTML can't break out of the injected string and
 // execute as arbitrary code.
 export function insertHtmlAtCursor(editor, html) {
@@ -180,7 +180,7 @@ export function clearFormatting(editor) {
 // Uses the editor's real API (not injection) because TipTap's toggles are the reliable way to change
 // block type. It works by toggling OFF whatever is currently on: calling toggleHeading with the
 // ACTIVE level turns that heading off. The early return means one call clears one wrapper — heading
-// takes precedence since it's the more visible cellFormattingting.
+// takes precedence since it's the more visible formatting.
 export function setNormalText(editor, bridgeState) {
   if (bridgeState?.headingLevel) {
     editor.toggleHeading?.(bridgeState.headingLevel);

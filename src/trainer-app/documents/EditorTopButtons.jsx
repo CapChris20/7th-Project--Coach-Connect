@@ -11,7 +11,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { EditorColorBorder, EditorGradientIcon } from './editorAccent';
+import { EditorGradientBorder, EditorGradientIcon } from './editorAccent';
 
 /** Shown in UI only — never saved as the file title. */
 export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
@@ -66,7 +66,7 @@ export function EditorTitleField({
   inputRef,
 }) {
   return (
-    <EditorColorBorder
+    <EditorGradientBorder
       active={focused}
       bgColor={theme.inputBg}
       borderColor={theme.border}
@@ -91,7 +91,7 @@ export function EditorTitleField({
         style={[titleStyles.input, { color: theme.text }]}
       />
       <Ionicons name="pencil" size={17} color={theme.textMuted} style={titleStyles.pencil} />
-    </EditorColorBorder>
+    </EditorGradientBorder>
   );
 }
 

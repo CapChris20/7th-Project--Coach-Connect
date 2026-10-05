@@ -273,7 +273,7 @@ export default function HomeTopBanner({
         <View style={[styles.right, { flex: isWide ? 0.4 : 1 }]}>
           <View style={styles.inlineRow}>
             <LottieView
-              source={require('../../../assets/icons/weightlifting-competition.json')}
+              source={require('../../assets/icons/weightlifting-competition.json')}
               autoPlay
               loop
               style={{ width: lottieSize, height: lottieSize }}

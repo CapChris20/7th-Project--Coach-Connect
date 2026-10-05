@@ -11,7 +11,7 @@ export async function handleAuthUidTransition(prevUid, nextFirebaseUser, deps) {
 
   // Case 1 — sign-out: we had a user, now we don't. Clear their cached data off this device.
   if (!nextUid && prevUid) {
-    // Push reportColors are per-device-per-user: if we leave the old token attached, the previous
+    // Push tokens are per-device-per-user: if we leave the old token attached, the previous
     // account keeps getting this phone's notifications. Best-effort only — a failure here
     // must not block the rest of the wipe, hence the try/catch that swallows the error.
     try {

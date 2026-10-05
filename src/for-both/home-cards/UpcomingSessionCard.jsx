@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { cellFormattingTime12, cellFormattingDateLong } from '../../helpers/sessionTimeText';
+import { formatTime12, formatDateLong } from '../../helpers/sessionTimeText';
 
 const PINK = '#FF6B9D';
 const PURPLE = '#C084FC';
@@ -51,8 +51,8 @@ export function UpcomingSessionCard({
 
   const dur = s.durationMin || s.duration || 60;
   const dateKey = (s.date || '').slice(0, 10);
-  const dateHuman = dateKey ? cellFormattingDateLong(dateKey) : '—';
-  const timeStr = cellFormattingTime12(s.time) || '—';
+  const dateHuman = dateKey ? formatDateLong(dateKey) : '—';
+  const timeStr = formatTime12(s.time) || '—';
 
   return (
     <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>

@@ -78,7 +78,7 @@ export function initMonitoring() {
 }
 
 /**
- * Report an error to Sentry when cloudConnectionured; always logs via logger in production paths.
+ * Report an error to Sentry when configured; always logs via logger in production paths.
  */
 export function captureException(error, context = {}) {
   if (sentryCapture) {

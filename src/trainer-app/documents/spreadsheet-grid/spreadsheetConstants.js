@@ -1,5 +1,5 @@
 // Shared constants + tiny pure helpers for the spreadsheet editor (grid size, A1 labels, keys).
-// Flow: every spreadsheet module imports from here so the grid, formulaCalculator engine, and renderer
+// Flow: every spreadsheet module imports from here so the grid, formula engine, and renderer
 // all agree on how big the sheet is and how a cell is addressed.
 // Why it exists: these values are referenced in layout math AND storage keys — one source only.
 
@@ -39,7 +39,7 @@ export const colLabel = (c) => {
   return s;
 };
 
-// The inverse of colLabel: 'A'→0, 'AA'→26. Used when parsing formulaCalculators like "=SUM(A1:B4)".
+// The inverse of colLabel: 'A'→0, 'AA'→26. Used when parsing formulas like "=SUM(A1:B4)".
 // Builds up left-to-right (n * 26 + digit), then subtracts 1 to get back to 0-based indexing.
 // vocab: charCodeAt(0) - 64 = 'A'→1, 'B'→2 … the 1-based digit value this loop needs
 export const labelToCol = (s) => {
@@ -51,7 +51,7 @@ export const labelToCol = (s) => {
 };
 
 // The canonical cell address used as an object/Map key everywhere in the spreadsheet.
-// Keep every module going through this helper — if the cellFormatting ever changes, saved sheets
+// Keep every module going through this helper — if the format ever changes, saved sheets
 // would silently stop resolving, so there must be exactly one place that decides it.
 export const keyOf = (r, c) => `${r},${c}`;
 

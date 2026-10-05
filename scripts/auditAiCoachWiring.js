@@ -48,7 +48,7 @@ const RULES = [
     severity: 'error',
     note: 'Client must prefer Cloud Run for AI Coach + retry failed web search',
     check() {
-      const base = read('src/for-both/online-connection/whereToConnect.js');
+      const base = read('src/for-both/online-connection/baseUrl.js');
       const svc = read('src/ai-coach/conversation/sendMessageToCoach.js');
       return (
         base.includes('getAICoachApiBases') &&

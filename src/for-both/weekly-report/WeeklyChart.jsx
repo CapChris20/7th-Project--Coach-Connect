@@ -113,7 +113,7 @@ export function WeeklyChart({
     setActiveIdx((prev) => (prev === i ? null : i));
   };
 
-  const cellFormattingTooltipValue = (val) => {
+  const formatTooltipValue = (val) => {
     if (metricKey === 'steps' && val >= 1000) return `${(val / 1000).toFixed(1)}k`;
     return String(val);
   };
@@ -214,7 +214,7 @@ export function WeeklyChart({
             {points[activeIdx].day.dayName}
           </Text>
           <Text style={[styles.tooltipValue, { color: colors.textPrimary }]}>
-            {cellFormattingTooltipValue(points[activeIdx].day.chartValue)}
+            {formatTooltipValue(points[activeIdx].day.chartValue)}
             <Text style={{ color: colors.textMuted, fontSize: 12 }}> {valueSuffix}</Text>
           </Text>
         </View>

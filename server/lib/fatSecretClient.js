@@ -173,7 +173,7 @@ async function searchFoodsFatSecret(query, limit = 20) {
       {
         method: 'foods.search',
         search_expression: q,
-        cellFormatting: 'json',
+        format: 'json',
         max_results: Math.min(Math.max(limit, 1), 50),
         page_number: 0,
       },
@@ -207,7 +207,7 @@ async function lookupBarcodeFatSecret(barcode) {
     for (const code of variants) {
       try {
         const data = await fatSecretOAuth1Get(
-          { method: 'food.find_id_for_barcode', barcode: code, cellFormatting: 'json' },
+          { method: 'food.find_id_for_barcode', barcode: code, format: 'json' },
           key,
           secret,
         );
@@ -225,7 +225,7 @@ async function lookupBarcodeFatSecret(barcode) {
       for (const code of variants) {
         try {
           const res = await axios.get('https://platform.fatsecret.com/rest/server.api', {
-            params: { method: 'food.find_id_for_barcode', barcode: code, cellFormatting: 'json' },
+            params: { method: 'food.find_id_for_barcode', barcode: code, format: 'json' },
             headers: { Authorization: `Bearer ${token}` },
             timeout: 12000,
           });
@@ -242,7 +242,7 @@ async function lookupBarcodeFatSecret(barcode) {
     let food = null;
     try {
       const detail = await fatSecretOAuth1Get(
-        { method: 'food.get.v4', food_id: foodId, cellFormatting: 'json' },
+        { method: 'food.get.v4', food_id: foodId, format: 'json' },
         key,
         secret,
       );
@@ -251,7 +251,7 @@ async function lookupBarcodeFatSecret(barcode) {
       const token = await getAccessToken().catch(() => null);
       if (token) {
         const detail = await axios.get('https://platform.fatsecret.com/rest/server.api', {
-          params: { method: 'food.get.v4', food_id: foodId, cellFormatting: 'json' },
+          params: { method: 'food.get.v4', food_id: foodId, format: 'json' },
           headers: { Authorization: `Bearer ${token}` },
           timeout: 12000,
         });

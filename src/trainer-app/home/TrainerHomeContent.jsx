@@ -1350,7 +1350,7 @@ const DashboardContent = ({
         const client = removeClientHold;
         if (!client?.id || !trainerId) return;
         if (!functions) {
-          throw new Error('Cloud Functions are not cloudConnectionured.');
+          throw new Error('Cloud Functions are not configured.');
         }
         const displayName = String(client.name || client.displayName || 'Client').trim() || 'Client';
         const fn = httpsCallable(functions, 'removeTrainerClientLink');

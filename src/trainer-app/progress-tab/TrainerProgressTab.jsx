@@ -40,7 +40,7 @@ import {
   getTrainerDashboardLottieCaption,
   getClientInitials,
   getClientRosterStats,
-  cellFormattingClientHeightDisplay,
+  formatClientHeightDisplay,
   getClientSubtext,
   useTrainerTheme,
   CARD_BORDER_PROGRESS,

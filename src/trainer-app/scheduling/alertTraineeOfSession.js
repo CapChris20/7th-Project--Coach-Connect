@@ -23,7 +23,7 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
 // "14:30" → "2:30 PM". Sessions are stored as 24-hour strings; notification copy reads better in
 // 12-hour form.
-function cellFormattingTime12(hhmm) {
+function formatTime12(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return '';
   const [hStr, mStr] = hhmm.split(':');
   const h = parseInt(hStr, 10);
@@ -40,14 +40,14 @@ function cellFormattingTime12(hhmm) {
 }
 
 // "2026-03-14" → "Sat, Mar 14".
-function cellFormattingDateShort(isoDate) {
+function formatDateShort(isoDate) {
   if (!isoDate || typeof isoDate !== 'string') return '';
   // slice(0,10) tolerates a full ISO timestamp being passed in, and the 'T12:00:00' anchor at local
   // noon prevents the classic off-by-one-day bug (a bare date parses as UTC midnight, which is the
   // previous day in western timezones).
   const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
   if (Number.isNaN(d.getTime())) return isoDate;
-  // Manipulate here: the date cellFormatting used in the notification body.
+  // Manipulate here: the date format used in the notification body.
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
@@ -89,8 +89,8 @@ export async function sendSessionScheduledPushToClient({
   // Build the detail line from whichever parts we have. filter(Boolean) then join(' at ') is what
   // produces "Sat, Mar 14 at 2:30 PM", or just the date if the time is missing — never a dangling
   // " at " with nothing after it.
-  const dateLabel = cellFormattingDateShort(String(date || ''));
-  const timeLabel = cellFormattingTime12(String(time || ''));
+  const dateLabel = formatDateShort(String(date || ''));
+  const timeLabel = formatTime12(String(time || ''));
   const bits = [dateLabel, timeLabel].filter(Boolean);
   // Manipulate here: these two strings are the notification's detail line.
   const messageText =
@@ -140,7 +140,7 @@ async function tryServerNotify({ recipientId, senderName, messageText, senderId,
   try {
     // Strip a trailing slash so the template below can't produce a double slash in the URL.
     const base = String(getApiBase() || '').replace(/\/$/, '');
-    // No API cloudConnectionured (common in local/offline builds) — bail before attempting a fetch.
+    // No API configured (common in local/offline builds) — bail before attempting a fetch.
     if (!base) return false;
     const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
     // No auth token means the request would be rejected anyway, so skip the round trip.
@@ -187,10 +187,10 @@ async function sendExpoDirect({ clientId, trainerUid, sessionId, title, body }) 
       return { ok: false, reason: 'no_push_token' };
     }
     // Validate the token shape locally so we don't burn a network call on a token we know Expo will
-    // reject. Both prefixes are legitimate Expo cellFormattings.
+    // reject. Both prefixes are legitimate Expo formats.
     if (!expoPushToken.startsWith('ExponentPushToken[') && !expoPushToken.startsWith('ExpoPushToken[')) {
-      console.warn('[session push] Unsupported token cellFormatting');
-      return { ok: false, reason: 'bad_token_cellFormatting' };
+      console.warn('[session push] Unsupported token format');
+      return { ok: false, reason: 'bad_token_format' };
     }
 
     const res = await fetch(EXPO_PUSH_URL, {

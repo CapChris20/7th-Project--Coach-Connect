@@ -4,7 +4,7 @@
 const {
   decideVerificationOutcome,
   normalizeMediaType,
-} = require('../lib/checkTrainerCertificate');
+} = require('../lib/verifyTrainerCertification');
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);

@@ -22,13 +22,13 @@ exports.onFirstMessageTrigger = functions.firestore
     const conversationId = messageData.conversationId || '';
     const match = conversationId.match(/^conv_(.+)_(.+)$/);
     if (!match) {
-      console.log('Invalid conversationId cellFormatting:', conversationId);
+      console.log('Invalid conversationId format:', conversationId);
       return null;
     }
     const [_, clientUid, trainerUid] = match;
 
     if (!trainerUid || !clientUid) {
-      console.log('Invalid conversationId cellFormatting:', conversationId);
+      console.log('Invalid conversationId format:', conversationId);
       return null;
     }
 

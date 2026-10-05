@@ -9,7 +9,7 @@
  * @file-header
  */
 /**
- * SpreadsheetViewer — read-only viewer for uploaded .csv / .spreadsheetReader files.
+ * SpreadsheetViewer — read-only viewer for uploaded .csv / .xlsx files.
  *
  * NOTE: This is NOT SpreadsheetEditor (trainer edit UI lives at
  * src/trainer-app/documents/SpreadsheetEditor.js). Clients and trainers
@@ -23,7 +23,7 @@
  * Props:
  *   visible — show/hide modal
  *   url     — Firebase Storage or HTTPS URL to the file
- *   name    — filename (used to detect .csv vs .spreadsheetReader)
+ *   name    — filename (used to detect .csv vs .xlsx)
  *   isDark  — light/dark chrome for header and cells
  *   onClose — back button / Android back
  */

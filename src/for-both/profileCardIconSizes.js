@@ -18,18 +18,18 @@ export const PROFILE_ROW_ICON_WRAP = 44;
 
 /** Static PNG assets for recovery / lifestyle profile fields. */
 export const PROFILE_CARD_ICON_ASSETS = {
-  goal: require('../../assets/icons/dumbbell.png'),
-  frequency: require('../../assets/icons/Schedule.png'),
-  trainingEnvironment: require('../../assets/icons/enviro.png'),
-  preferredWorkoutTime: require('../../assets/icons/Schedule.png'),
-  exercisesDislike: require('../../assets/icons/banned.png'),
-  injuries: require('../../assets/icons/injury.png'),
-  supplements: require('../../assets/icons/supplement.png'),
-  stress: require('../../assets/icons/stress.png'),
-  sleep: require('../../assets/icons/sleeping.png'),
-  energy: require('../../assets/icons/energy.png'),
-  hydration: require('../../assets/icons/hydration.png'),
-  journey: require('../../assets/icons/journey.png'),
+  goal: require('../assets/icons/dumbbell.png'),
+  frequency: require('../assets/icons/Schedule.png'),
+  trainingEnvironment: require('../assets/icons/enviro.png'),
+  preferredWorkoutTime: require('../assets/icons/Schedule.png'),
+  exercisesDislike: require('../assets/icons/banned.png'),
+  injuries: require('../assets/icons/injury.png'),
+  supplements: require('../assets/icons/supplement.png'),
+  stress: require('../assets/icons/stress.png'),
+  sleep: require('../assets/icons/sleeping.png'),
+  energy: require('../assets/icons/energy.png'),
+  hydration: require('../assets/icons/hydration.png'),
+  journey: require('../assets/icons/journey.png'),
 };
 
 /** Maps workout plan builder field keys → profile card icon ids. */

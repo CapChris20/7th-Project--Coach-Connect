@@ -23,10 +23,10 @@ import {
 import {
   parseDayNote,
   parseStructuredDayNote,
-  cellFormattingDateRange,
+  formatDateRange,
 } from '../../trainer-app/weekly-report/WeeklyReportBars';
 import { WeeklyReportThemeProvider } from './reportColorSettings';
-import { prepareReportForScreensToWeeks, cellFormattingDayForShare } from './prepareReportForScreen';
+import { prepareReportForScreensToWeeks, formatDayForShare } from './prepareReportForScreen';
 import { fetchNutritionByDayForRange } from './loadWeekFoodTotals';
 import {
   fetchDailyLogsByDayForRange,
@@ -35,7 +35,7 @@ import {
 import { WeeklyReportBody } from './WeeklyReportBody';
 import { NoReportYet } from './NoReportYet';
 
-export function cellFormattingChipRange(weekStart, weekEnd) {
+export function formatChipRange(weekStart, weekEnd) {
   const ws = String(weekStart || '').trim();
   const we = String(weekEnd || ws).trim();
   if (!ws) return '';
@@ -46,7 +46,7 @@ export function cellFormattingChipRange(weekStart, weekEnd) {
   return `${a} – ${b}`;
 }
 
-const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, cellFormattingDateRange };
+const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, formatDateRange };
 
 export default function WeeklyReportScreen({
   clientId,
@@ -153,7 +153,7 @@ export default function WeeklyReportScreen({
   const handleExport = useCallback(async () => {
     if (!activeWeek) return;
     const dayRows = (activeWeek.days || [])
-      .map((d) => `<li>${cellFormattingDayForShare(d)}</li>`)
+      .map((d) => `<li>${formatDayForShare(d)}</li>`)
       .join('');
     const listHtml = (items) =>
       items?.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>` : '<p><em>None logged.</em></p>';

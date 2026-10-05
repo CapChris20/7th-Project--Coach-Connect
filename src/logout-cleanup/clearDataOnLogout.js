@@ -1,5 +1,5 @@
 // Wipes on-device caches so one account never sees another account's data.
-// Flow: sign-out or account-switch → drop known cache keys → sweep any leftover app-prefixed keys → (sign-out only) unregister push reportColors.
+// Flow: sign-out or account-switch → drop known cache keys → sweep any leftover app-prefixed keys → (sign-out only) unregister push tokens.
 // Called from the auth/sign-out path; `dataCacheCleanup.js` is a deprecated alias for this file.
 
 // vocab: AsyncStorage = React Native's key/value store on the device (survives app restarts)
@@ -118,7 +118,7 @@ export async function clearUserSpecificData(userId) {
   }
 }
 
-// Sign-out entry point. Order matters: read the uid and detach push reportColors FIRST,
+// Sign-out entry point. Order matters: read the uid and detach push tokens FIRST,
 // because `auth.currentUser` is gone once Firebase actually signs out, and a stale token
 // would keep delivering this user's notifications to the device.
 export async function onUserSignOut() {

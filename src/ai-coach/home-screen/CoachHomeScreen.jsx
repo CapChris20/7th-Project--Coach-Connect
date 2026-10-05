@@ -143,7 +143,7 @@ function rimForPrompt(text) {
   return HOME_STAT_SORENESS_GRADIENT;
 }
 
-// ─── Theme reportColors ─────────────────────────────────────────────────────────────
+// ─── Theme tokens ─────────────────────────────────────────────────────────────
 const DARK = {
   bg: '#000000',
   secondaryBg: '#0A0A0F',
@@ -1252,7 +1252,7 @@ export default function CoachHomeScreen({
               }}
             >
               <LottieView
-                source={require('../../../assets/animations/legacy/Cloud robotics abstract.json')}
+                source={require('../../assets/animations/legacy/Cloud robotics abstract.json')}
                 autoPlay
                 loop
                 style={{ width: '100%', height: '100%' }}

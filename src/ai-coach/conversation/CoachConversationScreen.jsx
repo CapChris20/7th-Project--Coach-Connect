@@ -86,7 +86,7 @@ import { coerceMisroutedDeleteTool } from '../coach-actions/spotDeleteRequests';
 import {
   guardCoachToolProposal,
   isValidCoachToolProposal,
-  isIncellFormattingionalUserMessage,
+  isInformationalUserMessage,
 } from '../coach-actions/shouldAskFirst';
 import {
   shouldAutoExecuteCoachTool,
@@ -140,7 +140,7 @@ function resolveIncomingCoachTool(coachResponse, userText = '') {
   const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
   if (coerced && isValidCoachToolProposal(coerced, user)) return coerced;
 
-  if (coachResponse?.searchedWeb || isIncellFormattingionalUserMessage(user)) {
+  if (coachResponse?.searchedWeb || isInformationalUserMessage(user)) {
     return null;
   }
 
@@ -164,7 +164,7 @@ function coachActionPromptVisible(message, userMessage = '') {
   return Boolean(resolveMessageToolCall(message, userMessage));
 }
 
-function cellFormattingToolActionSummary(toolCall) {
+function formatToolActionSummary(toolCall) {
   const t = normalizeToolCall(toolCall);
   if (!t) {
     return { icon: 'flash-outline', title: 'Confirm action', detail: 'Review what the coach will update' };
@@ -312,7 +312,7 @@ function cellFormattingToolActionSummary(toolCall) {
 function ToolActionChip({ message, onPress, t, userMessage = '' }) {
   const toolCall = resolveMessageToolCall(message, userMessage);
   if (!toolCall) return null;
-  const summary = cellFormattingToolActionSummary(toolCall);
+  const summary = formatToolActionSummary(toolCall);
   const handlePress = () => onPress?.(toolCall, message.id);
 
   return (
@@ -372,7 +372,7 @@ function ToolActionChip({ message, onPress, t, userMessage = '' }) {
     </CoachGlassCard>
   );
 }
-// ─── Theme reportColors (aligned with design-system.md) ────────────────────────────
+// ─── Theme tokens (aligned with design-system.md) ────────────────────────────
 const DARK = {
   bg: AI_COACH_UI.bg,
   cardBg: AI_COACH_UI.glass,
@@ -1712,7 +1712,7 @@ export default function CoachConversationScreen({
         {messages.length === 0 && !typing && !keyboardVisible ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <LottieView
-              source={require('../../../assets/animations/legacy/Cloud robotics abstract.json')}
+              source={require('../../assets/animations/legacy/Cloud robotics abstract.json')}
               autoPlay
               loop
               style={{ width: 100, height: 100 }}

@@ -21,7 +21,7 @@ describe('userWantsDeleteLog', () => {
 });
 
 describe('inferDeleteLogParams metric routing', () => {
-  it('screenNames sleep removes to logType sleep', () => {
+  it('routes sleep removes to logType sleep', () => {
     expect(inferDeleteLogType('Can u remove the log I put for sleeping 12 hours')).toBe('sleep');
     const params = inferDeleteLogParams('No not a food entry a dashboard log for sleep', '');
     expect(params.logType).toBe('sleep');

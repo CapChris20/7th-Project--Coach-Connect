@@ -1,5 +1,5 @@
 /**
- * Premium food card design reportColors — Coach Connect macro palette.
+ * Premium food card design tokens — Coach Connect macro palette.
  */
 
 export const brandColors = {

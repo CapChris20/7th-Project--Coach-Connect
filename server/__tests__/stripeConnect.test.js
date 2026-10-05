@@ -44,7 +44,7 @@ function makeStripeConnectMock({ chargesEnabled = false } = {}) {
   return { accountId, accountsCreate, accountsRetrieve, accountLinksCreate, balanceRetrieve };
 }
 
-describe('Stripe Connect screenNames', () => {
+describe('Stripe Connect routes', () => {
   beforeEach(() => {
     resetFirestoreStore();
     jest.clearAllMocks();

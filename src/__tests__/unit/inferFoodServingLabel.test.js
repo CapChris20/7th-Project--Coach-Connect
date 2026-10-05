@@ -2,7 +2,7 @@ const {
   isWeakServingLabel,
   servingLabelFromQueryStructure,
   resolveFoodServingLabel,
-  cellFormattingServingDisplayLine,
+  formatServingDisplayLine,
 } = require('../../nutrition/food-search/guessServingLabel');
 
 describe('guessServingLabel', () => {
@@ -73,7 +73,7 @@ describe('guessServingLabel', () => {
 
   it('keeps pizza serving when name mentions wings', () => {
     expect(
-      cellFormattingServingDisplayLine(
+      formatServingDisplayLine(
         {
           food_name: 'Buffalo Wing Pizza',
           serving_label: '8 pc wings',
@@ -94,9 +94,9 @@ describe('guessServingLabel', () => {
     ).toBe('1 slice');
   });
 
-  it('cellFormattings display line without 100g serving for menu items', () => {
+  it('formats display line without 100g serving for menu items', () => {
     expect(
-      cellFormattingServingDisplayLine(
+      formatServingDisplayLine(
         {
           source: 'fatSecret',
           food_name: 'Large Cheese Pizza',

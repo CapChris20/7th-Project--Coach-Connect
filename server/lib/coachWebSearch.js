@@ -526,7 +526,7 @@ function isFitnessNutritionQuery(text) {
     'chicken', 'rice', 'eating', 'food', 'hungry', 'hunger',
     'grams', 'kcal', 'chipotle', 'restaurant', 'menu',
   ];
-  // Short reportColors that falsely match inside other words (form⊂incellFormattingion, cut⊂specifically, etc.)
+  // Short tokens that falsely match inside other words (form⊂information, cut⊂specifically, etc.)
   const shortTokens = ['form', 'pr', 'cut', 'plan', 'log', 'ate', 'eat', 'oz', 'cup', 'back', 'set', 'rep'];
 
   const hit = (k) => {
@@ -535,7 +535,7 @@ function isFitnessNutritionQuery(text) {
   };
 
   if ([...fitness, ...nutrition].some(hit)) return true;
-  // Only count short reportColors with word boundaries
+  // Only count short tokens with word boundaries
   return shortTokens.some(hit);
 }
 

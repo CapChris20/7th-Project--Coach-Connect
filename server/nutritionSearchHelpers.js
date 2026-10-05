@@ -305,7 +305,7 @@ function portionDescriptionFromText(text) {
     return line.length > 110 ? `${line.slice(0, 107)}…` : line;
   }
 
-  m = s.match(/nutrition\s*(?:facts|incellFormattingion)?\s+for\s+([^\n.;]{3,75})/i);
+  m = s.match(/nutrition\s*(?:facts|information)?\s+for\s+([^\n.;]{3,75})/i);
   if (m) return m[1].trim().replace(/\s+/g, ' ');
 
   const wordNum = (w) => {
@@ -594,12 +594,12 @@ function buildSerperFallbackQueries(userQuery) {
     add('dairy queen oreo blizzard medium calories');
   }
 
-  const reportColors = significantQueryTokens(primary);
-  if (reportColors.length >= 3) {
-    add(reportColors.slice(-3).join(' '));
+  const tokens = significantQueryTokens(primary);
+  if (tokens.length >= 3) {
+    add(tokens.slice(-3).join(' '));
   }
-  if (reportColors.length >= 2) {
-    add(reportColors.slice(-2).join(' '));
+  if (tokens.length >= 2) {
+    add(tokens.slice(-2).join(' '));
   }
 
   return out;

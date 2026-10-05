@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
 
-function cellFormattingHistoryDate(value) {
+function formatHistoryDate(value) {
   if (!value) return '—';
   const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
@@ -43,7 +43,7 @@ export function trainerPaymentHistory(trainerId) {
           const data = docSnap.data() || {};
           return {
             id: docSnap.id,
-            date: cellFormattingHistoryDate(data.created_at),
+            date: formatHistoryDate(data.created_at),
             createdAtMs:
               typeof data.created_at?.toDate === 'function'
                 ? data.created_at.toDate().getTime()

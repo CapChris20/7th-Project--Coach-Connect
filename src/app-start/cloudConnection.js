@@ -1,6 +1,6 @@
 // Boots Firebase once for the whole app and hands out the shared service handles.
-// Flow: read cloudConnection from env vars → sanity-check it (loudly) → create/reuse the Firebase app → init auth, Firestore, functions, storage.
-// Imported anywhere that touches the backend; every `import { db } from '.../cloudConnection'` gets these same instances.
+// Flow: read config from env vars → sanity-check it (loudly) → create/reuse the Firebase app → init auth, Firestore, functions, storage.
+// Imported anywhere that touches the backend; every `import { db } from '.../config'` gets these same instances.
 // Key exports: auth, db, storage, app, functions (default export is the Supabase placeholder)
 
 import { initializeApp, getApps } from 'firebase/app';
@@ -53,7 +53,7 @@ if (!firebaseConfig.messagingSenderId) missing.push('EXPO_PUBLIC_FIREBASE_MESSAG
 if (!firebaseConfig.appId) missing.push('EXPO_PUBLIC_FIREBASE_APP_ID');
 
 if (missing.length > 0) {
-  console.error('❌ Firebase cloudConnectionuration is missing:', missing.join(', '));
+  console.error('❌ Firebase configuration is missing:', missing.join(', '));
   // Print check/cross marks rather than the values themselves: this lands in dev logs and we don't
   // want keys pasted into screenshots or CI output.
   console.error('Current values:', {
@@ -71,7 +71,7 @@ if (missing.length > 0) {
 
 // apiKey + projectId are the two we can't fake our way past; everything below keys off this pair.
 if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  console.error('❌ Cannot initialize Firebase - missing required cloudConnection values');
+  console.error('❌ Cannot initialize Firebase - missing required config values');
   console.error('Please check your .env file and restart the Expo dev server');
 }
 
@@ -83,7 +83,7 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
   // vocab: getApps() = every Firebase app already initialized in this JS runtime.
   const apps = getApps();
   // Only reuse an app whose project AND platform id match ours. Matching on projectId alone would
-  // happily hand back a web-cloudConnectionured app and break native sign-in.
+  // happily hand back a web-configured app and break native sign-in.
   const matchingApp =
     apps.find((a) =>
       a?.options?.projectId === firebaseConfig.projectId &&
@@ -117,13 +117,13 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
     }
   }
 } else {
-  console.warn('⚠️ Firebase not properly cloudConnectionured - using fallback');
+  console.warn('⚠️ Firebase not properly configured - using fallback');
   app = null;
 }
 
 // --- Auth --------------------------------------------------------------------
 // Every service below follows the same shape: `if (app)` guard, because a null app means we're in
-// the miscloudConnectionured fallback state and calling Firebase would throw.
+// the misconfigured fallback state and calling Firebase would throw.
 let auth;
 if (app) {
   try {
@@ -190,7 +190,7 @@ const functions = app ? getFunctions(app) : null;
 const storage = app ? getStorage(app) : null;
 
 // --- Supabase placeholder ----------------------------------------------------
-// Kept so `import supabase from '.../cloudConnection'` keeps resolving for legacy call sites. It is always
+// Kept so `import supabase from '.../config'` keeps resolving for legacy call sites. It is always
 // null today; the env check just marks where a real client would be created if we ever add one.
 let supabase = null;
 if (process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {

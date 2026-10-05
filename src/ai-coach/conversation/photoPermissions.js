@@ -66,7 +66,7 @@ export async function pickImage(options = {}) {
 }
 
 /**
- * Convert image to OpenAI-compatible cellFormatting
+ * Convert image to OpenAI-compatible format
  * @param {string} imageUri - Local image URI, base64 string, or base64 from pickImage
  * @returns {Promise<string>} Base64 data URL
  */

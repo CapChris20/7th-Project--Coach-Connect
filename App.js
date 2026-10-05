@@ -12,27 +12,27 @@ import {
 import { Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
 import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 import { CrimsonPro_400Regular, CrimsonPro_600SemiBold, CrimsonPro_700Bold } from '@expo-google-fonts/crimson-pro';
-import { ThemeProvider } from './src/theme/ThemeContext';
-import AuthGate from './src/app-start/AuthGate';
-import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { AppStripeProvider } from './src/for-both/payments/AppStripeProvider';
+import { ThemeProvider } from './src/look-and-feel/lightDarkMode';
+import AuthGate from './src/app-start/LoginGate';
+import { CrashCatcher } from './src/crash-reports/CrashCatcher';
+import { CardPaymentWrapper } from './src/for-both/payments/CardPaymentWrapper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { configureNotifications } from './src/notifications/manageNotifications';
-import { initMonitoring } from './src/for-both/api/monitorAppHealth';
-import { AIProvider } from './src/for-both/contexts/AIContext';
-import { SubscriptionProvider } from './src/subscription/SubscriptionProvider';
-import OnboardingSnapshotRunner from './src/auth/OnboardingSnapshotRunner';
+import { configureNotifications } from './src/notifications/manageAlerts';
+import { initMonitoring } from './src/for-both/online-connection/checkConnectionHealth';
+import { AIProvider } from './src/for-both/app-wide-settings/AIPermission';
+import { ProPlanSetup } from './src/trainer-pro-plan/ProPlanSetup';
+import OnboardingSnapshotRunner from './src/login-and-signup/SetupScreenshotTool';
 import {
-  BootLoadingOverlay,
-  BootLoadingProvider,
-  useBootLoading,
-} from './src/for-both/components/shell/BootLoading';
+  StartupLoadingCoverOverlay,
+  StartupLoadingCoverProvider,
+  useStartupLoadingCover,
+} from './src/for-both/loading-and-header/StartupLoadingCover';
 
 initMonitoring();
 
 /** Provider starts with 1 lock held; release it once fonts are ready. */
 function FontBootLock({ fontsLoaded }) {
-  const { release } = useBootLoading();
+  const { release } = useStartupLoadingCover();
   const released = React.useRef(false);
   React.useLayoutEffect(() => {
     if (fontsLoaded && !released.current) {
@@ -117,9 +117,9 @@ export default function App() {
         <SafeAreaProvider>
           <ThemeProvider>
             <AIProvider>
-              <SubscriptionProvider userId={null}>
+              <ProPlanSetup userId={null}>
                 <OnboardingSnapshotRunner onDone={() => setSnapshotCapture(false)} />
-              </SubscriptionProvider>
+              </ProPlanSetup>
             </AIProvider>
           </ThemeProvider>
         </SafeAreaProvider>
@@ -130,19 +130,19 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <BootLoadingProvider>
+        <StartupLoadingCoverProvider>
           {/* Overlay stays mounted for the whole boot — animation never remounts */}
-          <BootLoadingOverlay />
+          <StartupLoadingCoverOverlay />
           {fontsLoaded ? (
             <>
               <ThemeProvider>
-                <AppStripeProvider>
+                <CardPaymentWrapper>
                   <AIProvider>
-                    <ErrorBoundary>
+                    <CrashCatcher>
                       <AuthGate />
-                    </ErrorBoundary>
+                    </CrashCatcher>
                   </AIProvider>
-                </AppStripeProvider>
+                </CardPaymentWrapper>
               </ThemeProvider>
               {/* Release the initial font lock AFTER AuthGate can acquire its own */}
               <FontBootLock fontsLoaded={fontsLoaded} />
@@ -150,7 +150,7 @@ export default function App() {
           ) : (
             <View style={{ flex: 1, backgroundColor: '#0A0A0A' }} />
           )}
-        </BootLoadingProvider>
+        </StartupLoadingCoverProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

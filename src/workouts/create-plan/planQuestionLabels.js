@@ -6,7 +6,7 @@ const PLAN_BUILDER_COLORS = {
   orange: '#F97316',
 };
 
-export function cellFormattingProfileHeightDisplay(h) {
+export function formatProfileHeightDisplay(h) {
   if (h == null) return '—';
   if (typeof h === 'object') {
     const ftRaw = h.feet;
@@ -114,7 +114,7 @@ function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
     return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const cellFormattingDisplayValue = (raw) => {
+  const formatDisplayValue = (raw) => {
     if (raw == null || raw === undefined || raw === '') return null;
     let s = String(raw).trim();
     if (!s) return null;
@@ -135,7 +135,7 @@ function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
 
 export function displayForFieldKey(fieldKey, onboardingData) {
   const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
-  const cellFormattingted = cellFormattingDisplayValue(raw);
-  const s = cellFormattingted != null ? String(cellFormattingted).trim() : '';
+  const formatted = formatDisplayValue(raw);
+  const s = formatted != null ? String(formatted).trim() : '';
   return s && s !== 'null' && s !== 'undefined' ? s : '—';
 }

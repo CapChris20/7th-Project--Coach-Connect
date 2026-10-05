@@ -123,7 +123,7 @@ function shouldSkipOffFallback(query) {
   return isMenuStyleQuery(q);
 }
 
-/** Keep rows that match the user's search reportColors (no restaurant name whitelist). */
+/** Keep rows that match the user's search tokens (no restaurant name whitelist). */
 function preferQueryRelevantMatches(query, rows, limit) {
   return filterFoodSearchRows(query, rows, limit);
 }

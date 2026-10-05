@@ -29,7 +29,7 @@ const NUT_TRACK = {
   light: 'rgba(0,0,0,0.08)',
 };
 
-function cellFormattingNutrientValue(value, unit = 'g') {
+function formatNutrientValue(value, unit = 'g') {
   const n = Number(value) || 0;
   if (unit === 'mg') return `${Math.round(n)}mg`;
   if (n >= 100) return `${Math.round(n)}g`;
@@ -85,7 +85,7 @@ function TrainerMacroRing({ value, goal, label, unit = 'g', isDark }) {
         </View>
         <View style={[StyleSheet.absoluteFill, styles.ringCenter]}>
           <Text style={[styles.ringValue, { color: textColor }]} numberOfLines={1}>
-            {cellFormattingNutrientValue(numericValue, unit)}
+            {formatNutrientValue(numericValue, unit)}
           </Text>
           {numericGoal > 0 ? (
             <Text style={[styles.ringPct, { color: mutedColor }]}>{Math.round(pct)}%</Text>

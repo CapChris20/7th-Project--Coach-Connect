@@ -114,7 +114,7 @@ export default function TopHeader({
 
           <TouchableOpacity onPress={onSettingsPress} style={styles.settingsButton}>
             <Image
-              source={require('../../../assets/icons/settings.png')}
+              source={require('../../assets/icons/settings.png')}
               style={styles.settingsIcon}
               contentFit="contain"
               cachePolicy="memory-disk"

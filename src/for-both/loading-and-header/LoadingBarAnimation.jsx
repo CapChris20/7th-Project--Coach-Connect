@@ -13,7 +13,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-const SHEET = require('../../../assets/animations/loading-prism-sheet.png');
+const SHEET = require('../../assets/animations/loading-prism-sheet.png');
 
 const FRAME_W = 480;
 const FRAME_H = 120;

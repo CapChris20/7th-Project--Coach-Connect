@@ -349,7 +349,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
                 </Pressable>
               </>
             ) : (
-              <Text style={styles.helper}>No support email is cloudConnectionured for this build.</Text>
+              <Text style={styles.helper}>No support email is configured for this build.</Text>
             )}
           </GradientCard>
 

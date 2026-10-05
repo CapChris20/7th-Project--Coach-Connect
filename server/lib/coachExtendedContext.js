@@ -93,7 +93,7 @@ function resolvePlanDayBlocks(structured, rawPlanText) {
   return best;
 }
 
-function cellFormattingExerciseLine(ex) {
+function formatExerciseLine(ex) {
   if (!ex || typeof ex !== 'object') return null;
   const name = String(ex.name || ex.exerciseName || ex.exercise || '').trim();
   if (!name) return null;
@@ -119,7 +119,7 @@ function cellFormattingExerciseLine(ex) {
   return line;
 }
 
-function cellFormattingRecoveryActivityLabel(item) {
+function formatRecoveryActivityLabel(item) {
   if (item == null) return '';
   if (typeof item === 'string') return item.trim();
   if (typeof item === 'object') {
@@ -128,13 +128,13 @@ function cellFormattingRecoveryActivityLabel(item) {
   return String(item).trim();
 }
 
-function cellFormattingPlanDayBlock(day, index) {
+function formatPlanDayBlock(day, index) {
   if (!day || typeof day !== 'object') return '';
   const label = String(day.day || day.label || day.name || `Day ${index + 1}`).trim();
   if (day.rest || day.isRest) {
     const note = day.recoveryNote || day.restGuidance || day.restNote || '';
     const activities = Array.isArray(day.recoveryActivities)
-      ? day.recoveryActivities.map(cellFormattingRecoveryActivityLabel).filter(Boolean).join(', ')
+      ? day.recoveryActivities.map(formatRecoveryActivityLabel).filter(Boolean).join(', ')
       : '';
     const extra = [note, activities].filter(Boolean).join(' · ');
     return `${label}: Rest${extra ? ` — ${extra}` : ''}`;
@@ -151,7 +151,7 @@ function cellFormattingPlanDayBlock(day, index) {
   }
 
   (Array.isArray(day.exercises) ? day.exercises : []).forEach((ex) => {
-    const line = cellFormattingExerciseLine(ex);
+    const line = formatExerciseLine(ex);
     if (line) lines.push(line);
   });
 
@@ -175,7 +175,7 @@ function extractStructuredPlanSummary(structuredPlan, rawPlanText) {
 
   const dayBlocks = resolvePlanDayBlocks(parsed, rawPlanText);
   dayBlocks.forEach((day, i) => {
-    const block = cellFormattingPlanDayBlock(day, i);
+    const block = formatPlanDayBlock(day, i);
     if (block) lines.push(block);
   });
 
@@ -399,7 +399,7 @@ async function fetchOpenWorkoutPlanPayload(db, userId, planId = 'current') {
   const summaryMeta = summarizePlanDoc(data, id);
   const dayBlocks = resolvePlanDayBlocks(data.structuredPlan, rawPlan);
   const { day: todayDay, index: todayIndex } = pickTodayPlanDay(dayBlocks);
-  const todayPreview = todayDay ? cellFormattingPlanDayBlock(todayDay, todayIndex) : null;
+  const todayPreview = todayDay ? formatPlanDayBlock(todayDay, todayIndex) : null;
 
   return {
     planId: id,
@@ -409,7 +409,7 @@ async function fetchOpenWorkoutPlanPayload(db, userId, planId = 'current') {
     dayCount: summaryMeta?.dayCount || dayBlocks.length,
     exerciseCount: summaryMeta?.exerciseCount || countDayExercises(dayBlocks),
     allDaysPreview: dayBlocks
-      .map((day, i) => cellFormattingPlanDayBlock(day, i))
+      .map((day, i) => formatPlanDayBlock(day, i))
       .filter(Boolean)
       .join('\n\n'),
   };

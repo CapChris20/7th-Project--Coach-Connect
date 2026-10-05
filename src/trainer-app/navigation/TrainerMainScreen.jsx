@@ -19,7 +19,7 @@ import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bo
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as XLSX from 'spreadsheetReader';
+import * as XLSX from 'xlsx';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import ChatWithTraineeScreen from '../../messaging/ChatScreen';
@@ -324,7 +324,7 @@ export default function TrainerMainScreen() {
             try {
               const result = await DocumentPicker.getDocumentAsync({
                 type: [
-                  'application/vnd.openxmlcellFormattings-officedocument.spreadsheetml.sheet',
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                   'text/csv',
                 ],
                 copyToCacheDirectory: true,

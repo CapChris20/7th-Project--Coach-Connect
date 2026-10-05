@@ -285,12 +285,12 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
     });
   };
 
-  const cellFormattingDateShort = (date) => {
+  const formatDateShort = (date) => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return `${days[date.getDay()]} ${date.getDate()}`;
   };
 
-  const cellFormattingDateLong = (date) => {
+  const formatDateLong = (date) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
@@ -385,7 +385,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
                   onPress={() => setSelectedDate(date)}
                 >
                   <Text style={[styles.weekDayLabel, isSelected && styles.weekDayLabelSelected]} selectable={true}>
-                    {cellFormattingDateShort(date).split(' ')[0]}
+                    {formatDateShort(date).split(' ')[0]}
                   </Text>
                   <Text style={[styles.weekDayNumber, isSelected && styles.weekDayNumberSelected]} selectable={true}>
                     {date.getDate()}

@@ -121,8 +121,8 @@ app.post('/api/notifications/send', verifyFirebaseBearerToken, async (req, res) 
     }
 
     if (!expoPushToken.startsWith('ExponentPushToken[') && !expoPushToken.startsWith('ExpoPushToken[')) {
-      console.warn(`⚠️ Invalid Expo push token cellFormatting for ${recipientId}`);
-      return res.json({ success: false, message: 'Invalid push token cellFormatting' });
+      console.warn(`⚠️ Invalid Expo push token format for ${recipientId}`);
+      return res.json({ success: false, message: 'Invalid push token format' });
     }
 
     const nowMs = Date.now();

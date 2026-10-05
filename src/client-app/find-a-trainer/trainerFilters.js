@@ -8,7 +8,7 @@
  *
  * @file-header
  */
-/** Marketplace filter shape, theme reportColors, and filter logic (reference UI spec; Firebase as source). */
+/** Marketplace filter shape, theme tokens, and filter logic (reference UI spec; Firebase as source). */
 
 export const SORT_OPTIONS = ['Newest', 'Price: Low', 'Price: High'];
 export const FILTER_SPECIALTIES = [
@@ -135,7 +135,7 @@ export function trainerFirstName(name) {
 }
 
 /** Human-readable label for stored enum/snake_case values (e.g. weight_loss → Weight Loss). */
-export function cellFormattingMarketplaceLabel(value) {
+export function formatMarketplaceLabel(value) {
   const s = String(value || '').trim();
   if (!s) return '';
   if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(s)) {
@@ -266,7 +266,7 @@ export function normalizeTrainer(raw, index = 0) {
     location,
     mode: resolveMode(raw),
     specialties: specialties.length
-      ? specialties.map((spec) => cellFormattingMarketplaceLabel(spec))
+      ? specialties.map((spec) => formatMarketplaceLabel(spec))
       : ['General Fitness'],
     price: price ?? 0,
     years,

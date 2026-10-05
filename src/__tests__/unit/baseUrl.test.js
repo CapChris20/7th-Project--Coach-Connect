@@ -17,7 +17,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
-describe('whereToConnect helpers', () => {
+describe('baseUrl helpers', () => {
   beforeEach(() => {
     jest.resetModules();
     mockConstants.isDevice = false;

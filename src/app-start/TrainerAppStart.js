@@ -82,7 +82,7 @@ import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../
 import { combineTraineeProfile } from "../helpers/combineTraineeProfile";
 import { pendingRequestCount } from "../trainer-app/new-requests/pendingRequestCount";
 import {
-  cloudConnectionureNotifications,
+  configureNotifications,
   persistPushTokensForUid,
   pendingPushTokenStorageKey,
   setNotificationTapHandler,
@@ -120,7 +120,7 @@ import ShareDocumentPopup from "../trainer-app/documents/ShareDocumentPopup";
 import SpreadsheetEditor from "../trainer-app/documents/SpreadsheetEditor";
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import * as XLSX from 'spreadsheetReader';
+import * as XLSX from 'xlsx';
 import RemoveTrainerPopup from "../for-both/popups/RemoveTrainerPopup";
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/daily-log/saveLoggedFood";
 import MyProgressPhotosScreen from "../for-both/photo-gallery/MyProgressPhotosScreen";
@@ -937,25 +937,25 @@ export async function checkWeeklyDataAvailability(userId) {
   try {
     const today = new Date();
     const daysWithData = [];
-    const dateStrings = [];
+    const dateKeys = [];
 
     // Build the last 7 date keys, today backwards.
-    // vocab: toLocaleDateString("en-CA") = the en-CA locale cellFormattings dates as YYYY-MM-DD, which is
-    // exactly the document-id cellFormatting daily logs use — a shortcut instead of manual padding.
+    // vocab: toLocaleDateString("en-CA") = the en-CA locale formats dates as YYYY-MM-DD, which is
+    // exactly the document-id format daily logs use — a shortcut instead of manual padding.
     // Manipulate here: the timezone is pinned to America/New_York so the report's "day" matches the
     // rest of the app's day boundary regardless of where the trainer's phone is.
     for (let i = 0; i < 7; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() - i);
       const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-      dateStrings.push(dateKey);
+      dateKeys.push(dateKey);
     }
 
     const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
 
     // Sequential reads: only 7 documents, and doing them one at a time keeps the error handling
     // simple (any failure drops into the permission fallback below).
-    for (const dateKey of dateStrings) {
+    for (const dateKey of dateKeys) {
       const docRef = doc(dailyLogsRef, dateKey);
       const docSnap = await getDoc(docRef);
 
@@ -977,11 +977,11 @@ export async function checkWeeklyDataAvailability(userId) {
       daysWithData: daysWithData.length,
       missingDays: 7 - daysWithData.length,
       details: daysWithData,
-      // dateStrings was built newest-first, so the LAST entry is the oldest date — hence start/end
+      // dateKeys was built newest-first, so the LAST entry is the oldest date — hence start/end
       // being reversed relative to array order.
       dateRange: {
-        start: dateStrings[dateStrings.length - 1],
-        end: dateStrings[0],
+        start: dateKeys[dateKeys.length - 1],
+        end: dateKeys[0],
       },
     };
   } catch (error) {
@@ -994,12 +994,12 @@ export async function checkWeeklyDataAvailability(userId) {
 
     if (permissionDenied) {
       const today = new Date();
-      const dateStrings = [];
+      const dateKeys = [];
       for (let i = 0; i < 7; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() - i);
         const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-        dateStrings.push(dateKey);
+        dateKeys.push(dateKey);
       }
       return {
         totalDays: 7,
@@ -1007,8 +1007,8 @@ export async function checkWeeklyDataAvailability(userId) {
         missingDays: 7,
         details: [],
         dateRange: {
-          start: dateStrings[dateStrings.length - 1],
-          end: dateStrings[0],
+          start: dateKeys[dateKeys.length - 1],
+          end: dateKeys[0],
         },
       };
     }
@@ -1050,7 +1050,7 @@ function TrainerAppStartContent({ user }) {
   // Sets up how notifications are displayed and (on Android) creates the notification channel —
   // required before any notification can appear. Empty deps: once per app launch.
   useEffect(() => {
-    cloudConnectionureNotifications();
+    configureNotifications();
   }, []);
 
   // Same pattern as the client shell: one hook owns every "which panel is open" flag and all the
@@ -1203,7 +1203,7 @@ function TrainerAppStartContent({ user }) {
 
   // Push-token upkeep — identical to the client shell's version: claim any token issued before
   // sign-in, refresh the current one (respecting the user's notification setting), and re-check
-  // whenever the app returns from the background, since reportColors can rotate while it's closed.
+  // whenever the app returns from the background, since tokens can rotate while it's closed.
   useEffect(() => {
     if (!user?.uid || !db) return undefined;
     let cancelled = false;

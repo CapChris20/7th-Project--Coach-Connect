@@ -18,7 +18,7 @@ const CACHE_MS = 25 * 60 * 1000;
 /** Bust in-memory cache when search/filter logic changes. */
 const CACHE_VER = 'v21';
 
-/** Goal slugs → short YouTube-friendly reportColors. */
+/** Goal slugs → short YouTube-friendly tokens. */
 const GOAL_QUERY_CHUNK = {
   lose_fat: 'fat loss cutting lean',
   build_muscle: 'muscle hypertrophy strength',
@@ -30,7 +30,7 @@ const GOAL_QUERY_CHUNK = {
   build_habits: 'consistency habits fundamentals',
 };
 
-/** Onboarding equipmentAccess values → search reportColors */
+/** Onboarding equipmentAccess values → search tokens */
 const ONBOARDING_EQUIP_EXPAND = {
   full_gym: 'gym barbell dumbbell cable machine',
   dumbbells: 'dumbbell db weights',
@@ -85,7 +85,7 @@ function equipmentFromOnboardingCompact(data, maxChars = 42) {
   return takeCharsByWords(full, maxChars);
 }
 
-/** Onboarding fitnessLevel → query reportColors (skipped when Difficulty pill overrides). */
+/** Onboarding fitnessLevel → query tokens (skipped when Difficulty pill overrides). */
 function fitnessLevelQueryChunk(level) {
   if (level == null || level === '') return '';
   const s = String(level).toLowerCase();
@@ -103,7 +103,7 @@ function fitnessLevelOneWord(level) {
   return 'intermediate';
 }
 
-/** Library Difficulty pill → same reportColors as onboarding level (overrides profile level in `q`). */
+/** Library Difficulty pill → same tokens as onboarding level (overrides profile level in `q`). */
 function difficultyPillQueryChunk(pill) {
   if (!pill) return '';
   const p = String(pill);
@@ -169,7 +169,7 @@ export function getExerciseLibraryJourneyHint(onboardingData) {
 }
 
 /**
- * Map casual training phrases → extra reportColors (typed search + first words of situation).
+ * Map casual training phrases → extra tokens (typed search + first words of situation).
  * Injuries/limitations are intentionally not used in `q`.
  */
 function expandFreestyleSearchQuery(raw) {
@@ -390,7 +390,7 @@ const SITUATION_STOPWORDS = new Set([
 ]);
 
 /**
- * Pull fitness-relevant reportColors from onboarding (Journey text first), goals, supplements,
+ * Pull fitness-relevant tokens from onboarding (Journey text first), goals, supplements,
  * recovery, environment, frequency. Used for recommended `q` and optional empty-tab merges.
  * Injuries are not auto-added to `q`.
  * @returns {string[]} deduped keywords in priority order
@@ -440,7 +440,7 @@ function extractKeywordsFromOnboarding(onboardingData) {
   const nx = descRaw.match(/\b(\d)\s*x\b/i);
   if (nx) push(`${nx[1]}x week`);
 
-  // Goals: compact reportColors (deduped); phrase-level goals also added in `buildRecommendedQuery` via `topGoalsQueryChunk`
+  // Goals: compact tokens (deduped); phrase-level goals also added in `buildRecommendedQuery` via `topGoalsQueryChunk`
   const goalArr = Array.isArray(onboardingData.goals) ? onboardingData.goals.filter(Boolean).map((g) => String(g).trim()) : [];
   for (const g of goalArr.slice(0, 3)) {
     const expanded = GOAL_QUERY_CHUNK[g] || String(g).replace(/_/g, ' ');
@@ -480,7 +480,7 @@ function extractKeywordsFromOnboarding(onboardingData) {
   const te = String(onboardingData.trainingEnvironment || '').toLowerCase();
   if (te && te !== 'both') push(te);
 
-  // equipmentAccess is applied separately in buildSearchQuery (pill or full join) — omit here to avoid duplicate reportColors.
+  // equipmentAccess is applied separately in buildSearchQuery (pill or full join) — omit here to avoid duplicate tokens.
 
   const rawDays = onboardingData.daysPerWeek ?? onboardingData.frequency ?? onboardingData.workoutsPerWeek;
   const n = Number(rawDays);

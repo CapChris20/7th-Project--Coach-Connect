@@ -1,4 +1,4 @@
-// The formulaCalculator bar above the spreadsheet grid: cell reference pill + "fx" + editable input.
+// The formula bar above the spreadsheet grid: cell reference pill + "fx" + editable input.
 // Flow: parent owns the text and the selected cell → we render them → keystrokes call back up
 // (onChangeText while typing, onCommit on Enter/Tab, onCancel on Escape).
 // Fully controlled on purpose: the same value is also editable inside the cell itself, and one
@@ -23,7 +23,7 @@ function FormulaBar({
   onBeginEdit,
 }) {
   return (
-    <View style={[styles.formulaCalculatorBar, { backgroundColor: theme.toolbarBg, borderBottomColor: theme.border }]}>
+    <View style={[styles.formulaBar, { backgroundColor: theme.toolbarBg, borderBottomColor: theme.border }]}>
       {/* Left pill showing the current address, e.g. "C7". colLabel converts the 0-based column
           index to a letter, and focusR + 1 converts the 0-based row to the 1-based number users
           expect — spreadsheets start at row 1, arrays start at 0. */}
@@ -34,11 +34,11 @@ function FormulaBar({
         </Text>
       </View>
       {/* The "fx" marker turns green the moment the text starts with '=' — a live cue that what
-          you're typing will be evaluated as a formulaCalculator rather than stored as text. The input below
+          you're typing will be evaluated as a formula rather than stored as text. The input below
           uses the exact same condition, so both change together. */}
       <Text
         style={{
-          color: String(value).startsWith('=') ? theme.formulaCalculatorGreen : theme.textMuted,
+          color: String(value).startsWith('=') ? theme.formulaGreen : theme.textMuted,
           fontWeight: '800',
           fontSize: 13,
         }}
@@ -68,14 +68,14 @@ function FormulaBar({
             onCommit(0, e.nativeEvent.shiftKey ? -1 : 1);
           } else if (k === 'Escape') onCancel();
         }}
-        // Manipulate here: the placeholder doubles as the hint that '=' starts a formulaCalculator.
-        placeholder="Type a value or =formulaCalculator"
+        // Manipulate here: the placeholder doubles as the hint that '=' starts a formula.
+        placeholder="Type a value or =formula"
         placeholderTextColor={theme.textMuted}
         style={[
-          styles.formulaCalculatorInput,
+          styles.formulaInput,
           {
-            // Same green-when-formulaCalculator rule as the fx label above.
-            color: String(value).startsWith('=') ? theme.formulaCalculatorGreen : theme.text,
+            // Same green-when-formula rule as the fx label above.
+            color: String(value).startsWith('=') ? theme.formulaGreen : theme.text,
             borderColor: theme.border,
             backgroundColor: theme.inputBg,
           },
@@ -106,7 +106,7 @@ function FormulaBar({
 export default memo(FormulaBar);
 
 const styles = StyleSheet.create({
-  formulaCalculatorBar: {
+  formulaBar: {
     flexDirection: 'row',
     alignItems: 'center',
     // Manipulate here: `gap` spaces the pill / fx / input; minHeight 44 is the tap-target minimum
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  formulaCalculatorInput: {
+  formulaInput: {
     // flex: 1 = take all remaining width after the pill, fx label, and any error text.
     flex: 1,
     minHeight: 44,
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    // Monospace on iOS so formulaCalculators line up and 0/O are distinguishable. undefined on Android
+    // Monospace on iOS so formulas line up and 0/O are distinguishable. undefined on Android
     // because 'Menlo' doesn't exist there and naming a missing font can break rendering — the
     // platform default is used instead.
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined,

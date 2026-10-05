@@ -53,9 +53,9 @@ function getFirebaseWebApiKey() {
 
 function renderPasswordResetPageHtml() {
   const apiKey = getFirebaseWebApiKey();
-  const cloudConnectionJson = JSON.stringify({ apiKey }).replace(/</g, '\\u003c');
+  const configJson = JSON.stringify({ apiKey }).replace(/</g, '\\u003c');
   const template = readTemplate();
-  const injection = `<script>window.__COACH_CONNECT_RESET__=${cloudConnectionJson};</script>`;
+  const injection = `<script>window.__COACH_CONNECT_RESET__=${configJson};</script>`;
   if (template.includes('</head>')) {
     return template.replace('</head>', `${injection}\n</head>`);
   }

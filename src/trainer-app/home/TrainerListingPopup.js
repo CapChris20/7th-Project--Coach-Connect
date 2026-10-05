@@ -53,8 +53,8 @@ async function notifyClientRequestAccepted({ clientUid, trainerUid, conversation
   }
 }
 
-// Helper function to cellFormatting database keys
-function cellFormattingDisplayValue(value) {
+// Helper function to format database keys
+function formatDisplayValue(value) {
   if (!value || typeof value !== 'string') return value;
   return value
     .split('_')
@@ -319,17 +319,17 @@ const TrainerListingPopup = ({
 
               {isConnectionRequest ? (
                 <View style={styles.infoGrid}>
-                  <InfoCell label="GOALS" value={cellFormattingDisplayValue(req.clientGoals) || 'Not specified'} />
-                  <InfoCell label="EXPERIENCE" value={cellFormattingDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
-                  <InfoCell label="EQUIPMENT" value={cellFormattingDisplayValue(req.clientEquipment) || 'None'} />
-                  <InfoCell label="LIMITATIONS" value={cellFormattingDisplayValue(req.clientLimitations) || 'None'} />
+                  <InfoCell label="GOALS" value={formatDisplayValue(req.clientGoals) || 'Not specified'} />
+                  <InfoCell label="EXPERIENCE" value={formatDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
+                  <InfoCell label="EQUIPMENT" value={formatDisplayValue(req.clientEquipment) || 'None'} />
+                  <InfoCell label="LIMITATIONS" value={formatDisplayValue(req.clientLimitations) || 'None'} />
                 </View>
               ) : (
                 <View style={styles.infoGrid}>
                   <InfoCell label="TYPE" value={modalTitle} />
-                  <InfoCell label="GOALS" value={cellFormattingDisplayValue(req.clientGoals) || 'Not specified'} />
-                  <InfoCell label="EXPERIENCE" value={cellFormattingDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
-                  <InfoCell label="EQUIPMENT" value={cellFormattingDisplayValue(req.clientEquipment) || 'None'} />
+                  <InfoCell label="GOALS" value={formatDisplayValue(req.clientGoals) || 'Not specified'} />
+                  <InfoCell label="EXPERIENCE" value={formatDisplayValue(req.clientExperienceLevel) || 'Beginner'} />
+                  <InfoCell label="EQUIPMENT" value={formatDisplayValue(req.clientEquipment) || 'None'} />
                 </View>
               )}
 

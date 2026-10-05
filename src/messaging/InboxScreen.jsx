@@ -65,7 +65,7 @@ const GRADIENT = {
   badge: ['#FF6B9D', '#F97316'],
 };
 
-function cellFormattingTimestamp(timestamp) {
+function formatTimestamp(timestamp) {
   if (!timestamp) return null;
   try {
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -449,7 +449,7 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
       else if (typeof conversation.lastMessage === 'object' && conversation.lastMessage?.text) lastMessage = String(conversation.lastMessage.text);
       else lastMessage = String(conversation.lastMessage);
     }
-    const timestamp = cellFormattingTimestamp(conversation.lastMessageTime) || cellFormattingTimestamp(conversation.updatedAt) || null;
+    const timestamp = formatTimestamp(conversation.lastMessageTime) || formatTimestamp(conversation.updatedAt) || null;
     const isAlreadyClient = isTrainer && trainerClients.some((c) => c.id === otherId);
     const isAdding = addingClient[otherId];
     const unreadCount = unreadByConversationId[conversation.id] ?? 0;

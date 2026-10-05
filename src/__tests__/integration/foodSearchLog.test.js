@@ -53,7 +53,7 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 const AsyncStorage = require('@react-native-async-storage/async-storage');
-const searchFoods = require('../../nutrition/food-search/searchFoods').default;
+const foodSearchApi = require('../../nutrition/food-search/searchFoods').default;
 const { searchFoods, addFoodLog } = require('../../nutrition/daily-log/saveLoggedFood');
 
 const SERVER_SEARCH = 'https://api.test/api/food/search';
@@ -120,7 +120,7 @@ function jsonResponse(body, status = 200) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  searchFoods.clearAllCaches();
+  foodSearchApi.clearAllCaches();
   AsyncStorage.getItem.mockResolvedValue(null);
 });
 

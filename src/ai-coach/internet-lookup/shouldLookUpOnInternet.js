@@ -161,7 +161,7 @@ function hasSubstantiveFitnessTopic(userText) {
   const cleaned = stripWebMetaInstructions(String(userText || ''));
   if (!cleaned || cleaned.length < 12) return false;
   if (/^(research|sources?|studies|citations?|quotes?|evidence)$/i.test(cleaned)) return false;
-  // Word-boundary-ish fitness signals (avoid "form" inside "incellFormattingion")
+  // Word-boundary-ish fitness signals (avoid "form" inside "information")
   return /\b(workout|gym|training|lift|lifting|exercise|protein|creatine|macro|macros|calorie|calories|sleep|supplement|muscle|cardio|hypertrophy|nutrition|squat|deadlift|bench)\b/i.test(
     cleaned,
   );

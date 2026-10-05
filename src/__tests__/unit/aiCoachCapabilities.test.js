@@ -232,12 +232,12 @@ describe('offline — delete log, personal data, tool inference', () => {
   });
 
   describe('isCoachVisionConfigured', () => {
-    it('vision cloudConnectionured check runs', () => {
+    it('vision configured check runs', () => {
       expect(typeof isCoachVisionConfigured()).toBe('boolean');
     });
 
     const hasVisionEnv = Boolean(process.env.REPLICATE_API_TOKEN && process.env.DEEPSEEK_API_KEY);
-    (hasVisionEnv ? it : it.skip)('vision: Replicate + DeepSeek cloudConnectionured', () => {
+    (hasVisionEnv ? it : it.skip)('vision: Replicate + DeepSeek configured', () => {
       expect(isCoachVisionConfigured()).toBe(true);
     });
   });
@@ -476,7 +476,7 @@ describe('Vision — DeepSeek-VL2 + coach polish', () => {
   const TINY_PNG =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-  it('vision cloudConnection OK when cloudConnectionured', () => {
+  it('vision config OK when configured', () => {
     const { isCoachVisionConfigured } = require('../../../server/lib/coachVision.js');
     if (!isCoachVisionConfigured()) {
       return;
@@ -486,8 +486,8 @@ describe('Vision — DeepSeek-VL2 + coach polish', () => {
 
   it('vision: got reply', async () => {
     const coachVision = require('../../../server/lib/coachVision.js');
-    const cloudConnectionured = coachVision.isCoachVisionConfigured();
-    if (!cloudConnectionured) {
+    const configured = coachVision.isCoachVisionConfigured();
+    if (!configured) {
       return;
     }
 

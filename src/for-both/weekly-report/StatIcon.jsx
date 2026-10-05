@@ -12,19 +12,19 @@ import { useTheme } from '../weekly-report/reportColorSettings';
 /** Extra metric visuals for nutrition macros (app PNG assets). */
 const EXTRA_METRIC_VISUAL = {
   nutrition: {
-    source: require('../../../assets/icons/burger.png'),
+    source: require('../../assets/icons/burger.png'),
     gradient: HOME_STAT_STRESS_GRADIENT,
   },
   protein: {
-    source: require('../../../assets/icons/Protein.png'),
+    source: require('../../assets/icons/Protein.png'),
     gradient: HOME_STAT_MOOD_GRADIENT,
   },
   carbs: {
-    source: require('../../../assets/icons/Carbs.png'),
+    source: require('../../assets/icons/Carbs.png'),
     gradient: HOME_STAT_ENERGY_GRADIENT,
   },
   fat: {
-    source: require('../../../assets/icons/Fats.png'),
+    source: require('../../assets/icons/Fats.png'),
     gradient: HOME_STAT_STRESS_GRADIENT,
   },
 };

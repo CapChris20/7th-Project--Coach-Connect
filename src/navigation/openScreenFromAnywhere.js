@@ -36,9 +36,9 @@ export function rootResetTo(name) {
     // vocab: CommonActions.reset = throw away the current navigation state and install a new one
     CommonActions.reset({
       // Manipulate here: index is which route in the array below is the active one.
-      // index 0 + a one-item screenNames array = "this screen is the entire stack".
+      // index 0 + a one-item routes array = "this screen is the entire stack".
       index: 0,
-      screenNames: [{ name }],
+      routes: [{ name }],
     }),
   );
 }

@@ -11,16 +11,16 @@ const EXPECTED_PRODUCT_IDS = (
 
 /**
  * Decode a JWS (header.payload.signature) without cryptographic signature verification.
- * StoreKit 2 reportColors are signed by Apple; production should set APPLE_IAP_REQUIRE_JWS_SIGNATURE=true.
+ * StoreKit 2 tokens are signed by Apple; production should set APPLE_IAP_REQUIRE_JWS_SIGNATURE=true.
  * @param {string} jws
  */
 function decodeJwsPayload(jws) {
   const parts = String(jws || '').split('.');
   if (parts.length !== 3) {
-    throw new Error('Invalid JWS cellFormatting');
+    throw new Error('Invalid JWS format');
   }
   if (!parts[0] || !parts[1] || !parts[2]) {
-    throw new Error('Invalid JWS cellFormatting');
+    throw new Error('Invalid JWS format');
   }
 
   const requireSignature =

@@ -1,5 +1,5 @@
 /**
- * Sign in with Apple — store reportColors for later revoke on account delete (Guideline 5.1.1).
+ * Sign in with Apple — store tokens for later revoke on account delete (Guideline 5.1.1).
  *
  * Needs Functions env (optional but required for real revoke):
  *   APPLE_SIGNIN_TEAM_ID, APPLE_SIGNIN_KEY_ID, APPLE_SIGNIN_PRIVATE_KEY (or _BASE64),
@@ -54,7 +54,7 @@ function createAppleClientSecret() {
   const privateKey = getPrivateKeyPem();
   const clientId = getAppleClientId();
   if (!teamId || !keyId || !privateKey) {
-    throw new Error('Apple Sign in revoke secrets are not cloudConnectionured');
+    throw new Error('Apple Sign in revoke secrets are not configured');
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -122,7 +122,7 @@ async function revokeAppleToken(token, tokenTypeHint = 'refresh_token') {
 }
 
 /**
- * Persist reportColors for later revoke. Prefer refresh_token when exchange works.
+ * Persist tokens for later revoke. Prefer refresh_token when exchange works.
  * @param {string} uid
  * @param {string} authorizationCode
  */
@@ -137,9 +137,9 @@ async function storeAppleAuthForRevoke(uid, authorizationCode) {
 
   if (appleSignInConfigured()) {
     try {
-      const reportColors = await exchangeAuthorizationCode(code);
-      if (reportColors.refresh_token) doc.refreshToken = reportColors.refresh_token;
-      if (reportColors.access_token) doc.accessToken = reportColors.access_token;
+      const tokens = await exchangeAuthorizationCode(code);
+      if (tokens.refresh_token) doc.refreshToken = tokens.refresh_token;
+      if (tokens.access_token) doc.accessToken = tokens.access_token;
       doc.exchangedAt = admin.firestore.FieldValue.serverTimestamp();
     } catch (e) {
       logger.warn('Apple code exchange failed; storing authorizationCode only', {
@@ -185,12 +185,12 @@ async function revokeAndClearAppleAuth(uid) {
       } else if (data.authorizationCode) {
         // Last resort: try exchanging then revoking
         try {
-          const reportColors = await exchangeAuthorizationCode(data.authorizationCode);
-          if (reportColors.refresh_token) {
-            await revokeAppleToken(reportColors.refresh_token, 'refresh_token');
+          const tokens = await exchangeAuthorizationCode(data.authorizationCode);
+          if (tokens.refresh_token) {
+            await revokeAppleToken(tokens.refresh_token, 'refresh_token');
             revoked = true;
-          } else if (reportColors.access_token) {
-            await revokeAppleToken(reportColors.access_token, 'access_token');
+          } else if (tokens.access_token) {
+            await revokeAppleToken(tokens.access_token, 'access_token');
             revoked = true;
           }
         } catch (ex) {

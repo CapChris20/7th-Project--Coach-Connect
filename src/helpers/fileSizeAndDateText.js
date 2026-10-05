@@ -4,7 +4,7 @@
 // Used by the file gallery / notes-files cards. Deliberately never shows raw filenames to users.
 
 // Bytes → "2.4 MB". Returns an em dash for missing/zero sizes so cards never print "0 B" or "NaN".
-export function cellFormattingFileSize(bytes) {
+export function formatFileSize(bytes) {
   const n = typeof bytes === 'number' ? bytes : Number(bytes);
   if (!Number.isFinite(n) || n <= 0) return '—';
   // Manipulate here: unit labels. Note these are 1024-based (KiB math, KB labels) — the
@@ -23,7 +23,7 @@ export function cellFormattingFileSize(bytes) {
 
 // "Sep 13, 2026". Accepts a Date or anything Date can parse; bad input yields '' so the
 // caller can simply omit the label instead of rendering "Invalid Date".
-export function cellFormattingDateShort(dateLike) {
+export function formatDateShort(dateLike) {
   if (!dateLike) return '';
   const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
   if (Number.isNaN(d.getTime())) return '';
@@ -54,11 +54,11 @@ export function getFileTypeFromItem(item) {
 
   // Pass 2 — nothing matched, so fall back to guessing from the file extension.
   // vocab/symbol: ?. after pop() covers a name with no dot at all (pop returns undefined)
-  // Manipulate here: add extensions here to route new file spreadsheetConstants to an existing viewer
+  // Manipulate here: add extensions here to route new file types to an existing viewer
   const ext = name.split('.').pop()?.toLowerCase();
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return 'image';
   if (['doc', 'docx', 'txt', 'rtf'].includes(ext)) return 'document';
-  if (['xls', 'spreadsheetReader', 'csv'].includes(ext)) return 'spreadsheet';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'spreadsheet';
   // Unknown → generic 'file', which renders a neutral icon and a download action.
   return 'file';
 }
@@ -100,7 +100,7 @@ export function getFriendlyFileTitle(item) {
         : item?.createdAt
           ? new Date(item.createdAt)
           : null;
-  const dateLabel = createdAt && !Number.isNaN(createdAt.getTime()) ? cellFormattingDateShort(createdAt) : '';
+  const dateLabel = createdAt && !Number.isNaN(createdAt.getTime()) ? formatDateShort(createdAt) : '';
 
   // Always hide raw filenames (jpg/png/etc). Show a clean, descriptive label instead.
   // The prefix only applies to photos/videos, where ownership is the useful distinction

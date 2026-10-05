@@ -1,6 +1,6 @@
 // Turns a messy role value ("Trainer", " client ", undefined) into exactly 'trainer' or 'client'.
 // Flow: prefer the prop the parent passed → fall back to the navigation route param → default 'client'.
-// Used by the onboarding wizard so its branching matches how LoginGate screenNames people after sign-in.
+// Used by the onboarding wizard so its branching matches how LoginGate routes people after sign-in.
 
 export function cleanUpRoleName(roleProp, routeRole) {
   // Collapse both possible sources into one lowercase, trimmed string so comparison is safe.

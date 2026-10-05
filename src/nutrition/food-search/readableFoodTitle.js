@@ -10,7 +10,7 @@ const {
 const {
   stripLegacyFoodTitleDecorations,
   isJunkFoodTitle,
-  cellFormattingUserQueryAsFoodName,
+  formatUserQueryAsFoodName,
 } = require('./tidyFoodTitles');
 
 const POSSESSIVE_WORD_RE = /^[a-z]+'s$/i;
@@ -171,8 +171,8 @@ function readableFoodTitle({
   raw = collapseRepeatedNameSegments(raw);
 
   if (isJunkFoodTitle(raw)) {
-    const fb = cellFormattingUserQueryAsFoodName(userQuery || brand || raw);
-    raw = fb && !isJunkFoodTitle(fb) ? fb : cellFormattingUserQueryAsFoodName(userQuery) || 'Food';
+    const fb = formatUserQueryAsFoodName(userQuery || brand || raw);
+    raw = fb && !isJunkFoodTitle(fb) ? fb : formatUserQueryAsFoodName(userQuery) || 'Food';
   }
 
   // Only strip brand from title when caller supplied a brand field (barcode / packaged).
@@ -188,7 +188,7 @@ function readableFoodTitle({
 
   raw = collapseWhitespace(raw);
   if (!raw) {
-    raw = cellFormattingUserQueryAsFoodName(userQuery) || 'Food';
+    raw = formatUserQueryAsFoodName(userQuery) || 'Food';
   }
 
   const resolvedBrand = explicitBrand || resolveFoodBrandLabel(raw, '');

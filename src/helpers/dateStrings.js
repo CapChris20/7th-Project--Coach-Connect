@@ -1,5 +1,5 @@
 // Produces the "YYYY-MM-DD" strings used as Firestore document ids for daily data.
-// Flow: pick a timezone rule → cellFormatting today under it → that string IS the doc id.
+// Flow: pick a timezone rule → format today under it → that string IS the doc id.
 // Three variants because "what day is it" depends on who's asking:
 //   getClientDateKey  — device local (client dashboard, dailyLogs, AI tools)
 //   getDateKey        — fixed Eastern (trainer weekly jobs / legacy server default)
@@ -25,7 +25,7 @@ export function getClientDateKey(d = new Date()) {
  */
 // Fixed-timezone variant. Weekly rollups must agree on one boundary regardless of where
 // the trainer's phone is, otherwise two devices would disagree on which week a log belongs to.
-// vocab: 'en-CA' locale = cellFormattings as YYYY-MM-DD, which is the doc-id shape we need
+// vocab: 'en-CA' locale = formats as YYYY-MM-DD, which is the doc-id shape we need
 export function getDateKey(timeZone = DEFAULT_TZ) {
   return new Date().toLocaleDateString('en-CA', { timeZone });
 }

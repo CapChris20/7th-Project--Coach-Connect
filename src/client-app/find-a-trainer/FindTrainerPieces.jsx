@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import ColorText from '../../look-and-feel/ColorText';
+import BaseColorText from '../../look-and-feel/ColorText';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -71,9 +71,9 @@ export function ColorText({
 }) {
   const textStyle = [style, { fontFamily: style?.fontFamily || MP_FONT.displayBold }];
   return (
-    <ColorText colors={colors} style={textStyle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+    <BaseColorText colors={colors} style={textStyle} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
       {children}
-    </ColorText>
+    </BaseColorText>
   );
 }
 

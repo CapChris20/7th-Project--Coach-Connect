@@ -101,7 +101,7 @@ export async function saveDashboardSleepHours(userId, hours, dateKey) {
 }
 
 // Water: note the deliberate asymmetry — a STRING in dailyLogs, a NUMBER in the legacy
-// mirror. That's the historical storage cellFormatting of each doc; the read-side parser coerces
+// mirror. That's the historical storage format of each doc; the read-side parser coerces
 // both, so don't "fix" one without updating readDailyStats.js.
 export async function saveDashboardWaterOz(userId, amountOz, dateKey) {
   const oz = Number(amountOz);

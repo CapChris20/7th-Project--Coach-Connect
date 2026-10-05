@@ -12,7 +12,7 @@ import { db } from '../app-start/cloudConnection';
 const QUERY_LIMIT = 120;  // docs pulled in the fast path
 const SCAN_DAYS = 120;    // individual days probed in the fallback
 // The fallback has to RECONSTRUCT date-key strings, so it must use the same timezone the
-// keys were written under. Eastern matches the trainer-side dateStrings default.
+// keys were written under. Eastern matches the trainer-side dateKeys default.
 const TZ = 'America/New_York';
 
 // Pulls a valid number out of a day doc, or null. Weight has been stored as both a string

@@ -743,12 +743,12 @@ export default function ManualWorkoutPlanBuilderScreen({
     [planName, planType, duration, description, workoutDays, assignedClients, trainerId, savedPlanId],
   );
 
-  const cellFormattingReps = (ex) => {
+  const formatReps = (ex) => {
     if (ex.repMode === 'fixed') return `${ex.repsSingle} reps`;
     return `${ex.repsMin}-${ex.repsMax} reps`;
   };
 
-  const cellFormattingRest = (sec) => {
+  const formatRest = (sec) => {
     const s = Number(sec);
     if (!Number.isFinite(s) || s <= 0) return '—';
     if (s >= 60 && s % 60 === 0) return `${s / 60} min`;
@@ -1000,7 +1000,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                           {ex.exerciseName}
                         </Text>
                         <Text style={styles.exMeta}>
-                          {ex.sets} sets × {cellFormattingReps(ex)} · Rest {cellFormattingRest(ex.restSeconds)}
+                          {ex.sets} sets × {formatReps(ex)} · Rest {formatRest(ex.restSeconds)}
                         </Text>
                       </View>
                       <View style={styles.exActions}>
@@ -1035,7 +1035,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                       >
                         <Text style={{ color: c.textSecondary, fontSize: 13, flex: 1 }}>
                           Set {row.setNumber}: {row.reps} reps
-                          {row.weight ? ` @ ${row.weight}` : ''} · Rest {cellFormattingRest(row.restSeconds)}
+                          {row.weight ? ` @ ${row.weight}` : ''} · Rest {formatRest(row.restSeconds)}
                         </Text>
                         <Ionicons name="pencil" size={16} color={c.pink} />
                       </TouchableOpacity>
@@ -1094,7 +1094,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                         {i + 1}. {ex.exerciseName}
                       </Text>
                       <Text style={styles.exMeta}>
-                        {ex.sets} sets × {cellFormattingReps(ex)} · Rest {cellFormattingRest(ex.restSeconds)}
+                        {ex.sets} sets × {formatReps(ex)} · Rest {formatRest(ex.restSeconds)}
                       </Text>
                     </GradientCard>
                   ))}
@@ -1265,7 +1265,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <Text style={styles.label}>Rest between sets</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
                   {REST_PRESETS.map((sec) => (
-                    <Pill key={sec} label={cellFormattingRest(sec)} active={restSeconds === sec} onPress={() => setRestSeconds(sec)} />
+                    <Pill key={sec} label={formatRest(sec)} active={restSeconds === sec} onPress={() => setRestSeconds(sec)} />
                   ))}
                 </ScrollView>
                 <Text style={styles.label}>Tempo (optional)</Text>

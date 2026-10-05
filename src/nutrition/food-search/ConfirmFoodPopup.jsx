@@ -678,8 +678,8 @@ export default function FoodConfirmSheet({
           </GlassCard>
 
           {/* Formula strip */}
-          <View style={[styles.formulaCalculatorStrip, { backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>
-            <Text style={[styles.formulaCalculatorText, { color: t.muted }]}>
+          <View style={[styles.formulaStrip, { backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>
+            <Text style={[styles.formulaText, { color: t.muted }]}>
               Logging ≈ {macros.calories} cal · {macros.protein}P · {macros.carbs}C · {macros.fat}F
             </Text>
           </View>
@@ -994,14 +994,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
-  formulaCalculatorStrip: {
+  formulaStrip: {
     borderRadius: 16,
     borderWidth: 1,
     paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 8,
   },
-  formulaCalculatorText: {
+  formulaText: {
     fontSize: 13,
     fontWeight: '600',
   },

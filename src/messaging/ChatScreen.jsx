@@ -96,7 +96,7 @@ const GRADIENT = {
 };
 /** Thread header accent rim (aligned with session / marketplace heroes). */
 
-function cellFormattingTimestamp(timestamp) {
+function formatTimestamp(timestamp) {
   if (!timestamp) return '';
   try {
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -187,7 +187,7 @@ const bubbleStyles = StyleSheet.create({
   attachmentDownload: { fontSize: 12, fontWeight: '600', color: '#C084FC', marginTop: 4 },
 });
 
-function cellFormattingFileSize(bytes) {
+function formatFileSize(bytes) {
   if (bytes == null || bytes === 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -229,7 +229,7 @@ function ChatBubble({ message, isDark, onLongPress }) {
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[bubbleStyles.attachmentFileName, { color: fileTextColor }]} numberOfLines={1}>{message.fileName || 'File'}</Text>
             {message.fileSize != null && (
-              <Text style={[bubbleStyles.attachmentFileSize, { color: fileMutedColor }]}>{cellFormattingFileSize(message.fileSize)}</Text>
+              <Text style={[bubbleStyles.attachmentFileSize, { color: fileMutedColor }]}>{formatFileSize(message.fileSize)}</Text>
             )}
             <Text style={bubbleStyles.attachmentDownload}>Download</Text>
           </View>
@@ -486,7 +486,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     try {
       setLoading(true);
       const otherId = trainer?.id ?? (typeof trainer === 'string' ? trainer : null);
-      if (!otherId) throw new Error('Other participant incellFormattingion missing');
+      if (!otherId) throw new Error('Other participant information missing');
 
       let clientId, trainerId;
       if (conversation?.clientId != null && conversation?.trainerId != null) {
@@ -744,7 +744,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     fileSize: m.fileSize,
     sent: m.senderId === currentUser?.uid,
     senderId: m.senderId,
-    timestamp: cellFormattingTimestamp(m.timestamp),
+    timestamp: formatTimestamp(m.timestamp),
     onPreview: m.type === 'image' && m.fileUrl ? () => setPreviewImageUri(m.fileUrl) : undefined,
   }));
 

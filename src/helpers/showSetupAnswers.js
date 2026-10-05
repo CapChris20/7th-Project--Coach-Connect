@@ -1,5 +1,5 @@
 // Turns the snake_case onboarding answers stored in Firestore into display text.
-// Flow: 'lose_fat' → lookup table → "Lose Fat"; unknown reportColors fall back to auto Title Case.
+// Flow: 'lose_fat' → lookup table → "Lose Fat"; unknown tokens fall back to auto Title Case.
 // Used by profile screens and trainer client cards, which must never show raw ids like "full_gym".
 
 // The curated dictionary. It exists because auto-casing gets these wrong:
@@ -57,8 +57,8 @@ export function humanizeOnboardingToken(token) {
  * @param {string|string[]|number|null|undefined} raw
  * @param {string} [emptyFallback='—']
  */
-// The public cellFormattingter. Handles every shape onboarding answers get stored in over the years:
-// null, number, single token, array of reportColors, or a comma-joined string of reportColors.
+// The public formatter. Handles every shape onboarding answers get stored in over the years:
+// null, number, single token, array of tokens, or a comma-joined string of tokens.
 // Manipulate here: emptyFallback is the placeholder shown for missing answers
 export function showSetupAnswers(raw, emptyFallback = '—') {
   if (raw == null || raw === '') return emptyFallback;
@@ -80,7 +80,7 @@ export function showSetupAnswers(raw, emptyFallback = '—') {
 
   // Shape C — a comma-joined token string like "dumbbells,pull_up_bar".
   // The regex guard is the important part: it restricts the split to strings that look
-  // like reportColors (lowercase/digits/underscores), so real prose a user typed —
+  // like tokens (lowercase/digits/underscores), so real prose a user typed —
   // "I have bands, and a bench" — is left alone instead of being mangled.
   if (s.includes(',') || (s.includes('_') && /^[a-z0-9_,\s-]+$/i.test(s))) {
     const parts = s.split(',').map((p) => humanizeOnboardingToken(p.trim())).filter(Boolean);
@@ -99,7 +99,7 @@ export function showSetupAnswers(raw, emptyFallback = '—') {
 
 // Equipment lives under two different keys depending on when the profile was created:
 // the newer array `equipmentAccess`, or the older string `equipment`. Prefer the array.
-export function cellFormattingEquipmentFromProfile(data) {
+export function formatEquipmentFromProfile(data) {
   if (!data) return '—';
   if (Array.isArray(data.equipmentAccess) && data.equipmentAccess.length > 0) {
     return showSetupAnswers(data.equipmentAccess);
@@ -109,7 +109,7 @@ export function cellFormattingEquipmentFromProfile(data) {
 
 // "3 days per week", with correct singular for 1.
 // `n <= 0` is treated as unset, since zero training days isn't a real answer.
-export function cellFormattingDaysPerWeek(value) {
+export function formatDaysPerWeek(value) {
   if (value == null || value === '') return '—';
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '—';

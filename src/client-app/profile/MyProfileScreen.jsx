@@ -81,8 +81,8 @@ import {
 } from 'lucide-react-native';
 import {
   showSetupAnswers,
-  cellFormattingEquipmentFromProfile,
-  cellFormattingDaysPerWeek,
+  formatEquipmentFromProfile,
+  formatDaysPerWeek,
 } from '../../helpers/showSetupAnswers';
 import { fillTraineeProfile } from '../../helpers/fillTraineeProfile';
 
@@ -144,11 +144,11 @@ function coerceNumber(v) {
 function parseHeightForProfile(h) {
   if (h == null || h === '') return { display: '—', editSeed: '', inches: null };
   if (typeof h === 'number' && Number.isFinite(h)) {
-    return { display: cellFormattingInchesAsFeet(h), editSeed: String(h), inches: h };
+    return { display: formatInchesAsFeet(h), editSeed: String(h), inches: h };
   }
   if (typeof h === 'string') {
     const n = coerceNumber(h);
-    if (n != null) return { display: cellFormattingInchesAsFeet(n), editSeed: String(n), inches: n };
+    if (n != null) return { display: formatInchesAsFeet(n), editSeed: String(n), inches: n };
     const t = h.trim();
     return t ? { display: t, editSeed: t, inches: null } : { display: '—', editSeed: '', inches: null };
   }
@@ -156,21 +156,21 @@ function parseHeightForProfile(h) {
     const cm = coerceNumber(h.cm ?? h.CM ?? h.centimeters ?? h.cmTotal);
     if (cm != null) {
       const inches = cm / 2.54;
-      return { display: `${cm} cm (${cellFormattingInchesAsFeet(inches)})`, editSeed: String(Math.round(inches * 10) / 10), inches };
+      return { display: `${cm} cm (${formatInchesAsFeet(inches)})`, editSeed: String(Math.round(inches * 10) / 10), inches };
     }
     const ft = coerceNumber(h.feet ?? h.ft ?? h.f);
     const inch = coerceNumber(h.inches ?? h.in ?? h.inch ?? h.ins);
     if (ft != null || inch != null) {
       const totalIn = (ft ?? 0) * 12 + (inch ?? 0);
-      return { display: cellFormattingInchesAsFeet(totalIn), editSeed: String(Math.round(totalIn * 10) / 10), inches: totalIn };
+      return { display: formatInchesAsFeet(totalIn), editSeed: String(Math.round(totalIn * 10) / 10), inches: totalIn };
     }
     const total = coerceNumber(h.totalInches ?? h.total_inches ?? h.inchesTotal ?? h.value);
-    if (total != null) return { display: cellFormattingInchesAsFeet(total), editSeed: String(total), inches: total };
+    if (total != null) return { display: formatInchesAsFeet(total), editSeed: String(total), inches: total };
   }
   return { display: '—', editSeed: '', inches: null };
 }
 
-function cellFormattingInchesAsFeet(totalIn) {
+function formatInchesAsFeet(totalIn) {
   if (totalIn == null || !Number.isFinite(totalIn)) return '—';
   let ti = Math.round(totalIn);
   let feet = Math.floor(ti / 12);
@@ -550,13 +550,13 @@ const YEARS_COACHING_LABELS = {
   '10_plus': '10+ years',
 };
 
-function cellFormattingYearsCoaching(v) {
+function formatYearsCoaching(v) {
   if (v == null || v === '') return '—';
   const key = String(v);
   return YEARS_COACHING_LABELS[key] || key.replace(/_/g, ' ');
 }
 
-function cellFormattingSpecialtyList(arr) {
+function formatSpecialtyList(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return '—';
   return arr
     .map((s) =>
@@ -567,7 +567,7 @@ function cellFormattingSpecialtyList(arr) {
     .join(', ');
 }
 
-function cellFormattingCertifications(data) {
+function formatCertifications(data) {
   const list = Array.isArray(data?.certifications) ? [...data.certifications] : [];
   const other = String(data?.certificationOther || '').trim();
   if (list.includes('Other') && other) {
@@ -576,7 +576,7 @@ function cellFormattingCertifications(data) {
   return list.length ? list.join(', ') : '—';
 }
 
-function cellFormattingAvailability(status) {
+function formatAvailability(status) {
   if (status === 'available') return 'Available — accepting new clients';
   if (status === 'waitlist') return 'Waitlist — currently full';
   return status ? String(status).replace(/_/g, ' ') : '—';
@@ -676,7 +676,7 @@ export function ViewMyMyProfileScreen({
           'application/pdf',
           'image/jpeg',
           'image/png',
-          'application/vnd.openxmlcellFormattings-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           'application/msword',
         ],
         copyToCacheDirectory: true,
@@ -745,7 +745,7 @@ export function ViewMyMyProfileScreen({
       } else {
         setCertVerifyStatus('manual_review');
         verifyMessage =
-          'Uploaded — Under review. Photos (JPG/PNG) get instant AI checks; other file spreadsheetConstants are reviewed within 24–48 hours.';
+          'Uploaded — Under review. Photos (JPG/PNG) get instant AI checks; other file types are reviewed within 24–48 hours.';
       }
 
       Alert.alert('Certification', verifyMessage);
@@ -877,7 +877,7 @@ export function ViewMyMyProfileScreen({
     }
   };
 
-  const cellFormattingGender = (g) => {
+  const formatGender = (g) => {
     const s = String(g || '').trim();
     if (!s) return '—';
     if (s === 'male') return 'Male';
@@ -886,9 +886,9 @@ export function ViewMyMyProfileScreen({
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
-  const cellFormattingHeight = (h) => parseHeightForProfile(h).display;
+  const formatHeight = (h) => parseHeightForProfile(h).display;
 
-  const cellFormattingWeight = (w) => {
+  const formatWeight = (w) => {
     if (w == null || w === '') return '—';
     const n = Number(w);
     if (Number.isFinite(n)) return `${n}`;
@@ -1023,9 +1023,9 @@ export function ViewMyMyProfileScreen({
     { key: 'name', Icon: User, value: displayName || '—', label: 'Full name' },
     { key: 'email', Icon: Mail, value: String(email || '—'), label: 'Email', readOnly: true },
     { key: 'age', profileIconId: 'age', value: clientProfile?.age != null ? String(clientProfile.age) : '—', label: 'Age' },
-    { key: 'height', profileIconId: 'height', value: cellFormattingHeight(clientProfile?.height), label: 'Height' },
-    { key: 'weight', profileIconId: 'weight', value: cellFormattingWeight(clientProfile?.weight), label: 'Weight' },
-    { key: 'gender', profileIconId: 'gender', value: cellFormattingGender(clientProfile?.gender), label: 'Gender' },
+    { key: 'height', profileIconId: 'height', value: formatHeight(clientProfile?.height), label: 'Height' },
+    { key: 'weight', profileIconId: 'weight', value: formatWeight(clientProfile?.weight), label: 'Weight' },
+    { key: 'gender', profileIconId: 'gender', value: formatGender(clientProfile?.gender), label: 'Gender' },
   ];
 
   const trainingPreferences = [
@@ -1045,13 +1045,13 @@ export function ViewMyMyProfileScreen({
       key: 'daysPerWeek',
       profileIconId: 'frequency',
       label: 'Training frequency',
-      value: cellFormattingDaysPerWeek(clientProfile?.daysPerWeek),
+      value: formatDaysPerWeek(clientProfile?.daysPerWeek),
     },
     {
       key: 'equipment',
       profileIconId: 'equipment',
       label: 'Equipment',
-      value: cellFormattingEquipmentFromProfile(clientProfile),
+      value: formatEquipmentFromProfile(clientProfile),
     },
   ];
 
@@ -1073,10 +1073,10 @@ export function ViewMyMyProfileScreen({
   ];
 
   const philosophyText = String(trainerDoc?.trainingPhilosophy || '').trim();
-  const availabilityTitle = cellFormattingAvailability(trainerDoc?.trainerAvailabilityStatus);
+  const availabilityTitle = formatAvailability(trainerDoc?.trainerAvailabilityStatus);
   const sessionTitle = String(trainerDoc?.sessionType || '—').trim() || '—';
   const stripeStatus = trainerDoc?.stripeConnectStatus || 'not_connected';
-  const trainerYearsStat = cellFormattingYearsCoaching(trainerDoc?.yearsExperience);
+  const trainerYearsStat = formatYearsCoaching(trainerDoc?.yearsExperience);
   const trainerRatingStat =
     trainerDoc?.averageRating != null ? Number(trainerDoc.averageRating).toFixed(1) : null;
   const instagram = String(trainerDoc?.instagram || trainerDoc?.instagramHandle || '').trim();
@@ -1163,7 +1163,7 @@ export function ViewMyMyProfileScreen({
                   <CredentialPill
                     Icon={Medal}
                     label="CERTIFICATIONS"
-                    value={cellFormattingCertifications(trainerDoc)}
+                    value={formatCertifications(trainerDoc)}
                     theme={theme}
                     isDark={isDark}
                     style={{ minWidth: '100%' }}
@@ -1314,14 +1314,14 @@ export function ViewMyMyProfileScreen({
                     <CredentialPill
                       Icon={Calendar}
                       label="YEARS COACHING"
-                      value={cellFormattingYearsCoaching(trainerDoc?.yearsExperience)}
+                      value={formatYearsCoaching(trainerDoc?.yearsExperience)}
                       theme={theme}
                       isDark={isDark}
                     />
                     <CredentialPill
                       Icon={Sparkles}
                       label="SPECIALTIES"
-                      value={cellFormattingSpecialtyList(trainerDoc?.specialties)}
+                      value={formatSpecialtyList(trainerDoc?.specialties)}
                       theme={theme}
                       isDark={isDark}
                     />
@@ -1381,7 +1381,7 @@ export function ViewMyMyProfileScreen({
                   Icon={Video}
                   label="SESSION FORMAT"
                   title={sessionTitle === '—' ? 'Virtual & in-person' : sessionTitle}
-                  subtitle="Session length & cellFormatting"
+                  subtitle="Session length & format"
                   theme={theme}
                   isDark={isDark}
                 />

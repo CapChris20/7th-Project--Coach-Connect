@@ -32,7 +32,7 @@
  * DEPENDENCIES — install if not already present:
  *   npx expo install expo-linear-gradient @expo/vector-icons
  *
- * Firebase is wired and cloudConnectionured in src/app-start/cloudConnection.js
+ * Firebase is wired and configured in src/app-start/config.js
  *   On handleFinish, write to Firestore:
  *   setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
  *     user_id: currentUser.uid,

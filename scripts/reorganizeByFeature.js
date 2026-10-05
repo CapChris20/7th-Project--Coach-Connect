@@ -198,7 +198,7 @@ const MOVES = [
   ['src/nutrition/targets/recalculateFoodTargets.js', 'src/nutrition/targets/recalculateFoodTargets.js'],
 
   // ── shared services split ──
-  ['src/for-both/online-connection/whereToConnect.js', 'src/for-both/online-connection/whereToConnect.js'],
+  ['src/for-both/online-connection/baseUrl.js', 'src/for-both/online-connection/baseUrl.js'],
   ['src/for-both/online-connection/sendOnlineRequest.js', 'src/for-both/online-connection/sendOnlineRequest.js'],
   ['src/for-both/api/apiAuthHeaders.js', 'src/for-both/api/apiAuthHeaders.js'],
   ['src/for-both/api/userProfileApi.js', 'src/for-both/api/userProfileApi.js'],
