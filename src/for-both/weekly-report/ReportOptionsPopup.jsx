@@ -1,3 +1,7 @@
+// Bottom sheet of weekly-report settings: theme, PDF export, and a digest row.
+// Flow: slide the sheet up when visible → tap a row → haptic, then export or close.
+// Used by WeeklyReportBody when the week picker opens settings.
+
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -11,6 +15,56 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../weekly-report/reportColorSettings';
 
+// ===== NAMED CONSTANTS =====
+
+const SHEET_HIDDEN_OFFSET = 400;
+// Manipulate here: backdrop fade and the spring that brings the sheet up.
+const BACKDROP_FADE_IN_MS = 200;
+const BACKDROP_FADE_OUT_MS = 180;
+const SHEET_CLOSE_MS = 220;
+const SHEET_SPRING_DAMPING = 18;
+const SHEET_SPRING_STIFFNESS = 180;
+const DARK_MODE = 'dark';
+
+// ===== HELPER FUNCTIONS =====
+
+function isDarkMode(mode) {
+  return mode === DARK_MODE;
+}
+
+function rowSurfaceColor(mode) {
+  if (isDarkMode(mode)) return 'rgba(255,255,255,0.04)';
+  return 'rgba(0,0,0,0.03)';
+}
+
+function iconSurfaceColor(mode) {
+  if (isDarkMode(mode)) return 'rgba(255,255,255,0.06)';
+  return 'rgba(0,0,0,0.05)';
+}
+
+function sheetBackgroundColor(mode) {
+  if (isDarkMode(mode)) return '#16161f';
+  return '#ffffff';
+}
+
+function playSelectionHaptic() {
+  Haptics.selectionAsync().catch(() => {});
+}
+
+// vocab: withTiming / withSpring = Reanimated animations. They write the shared values, not React state.
+function animateOptionsSheet(isVisible, translateY, backdropOpacity) {
+  if (isVisible) {
+    backdropOpacity.value = withTiming(1, { duration: BACKDROP_FADE_IN_MS });
+    translateY.value = withSpring(0, { damping: SHEET_SPRING_DAMPING, stiffness: SHEET_SPRING_STIFFNESS });
+    return;
+  }
+  backdropOpacity.value = withTiming(0, { duration: BACKDROP_FADE_OUT_MS });
+  translateY.value = withTiming(SHEET_HIDDEN_OFFSET, {
+    duration: SHEET_CLOSE_MS,
+    easing: Easing.in(Easing.cubic),
+  });
+}
+
 function SheetRow({ icon, title, subtitle, onPress, colors, mode, testID }) {
   return (
     <Pressable
@@ -19,18 +73,13 @@ function SheetRow({ icon, title, subtitle, onPress, colors, mode, testID }) {
       style={[
         styles.row,
         {
-          backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+          backgroundColor: rowSurfaceColor(mode),
           borderColor: colors.border,
         },
       ]}
     >
       <View style={styles.rowLeft}>
-        <View
-          style={[
-            styles.iconWrap,
-            { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
-          ]}
-        >
+        <View style={[styles.iconWrap, { backgroundColor: iconSurfaceColor(mode) }]}>
           <Ionicons name={icon} size={18} color={colors.textPrimary} />
         </View>
         <View>
@@ -43,29 +92,29 @@ function SheetRow({ icon, title, subtitle, onPress, colors, mode, testID }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Report settings sheet.
+ * @param {{ visible: boolean, onClose: Function, onExport: Function }} props
+ */
 export function ReportOptionsPopup({ visible, onClose, onExport }) {
   const { colors, mode, toggle } = useTheme();
-  const translateY = useSharedValue(400);
-  const backdrop = useSharedValue(0);
+  const translateY = useSharedValue(SHEET_HIDDEN_OFFSET);
+  const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
-    if (visible) {
-      backdrop.value = withTiming(1, { duration: 200 });
-      translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
-    } else {
-      backdrop.value = withTiming(0, { duration: 180 });
-      translateY.value = withTiming(400, { duration: 220, easing: Easing.in(Easing.cubic) });
-    }
-  }, [visible, translateY, backdrop]);
+    animateOptionsSheet(visible, translateY, backdropOpacity);
+  }, [visible, translateY, backdropOpacity]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: backdrop.value,
+    opacity: backdropOpacity.value,
   }));
 
-  const tap = () => Haptics.selectionAsync().catch(() => {});
+  const themeLabel = isDarkMode(mode) ? 'Dark mode' : 'Light mode';
 
   return (
     <Modal transparent visible={visible} statusBarTranslucent animationType="none" onRequestClose={onClose}>
@@ -79,7 +128,7 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
             styles.sheet,
             sheetStyle,
             {
-              backgroundColor: mode === 'dark' ? '#16161f' : '#ffffff',
+              backgroundColor: sheetBackgroundColor(mode),
               borderColor: colors.border,
             },
           ]}
@@ -90,38 +139,31 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
           <Pressable
             testID="theme-toggle"
             onPress={() => {
-              tap();
+              playSelectionHaptic();
               toggle();
             }}
             style={[
               styles.row,
               {
-                backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                backgroundColor: rowSurfaceColor(mode),
                 borderColor: colors.border,
               },
             ]}
           >
             <View style={styles.rowLeft}>
-              <View
-                style={[
-                  styles.iconWrap,
-                  { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
-                ]}
-              >
-                <Ionicons name={mode === 'dark' ? 'moon' : 'sunny'} size={18} color={colors.textPrimary} />
+              <View style={[styles.iconWrap, { backgroundColor: iconSurfaceColor(mode) }]}>
+                <Ionicons name={isDarkMode(mode) ? 'moon' : 'sunny'} size={18} color={colors.textPrimary} />
               </View>
               <View>
                 <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>Appearance</Text>
-                <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>
-                  {mode === 'dark' ? 'Dark mode' : 'Light mode'}
-                </Text>
+                <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{themeLabel}</Text>
               </View>
             </View>
-            <View style={[styles.switchTrack, { backgroundColor: mode === 'dark' ? '#3a3a4a' : '#d4d4dc' }]}>
+            <View style={[styles.switchTrack, { backgroundColor: isDarkMode(mode) ? '#3a3a4a' : '#d4d4dc' }]}>
               <View
                 style={[
                   styles.switchThumb,
-                  { backgroundColor: '#fff', transform: [{ translateX: mode === 'dark' ? 20 : 0 }] },
+                  { backgroundColor: '#fff', transform: [{ translateX: isDarkMode(mode) ? 20 : 0 }] },
                 ]}
               />
             </View>
@@ -134,7 +176,7 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
             colors={colors}
             mode={mode}
             onPress={() => {
-              tap();
+              playSelectionHaptic();
               onExport?.();
               onClose();
             }}
@@ -147,7 +189,7 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
             colors={colors}
             mode={mode}
             onPress={() => {
-              tap();
+              playSelectionHaptic();
               onClose();
             }}
             testID="sheet-digest"
@@ -156,10 +198,7 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
           <Pressable
             testID="sheet-close"
             onPress={onClose}
-            style={[
-              styles.closeBtn,
-              { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
-            ]}
+            style={[styles.closeBtn, { backgroundColor: iconSurfaceColor(mode) }]}
           >
             <Text style={[styles.closeText, { color: colors.textPrimary }]}>Done</Text>
           </Pressable>

@@ -1,75 +1,141 @@
-/**
- * Daily Quote Card
- *
- * Purpose: UI screen or component: Daily Quote Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: DailyQuotePill, DailyQuoteCard
- *
- * @file-header
- */
+// Home quote card and the smaller pill. One quote per user per local day, cached on the device.
+// Flow: first visit pins quote 0 → later visits reuse today's saved index → a new day picks the day-of-year quote.
+// Used on the client and trainer home screens. Quote text lives in dailyQuotes.json (keys `q` and `a`).
+
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import dailyQuotesData from '../../daily-stats/dailyQuotes.json';
 
-/** Curated quotes from `dailyQuotes.json` (nutrition, training, discipline). */
-const quotes = Array.isArray(dailyQuotesData?.quotes) ? dailyQuotesData.quotes : [];
+// ===== NAMED CONSTANTS =====
 
-// Helper: get today's quote based on day of year
-const getTodayQuote = () => {
-  if (!quotes.length) return { q: 'Keep showing up.', a: 'Daily Motivation' };
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const diff = now - start;
-  const oneDay = 1000 * 60 * 60 * 24;
-  const dayOfYear = Math.floor(diff / oneDay); // 1–365
-  const index = (dayOfYear - 1) % quotes.length;
-  return quotes[index];
-};
+const QUOTE_LIST = Array.isArray(dailyQuotesData?.quotes) ? dailyQuotesData.quotes : [];
+// vocab: `q` is the sentence and `a` is the author. Those keys come from dailyQuotes.json.
+const FALLBACK_QUOTE = { q: 'Keep showing up.', a: 'Daily Motivation' };
+const FALLBACK_AUTHOR = 'Daily Motivation';
+const UNKNOWN_AUTHOR = 'unknown';
+// Manipulate here: milliseconds in a day, used to turn "now" into a day-of-year index.
+const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
 
-// Helper: get random quote (for refresh button)
-const getRandomQuote = () => {
-  if (!quotes.length) return { q: 'Keep showing up.', a: 'Daily Motivation' };
-  return quotes[Math.floor(Math.random() * quotes.length)];
-};
+// ===== HELPER FUNCTIONS =====
 
-function withAlpha(hex, alpha) {
-  const clean = (hex || '').replace('#', '');
-  if (clean.length !== 6) return hex;
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+function dailyQuoteStorageKey(userId) {
+  return `coachconnect_daily_quote_v2:${userId}`;
 }
 
-const ACCENT = '#7C3AED';
+function dailyQuoteSeenKey(userId) {
+  return `coachconnect_daily_quote_seen_v1:${userId}`;
+}
 
-const todayKeyLocal = () => new Date().toISOString().slice(0, 10);
+function todayKeyLocal() {
+  return new Date().toISOString().slice(0, 10);
+}
 
-const quoteIndexForToday = () => {
-  const q = getTodayQuote();
-  const idx = quotes.findIndex((x) => x?.q === q?.q && x?.a === q?.a);
-  return idx >= 0 ? idx : 0;
-};
+function dayOfYearNumber(now) {
+  const startOfYear = new Date(now.getFullYear(), 0, 0);
+  const elapsedMs = now - startOfYear;
+  return Math.floor(elapsedMs / MILLISECONDS_PER_DAY);
+}
 
-const displayAuthor = (a) => {
-  const s = (a || '').trim();
-  if (!s) return 'Daily Motivation';
-  if (s.toLowerCase() === 'unknown') return 'Daily Motivation';
-  return s;
-};
+function getTodayQuote() {
+  if (!QUOTE_LIST.length) return FALLBACK_QUOTE;
+  const dayOfYear = dayOfYearNumber(new Date());
+  const index = (dayOfYear - 1) % QUOTE_LIST.length;
+  return QUOTE_LIST[index];
+}
 
+function quoteIndexForToday() {
+  const todayQuote = getTodayQuote();
+  const index = QUOTE_LIST.findIndex((quote) => quote?.q === todayQuote?.q && quote?.a === todayQuote?.a);
+  return index >= 0 ? index : 0;
+}
+
+function clampQuoteIndex(index) {
+  return Math.max(0, Math.min(QUOTE_LIST.length - 1, Number(index)));
+}
+
+function displayAuthor(author) {
+  const authorText = (author || '').trim();
+  if (!authorText) return FALLBACK_AUTHOR;
+  if (authorText.toLowerCase() === UNKNOWN_AUTHOR) return FALLBACK_AUTHOR;
+  return authorText;
+}
+
+function quoteAtIndex(quoteIndex) {
+  return QUOTE_LIST[quoteIndex] || QUOTE_LIST[0] || FALLBACK_QUOTE;
+}
+
+async function readCachedQuoteRecord(userId) {
+  const raw = await AsyncStorage.getItem(dailyQuoteStorageKey(userId));
+  return raw ? JSON.parse(raw) : null;
+}
+
+function cachedIndexForToday(parsed, today) {
+  if (parsed?.date === today && Number.isFinite(parsed?.index)) {
+    return clampQuoteIndex(parsed.index);
+  }
+  return null;
+}
+
+async function saveQuoteIndex(userId, today, index) {
+  await AsyncStorage.setItem(dailyQuoteStorageKey(userId), JSON.stringify({ date: today, index }));
+}
+
+// Card-only: the first time this user opens the card, pin index 0, then rotate on later days.
+// onIndex runs at the same moment the screen used to set state, before the storage writes finish.
+async function resolveQuoteIndexForCard(userId, onIndex) {
+  const today = todayKeyLocal();
+  const parsed = await readCachedQuoteRecord(userId);
+  const hasSeenQuote = await AsyncStorage.getItem(dailyQuoteSeenKey(userId));
+  if (!hasSeenQuote) {
+    const starterIndex = 0;
+    onIndex(starterIndex);
+    await AsyncStorage.setItem(dailyQuoteSeenKey(userId), 'true');
+    await saveQuoteIndex(userId, today, starterIndex);
+    return;
+  }
+
+  const cachedIndex = cachedIndexForToday(parsed, today);
+  if (cachedIndex !== null) {
+    onIndex(cachedIndex);
+    return;
+  }
+
+  const todayIndex = quoteIndexForToday();
+  onIndex(todayIndex);
+  await saveQuoteIndex(userId, today, todayIndex);
+}
+
+// Pill does not pin a starter quote. It only reads today's cache or writes the day-of-year pick.
+async function resolveQuoteIndexForPill(userId, onIndex) {
+  const today = todayKeyLocal();
+  const parsed = await readCachedQuoteRecord(userId);
+  const cachedIndex = cachedIndexForToday(parsed, today);
+  if (cachedIndex !== null) {
+    onIndex(cachedIndex);
+    return;
+  }
+
+  const todayIndex = quoteIndexForToday();
+  onIndex(todayIndex);
+  await saveQuoteIndex(userId, today, todayIndex);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Large daily quote card.
+ * @param {{ userId?: string, cardWidth?: number|string, cardMinHeight?: number, embedded?: boolean }} props
+ */
 export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embedded = false }) {
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
   const outerWidth = cardWidth ?? '100%';
   const outerMinHeight = cardMinHeight ?? 96;
-
   const [quoteIndex, setQuoteIndex] = useState(0);
 
-  // High-contrast typography; when embedded, let the parent handle border/background.
-  const cardBg = embedded
+  // Embedded cards sit on a parent surface, so this card drops its own fill and border.
+  const cardBackground = embedded
     ? 'transparent'
     : (isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)');
   const borderColor = embedded
@@ -79,41 +145,15 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
   const authorColor = isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)';
 
   useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
 
     const run = async () => {
       if (!userId) return;
-
       try {
-        // Per-user, per-day cache so the quote rotates once per day (local date).
-        const baseKey = `coachconnect_daily_quote_v2:${userId}`;
-        const today = todayKeyLocal();
-
-        const raw = await AsyncStorage.getItem(baseKey);
-        const parsed = raw ? JSON.parse(raw) : null;
-
-        // First-ever quote experience (per-user) should be your chosen “starter” quote,
-        // but it must still rotate the next day.
-        const seenKey = `coachconnect_daily_quote_seen_v1:${userId}`;
-        const hasSeen = await AsyncStorage.getItem(seenKey);
-        if (!hasSeen) {
-          const idx = 0;
-          if (!cancelled) setQuoteIndex(idx);
-          await AsyncStorage.setItem(seenKey, 'true');
-          await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
-          return;
-        }
-
-        if (parsed?.date === today && Number.isFinite(parsed?.index)) {
-          const idx = Math.max(0, Math.min(quotes.length - 1, Number(parsed.index)));
-          if (!cancelled) setQuoteIndex(idx);
-          return;
-        }
-
-        const idx = quoteIndexForToday();
-        if (!cancelled) setQuoteIndex(idx);
-        await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
-      } catch (e) {
+        await resolveQuoteIndexForCard(userId, (index) => {
+          if (!isCancelled) setQuoteIndex(index);
+        });
+      } catch (error) {
         // If AsyncStorage fails, do nothing and keep default
       }
     };
@@ -121,18 +161,16 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
     run();
 
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
   }, [userId]);
 
-  const quote = quotes[quoteIndex] || quotes[0] || { q: 'Keep showing up.', a: 'Daily Motivation' };
+  const quote = quoteAtIndex(quoteIndex);
 
-  // Refresh to a random quote on tap
-  
   return (
     <View style={[styles.outer, { width: outerWidth, minHeight: outerMinHeight }]}>
       <View style={[styles.border, { borderColor, borderWidth: embedded ? 0 : 1 }]}>
-        <View style={[styles.card, { backgroundColor: cardBg, minHeight: outerMinHeight }]}>
+        <View style={[styles.card, { backgroundColor: cardBackground, minHeight: outerMinHeight }]}>
           <View style={styles.content}>
             <Text style={[styles.quoteText, { color: textColor }]}>
               "{quote.q}"
@@ -148,43 +186,35 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
   );
 }
 
-/** `maxLines` only when you want truncation; omit for full quote (wraps). */
+/**
+ * Compact quote. `maxLines` truncates; omit it and the quote wraps.
+ * @param {{ userId?: string, isDarkOverride?: boolean, maxLines?: number, embedded?: boolean }} props
+ */
 export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = false }) {
   const { isDark: themeIsDark } = useTheme();
   const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : themeIsDark;
-
   const [quoteIndex, setQuoteIndex] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
     const run = async () => {
       if (!userId) return;
       try {
-        const baseKey = `coachconnect_daily_quote_v2:${userId}`;
-        const today = todayKeyLocal();
-        const raw = await AsyncStorage.getItem(baseKey);
-        const parsed = raw ? JSON.parse(raw) : null;
-
-        if (parsed?.date === today && Number.isFinite(parsed?.index)) {
-          const idx = Math.max(0, Math.min(quotes.length - 1, Number(parsed.index)));
-          if (!cancelled) setQuoteIndex(idx);
-          return;
-        }
-
-        const idx = quoteIndexForToday();
-        if (!cancelled) setQuoteIndex(idx);
-        await AsyncStorage.setItem(baseKey, JSON.stringify({ date: today, index: idx }));
+        await resolveQuoteIndexForPill(userId, (index) => {
+          if (!isCancelled) setQuoteIndex(index);
+        });
       } catch (_) {
         // ignore
       }
     };
     run();
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
   }, [userId]);
 
-  const quote = quotes[quoteIndex] || quotes[0] || { q: 'Keep showing up.', a: 'Daily Motivation' };
+  const quote = quoteAtIndex(quoteIndex);
+  const hasLineLimit = typeof maxLines === 'number' && maxLines > 0;
 
   return (
     <View style={[pillStyles.wrap, embedded && pillStyles.wrapEmbedded]}>
@@ -211,9 +241,7 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = fa
       >
         <Text
           style={[pillStyles.text, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}
-          {...(typeof maxLines === 'number' && maxLines > 0
-            ? { numberOfLines: maxLines, ellipsizeMode: 'tail' }
-            : {})}
+          {...(hasLineLimit ? { numberOfLines: maxLines, ellipsizeMode: 'tail' } : {})}
         >
           "{quote.q}"
         </Text>

@@ -1,44 +1,63 @@
-// A global handle on the navigator so non-screen code can move the app around.
-// Flow: NavigationContainer attaches itself to rootNavigationRef → these helpers check "is it ready?" → then navigate/back/reset.
-// Used by things that live outside React screens (push-notification taps, auth listeners, deep-link handlers).
-// Key exports: rootNavigationRef, rootNavigate, rootGoBack, rootResetTo
+// A handle on the navigator for code that is not inside a screen.
+// Flow: the navigation container attaches rootNavigationRef → these helpers wait until it is ready → then they move.
+// Used by: notification taps, auth listeners, and deep links.
 
 import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 
-// vocab: createNavigationContainerRef = React Navigation's way to control the navigator from outside a screen.
-// Inside a screen you'd use the useNavigation() hook; this ref is the escape hatch for everything else.
-export const rootNavigationRef = createNavigationContainerRef();
+// ===== NAMED CONSTANTS =====
 
-// Go to a screen by route name. Every helper below guards on isReady() because this module can be
-// called before the navigator has mounted (e.g. a notification opening the app from cold start) —
-// calling navigate() too early throws, so we silently no-op instead of crashing the launch.
-// vocab: params = the data bag handed to the destination screen (route.params over there)
+// Manipulate here: index 0 with one route means that screen is the whole stack. There is no back arrow.
+const RESET_STACK_INDEX = 0;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Cold start can call these before the navigator exists. Navigating then throws.
+ * @returns {boolean}
+ */
+function isNavigatorReady() {
+  return rootNavigationRef.isReady();
+}
+
+// vocab: createNavigationContainerRef controls navigation from outside a screen.
+const rootNavigationRef = createNavigationContainerRef();
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} name
+ * @param {object} [params]
+ * @returns {void}
+ */
 export function rootNavigate(name, params) {
-  if (rootNavigationRef.isReady()) {
-    rootNavigationRef.navigate(name, params);
-  }
+  if (!isNavigatorReady()) return;
+  rootNavigationRef.navigate(name, params);
 }
 
-// Back button behavior for outside-of-React callers.
-// canGoBack() matters: popping an empty history stack is an error, and on the very first screen
-// there is nothing behind us — so we check before we pop.
+/**
+ * Does nothing on the first screen, because there is nothing to pop.
+ * @returns {void}
+ */
 export function rootGoBack() {
-  if (rootNavigationRef.isReady() && rootNavigationRef.canGoBack()) {
-    rootNavigationRef.goBack();
-  }
+  if (!isNavigatorReady()) return;
+  if (!rootNavigationRef.canGoBack()) return;
+  rootNavigationRef.goBack();
 }
 
-// Hard replace of the whole history with a single screen — no back arrow, nothing to return to.
-// This is the sign-in/sign-out move: after logging out you must not be able to swipe back into the app.
+/**
+ * Replaces the whole history with one screen. Sign-out uses this so the user cannot swipe back in.
+ * @param {string} name
+ * @returns {void}
+ */
 export function rootResetTo(name) {
-  if (!rootNavigationRef.isReady()) return;
+  if (!isNavigatorReady()) return;
+  // vocab: CommonActions.reset throws away the current stack and installs a new one.
   rootNavigationRef.dispatch(
-    // vocab: CommonActions.reset = throw away the current navigation state and install a new one
     CommonActions.reset({
-      // Manipulate here: index is which route in the array below is the active one.
-      // index 0 + a one-item routes array = "this screen is the entire stack".
-      index: 0,
+      index: RESET_STACK_INDEX,
       routes: [{ name }],
     }),
   );
 }
+
+export { rootNavigationRef };

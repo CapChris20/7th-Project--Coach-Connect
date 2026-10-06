@@ -1,39 +1,40 @@
-// Hook powering the unread-message badge.
-// Flow: kick off a one-time index rebuild → subscribe to the live count → push each
-//       update into state → unsubscribe on unmount or when the user changes.
-// Reads from the pre-aggregated index in messaging/unreadMessageCounts.js, so the badge costs
-// ONE listener instead of counting messages across every thread.
+// The number on the unread-message badge.
+// Flow: rebuild the index once → subscribe to the live count → unsubscribe when the user changes.
+// Used by: the tab bar. One listener, not a count across every thread.
 
 import { useEffect, useState } from 'react';
 import { subscribeToUnreadCount, rebuildUnreadIndexForUser } from '../messaging/unreadMessageCounts';
 
-export function unreadAlertCount(userId) {
-  const [unreadCount, setUnreadCount] = useState(0);
+// ===== NAMED CONSTANTS =====
 
-  // Keyed on `userId`: when it changes, React runs the cleanup below before re-running
-  // this effect, so the old user's listener is always torn down first.
+const EMPTY_UNREAD_COUNT = 0;
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Hooks stay in this order: state, then the effect that subscribes.
+ * @param {string|null|undefined} userId
+ * @returns {number}
+ */
+export function unreadAlertCount(userId) {
+  const [unreadCount, setUnreadCount] = useState(EMPTY_UNREAD_COUNT);
+
   useEffect(() => {
-    // Signed out — zero the badge and skip subscribing. Returning undefined is the
-    // "no cleanup needed" signal to React.
     if (!userId) {
-      setUnreadCount(0);
+      setUnreadCount(EMPTY_UNREAD_COUNT);
       return undefined;
     }
 
-    // Self-heal: the stored index can drift if a write failed or the app was killed
-    // mid-update. Deliberately NOT awaited so the listener attaches immediately and the
-    // badge shows the cached value right away; `.catch(() => {})` because a failed
-    // rebuild is non-fatal — the existing index is still usable.
+    // A failed rebuild still leaves the old index usable, so the badge does not wait on it.
     rebuildUnreadIndexForUser(userId).catch(() => {});
 
-    // `Number(count) || 0` guards the badge against a null/NaN index value, which would
-    // otherwise render as "NaN" on the tab bar.
     const unsubscribe = subscribeToUnreadCount(userId, (count) => {
-      setUnreadCount(Number(count) || 0);
+      setUnreadCount(Number(count) || EMPTY_UNREAD_COUNT);
     });
 
-    // vocab/symbol: unsubscribe?.() = only call it if subscribeToUnreadCount actually
-    //               returned a function (it may return nothing on an early bail-out).
+    // vocab: unsubscribe may be missing if the subscribe call bailed out early.
     return () => {
       unsubscribe?.();
     };

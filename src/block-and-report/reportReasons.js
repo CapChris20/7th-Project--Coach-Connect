@@ -1,17 +1,25 @@
-// Report reason codes for contentReports — keep labels user-facing and short.
-// Flow: ReportOrBlockPopup / report pickers import REPORT_REASONS → store `id` on the Firestore doc.
-// Used by: reportContent.js, ReportOrBlockPopup.jsx
-// Manipulate here: add/remove reasons; ids are what get stored (don’t rename shipped ids casually).
+// Reason codes a person can pick when they report a chat or a trainer profile.
+// Flow: the picker shows the label. The saved report stores the id.
+// Used by: reportContent.js and ReportOrBlockPopup.jsx.
 
-export const REPORT_REASONS = [
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: add or remove a reason. The id is what gets stored. Do not rename an id that is already in Firestore.
+const REPORT_REASONS = [
   { id: 'spam', label: 'Spam or scam' },
   { id: 'harassment', label: 'Harassment or bullying' },
   { id: 'inappropriate', label: 'Inappropriate content' },
   { id: 'other', label: 'Something else' },
 ];
 
-export const REPORT_TYPES = {
+const REPORT_TYPES = {
   USER: 'user',
   MESSAGE: 'message',
   TRAINER_PROFILE: 'trainer_profile',
 };
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+export { REPORT_REASONS, REPORT_TYPES };

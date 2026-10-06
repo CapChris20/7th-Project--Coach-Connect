@@ -1,18 +1,48 @@
-/**
- * Liquid Gradient Button
- *
- * Purpose: Liquid Gradient Button — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: GlassButton
- *
- * @file-header
- */
+// A gradient button with optional icons on either side of the label.
+// Flow: press fades the button → the gradient fills the shape → the title stays centered.
+// Used by glass screens that need a primary action.
+
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Liquid } from './glassSettings';
 
+// ===== NAMED CONSTANTS =====
+
+const IOS_PLATFORM = 'ios';
+const DISABLED_OPACITY = 0.45;
+const PRESSED_OPACITY = 0.92;
+const IDLE_OPACITY = 1;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {boolean} isDisabled
+ * @param {boolean} isPressed
+ * @returns {number}
+ */
+function buttonOpacity(isDisabled, isPressed) {
+  if (isDisabled) return DISABLED_OPACITY;
+  if (isPressed) return PRESSED_OPACITY;
+  return IDLE_OPACITY;
+}
+
+/**
+ * iOS can round with a continuous curve. Android ignores that key.
+ * @param {number} radius
+ * @returns {object}
+ */
+function gradientShape(radius) {
+  if (Platform.OS !== IOS_PLATFORM) return { borderRadius: radius };
+  return { borderRadius: radius, borderCurve: 'continuous' };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{ title: string, onPress?: Function, disabled?: boolean, style?: object, left?: import('react').ReactNode, right?: import('react').ReactNode, radius?: number, colors?: string[], overlayOpacity?: number }} props
+ * @returns {import('react').ReactElement}
+ */
 export default function GlassButton({
   title,
   onPress,
@@ -24,13 +54,16 @@ export default function GlassButton({
   colors = Liquid.gradients.primary,
   overlayOpacity = 0,
 }) {
+  const isDisabled = Boolean(disabled);
+  const hasOverlay = overlayOpacity > 0;
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
         styles.hit,
-        { opacity: disabled ? 0.45 : pressed ? 0.92 : 1 },
+        { opacity: buttonOpacity(isDisabled, pressed) },
         style,
       ]}
       accessibilityRole="button"
@@ -39,12 +72,14 @@ export default function GlassButton({
         colors={colors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[
-          styles.grad,
-          { borderRadius: radius, ...(Platform.OS === 'ios' ? { borderCurve: 'continuous' } : null) },
-        ]}
+        style={[styles.grad, gradientShape(radius)]}
       >
-        {overlayOpacity > 0 && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${overlayOpacity})` }]} />}
+        {hasOverlay ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${overlayOpacity})` }]}
+          />
+        ) : null}
         <View style={styles.row}>
           <View style={styles.iconSlot}>{left}</View>
           <Text style={styles.text} numberOfLines={1}>
@@ -85,5 +120,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-
-

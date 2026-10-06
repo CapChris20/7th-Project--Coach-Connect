@@ -1,41 +1,66 @@
-/**
- * a11y Props
- *
- * Purpose: a11y Props — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: a11yButton, a11yTextField, a11yHeader, MIN_TOUCH_HIT_SLOP
- *
- * @file-header
- */
-/**
- * Shared accessibility props for Coach Connect core flows.
- * Use on Pressable / TouchableOpacity / TextInput so VoiceOver/TalkBack get clear names.
- */
+// Shared VoiceOver and TalkBack labels for buttons, text fields, and headers.
+// Flow: a screen passes the words the person should hear → this returns the accessibility props.
+// Used by: Pressable, TouchableOpacity, and TextInput in the main flows.
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_BUTTON_LABEL = 'Button';
+const DEFAULT_TEXT_FIELD_LABEL = 'Text field';
+const BUTTON_ROLE = 'button';
+const HEADER_ROLE = 'header';
+
+/** Minimum extra hit area for an icon-only control. */
+const MIN_TOUCH_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} label
+ * @param {string} fallbackLabel
+ * @returns {string}
+ */
+function spokenLabel(label, fallbackLabel) {
+  return String(label || '').trim() || fallbackLabel;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} label
+ * @param {string} [hint]
+ * @returns {object}
+ */
 export function a11yButton(label, hint) {
   const props = {
-    accessibilityRole: 'button',
-    accessibilityLabel: String(label || '').trim() || 'Button',
+    accessibilityRole: BUTTON_ROLE,
+    accessibilityLabel: spokenLabel(label, DEFAULT_BUTTON_LABEL),
   };
   if (hint) props.accessibilityHint = String(hint);
   return props;
 }
 
+/**
+ * @param {string} label
+ * @param {string} [hint]
+ * @returns {object}
+ */
 export function a11yTextField(label, hint) {
   const props = {
-    accessibilityLabel: String(label || '').trim() || 'Text field',
+    accessibilityLabel: spokenLabel(label, DEFAULT_TEXT_FIELD_LABEL),
   };
   if (hint) props.accessibilityHint = String(hint);
   return props;
 }
 
+/**
+ * @param {string} label
+ * @returns {object}
+ */
 export function a11yHeader(label) {
   return {
-    accessibilityRole: 'header',
+    accessibilityRole: HEADER_ROLE,
     accessibilityLabel: String(label || '').trim(),
   };
 }
 
-/** Minimum touch target — use on icon-only controls (44pt). */
-export const MIN_TOUCH_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+export { MIN_TOUCH_HIT_SLOP };

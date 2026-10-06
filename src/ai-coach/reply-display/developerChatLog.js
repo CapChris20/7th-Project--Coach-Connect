@@ -1,15 +1,38 @@
+// Dev-only coach chat lines. Copy them out of Metro when a reply looks wrong.
+// Flow: clip long text → print the user line, the coach line, and one paste-ready bundle.
+// Used by the coach conversation while __DEV__ is on. Production returns immediately.
+
+// ===== NAMED CONSTANTS =====
+
+const LOG_TAG = '[AI Coach Chat]';
+const DEFAULT_CLIP_LENGTH = 4000;
+const BUNDLE_CLIP_LENGTH = 8000;
+const SOURCE_TITLE_CLIP_LENGTH = 120;
+const ERROR_USER_CLIP_LENGTH = 500;
+const MAX_SOURCES_IN_REPLY_LOG = 6;
+const MAX_SOURCES_IN_BUNDLE = 8;
+const YOU_RULE_LENGTH = 28;
+const COACH_RULE_LENGTH = 26;
+const ERROR_RULE_LENGTH = 27;
+const CLOSING_RULE_LENGTH = 40;
+
+// ===== HELPER FUNCTIONS =====
+
 /**
- * Dev-only AI Coach conversation logs — copy from Metro when reporting issues.
+ * @param {unknown} text
+ * @param {number} [maxLength]
+ * @returns {string}
  */
-
-const TAG = '[AI Coach Chat]';
-
-function clip(text, max = 4000) {
-  const s = String(text || '').trim();
-  if (s.length <= max) return s;
-  return `${s.slice(0, max)}… (+${s.length - max} chars)`;
+function clipText(text, maxLength = DEFAULT_CLIP_LENGTH) {
+  const textValue = String(text || '').trim();
+  if (textValue.length <= maxLength) return textValue;
+  return `${textValue.slice(0, maxLength)}… (+${textValue.length - maxLength} chars)`;
 }
 
+/**
+ * @param {object} [meta]
+ * @returns {string}
+ */
 function metaLine(meta = {}) {
   const parts = [];
   if (meta.sessionId) parts.push(`session=${meta.sessionId}`);
@@ -25,72 +48,99 @@ function metaLine(meta = {}) {
   return parts.length ? parts.join(' | ') : '';
 }
 
-/** Log what the user sent (before API call). */
+/**
+ * @param {Array} webSources
+ * @returns {void}
+ */
+function logWebSources(webSources) {
+  webSources.slice(0, MAX_SOURCES_IN_REPLY_LOG).forEach((source, sourceIndex) => {
+    const title = source?.title || source?.url || 'source';
+    console.log(`${LOG_TAG}   source[${sourceIndex}]: ${clipText(title, SOURCE_TITLE_CLIP_LENGTH)}`);
+    if (source?.url) console.log(`${LOG_TAG}            ${source.url}`);
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} text
+ * @param {object} [meta]
+ * @returns {void}
+ */
 export function logCoachUserMessage(text, meta = {}) {
   if (!__DEV__) return;
-  const body = clip(text);
+  const body = clipText(text);
   const line = metaLine(meta);
-  console.log(`${TAG} ── YOU ${'─'.repeat(28)}`);
-  if (line) console.log(`${TAG} ${line}`);
-  console.log(`${TAG} ${body || '(empty)'}`);
+  console.log(`${LOG_TAG} ── YOU ${'─'.repeat(YOU_RULE_LENGTH)}`);
+  if (line) console.log(`${LOG_TAG} ${line}`);
+  console.log(`${LOG_TAG} ${body || '(empty)'}`);
   if (meta.attachmentCount > 0) {
-    console.log(`${TAG} attachments: ${meta.attachmentCount}`);
+    console.log(`${LOG_TAG} attachments: ${meta.attachmentCount}`);
   }
 }
 
-/** Log coach reply (after API — what the UI shows). */
+/**
+ * @param {string} text
+ * @param {object} [meta]
+ * @returns {void}
+ */
 export function logCoachAssistantMessage(text, meta = {}) {
   if (!__DEV__) return;
-  const body = clip(text);
+  const body = clipText(text);
   const line = metaLine(meta);
-  console.log(`${TAG} ── COACH ${'─'.repeat(26)}`);
-  if (line) console.log(`${TAG} ${line}`);
-  console.log(`${TAG} ${body || '(empty)'}`);
+  console.log(`${LOG_TAG} ── COACH ${'─'.repeat(COACH_RULE_LENGTH)}`);
+  if (line) console.log(`${LOG_TAG} ${line}`);
+  console.log(`${LOG_TAG} ${body || '(empty)'}`);
   if (Array.isArray(meta.webSources) && meta.webSources.length) {
-    meta.webSources.slice(0, 6).forEach((s, i) => {
-      const title = s?.title || s?.url || 'source';
-      console.log(`${TAG}   source[${i}]: ${clip(title, 120)}`);
-      if (s?.url) console.log(`${TAG}            ${s.url}`);
-    });
+    logWebSources(meta.webSources);
   }
-  console.log(`${TAG} ${'─'.repeat(40)}`);
+  console.log(`${LOG_TAG} ${'─'.repeat(CLOSING_RULE_LENGTH)}`);
 }
 
-/** One JSON blob to paste into a bug report. */
+/**
+ * @param {{ userText?: string, coachText?: string, meta?: object }} turn
+ * @returns {void}
+ */
 export function logCoachTurnBundle({ userText, coachText, meta = {} }) {
   if (!__DEV__) return;
   try {
     const bundle = {
       at: new Date().toISOString(),
-      you: clip(userText, 8000),
-      coach: clip(coachText, 8000),
+      you: clipText(userText, BUNDLE_CLIP_LENGTH),
+      coach: clipText(coachText, BUNDLE_CLIP_LENGTH),
       route: meta.route ?? null,
       searchedWeb: meta.searchedWeb ?? null,
       webProvider: meta.webProvider ?? null,
       source: meta.source ?? null,
       success: meta.success ?? null,
       tool: meta.toolCall?.name ?? null,
-      sources: (meta.webSources || []).slice(0, 8).map((s) => ({
-        title: s?.title,
-        url: s?.url,
+      sources: (meta.webSources || []).slice(0, MAX_SOURCES_IN_BUNDLE).map((source) => ({
+        title: source?.title,
+        url: source?.url,
       })),
       sessionId: meta.sessionId ?? null,
       error: meta.error ?? null,
     };
-    console.log(`${TAG} PASTE_THIS:`, JSON.stringify(bundle, null, 2));
+    console.log(`${LOG_TAG} PASTE_THIS:`, JSON.stringify(bundle, null, 2));
   } catch (_) {
-    // ignore
+    // A logging failure must not break the chat.
   }
 }
 
-export function logCoachError(err, userText, meta = {}) {
+/**
+ * @param {Error|string} caughtError
+ * @param {string} userText
+ * @param {object} [meta]
+ * @returns {void}
+ */
+export function logCoachError(caughtError, userText, meta = {}) {
   if (!__DEV__) return;
-  console.log(`${TAG} ── ERROR ${'─'.repeat(27)}`);
-  console.log(`${TAG} you: ${clip(userText, 500)}`);
-  console.log(`${TAG} ${String(err?.message || err || 'unknown error')}`);
+  console.log(`${LOG_TAG} ── ERROR ${'─'.repeat(ERROR_RULE_LENGTH)}`);
+  console.log(`${LOG_TAG} you: ${clipText(userText, ERROR_USER_CLIP_LENGTH)}`);
+  console.log(`${LOG_TAG} ${String(caughtError?.message || caughtError || 'unknown error')}`);
   logCoachTurnBundle({
     userText,
     coachText: '',
-    meta: { ...meta, success: false, error: String(err?.message || err) },
+    meta: { ...meta, success: false, error: String(caughtError?.message || caughtError) },
   });
 }

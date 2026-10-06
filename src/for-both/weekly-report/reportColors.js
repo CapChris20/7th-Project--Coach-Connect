@@ -1,6 +1,10 @@
-/** Design tokens — matches poop-main.zip reference exactly. */
+// Color tokens for the weekly report. Screens read these names.
+// Flow: pick a gradient or a light/dark palette. Nothing in this file computes a number.
+// Used by: weekly report charts and cards.
 
-export const GRADIENTS = {
+// ===== NAMED CONSTANTS =====
+
+const GRADIENTS = {
   g1: ['#ff6b35', '#ff1493'],
   g2: ['#ffd700', '#ff1493'],
   g3: ['#ffd700', '#ff1493'],
@@ -8,7 +12,7 @@ export const GRADIENTS = {
   g5: ['#ff6b35', '#ff1493'],
 };
 
-export const DARK_COLORS = {
+const DARK_COLORS = {
   background: '#0a0a0f',
   backgroundGradient: ['#0a0a0f', '#12121c'],
   surfacePrimary: 'rgba(20, 20, 30, 0.55)',
@@ -20,7 +24,7 @@ export const DARK_COLORS = {
   blurTint: 'dark',
 };
 
-export const LIGHT_COLORS = {
+const LIGHT_COLORS = {
   background: '#f4f4f6',
   backgroundGradient: ['#f7f7fa', '#eaeaf0'],
   surfacePrimary: 'rgba(255, 255, 255, 0.85)',
@@ -32,7 +36,19 @@ export const LIGHT_COLORS = {
   blurTint: 'light',
 };
 
-export const TREND_POSITIVE = '#34d399';
-export const TREND_NEGATIVE = '#f87171';
+const TREND_POSITIVE = '#34d399';
+const TREND_NEGATIVE = '#f87171';
+const STORAGE_KEY = 'coachconnect.theme.mode';
 
-export const STORAGE_KEY = 'coachconnect.theme.mode';
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+export {
+  GRADIENTS,
+  DARK_COLORS,
+  LIGHT_COLORS,
+  TREND_POSITIVE,
+  TREND_NEGATIVE,
+  STORAGE_KEY,
+};

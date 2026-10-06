@@ -1,3 +1,7 @@
+// Shares the trainer's Pro status with the screens under it.
+// Flow: if this build sells Pro, use the store setup → otherwise read the user doc and leave access open.
+// Used by the trainer app root. Screens call useSubscription().
+
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -6,6 +10,9 @@ import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from './proPlanSwitches';
 import { SubscriptionContext } from './proPlanStatus';
 import { IapProPlanSetup } from './ProPlanPurchases';
 
+// ===== NAMED CONSTANTS =====
+
+const USERS_COLLECTION = 'users';
 const OPEN_ACCESS_STATE = {
   access: 'active',
   hasFullAccess: true,
@@ -15,7 +22,17 @@ const OPEN_ACCESS_STATE = {
   nextBillingDate: null,
   trialCountdownMs: null,
 };
+const UNAVAILABLE_TITLE = 'Unavailable';
+const UNAVAILABLE_MESSAGE = 'Trainer subscriptions are not enabled in this build.';
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Builds without the store still need the context. Access stays open and the buttons explain why.
+ * Hooks stay in this order: two state values, the user-doc listener, two callbacks, then the memo.
+ * @param {{ userId?: string, children: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement}
+ */
 function DisabledProPlanSetup({ userId, children }) {
   const [firestoreSubscription, setFirestoreSubscription] = useState(null);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
@@ -28,11 +45,11 @@ function DisabledProPlanSetup({ userId, children }) {
     }
 
     setFirestoreLoading(true);
-    const unsub = onSnapshot(
-      doc(db, 'users', userId),
-      (snap) => {
-        const data = snap.exists() ? snap.data() : null;
-        setFirestoreSubscription(data?.subscription || null);
+    const unsubscribe = onSnapshot(
+      doc(db, USERS_COLLECTION, userId),
+      (snapshot) => {
+        const userData = snapshot.exists() ? snapshot.data() : null;
+        setFirestoreSubscription(userData?.subscription || null);
         setFirestoreLoading(false);
       },
       () => {
@@ -40,16 +57,16 @@ function DisabledProPlanSetup({ userId, children }) {
       },
     );
 
-    return unsub;
+    return unsubscribe;
   }, [userId]);
 
   const clearError = useCallback(() => {}, []);
 
-  const unavailable = useCallback(() => {
-    Alert.alert('Unavailable', 'Trainer subscriptions are not enabled in this build.');
+  const showUnavailable = useCallback(() => {
+    Alert.alert(UNAVAILABLE_TITLE, UNAVAILABLE_MESSAGE);
   }, []);
 
-  const value = useMemo(
+  const subscriptionValue = useMemo(
     () => ({
       firestoreSubscription,
       firestoreLoading,
@@ -60,31 +77,41 @@ function DisabledProPlanSetup({ userId, children }) {
       storeProduct: null,
       storeProducts: {},
       connected: false,
-      startFreeTrial: unavailable,
+      startFreeTrial: showUnavailable,
       restorePurchases: async () => {
-        unavailable();
+        showUnavailable();
         return false;
       },
-      retryLastAction: unavailable,
+      retryLastAction: showUnavailable,
     }),
-    [firestoreSubscription, firestoreLoading, clearError, unavailable],
+    [firestoreSubscription, firestoreLoading, clearError, showUnavailable],
   );
 
-  return <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>;
+  return (
+    <SubscriptionContext.Provider value={subscriptionValue}>{children}</SubscriptionContext.Provider>
+  );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{ userId?: string, children: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement}
+ */
 export function ProPlanSetup({ userId, children }) {
   if (TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) {
     return <IapProPlanSetup userId={userId}>{children}</IapProPlanSetup>;
   }
-
   return <DisabledProPlanSetup userId={userId}>{children}</DisabledProPlanSetup>;
 }
 
+/**
+ * @returns {object}
+ */
 export function useSubscription() {
-  const ctx = useContext(SubscriptionContext);
-  if (!ctx) {
+  const subscriptionValue = useContext(SubscriptionContext);
+  if (!subscriptionValue) {
     throw new Error('useSubscription must be used within ProPlanSetup');
   }
-  return ctx;
+  return subscriptionValue;
 }

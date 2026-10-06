@@ -1,19 +1,12 @@
-/**
- * Blur Backdrop Plate
- *
- * Purpose: Blur Backdrop Plate — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: BlurredBackground
- *
- * @file-header
- */
+// Frosted panel. The blur sits behind the children so icons and text stay visible.
+// Flow: peel padding off the outer style → blur fills the edges → children sit in a normal layer on top.
+// Used by: headers and menus that need a frosted strip without blanking their contents.
+
 import React from 'react';
-import {
-  StyleSheet,
-  View,
-} from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+
+// ===== NAMED CONSTANTS =====
 
 const PADDING_KEYS = [
   'padding',
@@ -25,34 +18,37 @@ const PADDING_KEYS = [
   'paddingVertical',
 ];
 
-/** Pull padding off the outer shell so blur/backdrop fill edge-to-edge (padding only insets content). */
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Padding on the outer style would shrink the blur. It belongs on the content instead.
+ * @param {object} flatStyle
+ * @returns {{ shellStyle: object, contentInset: object }}
+ */
 function splitShellPadding(flatStyle) {
   const shellStyle = { ...(flatStyle || {}) };
   const contentInset = {};
-  for (const key of PADDING_KEYS) {
-    if (shellStyle[key] != null) {
-      contentInset[key] = shellStyle[key];
-      delete shellStyle[key];
-    }
+  for (const paddingKey of PADDING_KEYS) {
+    if (shellStyle[paddingKey] == null) continue;
+    contentInset[paddingKey] = shellStyle[paddingKey];
+    delete shellStyle[paddingKey];
   }
   return { shellStyle, contentInset };
 }
 
+// ===== MAIN FUNCTION =====
+
 /**
- * Use blur as a backdrop only. Do not nest {@link Image}, vector icons, MaskedView, or TextInput
- * inside {@link BlurView} — on iOS/Android (including Expo Go) they often fail to composite (blank,
- * flicker, or vanish until layout changes). Children render in a normal layer above the blur.
- *
- * Padding on `style` is moved to the inner content wrapper so the blur layer reaches the physical
- * top/bottom edges (TopHeader status-bar zone, BottomMenuBar home-indicator zone).
+ * Do not put images, icons, or text inputs inside the blur view. They go blank on iOS and Android.
+ * @param {{ intensity?: number, tint?: string, style?: object, contentWrapperStyle?: object, children?: import('react').ReactNode }} props
  */
 export default function BlurredBackground({ intensity, tint, style, contentWrapperStyle, children }) {
-  const flat = StyleSheet.flatten(style) || {};
-  const { shellStyle, contentInset } = splitShellPadding(flat);
-  const { backgroundColor, ...restShell } = shellStyle;
+  const flattenedStyle = StyleSheet.flatten(style) || {};
+  const { shellStyle, contentInset } = splitShellPadding(flattenedStyle);
+  const { backgroundColor, ...restOfShell } = shellStyle;
 
   return (
-    <View style={[restShell, { position: 'relative', overflow: 'hidden' }]}>
+    <View style={[restOfShell, { position: 'relative', overflow: 'hidden' }]}>
       <BlurView intensity={intensity} tint={tint} pointerEvents="none" style={StyleSheet.absoluteFillObject} />
       {backgroundColor ? (
         <View

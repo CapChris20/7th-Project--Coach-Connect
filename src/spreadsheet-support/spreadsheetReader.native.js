@@ -1,8 +1,18 @@
-// iOS/Android build of the spreadsheet parser — hands back the real SheetJS library.
-// Metro auto-picks this file over xlsx.js when bundling for device.
-// Note: SheetJS expects Node-ish globals, so this only works because metro.config.js polyfills them.
+// iOS and Android build of the spreadsheet parser. Hands back the real SheetJS library.
+// Flow: Metro picks this file on a device instead of spreadsheetReader.js.
+// Used by: the spreadsheet viewer. SheetJS needs the Node-ish globals that metro.config.js polyfills.
 
-// vocab: SheetJS = the `xlsx` npm package that reads .xlsx/.csv into plain JS objects
+// vocab: SheetJS is the xlsx package. It reads .xlsx and .csv into plain objects.
 import * as XLSX from 'xlsx';
 
-export default XLSX;
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+function loadNativeSheetJs() {
+  return XLSX;
+}
+
+export default loadNativeSheetJs();

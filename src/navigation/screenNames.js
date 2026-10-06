@@ -1,25 +1,23 @@
-// The master list of React Navigation screen names, split by which app shell owns them.
-// Flow: navigators register screens under these names → navigate()/webLinks look screens up by the same strings.
-// Used everywhere we navigate, so nobody has to hand-type a route string and typo it silently.
-// Key exports: CLIENT_ROUTES, TRAINER_ROUTES
+// React Navigation route names for the client app and the trainer app.
+// Flow: navigators register these strings → navigate() and web links look up the same strings.
+// Used by every screen change, so a route name is written once instead of typed by hand.
 
-// Why the values are prefixed ('ClientProfile', 'TrainerProfile'): client and trainer stacks can both
-// be registered at once, and React Navigation route names must be globally unique — the prefix is what
-// keeps "Profile" in one shell from hijacking "Profile" in the other.
-//
-// Manipulate here: the KEY (left) is the nickname your code uses; the VALUE (right) is the real
-// registered route name. Renaming a value means updating the navigator that registers it AND any deep
-// link path in webLinks.js — these strings are also what deep links resolve to, so keep them stable.
+// ===== NAMED CONSTANTS =====
+
+// The value is prefixed because both shells can be registered at once. React Navigation route
+// names are global, so "Profile" in the client app would otherwise collide with the trainer one.
+// Manipulate here: the key is the nickname code uses. The value is the registered route.
+// Changing a value means updating the navigator that registers it and the deep link in webLinks.js.
 
 export const CLIENT_ROUTES = {
-  // MainTabs is the tab container; the five names under it are the tabs living inside it.
+  // MainTabs is the tab container. The five names under it are the tabs inside that container.
   MainTabs: 'ClientMainTabs',
   Home: 'ClientHome',
   Dashboard: 'ClientDashboard',
   Files: 'ClientFiles',
   Nutrition: 'ClientNutrition',
   AI: 'ClientAI',
-  // Everything below is pushed on top of the tabs as a full screen rather than living in the tab bar.
+  // Everything below is pushed on top of the tabs as a full screen, not a tab.
   Profile: 'ClientProfile',
   Settings: 'ClientSettings',
   HelpFAQ: 'ClientHelpFAQ',
@@ -38,7 +36,7 @@ export const CLIENT_ROUTES = {
 };
 
 export const TRAINER_ROUTES = {
-  // Main is the trainer hub (their equivalent of the client's tab container).
+  // Main is the trainer hub, their equivalent of the client's tab container.
   Main: 'TrainerMain',
   Profile: 'TrainerProfile',
   Settings: 'TrainerSettings',
@@ -60,3 +58,9 @@ export const TRAINER_ROUTES = {
   PlanViewer: 'TrainerPlanViewer',
   Payments: 'TrainerPayments',
 };
+
+// ===== HELPER FUNCTIONS =====
+// Route tables only. Nothing here is computed.
+
+// ===== MAIN FUNCTION =====
+// Screens import CLIENT_ROUTES and TRAINER_ROUTES directly.

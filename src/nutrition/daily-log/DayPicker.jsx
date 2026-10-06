@@ -1,13 +1,7 @@
-/**
- * Nutrition Day Picker
- *
- * Purpose: Nutrition Day Picker — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: DayPicker
- *
- * @file-header
- */
+// Week strip on the food log. Each circle is one day. Future days stay disabled.
+// Flow: snap to the Sunday of the selected week → draw seven days → block weeks after today.
+// Used by: the daily food log screen.
+
 import React, { useMemo, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,21 +9,50 @@ import { Ionicons } from '@expo/vector-icons';
 import { getClientDateKey } from '../../helpers/dateStrings';
 import { NUT_ACTION_GRADIENT } from '../nutritionColors';
 
-function addDays(dateKey, delta) {
-  const d = new Date(`${dateKey}T12:00:00`);
-  d.setDate(d.getDate() + delta);
-  return getClientDateKey(d);
+// ===== NAMED CONSTANTS =====
+
+// vocab: date keys are YYYY-MM-DD. Noon avoids a timezone shifting the day backward.
+const DATE_KEY_NOON_SUFFIX = 'T12:00:00';
+const DAYS_IN_A_WEEK = 7;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} dateKey
+ * @returns {Date}
+ */
+function dateAtNoon(dateKey) {
+  return new Date(`${dateKey}${DATE_KEY_NOON_SUFFIX}`);
 }
 
+/**
+ * @param {string} dateKey
+ * @param {number} dayCount
+ * @returns {string}
+ */
+function addDays(dateKey, dayCount) {
+  const nextDate = dateAtNoon(dateKey);
+  nextDate.setDate(nextDate.getDate() + dayCount);
+  return getClientDateKey(nextDate);
+}
+
+/**
+ * Sunday of the week that contains this date key. getDay() is 0 on Sunday.
+ * @param {string} dateKey
+ * @returns {string}
+ */
 function weekStartKey(dateKey) {
-  const d = new Date(`${dateKey}T12:00:00`);
-  d.setDate(d.getDate() - d.getDay());
-  return getClientDateKey(d);
+  const date = dateAtNoon(dateKey);
+  date.setDate(date.getDate() - date.getDay());
+  return getClientDateKey(date);
 }
 
+/**
+ * @param {string} weekStart
+ * @returns {string}
+ */
 function formatMonthLabel(weekStart) {
-  const d = new Date(`${weekStart}T12:00:00`);
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return dateAtNoon(weekStart).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 /** Week calendar — circular day buttons with prev/next week navigation. */
@@ -48,11 +71,13 @@ export default function DayPicker({
   }, [selectedDate]);
 
   const todayWeekStart = weekStartKey(todayKey);
-  const canGoForward = weekStart !== todayWeekStart && addDays(weekStart, 7) <= todayWeekStart;
+  const canGoForward = weekStart !== todayWeekStart && addDays(weekStart, DAYS_IN_A_WEEK) <= todayWeekStart;
 
   const weekDays = useMemo(() => {
     const list = [];
-    for (let i = 0; i < 7; i += 1) list.push(addDays(weekStart, i));
+    for (let dayIndex = 0; dayIndex < DAYS_IN_A_WEEK; dayIndex += 1) {
+      list.push(addDays(weekStart, dayIndex));
+    }
     return list;
   }, [weekStart]);
 
@@ -75,7 +100,7 @@ export default function DayPicker({
       };
 
   const shiftWeek = (delta) => {
-    const next = addDays(weekStart, delta * 7);
+    const next = addDays(weekStart, delta * DAYS_IN_A_WEEK);
     if (delta > 0 && next > todayWeekStart) return;
     setWeekStart(next);
   };
@@ -107,15 +132,15 @@ export default function DayPicker({
           const isToday = dateKey === todayKey;
           const isFuture = dateKey > todayKey;
           const hasLogs = logSet.has(dateKey);
-          const d = new Date(`${dateKey}T12:00:00`);
-          const weekday = d.toLocaleDateString(undefined, { weekday: 'narrow' });
+          const dayDate = dateAtNoon(dateKey);
+          const weekday = dayDate.toLocaleDateString(undefined, { weekday: 'narrow' });
 
           if (isFuture) {
             return (
               <View key={dateKey} style={styles.dayCol}>
                 <Text style={[styles.weekday, { color: colors.muted }]}>{weekday}</Text>
                 <View style={[styles.circleGhost, { backgroundColor: colors.circle }]}>
-                  <Text style={[styles.dayNum, { color: colors.muted }]}>{d.getDate()}</Text>
+                  <Text style={[styles.dayNum, { color: colors.muted }]}>{dayDate.getDate()}</Text>
                 </View>
                 <View style={styles.dotSlot} />
               </View>
@@ -140,12 +165,12 @@ export default function DayPicker({
                   style={styles.circleActiveRing}
                 >
                   <View style={[styles.circleActiveInner, { backgroundColor: isDark ? '#121018' : '#FFFFFF' }]}>
-                    <Text style={[styles.dayNum, { color: colors.text, fontWeight: '800' }]}>{d.getDate()}</Text>
+                    <Text style={[styles.dayNum, { color: colors.text, fontWeight: '800' }]}>{dayDate.getDate()}</Text>
                   </View>
                 </LinearGradient>
               ) : (
                 <View style={[styles.circle, { backgroundColor: colors.circle }]}>
-                  <Text style={[styles.dayNum, { color: colors.text }]}>{d.getDate()}</Text>
+                  <Text style={[styles.dayNum, { color: colors.text }]}>{dayDate.getDate()}</Text>
                 </View>
               )}
               <View style={styles.dotSlot}>

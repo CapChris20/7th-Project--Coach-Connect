@@ -1,14 +1,8 @@
-/**
- * theme
- *
- * Purpose: theme — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: lightColors, darkColors, typography, spacing, borderRadius, fontSize, fontWeight, shadows
- *
- * @file-header
- */
-// Theme configuration for React Native styling with Light and Dark mode support
+// Shared color, type, spacing, and shadow tokens for light and dark mode.
+// Flow: screens pick lightColors or darkColors → typography / spacing / shadows style the same components.
+// Used across the app. Short keys like `xs` and `h1` are the names other files already import — do not rename them.
+
+// ===== NAMED CONSTANTS =====
 
 // Light mode colors (Modern Neutral theme)
 export const lightColors = {
@@ -54,7 +48,7 @@ export const lightColors = {
   },
 };
 
-// Dark mode colors (Modern Neutral theme)
+// Dark mode colors (Modern Neutral theme). Gray is flipped so 50 is the darkest step.
 export const darkColors = {
   primary: '#5856D6', // iOS indigo primary (same for consistency)
   primaryDark: '#6B6CFF',
@@ -98,7 +92,6 @@ export const darkColors = {
   },
 };
 
-// Typography scale
 export const typography = {
   h1: {
     fontSize: 32,
@@ -137,7 +130,6 @@ export const typography = {
   },
 };
 
-// Spacing scale
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -148,7 +140,6 @@ export const spacing = {
   xxxl: 64,
 };
 
-// Border radius
 export const borderRadius = {
   sm: 4,
   md: 8,
@@ -158,7 +149,6 @@ export const borderRadius = {
   round: 9999,
 };
 
-// Font sizes
 export const fontSize = {
   xs: 12,
   sm: 14,
@@ -170,7 +160,6 @@ export const fontSize = {
   huge: 40,
 };
 
-// Font weights
 export const fontWeight = {
   light: '300',
   normal: '400',
@@ -180,34 +169,25 @@ export const fontWeight = {
   extrabold: '800',
 };
 
-// Shadows
+// ===== HELPER FUNCTIONS =====
+
+// iOS shadow plus Android elevation. Every step uses black; only the size changes.
+function buildDropShadow(offsetHeight, shadowOpacity, shadowRadius, elevation) {
+  return {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: offsetHeight },
+    shadowOpacity,
+    shadowRadius,
+    elevation,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/** Four shadow steps. `sm` is the lightest, `xl` is the heaviest. */
 export const shadows = {
-  sm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  xl: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-  },
+  sm: buildDropShadow(1, 0.05, 2, 1),
+  md: buildDropShadow(2, 0.1, 4, 3),
+  lg: buildDropShadow(4, 0.15, 8, 6),
+  xl: buildDropShadow(8, 0.2, 16, 10),
 };

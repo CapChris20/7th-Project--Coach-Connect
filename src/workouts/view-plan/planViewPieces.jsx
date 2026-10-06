@@ -1,3 +1,7 @@
+// Shared styles for the workout plan viewer cards, day headers, and empty states.
+// Flow: one StyleSheet, exported for WorkoutPlanView to spread onto its layout.
+// Used by: WorkoutPlanView. Padding and colors stay inline because they are layout, not rules.
+
 import { Platform, StyleSheet } from 'react-native';
 
 const planViewerRefStyles = StyleSheet.create({

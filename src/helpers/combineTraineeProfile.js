@@ -1,15 +1,15 @@
-// Combines the trainer's own notes about a client with the client's live self-reported profile.
-// Flow: start from the CRM row → for each shared field, let the client's users doc win if it
-//       has a value → otherwise keep the trainer's CRM value → special-case the goal fields.
-// Used by trainer client detail/roster screens so a coach sees fresh weight/goals, not stale copies.
+// Combines the trainer's private notes about a client with the client's own live profile.
+// Flow: start from the trainer row → for each shared field, the client's value wins when it exists → then fill a missing goal.
+// Used by the trainer home and the linked-client loader so the coach sees fresh weight, not a stale copy.
+// vocab: trainer row = trainer_clients/{trainerId}/clients/{clientId}. The users doc is users/{clientId}.
 
-// vocab: CRM row = the trainer's private copy of a client at trainer_clients/{trainerId}/clients/{clientId}
 import { normalizeClientProfileFields } from './fillTraineeProfile';
 
-// The fields the client themselves owns. Anything listed here prefers the users doc,
-// because the client updates these in their own app and the CRM copy goes stale.
-// Manipulate here: adding a key here means "the client's value beats the trainer's".
-//                  Trainer-only fields (private notes, tags) must stay OUT of this list.
+// ===== NAMED CONSTANTS =====
+
+// The client owns these. A value here beats the trainer's copy because the client updates it in their app.
+// Manipulate here: adding a key means "the client's value beats the trainer's".
+// Trainer-only fields (private notes, tags, program name) must stay off this list.
 export const TRAINER_CLIENT_PROFILE_FIELDS = [
   'weight',
   'startingWeight',
@@ -30,52 +30,60 @@ export const TRAINER_CLIENT_PROFILE_FIELDS = [
   'energyLevels',
   'supplementsCurrentlyTaking',
   'hydrationHabits',
-  // Billing — prefer users/{clientId}, fall back to CRM row
+  // Billing — prefer users/{clientId}, fall back to the trainer row
   'monthlyRate',
   'paymentStatus',
 ];
 
-// "Does this field actually hold an answer?" — the tie-breaker for every merge decision below.
-// An empty array counts as absent, since a cleared multi-select shouldn't beat a real CRM value.
-function isPresent(value) {
+// ===== HELPER FUNCTIONS =====
+
+// Empty array counts as "no answer". A cleared multi-select must not wipe a real trainer value.
+function isFieldPresent(value) {
   if (value == null || value === '') return false;
   if (Array.isArray(value) && value.length === 0) return false;
   return true;
 }
 
-/**
- * @param {object} crmRow — trainer_clients/{trainerId}/clients/{clientId}
- * @param {object} userData — users/{clientId}
- */
-export function combineTraineeProfile(crmRow = {}, userData = {}) {
-  const crm = crmRow && typeof crmRow === 'object' ? crmRow : {};
-  // Normalize the users doc first so legacy key spellings (goal→primaryGoal,
-  // frequency→daysPerWeek, etc.) are already resolved before we compare fields.
-  const user = normalizeClientProfileFields(userData);
-  // Start from the CRM row so trainer-only fields (notes, tags, ids) survive untouched —
-  // only the keys in TRAINER_CLIENT_PROFILE_FIELDS get considered for replacement.
-  const merged = { ...crm };
-
-  // The core rule: client value wins when present, CRM value fills the gap otherwise.
-  for (const key of TRAINER_CLIENT_PROFILE_FIELDS) {
-    if (isPresent(user[key])) {
-      merged[key] = user[key];
-    } else if (!isPresent(merged[key]) && isPresent(crm[key])) {
-      merged[key] = crm[key];
+function copyClientOwnedFields(combinedProfile, clientProfile, trainerClientRow) {
+  for (const fieldName of TRAINER_CLIENT_PROFILE_FIELDS) {
+    if (isFieldPresent(clientProfile[fieldName])) {
+      combinedProfile[fieldName] = clientProfile[fieldName];
+    } else if (!isFieldPresent(combinedProfile[fieldName]) && isFieldPresent(trainerClientRow[fieldName])) {
+      // The spread already copied the trainer row. This branch still fills a hole if that copy was empty.
+      combinedProfile[fieldName] = trainerClientRow[fieldName];
     }
   }
+  return combinedProfile;
+}
 
-  // Goals get extra handling because they're what the trainer's UI leads with, and an
-  // empty goal reads as a broken screen. If neither source produced a primaryGoal,
-  // fall back explicitly to the CRM one.
-  if (!isPresent(merged.primaryGoal) && isPresent(crm.primaryGoal)) {
-    merged.primaryGoal = crm.primaryGoal;
+// Goals lead the trainer UI. An empty goal looks like a broken screen, so the trainer row is the last resort.
+function applyGoalFallbacks(combinedProfile, trainerClientRow) {
+  if (!isFieldPresent(combinedProfile.primaryGoal) && isFieldPresent(trainerClientRow.primaryGoal)) {
+    combinedProfile.primaryGoal = trainerClientRow.primaryGoal;
   }
-  // Last resort: with no goal at all, surface the CRM's `goals` list instead.
-  // `|| null` normalizes undefined to null so the shape stays Firestore-safe.
-  if (!isPresent(merged.goals) && !isPresent(merged.primaryGoal)) {
-    merged.goals = crm.goals || null;
+  // `|| null` turns undefined into null so the saved shape stays Firestore-safe.
+  if (!isFieldPresent(combinedProfile.goals) && !isFieldPresent(combinedProfile.primaryGoal)) {
+    combinedProfile.goals = trainerClientRow.goals || null;
   }
+  return combinedProfile;
+}
 
-  return merged;
+// ===== MAIN FUNCTION =====
+
+/**
+ * Merge a trainer's client row with the client's users document.
+ * Trainer-only keys (notes, tags, ids) are kept. Shared keys prefer the client.
+ * @param {object} [trainerClientRow] trainer_clients/{trainerId}/clients/{clientId}
+ * @param {object} [userData] users/{clientId}
+ * @returns {object}
+ */
+export function combineTraineeProfile(trainerClientRow = {}, userData = {}) {
+  const trainerRow = trainerClientRow && typeof trainerClientRow === 'object' ? trainerClientRow : {};
+  // Normalize first so legacy spellings (goal → primaryGoal, frequency → daysPerWeek) are already resolved.
+  const clientProfile = normalizeClientProfileFields(userData);
+  // Start from the trainer row so private fields survive. Only TRAINER_CLIENT_PROFILE_FIELDS can be replaced.
+  const combinedProfile = { ...trainerRow };
+
+  copyClientOwnedFields(combinedProfile, clientProfile, trainerRow);
+  return applyGoalFallbacks(combinedProfile, trainerRow);
 }

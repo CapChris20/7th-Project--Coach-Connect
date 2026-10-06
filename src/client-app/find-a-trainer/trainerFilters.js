@@ -1,14 +1,9 @@
-/**
- * marketplace Filters
- *
- * Purpose: marketplace Filters — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/marketplace
- * Key exports: getGlass, specPillGradient, getTheme, trainerFirstName, gradColor, gradGradient, getTrainerPrice, normalizeTrainer
- *
- * @file-header
- */
-/** Marketplace filter shape, theme tokens, and filter logic (reference UI spec; Firebase as source). */
+// Filter chips, colors, and the rules that turn a Firestore trainer into a marketplace card.
+// Flow: normalize each trainer doc into one card shape → drop cards that miss the
+//       active filters → sort by price or by who joined most recently.
+// Used by the find-a-trainer screens, the trainer card, and the filter popup.
+
+// ===== NAMED CONSTANTS =====
 
 export const SORT_OPTIONS = ['Newest', 'Price: Low', 'Price: High'];
 export const FILTER_SPECIALTIES = [
@@ -21,6 +16,24 @@ export const QUICK_SPECIALTIES = ['All', 'Strength', 'Weight Loss', 'Bodybuildin
 
 export const PRICE_FLOOR = 100;
 export const PRICE_CEILING = 500;
+
+const SORT_NEWEST = 'Newest';
+const SORT_PRICE_LOW = 'Price: Low';
+const SORT_PRICE_HIGH = 'Price: High';
+const QUICK_SPECIALTY_ALL = 'All';
+const SESSION_BOTH = 'Both';
+const SESSION_REMOTE = 'Remote';
+const SESSION_IN_PERSON = 'In-person';
+const MODE_HYBRID = 'Hybrid';
+const DEFAULT_COACH_NAME = 'Coach';
+const DEFAULT_INITIAL = 'C';
+const DEFAULT_LOCATION = 'Location TBD';
+const DEFAULT_SPECIALTY = 'General Fitness';
+const DEFAULT_RESPONSE_TIME = 'within 2 hours';
+const DEFAULT_BIO = 'This coach is setting up their profile. Message them to learn more about their coaching style.';
+// Manipulate here: trial length shown when the trainer doc does not set one.
+const DEFAULT_TRIAL_DAYS = 5;
+const WAITLIST_AVAILABILITY = 'Waitlist';
 
 export const DEFAULT_FILTERS = {
   sort: 'Newest',
@@ -64,10 +77,6 @@ export const GLASS = {
     saturate: 1.4,
   },
 };
-
-export function getGlass(isDark) {
-  return isDark ? GLASS.dark : GLASS.light;
-}
 
 export const THEMES = {
   light: {
@@ -119,175 +128,158 @@ export const AURORA_GLOWS = {
   },
 };
 
-/** Specialty pill wash — web trainer-card color-mix on brand-{grad} + purple */
-export function specPillGradient(grad) {
-  const g = gradGradient(grad);
-  return [`${g[0]}2E`, `${BRAND.purple}24`];
+// Stored experience ranges, and the year count the filter bands compare against.
+// A string that starts with a digit never reaches this map — parseInt wins first.
+const EXPERIENCE_YEAR_VALUES = {
+  less_than_1: 0,
+  '1_2': 2,
+  '3_5': 4,
+  '5_8': 6,
+  '6_10': 7,
+  '8_plus': 9,
+  '10_plus': 10,
+};
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {*} rawPrice
+ * @returns {number|null}
+ */
+function finitePrice(rawPrice) {
+  if (rawPrice == null || rawPrice === '') return null;
+  const priceNumber = Number(rawPrice);
+  return Number.isFinite(priceNumber) ? priceNumber : null;
 }
 
-export function getTheme(isDark) {
-  return isDark ? THEMES.dark : THEMES.light;
-}
-
-export function trainerFirstName(name) {
-  const n = String(name || 'Coach').trim();
-  return n.split(/\s+/)[0] || n;
-}
-
-/** Human-readable label for stored enum/snake_case values (e.g. weight_loss → Weight Loss). */
-export function formatMarketplaceLabel(value) {
-  const s = String(value || '').trim();
-  if (!s) return '';
-  if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(s)) {
-    return s
-      .split('_')
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-      .join(' ');
+/**
+ * Years of experience from a number, a leading digit, or a stored range label.
+ * "8+" returns 8, because parseInt stops at the plus before the later "8+" rule runs.
+ * @param {*} rawExperience
+ * @returns {number}
+ */
+function parseYears(rawExperience) {
+  if (rawExperience == null || rawExperience === '') return 0;
+  if (typeof rawExperience === 'number' && Number.isFinite(rawExperience)) return rawExperience;
+  const experienceText = String(rawExperience);
+  const leadingNumber = parseInt(experienceText, 10);
+  if (Number.isFinite(leadingNumber)) return leadingNumber;
+  for (const [rangeKey, years] of Object.entries(EXPERIENCE_YEAR_VALUES)) {
+    const rangeAsWords = rangeKey.replace(/_/g, ' ');
+    if (experienceText.includes(rangeKey) || experienceText.toLowerCase().includes(rangeAsWords)) {
+      return years;
+    }
   }
-  return s;
-}
-
-export function gradColor(grad) {
-  return BRAND[grad] ?? BRAND.pink;
-}
-
-export function gradGradient(grad) {
-  return GRAD_GRADIENTS[grad] || GRAD_GRADIENTS.pink;
-}
-
-export function getTrainerPrice(t) {
-  if (!t) return null;
-  if (t.price != null && t.price !== '') {
-    const n = Number(t.price);
-    return Number.isFinite(n) ? n : null;
-  }
-  const pm = t.pricing?.perMonth ?? t.rate;
-  if (pm != null && pm !== '') {
-    const n = Number(pm);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function parseYears(raw) {
-  if (raw == null || raw === '') return 0;
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-  const s = String(raw);
-  const n = parseInt(s, 10);
-  if (Number.isFinite(n)) return n;
-  const map = {
-    less_than_1: 0,
-    '1_2': 2,
-    '3_5': 4,
-    '5_8': 6,
-    '6_10': 7,
-    '8_plus': 9,
-    '10_plus': 10,
-  };
-  for (const [k, v] of Object.entries(map)) {
-    if (s.includes(k) || s.toLowerCase().includes(k.replace(/_/g, ' '))) return v;
-  }
-  if (s.includes('1-2')) return 2;
-  if (s.includes('3-5')) return 4;
-  if (s.includes('5-8')) return 6;
-  if (s.includes('8+')) return 9;
+  if (experienceText.includes('1-2')) return 2;
+  if (experienceText.includes('3-5')) return 4;
+  if (experienceText.includes('5-8')) return 6;
+  if (experienceText.includes('8+')) return 9;
   return 0;
 }
 
-function resolveMode(t) {
-  const st = t.sessionType || t.coachingMode || t.mode;
-  if (st === 'Both' || st === 'Hybrid') return 'Hybrid';
-  if (st === 'Remote' || t.isRemote === true) return 'Remote';
-  if (st === 'In-person' || st === 'In-Person' || st === 'In Person') return 'In-person';
-  if (t.isRemote === false && t.location) return 'In-person';
-  if (t.isRemote) return 'Remote';
-  return st ? String(st) : 'Remote';
+/**
+ * Remote / In-person / Hybrid, from whichever field the trainer doc happened to use.
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function resolveMode(trainerDoc) {
+  const sessionType = trainerDoc.sessionType || trainerDoc.coachingMode || trainerDoc.mode;
+  if (sessionType === SESSION_BOTH || sessionType === MODE_HYBRID) return MODE_HYBRID;
+  if (sessionType === SESSION_REMOTE || trainerDoc.isRemote === true) return SESSION_REMOTE;
+  if (sessionType === SESSION_IN_PERSON || sessionType === 'In-Person' || sessionType === 'In Person') {
+    return SESSION_IN_PERSON;
+  }
+  if (trainerDoc.isRemote === false && trainerDoc.location) return SESSION_IN_PERSON;
+  if (trainerDoc.isRemote) return SESSION_REMOTE;
+  return sessionType ? String(sessionType) : SESSION_REMOTE;
 }
 
-function collectSpecialties(t) {
+/**
+ * Specialties from every field name we have stored, with duplicates removed.
+ * @param {object} trainerDoc
+ * @returns {string[]}
+ */
+function collectSpecialties(trainerDoc) {
   const list = [
-    ...(Array.isArray(t.specialties) ? t.specialties : []),
-    ...(Array.isArray(t.specializations) ? t.specializations : []),
-    ...(Array.isArray(t.categories) ? t.categories : []),
-    t.specialty || '',
+    ...(Array.isArray(trainerDoc.specialties) ? trainerDoc.specialties : []),
+    ...(Array.isArray(trainerDoc.specializations) ? trainerDoc.specializations : []),
+    ...(Array.isArray(trainerDoc.categories) ? trainerDoc.categories : []),
+    trainerDoc.specialty || '',
   ]
-    .map((s) => String(s).trim())
+    .map((specialty) => String(specialty).trim())
     .filter(Boolean);
   const seen = new Set();
-  return list.filter((s) => {
-    const k = s.toLowerCase();
-    if (seen.has(k)) return false;
-    seen.add(k);
+  return list.filter((specialty) => {
+    const specialtyKey = specialty.toLowerCase();
+    if (seen.has(specialtyKey)) return false;
+    seen.add(specialtyKey);
     return true;
   });
 }
 
-/** Map Firestore trainer doc → reference UI shape (keeps raw on `_firebase`). */
-export function normalizeTrainer(raw, index = 0) {
-  const name = raw.displayName || raw.name || 'Coach';
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const initials =
-    raw.initials ||
-    (parts.length >= 2
-      ? `${parts[0][0]}${parts[parts.length - 1][0]}`
-      : (parts[0]?.[0] || 'C')
-    ).toUpperCase();
-  const specialties = collectSpecialties(raw);
-  const price = getTrainerPrice(raw);
-  const years = parseYears(raw.years ?? raw.yearsExperience ?? raw.experienceRange);
-  const grad = GRAD_KEYS[index % GRAD_KEYS.length];
-  const location = String(raw.location || raw.city || '').trim() || 'Location TBD';
-  const available = raw.available !== false && raw.availability !== 'Waitlist';
-  // Face / manual verification badge — only when explicitly verified
-  const verified = raw.isVerified === true || raw.verified === true;
-  const trialDays = raw.trialDays ?? raw.trialPeriodDays ?? 5;
+/**
+ * Two initials from the name. A stored initials string is kept as written.
+ * @param {string} name
+ * @param {string} [storedInitials]
+ * @returns {string}
+ */
+function trainerInitials(name, storedInitials) {
+  if (storedInitials) return storedInitials;
+  const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length >= 2) {
+    return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+  }
+  return (nameParts[0]?.[0] || DEFAULT_INITIAL).toUpperCase();
+}
+
+/**
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function trainerBio(trainerDoc) {
   const bio = String(
-    raw.bio ||
-      raw.trainerProfileBio ||
-      raw.about ||
-      raw.description ||
-      raw.trainingPhilosophy ||
-      ''
+    trainerDoc.bio ||
+      trainerDoc.trainerProfileBio ||
+      trainerDoc.about ||
+      trainerDoc.description ||
+      trainerDoc.trainingPhilosophy ||
+      '',
   ).trim();
-  const responds = raw.responds || raw.responseTime || 'within 2 hours';
-  const memberSince =
-    raw.memberSince ||
-    (raw.joinedAt?.toDate?.()
-      ? raw.joinedAt.toDate().toLocaleString('en-US', { month: 'long', year: 'numeric' })
-      : '') ||
-    '';
-
-  return {
-    id: raw.id,
-    _firebase: raw,
-    name,
-    initials,
-    location,
-    mode: resolveMode(raw),
-    specialties: specialties.length
-      ? specialties.map((spec) => formatMarketplaceLabel(spec))
-      : ['General Fitness'],
-    price: price ?? 0,
-    years,
-    bio: bio || 'This coach is setting up their profile. Message them to learn more about their coaching style.',
-    verified,
-    available,
-    responds,
-    memberSince,
-    grad: raw.grad || grad,
-    trialDays,
-    photoURL: raw.photoURL || raw.photoUrl || null,
-  };
+  return bio || DEFAULT_BIO;
 }
 
-function parseJoinedAt(memberSince, raw) {
-  if (raw?.joinedAt?.toMillis) return raw.joinedAt.toMillis();
-  if (raw?.createdAt?.toMillis) return raw.createdAt.toMillis();
-  const ts = Date.parse(memberSince);
-  return Number.isNaN(ts) ? 0 : ts;
+/**
+ * "March 2024" from a Firestore timestamp, or whatever string was already stored.
+ * vocab: toDate() = Firestore Timestamp → JavaScript Date
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function memberSinceLabel(trainerDoc) {
+  if (trainerDoc.memberSince) return trainerDoc.memberSince;
+  if (trainerDoc.joinedAt?.toDate?.()) {
+    return trainerDoc.joinedAt.toDate().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  }
+  return '';
 }
 
+/**
+ * Milliseconds for "newest" sort. A missing date sorts as 0 (oldest).
+ * @param {string} memberSince
+ * @param {object} trainerDoc
+ * @returns {number}
+ */
+function parseJoinedAt(memberSince, trainerDoc) {
+  if (trainerDoc?.joinedAt?.toMillis) return trainerDoc.joinedAt.toMillis();
+  if (trainerDoc?.createdAt?.toMillis) return trainerDoc.createdAt.toMillis();
+  const timestamp = Date.parse(memberSince);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+/**
+ * @param {number} years
+ * @param {string} experience
+ * @returns {boolean}
+ */
 function matchesExperience(years, experience) {
   switch (experience) {
     case '1-2 years':
@@ -303,51 +295,239 @@ function matchesExperience(years, experience) {
   }
 }
 
+/**
+ * "In-person" also keeps Hybrid, because a hybrid coach can meet in person.
+ * @param {string} mode
+ * @param {string} sessionType
+ * @returns {boolean}
+ */
 function matchesSessionType(mode, sessionType) {
-  if (sessionType === 'Both') return true;
-  if (sessionType === 'Remote') return mode === 'Remote';
-  if (sessionType === 'In-person') return mode === 'In-person' || mode === 'Hybrid';
+  if (sessionType === SESSION_BOTH) return true;
+  if (sessionType === SESSION_REMOTE) return mode === SESSION_REMOTE;
+  if (sessionType === SESSION_IN_PERSON) return mode === SESSION_IN_PERSON || mode === MODE_HYBRID;
   return true;
 }
 
-function specialtyMatches(trainerSpecs, filterSpec) {
-  const f = filterSpec.toLowerCase();
-  return trainerSpecs.some((s) => s.toLowerCase().includes(f) || f.includes(s.toLowerCase()));
+/**
+ * @param {string[]} trainerSpecialties
+ * @param {string} filterSpecialty
+ * @returns {boolean}
+ */
+function specialtyMatches(trainerSpecialties, filterSpecialty) {
+  const filterText = filterSpecialty.toLowerCase();
+  return trainerSpecialties.some((specialty) => {
+    const specialtyText = specialty.toLowerCase();
+    return specialtyText.includes(filterText) || filterText.includes(specialtyText);
+  });
 }
 
+/**
+ * Every active filter is an AND. One miss drops the card.
+ * @param {object} trainer
+ * @param {object} filters
+ * @param {string} searchText
+ * @param {string} quickSpecialty
+ * @param {number|null} minPrice
+ * @param {number|null} maxPrice
+ * @returns {boolean}
+ */
+function doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice) {
+  if (searchText) {
+    const searchableText = `${trainer.name} ${trainer.location} ${trainer.specialties.join(' ')}`.toLowerCase();
+    if (!searchableText.includes(searchText)) return false;
+  }
+  if (quickSpecialty !== QUICK_SPECIALTY_ALL && !specialtyMatches(trainer.specialties, quickSpecialty)) {
+    return false;
+  }
+  if (
+    filters.specialties.length > 0 &&
+    !filters.specialties.some((specialty) => specialtyMatches(trainer.specialties, specialty))
+  ) {
+    return false;
+  }
+  if (filters.availableOnly && !trainer.available) return false;
+  const price = getTrainerPrice(trainer) ?? trainer.price ?? 0;
+  if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) return false;
+  if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) return false;
+  if (!matchesSessionType(trainer.mode, filters.sessionType)) return false;
+  if (!matchesExperience(trainer.years, filters.experience)) return false;
+  return true;
+}
+
+/**
+ * Price sorts read the raw Firestore doc. Newest uses the joined-at timestamp.
+ * @param {object[]} trainers
+ * @param {string} sortOption
+ * @returns {object[]}
+ */
+function sortTrainers(trainers, sortOption) {
+  if (sortOption === SORT_PRICE_LOW) {
+    return [...trainers].sort((first, second) => {
+      const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
+      const secondPrice = getTrainerPrice(second._firebase) ?? second.price;
+      return firstPrice - secondPrice;
+    });
+  }
+  if (sortOption === SORT_PRICE_HIGH) {
+    return [...trainers].sort((first, second) => {
+      const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
+      const secondPrice = getTrainerPrice(second._firebase) ?? second.price;
+      return secondPrice - firstPrice;
+    });
+  }
+  return [...trainers].sort(
+    (first, second) =>
+      parseJoinedAt(second.memberSince, second._firebase) - parseJoinedAt(first.memberSince, first._firebase),
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Glass surface for the current theme.
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+export function getGlass(isDark) {
+  return isDark ? GLASS.dark : GLASS.light;
+}
+
+/**
+ * Specialty pill wash — web trainer-card color-mix on brand-{grad} + purple.
+ * The "2E" and "24" are hex alpha glued onto the color, not separate opacity props.
+ * @param {string} grad
+ * @returns {string[]}
+ */
+export function specPillGradient(grad) {
+  const gradient = gradGradient(grad);
+  return [`${gradient[0]}2E`, `${BRAND.purple}24`];
+}
+
+/**
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+export function getTheme(isDark) {
+  return isDark ? THEMES.dark : THEMES.light;
+}
+
+/**
+ * First word of the coach's name, for the short label on a card.
+ * @param {string} name
+ * @returns {string}
+ */
+export function trainerFirstName(name) {
+  const fullName = String(name || DEFAULT_COACH_NAME).trim();
+  return fullName.split(/\s+/)[0] || fullName;
+}
+
+/**
+ * Human-readable label for stored enum/snake_case values (weight_loss → Weight Loss).
+ * A value that is not snake_case is returned unchanged.
+ * @param {string} value
+ * @returns {string}
+ */
+export function formatMarketplaceLabel(value) {
+  const labelText = String(value || '').trim();
+  if (!labelText) return '';
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(labelText)) {
+    return labelText
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return labelText;
+}
+
+/**
+ * @param {string} grad
+ * @returns {string}
+ */
+export function gradColor(grad) {
+  return BRAND[grad] ?? BRAND.pink;
+}
+
+/**
+ * @param {string} grad
+ * @returns {string[]}
+ */
+export function gradGradient(grad) {
+  return GRAD_GRADIENTS[grad] || GRAD_GRADIENTS.pink;
+}
+
+/**
+ * Monthly price from price, then pricing.perMonth, then rate. Null when none of those are numbers.
+ * @param {object} trainer
+ * @returns {number|null}
+ */
+export function getTrainerPrice(trainer) {
+  if (!trainer) return null;
+  const directPrice = finitePrice(trainer.price);
+  if (trainer.price != null && trainer.price !== '') return directPrice;
+  // vocab: ?? = use the right side only when the left side is null or undefined
+  const monthlyPrice = trainer.pricing?.perMonth ?? trainer.rate;
+  if (monthlyPrice != null && monthlyPrice !== '') return finitePrice(monthlyPrice);
+  return null;
+}
+
+/**
+ * Map a Firestore trainer doc onto the card shape. The raw doc stays on `_firebase`.
+ * @param {object} raw
+ * @param {number} [index] Used to rotate the accent color when the doc has no grad
+ * @returns {object}
+ */
+export function normalizeTrainer(raw, index = 0) {
+  const name = raw.displayName || raw.name || DEFAULT_COACH_NAME;
+  const specialties = collectSpecialties(raw);
+  const price = getTrainerPrice(raw);
+  const years = parseYears(raw.years ?? raw.yearsExperience ?? raw.experienceRange);
+  const grad = GRAD_KEYS[index % GRAD_KEYS.length];
+  const location = String(raw.location || raw.city || '').trim() || DEFAULT_LOCATION;
+  // available: false or a Waitlist flag hides the "available" badge. Anything else counts as open.
+  const available = raw.available !== false && raw.availability !== WAITLIST_AVAILABILITY;
+  // Face / manual verification badge — only when explicitly verified.
+  const isVerified = raw.isVerified === true || raw.verified === true;
+  const trialDays = raw.trialDays ?? raw.trialPeriodDays ?? DEFAULT_TRIAL_DAYS;
+
+  return {
+    id: raw.id,
+    _firebase: raw,
+    name,
+    initials: trainerInitials(name, raw.initials),
+    location,
+    mode: resolveMode(raw),
+    specialties: specialties.length
+      ? specialties.map((specialty) => formatMarketplaceLabel(specialty))
+      : [DEFAULT_SPECIALTY],
+    price: price ?? 0,
+    years,
+    bio: trainerBio(raw),
+    verified: isVerified,
+    available,
+    responds: raw.responds || raw.responseTime || DEFAULT_RESPONSE_TIME,
+    memberSince: memberSinceLabel(raw),
+    grad: raw.grad || grad,
+    trialDays,
+    photoURL: raw.photoURL || raw.photoUrl || null,
+  };
+}
+
+/**
+ * Cards that match the search box, the quick chip, and the filter sheet, in sort order.
+ * @param {object[]} trainers
+ * @param {object} filters
+ * @param {{ query?: string, quickSpecialty?: string }} [options]
+ * @returns {object[]}
+ */
 export function filterTrainers(trainers, filters, { query = '', quickSpecialty = 'All' } = {}) {
   const minPrice = filters.priceMin.trim() ? Number(filters.priceMin) : null;
   const maxPrice = filters.priceMax.trim() ? Number(filters.priceMax) : null;
-  const q = query.trim().toLowerCase();
+  const searchText = query.trim().toLowerCase();
 
-  let list = trainers.filter((t) => {
-    if (q) {
-      const hay = `${t.name} ${t.location} ${t.specialties.join(' ')}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    if (quickSpecialty !== 'All' && !specialtyMatches(t.specialties, quickSpecialty)) return false;
-    if (filters.specialties.length > 0 && !filters.specialties.some((s) => specialtyMatches(t.specialties, s))) {
-      return false;
-    }
-    if (filters.availableOnly && !t.available) return false;
-    const price = getTrainerPrice(t) ?? t.price ?? 0;
-    if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) return false;
-    if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) return false;
-    if (!matchesSessionType(t.mode, filters.sessionType)) return false;
-    if (!matchesExperience(t.years, filters.experience)) return false;
-    return true;
-  });
+  const matching = trainers.filter((trainer) =>
+    doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice),
+  );
 
-  if (filters.sort === 'Price: Low') {
-    list = [...list].sort((a, b) => (getTrainerPrice(a._firebase) ?? a.price) - (getTrainerPrice(b._firebase) ?? b.price));
-  } else if (filters.sort === 'Price: High') {
-    list = [...list].sort((a, b) => (getTrainerPrice(b._firebase) ?? b.price) - (getTrainerPrice(a._firebase) ?? a.price));
-  } else {
-    list = [...list].sort(
-      (a, b) =>
-        parseJoinedAt(b.memberSince, b._firebase) - parseJoinedAt(a.memberSince, a._firebase)
-    );
-  }
-
-  return list;
+  return sortTrainers(matching, filters.sort || SORT_NEWEST);
 }

@@ -1,33 +1,40 @@
-// Live Set of blocked user ids for the signed-in account.
-// Flow: subscribeMyBlocks → React state → message lists / marketplace can filter peers.
-// Used by: InboxScreen, (optional) marketplace connect gates.
-// Key exports: blockedList
+// Live set of user ids the signed-in person has blocked.
+// Flow: subscribe to their block list → keep it in state → message lists can hide those people.
+// Used by: InboxScreen and marketplace gates.
 
 import { useEffect, useState } from 'react';
 import { subscribeMyBlocks } from './blockUser';
 
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
 /**
- * @param {string | null | undefined} uid
+ * Hooks stay in this function, in this order: state, then the subscription effect.
+ * The returned key is `loading` because callers already read that name.
+ * @param {string|null|undefined} uid
  * @returns {{ blockedIds: Set<string>, loading: boolean }}
  */
 export function blockedList(uid) {
   const [blockedIds, setBlockedIds] = useState(() => new Set());
-  const [loading, setLoading] = useState(Boolean(uid));
+  const [isLoadingBlocks, setIsLoadingBlocks] = useState(Boolean(uid));
 
   useEffect(() => {
-    const me = String(uid || '').trim();
-    if (!me) {
+    const signedInUid = String(uid || '').trim();
+    if (!signedInUid) {
       setBlockedIds(new Set());
-      setLoading(false);
+      setIsLoadingBlocks(false);
       return undefined;
     }
-    setLoading(true);
-    const unsub = subscribeMyBlocks(me, (ids) => {
+    setIsLoadingBlocks(true);
+    const unsubscribe = subscribeMyBlocks(signedInUid, (ids) => {
       setBlockedIds(ids);
-      setLoading(false);
+      setIsLoadingBlocks(false);
     });
-    return unsub;
+    return unsubscribe;
   }, [uid]);
 
-  return { blockedIds, loading };
+  return { blockedIds, loading: isLoadingBlocks };
 }

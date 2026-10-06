@@ -1,119 +1,179 @@
-// Display helpers for the notes & files lists (sizes, dates, type icons, human titles).
-// Flow: a raw Firestore attachment record goes in → out comes something safe to render
-//       ("2.4 MB", "Sep 13, 2026", 'pdf', "Coach photo • Sep 13, 2026").
-// Used by the file gallery / notes-files cards. Deliberately never shows raw filenames to users.
+// Turns a raw file record into text and a type the notes list can render.
+// Flow: size in bytes → short date → type from tag, media type, or extension → a title that hides the raw filename.
+// Used by the file cards and the notes sections. Users never see "a3f1c2....jpg".
 
-// Bytes → "2.4 MB". Returns an em dash for missing/zero sizes so cards never print "0 B" or "NaN".
-export function formatFileSize(bytes) {
-  const n = typeof bytes === 'number' ? bytes : Number(bytes);
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  // Manipulate here: unit labels. Note these are 1024-based (KiB math, KB labels) — the
-  //                  same convention Finder/Explorer use, so numbers match what users expect.
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  // Which unit? log(n)/log(1024) is "how many times can 1024 divide into n", i.e. the index
-  // into `units`. Math.min caps it so a hypothetical petabyte still prints as TB
-  // instead of reading past the end of the array.
-  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
-  const v = n / Math.pow(1024, i);
-  // Precision scales down as the number gets bigger: raw bytes need no decimals ("512 B"),
-  // small values get 2 for detail ("1.25 MB"), and 10+ gets 1 to stay narrow ("24.3 MB").
-  const digits = i === 0 ? 0 : v >= 10 ? 1 : 2;
-  return `${v.toFixed(digits)} ${units[i]}`;
+// ===== NAMED CONSTANTS =====
+
+const MISSING_SIZE_LABEL = '—';
+// Manipulate here: unit labels. The math is 1024-based (the same split Finder uses) even though the labels say KB.
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'];
+const BYTES_PER_UNIT = 1024;
+const SMALL_SIZE_DECIMAL_PLACES = 2;
+const LARGE_SIZE_DECIMAL_PLACES = 1;
+const LARGE_SIZE_CUTOFF = 10;
+
+const FILE_TYPE_IMAGE = 'image';
+const FILE_TYPE_VIDEO = 'video';
+const FILE_TYPE_PDF = 'pdf';
+const FILE_TYPE_SPREADSHEET = 'spreadsheet';
+const FILE_TYPE_DOCUMENT = 'document';
+const FILE_TYPE_NOTE = 'note';
+const FILE_TYPE_GENERIC = 'file';
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'];
+const DOCUMENT_EXTENSIONS = ['doc', 'docx', 'txt', 'rtf'];
+const SPREADSHEET_EXTENSIONS = ['xls', 'xlsx', 'csv'];
+
+const UUID_FILENAME_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Manipulate here: 24 is "long enough to be a hash, not a word". Lower it and names like "deadbeefcafe" start matching.
+const LONG_HEX_FILENAME_PATTERN = /^[0-9a-f]{24,}$/i;
+const FILE_EXTENSION_PATTERN = /\.[a-z0-9]+$/i;
+
+const TRAINER_UPLOAD_PREFIX = 'Coach';
+const CLIENT_UPLOAD_PREFIX = 'Progress';
+
+// ===== HELPER FUNCTIONS =====
+
+function unitIndexForByteCount(byteCount) {
+  // log(n) / log(1024) is "how many times 1024 fits into n", which is the unit slot.
+  // The cap keeps a huge file on TB instead of reading past the end of the label list.
+  const rawIndex = Math.floor(Math.log(byteCount) / Math.log(BYTES_PER_UNIT));
+  return Math.min(BYTE_UNIT_LABELS.length - 1, rawIndex);
 }
 
-// "Sep 13, 2026". Accepts a Date or anything Date can parse; bad input yields '' so the
-// caller can simply omit the label instead of rendering "Invalid Date".
-export function formatDateShort(dateLike) {
-  if (!dateLike) return '';
-  const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
-  if (Number.isNaN(d.getTime())) return '';
-  // Manipulate here: switch month to 'long' or drop year for a shorter label
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+// Bytes need no decimals ("512 B"). Small values get two ("1.25 MB"). 10 and up get one ("24.3 MB").
+function decimalPlacesForSize(unitIndex, unitValue) {
+  if (unitIndex === 0) return 0;
+  if (unitValue >= LARGE_SIZE_CUTOFF) return LARGE_SIZE_DECIMAL_PLACES;
+  return SMALL_SIZE_DECIMAL_PLACES;
 }
 
-// Classifies an attachment into one of our viewer categories: 'image' | 'video' | 'pdf' |
-// 'spreadsheet' | 'document' | 'note' | 'file'. The return value drives which icon and
-// which viewer modal the UI opens.
-export function getFileTypeFromItem(item) {
-  // Three independent signals, because records come from several eras/sources and any
-  // one of them may be missing: our own `type` tag, the upload's MIME type, the filename.
-  const name = String(item?.name || item?.title || '');
-  const mime = String(item?.mimeType || '');
-  const type = String(item?.type || '');
-
-  // Pass 1 — trust the explicit tag and MIME type. Ordered most-specific first; PDF is
-  // checked before the generic 'document' so PDFs get the dedicated PDF viewer.
-  if (type === 'photo' || mime.startsWith('image/')) return 'image';
-  if (type === 'spreadsheet') return 'spreadsheet';
-  if (type === 'video' || mime.startsWith('video/')) return 'video';
-  if (type === 'pdf' || mime.includes('pdf') || name.toLowerCase().endsWith('.pdf')) return 'pdf';
-  if (type === 'document') return 'document';
-  if (type === 'doc') return 'document';  // legacy tag spelling
-  if (type === 'note') return 'note';
-  if (type === 'document' || item?.documentId) return 'document';
-
-  // Pass 2 — nothing matched, so fall back to guessing from the file extension.
-  // vocab/symbol: ?. after pop() covers a name with no dot at all (pop returns undefined)
-  // Manipulate here: add extensions here to route new file types to an existing viewer
-  const ext = name.split('.').pop()?.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(ext)) return 'image';
-  if (['doc', 'docx', 'txt', 'rtf'].includes(ext)) return 'document';
-  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'spreadsheet';
-  // Unknown → generic 'file', which renders a neutral icon and a download action.
-  return 'file';
+function fileTypeFromExtension(fileName) {
+  // vocab: ?. after pop() covers a name with no dot (pop is still a string here, but a missing name is not).
+  const fileExtension = fileName.split('.').pop()?.toLowerCase();
+  if (IMAGE_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_IMAGE;
+  if (DOCUMENT_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_DOCUMENT;
+  if (SPREADSHEET_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_SPREADSHEET;
+  return FILE_TYPE_GENERIC;
 }
 
-// Detects machine-generated filenames (camera roll UUIDs, storage hashes) so the UI can
-// swap them for a friendly label instead of showing "a3f1c2...e9.jpg" to the user.
-export function isProbablyGeneratedFilename(name) {
-  const n = String(name || '').trim();
-  if (!n) return false;
-  // Reduce a possible path to just the filename, then drop the extension, so the test
-  // below looks only at the "stem" (the meaningful part of the name).
-  const base = n.split('/').pop() || n;
-  const stem = base.replace(/\.[a-z0-9]+$/i, '');
-  // UUID (8-4-4-4-12) or long hex-ish stems are usually not user-friendly.
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stem)) return true;
-  // Manipulate here: 24 is the "long enough to be a hash, not a word" threshold.
-  //                  Lower it and real names like "deadbeefcafe" start matching.
-  if (/^[0-9a-f]{24,}$/i.test(stem)) return true;
+function fileNameStem(fileName) {
+  const baseName = fileName.split('/').pop() || fileName;
+  return baseName.replace(FILE_EXTENSION_PATTERN, '');
+}
+
+function isMachineGeneratedStem(stem) {
+  if (UUID_FILENAME_PATTERN.test(stem)) return true;
+  if (LONG_HEX_FILENAME_PATTERN.test(stem)) return true;
   return false;
 }
 
-// Builds the label actually shown on a file card, e.g. "Coach photo • Sep 13, 2026".
-// Policy: raw filenames are never displayed — the label is derived from who uploaded it,
-// what kind of file it is, and when.
-export function getFriendlyFileTitle(item) {
-  const fileType = getFileTypeFromItem(item);
-  // Anything not explicitly 'trainer' is treated as client-uploaded.
-  const addedBy = item?.addedBy === 'trainer' ? 'trainer' : 'client';
-
-  // `createdAt` arrives in three shapes depending on where the record came from:
-  // a real Date, a Firestore Timestamp (has .toDate()), or a string/number.
-  // vocab: Firestore Timestamp = Firebase's own time type; .toDate() converts it to a JS Date
-  // vocab/symbol: ?.toDate?.() = call toDate only if both the field and the method exist
-  const createdAt =
-    item?.createdAt instanceof Date
-      ? item.createdAt
-      : item?.createdAt?.toDate?.()
-        ? item.createdAt.toDate()
-        : item?.createdAt
-          ? new Date(item.createdAt)
-          : null;
-  const dateLabel = createdAt && !Number.isNaN(createdAt.getTime()) ? formatDateShort(createdAt) : '';
-
-  // Always hide raw filenames (jpg/png/etc). Show a clean, descriptive label instead.
-  // The prefix only applies to photos/videos, where ownership is the useful distinction
-  // ("Coach photo" vs "Progress photo"); documents read fine without it.
-  // Manipulate here: all user-facing file labels live in this block —
-  //                  the `dateLabel ? ... : ''` pattern just drops the " • date" when there's no date
-  const prefix = addedBy === 'trainer' ? 'Coach' : 'Progress';
-  if (fileType === 'image') return `${prefix} photo${dateLabel ? ` • ${dateLabel}` : ''}`;
-  if (fileType === 'video') return `${prefix} video${dateLabel ? ` • ${dateLabel}` : ''}`;
-  if (fileType === 'pdf') return `PDF${dateLabel ? ` • ${dateLabel}` : ''}`;
-  if (fileType === 'spreadsheet') return `Spreadsheet${dateLabel ? ` • ${dateLabel}` : ''}`;
-  if (fileType === 'document') return `Document${dateLabel ? ` • ${dateLabel}` : ''}`;
-  if (fileType === 'note') return `Coach note${dateLabel ? ` • ${dateLabel}` : ''}`;
-  return `File${dateLabel ? ` • ${dateLabel}` : ''}`;
+// createdAt arrives as a Date, a Firestore Timestamp, or a string/number, depending on who wrote the row.
+function readFileCreatedAt(createdAt) {
+  if (createdAt instanceof Date) return createdAt;
+  // vocab: Firestore Timestamp = Firebase's time type. toDate() turns it into a JavaScript Date.
+  // vocab: ?.toDate?.() = call toDate only when both the field and the method exist.
+  // The truthiness check is on the Date toDate returns, which is why toDate can run twice.
+  if (createdAt?.toDate?.()) return createdAt.toDate();
+  if (createdAt) return new Date(createdAt);
+  return null;
 }
 
+function labelWithOptionalDate(label, dateLabel) {
+  if (dateLabel) return `${label} • ${dateLabel}`;
+  return label;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Bytes to a short size label. Missing or zero sizes become an em dash, never "0 B" or "NaN".
+ * @param {number|string} bytes
+ * @returns {string}
+ */
+export function formatFileSize(bytes) {
+  const byteCount = typeof bytes === 'number' ? bytes : Number(bytes);
+  if (!Number.isFinite(byteCount) || byteCount <= 0) return MISSING_SIZE_LABEL;
+
+  const unitIndex = unitIndexForByteCount(byteCount);
+  const unitValue = byteCount / Math.pow(BYTES_PER_UNIT, unitIndex);
+  const decimalPlaces = decimalPlacesForSize(unitIndex, unitValue);
+  return `${unitValue.toFixed(decimalPlaces)} ${BYTE_UNIT_LABELS[unitIndex]}`;
+}
+
+/**
+ * "Sep 13, 2026". A bad date becomes '' so the caller can omit the label.
+ * @param {Date|string|number} dateLike
+ * @returns {string}
+ */
+export function formatDateShort(dateLike) {
+  if (!dateLike) return '';
+  const parsedDate = dateLike instanceof Date ? dateLike : new Date(dateLike);
+  if (Number.isNaN(parsedDate.getTime())) return '';
+  // Manipulate here: switch month to 'long', or drop year, for a shorter label.
+  return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Classify an attachment so the list knows which icon and which viewer to open.
+ * Returns 'image' | 'video' | 'pdf' | 'spreadsheet' | 'document' | 'note' | 'file'.
+ * @param {object} item
+ * @returns {string}
+ */
+export function getFileTypeFromItem(item) {
+  // Three signals, because rows come from several eras and any one of them may be missing.
+  const fileName = String(item?.name || item?.title || '');
+  const mediaType = String(item?.mimeType || '');
+  const typeTag = String(item?.type || '');
+
+  // Most specific first. PDF is checked before the generic document tag so PDFs get the PDF viewer.
+  if (typeTag === 'photo' || mediaType.startsWith('image/')) return FILE_TYPE_IMAGE;
+  if (typeTag === 'spreadsheet') return FILE_TYPE_SPREADSHEET;
+  if (typeTag === 'video' || mediaType.startsWith('video/')) return FILE_TYPE_VIDEO;
+  if (typeTag === 'pdf' || mediaType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf')) {
+    return FILE_TYPE_PDF;
+  }
+  if (typeTag === 'document') return FILE_TYPE_DOCUMENT;
+  if (typeTag === 'doc') return FILE_TYPE_DOCUMENT;
+  if (typeTag === 'note') return FILE_TYPE_NOTE;
+  // documentId is the older "this row points at a written doc" signal, even when type was left blank.
+  if (typeTag === 'document' || item?.documentId) return FILE_TYPE_DOCUMENT;
+
+  return fileTypeFromExtension(fileName);
+}
+
+/**
+ * True when the name looks like a camera-roll UUID or a storage hash, not a title a person typed.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isProbablyGeneratedFilename(name) {
+  const trimmedName = String(name || '').trim();
+  if (!trimmedName) return false;
+  return isMachineGeneratedStem(fileNameStem(trimmedName));
+}
+
+/**
+ * The label on a file card, for example "Coach photo • Sep 13, 2026".
+ * The raw filename is never shown. Photos and videos say who added them. Documents do not.
+ * @param {object} item
+ * @returns {string}
+ */
+export function getFriendlyFileTitle(item) {
+  const fileType = getFileTypeFromItem(item);
+  const isTrainerUpload = item?.addedBy === 'trainer';
+  const ownerPrefix = isTrainerUpload ? TRAINER_UPLOAD_PREFIX : CLIENT_UPLOAD_PREFIX;
+
+  const createdAt = readFileCreatedAt(item?.createdAt);
+  const hasValidDate = Boolean(createdAt && !Number.isNaN(createdAt.getTime()));
+  const dateLabel = hasValidDate ? formatDateShort(createdAt) : '';
+
+  // Manipulate here: every user-facing file label lives in this block.
+  if (fileType === FILE_TYPE_IMAGE) return labelWithOptionalDate(`${ownerPrefix} photo`, dateLabel);
+  if (fileType === FILE_TYPE_VIDEO) return labelWithOptionalDate(`${ownerPrefix} video`, dateLabel);
+  if (fileType === FILE_TYPE_PDF) return labelWithOptionalDate('PDF', dateLabel);
+  if (fileType === FILE_TYPE_SPREADSHEET) return labelWithOptionalDate('Spreadsheet', dateLabel);
+  if (fileType === FILE_TYPE_DOCUMENT) return labelWithOptionalDate('Document', dateLabel);
+  if (fileType === FILE_TYPE_NOTE) return labelWithOptionalDate('Coach note', dateLabel);
+  return labelWithOptionalDate('File', dateLabel);
+}

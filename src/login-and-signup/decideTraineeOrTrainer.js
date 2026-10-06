@@ -4,11 +4,23 @@
 // Key exports: normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser, getProfileCacheKey,
 //              CLIENT_RESTRICTED_USER_DOC_FIELDS, omitRestrictedUserDocFields, cachePendingSignupProfile
 
+// ===== NAMED CONSTANTS =====
+
+const TRAINER_ROLE = 'trainer';
+const CLIENT_ROLE = 'client';
+const GOOGLE_AUTH_PROVIDER = 'google';
+// Manipulate here: a flagless Google account only counts as new inside this window.
+const NEW_GOOGLE_ACCOUNT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Manipulate here: first sign-in timestamps this close together mean the account was just created.
+const FIRST_SESSION_WINDOW_MS = 3 * 60 * 1000;
+
+// ===== HELPER FUNCTIONS =====
+
 // Role values arrive from several places (Firestore, cached JSON, signup form) with inconsistent
 // casing/whitespace. Everything funnels through here so routing compares one clean value.
 // Manipulate here: 'client' is the safe default — an unknown role must never fall into trainer tools.
 export function normalizeAppRole(role) {
-  return String(role || '').toLowerCase().trim() === 'trainer' ? 'trainer' : 'client';
+  return String(role || '').toLowerCase().trim() === TRAINER_ROLE ? TRAINER_ROLE : CLIENT_ROLE;
 }
 
 // Should we push this user into the onboarding wizard?
@@ -24,16 +36,16 @@ export function profileNeedsOnboarding(profile) {
 
   // The flag has been written as a boolean, a string, and a number across app versions, so accept
   // all three spellings of true/false rather than trusting one type.
-  const v = profile.onboardingCompleted;
-  if (v === true || v === 'true' || v === 1) return false;
-  if (v === false || v === 'false' || v === 0) return true;
+  const onboardingCompletedFlag = profile.onboardingCompleted;
+  if (onboardingCompletedFlag === true || onboardingCompletedFlag === 'true' || onboardingCompletedFlag === 1) return false;
+  if (onboardingCompletedFlag === false || onboardingCompletedFlag === 'false' || onboardingCompletedFlag === 0) return true;
 
   // Rescue case for Google sign-up: the account exists in Firebase Auth before our wizard writes any
   // flag, so a fresh Google user can legitimately have no onboarding field at all. We only treat that
   // as "needs onboarding" if the account is recent — an old Google account with no flag is a legacy
   // user who should be left alone.
   if (
-    profile.authProvider === 'google' &&
+    profile.authProvider === GOOGLE_AUTH_PROVIDER &&
     !profile.onboardingCompletedAt &&
     profile.createdAt
   ) {
@@ -43,7 +55,7 @@ export function profileNeedsOnboarding(profile) {
     // Manipulate here: 7 * 24 * 60 * 60 * 1000 = 7 days in milliseconds — the window where a
     // flagless Google account still counts as "new". Shorten it to be more conservative.
     const recent =
-      Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
+      Number.isFinite(createdMs) && Date.now() - createdMs < NEW_GOOGLE_ACCOUNT_WINDOW_MS;
     if (recent) return true;
   }
 
@@ -65,7 +77,7 @@ export function isLikelyNewFirebaseUser(firebaseUser) {
     // far apart. Math.abs because clock skew can order them either way.
     // Manipulate here: 3 * 60 * 1000 = a 3-minute window. Wider = more returning users misread as
     // new; narrower = slow signups on bad networks get missed.
-    return Math.abs(lastSignIn - created) < 3 * 60 * 1000;
+    return Math.abs(lastSignIn - created) < FIRST_SESSION_WINDOW_MS;
   } catch {
     // Unparseable metadata — fall back to "not new", the safer answer since it just means we wait
     // for the real profile instead of assuming a signup is in flight.

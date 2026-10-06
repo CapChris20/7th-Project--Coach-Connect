@@ -1,23 +1,32 @@
 // Noise filter for trainer-side Firestore listeners.
-// Flow: a listener's onError hands us the error → we decide "benign flicker" vs "real bug".
-// Used by the trainer client/roster listeners so a dropped connection doesn't show an error UI.
+// Flow: a listener's onError hands us the error → we decide flicker versus a real bug.
+// Used by: the trainer roster listeners, so a dropped connection does not show an error screen.
 
-// Some Firestore listener errors are NOT bugs — they fire while auth is still settling,
-// while the device is offline, or right as security rules re-evaluate. We swallow those
-// so the UI stays calm, and let everything else bubble up as a real failure.
-export function isBenignTrainerClientFirestoreError(err) {
-  // vocab: ?. = optional chaining — read .code only if err exists, else undefined (no crash)
-  // vocab/symbol: || '' = fall back to empty string so the comparisons below never see undefined
-  const code = err?.code || '';
-  // Firestore sometimes only puts the useful text in .message, and sometimes err is a raw
-  // string, so normalize everything to one string before substring matching.
-  const msg = String(err?.message || err || '');
-  // Manipulate here: this is the allow-list of "ignore me" errors. Add a code/substring to
-  // silence another flicker; remove one if you'd rather see it surface loudly during debugging.
-  return (
-    code === 'permission-denied' ||
-    code === 'unavailable' ||
-    msg.includes('Missing or insufficient permissions') ||
-    msg.includes('Failed to get document')
-  );
+// ===== NAMED CONSTANTS =====
+
+const PERMISSION_DENIED_CODE = 'permission-denied';
+const UNAVAILABLE_CODE = 'unavailable';
+const MISSING_PERMISSIONS_TEXT = 'Missing or insufficient permissions';
+const FAILED_TO_GET_DOCUMENT_TEXT = 'Failed to get document';
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * True when this Firestore error is a flicker, not a bug.
+ * Auth settling, offline, and a rules re-check all throw these.
+ * @param {Error|string} firestoreError
+ * @returns {boolean}
+ */
+export function isBenignTrainerClientFirestoreError(firestoreError) {
+  // vocab: ?. reads .code only when the error object exists.
+  const errorCode = firestoreError?.code || '';
+  const errorMessage = String(firestoreError?.message || firestoreError || '');
+  // Manipulate here: add a code or a snippet to silence another flicker.
+  const isPermissionDenied = errorCode === PERMISSION_DENIED_CODE;
+  const isUnavailable = errorCode === UNAVAILABLE_CODE;
+  const messageIsBenign = errorMessage.includes(MISSING_PERMISSIONS_TEXT)
+    || errorMessage.includes(FAILED_TO_GET_DOCUMENT_TEXT);
+  return isPermissionDenied || isUnavailable || messageIsBenign;
 }

@@ -1,16 +1,29 @@
-// Fallback spreadsheet shim for the xlsx (SheetJS) library.
-// Flow: Metro picks xlsx.web.js on web and xlsx.native.js on device; this plain xlsx.js is
-//       only reached in odd build targets, where it returns empty data instead of crashing.
-// Imported by the spreadsheet viewer/parsers, which just need `read` and `utils.sheet_to_json` to exist.
+// Fallback spreadsheet reader for odd build targets that are neither web nor a device.
+// Flow: Metro prefers spreadsheetReader.web.js or spreadsheetReader.native.js. This file returns empty sheets.
+// Used by: the spreadsheet viewer, which only needs read() and utils.sheet_to_json().
 
-// vocab: platform extensions = Metro resolves `./spreadsheetReader` to xlsx.web.js / xlsx.native.js first,
-//        and only falls back to this bare file when neither matches.
-// The empty shapes below are chosen to match what real SheetJS returns, so callers can
-// map over the results without null checks.
+// vocab: Metro resolves ./spreadsheetReader to the .web or .native file first.
+
+// ===== NAMED CONSTANTS =====
+
+const EMPTY_WORKBOOK = { SheetNames: [], Sheets: {} };
+const EMPTY_ROWS = [];
+
+// ===== HELPER FUNCTIONS =====
+
+function readEmptyWorkbook() {
+  return EMPTY_WORKBOOK;
+}
+
+function sheetToEmptyRows() {
+  return EMPTY_ROWS;
+}
+
+// ===== MAIN FUNCTION =====
+
 export default {
-  read: () => ({ SheetNames: [], Sheets: {} }),
+  read: readEmptyWorkbook,
   utils: {
-    sheet_to_json: () => [],
+    sheet_to_json: sheetToEmptyRows,
   },
 };
-

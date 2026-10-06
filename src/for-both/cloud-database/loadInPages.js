@@ -1,57 +1,85 @@
-/**
- * firestore Paged Query
- *
- * Purpose: Data/service layer: firestore Paged Query. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: isFirestoreIndexError, getDocsWithIndexFallback, capQuery, sortDocsByMillis
- *
- * @file-header
- */
-/**
- * Firestore query helpers — indexed query with safe fallback before indexes finish building.
- */
-import { getDocs, limit as fsLimit } from 'firebase/firestore';
+// Firestore reads that still work while a composite index is building.
+// Flow: try the indexed query → if Firestore asks for an index, run a smaller fallback → sort in memory.
+// Used by: lists that cannot wait for the index to finish.
+
+import { getDocs, limit as firestoreLimit } from 'firebase/firestore';
 import logger from '../online-connection/sendCrashReport';
 
-export function isFirestoreIndexError(err) {
-  const code = String(err?.code || '');
-  const msg = String(err?.message || err || '');
-  return code === 'failed-precondition' || /requires an index/i.test(msg);
+// ===== NAMED CONSTANTS =====
+
+const INDEX_MISSING_CODE = 'failed-precondition';
+const INDEX_MISSING_PATTERN = /requires an index/i;
+// Manipulate here: how many documents the fallback reads when the index is not ready.
+const FALLBACK_READ_LIMIT = 500;
+const DESCENDING = 'desc';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {object|undefined} timestampValue
+ * @returns {number}
+ */
+function timestampToMillis(timestampValue) {
+  if (timestampValue?.toMillis) return timestampValue.toMillis();
+  if (typeof timestampValue === 'number') return timestampValue;
+  return 0;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {Error|string} firestoreError
+ * @returns {boolean}
+ */
+export function isFirestoreIndexError(firestoreError) {
+  const errorCode = String(firestoreError?.code || '');
+  const errorMessage = String(firestoreError?.message || firestoreError || '');
+  return errorCode === INDEX_MISSING_CODE || INDEX_MISSING_PATTERN.test(errorMessage);
 }
 
 /**
  * @param {import('firebase/firestore').Query} primaryQuery
- * @param {() => import('firebase/firestore').Query} buildFallback
+ * @param {Function} buildFallback
  * @param {string} [label]
+ * @returns {Promise<import('firebase/firestore').QuerySnapshot>}
  */
 export async function getDocsWithIndexFallback(primaryQuery, buildFallback, label = 'query') {
   try {
     return await getDocs(primaryQuery);
-  } catch (err) {
-    if (!isFirestoreIndexError(err) || !buildFallback) throw err;
-    logger.warn(`Firestore index missing for ${label}; using capped fallback`, err?.message || err);
-    return await getDocs(buildFallback());
+  } catch (firestoreError) {
+    const canFallBack = isFirestoreIndexError(firestoreError) && buildFallback;
+    if (!canFallBack) throw firestoreError;
+    logger.warn(`Firestore index missing for ${label}; using capped fallback`, firestoreError?.message || firestoreError);
+    return getDocs(buildFallback());
   }
 }
 
-/** Cap unbounded collection reads when index is not ready. */
-export function capQuery(baseQuery, max = 500) {
+/**
+ * @param {import('firebase/firestore').Query} baseQuery
+ * @param {number} [max]
+ * @returns {import('firebase/firestore').Query}
+ */
+export function capQuery(baseQuery, max = FALLBACK_READ_LIMIT) {
   try {
-    return fsLimit(baseQuery, max);
+    return firestoreLimit(baseQuery, max);
   } catch (_) {
     return baseQuery;
   }
 }
 
-export function sortDocsByMillis(docs, field = 'updatedAt', direction = 'desc') {
-  const list = [...docs];
-  list.sort((a, b) => {
-    const av = a.data()?.[field];
-    const bv = b.data()?.[field];
-    const am = av?.toMillis?.() ?? (typeof av === 'number' ? av : 0);
-    const bm = bv?.toMillis?.() ?? (typeof bv === 'number' ? bv : 0);
-    return direction === 'desc' ? bm - am : am - bm;
+/**
+ * @param {Array} docs
+ * @param {string} [field]
+ * @param {string} [direction]
+ * @returns {Array}
+ */
+export function sortDocsByMillis(docs, field = 'updatedAt', direction = DESCENDING) {
+  const sortedDocs = [...docs];
+  sortedDocs.sort((leftDoc, rightDoc) => {
+    const leftMillis = timestampToMillis(leftDoc.data()?.[field]);
+    const rightMillis = timestampToMillis(rightDoc.data()?.[field]);
+    if (direction === DESCENDING) return rightMillis - leftMillis;
+    return leftMillis - rightMillis;
   });
-  return list;
+  return sortedDocs;
 }

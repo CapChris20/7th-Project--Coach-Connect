@@ -1,7 +1,6 @@
-// Block / unblock other users for messaging + marketplace safety (Apple Guideline 1.2).
-// Flow: writes users/{uid}/blockedUsers/{blockedUid} → blockedList subscribes → lists hide peers.
-// Used by: ReportOrBlockPopup, BlockedUsersScreen, InboxScreen filter.
-// Key exports: blockUser, unblockUser, subscribeMyBlocks, listMyBlocks
+// Hide or show another person in messages and the marketplace.
+// Flow: write users/{uid}/blockedUsers/{blockedUid} → the blocked list hears the change → lists drop that person.
+// Used by the report popup, the blocked-users screen, and the inbox filter.
 
 import {
   collection,
@@ -14,69 +13,112 @@ import {
 } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
 
-function blockedUsersCol(uid) {
-  return collection(db, 'users', uid, 'blockedUsers');
+// ===== NAMED CONSTANTS =====
+
+const USERS_COLLECTION = 'users';
+const BLOCKED_USERS_COLLECTION = 'blockedUsers';
+const MAX_DISPLAY_NAME_LENGTH = 120;
+const INVALID_BLOCK_MESSAGE = 'Invalid block request.';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} uid
+ * @returns {import('firebase/firestore').CollectionReference}
+ */
+function blockedUsersCollection(uid) {
+  return collection(db, USERS_COLLECTION, uid, BLOCKED_USERS_COLLECTION);
 }
 
 /**
- * @param {string} uid - signed-in user
- * @param {string} blockedUid - person to hide
- * @param {{ displayName?: string } } [meta]
+ * @param {string} uid
+ * @returns {string}
+ */
+function trimmedUid(uid) {
+  return String(uid || '').trim();
+}
+
+/**
+ * @param {import('firebase/firestore').QueryDocumentSnapshot} blockDoc
+ * @returns {object}
+ */
+function blockRecord(blockDoc) {
+  return { id: blockDoc.id, ...(blockDoc.data() || {}) };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} uid
+ * @param {string} blockedUid
+ * @param {{ displayName?: string }} [meta]
+ * @returns {Promise<void>}
  */
 export async function blockUser(uid, blockedUid, meta = {}) {
-  const me = String(uid || '').trim();
-  const them = String(blockedUid || '').trim();
-  if (!me || !them || me === them) {
-    throw new Error('Invalid block request.');
+  const signedInUid = trimmedUid(uid);
+  const personToBlock = trimmedUid(blockedUid);
+  if (!signedInUid || !personToBlock || signedInUid === personToBlock) {
+    throw new Error(INVALID_BLOCK_MESSAGE);
   }
-  // vocab: blockedUsers = per-user subcollection — only the owner can read/write (see firestore.rules)
+  // vocab: blockedUsers is a subcollection only the owner can read. See firestore.rules.
+  const displayName = meta.displayName
+    ? String(meta.displayName).slice(0, MAX_DISPLAY_NAME_LENGTH)
+    : null;
   await setDoc(
-    doc(db, 'users', me, 'blockedUsers', them),
+    doc(db, USERS_COLLECTION, signedInUid, BLOCKED_USERS_COLLECTION, personToBlock),
     {
-      blockedUid: them,
-      displayName: meta.displayName ? String(meta.displayName).slice(0, 120) : null,
+      blockedUid: personToBlock,
+      displayName,
       createdAt: serverTimestamp(),
     },
     { merge: true },
   );
 }
 
+/**
+ * @param {string} uid
+ * @param {string} blockedUid
+ * @returns {Promise<void>}
+ */
 export async function unblockUser(uid, blockedUid) {
-  const me = String(uid || '').trim();
-  const them = String(blockedUid || '').trim();
-  if (!me || !them) return;
-  await deleteDoc(doc(db, 'users', me, 'blockedUsers', them));
-}
-
-/** One-shot list for Settings (no live listener needed for a short list). */
-export async function listMyBlocks(uid) {
-  const me = String(uid || '').trim();
-  if (!me) return [];
-  const snap = await getDocs(blockedUsersCol(me));
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const signedInUid = trimmedUid(uid);
+  const personToUnblock = trimmedUid(blockedUid);
+  if (!signedInUid || !personToUnblock) return;
+  await deleteDoc(doc(db, USERS_COLLECTION, signedInUid, BLOCKED_USERS_COLLECTION, personToUnblock));
 }
 
 /**
- * Live Set of blocked uids for filtering conversation lists.
  * @param {string} uid
- * @param {(ids: Set<string>) => void} onChange
- * @returns {() => void} unsubscribe
+ * @returns {Promise<object[]>}
+ */
+export async function listMyBlocks(uid) {
+  const signedInUid = trimmedUid(uid);
+  if (!signedInUid) return [];
+  const snapshot = await getDocs(blockedUsersCollection(signedInUid));
+  return snapshot.docs.map(blockRecord);
+}
+
+/**
+ * Live set of blocked ids. The returned function is the listener cleanup.
+ * @param {string} uid
+ * @param {Function} onChange
+ * @returns {Function}
  */
 export function subscribeMyBlocks(uid, onChange) {
-  const me = String(uid || '').trim();
-  if (!me || typeof onChange !== 'function') {
+  const signedInUid = trimmedUid(uid);
+  if (!signedInUid || typeof onChange !== 'function') {
     onChange?.(new Set());
     return () => {};
   }
   return onSnapshot(
-    blockedUsersCol(me),
-    (snap) => {
-      const ids = new Set();
-      snap.forEach((d) => ids.add(d.id));
-      onChange(ids);
+    blockedUsersCollection(signedInUid),
+    (snapshot) => {
+      const blockedIds = new Set();
+      snapshot.forEach((blockDoc) => blockedIds.add(blockDoc.id));
+      onChange(blockedIds);
     },
-    (err) => {
-      if (__DEV__) console.warn('[safety] subscribeMyBlocks:', err?.message || err);
+    (listenError) => {
+      if (__DEV__) console.warn('[safety] subscribeMyBlocks:', listenError?.message || listenError);
       onChange(new Set());
     },
   );

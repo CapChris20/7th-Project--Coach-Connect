@@ -1,32 +1,46 @@
-// Shares ONE trainer-sessions Firestore subscription with the whole trainer tree.
-// Flow: Provider calls useSessions() once → puts the result on context → screens read it.
-// Why it exists: if each screen called useSessions() itself we'd open duplicate listeners
-// (extra reads, extra cost, out-of-sync lists). One listener, many readers.
+// Shares one trainer-sessions listener with the whole trainer tree.
+// Flow: the provider calls useSessions once → screens read that same result.
+// Used by: trainer screens that list sessions. One listener avoids duplicate reads and lists that drift apart.
+
 import React, { createContext, useContext } from 'react';
 import { useSessions } from '../scheduling/mySessions';
 
-// Default null so the hooks below can tell "no Provider" apart from "no sessions yet".
+// ===== NAMED CONSTANTS =====
+
+const MISSING_PROVIDER_MESSAGE = 'useSharedSessionList requires SessionsProvider';
+
+// ===== HELPER FUNCTIONS =====
+
+// Null means there is no provider. An empty session list is a real value from the hook.
 const SharedSessionList = createContext(null);
 
-// Mount this ABOVE any screen that shows sessions. The listener's lifetime matches this
-// component: mounting subscribes, unmounting tears the subscription down.
+// ===== MAIN FUNCTION =====
+
+/**
+ * Mount this above any screen that shows sessions. Unmounting tears the listener down.
+ * @param {{ children: import('react').ReactNode }} props
+ */
 export function SessionsProvider({ children }) {
-  const value = useSessions();
-  return <SharedSessionList.Provider value={value}>{children}</SharedSessionList.Provider>;
+  const sessionState = useSessions();
+  return <SharedSessionList.Provider value={sessionState}>{children}</SharedSessionList.Provider>;
 }
 
-// Strict reader — for screens that genuinely cannot render without session data.
-// Throwing here turns a confusing blank screen into an obvious "you forgot the Provider".
+/**
+ * For screens that cannot render without session data.
+ * @returns {object}
+ */
 export function useSharedSessionList() {
-  const ctx = useContext(SharedSessionList);
-  if (!ctx) {
-    throw new Error('useSharedSessionList requires SessionsProvider');
+  const sessionState = useContext(SharedSessionList);
+  if (!sessionState) {
+    throw new Error(MISSING_PROVIDER_MESSAGE);
   }
-  return ctx;
+  return sessionState;
 }
 
-// Lenient reader — for shared components that may render inside OR outside the trainer tree
-// (e.g. a widget reused on a screen with no Provider). Callers must handle null themselves.
+/**
+ * For a widget that may render outside the trainer tree. The caller handles null.
+ * @returns {object|null}
+ */
 export function useSharedSessionListOptional() {
   return useContext(SharedSessionList);
 }

@@ -1,16 +1,9 @@
-/**
- * perplexity Service
- *
- * Purpose: Data/service layer: perplexity Service. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/ai
- * Key exports: shouldRouteToPerplexity
- *
- * @file-header
- */
-/**
- * Client-side Perplexity routing heuristics (mirrors server shouldUsePerplexity).
- */
+// Client-side check for topics that should go to a web lookup instead of the normal coach reply.
+// Flow: lowercase the message → see if any keyword is in it.
+// Used by: the coach before it sends a message. This list mirrors the server check.
+
+// ===== NAMED CONSTANTS =====
+
 const PERPLEXITY_KEYWORDS = [
   'hormone',
   'trt',
@@ -34,8 +27,25 @@ const PERPLEXITY_KEYWORDS = [
   'hgh',
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} messageText
+ * @param {string} keyword
+ * @returns {boolean}
+ */
+function messageIncludesKeyword(messageText, keyword) {
+  return messageText.includes(keyword);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} userMessage
+ * @returns {boolean}
+ */
 export function shouldRouteToPerplexity(userMessage) {
-  const t = String(userMessage || '').toLowerCase();
-  if (!t.trim()) return false;
-  return PERPLEXITY_KEYWORDS.some((k) => t.includes(k));
+  const messageText = String(userMessage || '').toLowerCase();
+  if (!messageText.trim()) return false;
+  return PERPLEXITY_KEYWORDS.some((keyword) => messageIncludesKeyword(messageText, keyword));
 }

@@ -1,16 +1,23 @@
-// Shared "app shell" state for the client side (nav handlers, active tab, theme flags, etc).
-// Flow: the client shell screen builds one `value` object → Provider publishes it on the tree →
-// any nested client screen reads it with useClientAppStartShell() instead of prop-drilling.
-// Used by the client main screen and every client tab/overlay that needs shell-level actions.
+// Shares the client app shell (navigation, theme, the open screen) with every client tab.
+// Flow: the shell screen builds one value → the provider publishes it → screens read it with the hook.
+// Used by: the client main screen and every client tab that needs shell actions.
+
 import React, { createContext, useContext } from 'react';
 
-// vocab: createContext = React's way to broadcast a value down the tree without passing props.
-// Default is null on purpose — that's the signal the hook below uses to detect a missing Provider.
-export const ClientOpenScreenTracker = createContext(null);
+// ===== NAMED CONSTANTS =====
 
-// Thin wrapper so call sites write <ClientAppStartShellProvider value={...}> and never touch the raw
-// Context object. Having the wrapper here means shell-wide setup (defaults, memoizing, logging)
-// can be added in one place later without editing every screen.
+const MISSING_PROVIDER_MESSAGE = 'useClientAppStartShell must be used within ClientAppStartShellProvider';
+
+// ===== HELPER FUNCTIONS =====
+
+// vocab: createContext broadcasts a value down the tree. Null means no provider is above this screen.
+const ClientOpenScreenTracker = createContext(null);
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{ value: object, children: import('react').ReactNode }} props
+ */
 export function ClientAppStartShellProvider({ value, children }) {
   return (
     <ClientOpenScreenTracker.Provider value={value}>
@@ -19,13 +26,18 @@ export function ClientAppStartShellProvider({ value, children }) {
   );
 }
 
-// The read side. We throw rather than return null so a screen mounted outside the shell fails
-// loudly in development instead of quietly rendering with dead nav buttons.
+/**
+ * Reads the client shell. Throws when a screen is mounted outside the provider,
+ * so a dead nav button fails loudly instead of rendering blank.
+ * @returns {object}
+ */
 export function useClientAppStartShell() {
-  // vocab: useContext = React hook that reads the nearest Provider's value for this context
-  const ctx = useContext(ClientOpenScreenTracker);
-  if (!ctx) {
-    throw new Error('useClientAppStartShell must be used within ClientAppStartShellProvider');
+  // vocab: useContext reads the nearest provider for this context.
+  const shellValue = useContext(ClientOpenScreenTracker);
+  if (!shellValue) {
+    throw new Error(MISSING_PROVIDER_MESSAGE);
   }
-  return ctx;
+  return shellValue;
 }
+
+export { ClientOpenScreenTracker };

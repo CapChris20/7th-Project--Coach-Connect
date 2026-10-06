@@ -1,25 +1,15 @@
-/** Shared payment clarity copy — trainers get 90%, platform keeps 10%. */
+// Copy and math for the "how payments work" screens. Trainers keep 90%. The platform keeps 10%.
+// Flow: turn a dollar amount into the trainer share and the fee → format it → the screens read the lists below.
+// Used by the pay-trainer popup, the how-payments sections, and Settings.
 
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: these two rates are what the UI promises. They must stay in sync with the server charge split.
 export const TRAINER_PAYOUT_SHARE = 0.9;
 export const PLATFORM_FEE_RATE = 0.1;
-
-export function trainerGetsFromAmount(amountDollars) {
-  const n = Number(amountDollars);
-  if (!Number.isFinite(n)) return 0;
-  return n * TRAINER_PAYOUT_SHARE;
-}
-
-export function platformFeeFromAmount(amountDollars) {
-  const n = Number(amountDollars);
-  if (!Number.isFinite(n)) return 0;
-  return n * PLATFORM_FEE_RATE;
-}
-
-export function formatPaymentDollars(amount) {
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return '$0';
-  return `$${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
-}
+const WHOLE_DOLLAR_DECIMAL_PLACES = 0;
+const CENTS_DECIMAL_PLACES = 2;
+const INVALID_AMOUNT_LABEL = '$0';
 
 export const HOW_PAYMENTS_WORK = [
   'Clients pay you in the app (secure Stripe checkout)',
@@ -93,3 +83,51 @@ export const EARNINGS_MOCK = {
     { date: 'Oct 15', name: 'Alex R.', amount: 100, status: 'Pending' },
   ],
 };
+
+// ===== HELPER FUNCTIONS =====
+
+// Blank, NaN, and Infinity all become 0 so a bad text field cannot print "NaN" in the fee line.
+function shareOfAmount(amountDollars, shareRate) {
+  const amountNumber = Number(amountDollars);
+  if (!Number.isFinite(amountNumber)) return 0;
+  return amountNumber * shareRate;
+}
+
+// $90 stays "$90". $90.5 stays "$90.50". The % 1 check is "is there anything after the decimal".
+function isWholeDollarAmount(amountNumber) {
+  return amountNumber % 1 === 0;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Dollars the trainer keeps from a client payment.
+ * @param {number|string} amountDollars
+ * @returns {number}
+ */
+export function trainerGetsFromAmount(amountDollars) {
+  return shareOfAmount(amountDollars, TRAINER_PAYOUT_SHARE);
+}
+
+/**
+ * Dollars Coach Connect keeps from a client payment.
+ * @param {number|string} amountDollars
+ * @returns {number}
+ */
+export function platformFeeFromAmount(amountDollars) {
+  return shareOfAmount(amountDollars, PLATFORM_FEE_RATE);
+}
+
+/**
+ * Format a dollar amount for payment copy. Whole dollars drop the cents.
+ * @param {number|string} amount
+ * @returns {string}
+ */
+export function formatPaymentDollars(amount) {
+  const amountNumber = Number(amount);
+  if (!Number.isFinite(amountNumber)) return INVALID_AMOUNT_LABEL;
+  const decimalPlaces = isWholeDollarAmount(amountNumber)
+    ? WHOLE_DOLLAR_DECIMAL_PLACES
+    : CENTS_DECIMAL_PLACES;
+  return `$${amountNumber.toFixed(decimalPlaces)}`;
+}

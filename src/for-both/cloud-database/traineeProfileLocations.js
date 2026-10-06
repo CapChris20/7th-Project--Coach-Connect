@@ -1,41 +1,41 @@
-/**
- * client Profile Firestore
- *
- * Purpose: Data/service layer: client Profile Firestore. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: buildClientRegistryDoc, stripEmptyForFirestore
- *
- * @file-header
- */
-/**
- * Canonical Firestore registry: clients/{uid} — one doc per account with role "client".
- * Mirrors trainers/{uid} for marketplace/discovery. Populated on signup, onboarding, and server sync.
- */
+// Builds the clients/{uid} Firestore document from a user record or onboarding answers.
+// Flow: require an id → copy the fields the marketplace reads → drop empty values on merge.
+// Used by signup, onboarding, and the server sync that mirrors trainers/{uid}.
 
+// ===== NAMED CONSTANTS =====
+
+const CLIENT_ROLE = 'client';
+const ACTIVE_STATUS = 'active';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {object} [source]
+ * @returns {string|null}
+ */
 function pickName(source = {}) {
-  const direct =
-    source.name ||
-    source.displayName ||
-    [source.firstName, source.lastName].filter(Boolean).join(' ').trim();
-  return direct || null;
+  const combinedName = [source.firstName, source.lastName].filter(Boolean).join(' ').trim();
+  const directName = source.name || source.displayName || combinedName;
+  return directName || null;
 }
+
+// ===== MAIN FUNCTION =====
 
 /**
  * @param {string} uid
- * @param {Record<string, unknown>} source — users doc and/or onboarding payload
- * @returns {Record<string, unknown>}
+ * @param {object} [source]
+ * @returns {object|null}
  */
 export function buildClientRegistryDoc(uid, source = {}) {
-  const id = String(uid || source.uid || source.id || '').trim();
-  if (!id) return null;
+  const clientId = String(uid || source.uid || source.id || '').trim();
+  if (!clientId) return null;
 
   const trainerId = source.trainerId != null ? String(source.trainerId) : null;
 
   return {
-    uid: id,
-    id,
-    role: 'client',
+    uid: clientId,
+    id: clientId,
+    role: CLIENT_ROLE,
     name: pickName(source),
     email: source.email || null,
     photoURL: source.photoURL || source.photoUrl || null,
@@ -58,19 +58,24 @@ export function buildClientRegistryDoc(uid, source = {}) {
     energyLevels: source.energyLevels || null,
     phone: source.phone || null,
     bio: source.bio || null,
-    status: source.status || 'active',
+    status: source.status || ACTIVE_STATUS,
     authProvider: source.authProvider || null,
     createdAt: source.createdAt || null,
   };
 }
 
-/** Strip null/undefined for Firestore merge (RN). */
-export function stripEmptyForFirestore(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj || {})) {
-    if (v !== undefined && v !== null) out[k] = v;
+/**
+ * Firestore merge treats null as a write. Drop those keys so a blank does not erase a stored value.
+ * @param {object} record
+ * @returns {object}
+ */
+export function stripEmptyForFirestore(record) {
+  const filledFields = {};
+  for (const [fieldName, fieldValue] of Object.entries(record || {})) {
+    if (fieldValue === undefined || fieldValue === null) continue;
+    filledFields[fieldName] = fieldValue;
   }
-  return out;
+  return filledFields;
 }
 
 module.exports = {

@@ -1,16 +1,23 @@
-// Shared "app shell" state for the trainer side (nav handlers, theme flags, active tab, etc).
-// Flow: the trainer shell screen builds one `value` object → Provider puts it on the tree →
-// any nested trainer screen pulls it out with useTrainerAppStartShell() instead of prop-drilling.
-// Used by the trainer main screen + every trainer tab/overlay that needs shell-level actions.
+// Shares the trainer app shell (navigation, theme, the open screen) with every trainer tab.
+// Flow: the shell screen builds one value → the provider publishes it → screens read it with the hook.
+// Used by: the trainer main screen and every trainer tab that needs shell actions.
+
 import React, { createContext, useContext } from 'react';
 
-// vocab: createContext = React's way to broadcast a value down the tree without passing props.
-// Default is null on purpose — that's how the hook below detects "no Provider above me".
-export const TrainerOpenScreenTracker = createContext(null);
+// ===== NAMED CONSTANTS =====
 
-// Thin wrapper so callers write <TrainerAppStartShellProvider value={...}> instead of touching
-// the raw Context object. Keeping the wrapper here means we can add shell-wide setup later
-// (memoizing, logging, defaults) in one place without editing every call site.
+const MISSING_PROVIDER_MESSAGE = 'useTrainerAppStartShell must be used within TrainerAppStartShellProvider';
+
+// ===== HELPER FUNCTIONS =====
+
+// vocab: createContext broadcasts a value down the tree. Null means no provider is above this screen.
+const TrainerOpenScreenTracker = createContext(null);
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{ value: object, children: import('react').ReactNode }} props
+ */
 export function TrainerAppStartShellProvider({ value, children }) {
   return (
     <TrainerOpenScreenTracker.Provider value={value}>
@@ -19,13 +26,16 @@ export function TrainerAppStartShellProvider({ value, children }) {
   );
 }
 
-// The read side. We throw instead of returning null so a misplaced screen fails loudly in
-// development rather than silently rendering with missing nav handlers.
+/**
+ * Reads the trainer shell. Throws when a screen is mounted outside the provider.
+ * @returns {object}
+ */
 export function useTrainerAppStartShell() {
-  // vocab: useContext = React hook that reads the nearest Provider's value for this context
-  const ctx = useContext(TrainerOpenScreenTracker);
-  if (!ctx) {
-    throw new Error('useTrainerAppStartShell must be used within TrainerAppStartShellProvider');
+  const shellValue = useContext(TrainerOpenScreenTracker);
+  if (!shellValue) {
+    throw new Error(MISSING_PROVIDER_MESSAGE);
   }
-  return ctx;
+  return shellValue;
 }
+
+export { TrainerOpenScreenTracker };

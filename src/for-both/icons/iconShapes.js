@@ -1,8 +1,10 @@
-/**
- * SVG paths for brand-gradient icons (24×24 viewBox).
- * Pure SVG — no MaskedView / icon fonts — so icons stay visible in dev builds.
- */
-export const BRAND_GRADIENT_ICON_PATHS = {
+// SVG paths for the brand-gradient tab icons. Each icon is a 24 by 24 drawing.
+// Flow: a screen asks for a name like "home" and gets stroke or fill paths.
+// Used by: the colorful tab icons. Plain SVG so the shapes stay visible in dev builds.
+
+// ===== NAMED CONSTANTS =====
+
+const BRAND_GRADIENT_ICON_PATHS = {
   home: {
     style: 'stroke',
     paths: [
@@ -13,7 +15,6 @@ export const BRAND_GRADIENT_ICON_PATHS = {
   barbell: {
     style: 'stroke',
     paths: [
-      // Classic barbell: bar + end plates (not the Lucide bone/dumbbell mashup)
       'M3 12h18',
       'M5 8v8',
       'M7 9v6',
@@ -71,3 +72,9 @@ export const BRAND_GRADIENT_ICON_PATHS = {
     ],
   },
 };
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+export { BRAND_GRADIENT_ICON_PATHS };

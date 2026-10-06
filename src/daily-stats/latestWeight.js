@@ -1,71 +1,81 @@
-// Finds the client's most recently LOGGED weight (not their profile weight).
-// Flow: list dailyLogs newest-day-first → return the first doc with a usable
-//       `dashboard_weight` → if the collection query is blocked, fall back to reading
-//       individual day docs one at a time.
-// Used by the trainer progress view's "Current" figure, where a stale profile number would mislead.
+// Finds the client's most recently logged weight, not the number on their profile.
+// Flow: read recent dailyLogs newest-first → return the first usable dashboard_weight → if that query is blocked, read one day at a time.
+// Used by the trainer progress view's "Current" figure. A stale profile number would mislead.
 
 import { collection, doc, getDoc, getDocs, query, orderBy, limit, documentId } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
 
-// Manipulate here: how far back to look. Both are ~4 months; raising them costs more
-// reads, lowering them means long-inactive clients show no current weight at all.
-const QUERY_LIMIT = 120;  // docs pulled in the fast path
-const SCAN_DAYS = 120;    // individual days probed in the fallback
-// The fallback has to RECONSTRUCT date-key strings, so it must use the same timezone the
-// keys were written under. Eastern matches the trainer-side dateKeys default.
-const TZ = 'America/New_York';
+// ===== NAMED CONSTANTS =====
 
-// Pulls a valid number out of a day doc, or null. Weight has been stored as both a string
-// and a number over time, hence the Number() coercion before the finite check.
-function parseDashboardWeight(data) {
-  const v = data?.dashboard_weight;
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+// Manipulate here: how far back to look. Raising these costs more reads.
+// Lowering them means a long-inactive client shows no current weight.
+const RECENT_LOG_LIMIT = 120;
+const FALLBACK_SCAN_DAYS = 120;
+const USERS_COLLECTION = 'users';
+const DAILY_LOGS_COLLECTION = 'dailyLogs';
+const WEIGHT_FIELD = 'dashboard_weight';
+// The fallback rebuilds date-key strings, so it must use the same timezone the keys were written under.
+const DATE_KEY_TIME_ZONE = 'America/New_York';
+const DATE_KEY_LOCALE = 'en-CA';
+
+// ===== HELPER FUNCTIONS =====
+
+function parseDashboardWeight(dayData) {
+  const storedWeight = dayData?.[WEIGHT_FIELD];
+  if (storedWeight == null || storedWeight === '') return null;
+  const weightNumber = Number(storedWeight);
+  return Number.isFinite(weightNumber) ? weightNumber : null;
 }
 
-// Rebuilds the "YYYY-MM-DD" doc id for N days back.
-// vocab: setDate(getDate() - n) = subtract days; JS rolls month/year back automatically
+// vocab: setDate(getDate() - days) rolls the month and year backward automatically.
 function dateKeyDaysAgo(daysAgo) {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  return d.toLocaleDateString('en-CA', { timeZone: TZ });
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return date.toLocaleDateString(DATE_KEY_LOCALE, { timeZone: DATE_KEY_TIME_ZONE });
 }
 
-// Fallback path: up to SCAN_DAYS single-doc reads, walking backwards from today.
-// Slow and chatty, but it works when Firestore rules allow reading a specific day doc
-// while denying a list/query of the whole collection — exactly the trainer-reading-a-client case.
-async function fetchLatestLoggedWeightByScan(userId) {
-  for (let i = 0; i < SCAN_DAYS; i++) {
-    const snap = await getDoc(doc(db, 'users', userId, 'dailyLogs', dateKeyDaysAgo(i)));
-    if (!snap.exists()) continue;
-    const n = parseDashboardWeight(snap.data());
-    // Return on the FIRST hit — the loop runs newest-first, so this is the latest weight.
-    if (n != null) return n;
+function firstLoggedWeight(dayDocuments) {
+  for (const dayDocument of dayDocuments) {
+    const weightNumber = parseDashboardWeight(dayDocument.data());
+    if (weightNumber != null) return weightNumber;
   }
   return null;
 }
 
-/** Latest finite `dashboard_weight` from dailyLogs, newest day first; null if never logged. */
+// Slow path used when rules allow one day doc but deny listing the whole collection.
+async function fetchLatestLoggedWeightByScan(userId) {
+  for (let daysAgo = 0; daysAgo < FALLBACK_SCAN_DAYS; daysAgo += 1) {
+    const daySnapshot = await getDoc(
+      doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, dateKeyDaysAgo(daysAgo)),
+    );
+    if (!daySnapshot.exists()) continue;
+    const weightNumber = parseDashboardWeight(daySnapshot.data());
+    if (weightNumber != null) return weightNumber;
+  }
+  return null;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Latest finite dashboard_weight from dailyLogs, newest day first.
+ * Returns null if this person has never logged a weight.
+ * @param {string} userId
+ * @returns {Promise<number|null>}
+ */
 export async function fetchLatestLoggedWeight(userId) {
   if (!userId || !db) return null;
   try {
-    // Fast path: one query for the most recent days.
-    // vocab: documentId() = order by the doc's own id. Works here because ids are
-    //        "YYYY-MM-DD", so descending string order IS reverse chronological order —
-    //        no timestamp field or extra index required.
-    const colRef = collection(db, 'users', userId, 'dailyLogs');
-    const q = query(colRef, orderBy(documentId(), 'desc'), limit(QUERY_LIMIT));
-    const snap = await getDocs(q);
-    // Docs come back newest-first, and many days have no weight entry, so scan until
-    // the first parseable value.
-    for (const docSnap of snap.docs) {
-      const n = parseDashboardWeight(docSnap.data());
-      if (n != null) return n;
-    }
-    return null;
+    // vocab: documentId() orders by the doc id. Ids are "YYYY-MM-DD", so descending string order is newest first.
+    const logsCollection = collection(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION);
+    const recentLogsQuery = query(
+      logsCollection,
+      orderBy(documentId(), 'desc'),
+      limit(RECENT_LOG_LIMIT),
+    );
+    const recentLogs = await getDocs(recentLogsQuery);
+    return firstLoggedWeight(recentLogs.docs);
   } catch (_) {
-    // Query failed (almost always a rules restriction on listing) — retry the slow way.
     return fetchLatestLoggedWeightByScan(userId);
   }
 }

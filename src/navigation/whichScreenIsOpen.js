@@ -1,68 +1,81 @@
-// Central place the app shells hand their navigation handlers to shared chrome (header + bottom nav).
-// Flow: ClientAppStart/TrainerAppStart wrap their tree in AppNavigationProvider → TopHeader and BottomMenuBar
-//       read the handlers out of context → props passed directly to those components still win.
-// Exists so the shared chrome doesn't need a dozen callback props threaded down through every screen.
-// Key exports: AppNavigationProvider, useAppNavigation, useMergedNavigation
+// Hands shared header and bottom-nav buttons the handlers for whichever app shell is open.
+// Flow: the shell publishes handlers → chrome reads them → a prop passed on the component still wins.
+// Used by ClientAppStart, TrainerAppStart, TopHeader, and BottomMenuBar.
 
-import React, { createContext, useContext, useCallback, useRef, useState } from 'react';
+import React, { createContext, useContext } from 'react';
 
-// vocab: createContext = React's "invisible pipe" — a provider puts a value in at the top of the tree
-// and any component below reads it without props being passed hand-to-hand.
-// Default is null (not {}) so consumers can tell "no provider above me" from "provider with empty handlers".
-const whichScreenIsOpen = createContext(null);
+// ===== NAMED CONSTANTS =====
 
-// Do-nothing fallback so a missing handler is a silent no-op instead of "undefined is not a function"
-// the moment someone taps a nav icon the current shell doesn't implement.
-const noop = () => {};
+// vocab: createContext = a pipe from the shell down to header and nav without a prop on every screen.
+// null (not {}) lets a reader tell "no provider" apart from a provider that published empty handlers.
+const navigationHandlersContext = createContext(null);
 
-// Wraps the app and publishes every nav handler the chrome might call.
-// `...handlers` collects all remaining props, so a shell just spreads the callbacks it supports.
+// A missing handler is a silent no-op so a tap on an icon this shell does not implement does not throw.
+const doNothing = () => {};
+
+// ===== HELPER FUNCTIONS =====
+
+// vocab/symbol: ?? = use the right side only when the left is null or undefined.
+function publishedHandler(handler) {
+  return handler ?? doNothing;
+}
+
+// Left to right: an explicit prop wins, then the shell's context value, then doNothing.
+function pickHandler(explicitHandler, contextHandler) {
+  return explicitHandler ?? contextHandler ?? doNothing;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Publishes the nav handlers this shell supports. Any handler left out becomes doNothing.
+ * @param {{ children?: import('react').ReactNode, onProfilePress?: function, onSettingsPress?: function, onHomePress?: function, onPlusPress?: function, onVoicePress?: function, onNutritionPress?: function, onWorkoutPress?: function, onMessagesPress?: function }} props
+ * @returns {import('react').ReactElement}
+ */
 export function AppNavigationProvider({ children, ...handlers }) {
-  // Each slot is one icon/action in the shared chrome. Normalizing to noop here (rather than at
-  // every call site) means the header and nav bar can call any of these unconditionally.
-  // vocab/symbol: ?? = use the right side only when the left is null/undefined.
-  // Manipulate here: adding a new chrome button means adding its handler key in this list AND in
-  // useMergedNavigation below, or the button will silently do nothing.
-  const value = {
-    onProfilePress: handlers.onProfilePress ?? noop,
-    onSettingsPress: handlers.onSettingsPress ?? noop,
-    onHomePress: handlers.onHomePress ?? noop,
-    onPlusPress: handlers.onPlusPress ?? noop,
-    onVoicePress: handlers.onVoicePress ?? noop,
-    onNutritionPress: handlers.onNutritionPress ?? noop,
-    onWorkoutPress: handlers.onWorkoutPress ?? noop,
-    onMessagesPress: handlers.onMessagesPress ?? noop,
+  // Manipulate here: a new chrome button needs its key here and again in useMergedNavigation.
+  const navigationHandlers = {
+    onProfilePress: publishedHandler(handlers.onProfilePress),
+    onSettingsPress: publishedHandler(handlers.onSettingsPress),
+    onHomePress: publishedHandler(handlers.onHomePress),
+    onPlusPress: publishedHandler(handlers.onPlusPress),
+    onVoicePress: publishedHandler(handlers.onVoicePress),
+    onNutritionPress: publishedHandler(handlers.onNutritionPress),
+    onWorkoutPress: publishedHandler(handlers.onWorkoutPress),
+    onMessagesPress: publishedHandler(handlers.onMessagesPress),
   };
 
   return (
-    <whichScreenIsOpen.Provider value={value}>
+    <navigationHandlersContext.Provider value={navigationHandlers}>
       {children}
-    </whichScreenIsOpen.Provider>
+    </navigationHandlersContext.Provider>
   );
 }
 
-// Raw read of the context. Returns null when there's no provider above — callers must handle that,
-// which is exactly why most components use useMergedNavigation instead.
+/**
+ * The raw context value, or null when no AppNavigationProvider is above this component.
+ * @returns {object|null}
+ */
 export function useAppNavigation() {
-  return useContext(whichScreenIsOpen);
+  return useContext(navigationHandlersContext);
 }
 
-// The handler resolver the shared chrome actually uses.
-// Precedence, left to right: an explicitly passed prop wins → then whatever the shell published in
-// context → then noop. That order is what lets one screen override a single nav button (say, a custom
-// back-to-list behavior) without disturbing the rest of the app's navigation.
+/**
+ * Handlers for shared chrome. A prop on the component beats the shell, which beats doNothing.
+ * @param {object} [props]
+ * @returns {{ onProfilePress: function, onSettingsPress: function, onHomePress: function, onPlusPress: function, onVoicePress: function, onNutritionPress: function, onWorkoutPress: function, onMessagesPress: function }}
+ */
 export function useMergedNavigation(props = {}) {
   const context = useAppNavigation();
   return {
-    // vocab/symbol: context?.onProfilePress = optional chaining; reads the field only if context
-    // exists, so this hook still works in screens rendered outside any provider (previews, tests).
-    onProfilePress: props.onProfilePress ?? context?.onProfilePress ?? noop,
-    onSettingsPress: props.onSettingsPress ?? context?.onSettingsPress ?? noop,
-    onHomePress: props.onHomePress ?? context?.onHomePress ?? noop,
-    onPlusPress: props.onPlusPress ?? context?.onPlusPress ?? noop,
-    onVoicePress: props.onVoicePress ?? context?.onVoicePress ?? noop,
-    onNutritionPress: props.onNutritionPress ?? context?.onNutritionPress ?? noop,
-    onWorkoutPress: props.onWorkoutPress ?? context?.onWorkoutPress ?? noop,
-    onMessagesPress: props.onMessagesPress ?? context?.onMessagesPress ?? noop,
+    // vocab/symbol: context?.onProfilePress reads the field only when a provider exists.
+    onProfilePress: pickHandler(props.onProfilePress, context?.onProfilePress),
+    onSettingsPress: pickHandler(props.onSettingsPress, context?.onSettingsPress),
+    onHomePress: pickHandler(props.onHomePress, context?.onHomePress),
+    onPlusPress: pickHandler(props.onPlusPress, context?.onPlusPress),
+    onVoicePress: pickHandler(props.onVoicePress, context?.onVoicePress),
+    onNutritionPress: pickHandler(props.onNutritionPress, context?.onNutritionPress),
+    onWorkoutPress: pickHandler(props.onWorkoutPress, context?.onWorkoutPress),
+    onMessagesPress: pickHandler(props.onMessagesPress, context?.onMessagesPress),
   };
 }

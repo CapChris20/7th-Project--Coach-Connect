@@ -1,9 +1,7 @@
-/**
- * Weekly Report Screen
- *
- * Loads `users/{clientId}/weeklySummaries` from Firestore and renders the premium
- * weekly report UI from mapped client check-in data.
- */
+// Weekly report screen. Loads saved weeks, then the sleep chart and daily breakdown.
+// Flow: read users/{clientId}/weeklySummaries → load food and daily logs for that span → render or export a PDF.
+// Used from the client home and the trainer's client view.
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,19 +33,116 @@ import {
 import { WeeklyReportBody } from './WeeklyReportBody';
 import { NoReportYet } from './NoReportYet';
 
-export function formatChipRange(weekStart, weekEnd) {
-  const ws = String(weekStart || '').trim();
-  const we = String(weekEnd || ws).trim();
-  if (!ws) return '';
-  const s = new Date(`${ws}T12:00:00`);
-  const e = new Date(`${we}T12:00:00`);
-  const a = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const b = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${a} – ${b}`;
+// ===== NAMED CONSTANTS =====
+
+const USERS_COLLECTION = 'users';
+const WEEKLY_SUMMARIES_COLLECTION = 'weeklySummaries';
+const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, formatDateRange };
+// Manipulate here: extra space above the shell's bottom menu. 16 is the inset the menu already uses.
+const SHELL_NAV_CONTENT_INSET = 16;
+
+// ===== HELPER FUNCTIONS =====
+
+function mapSummaryDocsToRows(summaryDocs) {
+  return summaryDocs
+    .map((summaryDoc) => ({ id: summaryDoc.id, ...summaryDoc.data() }))
+    .filter((row) => row.weekStart || row.weekId)
+    .map((row) => ({
+      ...row,
+      weekStart: row.weekStart || row.weekId,
+      weekEnd: row.weekEnd || row.weekEnd,
+    }))
+    .sort((left, right) => String(right.weekStart).localeCompare(String(left.weekStart)));
 }
 
-const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, formatDateRange };
+async function loadSupportingWeekData(clientId, rows) {
+  if (rows.length === 0) {
+    return { nutrition: {}, dailyLogs: {}, meta: {} };
+  }
 
+  const oldestWeekStart = rows[rows.length - 1].weekStart;
+  const newestWeekEnd = rows[0].weekEnd || rows[0].weekStart;
+  const userSnap = await getDoc(doc(db, USERS_COLLECTION, clientId));
+  const userData = userSnap.exists() ? userSnap.data() : {};
+  const meta = {
+    daysPerWeek: userData?.onboardingData?.daysPerWeek ?? userData?.daysPerWeek ?? null,
+  };
+  const [nutrition, dailyLogs] = await Promise.all([
+    fetchNutritionByDayForRange(clientId, oldestWeekStart, newestWeekEnd),
+    fetchDailyLogsByDayForRange(clientId, oldestWeekStart, newestWeekEnd),
+  ]);
+  return { nutrition, dailyLogs, meta };
+}
+
+function buildShareListHtml(items) {
+  if (items?.length) {
+    return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
+  }
+  return '<p><em>None logged.</em></p>';
+}
+
+function buildDayShareRows(days) {
+  return (days || []).map((day) => `<li>${formatDayForShare(day)}</li>`).join('');
+}
+
+function buildWeeklyReportHtml(activeWeek, clientName) {
+  const dayRows = buildDayShareRows(activeWeek.days);
+  return `
+      <html><body style="font-family: -apple-system, sans-serif; padding: 24px;">
+        <h1>Weekly Report</h1>
+        <p><strong>${activeWeek.label}</strong>${clientName ? ` — ${clientName}` : ''}</p>
+        <ul>
+          <li>Avg sleep: ${activeWeek.stats.display.sleep}h</li>
+          <li>Avg water: ${activeWeek.stats.display.water}oz</li>
+          <li>Avg steps: ${activeWeek.stats.display.steps}</li>
+          <li>Avg calories: ${activeWeek.stats.display.calories} cal</li>
+          ${activeWeek.stats.workoutDaysLogged ? `<li>Workout days: ${activeWeek.stats.workoutDaysLogged}</li>` : ''}
+        </ul>
+        ${activeWeek.summary ? `<h2>Week summary</h2><p>${activeWeek.summary}</p>` : ''}
+        <h2>Daily breakdown</h2>
+        <ul>${dayRows}</ul>
+        <h2>Weekly trends</h2>
+        ${buildShareListHtml(activeWeek.trends)}
+        <h2>Pros & wins</h2>
+        ${buildShareListHtml(activeWeek.pros)}
+        <h2>Cons / areas to improve</h2>
+        ${buildShareListHtml(activeWeek.cons)}
+        <h2>What to focus on</h2>
+        ${buildShareListHtml(activeWeek.focus)}
+        ${activeWeek.signOff ? `<p><em>${activeWeek.signOff}</em></p>` : ''}
+      </body></html>`;
+}
+
+function clearLoadedReport(setters) {
+  setters.setReports([]);
+  setters.setNutritionByDay({});
+  setters.setDailyLogsByDay({});
+  setters.setClientMeta({});
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Short "Mar 1 – Mar 7" label for a week chip.
+ * @param {string} weekStart
+ * @param {string} weekEnd
+ * @returns {string}
+ */
+export function formatChipRange(weekStart, weekEnd) {
+  const weekStartText = String(weekStart || '').trim();
+  const weekEndText = String(weekEnd || weekStartText).trim();
+  if (!weekStartText) return '';
+  const startDate = new Date(`${weekStartText}T12:00:00`);
+  const endDate = new Date(`${weekEndText}T12:00:00`);
+  const startLabel = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endLabel = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${startLabel} – ${endLabel}`;
+}
+
+/**
+ * Full weekly report for one client, including PDF export.
+ * @param {object} props
+ */
 export default function WeeklyReportScreen({
   clientId,
   clientName = '',
@@ -64,67 +159,36 @@ export default function WeeklyReportScreen({
   onSettingsPress,
   reserveShellBottomNav = false,
 }) {
-  const shellBottomPad = useShellBottomNavInset(16);
-  const [loading, setLoading] = useState(true);
+  const shellBottomPad = useShellBottomNavInset(SHELL_NAV_CONTENT_INSET);
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
   const [reports, setReports] = useState([]);
   const [weekIndex, setWeekIndex] = useState(0);
-
   const [nutritionByDay, setNutritionByDay] = useState({});
   const [dailyLogsByDay, setDailyLogsByDay] = useState({});
   const [clientMeta, setClientMeta] = useState({});
 
   const load = useCallback(async () => {
     if (!clientId || !db) {
-      setReports([]);
-      setNutritionByDay({});
-      setDailyLogsByDay({});
-      setClientMeta({});
-      setLoading(false);
+      clearLoadedReport({ setReports, setNutritionByDay, setDailyLogsByDay, setClientMeta });
+      setIsLoadingReport(false);
       return;
     }
-    setLoading(true);
+    setIsLoadingReport(true);
     try {
-      const snap = await getDocs(collection(db, 'users', clientId, 'weeklySummaries'));
-      const rows = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((r) => r.weekStart || r.weekId)
-        .map((r) => ({
-          ...r,
-          weekStart: r.weekStart || r.weekId,
-          weekEnd: r.weekEnd || r.weekEnd,
-        }))
-        .sort((a, b) => String(b.weekStart).localeCompare(String(a.weekStart)));
-
-      let nutrition = {};
-      let dailyLogs = {};
-      let meta = {};
-      if (rows.length > 0) {
-        const oldest = rows[rows.length - 1].weekStart;
-        const newestEnd = rows[0].weekEnd || rows[0].weekStart;
-        const userSnap = await getDoc(doc(db, 'users', clientId));
-        const userData = userSnap.exists() ? userSnap.data() : {};
-        meta = {
-          daysPerWeek: userData?.onboardingData?.daysPerWeek ?? userData?.daysPerWeek ?? null,
-        };
-        [nutrition, dailyLogs] = await Promise.all([
-          fetchNutritionByDayForRange(clientId, oldest, newestEnd),
-          fetchDailyLogsByDayForRange(clientId, oldest, newestEnd),
-        ]);
-      }
-
+      // vocab: getDocs = one-shot Firestore read. collection() points at users/{id}/weeklySummaries.
+      const snap = await getDocs(collection(db, USERS_COLLECTION, clientId, WEEKLY_SUMMARIES_COLLECTION));
+      const rows = mapSummaryDocsToRows(snap.docs);
+      const supporting = await loadSupportingWeekData(clientId, rows);
       setReports(rows);
-      setNutritionByDay(nutrition);
-      setDailyLogsByDay(dailyLogs);
-      setClientMeta(meta);
+      setNutritionByDay(supporting.nutrition);
+      setDailyLogsByDay(supporting.dailyLogs);
+      setClientMeta(supporting.meta);
       setWeekIndex(0);
-    } catch (e) {
-      console.warn('[WeeklyReportScreen] load failed', e?.message || e);
-      setReports([]);
-      setNutritionByDay({});
-      setDailyLogsByDay({});
-      setClientMeta({});
+    } catch (error) {
+      console.warn('[WeeklyReportScreen] load failed', error?.message || error);
+      clearLoadedReport({ setReports, setNutritionByDay, setDailyLogsByDay, setClientMeta });
     } finally {
-      setLoading(false);
+      setIsLoadingReport(false);
     }
   }, [clientId]);
 
@@ -152,45 +216,17 @@ export default function WeeklyReportScreen({
 
   const handleExport = useCallback(async () => {
     if (!activeWeek) return;
-    const dayRows = (activeWeek.days || [])
-      .map((d) => `<li>${formatDayForShare(d)}</li>`)
-      .join('');
-    const listHtml = (items) =>
-      items?.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>` : '<p><em>None logged.</em></p>';
-
-    const html = `
-      <html><body style="font-family: -apple-system, sans-serif; padding: 24px;">
-        <h1>Weekly Report</h1>
-        <p><strong>${activeWeek.label}</strong>${clientName ? ` — ${clientName}` : ''}</p>
-        <ul>
-          <li>Avg sleep: ${activeWeek.stats.display.sleep}h</li>
-          <li>Avg water: ${activeWeek.stats.display.water}oz</li>
-          <li>Avg steps: ${activeWeek.stats.display.steps}</li>
-          <li>Avg calories: ${activeWeek.stats.display.calories} cal</li>
-          ${activeWeek.stats.workoutDaysLogged ? `<li>Workout days: ${activeWeek.stats.workoutDaysLogged}</li>` : ''}
-        </ul>
-        ${activeWeek.summary ? `<h2>Week summary</h2><p>${activeWeek.summary}</p>` : ''}
-        <h2>Daily breakdown</h2>
-        <ul>${dayRows}</ul>
-        <h2>Weekly trends</h2>
-        ${listHtml(activeWeek.trends)}
-        <h2>Pros & wins</h2>
-        ${listHtml(activeWeek.pros)}
-        <h2>Cons / areas to improve</h2>
-        ${listHtml(activeWeek.cons)}
-        <h2>What to focus on</h2>
-        ${listHtml(activeWeek.focus)}
-        ${activeWeek.signOff ? `<p><em>${activeWeek.signOff}</em></p>` : ''}
-      </body></html>`;
+    const html = buildWeeklyReportHtml(activeWeek, clientName);
     try {
+      // vocab: printToFileAsync = Expo writes the HTML to a PDF file and returns its uri.
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export weekly report' });
       } else {
         Alert.alert('Export ready', 'PDF saved — sharing is not available on this device.');
       }
-    } catch (e) {
-      console.warn('[WeeklyReportScreen] export failed', e?.message || e);
+    } catch (error) {
+      console.warn('[WeeklyReportScreen] export failed', error?.message || error);
       Alert.alert('Export failed', 'Could not create PDF for this report.');
     }
   }, [activeWeek, clientName]);
@@ -229,7 +265,7 @@ export default function WeeklyReportScreen({
           />
 
           <View style={styles.content}>
-            {loading ? (
+            {isLoadingReport ? (
               <View style={styles.centered}>
                 <ActivityIndicator color="#ff6b35" size="large" />
                 <Text style={styles.hint}>Loading reports…</Text>

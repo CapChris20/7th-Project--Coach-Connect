@@ -1,12 +1,11 @@
-// Allow-list for what a client may name a workout day on the dashboard.
-// Flow: raw text → normalize (trim, lowercase, collapse spaces) → membership test against a Set.
-// Used to keep "today's workout" labels to recognizable split names so the dashboard and
-// the AI coach can reason about them, instead of accepting arbitrary free text.
+// The names a client is allowed to give a workout day.
+// Flow: trim and lowercase the label → reject a blank → accept it only if it is on the list.
+// Used by the dashboard and the coach so a day name stays a real split, not free text.
 
-// Phrases with a space or a qualifier. Note the deliberate duplicates ("leg day" AND
-// "legs day", "bands" AND "resistance_bands"): clients type both, and both must pass.
-// Manipulate here: this is the vocabulary of accepted workout-day names — add a row to
-//                  allow a new split. Keep entries lowercase; the Set below is built from these.
+// ===== NAMED CONSTANTS =====
+
+const WHITESPACE_PATTERN = /\s+/g;
+
 const MULTI_WORD_OR_PHRASE = [
   'rest day',
   'chest day',
@@ -41,7 +40,6 @@ const MULTI_WORD_OR_PHRASE = [
   'power day',
 ];
 
-/** Single-word splits some clients use instead of "X day" */
 const SINGLE_WORD = [
   'rest',
   'chest',
@@ -59,32 +57,38 @@ const SINGLE_WORD = [
   'hiit',
 ];
 
-// The one normalizer both the Set and the check use, so "  Chest   Day " and "chest day"
-// are treated as the same label. Matching would be brittle without this.
-// vocab: /\s+/g → ' ' = collapse any run of whitespace into a single space
-export const normalizeWorkoutDayLabel = (raw) =>
-  String(raw ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+const WORKOUT_DAY_EXAMPLES_SHORT =
+  'Chest Day, Pull Day, Leg Day, Full Body, Rest Day, Push Day, Arm Day';
 
-// Both lists flattened into one lookup structure, built once at import time.
-// vocab: Set = collection with O(1) `.has()` — far faster than array.includes on every render
-// vocab/symbol: [...a, ...b] = spread both arrays into one new array
-const ALLOWED = new Set([...MULTI_WORD_OR_PHRASE.map((s) => s.toLowerCase()), ...SINGLE_WORD]);
+// ===== HELPER FUNCTIONS =====
 
 /**
- * @param {string} raw — workout name from the client (e.g. "Chest Day")
+ * Both lists are stored lowercase. The check uses this same cleaning so "  Chest   Day " matches.
+ * vocab: \s+ collapses any run of spaces into one space.
+ * @param {string} rawLabel
+ * @returns {string}
+ */
+export const normalizeWorkoutDayLabel = (rawLabel) =>
+  String(rawLabel ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(WHITESPACE_PATTERN, ' ');
+
+const ALLOWED_WORKOUT_DAY_LABELS = new Set([
+  ...MULTI_WORD_OR_PHRASE.map((phrase) => phrase.toLowerCase()),
+  ...SINGLE_WORD,
+]);
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {string} rawLabel
  * @returns {boolean}
  */
-// The gate. Normalize, reject empty, then a single Set lookup.
-export function isAllowedClientWorkoutDayLabel(raw) {
-  const n = normalizeWorkoutDayLabel(raw);
-  if (!n) return false;
-  return ALLOWED.has(n);
+export function isAllowedClientWorkoutDayLabel(rawLabel) {
+  const normalizedLabel = normalizeWorkoutDayLabel(rawLabel);
+  if (!normalizedLabel) return false;
+  return ALLOWED_WORKOUT_DAY_LABELS.has(normalizedLabel);
 }
 
-// Placeholder/help copy so the UI can show examples without duplicating the lists above.
-// Manipulate here: user-facing hint text — keep every example one that actually passes the check
-export const WORKOUT_DAY_EXAMPLES_SHORT =
-  'Chest Day, Pull Day, Leg Day, Full Body, Rest Day, Push Day, Arm Day';
+export { WORKOUT_DAY_EXAMPLES_SHORT };

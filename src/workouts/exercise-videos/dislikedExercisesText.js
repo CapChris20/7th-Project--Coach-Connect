@@ -1,49 +1,89 @@
+// Turns the dislike picker into the comma string stored on the trainee profile, and back.
+// Flow: catalog names first, then custom names that are not already selected.
+// Used by: DislikedExercisesPicker.
+
 import { EXERCISE_DISLIKE_BY_ID, EXERCISE_DISLIKE_CATALOG } from './dislikableExercises';
 
+// ===== NAMED CONSTANTS =====
+
 const NAME_TO_ID = Object.fromEntries(
-  EXERCISE_DISLIKE_CATALOG.map((ex) => [ex.name.toLowerCase(), ex.id]),
+  EXERCISE_DISLIKE_CATALOG.map((exercise) => [exercise.name.toLowerCase(), exercise.id]),
 );
 
-/** Selected catalog IDs + optional custom names → stored profile string. */
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} exerciseName
+ * @returns {string|undefined}
+ */
+function catalogIdForName(exerciseName) {
+  return NAME_TO_ID[String(exerciseName || '').toLowerCase()];
+}
+
+/**
+ * @param {string[]} names
+ * @param {string} exerciseName
+ * @returns {boolean}
+ */
+function listAlreadyHasName(names, exerciseName) {
+  const lowered = exerciseName.toLowerCase();
+  return names.some((existingName) => existingName.toLowerCase() === lowered);
+}
+
+/**
+ * Split "Squat, Weird Machine" into trimmed pieces. Empty pieces are dropped.
+ * @param {string} storedText
+ * @returns {string[]}
+ */
+function splitCommaList(storedText) {
+  return String(storedText || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Selected catalog ids plus optional custom names → the string saved on the profile.
+ * A custom name that is already a selected catalog exercise is skipped.
+ * @param {string[]} selectedIds
+ * @param {string} customText
+ * @returns {string}
+ */
 export function serializeExerciseDislikes(selectedIds = [], customText = '') {
-  const names = (selectedIds || [])
+  const catalogNames = (selectedIds || [])
     .map((id) => EXERCISE_DISLIKE_BY_ID[id]?.name)
     .filter(Boolean);
 
-  const customParts = String(customText || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const merged = [...names];
-  for (const part of customParts) {
-    const knownId = NAME_TO_ID[part.toLowerCase()];
-    if (knownId && selectedIds.includes(knownId)) continue;
-    if (!merged.some((n) => n.toLowerCase() === part.toLowerCase())) {
-      merged.push(part);
-    }
+  const mergedNames = [...catalogNames];
+  for (const customName of splitCommaList(customText)) {
+    const knownId = catalogIdForName(customName);
+    const alreadySelected = knownId && selectedIds.includes(knownId);
+    if (alreadySelected) continue;
+    if (listAlreadyHasName(mergedNames, customName)) continue;
+    mergedNames.push(customName);
   }
 
-  return merged.join(', ');
+  return mergedNames.join(', ');
 }
 
-/** Parse stored string back into catalog IDs + leftover custom text. */
+/**
+ * Stored profile string → catalog ids plus leftover custom text.
+ * @param {string} stored
+ * @returns {{ selectedIds: string[], customText: string }}
+ */
 export function parseExerciseDislikes(stored = '') {
-  const parts = String(stored || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   const selectedIds = [];
   const customParts = [];
 
-  for (const part of parts) {
-    const id = NAME_TO_ID[part.toLowerCase()];
-    if (id) {
-      if (!selectedIds.includes(id)) selectedIds.push(id);
-    } else {
+  for (const part of splitCommaList(stored)) {
+    const catalogId = catalogIdForName(part);
+    if (!catalogId) {
       customParts.push(part);
+      continue;
     }
+    if (!selectedIds.includes(catalogId)) selectedIds.push(catalogId);
   }
 
   return {

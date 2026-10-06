@@ -1,27 +1,43 @@
-/**
- * support Config
- *
- * Purpose: support Config — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/settings
- * Key exports: getSupportEmail, DEFAULT_SUPPORT_EMAIL, getPrivacyPolicyUrl
- *
- * @file-header
- */
+// Support inbox and privacy-policy address shown in Settings.
+// Flow: prefer the value from app config → otherwise use the shipped default.
+// Used by: the support mail button and the privacy policy link.
+
 import Constants from 'expo-constants';
 
-/** Shown in Privacy Policy, Terms, Contact Support, etc. Override with EXPO_PUBLIC_SUPPORT_EMAIL in .env if needed. */
-export const DEFAULT_SUPPORT_EMAIL = 'coachconnect0@gmail.com';
+// ===== NAMED CONSTANTS =====
+
+/** Shown in Privacy Policy, Terms, and Contact Support. Override with EXPO_PUBLIC_SUPPORT_EMAIL. */
+const DEFAULT_SUPPORT_EMAIL = 'coachconnect0@gmail.com';
 
 /** Public HTTPS policy for App Store Connect. Override with EXPO_PUBLIC_PRIVACY_POLICY_URL. */
-export const DEFAULT_PRIVACY_POLICY_URL = 'https://anatrox-auth.web.app/privacy.html';
+const DEFAULT_PRIVACY_POLICY_URL = 'https://anatrox-auth.web.app/privacy.html';
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string|undefined} configuredValue
+ * @param {string} fallbackValue
+ * @returns {string}
+ */
+function configuredOrDefault(configuredValue, fallbackValue) {
+  const trimmed = String(configuredValue || '').trim();
+  return trimmed || fallbackValue;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @returns {string}
+ */
 export function getSupportEmail() {
-  const fromEnv = String(Constants.expoConfig?.extra?.supportEmail || '').trim();
-  return fromEnv || DEFAULT_SUPPORT_EMAIL;
+  return configuredOrDefault(Constants.expoConfig?.extra?.supportEmail, DEFAULT_SUPPORT_EMAIL);
 }
 
+/**
+ * @returns {string}
+ */
 export function getPrivacyPolicyUrl() {
-  const fromEnv = String(Constants.expoConfig?.extra?.privacyPolicyUrl || '').trim();
-  return fromEnv || DEFAULT_PRIVACY_POLICY_URL;
+  return configuredOrDefault(Constants.expoConfig?.extra?.privacyPolicyUrl, DEFAULT_PRIVACY_POLICY_URL);
 }
+
+export { DEFAULT_SUPPORT_EMAIL, DEFAULT_PRIVACY_POLICY_URL };

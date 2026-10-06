@@ -1,3 +1,7 @@
+// App Store subscription disclosure: length, price, auto-renew, and the legal links.
+// Flow: build the price sentence → show the legal paragraph → link terms, privacy, and Apple manage.
+// Used by the trainer pro upgrade and expired screens under the offer buttons.
+
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import {
@@ -8,46 +12,71 @@ import {
   APPLE_MANAGE_SUBSCRIPTIONS_URL,
 } from './proPlanSwitches';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_TEXT_COLOR = 'rgba(255,255,255,0.65)';
+const DEFAULT_LINK_COLOR = '#FF6B9D';
+
+// ===== HELPER FUNCTIONS =====
+
+// Apple's guideline wants the title, the price, the length, and that a trial is for new subscribers.
+function subscriptionDisclosure(priceLine, durationLabel) {
+  if (priceLine) {
+    return `${TRAINER_SUBSCRIPTION_TITLE}: ${priceLine} for ${durationLabel}. ${TRAINER_SUBSCRIPTION_TRIAL_LABEL} for new subscribers where offered by Apple.`;
+  }
+  return `${TRAINER_SUBSCRIPTION_TITLE} — ${durationLabel}. ${TRAINER_SUBSCRIPTION_TRIAL_LABEL} where offered.`;
+}
+
+function openAppleManageSubscriptions() {
+  if (Platform.OS !== 'ios') return;
+  Linking.openURL(APPLE_MANAGE_SUBSCRIPTIONS_URL).catch(() => {});
+}
+
+function LegalTextLink({ label, onPress, linkColor }) {
+  return (
+    <TouchableOpacity onPress={onPress} accessibilityRole="link">
+      <Text style={[styles.link, { color: linkColor }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * App Store Guideline 3.1.2 subscription disclosure (title, length, price, auto-renew, legal links).
+ * Subscription fine print plus Terms, Privacy, and (on iOS) Manage subscription.
+ * @param {{ textColor?: string, linkColor?: string, priceLine?: string, durationLabel?: string, onOpenTerms?: function, onOpenPrivacy?: function }} props
+ * @returns {import('react').ReactElement}
  */
 export default function ProLegalFooter({
-  textColor = 'rgba(255,255,255,0.65)',
-  linkColor = '#FF6B9D',
+  textColor = DEFAULT_TEXT_COLOR,
+  linkColor = DEFAULT_LINK_COLOR,
   priceLine,
   durationLabel = TRAINER_SUBSCRIPTION_DURATION,
   onOpenTerms,
   onOpenPrivacy,
 }) {
-  const disclosure = priceLine
-    ? `${TRAINER_SUBSCRIPTION_TITLE}: ${priceLine} for ${durationLabel}. ${TRAINER_SUBSCRIPTION_TRIAL_LABEL} for new subscribers where offered by Apple.`
-    : `${TRAINER_SUBSCRIPTION_TITLE} — ${durationLabel}. ${TRAINER_SUBSCRIPTION_TRIAL_LABEL} where offered.`;
-
-  const openManage = () => {
-    if (Platform.OS === 'ios') {
-      Linking.openURL(APPLE_MANAGE_SUBSCRIPTIONS_URL).catch(() => {});
-    }
-  };
+  const disclosure = subscriptionDisclosure(priceLine, durationLabel);
+  const isIos = Platform.OS === 'ios';
+  const canOpenTerms = typeof onOpenTerms === 'function';
+  const canOpenPrivacy = typeof onOpenPrivacy === 'function';
 
   return (
     <View style={styles.wrap}>
       <Text style={[styles.disclosure, { color: textColor }]}>{disclosure}</Text>
       <Text style={[styles.legal, { color: textColor }]}>{TRAINER_SUBSCRIPTION_LEGAL}</Text>
       <View style={styles.links}>
-        {typeof onOpenTerms === 'function' ? (
-          <TouchableOpacity onPress={onOpenTerms} accessibilityRole="link">
-            <Text style={[styles.link, { color: linkColor }]}>Terms of Use</Text>
-          </TouchableOpacity>
+        {canOpenTerms ? (
+          <LegalTextLink label="Terms of Use" onPress={onOpenTerms} linkColor={linkColor} />
         ) : null}
-        {typeof onOpenPrivacy === 'function' ? (
-          <TouchableOpacity onPress={onOpenPrivacy} accessibilityRole="link">
-            <Text style={[styles.link, { color: linkColor }]}>Privacy Policy</Text>
-          </TouchableOpacity>
+        {canOpenPrivacy ? (
+          <LegalTextLink label="Privacy Policy" onPress={onOpenPrivacy} linkColor={linkColor} />
         ) : null}
-        {Platform.OS === 'ios' ? (
-          <TouchableOpacity onPress={openManage} accessibilityRole="link">
-            <Text style={[styles.link, { color: linkColor }]}>Manage subscription</Text>
-          </TouchableOpacity>
+        {isIos ? (
+          <LegalTextLink
+            label="Manage subscription"
+            onPress={openAppleManageSubscriptions}
+            linkColor={linkColor}
+          />
         ) : null}
       </View>
     </View>

@@ -1,7 +1,7 @@
-// Top-level route table for the trainer side of the app.
-// Flow: TrainerMainScreen (the tab shell) is the base screen; every other route is pushed on top
-// of it as a full-screen "overlay" (profile, settings, payments, plan builder, …).
-// Where used: mounted once by the trainer app root, after we know the signed-in user is a trainer.
+// The trainer stack. The tab shell is the base. Every other screen is pushed on top of it.
+// Flow: register the main tabs → register each full-screen route with the same slide animation.
+// Used once by the trainer app root, after we know the signed-in user is a trainer.
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TRAINER_ROUTES } from '../../navigation/screenNames';
@@ -23,70 +23,61 @@ import {
   TrainerEarningsScreen,
 } from './trainerExtraScreens';
 
-// vocab: native stack = navigation backed by the platform's real navigator (UINavigationController
-// on iOS), so pushes/pops animate on the native thread instead of in JS. Created once at module
-// scope — building it inside the component would reset the whole navigation tree on every render.
+// ===== NAMED CONSTANTS =====
+
+// vocab: a native stack uses the phone's own navigator, so the slide is not drawn in JavaScript.
 const Stack = createNativeStackNavigator();
 
-// Shared options applied to every pushed screen. Kept as one object so all overlays animate
-// identically; if these drifted per-screen the app would feel inconsistent.
-// Manipulate here:
-//   presentation 'card' = pushes in from the side like a normal screen. Switch to 'modal' for
-//     the iOS sheet-from-bottom look, or 'transparentModal' to see the screen underneath.
-//   animation 'slide_from_right' = the push transition. 'none' disables it, 'fade' cross-fades.
-//   headerShown false because each screen draws its own custom header.
-const modalOptions = {
+const overlayScreenOptions = {
   presentation: 'card',
   animation: 'slide_from_right',
   headerShown: false,
 };
 
+const navigatorScreenOptions = { headerShown: false, animation: 'slide_from_right' };
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Voice AI and AI chat share one screen. That screen picks its mode from the route name.
+ * @returns {import('react').ReactElement}
+ */
 export default function TrainerScreenList() {
   return (
-    // screenOptions is the default for every child; `options` on an individual Screen overrides it.
-    // initialRouteName decides which screen is at the bottom of the back stack — the tab shell,
-    // so backing out of any overlay always lands on the trainer's tabs rather than a blank screen.
     <Stack.Navigator
-      screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+      screenOptions={navigatorScreenOptions}
       initialRouteName={TRAINER_ROUTES.Main}
     >
-      {/* Base screen: the bottom-tab shell. Deliberately has NO modalOptions — it isn't an
-          overlay, it's the thing overlays sit on top of.
-          Every route name comes from TRAINER_ROUTES (a shared constants map) rather than a raw
-          string, so a typo is a build-time undefined instead of a silent "route not found". */}
       <Stack.Screen name={TRAINER_ROUTES.Main} component={TrainerMainScreen} />
-      {/* Everything below is a pushed overlay screen, all sharing modalOptions.
-          To add a trainer route: add the key to TRAINER_ROUTES, export the screen from
-          trainerExtraScreens, then add one line here. */}
-      <Stack.Screen name={TRAINER_ROUTES.Profile} component={TrainerViewMyMyProfileScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Settings} component={TrainerSettingsScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.HelpFAQ} component={TrainerHelpFAQScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Terms} component={TrainerTermsScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Privacy} component={TrainerPrivacyScreen} options={modalOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Profile} component={TrainerViewMyMyProfileScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Settings} component={TrainerSettingsScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.HelpFAQ} component={TrainerHelpFAQScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Terms} component={TrainerTermsScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Privacy} component={TrainerPrivacyScreen} options={overlayScreenOptions} />
       <Stack.Screen
         name={TRAINER_ROUTES.ContactSupport}
         component={TrainerContactSupportScreen}
-        options={modalOptions}
+        options={overlayScreenOptions}
       />
-      <Stack.Screen name={TRAINER_ROUTES.BugReport} component={TrainerBugReportScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Nutrition} component={TrainerDailyFoodLogScreen} options={modalOptions} />
-      {/* VoiceAI and AIChat intentionally point at the SAME component — two entry points (voice
-          button vs chat button) into one AI screen, which decides its own mode from the route. */}
-      <Stack.Screen name={TRAINER_ROUTES.VoiceAI} component={TrainerVoiceAIScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.AIChat} component={TrainerVoiceAIScreen} options={modalOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.TrainerSearch} component={SearchTrainersScreenOverlay} options={modalOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.BugReport} component={TrainerBugReportScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Nutrition} component={TrainerDailyFoodLogScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.VoiceAI} component={TrainerVoiceAIScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.AIChat} component={TrainerVoiceAIScreen} options={overlayScreenOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.TrainerSearch} component={SearchTrainersScreenOverlay} options={overlayScreenOptions} />
       <Stack.Screen
         name={TRAINER_ROUTES.WeeklyReport}
         component={TrainerWeeklyReportScreenOverlay}
-        options={modalOptions}
+        options={overlayScreenOptions}
       />
-      <Stack.Screen name={TRAINER_ROUTES.WorkoutPlan} component={TrainerWorkoutPlanScreen} options={modalOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.WorkoutPlan} component={TrainerWorkoutPlanScreen} options={overlayScreenOptions} />
       <Stack.Screen
         name={TRAINER_ROUTES.ManualPlanBuilder}
         component={TrainerManualPlanBuilderScreen}
-        options={modalOptions}
+        options={overlayScreenOptions}
       />
-      <Stack.Screen name={TRAINER_ROUTES.Payments} component={TrainerEarningsScreen} options={modalOptions} />
+      <Stack.Screen name={TRAINER_ROUTES.Payments} component={TrainerEarningsScreen} options={overlayScreenOptions} />
     </Stack.Navigator>
   );
 }

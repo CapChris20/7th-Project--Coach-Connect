@@ -1,36 +1,23 @@
-/**
- * Live StoreKit paywall + real IAP in onboarding.
- * Enabled for EAS production/preview builds unless EXPO_PUBLIC_TRAINER_IAP_ENABLED=false.
- */
-function resolveTrainerIapEnabled() {
-  const raw = process.env.EXPO_PUBLIC_TRAINER_IAP_ENABLED;
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  const profile = process.env.EAS_BUILD_PROFILE;
-  return profile === 'production' || profile === 'preview';
-}
+// Turns the build flags into the live App Store paywall switch and the product copy.
+// Flow: read the env flag → otherwise use the EAS profile → export the product ids and legal text.
+// Used by the trainer Pro paywall and the purchase verification call.
 
-export const TRAINER_PLATFORM_SUBSCRIPTION_ENABLED = resolveTrainerIapEnabled();
+// ===== NAMED CONSTANTS =====
 
-/** Apple IAP product identifiers — must match App Store Connect. */
-export const TRAINER_PRO_MONTHLY_PRODUCT_ID = 'com.coachconnect.month';
-/**
- * Annual plan shown in the paywall toggle. The tab only renders in live IAP
- * builds once this product exists in App Store Connect and loads from StoreKit.
- */
-export const TRAINER_PRO_ANNUAL_PRODUCT_ID = 'com.coachconnect.year';
+const IAP_FLAG_ON = 'true';
+const IAP_FLAG_OFF = 'false';
+const PRODUCTION_PROFILE = 'production';
+const PREVIEW_PROFILE = 'preview';
 
-export const TRAINER_SUBSCRIPTION_PRODUCT_IDS = [
-  TRAINER_PRO_MONTHLY_PRODUCT_ID,
-  TRAINER_PRO_ANNUAL_PRODUCT_ID,
-];
+const TRAINER_PRO_MONTHLY_PRODUCT_ID = 'com.coachconnect.month';
+const TRAINER_PRO_ANNUAL_PRODUCT_ID = 'com.coachconnect.year';
 
-export const TRAINER_SUBSCRIPTION_TITLE = 'Coach Connect Pro';
-export const TRAINER_SUBSCRIPTION_DURATION = '1 month';
-export const TRAINER_SUBSCRIPTION_PRICE_LABEL = '$59.99/month';
-export const TRAINER_SUBSCRIPTION_TRIAL_LABEL = '3-day free trial';
+const TRAINER_SUBSCRIPTION_TITLE = 'Coach Connect Pro';
+const TRAINER_SUBSCRIPTION_DURATION = '1 month';
+const TRAINER_SUBSCRIPTION_PRICE_LABEL = '$59.99/month';
+const TRAINER_SUBSCRIPTION_TRIAL_LABEL = '3-day free trial';
 
-export const TRAINER_SUBSCRIPTION_BENEFITS = [
+const TRAINER_SUBSCRIPTION_BENEFITS = [
   'Unlimited clients',
   'AI workout generation',
   'Nutrition tracking',
@@ -38,13 +25,17 @@ export const TRAINER_SUBSCRIPTION_BENEFITS = [
   'Coaching chat',
 ];
 
-export const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
+const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
-export const TRAINER_SUBSCRIPTION_LEGAL =
+const TRAINER_SUBSCRIPTION_LEGAL =
   'Payment is charged to your Apple ID. Subscription auto-renews each month unless canceled at least 24 hours before the period ends. Manage or cancel in Settings → Apple ID → Subscriptions.';
 
-/** Selectable trainer platform tiers (productId must match App Store Connect). */
-export const TRAINER_SUBSCRIPTION_TIERS = [
+const TRAINER_SUBSCRIPTION_PRODUCT_IDS = [
+  TRAINER_PRO_MONTHLY_PRODUCT_ID,
+  TRAINER_PRO_ANNUAL_PRODUCT_ID,
+];
+
+const TRAINER_SUBSCRIPTION_TIERS = [
   {
     id: 'pro_annual',
     productId: TRAINER_PRO_ANNUAL_PRODUCT_ID,
@@ -76,3 +67,36 @@ export const TRAINER_SUBSCRIPTION_TIERS = [
     recommended: false,
   },
 ];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * An explicit env flag wins. Otherwise only production and preview builds sell Pro.
+ * @returns {boolean}
+ */
+function resolveTrainerIapEnabled() {
+  const flagValue = process.env.EXPO_PUBLIC_TRAINER_IAP_ENABLED;
+  if (flagValue === IAP_FLAG_ON) return true;
+  if (flagValue === IAP_FLAG_OFF) return false;
+  const buildProfile = process.env.EAS_BUILD_PROFILE;
+  return buildProfile === PRODUCTION_PROFILE || buildProfile === PREVIEW_PROFILE;
+}
+
+// ===== MAIN FUNCTION =====
+
+const TRAINER_PLATFORM_SUBSCRIPTION_ENABLED = resolveTrainerIapEnabled();
+
+export {
+  TRAINER_PLATFORM_SUBSCRIPTION_ENABLED,
+  TRAINER_PRO_MONTHLY_PRODUCT_ID,
+  TRAINER_PRO_ANNUAL_PRODUCT_ID,
+  TRAINER_SUBSCRIPTION_PRODUCT_IDS,
+  TRAINER_SUBSCRIPTION_TITLE,
+  TRAINER_SUBSCRIPTION_DURATION,
+  TRAINER_SUBSCRIPTION_PRICE_LABEL,
+  TRAINER_SUBSCRIPTION_TRIAL_LABEL,
+  TRAINER_SUBSCRIPTION_BENEFITS,
+  APPLE_MANAGE_SUBSCRIPTIONS_URL,
+  TRAINER_SUBSCRIPTION_LEGAL,
+  TRAINER_SUBSCRIPTION_TIERS,
+};

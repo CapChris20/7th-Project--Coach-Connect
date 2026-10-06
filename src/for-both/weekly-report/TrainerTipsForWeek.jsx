@@ -1,3 +1,7 @@
+// Trainer snapshot on the weekly report: workout adherence, red flags, and the week's note.
+// Flow: read week.trainerInsights → skip the section if every piece is empty → stack the cards that have data.
+// Used by WeeklyReportBody under the sleep chart.
+
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,15 +12,54 @@ import { ColorBorder } from './ColorBorder';
 import { StatIcon } from './StatIcon';
 import { HOME_STAT_WORKOUT_GRADIENT } from '../../look-and-feel/homeStatColors';
 
+// ===== NAMED CONSTANTS =====
+
+const DARK_MODE = 'dark';
+const ALERT_TONE = 'alert';
+const COACH_NOTE_SOURCE = 'coach';
+const DARK_CARD_BACKGROUND = 'rgba(14,14,22,0.98)';
+const LIGHT_CARD_BACKGROUND = '#ffffff';
+
+// ===== HELPER FUNCTIONS =====
+
+function isDarkMode(mode) {
+  return mode === DARK_MODE;
+}
+
+function cardInnerBackground(mode) {
+  if (isDarkMode(mode)) return DARK_CARD_BACKGROUND;
+  return LIGHT_CARD_BACKGROUND;
+}
+
+function isAlertFlag(flag) {
+  return flag.tone === ALERT_TONE;
+}
+
+function shouldShowWorkoutAdherence(workoutAdherence) {
+  return workoutAdherence && (workoutAdherence.completed > 0 || workoutAdherence.planned != null);
+}
+
+function hasRedFlags(redFlags) {
+  return redFlags?.length > 0;
+}
+
+function hasTrainerNote(trainerNote) {
+  return Boolean(trainerNote?.text);
+}
+
+function isCoachNote(note) {
+  return note.source === COACH_NOTE_SOURCE;
+}
+
 function RedFlagChip({ flag, colors, mode }) {
-  const isAlert = flag.tone === 'alert';
+  const isAlert = isAlertFlag(flag);
   const gradient = isAlert ? GRADIENTS.g1 : GRADIENTS.g3;
-  const innerBg = mode === 'dark' ? 'rgba(14,14,22,0.98)' : '#ffffff';
+  const innerBackground = cardInnerBackground(mode);
 
   return (
-    <ColorBorder colors={gradient} borderWidth={1.25} radius={14} innerBackground={innerBg} style={styles.flagWrap}>
+    <ColorBorder colors={gradient} borderWidth={1.25} radius={14} innerBackground={innerBackground} style={styles.flagWrap}>
       <View style={styles.flagInner}>
-        <View style={[styles.flagIconRing, { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+        <View style={[styles.flagIconRing, { backgroundColor: isDarkMode(mode) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
           <Ionicons
             name={isAlert ? 'alert-circle' : 'warning'}
             size={16}
@@ -33,11 +76,11 @@ function RedFlagChip({ flag, colors, mode }) {
 }
 
 function WorkoutAdherenceCard({ adherence, colors, mode }) {
-  const innerBg = mode === 'dark' ? 'rgba(14,14,22,0.98)' : '#ffffff';
-  const pct = adherence.pct;
+  const innerBackground = cardInnerBackground(mode);
+  const adherencePercent = adherence.pct;
 
   return (
-    <ColorBorder colors={HOME_STAT_WORKOUT_GRADIENT} borderWidth={1.5} radius={20} innerBackground={innerBg}>
+    <ColorBorder colors={HOME_STAT_WORKOUT_GRADIENT} borderWidth={1.5} radius={20} innerBackground={innerBackground}>
       <LinearGradient
         colors={[`${HOME_STAT_WORKOUT_GRADIENT[0]}22`, `${HOME_STAT_WORKOUT_GRADIENT[1]}0A`, 'transparent']}
         start={{ x: 0, y: 0 }}
@@ -51,9 +94,9 @@ function WorkoutAdherenceCard({ adherence, colors, mode }) {
           <Text style={[styles.adherenceValue, { color: colors.textPrimary }]}>{adherence.label}</Text>
           <Text style={[styles.adherenceSub, { color: colors.textSecondary }]}>{adherence.sublabel}</Text>
         </View>
-        {pct != null ? (
+        {adherencePercent != null ? (
           <View style={[styles.pctRing, { borderColor: colors.border }]}>
-            <Text style={[styles.pctText, { color: colors.textPrimary }]}>{pct}%</Text>
+            <Text style={[styles.pctText, { color: colors.textPrimary }]}>{adherencePercent}%</Text>
           </View>
         ) : null}
       </View>
@@ -62,11 +105,11 @@ function WorkoutAdherenceCard({ adherence, colors, mode }) {
 }
 
 function TrainerNoteCard({ note, colors, mode }) {
-  const innerBg = mode === 'dark' ? 'rgba(14,14,22,0.98)' : '#ffffff';
-  const isCoach = note.source === 'coach';
+  const innerBackground = cardInnerBackground(mode);
+  const isFromCoach = isCoachNote(note);
 
   return (
-    <ColorBorder colors={GRADIENTS.g4} borderWidth={1.5} radius={20} innerBackground={innerBg}>
+    <ColorBorder colors={GRADIENTS.g4} borderWidth={1.5} radius={20} innerBackground={innerBackground}>
       <LinearGradient
         colors={[`${GRADIENTS.g4[0]}20`, `${GRADIENTS.g4[1]}0A`, 'transparent']}
         start={{ x: 0, y: 0 }}
@@ -78,17 +121,17 @@ function TrainerNoteCard({ note, colors, mode }) {
           <StatIcon metricKey="mood" size={48} imageSize={24} />
           <View style={styles.noteHeaderText}>
             <Text style={[styles.noteEyebrow, { color: colors.textMuted }]}>
-              {isCoach ? 'COACH NOTE' : 'WEEKLY NOTE'}
+              {isFromCoach ? 'COACH NOTE' : 'WEEKLY NOTE'}
             </Text>
             <Text style={[styles.noteHint, { color: colors.textSecondary }]}>
-              {isCoach ? 'From your trainer' : 'Auto recap from logged data'}
+              {isFromCoach ? 'From your trainer' : 'Auto recap from logged data'}
             </Text>
           </View>
         </View>
         <View
           style={[
             styles.noteBubble,
-            { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' },
+            { backgroundColor: isDarkMode(mode) ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' },
           ]}
         >
           <Text style={[styles.noteText, { color: colors.textPrimary }]}>{note.text}</Text>
@@ -98,15 +141,21 @@ function TrainerNoteCard({ note, colors, mode }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * "At a glance" trainer block for one week. Renders nothing when the week has no insights.
+ * @param {{ week: { trainerInsights?: object } }} props
+ */
 export function TrainerTipsForWeek({ week }) {
   const { colors, mode } = useTheme();
   const insights = week.trainerInsights;
   if (!insights) return null;
 
   const { workoutAdherence, redFlags, trainerNote } = insights;
-  const showAdherence = workoutAdherence && (workoutAdherence.completed > 0 || workoutAdherence.planned != null);
-  const showFlags = redFlags?.length > 0;
-  const showNote = Boolean(trainerNote?.text);
+  const showAdherence = shouldShowWorkoutAdherence(workoutAdherence);
+  const showFlags = hasRedFlags(redFlags);
+  const showNote = hasTrainerNote(trainerNote);
 
   if (!showAdherence && !showFlags && !showNote) return null;
 
@@ -125,7 +174,7 @@ export function TrainerTipsForWeek({ week }) {
             style={[
               styles.flagsShell,
               {
-                backgroundColor: mode === 'dark' ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)',
+                backgroundColor: isDarkMode(mode) ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)',
               },
             ]}
           >

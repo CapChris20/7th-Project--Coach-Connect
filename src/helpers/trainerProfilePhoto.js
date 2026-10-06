@@ -1,82 +1,104 @@
-// Finds a trainer's avatar URL no matter which field/shape the record stores it in.
-// Flow: check nested profile objects → check ~12 top-level aliases → if still nothing,
-//       fall back to a direct Firebase Storage lookup at profile_photos/{uid}.
-// Used anywhere a coach avatar renders (marketplace cards, chat headers, client dashboard).
+// Finds a trainer's avatar URL no matter which field the record stored it in.
+// Flow: check nested profile objects → check the flat aliases → if still nothing, ask Storage.
+// Used by marketplace cards, chat headers, and the client dashboard.
 
-// vocab: firebase/storage ref + getDownloadURL = point at a file path in Cloud Storage
-//        and ask for a public https URL for it
 import { ref, getDownloadURL } from 'firebase/storage';
 
+// ===== NAMED CONSTANTS =====
+
+const EMPTY_WORD = 'null';
+const UNDEFINED_WORD = 'undefined';
+const STORAGE_PHOTO_FOLDER = 'profile_photos';
+
+// ===== HELPER FUNCTIONS =====
+
 /**
- * Resolve a usable profile image URL from trainer / user shapes used across the app.
- * Prefers explicit top-level fields, then common nested marketplace/profile objects.
+ * Nested copies are checked first. When both exist, the nested profile is the newer sync.
+ * @param {object} trainerRecord
+ * @returns {string|null}
  */
-// Why so many aliases: trainer records are assembled from the users doc, the marketplace
-// sync, and older onboarding writes, each of which named the photo field differently.
-// Rather than migrate the data, this reads every known spelling.
-export function trainerPhotoUri(t) {
-  if (!t || typeof t !== 'object') return null;
-  // Nested containers are checked FIRST because when a record has both, the nested
-  // profile/marketplace copy is the more recently synced one.
-  const nested =
-    (t.profile && (t.profile.photoURL || t.profile.photoUrl || t.profile.imageUrl)) ||
-    (t.publicProfile && (t.publicProfile.photoURL || t.publicProfile.photoUrl)) ||
-    (t.marketplace && (t.marketplace.photoURL || t.marketplace.photoUrl || t.marketplace.imageUrl)) ||
-    null;
-  // Then the flat aliases, in rough priority order — the `||` chain stops at the first
-  // non-empty one. Manipulate here: add a new field name to this chain if a data source
-  // starts writing the avatar under a different key.
-  const u =
-    nested ||
-    t.photoURL ||
-    t.photoUrl ||
-    t.profilePhoto ||
-    t.profile_photo ||
-    t.profile_picture ||
-    t.profileImageUrl ||
-    t.profileImage ||
-    t.avatarUrl ||
-    t.headshotUrl ||
-    t.headshot ||
-    t.imageUrl ||
-    t.image ||
-    t.downloadURL ||
-    t.picture ||
-    null;
-  const s = u != null ? String(u).trim() : '';
-  // The 'null'/'undefined' STRING checks are not paranoia: some writes stringified a
-  // missing value, so those exact words are stored in Firestore and would otherwise be
-  // handed to <Image source={{ uri: 'null' }} /> as a real URL.
-  if (!s || s === 'null' || s === 'undefined') return null;
-  return s.length > 0 ? s : null;
+function nestedPhotoUrl(trainerRecord) {
+  const profilePhoto = trainerRecord.profile && (
+    trainerRecord.profile.photoURL || trainerRecord.profile.photoUrl || trainerRecord.profile.imageUrl
+  );
+  if (profilePhoto) return profilePhoto;
+
+  const publicPhoto = trainerRecord.publicProfile && (
+    trainerRecord.publicProfile.photoURL || trainerRecord.publicProfile.photoUrl
+  );
+  if (publicPhoto) return publicPhoto;
+
+  const marketplacePhoto = trainerRecord.marketplace && (
+    trainerRecord.marketplace.photoURL
+    || trainerRecord.marketplace.photoUrl
+    || trainerRecord.marketplace.imageUrl
+  );
+  return marketplacePhoto || null;
 }
 
 /**
- * Clients often cannot read users/{trainerId}; photos may only exist in Storage at
- * profile_photos/{uid} (public read). If the doc has no usable URL, try Storage once.
+ * @param {object} trainerRecord
+ * @returns {string|null}
  */
-// Returns an ENRICHED COPY of the trainer object (not just a URL) so callers can keep
-// passing one object around. On failure it returns the input unchanged, so this is always
-// safe to await and the caller never has to null-check the result.
+function flatPhotoUrl(trainerRecord) {
+  return (
+    trainerRecord.photoURL
+    || trainerRecord.photoUrl
+    || trainerRecord.profilePhoto
+    || trainerRecord.profile_photo
+    || trainerRecord.profile_picture
+    || trainerRecord.profileImageUrl
+    || trainerRecord.profileImage
+    || trainerRecord.avatarUrl
+    || trainerRecord.headshotUrl
+    || trainerRecord.headshot
+    || trainerRecord.imageUrl
+    || trainerRecord.image
+    || trainerRecord.downloadURL
+    || trainerRecord.picture
+    || null
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Reads every known spelling. Old onboarding, the users doc, and marketplace sync named this field differently.
+ * @param {object} trainerRecord
+ * @returns {string|null}
+ */
+export function trainerPhotoUri(trainerRecord) {
+  if (!trainerRecord || typeof trainerRecord !== 'object') return null;
+  const photoUrl = nestedPhotoUrl(trainerRecord) || flatPhotoUrl(trainerRecord);
+  const photoText = photoUrl != null ? String(photoUrl).trim() : '';
+  // Some writes stored the words "null" and "undefined". Those are not URLs.
+  if (!photoText || photoText === EMPTY_WORD || photoText === UNDEFINED_WORD) return null;
+  return photoText;
+}
+
+/**
+ * Returns a copy of the trainer with photoURL filled in. On a miss, the original object comes back unchanged.
+ * vocab: getDownloadURL asks Cloud Storage for an https link. A missing file throws.
+ * @param {object} trainerLike
+ * @param {object} storage
+ * @returns {Promise<object>}
+ */
 export async function resolveTrainerPhotoWithStorageFallback(trainerLike, storage) {
-  // Fast path — the doc already had a usable URL, so skip the network entirely.
   if (trainerPhotoUri(trainerLike)) return trainerLike;
-  const id = trainerLike?.id || trainerLike?.uid;
-  if (!storage || !id) return trainerLike;
+  const trainerId = trainerLike?.id || trainerLike?.uid;
+  if (!storage || !trainerId) return trainerLike;
   try {
-    // Convention: every trainer's avatar is stored at this exact path with public read,
-    // which is why a client can fetch it even when Firestore rules block the users doc.
-    // Manipulate here: 'profile_photos/{uid}' must match the upload path and the Storage rules
-    const url = await getDownloadURL(ref(storage, `profile_photos/${id}`));
-    if (url && String(url).trim()) {
-      // Write the URL into both field names so downstream code reading either one works.
-      // `trainerLike?.avatarUrl ||` preserves an existing avatarUrl rather than clobbering it.
-      return { ...trainerLike, photoURL: url, avatarUrl: trainerLike?.avatarUrl || url };
+    // Manipulate here: this path has to match the upload path and the Storage rules.
+    const downloadUrl = await getDownloadURL(ref(storage, `${STORAGE_PHOTO_FOLDER}/${trainerId}`));
+    if (downloadUrl && String(downloadUrl).trim()) {
+      return {
+        ...trainerLike,
+        photoURL: downloadUrl,
+        avatarUrl: trainerLike?.avatarUrl || downloadUrl,
+      };
     }
   } catch (_) {
-    // getDownloadURL throws for "file doesn't exist" as well as for permission denials.
-    // Both mean "no avatar", which is a normal state — hence swallow, don't log.
-    /* no object at path */
+    // A missing file and a permission denial both mean there is no avatar to show.
   }
   return trainerLike;
 }

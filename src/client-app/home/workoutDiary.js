@@ -1,5 +1,11 @@
+// The home-screen workout logger: exercises and sets for today, saved onto dailyLogs.
+// Flow: listen to today's dailyLogs doc → fill the form → on save, write the log and
+//       tell the trainer. A blank form is one empty exercise so the user can start typing.
+// Used by TrainingHomeScreen. Hooks stay in this function, in this order.
+
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+// vocab: onSnapshot = live Firestore listener. The cleanup function stops it when the screen leaves.
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../app-start/cloudConnection';
 import { postDashboardNotification } from '../../for-both/online-connection/loadHomeAlerts';
@@ -15,7 +21,158 @@ import {
   WORKOUT_DAY_EXAMPLES_SHORT,
 } from '../../helpers/workoutDayNames';
 
-/** Structured workout logger: exercises + sets stored as workoutLog in dailyLogs */
+// ===== NAMED CONSTANTS =====
+
+const USERS_COLLECTION = 'users';
+const DAILY_LOGS_COLLECTION = 'dailyLogs';
+const NOTIFICATION_TYPE = 'dashboard_update';
+const NOTIFICATION_PAYLOAD_TYPE = 'dashboard_workouts';
+const NOTIFICATION_LABEL = 'Workouts Today';
+const NOTIFICATION_FAILED = 'notification_failed';
+// Manipulate here: how long the "trainer notified" banner stays up after a save.
+const NOTIFIED_BANNER_MS = 3000;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * A new row id. Time plus random so two taps in the same millisecond do not clash.
+ * @returns {string}
+ */
+function newRowId() {
+  return `${Date.now()}_${Math.random()}`;
+}
+
+/**
+ * One empty exercise with one empty set. The form always has at least this.
+ * @returns {object}
+ */
+function createEmptyExercise() {
+  return {
+    id: newRowId(),
+    name: '',
+    sets: [{ id: newRowId(), reps: '', weight: '' }],
+  };
+}
+
+/**
+ * Saved workoutLog rows use exerciseName. The form uses name, plus a stable id for React.
+ * @param {object[]} workoutLog
+ * @returns {object[]}
+ */
+function mapSavedWorkoutLog(workoutLog) {
+  return workoutLog.map((item, exerciseIndex) => ({
+    id: `srv_wl_${exerciseIndex}`,
+    name: item.exerciseName || '',
+    sets: Array.isArray(item.sets) && item.sets.length
+      ? item.sets.map((setRow, setIndex) => ({
+          id: `srv_wl_${exerciseIndex}_s_${setIndex}`,
+          reps: setRow.reps != null ? String(setRow.reps) : '',
+          weight: setRow.weight != null ? String(setRow.weight) : '',
+        }))
+      : [{ id: `srv_wl_${exerciseIndex}_s_0`, reps: '', weight: '' }],
+  }));
+}
+
+/**
+ * Older docs stored only exercise names, no sets. Each name becomes one empty set.
+ * @param {string[]} exerciseNames
+ * @returns {object[]}
+ */
+function mapDashboardExerciseNames(exerciseNames) {
+  return exerciseNames.map((name, exerciseIndex) => ({
+    id: `srv_dwe_${exerciseIndex}`,
+    name: String(name),
+    sets: [{ id: `srv_dwe_${exerciseIndex}_s_0`, reps: '', weight: '' }],
+  }));
+}
+
+/**
+ * Drop blank exercises and blank sets. Reps and weight become numbers for the save.
+ * @param {object[]} workoutExercises
+ * @returns {object[]}
+ */
+function buildStructuredExercises(workoutExercises) {
+  return workoutExercises
+    .filter((exercise) => exercise.name && exercise.name.trim() !== '')
+    .map((exercise) => ({
+      exerciseName: exercise.name.trim(),
+      sets: exercise.sets
+        .filter((setRow) => setRow.reps !== '' || setRow.weight !== '')
+        .map((setRow) => ({
+          reps: parseInt(setRow.reps, 10) || 0,
+          weight: parseFloat(setRow.weight) || 0,
+        })),
+    }))
+    .filter((exercise) => exercise.sets.length > 0);
+}
+
+/**
+ * The text the trainer sees: the day name, then each exercise and its sets.
+ * @param {string} workoutName
+ * @param {object[]} structuredExercises
+ * @returns {string}
+ */
+function buildWorkoutSummary(workoutName, structuredExercises) {
+  const summaryParts = structuredExercises.map((exercise) => {
+    const setsSummary = exercise.sets
+      .map((setRow) => `${setRow.reps || 0}×${setRow.weight || 0}`)
+      .join(', ');
+    return `${exercise.exerciseName} (${exercise.sets.length} sets: ${setsSummary})`;
+  });
+  return [workoutName, ...summaryParts].filter(Boolean).join('\n');
+}
+
+/**
+ * True when the form has anything the user typed, even if it is not ready to save.
+ * The name check and the set check are different from the "dirty" flag on the return value.
+ * @param {string} workoutName
+ * @param {object[]} structuredExercises
+ * @param {object[]} workoutExercises
+ * @returns {boolean}
+ */
+function hasTypedWorkoutContent(workoutName, structuredExercises, workoutExercises) {
+  return (
+    workoutName !== '' ||
+    structuredExercises.length > 0 ||
+    workoutExercises.some(
+      (exercise) => exercise.name.trim() || exercise.sets.some((setRow) => setRow.reps !== '' || setRow.weight !== ''),
+    )
+  );
+}
+
+/**
+ * Tell the linked trainer. No trainer id means there is nobody to notify, which is not an error.
+ * A failed post throws so the save catch can log it and skip the success banner.
+ * @param {string} userId
+ * @param {string} combinedSummary
+ */
+async function notifyTrainerOfSavedWorkout(userId, combinedSummary) {
+  const userSnapshot = await getDoc(doc(db, USERS_COLLECTION, userId));
+  const userData = userSnapshot.exists() ? userSnapshot.data() : {};
+  const trainerId = userData.trainerId || userData.trainer_id || null;
+  if (!trainerId) return;
+  const notifyResult = await postDashboardNotification({
+    recipientId: trainerId,
+    clientId: userId,
+    type: NOTIFICATION_TYPE,
+    payload: {
+      type: NOTIFICATION_PAYLOAD_TYPE,
+      label: NOTIFICATION_LABEL,
+      value: combinedSummary,
+    },
+  });
+  if (!notifyResult.ok) {
+    throw new Error(notifyResult.reason || NOTIFICATION_FAILED);
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Workout name, exercises, and save for today's logger.
+ * @param {Function} [onAfterSave] Called with the summary, the day name, and the structured sets
+ * @returns {object}
+ */
 export function workoutDiary(onAfterSave) {
   const [workoutName, setWorkoutName] = useState('');
   const [workoutExercises, setWorkoutExercises] = useState([]);
@@ -24,165 +181,131 @@ export function workoutDiary(onAfterSave) {
   const [hasSavedValue, setHasSavedValue] = useState(false);
   const todayDateKey = todaysDate();
 
-  const makeExercise = () => ({
-    id: `${Date.now()}_${Math.random()}`,
-    name: '',
-    sets: [{ id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
-  });
-
   useEffect(() => {
     if (!db || !auth?.currentUser) return;
     const uid = auth.currentUser.uid;
     const dateKey = todayDateKey;
-    const logsRef = doc(db, 'users', uid, 'dailyLogs', dateKey);
+    const logsRef = doc(db, USERS_COLLECTION, uid, DAILY_LOGS_COLLECTION, dateKey);
 
-    let alive = true;
+    let isAlive = true;
     let lastLogsSnap = null;
     let lastTrackingSnap = null;
 
+    // Both reads land whenever they land. Hydrate only once the logs snapshot exists,
+    // because that doc is the one we treat as current.
     const hydrate = () => {
-      if (!alive || !lastLogsSnap) return;
+      if (!isAlive || !lastLogsSnap) return;
 
-      const { d, fromLogs } = buildWorkoutLogHydration(lastLogsSnap, lastTrackingSnap);
+      const { d: dailyLog, fromLogs } = buildWorkoutLogHydration(lastLogsSnap, lastTrackingSnap);
 
       if (!fromLogs) {
-        setWorkoutExercises((prev) => (prev.length > 0 ? prev : [makeExercise()]));
+        setWorkoutExercises((previous) => (previous.length > 0 ? previous : [createEmptyExercise()]));
         setHasSavedValue(false);
         setLoaded(true);
         return;
       }
 
-      setWorkoutName(d.dashboard_workout_name || '');
-      if (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) {
-        const mapped = d.workoutLog.map((item, exIdx) => ({
-          id: `srv_wl_${exIdx}`,
-          name: item.exerciseName || '',
-          sets: Array.isArray(item.sets) && item.sets.length
-            ? item.sets.map((s, sIdx) => ({
-                id: `srv_wl_${exIdx}_s_${sIdx}`,
-                reps: s.reps != null ? String(s.reps) : '',
-                weight: s.weight != null ? String(s.weight) : '',
-              }))
-            : [{ id: `srv_wl_${exIdx}_s_0`, reps: '', weight: '' }],
-        }));
-        setWorkoutExercises(mapped);
-      } else if (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) {
-        setWorkoutExercises(
-          d.dashboard_workout_exercises.map((name, exIdx) => ({
-            id: `srv_dwe_${exIdx}`,
-            name: String(name),
-            sets: [{ id: `srv_dwe_${exIdx}_s_0`, reps: '', weight: '' }],
-          })),
-        );
+      setWorkoutName(dailyLog.dashboard_workout_name || '');
+      if (Array.isArray(dailyLog.workoutLog) && dailyLog.workoutLog.length > 0) {
+        setWorkoutExercises(mapSavedWorkoutLog(dailyLog.workoutLog));
+      } else if (
+        Array.isArray(dailyLog.dashboard_workout_exercises) &&
+        dailyLog.dashboard_workout_exercises.length > 0
+      ) {
+        setWorkoutExercises(mapDashboardExerciseNames(dailyLog.dashboard_workout_exercises));
       } else {
-        setWorkoutExercises((prev) => (prev.length > 0 ? prev : [makeExercise()]));
+        setWorkoutExercises((previous) => (previous.length > 0 ? previous : [createEmptyExercise()]));
       }
       setHasSavedValue(true);
       setLoaded(true);
     };
 
     fetchLegacyDailyTrackingSnap(uid, dateKey)
-      .then((snap) => {
-        if (!alive) return;
-        lastTrackingSnap = snap;
+      .then((snapshot) => {
+        if (!isAlive) return;
+        lastTrackingSnap = snapshot;
         hydrate();
       })
       .catch(() => {});
 
-    const unsubLogs = onSnapshot(
+    const unsubscribeFromLogs = onSnapshot(
       logsRef,
-      (snap) => {
-        lastLogsSnap = snap;
+      (snapshot) => {
+        lastLogsSnap = snapshot;
         hydrate();
       },
       () => {
-        setWorkoutExercises([makeExercise()]);
+        setWorkoutExercises([createEmptyExercise()]);
         setHasSavedValue(false);
         setLoaded(true);
       },
     );
 
     return () => {
-      alive = false;
-      try { unsubLogs?.(); } catch (_) {}
+      isAlive = false;
+      try { unsubscribeFromLogs?.(); } catch (ignoredError) {}
     };
   }, [auth?.currentUser?.uid, todayDateKey]);
 
-  const addExercise = () => setWorkoutExercises((prev) => [...prev, makeExercise()]);
-  const removeExercise = (id) =>
-    setWorkoutExercises((prev) => (prev.length > 1 ? prev.filter((e) => e.id !== id) : prev));
-  const updateExerciseName = (id, name) =>
-    setWorkoutExercises((prev) => prev.map((e) => (e.id === id ? { ...e, name } : e)));
+  const addExercise = () => setWorkoutExercises((previous) => [...previous, createEmptyExercise()]);
+  const removeExercise = (exerciseId) =>
+    setWorkoutExercises((previous) =>
+      previous.length > 1 ? previous.filter((exercise) => exercise.id !== exerciseId) : previous,
+    );
+  const updateExerciseName = (exerciseId, name) =>
+    setWorkoutExercises((previous) =>
+      previous.map((exercise) => (exercise.id === exerciseId ? { ...exercise, name } : exercise)),
+    );
 
   const addSet = (exerciseId) =>
-    setWorkoutExercises((prev) =>
-      prev.map((e) =>
-        e.id === exerciseId
+    setWorkoutExercises((previous) =>
+      previous.map((exercise) =>
+        exercise.id === exerciseId
           ? {
-              ...e,
-              sets: [...e.sets, { id: `${Date.now()}_${Math.random()}`, reps: '', weight: '' }],
+              ...exercise,
+              sets: [...exercise.sets, { id: newRowId(), reps: '', weight: '' }],
             }
-          : e,
+          : exercise,
       ),
     );
 
   const removeSet = (exerciseId, setId) =>
-    setWorkoutExercises((prev) =>
-      prev.map((e) =>
-        e.id === exerciseId
+    setWorkoutExercises((previous) =>
+      previous.map((exercise) =>
+        exercise.id === exerciseId
           ? {
-              ...e,
-              sets: e.sets.length > 1 ? e.sets.filter((s) => s.id !== setId) : e.sets,
+              ...exercise,
+              sets: exercise.sets.length > 1
+                ? exercise.sets.filter((setRow) => setRow.id !== setId)
+                : exercise.sets,
             }
-          : e,
+          : exercise,
       ),
     );
 
   const updateSetField = (exerciseId, setId, field, value) =>
-    setWorkoutExercises((prev) =>
-      prev.map((e) =>
-        e.id === exerciseId
+    setWorkoutExercises((previous) =>
+      previous.map((exercise) =>
+        exercise.id === exerciseId
           ? {
-              ...e,
-              sets: e.sets.map((s) => (s.id === setId ? { ...s, [field]: value } : s)),
+              ...exercise,
+              sets: exercise.sets.map((setRow) => (setRow.id === setId ? { ...setRow, [field]: value } : setRow)),
             }
-          : e,
+          : exercise,
       ),
     );
 
   const save = async () => {
     const name = workoutName.trim();
-    const structured = workoutExercises
-      .filter((ex) => ex.name && ex.name.trim() !== '')
-      .map((ex) => ({
-        exerciseName: ex.name.trim(),
-        sets: ex.sets
-          .filter((s) => s.reps !== '' || s.weight !== '')
-          .map((s) => ({
-            reps: parseInt(s.reps, 10) || 0,
-            weight: parseFloat(s.weight) || 0,
-          })),
-      }))
-      .filter((ex) => ex.sets.length > 0);
-
+    const structured = buildStructuredExercises(workoutExercises);
     const dateKey = getLocalDateKey();
     const uid = auth?.currentUser?.uid;
     if (!db || !uid) return;
 
-    const summaryParts = structured.map((ex) => {
-      const setsSummary = ex.sets
-        .map((s) => `${s.reps || 0}×${s.weight || 0}`)
-        .join(', ');
-      return `${ex.exerciseName} (${ex.sets.length} sets: ${setsSummary})`;
-    });
-    const combined = [name, ...summaryParts].filter(Boolean).join('\n');
+    const combined = buildWorkoutSummary(name, structured);
 
-    const hasDraftWorkoutContent =
-      name !== '' ||
-      structured.length > 0 ||
-      workoutExercises.some((ex) => ex.name.trim() || ex.sets.some((s) => s.reps !== '' || s.weight !== ''));
-
-    if (hasDraftWorkoutContent) {
+    // A day name is required only when they actually typed something. An empty form can save as a clear.
+    if (hasTypedWorkoutContent(name, structured, workoutExercises)) {
       if (!name) {
         Alert.alert(
           'Workout day required',
@@ -210,36 +333,22 @@ export function workoutDiary(onAfterSave) {
         dateKey,
       );
 
-      const userSnap = await getDoc(doc(db, 'users', uid));
-      const userData = userSnap.exists() ? userSnap.data() : {};
-      const trainerId = userData.trainerId || userData.trainer_id || null;
-      if (trainerId) {
-        const notifyResult = await postDashboardNotification({
-          recipientId: trainerId,
-          clientId: uid,
-          type: 'dashboard_update',
-          payload: {
-            type: 'dashboard_workouts',
-            label: 'Workouts Today',
-            value: combined,
-          },
-        });
-        if (!notifyResult.ok) {
-          throw new Error(notifyResult.reason || 'notification_failed');
-        }
-      }
+      await notifyTrainerOfSavedWorkout(uid, combined);
+
       setShowNotified(true);
       setHasSavedValue(true);
       if (onAfterSave) onAfterSave(combined || null, name || '', structured);
-      setTimeout(() => setShowNotified(false), 3000);
-    } catch (e) {
-      console.warn('Workout log save error:', e);
+      setTimeout(() => setShowNotified(false), NOTIFIED_BANNER_MS);
+    } catch (error) {
+      console.warn('Workout log save error:', error);
     }
   };
 
   const hasDraftValue =
     (workoutName && workoutName.trim()) ||
-    workoutExercises.some((ex) => ex.name.trim() || ex.sets.some((s) => s.reps || s.weight));
+    workoutExercises.some(
+      (exercise) => exercise.name.trim() || exercise.sets.some((setRow) => setRow.reps || setRow.weight),
+    );
 
   return {
     workoutName,

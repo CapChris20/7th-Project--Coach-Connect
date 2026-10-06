@@ -1,19 +1,15 @@
-/**
- * onboarding Icon Registry generated
- *
- * Purpose: onboarding Icon Registry generated — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: onboardingIconRegistry
- *
- * @file-header
- */
+// Maps onboarding answer ids to the pictures in src/assets/onboarding-consolidated.
+// Flow: a step looks up a key in this object. Metro needs each require() path to be a literal string.
+// Used by: the setup wizard. If you add an icon, re-run npm run gen:onboarding-icons.
+
+// ===== NAMED CONSTANTS =====
+
 // AUTO-GENERATED (but checked in). Source icons live in `src/assets/onboarding-consolidated/`.
 // If you add/remove icons, re-run: `npm run gen:onboarding-icons`
 //
 // Note: `require()` paths must be static strings for Metro bundler.
 
-export const onboardingIconRegistry = {
+const onboardingIconRegistry = {
   // Step 1 inputs
   weight: require('../../assets/onboarding-consolidated/scales.png'),
   scales: require('../../assets/onboarding-consolidated/scales.png'),
@@ -34,3 +30,9 @@ export const onboardingIconRegistry = {
   "resistance_bands": require("../../assets/onboarding-consolidated/resistance_bands.png"),
   bodyweight: require('../../assets/onboarding-consolidated/bodyweight_only.png'),
 };
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+export { onboardingIconRegistry };

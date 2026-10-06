@@ -1,57 +1,58 @@
-// Decides which weight number the trainer's Progress tab shows for a client.
-// Flow: several possible weight sources arrive → each resolver picks the first trustworthy one.
-// Why it exists: weight lives in a few places (today's log, past logs, profile, CRM record) and
-// they disagree. Centralizing the priority order keeps the hero card from flip-flopping.
+// Decides which weight the trainer Progress tab shows for a client.
+// Flow: today's log wins, then the newest log, then the profile. A second helper picks the "was" number.
+// Used by: the trainer progress hero card. The sources disagree, so the order lives in one place.
+
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * Resolve trainer Progress tab weight display per client.
- * Priority: today's log → most recent log → live profile weight from users/{id}.
+ * Firestore sends numbers, numeric strings, blanks, and null. Only a real number gets through.
+ * @param {unknown} value
+ * @returns {number|null}
  */
-
-// Gatekeeper for every source below: only real, usable numbers get through.
-// Firestore fields come back as numbers, numeric strings, empty strings, null, or missing —
-// so we normalize once here instead of guarding at each call site.
 function parseFiniteWeight(value) {
-  // vocab/symbol: == null is true for BOTH null and undefined (the one place loose equality helps)
+  // vocab: == null is true for both null and undefined.
   if (value == null || value === '') return null;
-  const n = Number(value);
-  // vocab: Number.isFinite = a real number, excluding NaN and Infinity. Number('abc') is NaN,
-  // which would otherwise render as "NaN lbs" on the card.
-  return Number.isFinite(n) ? n : null;
+  const numericWeight = Number(value);
+  if (!Number.isFinite(numericWeight)) return null;
+  return numericWeight;
 }
 
-/** Current weight shown on the hero card. */
+// ===== MAIN FUNCTION =====
+
+/**
+ * Today's log first. The profile value is last because it is often the old onboarding number.
+ * @param {{ todayDashboardWeight?: unknown, latestLoggedWeight?: unknown, profileWeight?: unknown }} [sources]
+ * @returns {number|null}
+ */
 export function resolveTrainerProgressCurrentWeight({
   todayDashboardWeight,
   latestLoggedWeight,
   profileWeight,
 } = {}) {
-  // Manipulate here: this is the freshness ranking — reorder these three blocks to change which
-  // source wins. Today's log first because it's what the client just entered; the profile value
-  // is last because it's often stale onboarding data.
-  const today = parseFiniteWeight(todayDashboardWeight);
-  if (today != null) return today;
-  const logged = parseFiniteWeight(latestLoggedWeight);
-  if (logged != null) return logged;
+  const todayWeight = parseFiniteWeight(todayDashboardWeight);
+  if (todayWeight != null) return todayWeight;
+  const loggedWeight = parseFiniteWeight(latestLoggedWeight);
+  if (loggedWeight != null) return loggedWeight;
   return parseFiniteWeight(profileWeight);
 }
 
-/** Baseline for "Was X lbs" — starting weight when set, else profile weight at load. */
+/**
+ * Baseline for "Was X lbs". A real 0 stays, because ?? does not treat 0 as empty.
+ * @param {{ startingWeight?: unknown, profileWeight?: unknown, crmStartingWeight?: unknown, crmWeight?: unknown }} [sources]
+ * @returns {number|null}
+ */
 export function resolveTrainerProgressBeforeWeight({
   startingWeight,
   profileWeight,
   crmStartingWeight,
   crmWeight,
 } = {}) {
-  // Same idea as above, written as a ?? chain because every branch is just "next fallback".
-  // vocab/symbol: ?? = use the right side only when the left is null/undefined — safe here
-  // because parseFiniteWeight already turned bad data into null, and a legitimate 0 lbs
-  // would still pass through (unlike ||, which would treat 0 as "empty" and skip it).
-  // Manipulate here: reorder to change which baseline "Was X lbs" compares against.
   return (
-    parseFiniteWeight(startingWeight) ??
-    parseFiniteWeight(crmStartingWeight) ??
-    parseFiniteWeight(profileWeight) ??
-    parseFiniteWeight(crmWeight)
+    parseFiniteWeight(startingWeight)
+    ?? parseFiniteWeight(crmStartingWeight)
+    ?? parseFiniteWeight(profileWeight)
+    ?? parseFiniteWeight(crmWeight)
   );
 }

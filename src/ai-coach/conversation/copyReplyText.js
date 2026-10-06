@@ -1,60 +1,106 @@
+// Turn a coach reply into plain text and put it on the clipboard.
+// Flow: strip citations or markdown → write the clipboard → on iOS, read it back →
+// if that fails, open the share sheet so the user can still copy.
+// Used by the coach conversation (via copyableReplyText) and the reply text views.
+
 import { Alert, Platform, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
-/** Strip [1] [2] inline citation markers — preserve newlines and markdown structure. */
+// ===== NAMED CONSTANTS =====
+
+// [1] [2] markers the web-search reply leaves in the prose. They are not part of the answer.
+const INLINE_CITATION_PATTERN = /\s*\[\d+\]/g;
+const EXTRA_SPACES_PATTERN = /[ \t]{2,}/g;
+
+// Order matters. Bold (**) has to go before italic (*), or the bold markers get eaten as italics.
+// The bullet character is what the user actually pastes — markdown asterisks would look broken.
+const MARKDOWN_TO_PLAIN_TEXT = [
+  [/\r\n/g, '\n'],
+  [/\*\*(.*?)\*\*/g, '$1'],
+  [/__(.*?)__/g, '$1'],
+  [/\*(.*?)\*/g, '$1'],
+  [/_([^_]+)_/g, '$1'],
+  [/`([^`]+)`/g, '$1'],
+  [/^#{1,6}\s+/gm, ''],
+  [/\[([^\]]+)\]\([^)]+\)/g, '$1'],
+  [/^[-*+]\s+/gm, '• '],
+  [/^\d+\.\s+/gm, '• '],
+  [/(?:\s*\[\d+\])+/g, ''],
+];
+
+// ===== HELPER FUNCTIONS =====
+
+// Android and web: a thrown setStringAsync is the only failure we trust.
+// iOS can report success while the pasteboard still holds the previous string,
+// so we read it back before telling the user the message copied.
+async function isClipboardHoldingText(expectedText) {
+  if (Platform.OS !== 'ios') return true;
+  const pastedBack = await Clipboard.getStringAsync();
+  return !!(pastedBack && pastedBack.trim() === expectedText.trim());
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Remove [1] [2] citation markers without collapsing newlines or markdown.
+ * @param {string} text
+ * @returns {string}
+ */
 export function stripInlineWebCitations(text) {
   return String(text || '')
-    .replace(/\s*\[\d+\]/g, '')
-    .replace(/[ \t]{2,}/g, ' ')
+    .replace(INLINE_CITATION_PATTERN, '')
+    .replace(EXTRA_SPACES_PATTERN, ' ')
     .trim();
 }
 
-/** Strip lightweight markdown so coach replies render as one selectable Text block. */
+/**
+ * Strip lightweight markdown so a coach reply pastes as one plain paragraph.
+ * @param {string} text
+ * @returns {string}
+ */
 export function coachPlainText(text) {
-  return String(text || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/__(.*?)__/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^[-*+]\s+/gm, '• ')
-    .replace(/^\d+\.\s+/gm, '• ')
-    .replace(/(?:\s*\[\d+\])+/g, '')
-    .trim();
+  let plainText = String(text || '');
+  for (const [pattern, replacement] of MARKDOWN_TO_PLAIN_TEXT) {
+    plainText = plainText.replace(pattern, replacement);
+  }
+  return plainText.trim();
 }
 
+/**
+ * Copy a coach reply. Falls back to the system share sheet when the clipboard write can't be verified.
+ * @param {string} text
+ * @param {{ announce?: boolean }} [options] announce: false skips the "Copied" alert. Callers pass this key.
+ * @returns {Promise<boolean>} True when the clipboard or the share sheet accepted the text.
+ */
 export async function copyCoachText(text, { announce = true } = {}) {
-  const raw = coachPlainText(text) || String(text || '').trim();
-  if (!raw) {
+  // Plain text first. If markdown stripping removes everything, fall back to the raw trim
+  // so a message that is only punctuation still has a chance to copy.
+  const textToCopy = coachPlainText(text) || String(text || '').trim();
+  if (!textToCopy) {
     Alert.alert('Nothing to copy', 'This message has no text to copy.');
     return false;
   }
 
   try {
-    await Clipboard.setStringAsync(raw);
-    let verified = Platform.OS !== 'ios';
-    if (Platform.OS === 'ios') {
-      const verify = await Clipboard.getStringAsync();
-      verified = !!(verify && verify.trim() === raw.trim());
-    }
-    if (verified) {
+    await Clipboard.setStringAsync(textToCopy);
+    const isClipboardVerified = await isClipboardHoldingText(textToCopy);
+    if (isClipboardVerified) {
       if (announce) Alert.alert('Copied', 'Message copied to clipboard.');
       return true;
     }
-  } catch (_) {
-    /* try share fallback */
+    // Verified false (iOS read-back didn't match) falls through to the share sheet.
+  } catch (_error) {
+    // Clipboard threw, or the iOS read-back threw. The share sheet is the backup.
   }
 
   try {
-    await Share.share({ message: raw });
+    // vocab: Share.share opens the system sheet. message is the text the user can then copy.
+    await Share.share({ message: textToCopy });
     return true;
-  } catch (e) {
+  } catch (error) {
     Alert.alert(
       'Copy failed',
-      e?.message || 'Could not copy. Long-press the message text and use the system Copy menu.',
+      error?.message || 'Could not copy. Long-press the message text and use the system Copy menu.',
     );
     return false;
   }

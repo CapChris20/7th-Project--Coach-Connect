@@ -1,65 +1,71 @@
-// Offline error buffer + drain loop.
-// Flow: a failed error report gets pushed onto an AsyncStorage queue → later, in a Node-capable
-//       environment, the queue is flushed into ERRORS.txt newest-first and then emptied.
-// queueErrorForSync is called from recordError's failure path; initializeErrorSync runs at app startup.
+// Offline error buffer, and the drain that writes it into ERRORS.txt.
+// Flow: a failed report is pushed onto an AsyncStorage queue → later, when Node
+//       can see the filesystem, the queue is written newest-first and then emptied.
+// queueErrorForSync is called from recordError. initializeErrorSync runs at startup.
 
-// Same environment probe as recordError.js — the file-writing half only works under Node.
+// ===== NAMED CONSTANTS =====
+
+// Same environment probe as recordError.js. The file-writing half only works under Node.
+// vocab: process.versions.node exists in Node and not in React Native.
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 
-// Module cache slots. Three-state on purpose:
-//   null  = not looked up yet, false = looked up and unavailable, object = the real module.
-// The `false` state is what stops us from retrying a doomed require on every single error.
-let AsyncStorage = null;
-let FileSystem = null;
+// Manipulate here: renaming this key orphans errors already queued on existing devices.
+const ERROR_QUEUE_KEY = 'ANATROX_ERROR_QUEUE';
+const ERRORS_FILE_NAME = 'ERRORS.txt';
+const ERROR_DIVIDER = '================================================================================';
+const EMPTY_LOG_MARKER = 'No errors logged yet';
+const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
+const NO_CODE_LABEL = 'None';
+const UNKNOWN_CONTEXT = 'Unknown';
+const NO_STACK_LABEL = 'No stack trace';
+// Manipulate here: shorter interval = fresher ERRORS.txt, more file writes.
+const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
-// Every dependency is required lazily inside a function so this module can be imported
-// anywhere (phone, browser, bare Node script) without the bundler choking on a missing peer.
+// Module cache. Three states on purpose for AsyncStorage:
+//   null = not looked up yet, false = looked up and unavailable, object = the real module.
+// false stops us from retrying a doomed require on every error.
+let cachedAsyncStorage = null;
+let cachedFileSystem = null;
+
+// ===== HELPER FUNCTIONS =====
+
+// Required lazily so this file can load on a phone, in a browser, or in a bare Node script.
 function getAsyncStorage() {
-  if (AsyncStorage !== null) return AsyncStorage;
+  if (cachedAsyncStorage !== null) return cachedAsyncStorage;
   try {
-    // Check if module exists before requiring
     if (typeof require === 'undefined') {
-      AsyncStorage = false;
+      cachedAsyncStorage = false;
       return null;
     }
     const storageModule = require('@react-native-async-storage/async-storage');
     if (!storageModule) {
-      AsyncStorage = false;
+      cachedAsyncStorage = false;
       return null;
     }
-    // The package ships as an ES default export but interop can hand back the namespace
-    // object instead, so accept either shape.
+    // The package is an ES default export. Interop sometimes hands back the namespace instead.
     const storage = storageModule.default || storageModule;
-    // Duck-typing guard: in Expo Go / web the module can resolve to a stub that has no
-    // real methods. Checking for getItem/setItem avoids a crash deep inside the queue logic.
+    // Expo Go / web can resolve a stub with no methods. Checking the methods avoids a crash later.
     if (storage && typeof storage.getItem === 'function' && typeof storage.setItem === 'function') {
-      AsyncStorage = storage;
-      return AsyncStorage;
+      cachedAsyncStorage = storage;
+      return cachedAsyncStorage;
     }
-    // Mark as unavailable so we don't try again
-    AsyncStorage = false;
+    cachedAsyncStorage = false;
     return null;
-  } catch (e) {
-    // Mark as unavailable so we don't try again
-    AsyncStorage = false;
+  } catch (ignoredError) {
+    cachedAsyncStorage = false;
     return null;
   }
 }
 
 function getFileSystem() {
-  if (FileSystem) return FileSystem;
+  if (cachedFileSystem) return cachedFileSystem;
   try {
-    // Check if module exists before requiring
-    if (typeof require === 'undefined') {
-      return null;
-    }
-    const fsModule = require('expo-file-system');
-    if (!fsModule) {
-      return null;
-    }
-    FileSystem = fsModule;
-    return FileSystem;
-  } catch (e) {
+    if (typeof require === 'undefined') return null;
+    const fileSystemModule = require('expo-file-system');
+    if (!fileSystemModule) return null;
+    cachedFileSystem = fileSystemModule;
+    return cachedFileSystem;
+  } catch (ignoredError) {
     return null;
   }
 }
@@ -67,8 +73,8 @@ function getFileSystem() {
 function getFs() {
   if (!isNode) return null;
   try {
-    return require("fs");
-  } catch (e) {
+    return require('fs');
+  } catch (ignoredError) {
     return null;
   }
 }
@@ -76,177 +82,186 @@ function getFs() {
 function getPath() {
   if (!isNode) return null;
   try {
-    return require("path");
-  } catch (e) {
+    return require('path');
+  } catch (ignoredError) {
     return null;
   }
 }
 
-// The AsyncStorage key holding the pending-error array.
-// Manipulate here: renaming this orphans any errors already queued on existing devices
-const ERROR_QUEUE_KEY = 'ANATROX_ERROR_QUEUE';
-// Computed once at import time. The IIFE exists just so we can run a few statements
-// inside a `const` initializer; on non-Node targets it short-circuits to null.
-// vocab: process.cwd() = the directory the Node script was launched from
-// Manipulate here: 'ERRORS.txt' is the drain target (distinct from recordError.js's ERRORS.md)
-const ERROR_LOG_FILE = isNode ? (() => {
-  const path = getPath();
-  return path ? path.join(process.cwd(), 'ERRORS.txt') : null;
-})() : null;
+// vocab: process.cwd() = the directory the Node script was launched from.
+// Manipulate here: ERRORS.txt is the drain target. recordError.js writes ERRORS.md instead.
+function resolveErrorLogFile() {
+  if (!isNode) return null;
+  const pathModule = getPath();
+  if (!pathModule) return null;
+  return pathModule.join(process.cwd(), ERRORS_FILE_NAME);
+}
 
-// Human-readable stamp for the log file — same format recordError.js uses, kept local
-// so this module has no import-time dependency on it.
+const ERROR_LOG_FILE = resolveErrorLogFile();
+
+/**
+ * Same human stamp recordError.js uses. Kept local so this file does not import that one at load time.
+ * @param {Date} [date]
+ * @returns {string}
+ */
 function formatTimestamp(date) {
   const now = date || new Date();
-  const dateStr = now.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
+  const dateStr = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
-  const timeStr = now.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
+  const timeStr = now.toLocaleTimeString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true 
+    hour12: true,
   });
   return `${dateStr} at ${timeStr}`;
 }
 
 /**
- * Queue an error in AsyncStorage (React Native)
- * This is called automatically by reportCrashAutomaticallySync
+ * @param {string} existingContent
+ * @returns {number}
  */
-export async function queueErrorForSync(errorData) {
-  try {
-    const AsyncStorage = getAsyncStorage();
-    if (!AsyncStorage) {
-      // AsyncStorage module not available (e.g., in Expo Go or Node.js)
-      return;
-    }
-    
-    // Verify AsyncStorage has the required methods
-    if (typeof AsyncStorage.getItem !== 'function' || typeof AsyncStorage.setItem !== 'function') {
-      // AsyncStorage is not properly initialized
-      return;
-    }
-
-    // Read-modify-write: AsyncStorage only stores strings, so the whole queue is one
-    // JSON blob that has to be parsed, appended to, and re-stringified every time.
-    const queueJson = await AsyncStorage.getItem(ERROR_QUEUE_KEY);
-    const queue = queueJson ? JSON.parse(queueJson) : [];
-    
-    // `queuedAt` is added alongside the original timestamp so you can later see the gap
-    // between when the error happened and when the device managed to store it.
-    queue.push({
-      ...errorData,
-      queuedAt: new Date().toISOString(),
-    });
-    
-    // Note: the queue is unbounded. A device stuck offline through a crash loop will keep
-    // growing this blob. Manipulate here: slice the array (e.g. queue.slice(-200)) to cap it
-    await AsyncStorage.setItem(ERROR_QUEUE_KEY, JSON.stringify(queue));
-  } catch (error) {
-    // Warn, never throw. This function is called from inside other error handlers, so
-    // throwing here would mask the original bug with a storage complaint.
-    console.warn('Failed to queue error for sync (this is okay in some environments):', error.message);
-  }
+function errorCountFromFile(existingContent) {
+  const countMatch = existingContent.match(/Total Errors: (\d+)/);
+  return countMatch ? parseInt(countMatch[1]) : 0;
 }
 
 /**
- * Sync all queued errors from AsyncStorage to ERRORS.txt file
- * This runs automatically on app startup
+ * Older queued rows are missing fields newer ones have. Each line has a fallback chain.
+ * @param {object} errorData
+ * @param {number} errorNumber
+ * @returns {string}
  */
-// Drains the whole queue into ERRORS.txt in one write, then clears it.
-// Needs BOTH AsyncStorage (to read the queue) and fs (to write the file), which in practice
-// means a dev/Node context — on a real phone this is a no-op and the queue just keeps waiting.
-export async function syncErrorsToFile() {
-  const AsyncStorage = getAsyncStorage();
-  const fs = getFs();
-  
-  // Bail before touching anything if any piece of the pipeline is missing.
-  // Returning early (rather than throwing) is what makes this safe to call on startup everywhere.
-  if (!AsyncStorage || typeof AsyncStorage.getItem !== 'function' || !fs || !ERROR_LOG_FILE) {
-    return;
-  }
+function renderQueuedErrorBlock(errorData, errorNumber) {
+  const readableTime = errorData.readableTime
+    || errorData.queuedAt
+    || formatTimestamp(new Date(errorData.timestamp));
+  const timestamp = errorData.timestamp || errorData.queuedAt || new Date().toISOString();
+  return `${ERROR_DIVIDER}
+ERROR ${errorNumber}
+${ERROR_DIVIDER}
 
-  try {
-    const queueJson = await AsyncStorage.getItem(ERROR_QUEUE_KEY);
-    if (!queueJson) {
-      return; // Key never written — nothing to drain.
-    }
+Message: ${errorData.message || UNKNOWN_ERROR_MESSAGE}
+Code: ${errorData.code || NO_CODE_LABEL}
+Context: ${errorData.context || UNKNOWN_CONTEXT}
+Time: ${readableTime}
+Timestamp: ${timestamp}
+Stack Trace:
+${errorData.stack || NO_STACK_LABEL}
 
-    const queuedErrors = JSON.parse(queueJson);
-    if (queuedErrors.length === 0) {
-      return; // Empty array — skip the file rewrite entirely.
-    }
+`;
+}
 
-    let existingContent = '';
-    if (fs.existsSync(ERROR_LOG_FILE)) {
-      existingContent = fs.readFileSync(ERROR_LOG_FILE, 'utf8');
-    }
-
-    // First real batch replaces the empty-state placeholder text.
-    if (existingContent.includes("No errors logged yet")) {
-      existingContent = existingContent.split("No errors logged yet")[0];
-    }
-
-    // The file is its own database: parse the old running total back out of the header,
-    // then add the size of this batch. `currentCount` also seeds the per-entry numbering below.
-    const countMatch = existingContent.match(/Total Errors: (\d+)/);
-    const currentCount = countMatch ? parseInt(countMatch[1]) : 0;
-    const newCount = currentCount + queuedErrors.length;
-
-    // Build new content with queued errors
-    const now = new Date();
-    const readableUpdateTime = formatTimestamp(now);
-    
-    let newContent = `🔥 ANATROX ERROR LOG
-================================================================================
+/**
+ * Fresh header, then this batch, then the older entries sliced from the first divider.
+ * @param {string} existingContent
+ * @param {object[]} queuedErrors
+ * @param {number} previousCount
+ * @returns {string}
+ */
+function buildSyncedLogContent(existingContent, queuedErrors, previousCount) {
+  const readableUpdateTime = formatTimestamp(new Date());
+  let newContent = `🔥 ANATROX ERROR LOG
+${ERROR_DIVIDER}
 
 Automatically generated list of ALL application errors.
 This file logs EVERY SINGLE ERROR that occurs (Firebase, API, UI, network, and general errors).
 
-Total Errors: ${newCount}
+Total Errors: ${previousCount + queuedErrors.length}
 
 Last updated: ${readableUpdateTime}
 
 `;
 
-    // Render one block per queued error, numbered continuing from the file's old total.
-    // Each field has a fallback chain (readableTime → queuedAt → derived) because older
-    // queued entries were stored with fewer fields than we write today.
-    queuedErrors.forEach((errorData, index) => {
-      const errorNum = currentCount + index + 1;
-      newContent += `================================================================================
-ERROR ${errorNum}
-================================================================================
+  queuedErrors.forEach((errorData, index) => {
+    newContent += renderQueuedErrorBlock(errorData, previousCount + index + 1);
+  });
 
-Message: ${errorData.message || "Unknown error"}
-Code: ${errorData.code || "None"}
-Context: ${errorData.context || "Unknown"}
-Time: ${errorData.readableTime || errorData.queuedAt || formatTimestamp(new Date(errorData.timestamp))}
-Timestamp: ${errorData.timestamp || errorData.queuedAt || new Date().toISOString()}
-Stack Trace:
-${errorData.stack || "No stack trace"}
+  if (existingContent) {
+    const errorsStart = existingContent.indexOf(ERROR_DIVIDER);
+    if (errorsStart !== -1) {
+      newContent += existingContent.substring(errorsStart);
+    }
+  }
 
-`;
+  return newContent;
+}
+
+/**
+ * @param {object} asyncStorage
+ * @returns {boolean}
+ */
+function canReadQueue(asyncStorage) {
+  return Boolean(asyncStorage) && typeof asyncStorage.getItem === 'function';
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Push one error onto the on-device queue. Never throws: this runs inside other error handlers.
+ * The queue is unbounded. A phone stuck offline through a crash loop will grow this blob.
+ * Manipulate here: slice the array (for example queue.slice(-200)) if that becomes a problem.
+ * @param {object} errorData
+ * @returns {Promise<void>}
+ */
+export async function queueErrorForSync(errorData) {
+  try {
+    const asyncStorage = getAsyncStorage();
+    if (!asyncStorage) return;
+    if (typeof asyncStorage.getItem !== 'function' || typeof asyncStorage.setItem !== 'function') return;
+
+    // AsyncStorage only stores strings, so the whole queue is one JSON blob.
+    const queueJson = await asyncStorage.getItem(ERROR_QUEUE_KEY);
+    const queue = queueJson ? JSON.parse(queueJson) : [];
+
+    // queuedAt is extra, so you can see the gap between the error and when the phone stored it.
+    queue.push({
+      ...errorData,
+      queuedAt: new Date().toISOString(),
     });
 
-    // Re-attach the older entries by slicing from the first `====` divider, dropping the
-    // stale header we just regenerated with the new count.
-    if (existingContent) {
-      const errorsStart = existingContent.indexOf("================================================================================");
-      if (errorsStart !== -1) {
-        const existingErrors = existingContent.substring(errorsStart);
-        newContent += existingErrors;
-      }
+    await asyncStorage.setItem(ERROR_QUEUE_KEY, JSON.stringify(queue));
+  } catch (error) {
+    console.warn('Failed to queue error for sync (this is okay in some environments):', error.message);
+  }
+}
+
+/**
+ * Write every queued error into ERRORS.txt, then clear the queue.
+ * Needs both AsyncStorage and Node's fs. On a phone this returns without doing anything.
+ * The queue is cleared only after the write succeeds, so a failed write is retried next time.
+ * @returns {Promise<void>}
+ */
+export async function syncErrorsToFile() {
+  const asyncStorage = getAsyncStorage();
+  const fileSystem = getFs();
+
+  if (!canReadQueue(asyncStorage) || !fileSystem || !ERROR_LOG_FILE) return;
+
+  try {
+    const queueJson = await asyncStorage.getItem(ERROR_QUEUE_KEY);
+    if (!queueJson) return;
+
+    const queuedErrors = JSON.parse(queueJson);
+    if (queuedErrors.length === 0) return;
+
+    let existingContent = '';
+    if (fileSystem.existsSync(ERROR_LOG_FILE)) {
+      existingContent = fileSystem.readFileSync(ERROR_LOG_FILE, 'utf8');
     }
 
-    fs.writeFileSync(ERROR_LOG_FILE, newContent, 'utf8');
-    
-    // Only clear the queue AFTER the write succeeds. If writeFileSync throws we jump to
-    // the catch with the queue intact, so the next run retries instead of losing the errors.
-    await AsyncStorage.removeItem(ERROR_QUEUE_KEY);
-    
+    if (existingContent.includes(EMPTY_LOG_MARKER)) {
+      existingContent = existingContent.split(EMPTY_LOG_MARKER)[0];
+    }
+
+    const previousCount = errorCountFromFile(existingContent);
+    const newContent = buildSyncedLogContent(existingContent, queuedErrors, previousCount);
+    fileSystem.writeFileSync(ERROR_LOG_FILE, newContent, 'utf8');
+
+    await asyncStorage.removeItem(ERROR_QUEUE_KEY);
+
     console.log(`✅ Synced ${queuedErrors.length} errors to ${ERROR_LOG_FILE}`);
   } catch (error) {
     console.error('Failed to sync errors to file:', error);
@@ -254,30 +269,16 @@ ${errorData.stack || "No stack trace"}
 }
 
 /**
- * Initialize automatic error syncing
- * Call this on app startup
+ * Drain once now (errors from the previous session, including a crash), then keep draining.
+ * The interval is never cleared. It is meant to live as long as the process does.
+ * @returns {Promise<void>}
  */
-// Startup hook: drain once immediately, then keep draining on a timer.
-// The immediate pass catches errors queued during the *previous* session (including ones
-// from a crash), which would otherwise sit unseen until the first interval fired.
 export async function initializeErrorSync() {
   await syncErrorsToFile();
-  
-  // The typeof guard covers exotic runtimes with no timers. Note the interval is never
-  // cleared — intentional, since this is meant to live as long as the process does.
+
   if (typeof setInterval !== 'undefined') {
     setInterval(async () => {
       await syncErrorsToFile();
-    // Manipulate here: shorter interval = fresher ERRORS.txt but more file writes
-    }, 5 * 60 * 1000); // 5 minutes
+    }, SYNC_INTERVAL_MS);
   }
 }
-
-
-
-
-
-
-
-
-

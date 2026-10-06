@@ -1,45 +1,64 @@
-/**
- * onboarding Sync
- *
- * Purpose: Data/service layer: onboarding Sync. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: queuePendingOnboardingSync, flushPendingOnboardingSync
- *
- * @file-header
- */
+// Holds onboarding answers on the phone when the finish call cannot reach the server, then retries later.
+// Flow: queue the payload under the uid → on next launch, POST the wizard queue, then the finish-setup cache.
+// Used by NewUserSetupScreen (queue) and LoginGate (flush). A missing uid on flush means "nothing to do".
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseCandidates } from './whereToConnect';
 
-const pendingKeyForUid = (uid) => `pending_onboarding_sync_${uid}`;
-const pendingCompleteKeyForUid = (uid) => `pending_onboarding_complete_${uid}`;
+// ===== NAMED CONSTANTS =====
 
-/**
- * Queue a pending onboarding completion payload to sync later.
- * Non-blocking; best-effort persistence.
- */
-export async function queuePendingOnboardingSync(uid, payload) {
-  if (!uid) return;
+// Manipulate here: these prefixes must match the keys finishSetup and the wizard write, or the retry never finds them.
+const PENDING_SYNC_KEY_PREFIX = 'pending_onboarding_sync_';
+const PENDING_COMPLETE_KEY_PREFIX = 'pending_onboarding_complete_';
+const ONBOARDING_COMPLETE_PATH = '/api/onboarding/complete';
+const MISSING_ID_TOKEN_MESSAGE = 'Missing ID token';
+
+// ===== HELPER FUNCTIONS =====
+
+function pendingSyncStorageKey(uid) {
+  return `${PENDING_SYNC_KEY_PREFIX}${uid}`;
+}
+
+function pendingCompleteStorageKey(uid) {
+  return `${PENDING_COMPLETE_KEY_PREFIX}${uid}`;
+}
+
+async function readStoredText(storageKey) {
   try {
-    const data = {
-      queuedAt: new Date().toISOString(),
-      payload,
-    };
-    await AsyncStorage.setItem(pendingKeyForUid(uid), JSON.stringify(data));
+    return await AsyncStorage.getItem(storageKey);
   } catch (_) {
-    // ignore
+    return null;
   }
 }
 
+async function removeStoredItem(storageKey) {
+  try {
+    await AsyncStorage.removeItem(storageKey);
+  } catch (_) {
+    // A failed delete leaves the item queued. The next flush will try again.
+  }
+}
+
+function parseStoredJson(rawText) {
+  try {
+    return { storedValue: JSON.parse(rawText), isCorrupt: false };
+  } catch (_) {
+    return { storedValue: null, isCorrupt: true };
+  }
+}
+
+// vocab: getIdToken(true) = force a fresh Firebase ID token. A cached one may already be expired
+// after the app sat in the background through onboarding.
+// Each base is a full attempt: reload, new token, POST. A non-OK response tries the next base.
 async function postWithAuth(firebaseUser, path, body) {
-  const bases = getApiBaseCandidates();
-  for (const baseUrl of bases) {
+  const apiBases = getApiBaseCandidates();
+  for (const apiBase of apiBases) {
     try {
       await firebaseUser.reload();
       const idToken = await firebaseUser.getIdToken(true);
-      if (!idToken) throw new Error('Missing ID token');
+      if (!idToken) throw new Error(MISSING_ID_TOKEN_MESSAGE);
 
-      const resp = await fetch(`${baseUrl}${path}`, {
+      const response = await fetch(`${apiBase}${path}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${idToken}`,
@@ -49,94 +68,102 @@ async function postWithAuth(firebaseUser, path, body) {
         body: JSON.stringify(body ?? {}),
       });
 
-      if (resp.ok) return true;
+      if (response.ok) return true;
     } catch (_) {
-      // try next base
+      // This base was unreachable. The loop tries the next candidate.
     }
   }
   return false;
 }
 
+// Wizard queue shape: { queuedAt, payload: { path, body } }.
+// Corrupt JSON is deleted so it cannot block every future launch. A valid row with no path is left alone.
+async function flushQueuedSyncPayload(firebaseUser, uid) {
+  const storageKey = pendingSyncStorageKey(uid);
+  const rawText = await readStoredText(storageKey);
+  if (!rawText) return true;
+
+  const { storedValue, isCorrupt } = parseStoredJson(rawText);
+  if (isCorrupt) {
+    await removeStoredItem(storageKey);
+    return true;
+  }
+
+  const payload = storedValue?.payload;
+  const path = payload?.path;
+  const body = payload?.body;
+  if (!path) return true;
+
+  const didPostSucceed = await postWithAuth(firebaseUser, path, body ?? {});
+  if (didPostSucceed) {
+    await removeStoredItem(storageKey);
+    return true;
+  }
+  return false;
+}
+
+// finishSetup writes a different key: { finalRole, onboardingData, displayName }.
+// Without finalRole or onboardingData there is nothing the complete endpoint can save.
+async function flushQueuedCompletePayload(firebaseUser, uid) {
+  const storageKey = pendingCompleteStorageKey(uid);
+  const rawText = await readStoredText(storageKey);
+  if (!rawText) return true;
+
+  const { storedValue, isCorrupt } = parseStoredJson(rawText);
+  if (isCorrupt) {
+    await removeStoredItem(storageKey);
+    return true;
+  }
+
+  const hasCompleteFields = Boolean(storedValue && (storedValue.finalRole || storedValue.onboardingData));
+  if (!hasCompleteFields) return true;
+
+  const didPostSucceed = await postWithAuth(firebaseUser, ONBOARDING_COMPLETE_PATH, {
+    finalRole: storedValue.finalRole,
+    onboardingData: storedValue.onboardingData,
+    displayName: storedValue.displayName,
+  });
+  if (didPostSucceed) {
+    await removeStoredItem(storageKey);
+    return true;
+  }
+  return false;
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * Attempt to flush pending onboarding completion to the server.
- * Handles both wizard queue (`pending_onboarding_sync_*`) and
- * finishSetup cache (`pending_onboarding_complete_*`).
- * Returns true if flushed (or nothing to do), false if still pending.
+ * Save onboarding answers locally so a later launch can upload them.
+ * Best-effort: a storage failure is ignored so signup itself still finishes.
+ * @param {string} uid
+ * @param {object} payload
+ * @returns {Promise<void>}
+ */
+export async function queuePendingOnboardingSync(uid, payload) {
+  if (!uid) return;
+  try {
+    const queuedRecord = {
+      queuedAt: new Date().toISOString(),
+      payload,
+    };
+    await AsyncStorage.setItem(pendingSyncStorageKey(uid), JSON.stringify(queuedRecord));
+  } catch (_) {
+    // ignore
+  }
+}
+
+/**
+ * Upload any onboarding that was saved locally and could not be sent.
+ * Returns true when both queues are done (or empty). Returns false if a POST still failed.
+ * @param {object} firebaseUser
+ * @returns {Promise<boolean>}
  */
 export async function flushPendingOnboardingSync(firebaseUser) {
   const uid = firebaseUser?.uid;
   if (!uid) return true;
 
-  let syncOk = true;
-  let completeOk = true;
-
-  let raw = null;
-  try {
-    raw = await AsyncStorage.getItem(pendingKeyForUid(uid));
-  } catch (_) {
-    raw = null;
-  }
-
-  if (raw) {
-    let queued = null;
-    try {
-      queued = JSON.parse(raw);
-    } catch (_) {
-      try {
-        await AsyncStorage.removeItem(pendingKeyForUid(uid));
-      } catch (_) {}
-      queued = null;
-    }
-
-    const payload = queued?.payload;
-    const path = payload?.path;
-    const body = payload?.body;
-    if (path) {
-      const ok = await postWithAuth(firebaseUser, path, body ?? {});
-      if (ok) {
-        try {
-          await AsyncStorage.removeItem(pendingKeyForUid(uid));
-        } catch (_) {}
-      } else {
-        syncOk = false;
-      }
-    }
-  }
-
-  let completeRaw = null;
-  try {
-    completeRaw = await AsyncStorage.getItem(pendingCompleteKeyForUid(uid));
-  } catch (_) {
-    completeRaw = null;
-  }
-
-  if (completeRaw) {
-    let completePayload = null;
-    try {
-      completePayload = JSON.parse(completeRaw);
-    } catch (_) {
-      try {
-        await AsyncStorage.removeItem(pendingCompleteKeyForUid(uid));
-      } catch (_) {}
-      completePayload = null;
-    }
-
-    if (completePayload && (completePayload.finalRole || completePayload.onboardingData)) {
-      const ok = await postWithAuth(firebaseUser, '/api/onboarding/complete', {
-        finalRole: completePayload.finalRole,
-        onboardingData: completePayload.onboardingData,
-        displayName: completePayload.displayName,
-      });
-      if (ok) {
-        try {
-          await AsyncStorage.removeItem(pendingCompleteKeyForUid(uid));
-        } catch (_) {}
-      } else {
-        completeOk = false;
-      }
-    }
-  }
-
-  return syncOk && completeOk;
+  // Both queues run even when the first POST fails. One success should not hide the other pending row.
+  const isSyncFlushed = await flushQueuedSyncPayload(firebaseUser, uid);
+  const isCompleteFlushed = await flushQueuedCompletePayload(firebaseUser, uid);
+  return isSyncFlushed && isCompleteFlushed;
 }
-

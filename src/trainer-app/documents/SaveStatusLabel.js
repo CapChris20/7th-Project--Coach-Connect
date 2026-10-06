@@ -1,47 +1,69 @@
-// Small "save state" badge (dot + label) shown in the document editor header.
-// Flow: parent passes a status string → we look up its label/color → render dot + text.
-// Used by the document and spreadsheet editor headers so save state is always visible.
+// Small save-state badge (dot + label) in the document editor header.
+// Flow: parent passes a status string → look up its label and dot → render the pill.
+// Used by the document and spreadsheet editor headers so save state stays visible.
+
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { EditorGradientDot } from './editorAccent';
 
-export default function SaveStatusLabel({ status, theme }) {
-  // Status → appearance lookup table. A plain object beats a switch here because it doubles as
-  // the list of every state the editor can be in, all readable at a glance.
-  // `gradient: true` means "draw the animated gradient dot instead of a flat colored one" —
-  // that's why those rows have color: null.
-  // Manipulate here: the `label` strings are the exact user-facing copy, and `color` pulls from
-  // the theme so light/dark stay consistent. Add a row to support a new save state.
-  const map = {
-    idle: { label: 'Draft', color: theme.textMuted, gradient: false },
-    saved: { label: 'All changes saved', color: theme.success, gradient: false },
-    saving: { label: 'Saving…', color: theme.warning, gradient: false },
-    unsaved: { label: 'Edited', color: null, gradient: true },
-    // Manipulate here: amber is hardcoded because "offline" is a warning that shouldn't shift
-    // with theme tweaks — the user needs to notice it in both light and dark.
-    offline: { label: 'Saved locally', color: '#f59e0b', gradient: false },
+// ===== NAMED CONSTANTS =====
+
+const SAVE_STATUS_IDLE = 'idle';
+const SAVE_STATUS_SAVED = 'saved';
+const SAVE_STATUS_SAVING = 'saving';
+const SAVE_STATUS_UNSAVED = 'unsaved';
+const SAVE_STATUS_OFFLINE = 'offline';
+// Amber stays fixed so "offline" reads as a warning in both light and dark themes.
+const OFFLINE_DOT_COLOR = '#f59e0b';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Status to label, dot color, and whether the dot is the animated gradient.
+ * Unknown statuses use Draft so a typo still renders a pill instead of crashing.
+ * Theme colors are read here because idle, saved, and saving follow light and dark.
+ * @param {string} status
+ * @param {object} theme
+ * @returns {{ label: string, color: string|null, shouldUseGradientDot: boolean }}
+ */
+function appearanceForSaveStatus(status, theme) {
+  const appearanceByStatus = {
+    [SAVE_STATUS_IDLE]: { label: 'Draft', color: theme.textMuted, shouldUseGradientDot: false },
+    [SAVE_STATUS_SAVED]: { label: 'All changes saved', color: theme.success, shouldUseGradientDot: false },
+    [SAVE_STATUS_SAVING]: { label: 'Saving…', color: theme.warning, shouldUseGradientDot: false },
+    [SAVE_STATUS_UNSAVED]: { label: 'Edited', color: null, shouldUseGradientDot: true },
+    [SAVE_STATUS_OFFLINE]: { label: 'Saved locally', color: OFFLINE_DOT_COLOR, shouldUseGradientDot: false },
   };
-  // Unknown/undefined status falls back to `idle` so a typo or a not-yet-set state renders
-  // "Draft" instead of crashing on a destructure of undefined.
-  const { label, color, gradient } = map[status] || map.idle;
+  return appearanceByStatus[status] || appearanceByStatus[SAVE_STATUS_IDLE];
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Dot-and-label pill for the editor's current save state.
+ * @param {object} props
+ * @param {string} props.status One of idle, saved, saving, unsaved, offline.
+ * @param {object} props.theme Theme colors for the quiet states.
+ * @returns {JSX.Element}
+ */
+export default function SaveStatusLabel({ status, theme }) {
+  const { label, color, shouldUseGradientDot } = appearanceForSaveStatus(status, theme);
   return (
     <View style={styles.pill}>
-      {/* Unsaved edits get the eye-catching gradient dot; every other state is a flat dot.
-          The color is applied inline (not in the stylesheet) because it's data-driven. */}
-      {gradient ? (
+      {/* Unsaved edits use the gradient dot. Every other state is a flat dot in the status color. */}
+      {shouldUseGradientDot ? (
         <EditorGradientDot size={6} />
       ) : (
         <View style={[styles.dot, { backgroundColor: color }]} />
       )}
-      {/* Label text is always muted — the DOT carries the urgency, so the text stays quiet. */}
+      {/* The dot carries the urgency. The words stay muted so the header does not shout. */}
       <Text style={[styles.text, { color: theme.textMuted }]}>{label}</Text>
     </View>
   );
 }
 
-// Manipulate here: `gap` is the dot-to-text spacing, `height: 28` keeps the pill aligned with
-// the other header controls, and `letterSpacing` on the text is what gives it the small-caps
-// label feel. Changing `dot` width/height requires changing borderRadius to half to stay round.
+// Manipulate here: gap is the dot-to-text space. height: 28 lines the pill up with the other header controls.
+// The dot stays round only if borderRadius is half of width and height.
 const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, height: 28 },
   dot: { width: 6, height: 6, borderRadius: 3 },

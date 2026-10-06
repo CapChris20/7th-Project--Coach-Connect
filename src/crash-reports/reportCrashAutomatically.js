@@ -1,38 +1,54 @@
-// One-liner error reporter called from catch blocks all over the app.
-// Flow: anything thrown → normalize to a real Error → console.log for local dev → forward to monitoring (Sentry).
-// Two shapes on purpose: a sync one for fire-and-forget, and an async wrapper so `await reportCrashAutomatically(...)` reads naturally.
+// Sends a thrown value to the console and to monitoring, without ever throwing itself.
+// Flow: turn the value into an Error → log it → capture it. The async function is the same work, so callers can await it.
+// Used by: catch blocks across the app.
 
 import { captureException } from '../for-both/online-connection/checkConnectionHealth';
 
-// `context` is a short free-text tag (e.g. 'saveLoggedFood') so you can tell
-// where a crash came from in the monitoring dashboard.
+// ===== NAMED CONSTANTS =====
+
+const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
+const UNKNOWN_CONTEXT = 'unknown';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Callers throw strings, Firebase objects, and real Errors. This picks a message.
+ * @param {unknown} error
+ * @returns {string}
+ */
+function messageFromThrownValue(error) {
+  if (error && error.message) return error.message;
+  if (error && error.toString) return error.toString();
+  return UNKNOWN_ERROR_MESSAGE;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * The logger must not throw. A throw here would hide the original bug.
+ * @param {unknown} error
+ * @param {string} [context]
+ * @returns {void}
+ */
 export function reportCrashAutomaticallySync(error, context) {
-  // The whole body is wrapped in try/catch because the *logger itself* must never
-  // throw — if it did, it would replace the real bug with a confusing second one.
   try {
-    // Callers throw all sorts of things (Errors, strings, Firebase objects, undefined),
-    // so dig out the best available message before giving up on 'Unknown error'.
-    // vocab/symbol: || = use the next option whenever the previous one is empty/falsy
-    const message =
-      (error && (error.message || (error.toString && error.toString()))) || 'Unknown error';
-    // Local visibility while developing. Manipulate here: change the 🧾 prefix to grep logs differently
+    const message = messageFromThrownValue(error);
+    const contextLabel = context || UNKNOWN_CONTEXT;
     // eslint-disable-next-line no-console
-    console.log(`🧾 reportCrashAutomaticallySync [${context || 'unknown'}]:`, message);
-    // Monitoring needs a real Error to capture a usable stack trace, so wrap plain values.
-    // vocab: instanceof Error = "is this already a real Error object?"
-    const errObj = error instanceof Error ? error : new Error(message);
-    captureException(errObj, { context: context || 'unknown' });
+    console.log(`🧾 reportCrashAutomaticallySync [${contextLabel}]:`, message);
+    const errorObject = error instanceof Error ? error : new Error(message);
+    captureException(errorObject, { context: contextLabel });
   } catch (_) {
-    // Swallow on purpose — see the note above about the logger never throwing.
+    // Swallow on purpose. See the note above.
   }
 }
 
-// Async-shaped alias. Does the same work synchronously; the Promise just lets call
-// sites `await` it without special-casing, which keeps error paths uniform.
+/**
+ * Same work as the sync reporter. The Promise lets a catch block await it.
+ * @param {unknown} error
+ * @param {string} [context]
+ * @returns {Promise<void>}
+ */
 export async function reportCrashAutomatically(error, context) {
   reportCrashAutomaticallySync(error, context);
 }
-
-
-
-

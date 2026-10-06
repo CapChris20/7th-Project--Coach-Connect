@@ -1,72 +1,118 @@
-/**
- * Trainer payment history from Firestore `payments` collection.
- */
+// The trainer's recent card charges, newest first.
+// Flow: read the payments collection for this trainer → turn each document into a row → keep the newest 20.
+// Used by: the trainer payout history list.
+
 import { useEffect, useState } from 'react';
 import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
+const PAYMENTS_COLLECTION = 'payments';
+const TRAINER_ID_FIELD = 'trainer_id';
+const HISTORY_QUERY_LIMIT = 30;
+const HISTORY_ROW_LIMIT = 20;
+const MISSING_DATE_LABEL = '—';
+const COMPLETED_LABEL = 'Completed';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function formatHistoryDate(value) {
-  if (!value) return '—';
+  if (!value) return MISSING_DATE_LABEL;
+  // vocab: Firestore timestamps expose toDate(); a plain string or number does not.
   const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return MISSING_DATE_LABEL;
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function statusLabel(raw) {
-  const s = String(raw || '').toLowerCase();
-  if (s === 'succeeded' || s === 'completed') return 'Completed';
-  if (s === 'pending') return 'Pending';
-  if (s === 'failed') return 'Failed';
-  if (s === 'refunded') return 'Refunded';
-  return raw ? String(raw) : 'Completed';
+/**
+ * @param {unknown} rawStatus
+ * @returns {string}
+ */
+function statusLabel(rawStatus) {
+  const statusText = String(rawStatus || '').toLowerCase();
+  if (statusText === 'succeeded' || statusText === 'completed') return COMPLETED_LABEL;
+  if (statusText === 'pending') return 'Pending';
+  if (statusText === 'failed') return 'Failed';
+  if (statusText === 'refunded') return 'Refunded';
+  return rawStatus ? String(rawStatus) : COMPLETED_LABEL;
 }
 
+/**
+ * @param {unknown} createdAt
+ * @returns {number}
+ */
+function createdAtMillis(createdAt) {
+  if (typeof createdAt?.toDate === 'function') return createdAt.toDate().getTime();
+  return Date.parse(createdAt) || 0;
+}
+
+/**
+ * @param {import('firebase/firestore').QueryDocumentSnapshot} paymentDoc
+ * @returns {object}
+ */
+function paymentDocToRow(paymentDoc) {
+  const paymentData = paymentDoc.data() || {};
+  return {
+    id: paymentDoc.id,
+    date: formatHistoryDate(paymentData.created_at),
+    createdAtMs: createdAtMillis(paymentData.created_at),
+    amount: Number(paymentData.amount) || 0,
+    net: Number(paymentData.trainer_payout) || 0,
+    fee: Number(paymentData.commission) || 0,
+    status: statusLabel(paymentData.status),
+    clientId: paymentData.client_id || null,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Hooks stay in this order: rows, loading, then the effect that loads them.
+ * @param {string} trainerId
+ * @returns {{ rows: object[], loading: boolean }}
+ */
 export function trainerPaymentHistory(trainerId) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
     if (!trainerId || !db) {
       setRows([]);
       setLoading(false);
       return undefined;
     }
 
-    (async () => {
+    const loadPaymentRows = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, 'payments'), where('trainer_id', '==', trainerId), limit(30));
-        const snap = await getDocs(q);
-        if (cancelled) return;
-        const mapped = snap.docs.map((docSnap) => {
-          const data = docSnap.data() || {};
-          return {
-            id: docSnap.id,
-            date: formatHistoryDate(data.created_at),
-            createdAtMs:
-              typeof data.created_at?.toDate === 'function'
-                ? data.created_at.toDate().getTime()
-                : Date.parse(data.created_at) || 0,
-            amount: Number(data.amount) || 0,
-            net: Number(data.trainer_payout) || 0,
-            fee: Number(data.commission) || 0,
-            status: statusLabel(data.status),
-            clientId: data.client_id || null,
-          };
-        });
-        mapped.sort((a, b) => b.createdAtMs - a.createdAtMs);
-        setRows(mapped.slice(0, 20));
-      } catch (e) {
-        console.warn('Trainer payment history load failed:', e?.message || e);
-        if (!cancelled) setRows([]);
+        const paymentQuery = query(
+          collection(db, PAYMENTS_COLLECTION),
+          where(TRAINER_ID_FIELD, '==', trainerId),
+          limit(HISTORY_QUERY_LIMIT),
+        );
+        const paymentSnapshot = await getDocs(paymentQuery);
+        if (isCancelled) return;
+        const paymentRows = paymentSnapshot.docs.map(paymentDocToRow);
+        paymentRows.sort((leftRow, rightRow) => rightRow.createdAtMs - leftRow.createdAtMs);
+        setRows(paymentRows.slice(0, HISTORY_ROW_LIMIT));
+      } catch (loadError) {
+        console.warn('Trainer payment history load failed:', loadError?.message || loadError);
+        if (!isCancelled) setRows([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!isCancelled) setLoading(false);
       }
-    })();
+    };
+
+    loadPaymentRows();
 
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
   }, [trainerId]);
 

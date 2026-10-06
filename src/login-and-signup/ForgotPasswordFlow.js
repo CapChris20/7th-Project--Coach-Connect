@@ -1,13 +1,7 @@
-/**
- * Forgot Password
- *
- * Purpose: UI screen or component: Forgot Password. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/screens
- * Key exports: ResetPasswordScreen
- *
- * @file-header
- */
+// Reset-password screen. The user types an email and Firebase sends the reset link.
+// Flow: check the email → sendPasswordResetEmail → show inbox copy, or the Firebase error.
+// Used from the sign-in screen. The screen export name is ResetPasswordScreen.
+
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -28,23 +22,49 @@ import { auth } from '../app-start/cloudConnection';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// ===== NAMED CONSTANTS =====
+
 const ACCENT = ['#FF6B9D', '#C084FC'];
 const CTA_RING = ['#C1265A', '#D84315'];
+const AUTH_ERROR_INVALID_EMAIL = 'auth/invalid-email';
+const AUTH_ERROR_MISSING_EMAIL = 'auth/missing-email';
 
+// ===== HELPER FUNCTIONS =====
+
+function validateResetEmail(email, emailRegex) {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) return { errorMessage: 'Email is required' };
+  if (!emailRegex.test(trimmedEmail)) return { errorMessage: 'Please enter a valid email address' };
+  if (!auth) return { errorMessage: 'Auth is not ready. Please try again in a moment.' };
+  return { trimmedEmail };
+}
+
+function messageForPasswordResetError(error) {
+  const code = error?.code || '';
+  if (code === AUTH_ERROR_INVALID_EMAIL) return 'Invalid email address';
+  if (code === AUTH_ERROR_MISSING_EMAIL) return 'Email is required';
+  return error?.message || 'Failed to send reset email';
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Email form that asks Firebase to send a password reset link.
+ * @param {{ navigation?: { goBack?: Function, navigate?: Function } }} props
+ */
 export default function ResetPasswordScreen({ navigation }) {
   const { isDark, spacing } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
   const onBack = navigation?.goBack ?? navigation?.navigate;
-
   const emailRegex = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/, []);
 
-  const bg = isDark ? '#0A0A0F' : '#F5F5F7';
+  const backgroundColor = isDark ? '#0A0A0F' : '#F5F5F7';
   const textMain = isDark ? '#FFFFFF' : '#0A0A0F';
   const textSub = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.58)';
   const glassInner = isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)';
@@ -52,39 +72,29 @@ export default function ResetPasswordScreen({ navigation }) {
   const labelColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.72)';
 
   const handleReset = async () => {
-    setError('');
+    setErrorMessage('');
     setSuccessMessage('');
 
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setError('Email is required');
-      return;
-    }
-    if (!emailRegex.test(trimmed)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-    if (!auth) {
-      setError('Auth is not ready. Please try again in a moment.');
+    const validation = validateResetEmail(email, emailRegex);
+    if (validation.errorMessage) {
+      setErrorMessage(validation.errorMessage);
       return;
     }
 
     try {
-      setSubmitting(true);
-      await sendPasswordResetEmail(auth, trimmed);
+      setIsSubmitting(true);
+      // vocab: sendPasswordResetEmail = Firebase Auth emails a link. It does not change the password here.
+      await sendPasswordResetEmail(auth, validation.trimmedEmail);
       setSuccessMessage('Check your inbox for a reset link.');
-    } catch (e) {
-      const code = e?.code || '';
-      if (code === 'auth/invalid-email') setError('Invalid email address');
-      else if (code === 'auth/missing-email') setError('Email is required');
-      else setError(e?.message || 'Failed to send reset email');
+    } catch (error) {
+      setErrorMessage(messageForPasswordResetError(error));
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <View style={[styles.root, { backgroundColor: bg }]}>
+    <View style={[styles.root, { backgroundColor }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
@@ -140,7 +150,7 @@ export default function ResetPasswordScreen({ navigation }) {
             style={[
               styles.inputShell,
               {
-                borderColor: error ? '#F87171' : inputBorder,
+                borderColor: errorMessage ? '#F87171' : inputBorder,
                 backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)',
               },
             ]}
@@ -150,36 +160,36 @@ export default function ResetPasswordScreen({ navigation }) {
               placeholder="you@example.com"
               placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.38)'}
               value={email}
-              onChangeText={(t) => {
-                setEmail(t);
-                if (error) setError('');
+              onChangeText={(nextEmail) => {
+                setEmail(nextEmail);
+                if (errorMessage) setErrorMessage('');
               }}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
-              editable={!submitting}
+              editable={!isSubmitting}
             />
           </View>
 
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
           {!!successMessage && <Text style={styles.successText}>{successMessage}</Text>}
 
           <LinearGradient
             colors={CTA_RING}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[styles.ctaRing, { opacity: submitting ? 0.75 : 1 }]}
+            style={[styles.ctaRing, { opacity: isSubmitting ? 0.75 : 1 }]}
           >
             <TouchableOpacity
               activeOpacity={0.88}
               onPress={handleReset}
-              disabled={submitting}
+              disabled={isSubmitting}
               style={[
                 styles.ctaInner,
                 { backgroundColor: isDark ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.98)' },
               ]}
             >
-              {submitting ? (
+              {isSubmitting ? (
                 <ActivityIndicator color={isDark ? '#FFFFFF' : '#0A0A0F'} />
               ) : (
                 <Text style={[styles.ctaText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>Send reset link</Text>

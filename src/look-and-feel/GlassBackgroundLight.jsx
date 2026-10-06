@@ -1,47 +1,103 @@
-/**
- * Liquid Background Light
- *
- * Purpose: Liquid Background Light — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: GlassBackgroundLight
- *
- * @file-header
- */
+// Light paper background with three soft corner washes behind frosted glass.
+// Flow: paint the paper color → stack the cyan, violet, and pink blurs → render children on top.
+// Used by light-mode screens that sit glass cards on a pastel mesh.
+
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: this hex is both the SVG base and the View behind it, so a gap never flashes another color.
+const PAPER_COLOR = '#F6F7FB';
+
+// Each blur is one radial gradient pinned to a corner. Opacities stay strings so the SVG props match the design.
+// Manipulate here: raise the first stop's opacity for a stronger corner, or shrink radius to pull the wash inward.
+const LIGHT_CORNER_BLURS = [
+  {
+    gradientId: 'cyan',
+    centerX: '0%',
+    centerY: '0%',
+    radius: '70%',
+    color: '#4DD2FF',
+    stops: [
+      { offset: '0%', opacity: '0.28' },
+      { offset: '60%', opacity: '0.10' },
+      { offset: '100%', opacity: '0' },
+    ],
+  },
+  {
+    gradientId: 'violet',
+    centerX: '100%',
+    centerY: '0%',
+    radius: '75%',
+    color: '#A78BFA',
+    stops: [
+      { offset: '0%', opacity: '0.26' },
+      { offset: '62%', opacity: '0.10' },
+      { offset: '100%', opacity: '0' },
+    ],
+  },
+  {
+    gradientId: 'pink',
+    centerX: '100%',
+    centerY: '100%',
+    radius: '80%',
+    color: '#FF5BD6',
+    stops: [
+      { offset: '0%', opacity: '0.18' },
+      { offset: '62%', opacity: '0.08' },
+      { offset: '100%', opacity: '0' },
+    ],
+  },
+];
+
+// ===== HELPER FUNCTIONS =====
+
+// vocab: RadialGradient = a circular fade. cx/cy pin the hot center; r is how far the color reaches.
+function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
+  return (
+    <RadialGradient id={gradientId} cx={centerX} cy={centerY} r={radius}>
+      {stops.map((stop) => (
+        <Stop
+          key={`${gradientId}-${stop.offset}`}
+          offset={stop.offset}
+          stopColor={color}
+          stopOpacity={stop.opacity}
+        />
+      ))}
+    </RadialGradient>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * Light-mode mesh background: soft paper base with subtle pastel corner blurs.
- * Designed to sit behind frosted-glass materials.
+ * Full-screen light mesh. Children sit above the SVG so glass cards stay tappable.
+ * @param {{ children?: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement}
  */
 export default function GlassBackgroundLight({ children }) {
   return (
     <View style={styles.root}>
       <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
         <Defs>
-          <RadialGradient id="cyan" cx="0%" cy="0%" r="70%">
-            <Stop offset="0%" stopColor="#4DD2FF" stopOpacity="0.28" />
-            <Stop offset="60%" stopColor="#4DD2FF" stopOpacity="0.10" />
-            <Stop offset="100%" stopColor="#4DD2FF" stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="violet" cx="100%" cy="0%" r="75%">
-            <Stop offset="0%" stopColor="#A78BFA" stopOpacity="0.26" />
-            <Stop offset="62%" stopColor="#A78BFA" stopOpacity="0.10" />
-            <Stop offset="100%" stopColor="#A78BFA" stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="pink" cx="100%" cy="100%" r="80%">
-            <Stop offset="0%" stopColor="#FF5BD6" stopOpacity="0.18" />
-            <Stop offset="62%" stopColor="#FF5BD6" stopOpacity="0.08" />
-            <Stop offset="100%" stopColor="#FF5BD6" stopOpacity="0" />
-          </RadialGradient>
+          {LIGHT_CORNER_BLURS.map((blur) => (
+            <CornerBlur key={blur.gradientId} {...blur} />
+          ))}
         </Defs>
 
-        <Rect x="0" y="0" width="100%" height="100%" fill="#F6F7FB" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#cyan)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#violet)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#pink)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill={PAPER_COLOR} />
+        {LIGHT_CORNER_BLURS.map((blur) => (
+          <Rect
+            key={blur.gradientId}
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            fill={`url(#${blur.gradientId})`}
+          />
+        ))}
       </Svg>
 
       {children}
@@ -52,12 +108,6 @@ export default function GlassBackgroundLight({ children }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F6F7FB',
+    backgroundColor: PAPER_COLOR,
   },
 });
-
-
-
-
-
-

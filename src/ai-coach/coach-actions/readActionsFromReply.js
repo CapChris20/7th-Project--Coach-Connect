@@ -1,17 +1,12 @@
-/**
- * parse Coach Tool Calls
- *
- * Purpose: parse Coach Tool Calls — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: readActionsFromReply, stripCoachToolJsonFromReply, COACH_TOOL_NAMES
- *
- * @file-header
- */
-/**
- * Parse AI Coach tool JSON from model replies (shared by server + Expo client).
- */
+// Pulls coach tool JSON out of a model reply, then strips that JSON so the chat shows prose.
+// Flow: collect every JSON-looking chunk → keep real tool calls → drop duplicates →
+//       a second pass cuts the same JSON (and citation brackets) off the visible reply.
+// Used by the coach conversation, the reply bubbles, and the server request handler.
+// CommonJS on purpose: the Expo app and the Node server both require() this file.
 
+// ===== NAMED CONSTANTS =====
+
+// Tool names the model is allowed to emit. The letters are the contract with the server.
 const COACH_TOOL_NAMES = [
   'adjustMacroTargets',
   'logNutrition',
@@ -31,190 +26,281 @@ const COACH_TOOL_NAMES = [
 ];
 
 const COACH_TOOL_NAME_SET = new Set(COACH_TOOL_NAMES);
+
+// Same name list, as a "toolName": { ... } detector. Kept next to the list so they cannot drift.
 const COACH_TOOL_KEY_RE = new RegExp(
   `"(${COACH_TOOL_NAMES.join('|')})"\\s*:\\s*\\{`,
 );
 
-function safeJsonParse(s) {
+// Manipulate here: how many trailing `{...}` blobs we peel off one reply.
+// A model sometimes stacks a tool object, then another, at the end of the paragraph.
+const MAX_TRAILING_JSON_STRIPS = 8;
+
+// These three do not use the /g flag, so sharing one RegExp across calls is safe.
+// The /g patterns are created inside the helpers. A shared /g RegExp remembers
+// lastIndex and would skip matches on the next reply.
+const TOOL_TAIL_PATTERN = /\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*\}\s*$/;
+const FLAT_TOOL_TAIL_PATTERN = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*\}\s*$/;
+const TOOL_NAME_TAIL_PATTERN = /\{\s*"toolName"\s*:\s*"[^"]+"[\s\S]*\}\s*$/;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * JSON.parse that returns null instead of throwing.
+ * Model replies are often almost-JSON. A throw here would kill the chat bubble.
+ * @param {string} jsonText
+ * @returns {object|null}
+ */
+function safeJsonParse(jsonText) {
   try {
-    return JSON.parse(s);
-  } catch (_) {
+    return JSON.parse(jsonText);
+  } catch (parseError) {
     return null;
   }
 }
 
-function normalizeCall(c) {
-  if (!c || typeof c !== 'object') return null;
+/**
+ * One call, whatever key the model used for the name and the params.
+ * @param {object} rawCall
+ * @returns {{name: string, params: object, reasoning: string}|null}
+ */
+function normalizeCall(rawCall) {
+  if (!rawCall || typeof rawCall !== 'object') return null;
   const nameRaw =
-    typeof c.name === 'string'
-      ? c.name
-      : typeof c.tool === 'string'
-        ? c.tool
-        : typeof c.toolName === 'string'
-          ? c.toolName
+    typeof rawCall.name === 'string'
+      ? rawCall.name
+      : typeof rawCall.tool === 'string'
+        ? rawCall.tool
+        : typeof rawCall.toolName === 'string'
+          ? rawCall.toolName
           : null;
   const name = nameRaw ? nameRaw.trim() : null;
   if (!name) return null;
   const params =
-    c.params && typeof c.params === 'object' && !Array.isArray(c.params)
-      ? c.params
-      : c.parameters && typeof c.parameters === 'object' && !Array.isArray(c.parameters)
-        ? c.parameters
+    rawCall.params && typeof rawCall.params === 'object' && !Array.isArray(rawCall.params)
+      ? rawCall.params
+      : rawCall.parameters && typeof rawCall.parameters === 'object' && !Array.isArray(rawCall.parameters)
+        ? rawCall.parameters
         : {};
   return {
     name,
     params,
-    reasoning: typeof c.reasoning === 'string' ? c.reasoning : '',
+    reasoning: typeof rawCall.reasoning === 'string' ? rawCall.reasoning : '',
   };
 }
 
+/**
+ * `{ "logSleep": { hours: 8 } }` — the key itself is the tool name.
+ * @param {string} name
+ * @param {object} params
+ * @returns {object|null}
+ */
 function callFromNamedKey(name, params) {
   if (!COACH_TOOL_NAME_SET.has(name)) return null;
   if (!params || typeof params !== 'object' || Array.isArray(params)) return null;
   return normalizeCall({ name, params });
 }
 
-function collectFromObject(obj) {
-  if (!obj || typeof obj !== 'object') return [];
-  if (Array.isArray(obj.toolCalls)) {
-    return obj.toolCalls.map(normalizeCall).filter(Boolean);
+/**
+ * Accept every shape the model has actually produced.
+ * Order matters: a wrapper key wins over a single named key.
+ * @param {object} parsedObject
+ * @returns {object[]}
+ */
+function collectFromObject(parsedObject) {
+  if (!parsedObject || typeof parsedObject !== 'object') return [];
+  if (Array.isArray(parsedObject.toolCalls)) {
+    return parsedObject.toolCalls.map(normalizeCall).filter(Boolean);
   }
-  if (obj.toolCall) {
-    const one = normalizeCall(obj.toolCall);
-    return one ? [one] : [];
+  if (parsedObject.toolCall) {
+    const oneCall = normalizeCall(parsedObject.toolCall);
+    return oneCall ? [oneCall] : [];
   }
-  // Top-level { "toolName": "rateEnergy", "parameters": { ... } }
-  if (typeof obj.toolName === 'string') {
-    const one = normalizeCall(obj);
-    return one ? [one] : [];
+  // { "toolName": "rateEnergy", "parameters": { ... } }
+  if (typeof parsedObject.toolName === 'string') {
+    const oneCall = normalizeCall(parsedObject);
+    return oneCall ? [oneCall] : [];
   }
-  // Top-level { "tool": "updateWorkout", "params": { ... } }
-  if (typeof obj.tool === 'string') {
-    const one = normalizeCall(obj);
-    return one ? [one] : [];
+  // { "tool": "updateWorkout", "params": { ... } }
+  if (typeof parsedObject.tool === 'string') {
+    const oneCall = normalizeCall(parsedObject);
+    return oneCall ? [oneCall] : [];
   }
-  // Top-level { "updateWorkout": { planId, date, ... } }
-  const keys = Object.keys(obj);
+  // { "updateWorkout": { planId, date, ... } }
+  const keys = Object.keys(parsedObject);
   if (keys.length === 1) {
-    const one = callFromNamedKey(keys[0], obj[keys[0]]);
-    if (one) return [one];
+    const oneCall = callFromNamedKey(keys[0], parsedObject[keys[0]]);
+    if (oneCall) return [oneCall];
   }
   return [];
 }
 
+/**
+ * @param {string[]} candidates
+ * @param {string} candidateText
+ */
+function rememberCandidate(candidates, candidateText) {
+  const trimmed = String(candidateText || '').trim();
+  if (trimmed && !candidates.includes(trimmed)) candidates.push(trimmed);
+}
+
+/**
+ * Every substring that might be tool JSON: the whole reply, fenced blocks, and tails.
+ * We over-collect on purpose. safeJsonParse throws away the ones that are not JSON.
+ * @param {string} text
+ * @returns {string[]}
+ */
 function candidateJsonStrings(text) {
-  const raw = String(text || '');
-  const unfenced = raw.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1');
-  const out = [];
-  const push = (s) => {
-    const t = String(s || '').trim();
-    if (t && !out.includes(t)) out.push(t);
-  };
+  const replyText = String(text || '');
+  // vocab: ```json fences = the model wraps JSON in a markdown code block
+  const unfenced = replyText.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1');
+  const candidates = [];
 
-  push(unfenced.trim());
+  rememberCandidate(candidates, unfenced.trim());
 
-  const reObj = /\{[\s\S]*?"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*?\}/g;
-  let m;
-  while ((m = reObj.exec(unfenced)) !== null) {
-    push(m[0]);
+  // Fresh /g regex each call so lastIndex starts at 0.
+  const wrapperPattern = /\{[\s\S]*?"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*?\}/g;
+  let wrapperMatch;
+  while ((wrapperMatch = wrapperPattern.exec(unfenced)) !== null) {
+    rememberCandidate(candidates, wrapperMatch[0]);
   }
 
-  const reFlatTool = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*?\}/g;
-  while ((m = reFlatTool.exec(unfenced)) !== null) {
-    push(m[0]);
+  const flatPattern = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*?\}/g;
+  let flatMatch;
+  while ((flatMatch = flatPattern.exec(unfenced)) !== null) {
+    rememberCandidate(candidates, flatMatch[0]);
   }
 
-  const reNamedTool = new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"\\s*:\\s*\\{[\\s\\S]*?\\}\\s*\\}`, 'g');
-  while ((m = reNamedTool.exec(unfenced)) !== null) {
-    push(m[0]);
+  const namedToolPattern = new RegExp(
+    `\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"\\s*:\\s*\\{[\\s\\S]*?\\}\\s*\\}`,
+    'g',
+  );
+  let namedMatch;
+  while ((namedMatch = namedToolPattern.exec(unfenced)) !== null) {
+    rememberCandidate(candidates, namedMatch[0]);
   }
 
-  const tail = unfenced.match(/\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*\}\s*$/);
-  if (tail) push(tail[0]);
+  const tailMatch = unfenced.match(TOOL_TAIL_PATTERN);
+  if (tailMatch) rememberCandidate(candidates, tailMatch[0]);
 
-  const namedTail = unfenced.match(new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"[\\s\\S]*\\}\\s*$`));
-  if (namedTail) push(namedTail[0]);
+  const namedTailPattern = new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"[\\s\\S]*\\}\\s*$`);
+  const namedTailMatch = unfenced.match(namedTailPattern);
+  if (namedTailMatch) rememberCandidate(candidates, namedTailMatch[0]);
 
-  return out;
+  return candidates;
 }
 
+/**
+ * Peel `{...tool...}` off the end, up to MAX_TRAILING_JSON_STRIPS times.
+ * Stops at the first tail that is not a tool object, so a normal sentence with a brace survives.
+ * @param {string} text
+ * @returns {string}
+ */
 function stripTrailingToolJson(text) {
-  let out = String(text || '');
-  for (let i = 0; i < 8; i += 1) {
-    const idx = out.lastIndexOf('{');
-    if (idx === -1) break;
-    const tail = out.slice(idx).trim();
-    const obj = safeJsonParse(tail);
-    if (!obj || !collectFromObject(obj).length) break;
-    out = out.slice(0, idx).trimEnd();
+  let visibleText = String(text || '');
+  for (let stripCount = 0; stripCount < MAX_TRAILING_JSON_STRIPS; stripCount += 1) {
+    const braceIndex = visibleText.lastIndexOf('{');
+    if (braceIndex === -1) break;
+    const tailText = visibleText.slice(braceIndex).trim();
+    const parsedTail = safeJsonParse(tailText);
+    if (!parsedTail || !collectFromObject(parsedTail).length) break;
+    visibleText = visibleText.slice(0, braceIndex).trimEnd();
   }
-  return out;
+  return visibleText;
 }
 
-/** @returns {Array<{name:string,params:object,reasoning:string}>} */
-function readActionsFromReply(aiResponse) {
-  const raw = String(aiResponse || '');
-  if (!raw.trim()) return [];
-
-  const seen = new Set();
-  const calls = [];
-
-  for (const chunk of candidateJsonStrings(raw)) {
-    const obj = safeJsonParse(chunk);
-    if (!obj) continue;
-    for (const c of collectFromObject(obj)) {
-      const key = `${c.name}:${JSON.stringify(c.params)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      calls.push(c);
-    }
-  }
-
-  return calls;
-}
-
-function stripCoachToolJsonFromReply(text) {
-  const raw = String(text || '');
-  if (!raw.trim()) return raw.trim();
-
-  let out = raw
-    .replace(/```(?:json)?\s*([\s\S]*?)```/gi, (match, inner) => {
-      const obj = safeJsonParse(String(inner || '').trim());
-      if (obj && collectFromObject(obj).length) return '';
-      return match;
+/**
+ * Drop fenced blocks that parse as tool JSON. Leave other code fences alone.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripFencedToolJson(text) {
+  return String(text || '')
+    .replace(/```(?:json)?\s*([\s\S]*?)```/gi, (fullMatch, inner) => {
+      const parsedFence = safeJsonParse(String(inner || '').trim());
+      if (parsedFence && collectFromObject(parsedFence).length) return '';
+      return fullMatch;
     })
     .replace(
       /```(?:json)?\s*\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*?\}\s*```/gi,
       '',
     )
     .trim();
+}
 
-  out = stripTrailingToolJson(out);
+/**
+ * If the reply ends with this pattern, cut from the match to the end.
+ * @param {string} text
+ * @param {RegExp} pattern
+ * @returns {string}
+ */
+function cutMatchingTail(text, pattern) {
+  const tailMatch = text.match(pattern);
+  if (!tailMatch) return text;
+  return text.slice(0, tailMatch.index).trimEnd();
+}
 
-  const tail = out.match(/\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*\}\s*$/);
-  if (tail) {
-    out = out.slice(0, tail.index).trimEnd();
+/**
+ * Same name + params means the same button. The model often repeats the JSON twice.
+ * @param {Set<string>} seenKeys
+ * @param {object[]} calls
+ * @param {object} call
+ */
+function rememberUniqueCall(seenKeys, calls, call) {
+  const identityKey = `${call.name}:${JSON.stringify(call.params)}`;
+  if (seenKeys.has(identityKey)) return;
+  seenKeys.add(identityKey);
+  calls.push(call);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Every tool call embedded in a coach reply.
+ * @param {string} aiResponse
+ * @returns {Array<{name: string, params: object, reasoning: string}>}
+ */
+function readActionsFromReply(aiResponse) {
+  const replyText = String(aiResponse || '');
+  if (!replyText.trim()) return [];
+
+  const seenKeys = new Set();
+  const calls = [];
+
+  for (const chunk of candidateJsonStrings(replyText)) {
+    const parsedChunk = safeJsonParse(chunk);
+    if (!parsedChunk) continue;
+    for (const call of collectFromObject(parsedChunk)) {
+      rememberUniqueCall(seenKeys, calls, call);
+    }
   }
 
-  const flatTail = out.match(/\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*\}\s*$/);
-  if (flatTail) {
-    out = out.slice(0, flatTail.index).trimEnd();
-  }
+  return calls;
+}
 
-  const toolNameTail = out.match(/\{\s*"toolName"\s*:\s*"[^"]+"[\s\S]*\}\s*$/);
-  if (toolNameTail) {
-    out = out.slice(0, toolNameTail.index).trimEnd();
-  }
+/**
+ * Reply text with tool JSON and web-search citation brackets removed.
+ * The chat bubble should show the sentence, not the raw object.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripCoachToolJsonFromReply(text) {
+  const replyText = String(text || '');
+  if (!replyText.trim()) return replyText.trim();
 
-  const namedTail = out.match(new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"[\\s\\S]*\\}\\s*$`));
-  if (namedTail) {
-    out = out.slice(0, namedTail.index).trimEnd();
-  }
+  let visibleText = stripFencedToolJson(replyText);
+  visibleText = stripTrailingToolJson(visibleText);
+  visibleText = cutMatchingTail(visibleText, TOOL_TAIL_PATTERN);
+  visibleText = cutMatchingTail(visibleText, FLAT_TOOL_TAIL_PATTERN);
+  visibleText = cutMatchingTail(visibleText, TOOL_NAME_TAIL_PATTERN);
 
-  // Strip numeric citation brackets like [2][3] from web-search replies
-  out = out.replace(/\s*\[\d+\](?:\[\d+\])*/g, '').trim();
+  const namedTailPattern = new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"[\\s\\S]*\\}\\s*$`);
+  visibleText = cutMatchingTail(visibleText, namedTailPattern);
 
-  return out.replace(/\n{3,}/g, '\n\n').trim();
+  // Web-search replies cite like [2][3]. Those are not part of the coaching sentence.
+  visibleText = visibleText.replace(/\s*\[\d+\](?:\[\d+\])*/g, '').trim();
+
+  return visibleText.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 module.exports = {

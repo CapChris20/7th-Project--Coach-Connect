@@ -1,13 +1,7 @@
-/**
- * Video Player Modal
- *
- * Purpose: UI screen or component: Video Player Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: YouTubeIframeExercisePlayer, VideoPlayer
- *
- * @file-header
- */
+// Plays an exercise demo in a YouTube iframe, plus an optional full-screen modal.
+// Flow: size the player → show a spinner until YouTube is ready → close from the modal header.
+// Used by: ExerciseVideosTab. The iframe replaces a raw WebView embed so YouTube Error 153 is less likely.
+
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,15 +15,45 @@ import {
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// ===== NAMED CONSTANTS =====
+
+// vocab: 16:9 is the widescreen ratio YouTube expects. Height = width * 9 / 16.
+const WIDESCREEN_HEIGHT_PART = 9;
+const WIDESCREEN_WIDTH_PART = 16;
+// Manipulate here: players shorter than this clip the YouTube controls.
+const MIN_INLINE_PLAYER_HEIGHT = 230;
+const SCREEN_EDGE_INSET = 36;
+const MODAL_PLAYER_MAX_SCREEN_FRACTION = 0.32;
+const MODAL_PLAYER_MIN_HEIGHT = 260;
+const MODAL_SIDE_INSET = 32;
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * YouTube IFrame API player (replaces raw WebView embed URLs — helps avoid Error 153).
- * Keep width ≥ ~320 and height ≥ ~220 so controls fit per YouTube embed guidelines.
+ * Default inline size when the caller does not pass width and height.
+ * @param {number|undefined} width
+ * @param {number|undefined} height
+ * @returns {{ playerWidth: number, playerHeight: number }}
+ */
+function inlinePlayerSize(width, height) {
+  const playerWidth = width ?? Math.floor(SCREEN_WIDTH - SCREEN_EDGE_INSET);
+  const playerHeight = height ?? Math.max(
+    MIN_INLINE_PLAYER_HEIGHT,
+    Math.round((playerWidth * WIDESCREEN_HEIGHT_PART) / WIDESCREEN_WIDTH_PART),
+  );
+  return { playerWidth, playerHeight };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * YouTube IFrame player. Keep the box large enough that the controls fit.
+ * @param {{ videoId: string, height?: number, width?: number, play?: boolean }} props
  */
 export function YouTubeIframeExercisePlayer({ videoId, height, width, play = true }) {
-  const w = width ?? Math.floor(SCREEN_W - 36);
-  const h = height ?? Math.max(230, Math.round((w * 9) / 16));
+  const { playerWidth, playerHeight } = inlinePlayerSize(width, height);
   const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
@@ -38,14 +62,14 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
 
   if (!videoId) {
     return (
-      <View style={[styles.emptyPlayer, { width: w, height: h }]}>
+      <View style={[styles.emptyPlayer, { width: playerWidth, height: playerHeight }]}>
         <Text style={styles.emptyPlayerText}>Video unavailable</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.playerShell, { width: w, height: h }]}>
+    <View style={[styles.playerShell, { width: playerWidth, height: playerHeight }]}>
       {!playerReady ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color="#FF6B9D" />
@@ -53,8 +77,8 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
       ) : null}
       <YoutubePlayer
         key={videoId}
-        height={h}
-        width={w}
+        height={playerHeight}
+        width={playerWidth}
         play={play}
         videoId={videoId}
         onReady={() => setPlayerReady(true)}
@@ -80,9 +104,18 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
   );
 }
 
-/** Standalone full-screen style modal (optional; Exercise Library uses sheet + YouTubeIframeExercisePlayer). */
+/**
+ * Full-screen modal. The exercise library usually uses the iframe player above instead.
+ * @param {{ visible: boolean, videoId: string, title?: string, onClose: () => void }} props
+ */
 export function VideoPlayer({ visible, videoId, title, onClose }) {
-  const h = Math.min(SCREEN_H * 0.32, Math.max(260, Math.round((SCREEN_W * 9) / 16)));
+  const modalPlayerHeight = Math.min(
+    SCREEN_HEIGHT * MODAL_PLAYER_MAX_SCREEN_FRACTION,
+    Math.max(
+      MODAL_PLAYER_MIN_HEIGHT,
+      Math.round((SCREEN_WIDTH * WIDESCREEN_HEIGHT_PART) / WIDESCREEN_WIDTH_PART),
+    ),
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -99,7 +132,7 @@ export function VideoPlayer({ visible, videoId, title, onClose }) {
 
         <View style={styles.modalPlayer}>
           {visible && videoId ? (
-            <YouTubeIframeExercisePlayer videoId={videoId} height={h} width={SCREEN_W - 32} play />
+            <YouTubeIframeExercisePlayer videoId={videoId} height={modalPlayerHeight} width={SCREEN_WIDTH - MODAL_SIDE_INSET} play />
           ) : (
             <Text style={styles.emptyPlayerText}>Video not available</Text>
           )}

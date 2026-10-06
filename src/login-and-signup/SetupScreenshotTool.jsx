@@ -1,5 +1,5 @@
-// Dev tool that screenshots every onboarding step for the docs, unattended.
-// Flow: walk the capture list → render that step of the real wizard → wait for it to settle → POST the local Mac capture server → next.
+// Dev tool that screenshots every onboarding step for the docs, with nobody tapping through.
+// Flow: walk the capture list → render that wizard step → wait for it to settle → POST the Mac capture server → next.
 // Triggered by the deep link coachconnect://onboarding-snapshots. Needs `npm run snapshot:onboarding` running on the Mac first.
 
 import React, { useEffect, useState } from 'react';
@@ -7,101 +7,122 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import NewUserSetupScreen from './NewUserSetupScreen';
 import manifest from './setupScreenshotList.json';
 
-// The JSON file is the capture list itself. Length is the step count the status line shows.
+// ===== NAMED CONSTANTS =====
+
 const ONBOARDING_SNAPSHOT_CAPTURES = manifest;
 const ONBOARDING_SNAPSHOT_TOTAL = manifest.length;
 
-// The little HTTP server started by `npm run snapshot:onboarding`; it's what actually runs the
-// screenshot command on the Mac. 127.0.0.1 works from the simulator because the simulator shares the
-// Mac's network stack — on a physical device you'd need the Mac's LAN IP instead.
+// 127.0.0.1 works from the simulator because the simulator shares the Mac's network.
+// A physical phone would need the Mac's LAN address instead.
 // Manipulate here: port 9876 must match the port in the snapshot script.
-const SNAP_SERVER = 'http://127.0.0.1:9876';
+const SNAPSHOT_SERVER_PORT = 9876;
+const SNAP_SERVER = `http://127.0.0.1:${SNAPSHOT_SERVER_PORT}`;
 
-// How long to let a step finish rendering before capturing it. The wizard has entrance animations
-// and async content, so capturing immediately catches half-drawn screens.
-// Manipulate here: raise if screenshots come out mid-animation; lower to make a full run faster.
+// The wizard animates in. Capturing immediately saves a half-drawn screen.
+// Manipulate here: raise if shots land mid-animation. Lower to make a full run faster.
 const RENDER_WAIT_MS = 2800;
+// Lets the screenshot finish writing before the next step animates over it.
+const PAUSE_BETWEEN_CAPTURES_MS = 400;
+// Holds the done status on screen long enough to read before the tool exits.
+const DONE_HOLD_MS = 800;
 
-// vocab: a Promise that resolves after `ms` — lets us `await sleep(...)` to pause a loop, since
-// there's no built-in "wait" in JS.
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+const STATUS_STARTING = 'Starting…';
+const STATUS_DONE = 'Done — check docs/onboarding-snapshots/';
+
+// ===== HELPER FUNCTIONS =====
+
+// vocab: a Promise that resolves after the wait. JavaScript has no built-in sleep, so the loop awaits this.
+function sleep(waitMilliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, waitMilliseconds));
 }
 
+async function postScreenshotRequest(fileName) {
+  // vocab: encodeURIComponent escapes spaces and slashes so the filename cannot break the query string.
+  const snapUrl = `${SNAP_SERVER}/snap?file=${encodeURIComponent(fileName)}`;
+  const response = await fetch(snapUrl, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`Capture failed (${response.status})`);
+  }
+}
+
+function captureServerFailureMessage(error) {
+  const message = error?.message || String(error);
+  // Manipulate here: this copy names the command to run. "fetch failed" alone does not say a Mac process is required.
+  return `Could not reach capture server on :${SNAPSHOT_SERVER_PORT}. Run: npm run snapshot:onboarding\n\n${message}`;
+}
+
+// isRunCancelled is a function, not a boolean copied once. The loop lasts many seconds, and the
+// cleanup flag flips while we are sitting in sleep(). Reading it fresh is the only way to notice.
+async function captureAllSteps({
+  isRunCancelled,
+  setCurrentCapture,
+  setProgress,
+  setStatus,
+  setError,
+  onDone,
+}) {
+  for (let captureIndex = 0; captureIndex < ONBOARDING_SNAPSHOT_CAPTURES.length; captureIndex += 1) {
+    if (isRunCancelled()) return;
+    const captureStep = ONBOARDING_SNAPSHOT_CAPTURES[captureIndex];
+    // Setting the capture re-renders the wizard. The sleep is what lets that paint finish.
+    setCurrentCapture(captureStep);
+    setProgress(captureIndex + 1);
+    setStatus(`Rendering ${captureStep.role} step ${captureStep.step}…`);
+
+    await sleep(RENDER_WAIT_MS);
+    if (isRunCancelled()) return;
+
+    try {
+      await postScreenshotRequest(captureStep.file);
+      setStatus(`Captured ${captureIndex + 1}/${ONBOARDING_SNAPSHOT_TOTAL}`);
+    } catch (captureError) {
+      // Stop on the first failure. If the server is down, every later shot fails too.
+      setError(captureServerFailureMessage(captureError));
+      return;
+    }
+
+    await sleep(PAUSE_BETWEEN_CAPTURES_MS);
+  }
+
+  setStatus(STATUS_DONE);
+  await sleep(DONE_HOLD_MS);
+  // vocab: onDone?.() calls the parent callback only when one was passed.
+  onDone?.();
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Renders each onboarding step and asks the local Mac server to screenshot it.
+ * @param {{ onDone?: () => void }} props
+ */
 export default function SetupScreenshotTool({ onDone }) {
-  // `current` is the capture being rendered right now — it drives which wizard step is on screen.
-  const [current, setCurrent] = useState(ONBOARDING_SNAPSHOT_CAPTURES[0]);
-  // progress/status exist for the on-screen readout; they don't affect the capture itself.
+  const [currentCapture, setCurrentCapture] = useState(ONBOARDING_SNAPSHOT_CAPTURES[0]);
+  // progress and status drive a debug readout that is intentionally not painted.
+  // Painting it would bake a banner into every screenshot.
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('Starting…');
+  const [status, setStatus] = useState(STATUS_STARTING);
   const [error, setError] = useState(null);
 
-  // vocab: useEffect = run this after the component is on screen. The [onDone] dependency list means
-  // "re-run only if onDone changes" — effectively once, since the whole run happens inside.
+  // vocab: useEffect runs after the component is on screen. [onDone] means "start again only if onDone changes".
   useEffect(() => {
-    // Guard flag for unmounting mid-run. The loop below spans many seconds of awaits, and setting
-    // state after the component is gone is both useless and a React warning — so every await is
-    // followed by a cancelled check.
-    let cancelled = false;
+    let isCancelled = false;
 
-    // vocab/symbol: (async () => { ... })() = define an async function and immediately call it.
-    // Needed because useEffect itself cannot be async (React expects it to return a cleanup function).
-    (async () => {
-      for (let i = 0; i < ONBOARDING_SNAPSHOT_CAPTURES.length; i += 1) {
-        if (cancelled) return;
-        const cap = ONBOARDING_SNAPSHOT_CAPTURES[i];
-        // Setting `current` re-renders the wizard at this step; the sleep right after is what gives
-        // that render time to actually appear before we ask the Mac to screenshot it.
-        setCurrent(cap);
-        setProgress(i + 1);
-        setStatus(`Rendering ${cap.role} step ${cap.step}…`);
+    captureAllSteps({
+      isRunCancelled: () => isCancelled,
+      setCurrentCapture,
+      setProgress,
+      setStatus,
+      setError,
+      onDone,
+    });
 
-        await sleep(RENDER_WAIT_MS);
-        if (cancelled) return;
-
-        try {
-          // The filename comes from the manifest so screenshots land with predictable names.
-          // vocab: encodeURIComponent = escape characters that would otherwise break the query
-          // string (spaces, slashes, &). Always wrap user/data values placed into a URL.
-          const res = await fetch(
-            `${SNAP_SERVER}/snap?file=${encodeURIComponent(cap.file)}`,
-            { method: 'POST' },
-          );
-          if (!res.ok) throw new Error(`Capture failed (${res.status})`);
-          setStatus(`Captured ${i + 1}/${ONBOARDING_SNAPSHOT_TOTAL}`);
-        } catch (e) {
-          // Abort the entire run on the first failure rather than continuing: if the server isn't
-          // reachable, every remaining capture will fail too, and you'd wait minutes to find out.
-          const msg = e?.message || String(e);
-          // Manipulate here: this copy names the exact command to run, because "fetch failed" on its
-          // own gives no hint that a separate Mac process is required.
-          setError(
-            `Could not reach capture server on :9876. Run: npm run snapshot:onboarding\n\n${msg}`,
-          );
-          return;
-        }
-
-        // Manipulate here: small breather so the screenshot finishes writing to disk before the
-        // next step starts animating in and changes what's on screen.
-        await sleep(400);
-      }
-
-      setStatus('Done — check docs/onboarding-snapshots/');
-      // Manipulate here: hold the "Done" message on screen briefly so it's readable before we exit.
-      await sleep(800);
-      // vocab/symbol: onDone?.() = call it only if the parent passed one.
-      onDone?.();
-    })();
-
-    // useEffect cleanup — React runs this when the component unmounts. Flipping the flag is what
-    // stops the in-flight loop above at its next checkpoint.
+    // React runs this when the tool unmounts. The loop notices at its next checkpoint.
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
   }, [onDone]);
 
-  // Error state takes over the whole screen: there's nothing useful to capture once the server is
-  // unreachable, and the instructions need to be readable.
   if (error) {
     return (
       <View style={styles.center}>
@@ -111,27 +132,24 @@ export default function SetupScreenshotTool({ onDone }) {
     );
   }
 
-  // Normal state: nothing but the wizard. No progress banner is rendered over it on purpose —
-  // any overlay would end up baked into every screenshot.
+  // No progress banner on purpose. Any overlay would be saved into the screenshot.
   return (
     <View style={styles.root}>
       <NewUserSetupScreen
-        // Same trick as the preview screen: changing the key forces a full remount so the wizard
-        // actually jumps to previewInitialStep instead of keeping its own internal step state.
-        key={`${current.role}-${current.step}`}
-        role={current.role}
-        // previewMode keeps this off real auth and stops it writing onboarding data.
+        // Changing the key forces a remount, so the wizard actually jumps to this step
+        // instead of keeping the step it was already on.
+        key={`${currentCapture.role}-${currentCapture.step}`}
+        role={currentCapture.role}
         previewMode
-        previewInitialStep={current.step}
+        previewInitialStep={currentCapture.step}
         onComplete={() => {}}
       />
     </View>
   );
 }
 
-// Manipulate here: `banner`/`bannerText` style an on-screen progress chip that is currently not
-// rendered (it would appear in the screenshots). Keep them if you want a debug overlay while
-// watching a run; the error screen styles below are the ones actually in use.
+// banner and bannerText are the unused debug chip. Leave them if you want that overlay later.
+// The error-screen styles below are the ones this file actually paints.
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0A0A0F' },
   banner: {

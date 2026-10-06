@@ -1,63 +1,75 @@
-/**
- * Theme Context
- *
- * Purpose: Theme Context — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: ThemeProvider, useTheme
- *
- * @file-header
- */
+// The app-wide light, dark, or system theme.
+// Flow: read the saved choice → follow the phone when the choice is system → share colors through context.
+// Used by screens that call useTheme() for the palette.
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightColors, darkColors, typography, spacing, borderRadius, fontSize, fontWeight, shadows } from './colorPalette';
 
-const lightDarkMode = createContext();
+// ===== NAMED CONSTANTS =====
 
 const THEME_STORAGE_KEY = '@coachconnect_theme_mode';
+const SYSTEM_MODE = 'system';
+const DARK_MODE = 'dark';
+const themeContext = createContext();
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * A failed read leaves the default in place. The screen still has a theme.
+ * @param {Function} setThemeMode
+ * @returns {Promise<void>}
+ */
+async function loadSavedThemeMode(setThemeMode) {
+  try {
+    const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme) setThemeMode(savedTheme);
+  } catch (loadError) {
+    console.error('Error loading theme preference:', loadError);
+  }
+}
+
+/**
+ * @param {string} themeMode
+ * @param {string|null|undefined} systemColorScheme
+ * @returns {boolean}
+ */
+function isDarkForMode(themeMode, systemColorScheme) {
+  if (themeMode === SYSTEM_MODE) return systemColorScheme === DARK_MODE;
+  return themeMode === DARK_MODE;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Hooks stay in this order: system scheme, saved mode, dark flag, load effect, sync effect.
+ * @param {{ children: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement}
+ */
 export function ThemeProvider({ children }) {
   const systemColorScheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState('system'); // 'light', 'dark', or 'system'
-  const [isDark, setIsDark] = useState(systemColorScheme === 'dark');
+  const [themeMode, setThemeMode] = useState(SYSTEM_MODE);
+  const [isDark, setIsDark] = useState(systemColorScheme === DARK_MODE);
 
-  // Load saved theme preference
   useEffect(() => {
-    loadThemePreference();
+    loadSavedThemeMode(setThemeMode);
   }, []);
 
-  // Update theme when system color scheme or theme mode changes
   useEffect(() => {
-    if (themeMode === 'system') {
-      setIsDark(systemColorScheme === 'dark');
-    } else {
-      setIsDark(themeMode === 'dark');
-    }
+    setIsDark(isDarkForMode(themeMode, systemColorScheme));
   }, [themeMode, systemColorScheme]);
-
-  const loadThemePreference = async () => {
-    try {
-      const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (savedTheme) {
-        setThemeMode(savedTheme);
-      }
-    } catch (error) {
-      console.error('Error loading theme preference:', error);
-    }
-  };
 
   const toggleTheme = async (mode) => {
     try {
       setThemeMode(mode);
       await AsyncStorage.setItem(THEME_STORAGE_KEY, mode);
-    } catch (error) {
-      console.error('Error saving theme preference:', error);
+    } catch (saveError) {
+      console.error('Error saving theme preference:', saveError);
     }
   };
 
   const colors = isDark ? darkColors : lightColors;
-
   const theme = {
     colors,
     typography,
@@ -72,18 +84,19 @@ export function ThemeProvider({ children }) {
   };
 
   return (
-    <lightDarkMode.Provider value={theme}>
+    <themeContext.Provider value={theme}>
       {children}
-    </lightDarkMode.Provider>
+    </themeContext.Provider>
   );
 }
 
+/**
+ * @returns {object}
+ */
 export function useTheme() {
-  const context = useContext(lightDarkMode);
-  if (!context) {
+  const theme = useContext(themeContext);
+  if (!theme) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
-  return context;
+  return theme;
 }
-
-

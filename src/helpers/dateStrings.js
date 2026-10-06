@@ -1,59 +1,63 @@
-// Produces the "YYYY-MM-DD" strings used as Firestore document ids for daily data.
-// Flow: pick a timezone rule → format today under it → that string IS the doc id.
-// Three variants because "what day is it" depends on who's asking:
-//   getClientDateKey  — device local (client dashboard, dailyLogs, AI tools)
-//   getDateKey        — fixed Eastern (trainer weekly jobs / legacy server default)
-//   getProfileDateKey — the user's own stored timezone, device local as fallback
-// Getting this wrong misfiles a day's data under the wrong document, so pick deliberately.
+// Builds the YYYY-MM-DD strings used as Firestore document ids for a day.
+// Flow: pick whose clock matters → format that day → that string is the document id.
+// Used by: the client dashboard (device clock), trainer weekly jobs (Eastern), and reminders (the profile timezone).
 
 import { getLocalDateKey } from './getLocalDay';
 
-// Manipulate here: the company-wide fallback boundary for trainer/server-side jobs.
-//                  Changing it shifts which day cross-midnight writes land in.
-const DEFAULT_TZ = 'America/New_York';
+// ===== NAMED CONSTANTS =====
 
-/** Client-facing "today" (device timezone). Prefer this for dailyLogs / daily_tracking. */
-// Thin wrapper on purpose: it gives client-side callers a named, obvious choice so nobody
-// has to guess whether getLocalDay is the right helper for user-facing data.
-export function getClientDateKey(d = new Date()) {
-  return getLocalDateKey(d);
-}
+// Manipulate here: trainer and server jobs share this boundary. Changing it moves cross-midnight writes.
+const DEFAULT_TIME_ZONE = 'America/New_York';
+// vocab: en-CA prints dates as YYYY-MM-DD.
+const DATE_KEY_LOCALE = 'en-CA';
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * Trainer / weekly-summary boundary (Eastern Time).
- * @param {string} [timeZone] IANA timezone
+ * @param {object|undefined} profile
+ * @returns {string}
  */
-// Fixed-timezone variant. Weekly rollups must agree on one boundary regardless of where
-// the trainer's phone is, otherwise two devices would disagree on which week a log belongs to.
-// vocab: 'en-CA' locale = formats as YYYY-MM-DD, which is the doc-id shape we need
-export function getDateKey(timeZone = DEFAULT_TZ) {
-  return new Date().toLocaleDateString('en-CA', { timeZone });
-}
-
-/**
- * "Today" for a user profile — prefers stored IANA timezone, else device local.
- * @param {object} [profile]
- * @param {Date} [d]
- */
-// Used for scheduled work ON BEHALF OF a user (reminders, archiving) where the device
-// timezone isn't available — the server only has the profile.
-export function getProfileDateKey(profile, d = new Date()) {
-  // Three field spellings, because the timezone got stored in different places as the
-  // reminder feature evolved. First non-empty one wins.
-  // vocab: IANA timezone = names like 'America/New_York' (not offsets like '-05:00')
-  const tz = String(
+function readProfileTimeZone(profile) {
+  return String(
     profile?.timezone || profile?.timeZone || profile?.workoutReminder?.timeZone || '',
   ).trim();
-  if (tz) {
-    try {
-      return new Date(d).toLocaleDateString('en-CA', { timeZone: tz });
-    } catch (_) {
-      // toLocaleDateString THROWS on an unrecognized timezone string, so a corrupt
-      // profile value must not break the caller — fall through to device local below.
-      /* invalid tz — fall through */
-    }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Client-facing today, in the device timezone.
+ * @param {Date} [date]
+ * @returns {string}
+ */
+export function getClientDateKey(date = new Date()) {
+  return getLocalDateKey(date);
+}
+
+/**
+ * Trainer and weekly-summary day, in Eastern time unless a timezone is passed.
+ * @param {string} [timeZone]
+ * @returns {string}
+ */
+export function getDateKey(timeZone = DEFAULT_TIME_ZONE) {
+  return new Date().toLocaleDateString(DATE_KEY_LOCALE, { timeZone });
+}
+
+/**
+ * Today for a profile. Uses the stored timezone, then the device clock if that string is invalid.
+ * @param {object} [profile]
+ * @param {Date} [date]
+ * @returns {string}
+ */
+export function getProfileDateKey(profile, date = new Date()) {
+  const profileTimeZone = readProfileTimeZone(profile);
+  if (!profileTimeZone) return getLocalDateKey(date);
+  try {
+    return new Date(date).toLocaleDateString(DATE_KEY_LOCALE, { timeZone: profileTimeZone });
+  } catch (_) {
+    // An unrecognized timezone throws. Fall back so a bad profile cannot break the caller.
+    return getLocalDateKey(date);
   }
-  return getLocalDateKey(d);
 }
 
 export default getDateKey;

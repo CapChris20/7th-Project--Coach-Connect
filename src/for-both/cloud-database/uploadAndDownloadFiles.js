@@ -1,211 +1,260 @@
-/**
- * storage
- *
- * Purpose: Data/service layer: storage. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: uploadFile, getFileURL, deleteFile, listFiles, uploadProfileImage, uploadProgressPhoto, uploadFoodImage, uploadTrainerNote
- *
- * @file-header
- */
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject, 
-  listAll, 
-  getMetadata 
+// Uploads, downloads, lists, and deletes files in Firebase Storage.
+// Flow: turn the picked file into a blob → write it under a fixed path → return the download url (or a failure object).
+// Used by profile photos, progress photos, food photos, and trainer notes.
+
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+  listAll,
+  getMetadata,
 } from 'firebase/storage';
 import { storage } from '../../app-start/cloudConnection';
 
-// Upload a file to Firebase Storage
+// ===== NAMED CONSTANTS =====
+
+// vocab: contentType = the MIME type stored with the file so downloads open as an image or text.
+const JPEG_CONTENT_TYPE = 'image/jpeg';
+const PLAIN_TEXT_CONTENT_TYPE = 'text/plain';
+const PROFILE_IMAGE_KIND = 'profile-image';
+const PROGRESS_PHOTO_KIND = 'progress-photo';
+const FOOD_IMAGE_KIND = 'food-image';
+const TRAINER_NOTE_KIND = 'trainer-note';
+const GENERAL_FOLDER_NAME = 'general';
+const CUSTOM_FOOD_FOLDER_NAME = 'custom';
+
+// ===== HELPER FUNCTIONS =====
+
+function assertStorageReady() {
+  if (!storage) {
+    throw new Error('Firebase Storage not initialized');
+  }
+}
+
+function failureResult(error) {
+  return { success: false, error: error.message };
+}
+
+// A web <input> gives a File. React Native gives { uri }. Anything else cannot be uploaded.
+async function fileToBlob(file) {
+  if (file instanceof File) return file;
+  if (file.uri) {
+    // vocab: fetch(uri).blob() = download the local file bytes so Storage can accept them.
+    const response = await fetch(file.uri);
+    return response.blob();
+  }
+  throw new Error('Invalid file format');
+}
+
+function imageUploadMetadata(userId, imageKind, extraFields) {
+  return {
+    contentType: JPEG_CONTENT_TYPE,
+    customMetadata: {
+      uploadedBy: userId,
+      type: imageKind,
+      ...extraFields,
+    },
+  };
+}
+
+function profileImageStoragePath(userId, timestamp) {
+  return `users/${userId}/profile/profile-image-${timestamp}`;
+}
+
+function progressPhotoStoragePath(userId, workoutId, timestamp) {
+  const folderName = workoutId ? `workout-${workoutId}` : GENERAL_FOLDER_NAME;
+  return `users/${userId}/progress/${folderName}-${timestamp}`;
+}
+
+function foodImageStoragePath(userId, foodId, timestamp) {
+  const folderName = foodId ? `food-${foodId}` : CUSTOM_FOOD_FOLDER_NAME;
+  return `users/${userId}/food/${folderName}-${timestamp}`;
+}
+
+function trainerNoteStoragePath(trainerId, clientId, timestamp) {
+  return `trainerNotes/${trainerId}/${clientId}/${timestamp}.txt`;
+}
+
+// One listed file. A bad metadata read is skipped so the rest of the folder still returns.
+async function describeListedFile(itemRef) {
+  try {
+    const downloadURL = await getDownloadURL(itemRef);
+    const metadata = await getMetadata(itemRef);
+    return {
+      name: itemRef.name,
+      fullPath: itemRef.fullPath,
+      downloadURL,
+      metadata,
+    };
+  } catch (error) {
+    console.warn('Error getting metadata for file:', itemRef.name, error);
+    return null;
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Upload one file to Firebase Storage at `path`.
+ * @param {File|{ uri: string }} file
+ * @param {string} path
+ * @param {object} [metadata]
+ * @returns {Promise<{ success: boolean, downloadURL?: string, ref?: object, metadata?: object, error?: string }>}
+ */
 export const uploadFile = async (file, path, metadata = {}) => {
   try {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    
+    assertStorageReady();
     console.log('Uploading file to path:', path);
+    // vocab: ref() = a pointer to a Storage path. uploadBytes writes the blob there.
     const storageRef = ref(storage, path);
-    
-    // Convert file to blob if it's a File object
-    let fileBlob;
-    if (file instanceof File) {
-      fileBlob = file;
-    } else if (file.uri) {
-      // For React Native, convert URI to blob
-      const response = await fetch(file.uri);
-      fileBlob = await response.blob();
-    } else {
-      throw new Error('Invalid file format');
-    }
-    
+    const fileBlob = await fileToBlob(file);
     const uploadResult = await uploadBytes(storageRef, fileBlob, metadata);
     const downloadURL = await getDownloadURL(uploadResult.ref);
-    
     console.log('File uploaded successfully:', downloadURL);
-    return { 
-      success: true, 
-      downloadURL, 
+    return {
+      success: true,
+      downloadURL,
       ref: uploadResult.ref,
-      metadata: uploadResult.metadata 
+      metadata: uploadResult.metadata,
     };
   } catch (error) {
     console.error('Upload file error:', error);
-    return { success: false, error: error.message };
+    return failureResult(error);
   }
 };
 
-// Get download URL for a file
+/**
+ * Download url for a file that is already in Storage.
+ * @param {string} path
+ * @returns {Promise<{ success: boolean, downloadURL?: string, error?: string }>}
+ */
 export const getFileURL = async (path) => {
   try {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    
+    assertStorageReady();
     const storageRef = ref(storage, path);
     const downloadURL = await getDownloadURL(storageRef);
-    
     console.log('Download URL retrieved:', downloadURL);
     return { success: true, downloadURL };
   } catch (error) {
     console.error('Get file URL error:', error);
-    return { success: false, error: error.message };
+    return failureResult(error);
   }
 };
 
-// Delete a file from Firebase Storage
+/**
+ * Delete one file from Storage. Missing files come back as success: false.
+ * @param {string} path
+ * @returns {Promise<{ success: boolean, error?: string }>}
+ */
 export const deleteFile = async (path) => {
   try {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    
+    assertStorageReady();
     console.log('Deleting file from path:', path);
     const storageRef = ref(storage, path);
     await deleteObject(storageRef);
-    
     console.log('File deleted successfully');
     return { success: true };
   } catch (error) {
     console.error('Delete file error:', error);
-    return { success: false, error: error.message };
+    return failureResult(error);
   }
 };
 
-// List all files in a directory
+/**
+ * List files directly inside a Storage folder (not nested folders).
+ * @param {string} path
+ * @returns {Promise<{ success: boolean, files?: object[], error?: string }>}
+ */
 export const listFiles = async (path) => {
   try {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    
+    assertStorageReady();
     console.log('Listing files in path:', path);
     const storageRef = ref(storage, path);
+    // vocab: listAll = every file and subfolder pointer under this path, one page.
     const result = await listAll(storageRef);
-    
     const files = [];
-    
-    // Get download URLs for all files
     for (const itemRef of result.items) {
-      try {
-        const downloadURL = await getDownloadURL(itemRef);
-        const metadata = await getMetadata(itemRef);
-        
-        files.push({
-          name: itemRef.name,
-          fullPath: itemRef.fullPath,
-          downloadURL,
-          metadata
-        });
-      } catch (error) {
-        console.warn('Error getting metadata for file:', itemRef.name, error);
-      }
+      const describedFile = await describeListedFile(itemRef);
+      if (describedFile) files.push(describedFile);
     }
-    
     console.log('Files listed successfully:', files.length, 'files found');
     return { success: true, files };
   } catch (error) {
     console.error('List files error:', error);
-    return { success: false, error: error.message };
+    return failureResult(error);
   }
 };
 
-// Upload user profile image
+/**
+ * Upload a profile photo under users/{userId}/profile/.
+ * @param {string} userId
+ * @param {File|{ uri: string }} imageFile
+ */
 export const uploadProfileImage = async (userId, imageFile) => {
-  const path = `users/${userId}/profile/profile-image-${Date.now()}`;
-  const metadata = {
-    contentType: 'image/jpeg',
-    customMetadata: {
-      uploadedBy: userId,
-      type: 'profile-image'
-    }
-  };
-  
-  return await uploadFile(imageFile, path, metadata);
+  const timestamp = Date.now();
+  const path = profileImageStoragePath(userId, timestamp);
+  const metadata = imageUploadMetadata(userId, PROFILE_IMAGE_KIND);
+  return uploadFile(imageFile, path, metadata);
 };
 
-// Upload workout progress photo
+/**
+ * Upload a workout progress photo. No workout id lands in the "general" folder.
+ * @param {string} userId
+ * @param {File|{ uri: string }} photoFile
+ * @param {string|null} [workoutId]
+ */
 export const uploadProgressPhoto = async (userId, photoFile, workoutId = null) => {
   const timestamp = Date.now();
-  const path = `users/${userId}/progress/${workoutId ? `workout-${workoutId}` : 'general'}-${timestamp}`;
-  const metadata = {
-    contentType: 'image/jpeg',
-    customMetadata: {
-      uploadedBy: userId,
-      type: 'progress-photo',
-      workoutId: workoutId || 'general',
-      timestamp: timestamp.toString()
-    }
-  };
-  
-  return await uploadFile(photoFile, path, metadata);
+  const path = progressPhotoStoragePath(userId, workoutId, timestamp);
+  const metadata = imageUploadMetadata(userId, PROGRESS_PHOTO_KIND, {
+    workoutId: workoutId || GENERAL_FOLDER_NAME,
+    timestamp: timestamp.toString(),
+  });
+  return uploadFile(photoFile, path, metadata);
 };
 
-// Upload food image
+/**
+ * Upload a food photo. No food id lands in the "custom" folder.
+ * @param {string} userId
+ * @param {File|{ uri: string }} imageFile
+ * @param {string|null} [foodId]
+ */
 export const uploadFoodImage = async (userId, imageFile, foodId = null) => {
   const timestamp = Date.now();
-  const path = `users/${userId}/food/${foodId ? `food-${foodId}` : 'custom'}-${timestamp}`;
-  const metadata = {
-    contentType: 'image/jpeg',
-    customMetadata: {
-      uploadedBy: userId,
-      type: 'food-image',
-      foodId: foodId || 'custom',
-      timestamp: timestamp.toString()
-    }
-  };
-  
-  return await uploadFile(imageFile, path, metadata);
+  const path = foodImageStoragePath(userId, foodId, timestamp);
+  const metadata = imageUploadMetadata(userId, FOOD_IMAGE_KIND, {
+    foodId: foodId || CUSTOM_FOOD_FOLDER_NAME,
+    timestamp: timestamp.toString(),
+  });
+  return uploadFile(imageFile, path, metadata);
 };
 
-// Upload trainer note as text file
+/**
+ * Save a trainer note as a plain-text file under trainerNotes/{trainerId}/{clientId}/.
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @param {string} textContent
+ */
 export const uploadTrainerNote = async (trainerId, clientId, textContent) => {
   try {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
-    }
-    
+    assertStorageReady();
     const timestamp = Date.now();
-    const path = `trainerNotes/${trainerId}/${clientId}/${timestamp}.txt`;
-    
-    // Convert text to blob
-    const blob = new Blob([textContent], { type: 'text/plain' });
-    
+    const path = trainerNoteStoragePath(trainerId, clientId, timestamp);
+    // vocab: Blob = a bag of bytes. Here it is the note text with a text/plain type.
+    const blob = new Blob([textContent], { type: PLAIN_TEXT_CONTENT_TYPE });
     const metadata = {
-      contentType: 'text/plain',
+      contentType: PLAIN_TEXT_CONTENT_TYPE,
       customMetadata: {
         uploadedBy: trainerId,
         clientId: clientId,
-        type: 'trainer-note',
-        timestamp: timestamp.toString()
-      }
+        type: TRAINER_NOTE_KIND,
+        timestamp: timestamp.toString(),
+      },
     };
-    
-    const result = await uploadFile(blob, path, metadata);
-    return result;
+    return uploadFile(blob, path, metadata);
   } catch (error) {
     console.error('Upload trainer note error:', error);
-    return { success: false, error: error.message };
+    return failureResult(error);
   }
 };

@@ -1,13 +1,7 @@
-/**
- * Embed Web View Modal
- *
- * Purpose: UI screen or component: Embed Web View Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: WebPageViewer
- *
- * @file-header
- */
+// Full-screen preview for a document link, so the reader stays inside the app.
+// Flow: reset the spinner when a new link opens → show the page → hide the spinner when it finishes or fails.
+// Used by file viewers that embed Office or Google's preview page.
+
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -21,47 +15,70 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+// ===== NAMED CONSTANTS =====
+
+const DARK_PAGE_COLOR = '#020617';
+const LIGHT_PAGE_COLOR = '#F9FAFB';
+const DARK_TEXT_COLOR = '#F9FAFB';
+const LIGHT_TEXT_COLOR = '#020617';
+const DARK_HINT_COLOR = 'rgba(148,163,184,1)';
+const LIGHT_HINT_COLOR = '#64748B';
+const SPINNER_COLOR = '#A855F7';
+const DEFAULT_TITLE = 'Document';
+const CLOSE_LABEL = 'Close';
+const LOADING_HINT = 'Loading preview…';
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
 /**
- * Fullscreen embedded viewer (Office Online / Google gview) — keeps user in the app.
+ * Hooks stay in this order: loading state, then the effect that resets it. The empty check comes after both.
+ * @param {{ visible: boolean, uri?: string, title?: string, isDark?: boolean, onClose: Function }} props
+ * @returns {import('react').ReactElement|null}
  */
 export default function WebPageViewer({ visible, uri, title, isDark = true, onClose }) {
-  const [loading, setLoading] = useState(true);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(true);
+
   useEffect(() => {
-    if (visible && uri) setLoading(true);
+    if (visible && uri) setIsLoadingPreview(true);
   }, [visible, uri]);
+
   if (!visible || !uri) return null;
-  const bg = isDark ? '#020617' : '#F9FAFB';
-  const textColor = isDark ? '#F9FAFB' : '#020617';
+
+  const pageColor = isDark ? DARK_PAGE_COLOR : LIGHT_PAGE_COLOR;
+  const textColor = isDark ? DARK_TEXT_COLOR : LIGHT_TEXT_COLOR;
+  const hintColor = isDark ? DARK_HINT_COLOR : LIGHT_HINT_COLOR;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: pageColor }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={[styles.closeText, { color: textColor }]}>Close</Text>
+            <Text style={[styles.closeText, { color: textColor }]}>{CLOSE_LABEL}</Text>
           </TouchableOpacity>
           <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
-            {title || 'Document'}
+            {title || DEFAULT_TITLE}
           </Text>
           <View style={{ width: 60 }} />
         </View>
-        <View style={[styles.wrap, { backgroundColor: bg }]}>
+        <View style={[styles.wrap, { backgroundColor: pageColor }]}>
           <WebView
             source={{ uri }}
             style={styles.webview}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => setLoading(false)}
+            onLoadEnd={() => setIsLoadingPreview(false)}
+            onError={() => setIsLoadingPreview(false)}
             originWhitelist={['*']}
             mixedContentMode="always"
             allowsInlineMediaPlayback
             androidLayerType="hardware"
           />
-          {loading && (
+          {isLoadingPreview ? (
             <View style={styles.loader}>
-              <ActivityIndicator size="large" color="#A855F7" />
-              <Text style={[styles.hint, { color: isDark ? 'rgba(148,163,184,1)' : '#64748B' }]}>Loading preview…</Text>
+              <ActivityIndicator size="large" color={SPINNER_COLOR} />
+              <Text style={[styles.hint, { color: hintColor }]}>{LOADING_HINT}</Text>
             </View>
-          )}
+          ) : null}
         </View>
       </SafeAreaView>
     </Modal>

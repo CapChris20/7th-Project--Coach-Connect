@@ -1,135 +1,194 @@
-// Pure translators between the two daily-metric document shapes.
-// Flow: dailyLogs uses flat `dashboard_*` keys; the legacy daily_tracking doc uses
-//       camelCase (`waterIntake`, `sleepHours`). These functions convert either direction
-//       and merge the two when reading, so screens see one clean shape.
-// No Firestore calls here — deliberately pure, and CommonJS so Node tests can require it.
+// Translates between the two daily-metric document shapes.
+// Flow: dailyLogs uses flat dashboard_* keys. The old daily_tracking doc uses
+//       camelCase (waterIntake, sleepHours). These functions convert either way
+//       and, when reading, let dailyLogs win.
+// No Firestore calls here. CommonJS so Node tests can require() it.
 // Keep in sync with saveDailyStats.js, which is the only writer.
 
-// Write direction: given a dailyLogs patch, produce the equivalent daily_tracking patch.
-// Only keys actually present in the patch are mirrored, so a partial save doesn't
-// blank out unrelated legacy fields.
+// ===== NAMED CONSTANTS =====
+
+// There are no tunable timeouts in this file. The field names below are the contract
+// between the new dailyLogs doc and the legacy daily_tracking doc. The letters stay.
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * A real answer. Null and "" are a cleared field, not a value of zero or blank text.
+ * @param {*} value
+ * @returns {boolean}
+ */
+function hasTextValue(value) {
+  return value != null && value !== '';
+}
+
+/**
+ * @param {*} value
+ * @returns {number|null}
+ */
+function finiteNumberOrNull(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+/**
+ * Copy one dashboard number onto the legacy doc when it is a real finite number.
+ * Text fields can be "" or "abc". Those must not become NaN on the old doc.
+ * @param {object} tracking
+ * @param {string} trackingKey
+ * @param {*} dashboardValue
+ */
+function copyFiniteNumber(tracking, trackingKey, dashboardValue) {
+  if (!hasTextValue(dashboardValue)) return;
+  const numericValue = finiteNumberOrNull(dashboardValue);
+  if (numericValue != null) tracking[trackingKey] = numericValue;
+}
+
+/**
+ * Ratings stay strings. They are scale labels, not quantities.
+ * @param {object} tracking
+ * @param {string} trackingKey
+ * @param {*} dashboardValue
+ */
+function copyRatingString(tracking, trackingKey, dashboardValue) {
+  if (!hasTextValue(dashboardValue)) return;
+  tracking[trackingKey] = String(dashboardValue);
+}
+
+/**
+ * dailyLogs calls the exercise field exerciseName. The legacy doc calls it name.
+ * @param {object[]} workoutLog
+ * @returns {object[]}
+ */
+function workoutLogToLegacyExercises(workoutLog) {
+  return workoutLog.map((exercise) => ({
+    name: exercise.exerciseName || exercise.name || '',
+    sets: Array.isArray(exercise.sets) ? exercise.sets : [],
+  }));
+}
+
+/**
+ * Prefer the dailyLogs number. Fall back to the legacy value only when it is already a number.
+ * @param {*} logValue
+ * @param {*} trackingValue
+ * @returns {number|null}
+ */
+function preferLogNumber(logValue, trackingValue) {
+  const numberFromLogs = hasTextValue(logValue) ? Number(logValue) : null;
+  if (Number.isFinite(numberFromLogs)) return numberFromLogs;
+  if (typeof trackingValue === 'number') return trackingValue;
+  return null;
+}
+
+/**
+ * Same precedence as preferLogNumber, but the result stays a string.
+ * @param {*} logValue
+ * @param {*} trackingValue
+ * @returns {string|null}
+ */
+function preferRatingText(logValue, trackingValue) {
+  if (hasTextValue(logValue)) return String(logValue);
+  if (hasTextValue(trackingValue)) return String(trackingValue);
+  return null;
+}
+
+/**
+ * Display shape for the dashboard card: exerciseName becomes name.
+ * Null when dailyLogs has no sets, so the caller can use the legacy list instead.
+ * @param {object} logs
+ * @returns {object[]|null}
+ */
+function exercisesFromDailyLogs(logs) {
+  if (!Array.isArray(logs.workoutLog) || logs.workoutLog.length === 0) return null;
+  return logs.workoutLog.map((exercise) => ({
+    name: exercise.exerciseName || exercise.name || '',
+    sets: exercise.sets || [],
+  }));
+}
+
+/**
+ * Legacy exercises are already { name, sets }. Rebuild sets with 0 defaults so the
+ * logger's number inputs never receive undefined.
+ * @param {object} trackingData
+ * @param {object} dailyLog
+ * @returns {object}
+ */
+function dailyLogFromLegacyWorkout(trackingData, dailyLog) {
+  return {
+    ...dailyLog,
+    dashboard_workout_name: trackingData.workoutName || dailyLog.dashboard_workout_name || '',
+    workoutLog:
+      Array.isArray(trackingData.workoutExercises) && trackingData.workoutExercises.length
+        ? trackingData.workoutExercises.map((exercise) => ({
+            exerciseName: exercise.name || exercise.exerciseName || exercise.label || '',
+            sets: Array.isArray(exercise.sets)
+              ? exercise.sets.map((setRow) => ({
+                  reps: setRow.reps != null ? setRow.reps : 0,
+                  weight: setRow.weight != null ? setRow.weight : 0,
+                }))
+              : [],
+          }))
+        : dailyLog.workoutLog,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Write direction: a dailyLogs patch becomes the matching daily_tracking patch.
+ * Only keys present on the patch are copied, so a partial save does not blank other legacy fields.
+ * @param {object} [logsPatch]
+ * @returns {object}
+ */
 function trackingMirrorFromLogs(logsPatch = {}) {
   const tracking = {};
-  // Numeric fields are coerced and finite-checked: dashboard inputs are text fields,
-  // so "" or "abc" must not be mirrored as NaN into the legacy doc.
-  // Rating fields (soreness/energy/stress) stay STRINGS on purpose — they're scale
-  // labels, not quantities.
-  if (logsPatch.dashboard_water != null && logsPatch.dashboard_water !== '') {
-    const n = Number(logsPatch.dashboard_water);
-    if (Number.isFinite(n)) tracking.waterIntake = n;
-  }
-  if (logsPatch.dashboard_sleep != null && logsPatch.dashboard_sleep !== '') {
-    const n = Number(logsPatch.dashboard_sleep);
-    if (Number.isFinite(n)) tracking.sleepHours = n;
-  }
-  if (logsPatch.dashboard_soreness != null && logsPatch.dashboard_soreness !== '') {
-    tracking.soreness = String(logsPatch.dashboard_soreness);
-  }
-  if (logsPatch.dashboard_energy != null && logsPatch.dashboard_energy !== '') {
-    tracking.energyLevel = String(logsPatch.dashboard_energy);
-  }
-  if (logsPatch.dashboard_stress != null && logsPatch.dashboard_stress !== '') {
-    tracking.stressLevel = String(logsPatch.dashboard_stress);
-  }
+  copyFiniteNumber(tracking, 'waterIntake', logsPatch.dashboard_water);
+  copyFiniteNumber(tracking, 'sleepHours', logsPatch.dashboard_sleep);
+  copyRatingString(tracking, 'soreness', logsPatch.dashboard_soreness);
+  copyRatingString(tracking, 'energyLevel', logsPatch.dashboard_energy);
+  copyRatingString(tracking, 'stressLevel', logsPatch.dashboard_stress);
   if (logsPatch.dashboard_workout_name != null) {
     tracking.workoutName = logsPatch.dashboard_workout_name;
   }
   if (logsPatch.dashboard_workouts != null) {
     tracking.workoutSummary = logsPatch.dashboard_workouts;
   }
-  // Exercises need a real shape change, not just a rename: dailyLogs calls the field
-  // `exerciseName`, the legacy doc calls it `name`.
   if (Array.isArray(logsPatch.workoutLog) && logsPatch.workoutLog.length > 0) {
-    tracking.workoutExercises = logsPatch.workoutLog.map((ex) => ({
-      name: ex.exerciseName || ex.name || '',
-      sets: Array.isArray(ex.sets) ? ex.sets : [],
-    }));
+    tracking.workoutExercises = workoutLogToLegacyExercises(logsPatch.workoutLog);
   }
   return tracking;
 }
 
-// Read direction: combine both day docs into the single object the dashboard renders.
-// The rule throughout is dailyLogs-wins-if-present, legacy-doc-as-fallback, null if neither.
+/**
+ * Read direction: one object the dashboard can render.
+ * dailyLogs wins when it has a real value. The legacy doc fills gaps. Null when neither does.
+ * vocab/symbol: ?.exists?.() = call exists() only when this is a real snapshot or a test double.
+ * @param {object} logsSnap
+ * @param {object} trackingSnap
+ * @returns {object}
+ */
 function parseDailyMetricsFromSnapshots(logsSnap, trackingSnap) {
-  // vocab/symbol: ?.exists?.() = these may be real Firestore snapshots, undefined, or
-  //               test doubles — this calls exists() only if it's actually there.
-  // Defaulting to {} lets every lookup below read fields without null checks.
   const logs = logsSnap?.exists?.() ? logsSnap.data() || {} : {};
-  const td = trackingSnap?.exists?.() ? trackingSnap.data() || {} : {};
+  const trackingData = trackingSnap?.exists?.() ? trackingSnap.data() || {} : {};
 
-  // Water/sleep: try dailyLogs as a number first; only if that isn't finite do we accept
-  // the legacy value (and only when it's already a number, to avoid re-introducing strings).
-  const waterFromLogs =
-    logs.dashboard_water != null && logs.dashboard_water !== ''
-      ? Number(logs.dashboard_water)
-      : null;
-  const waterIntake = Number.isFinite(waterFromLogs)
-    ? waterFromLogs
-    : typeof td.waterIntake === 'number'
-      ? td.waterIntake
-      : null;
+  const waterIntake = preferLogNumber(logs.dashboard_water, trackingData.waterIntake);
+  const sleepHours = preferLogNumber(logs.dashboard_sleep, trackingData.sleepHours);
+  const soreness = preferRatingText(logs.dashboard_soreness, trackingData.soreness);
+  const energyLevel = preferRatingText(logs.dashboard_energy, trackingData.energyLevel);
+  const stressLevel = preferRatingText(logs.dashboard_stress, trackingData.stressLevel);
 
-  const sleepFromLogs =
-    logs.dashboard_sleep != null && logs.dashboard_sleep !== ''
-      ? Number(logs.dashboard_sleep)
-      : null;
-  const sleepHours = Number.isFinite(sleepFromLogs)
-    ? sleepFromLogs
-    : typeof td.sleepHours === 'number'
-      ? td.sleepHours
-      : null;
-
-  // Rating fields follow the same precedence but stay strings. The repeated
-  // `!= null && !== ''` pair is the "has a real answer" test — an empty string is a
-  // cleared field, not a rating of "".
-  const soreness =
-    logs.dashboard_soreness != null && logs.dashboard_soreness !== ''
-      ? String(logs.dashboard_soreness)
-      : td.soreness != null && td.soreness !== ''
-        ? String(td.soreness)
-        : null;
-  const energyLevel =
-    logs.dashboard_energy != null && logs.dashboard_energy !== ''
-      ? String(logs.dashboard_energy)
-      : td.energyLevel != null && td.energyLevel !== ''
-        ? String(td.energyLevel)
-        : null;
-  const stressLevel =
-    logs.dashboard_stress != null && logs.dashboard_stress !== ''
-      ? String(logs.dashboard_stress)
-      : td.stressLevel != null && td.stressLevel !== ''
-        ? String(td.stressLevel)
-        : null;
-
-  // Workout: the NAME gates everything. Without a name there's nothing to show, so
-  // `todayWorkout` stays null and the dashboard renders its empty state.
+  // The name gates the card. No name means the dashboard shows its empty state.
   let todayWorkout = null;
-  const workoutName = logs.dashboard_workout_name || td.workoutName;
+  const workoutName = logs.dashboard_workout_name || trackingData.workoutName;
   if (workoutName) {
-    // Convert dailyLogs exercises into the display shape (exerciseName → name).
-    // Stays null when there are none so the `||` below can reach the legacy list.
-    const exercisesFromLogs =
-      Array.isArray(logs.workoutLog) && logs.workoutLog.length > 0
-        ? logs.workoutLog.map((ex) => ({
-            name: ex.exerciseName || ex.name || '',
-            sets: ex.sets || [],
-          }))
-        : null;
+    const exercisesFromLogs = exercisesFromDailyLogs(logs);
     todayWorkout = {
       name: workoutName,
-      // Legacy exercises are already in display shape, so they need no mapping.
-      // Final `[]` guarantees the UI can always .map() over this.
-      exercises:
-        exercisesFromLogs ||
-        (Array.isArray(td.workoutExercises) ? td.workoutExercises : []),
+      exercises: exercisesFromLogs || (Array.isArray(trackingData.workoutExercises) ? trackingData.workoutExercises : []),
     };
   }
 
-  // The free-text summary a client can type instead of logging structured sets.
-  const dashboardWorkoutSummary = logs.dashboard_workouts || td.workoutSummary || null;
+  const dashboardWorkoutSummary = logs.dashboard_workouts || trackingData.workoutSummary || null;
 
-  // One flat, predictable object — every numeric field re-checked for finiteness so the
-  // dashboard never has to guard against NaN.
   return {
     waterIntake: Number.isFinite(waterIntake) ? waterIntake : null,
     sleepHours: Number.isFinite(sleepHours) ? sleepHours : null,
@@ -141,62 +200,44 @@ function parseDailyMetricsFromSnapshots(logsSnap, trackingSnap) {
   };
 }
 
-/** Merge legacy tracking into dailyLogs-shaped doc for workout logger hydration. */
-// Prepares the workout logger's edit form. Unlike the read above, the output must be in
-// dailyLogs shape (`exerciseName`, not `name`) because whatever the user saves is written
-// straight back to dailyLogs.
-// Returns `{ d, fromLogs }` — `d` is the hydrated doc, `fromLogs` tells the caller whether
-// we found any workout at all (false → open a blank logger).
+/**
+ * Prepare the workout logger's edit form in dailyLogs shape (exerciseName, not name),
+ * because the next save writes straight back to dailyLogs.
+ * `d` is the hydrated doc. `fromLogs` is false when there is nothing to edit.
+ * @param {object} logsSnap
+ * @param {object} trackingSnap
+ * @returns {{ d: object, fromLogs: boolean }}
+ */
 function buildWorkoutLogHydration(logsSnap, trackingSnap) {
-  let d = logsSnap?.exists?.() ? logsSnap.data() || {} : {};
-  const td = trackingSnap?.exists?.() ? trackingSnap.data() || {} : {};
+  let dailyLog = logsSnap?.exists?.() ? logsSnap.data() || {} : {};
+  const trackingData = trackingSnap?.exists?.() ? trackingSnap.data() || {} : {};
 
-  // Does dailyLogs already have something usable? Three acceptable signals: structured
-  // sets, an older exercises array, or just a workout name.
+  // Three signals count as "we already have a workout": structured sets, an older name list, or just a name.
   let fromLogs =
-    (Array.isArray(d.workoutLog) && d.workoutLog.length > 0) ||
-    (Array.isArray(d.dashboard_workout_exercises) && d.dashboard_workout_exercises.length > 0) ||
-    (d.dashboard_workout_name && String(d.dashboard_workout_name).trim());
+    (Array.isArray(dailyLog.workoutLog) && dailyLog.workoutLog.length > 0) ||
+    (Array.isArray(dailyLog.dashboard_workout_exercises) && dailyLog.dashboard_workout_exercises.length > 0) ||
+    (dailyLog.dashboard_workout_name && String(dailyLog.dashboard_workout_name).trim());
 
-  // Only reach into the legacy doc when dailyLogs had nothing — otherwise we'd risk
-  // overwriting fresh data with an older mirror.
+  // Only read the legacy doc when dailyLogs had nothing. Otherwise an older mirror could overwrite a fresh log.
   if (!fromLogs) {
-    // Preferred legacy shape: a real name and/or structured exercises.
-    if (td.workoutName || (Array.isArray(td.workoutExercises) && td.workoutExercises.length)) {
-      d = {
-        ...d,
-        dashboard_workout_name: td.workoutName || d.dashboard_workout_name || '',
-        // Translate legacy → dailyLogs shape. `ex.label` is a third historical spelling.
-        // Sets are rebuilt field-by-field with 0 defaults so the logger's number inputs
-        // never receive undefined (which would make them uncontrolled).
-        workoutLog:
-          Array.isArray(td.workoutExercises) && td.workoutExercises.length
-            ? td.workoutExercises.map((ex) => ({
-                exerciseName: ex.name || ex.exerciseName || ex.label || '',
-                sets: Array.isArray(ex.sets)
-                  ? ex.sets.map((s) => ({
-                      reps: s.reps != null ? s.reps : 0,
-                      weight: s.weight != null ? s.weight : 0,
-                    }))
-                  : [],
-              }))
-            : d.workoutLog,
-      };
+    const hasLegacyWorkout = trackingData.workoutName
+      || (Array.isArray(trackingData.workoutExercises) && trackingData.workoutExercises.length);
+    if (hasLegacyWorkout) {
+      dailyLog = dailyLogFromLegacyWorkout(trackingData, dailyLog);
       fromLogs = true;
-    // Last resort: only a free-text summary exists. Use its first line as the workout
-    // name so the logger at least has a title, and keep the full text alongside it.
-    } else if (td.workoutSummary && String(td.workoutSummary).trim()) {
-      d = {
-        ...d,
+    } else if (trackingData.workoutSummary && String(trackingData.workoutSummary).trim()) {
+      // Last resort: a free-text summary. The first line becomes the title.
+      dailyLog = {
+        ...dailyLog,
         dashboard_workout_name:
-          String(td.workoutSummary).split('\n')[0].trim() || d.dashboard_workout_name,
-        dashboard_workouts: td.workoutSummary,
+          String(trackingData.workoutSummary).split('\n')[0].trim() || dailyLog.dashboard_workout_name,
+        dashboard_workouts: trackingData.workoutSummary,
       };
       fromLogs = true;
     }
   }
 
-  return { d, fromLogs };
+  return { d: dailyLog, fromLogs };
 }
 
 module.exports = {

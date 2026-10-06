@@ -1,9 +1,6 @@
 // Owns the whole push-notification lifecycle on the device.
-// Flow: configureNotifications() once at startup (display rules + Android channel + tap
-//       listener) → ask permission → fetch the Expo and native tokens → save them on the
-//       user doc so the server can target this device → refresh on foreground, clear on logout.
-// Called from ClientAppStart/TrainerAppStart and the settings screen. Notification COPY lives in
-// writeAlertText.js; this file only deals with plumbing.
+// Flow: configure once at startup → ask permission → save Expo and native tokens on the user doc → refresh on foreground, clear on logout.
+// Called from ClientAppStart, TrainerAppStart, and the settings screen. Notification copy lives in writeAlertText.js.
 
 // vocab: expo-notifications = Expo's wrapper over APNs (iOS) and FCM (Android)
 import * as Notifications from 'expo-notifications';
@@ -13,83 +10,149 @@ import { AppState, Linking, Platform } from 'react-native';
 import { deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
 
-// Where a token waits when we obtained it but couldn't save it (offline at launch).
-// uid-scoped so a pending token can never be attached to the wrong account.
-export function pendingPushTokenStorageKey(uid) {
-  return `pending_push_token_${uid}`;
-}
+// ===== NAMED CONSTANTS =====
 
-// Module-level (not React) state, because notifications are a per-PROCESS concern:
-// the OS listener must exist once for the app, not once per component.
+const USERS_COLLECTION = 'users';
+const ANDROID_CHANNEL_ID = 'default';
+// Manipulate here: raise this if a cold-start tap navigates before the navigator exists.
+const COLD_START_TAP_DELAY_MS = 500;
+const TOKEN_LOG_PREFIX_LENGTH = 24;
+const TEST_NOTIFICATION_DELAY_SECONDS = 1;
+const ANDROID_VIBRATION_PATTERN = [0, 250, 250, 250];
+const NOTIFICATION_LED_COLOR = '#FF6B9D';
+
+// ===== HELPER FUNCTIONS =====
+
+// Module-level (not React) state. The OS listener must exist once for the process, not once per component.
 let isConfigured = false;
 let notificationResponseSubscription = null;
 
 /** @type {((data: Record<string, unknown>) => void) | null} */
-// Indirection layer: the OS listener is registered once and forever, but the function it
-// should call (navigate to a chat, open a session) only exists after the nav tree mounts.
-// This slot lets the app swap the handler in and out without touching the subscription.
+// The OS listener is registered once. This slot swaps the navigate function in after the nav tree mounts.
 let notificationTapHandler = null;
 
-/**
- * Register handler for notification taps (set from ClientAppStart / TrainerAppStart after mount).
- * Pass null on unmount to detach.
- */
-export function setNotificationTapHandler(handler) {
-  // The typeof check normalizes anything non-callable (including null) to null, so
-  // `if (notificationTapHandler)` below is always a safe test.
-  notificationTapHandler = typeof handler === 'function' ? handler : null;
+function userDocRef(uid) {
+  return doc(db, USERS_COLLECTION, uid);
 }
 
-// Attaches the OS tap listener exactly once — the early return is what makes that true.
-// Subscribing twice would fire the handler twice per tap and double-navigate.
+function isNotificationPermissionGranted(permission) {
+  return Boolean(permission?.granted || permission?.status === 'granted');
+}
+
+// Dev-only peek. Push tokens are device credentials, so only a prefix is printed.
+function logTokenDebug(label, value) {
+  if (__DEV__ && value && typeof value === 'string') {
+    console.log(`[push] ${label} prefix`, value.slice(0, TOKEN_LOG_PREFIX_LENGTH) + '…');
+  }
+}
+
+function isSimulatorPushError(error) {
+  const messageText = (error?.message || String(error)).toLowerCase();
+  return messageText.includes('simulator') || messageText.includes('device');
+}
+
+// True only when the user doc explicitly says notifications are off. A read failure returns false
+// so we still try to save the token instead of dropping it.
+async function isNotificationsDisabled(uid) {
+  try {
+    const snap = await getDoc(userDocRef(uid));
+    return snap.exists() && snap.data()?.notificationsEnabled === false;
+  } catch {
+    return false;
+  }
+}
+
+function buildPushTokenPayload(expoPushToken, fcmToken) {
+  const now = new Date().toISOString();
+  return {
+    expoPushToken,
+    // pushToken is the legacy field. It mirrors the Expo token so older Cloud Functions keep working.
+    pushToken: expoPushToken,
+    pushTokenUpdatedAt: now,
+    // vocab/symbol: ...(condition ? { key } : {}) = include the key only when we have a value.
+    // Writing undefined makes Firestore throw, and the native token is optional.
+    ...(fcmToken ? { fcmToken } : {}),
+  };
+}
+
+async function rememberPendingExpoToken(uid, expoPushToken) {
+  if (!expoPushToken) return;
+  try {
+    await AsyncStorage.setItem(pendingPushTokenStorageKey(uid), expoPushToken);
+  } catch (_) {
+    /* non-fatal */
+  }
+}
+
+// Attaches the OS tap listener exactly once. Subscribing twice would navigate twice per tap.
 function ensureNotificationResponseSubscription() {
   if (notificationResponseSubscription) return;
-  // The useful part of a tap is the `data` payload the server attached (e.g.
-  // { type: 'message', threadId }); the handler uses it to decide where to navigate.
   notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response?.notification?.request?.content?.data || {};
     if (notificationTapHandler) notificationTapHandler(data);
   });
 }
 
+function readExpoProjectId() {
+  // vocab: EAS = Expo Application Services. The project id lives in a different place for EAS builds vs the dev client.
+  return (
+    Constants?.expoConfig?.extra?.eas?.projectId ||
+    Constants?.easConfig?.projectId ||
+    undefined
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * If app was opened from a notification, deliver payload once to the current tap handler.
- * Call after ClientAppStart/TrainerAppStart registers `setNotificationTapHandler`.
+ * Where a token waits when we obtained it but could not save it (offline at launch).
+ * Scoped by uid so it cannot attach to the wrong account.
+ * @param {string} uid
+ * @returns {string}
  */
-// Handles the cold-start case: the app was LAUNCHED by tapping a notification, so the tap
-// listener wasn't alive when the OS delivered it. Call this after the nav tree registers
-// its handler; it replays that initial payload once.
-// Returns a cleanup function in every branch (even the no-op ones) so callers can treat
-// it uniformly inside a useEffect.
-export function flushInitialNotificationResponse(delayMs = 500) {
+export function pendingPushTokenStorageKey(uid) {
+  return `pending_push_token_${uid}`;
+}
+
+/**
+ * Register the function that runs when a notification is tapped.
+ * Pass null on unmount to detach. Anything that is not a function is stored as null.
+ * @param {Function|null} handler
+ */
+export function setNotificationTapHandler(handler) {
+  notificationTapHandler = typeof handler === 'function' ? handler : null;
+}
+
+/**
+ * Replay the notification that launched the app, once the nav tree has a tap handler.
+ * Returns a cleanup function in every branch so a useEffect can always call it.
+ * @param {number} [delayMs]
+ * @returns {Function}
+ */
+export function flushInitialNotificationResponse(delayMs = COLD_START_TAP_DELAY_MS) {
   try {
-    // vocab: getLastNotificationResponse() = "what notification, if any, opened this app?"
-    //        `?.` because it doesn't exist on all platforms/SDK versions.
-    const last = Notifications.getLastNotificationResponse?.();
-    if (!last?.notification?.request?.content?.data) return () => {};
-    const data = last.notification.request.content.data || {};
-    // The delay gives navigation time to finish mounting. Firing instantly would attempt
-    // to navigate to a screen whose navigator doesn't exist yet and silently do nothing.
-    // Manipulate here: raise delayMs if deep links from a cold start don't land
-    const t = setTimeout(() => {
+    // vocab: getLastNotificationResponse() = which notification, if any, opened this app.
+    const lastResponse = Notifications.getLastNotificationResponse?.();
+    if (!lastResponse?.notification?.request?.content?.data) return () => {};
+    const data = lastResponse.notification.request.content.data || {};
+    // The delay lets navigation finish mounting. Firing instantly navigates into a tree that is not there yet.
+    const timeoutId = setTimeout(() => {
       if (notificationTapHandler) notificationTapHandler(data);
     }, delayMs);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timeoutId);
   } catch {
     return () => {};
   }
 }
 
-// One-time startup setup. The `isConfigured` guard makes it safe to call from several
-// places (both app shells, settings screen) without re-registering anything.
+/**
+ * One-time startup setup. Safe to call from both app shells and the settings screen.
+ */
 export function configureNotifications() {
   if (isConfigured) return;
 
-  // Decides what happens when a push arrives while the app is in the FOREGROUND.
-  // By default the OS shows nothing in that case, which looks like a bug to users.
-  // Manipulate here: shouldSetBadge is false because the app-icon badge is driven by our
-  //                  own unread index (see unreadAlertCount), not by push count —
-  //                  turning it on would double-count.
+  // Foreground pushes show a banner. The app-icon badge is driven by our own unread count, not by push count.
+  // Manipulate here: shouldSetBadge stays false so push count and the unread index are not added together.
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
@@ -99,23 +162,21 @@ export function configureNotifications() {
     }),
   });
 
-  // Android requires a "channel" before any notification can display; the user then
-  // controls sound/vibration per channel in system settings. iOS has no equivalent.
+  // Android needs a channel before any notification can show. iOS has no equivalent.
   if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('default', {
-      // Manipulate here: `name`/`description` are shown to users in Android settings.
-      //                  Renaming the channel ID ('default') orphans existing preferences.
+    Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      // Manipulate here: name and description are what the user sees in Android settings.
+      // Changing the channel id ('default') orphans the preferences they already set.
       name: 'CoachConnect',
       description: 'Notifications from your AI Fitness Coach',
-      // MAX = heads-up banner with sound. Lower it to DEFAULT for silent tray-only alerts.
+      // MAX = heads-up banner with sound. DEFAULT would be a silent tray alert.
       importance: Notifications.AndroidImportance.MAX,
       // vibrationPattern = [wait, vibrate, wait, vibrate] in milliseconds
-      vibrationPattern: [0, 250, 250, 250],
+      vibrationPattern: ANDROID_VIBRATION_PATTERN,
       sound: 'default',
       enableLights: true,
-      lightColor: '#FF6B9D',   // notification LED color on phones that have one
+      lightColor: NOTIFICATION_LED_COLOR,
       enableVibrate: true,
-    // Swallow failures: an unconfigurable channel shouldn't block app startup.
     }).catch(() => {});
   }
 
@@ -123,20 +184,23 @@ export function configureNotifications() {
   isConfigured = true;
 }
 
-// Read-only permission check — used by the settings screen to show current state
-// WITHOUT triggering the system prompt.
+/**
+ * Current permission, without showing the system prompt.
+ * @returns {Promise<object>}
+ */
 export async function getNotificationPermissionsAsync() {
   return Notifications.getPermissionsAsync();
 }
 
+/**
+ * Ask for notification permission. If it is already granted, the system dialog is not shown again.
+ * @returns {Promise<object>}
+ */
 export async function requestNotificationPermissionsAsync() {
-  // Check before asking. iOS only ever shows the permission dialog once, so re-requesting
-  // when already granted is wasted work (and on denial it silently resolves as denied).
   const existing = await Notifications.getPermissionsAsync();
-  if (existing?.granted || existing?.status === 'granted') return existing;
+  if (isNotificationPermissionGranted(existing)) return existing;
 
-  // Manipulate here: which iOS capabilities we ask for. allowAnnouncements (Siri reading
-  //                  notifications aloud over AirPods) is off as it's rarely wanted here.
+  // Manipulate here: iOS capabilities we ask for. Announcements (Siri reading alerts) stay off.
   return Notifications.requestPermissionsAsync({
     ios: {
       allowAlert: true,
@@ -147,8 +211,10 @@ export async function requestNotificationPermissionsAsync() {
   });
 }
 
-// Escape hatch for a previously-denied user: the OS won't re-prompt, so the only path to
-// enabling notifications is the system settings app.
+/**
+ * Open the system settings app. The OS will not show the permission dialog again after a denial.
+ * @returns {Promise<boolean>}
+ */
 export async function openSystemSettingsAsync() {
   try {
     await Linking.openSettings();
@@ -158,204 +224,136 @@ export async function openSystemSettingsAsync() {
   }
 }
 
-// Dev-only token peek. Logs just the first 24 characters — push tokens are device
-// credentials, so the full value should never be printed.
-function logTokenDebug(label, value) {
-  if (__DEV__ && value && typeof value === 'string') {
-    console.log(`[push] ${label} prefix`, value.slice(0, 24) + '…');
-  }
-}
-
 /**
- * Native device push token (Android: FCM registration token when using FCM; iOS: device token string).
- * Used only for Firebase Admin `messaging().send` — stored as `fcmToken` on the user doc.
+ * Native device token. Android: FCM registration token. iOS: APNs device token string.
+ * Stored as fcmToken. Returns null instead of throwing — the Expo token can deliver on its own.
+ * @returns {Promise<string|null>}
  */
-// Token #1 of 2: the RAW platform token (FCM registration token on Android, APNs device
-// token on iOS). Needed because our server sends some notifications through Firebase Admin
-// `messaging().send`, which speaks native tokens, not Expo ones.
-// Returns null instead of throwing — this token is optional, and the Expo token below is
-// enough to deliver a notification on its own.
 export async function getNativeDevicePushTokenAsync() {
   try {
     const device = await Notifications.getDevicePushTokenAsync();
     const token = device?.data != null ? String(device.data) : null;
     if (token) logTokenDebug('native', token);
     return token;
-  } catch (e) {
-    const msg = e?.message || String(e);
-    if (__DEV__) console.warn('[push] native device token unavailable:', msg);
+  } catch (error) {
+    const messageText = error?.message || String(error);
+    if (__DEV__) console.warn('[push] native device token unavailable:', messageText);
     return null;
   }
 }
 
-// Token #2 of 2: the Expo push token, used by Expo's push service. This one is REQUIRED,
-// so unlike the native token it throws on failure.
+/**
+ * Expo push token. Permission is required. Throws on a simulator or any other failure.
+ * @returns {Promise<string>}
+ */
 export async function getExpoPushTokenAsync() {
-  // Permission must come first — requesting a token without it fails at the OS level.
-  const perm = await requestNotificationPermissionsAsync();
-  if (!perm?.granted && perm?.status !== 'granted') {
+  const permission = await requestNotificationPermissionsAsync();
+  if (!isNotificationPermissionGranted(permission)) {
     throw new Error('Notification permission was not granted.');
   }
 
-  // Expo needs to know WHICH project the token belongs to. The id lives in a different
-  // place depending on build type (EAS build vs dev client), hence both lookups.
-  // vocab: EAS = Expo Application Services, Expo's cloud build/submit system
-  const projectId =
-    Constants?.expoConfig?.extra?.eas?.projectId ||
-    Constants?.easConfig?.projectId ||
-    undefined;
+  const projectId = readExpoProjectId();
 
   try {
-    // Passing `undefined` (rather than `{ projectId: undefined }`) lets Expo auto-detect.
+    // Passing undefined (not { projectId: undefined }) lets Expo detect the project itself.
     const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    const data = token.data;
-    logTokenDebug('expo', data);
-    return data;
-  } catch (e) {
-    // Translate the SDK's vague simulator error into something actionable, since this is
-    // the single most common failure while developing — simulators can't receive push.
-    const msg = e?.message || String(e);
-    if (msg.toLowerCase().includes('simulator') || msg.toLowerCase().includes('device')) {
+    const tokenData = token.data;
+    logTokenDebug('expo', tokenData);
+    return tokenData;
+  } catch (error) {
+    if (isSimulatorPushError(error)) {
       throw new Error('Push notifications require a physical device (not the iOS Simulator).');
     }
-    // Anything else is a real error — rethrow untouched so the cause isn't hidden.
-    throw e;
+    throw error;
   }
 }
 
 /**
- * Persist Expo + native tokens. Keeps legacy `pushToken` mirroring Expo for older readers.
+ * Save the Expo token and, when we have one, the native token.
+ * Keeps legacy pushToken mirroring the Expo token.
+ * skipIfDisabled defaults to true — it respects notificationsEnabled: false.
+ * Pass a string to flush a token that was cached in AsyncStorage.
  * @param {string} uid
  * @param {{ skipIfDisabled?: boolean, pendingExpoToken?: string } | string} [optionsOrPendingToken]
- *   skipIfDisabled defaults true — respects `notificationsEnabled: false`.
- *   Pass a string to flush a previously cached Expo token from AsyncStorage.
  */
 export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
-  // Overloaded signature for backwards compatibility: older call sites pass a token
-  // string directly, newer ones pass an options object. Normalize to the object form.
   const options =
     typeof optionsOrPendingToken === 'string'
       ? { pendingExpoToken: optionsOrPendingToken }
       : optionsOrPendingToken;
-  // Defaults to TRUE — note `!== false`, so only an explicit `false` opts out. Callers
-  // that genuinely want to force a save (the settings toggle turning notifications ON)
-  // must say so, since at that moment the doc still reads `notificationsEnabled: false`.
+  // Only an explicit false opts out. Turning notifications ON must pass false, because the doc still says off.
   const skipIfDisabled = options.skipIfDisabled !== false;
   if (!uid || !db) return;
 
-  // Respect the user's own opt-out: don't store a token for someone who turned
-  // notifications off, or the server would keep targeting this device.
-  if (skipIfDisabled) {
-    try {
-      const snap = await getDoc(doc(db, 'users', uid));
-      if (snap.exists() && snap.data()?.notificationsEnabled === false) return;
-    } catch {
-      // Best effort — if we can't read the preference, proceed rather than lose the token.
-      // continue — best effort
-    }
-  }
+  if (skipIfDisabled && (await isNotificationsDisabled(uid))) return;
 
-  const userRef = doc(db, 'users', uid);
-  // Declared OUTSIDE the try so the catch block can still see it and stash it for retry.
+  const userRef = userDocRef(uid);
   let expoPushToken = null;
 
   try {
-    // Reuse a previously cached token when one was passed in, otherwise fetch fresh.
     expoPushToken = options.pendingExpoToken || (await getExpoPushTokenAsync());
     const fcmToken = await getNativeDevicePushTokenAsync();
-    const now = new Date().toISOString();
-
-    const payload = {
-      expoPushToken,
-      // `pushToken` is the legacy field name, kept mirroring the Expo token so older
-      // server code and existing Cloud Functions keep working.
-      pushToken: expoPushToken,
-      pushTokenUpdatedAt: now,
-      // vocab/symbol: ...(cond ? {x} : {}) = conditionally include a key. Used because
-      //               fcmToken is optional and writing `undefined` would make Firestore throw.
-      ...(fcmToken ? { fcmToken } : {}),
-    };
-
-    await setDoc(userRef, payload, { merge: true });
-    // Save succeeded → drop any pending breadcrumb from an earlier failed attempt.
+    await setDoc(userRef, buildPushTokenPayload(expoPushToken, fcmToken), { merge: true });
     await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid)).catch(() => {});
     if (__DEV__) {
       console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
     }
   } catch (error) {
-    // Usually offline. Warn rather than throw — failing to save a token must never
-    // break app startup.
     console.warn('Push token save failed, retrying on next launch:', error?.message || error);
-    // If we got the token but the WRITE failed, cache it locally. Next launch passes it
-    // back in as `pendingExpoToken`, which skips the permission/fetch round trip.
-    if (expoPushToken) {
-      try {
-        await AsyncStorage.setItem(pendingPushTokenStorageKey(uid), expoPushToken);
-      } catch (_) {
-        /* non-fatal */
-      }
-    }
+    await rememberPendingExpoToken(uid, expoPushToken);
   }
 }
 
-// Logout / opt-out: remove every token field so the server stops targeting this device.
-// Uses deleteField() rather than writing null, so the fields disappear entirely and
-// server-side `if (user.expoPushToken)` checks read false.
+/**
+ * Remove every token field so the server stops targeting this device.
+ * deleteField makes `if (user.expoPushToken)` read false. A failure must not block sign-out.
+ * @param {string} uid
+ */
 export async function clearPushTokensForUid(uid) {
   if (!uid || !db) return;
   try {
-    // updateDoc (not setDoc) on purpose: it fails loudly if the doc is missing, and
-    // there's nothing to clear in that case anyway.
-    await updateDoc(doc(db, 'users', uid), {
+    await updateDoc(userDocRef(uid), {
       expoPushToken: deleteField(),
       fcmToken: deleteField(),
       pushToken: deleteField(),
     });
     if (__DEV__) console.log('[push] tokens cleared for user');
-  } catch (e) {
-    // Swallowed because this runs during sign-out — see clearDataOnLogout.js. A failure
-    // here must not block the user from logging out.
-    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', e?.message || e);
+  } catch (error) {
+    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', error?.message || error);
   }
 }
 
 /**
- * Subscribe to app foreground: re-persist tokens (handles token rotation / permission changes).
+ * Re-save tokens when the app returns to the foreground.
+ * Tokens rotate, and permission can change in system settings while we are backgrounded.
+ * Call the returned function on unmount so the listener does not leak across accounts.
+ * @param {string} uid
+ * @param {Function} shouldRun evaluated at resume time, not when the subscription was created
+ * @returns {Function}
  */
-// Re-saves tokens whenever the app comes back to the foreground.
-// Why: push tokens ROTATE (OS reinstalls, restores, backups) and permission can be
-// revoked in system settings while the app is backgrounded. Without this, a stale token
-// would silently stop receiving notifications with no visible error.
 export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
-  // vocab: AppState 'change' = fires on background/foreground transitions;
-  //        'active' means we're now in the foreground.
-  const sub = AppState.addEventListener('change', (next) => {
-    // `shouldRun` is a callback, not a boolean, so it's evaluated fresh at resume time —
-    // the caller can gate on current state (signed in, onboarding finished) rather than
-    // on whatever was true when the subscription was created.
-    if (next !== 'active' || !uid || !shouldRun?.()) return;
+  // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
+  const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+    if (nextAppState !== 'active' || !uid || !shouldRun?.()) return;
     persistPushTokensForUid(uid, { skipIfDisabled: true }).catch(() => {});
   });
-  // Caller must invoke this on unmount or the listener leaks across account switches.
-  return () => sub.remove();
+  return () => appStateSubscription.remove();
 }
 
-// "Send test notification" button in settings. Local, not a server push — it proves the
-// OS permission and channel setup work without needing the backend involved.
+/**
+ * Local test banner from the settings screen. It does not call the server.
+ */
 export async function sendTestLocalNotificationAsync() {
-  // Ensures the Android channel exists even if the user reached settings before startup
-  // configuration ran; without a channel Android would silently drop this.
   configureNotifications();
 
   await Notifications.scheduleNotificationAsync({
-    // Manipulate here: the test notification's title/body copy
+    // Manipulate here: the test notification title and body.
     content: {
       title: 'CoachConnect',
       body: 'Notifications are enabled.',
       sound: true,
     },
-    // 1-second delay, not immediate: it gives the user a moment to see the banner
-    // arrive as a real notification rather than it flashing during the tap.
-    trigger: { seconds: 1 },
+    // One second, not immediate, so the banner arrives as a real notification instead of flashing on the tap.
+    trigger: { seconds: TEST_NOTIFICATION_DELAY_SECONDS },
   });
 }

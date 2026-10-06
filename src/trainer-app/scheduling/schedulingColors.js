@@ -1,36 +1,58 @@
-// Single color source for the trainer's session-scheduling UI (month calendar + booking form).
-// Flow: screens import the named brand colors / gradients directly, and call
-// getSessionSchedulingColors(isDark) for everything that flips with light vs dark mode.
-// Why it exists: keeps two screens from drifting into slightly different pinks and greys.
+// Single color source for the trainer's session calendar and booking form.
+// Flow: screens import the brand colors, or call getSessionSchedulingColors for light versus dark.
+// Used by: the scheduling screens. One list of hex values keeps the pinks from drifting.
 
-// Brand palette for this flow. Manipulate here: change a hex once and every session-scheduling
-// surface follows — do NOT hardcode these values inside screens or they'll fall out of sync.
-export const DARK_ORANGE = '#EA580C';
-export const DARK_PINK = '#D91E63';
-export const DARK_PURPLE = '#7C3AED';
-export const GOLD = '#F59E0B';
+// ===== NAMED CONSTANTS =====
 
-// Gradients are plain arrays because the gradient component takes `colors={[from, to]}`.
-// Manipulate here: order matters — index 0 renders first (top/left), last renders last.
-export const SESSION_GRADIENT = [DARK_PINK, DARK_PURPLE];
-export const ACCENT_GRADIENT = [GOLD, DARK_ORANGE];
+// Manipulate here: change a hex once. Every scheduling screen reads these names.
+const DARK_ORANGE = '#EA580C';
+const DARK_PINK = '#D91E63';
+const DARK_PURPLE = '#7C3AED';
+const GOLD = '#F59E0B';
 
-// Theme-dependent colors. Returning a fresh object per call (instead of two frozen constant
-// objects) keeps call sites to one line: `const c = getSessionSchedulingColors(isDark)`.
-// Manipulate here: each line is `isDark ? <dark value> : <light value>` — edit the side you
-// want to change. rgba(...) values are intentionally translucent so they sit on top of the
-// card background; raising the last number (alpha) makes them more solid/heavier.
+const SESSION_GRADIENT = [DARK_PINK, DARK_PURPLE];
+const ACCENT_GRADIENT = [GOLD, DARK_ORANGE];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {boolean} isDark
+ * @param {string} darkValue
+ * @param {string} lightValue
+ * @returns {string}
+ */
+function colorForTheme(isDark, darkValue, lightValue) {
+  if (isDark) return darkValue;
+  return lightValue;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Returned keys are the names the scheduling screens already read.
+ * @param {boolean} isDark
+ * @returns {object}
+ */
 export function getSessionSchedulingColors(isDark) {
   return {
-    bg: isDark ? '#0A0A0F' : '#FAFAF9',
-    cardBg: isDark ? '#1A1A1F' : '#F5F5F3',
-    text: isDark ? '#FFFFFF' : '#0A0A0F',
-    label: isDark ? '#FFFFFF' : '#0A0A0F',
-    muted: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.55)',
-    divider: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.1)',
+    bg: colorForTheme(isDark, '#0A0A0F', '#FAFAF9'),
+    cardBg: colorForTheme(isDark, '#1A1A1F', '#F5F5F3'),
+    text: colorForTheme(isDark, '#FFFFFF', '#0A0A0F'),
+    label: colorForTheme(isDark, '#FFFFFF', '#0A0A0F'),
+    muted: colorForTheme(isDark, 'rgba(255,255,255,0.62)', 'rgba(10,10,15,0.55)'),
+    divider: colorForTheme(isDark, 'rgba(255,255,255,0.12)', 'rgba(10,10,15,0.1)'),
     border: DARK_PINK,
-    wheelShell: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.04)',
-    wheelInactive: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.45)',
-    inputBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)',
+    wheelShell: colorForTheme(isDark, 'rgba(255,255,255,0.04)', 'rgba(10,10,15,0.04)'),
+    wheelInactive: colorForTheme(isDark, 'rgba(255,255,255,0.5)', 'rgba(10,10,15,0.45)'),
+    inputBg: colorForTheme(isDark, 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.9)'),
   };
 }
+
+export {
+  DARK_ORANGE,
+  DARK_PINK,
+  DARK_PURPLE,
+  GOLD,
+  SESSION_GRADIENT,
+  ACCENT_GRADIENT,
+};

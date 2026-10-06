@@ -1,50 +1,207 @@
-// Re-export surface for the trainer's client-CRM Firestore helpers (clients, notes, tasks, progress).
-// Flow: caller imports from here → we lazily require the real implementations at call time.
-// Note: the actual functions live in the trainer app-start module (search: "CLIENT CRM SERVICE").
-//   The lazy require below is the whole point of this file — see the comment on trainerApp().
+// Re-export surface for the trainer's client CRM helpers (clients, notes, tasks, progress).
+// Flow: a caller hits one of these names → we load the trainer app module at call time → that function runs.
+// Used by inbox, chat, document sharing, and the trainer listing. The real functions live in TrainerAppStart.
+
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * Trainer client CRM — Firestore helpers.
- *
- * Implementation lives in `src/app-start/TrainerAppStart.js` (search: "CLIENT CRM SERVICE").
- * This file re-exports the same API for hooks/screens that import from here.
- *
- * Uses lazy `require()` so we never create a static cycle:
- * TrainerAppStart → pagedTraineeList → this module → TrainerAppStart (unfinished),
- * which can surface as `ReferenceError: AppNavigationProvider doesn't exist` and similar.
+ * vocab: require() = a CommonJS import that runs the moment it is called. A static import would
+ * run while TrainerAppStart is still loading this file, and that cycle surfaces as a missing component.
+ * @returns {object}
  */
-// vocab: require() = CommonJS import that runs the moment it's CALLED, unlike `import` which is
-// hoisted and resolved before the file body runs. Deferring it means by the time any function
-// below actually executes, the trainer module has finished evaluating — so the circular
-// dependency never observes a half-initialized module.
-function trainerApp() {
+function loadTrainerAppModule() {
   return require('../../app-start/TrainerAppStart');
 }
 
-// Every line is the same shape: forward the call and every argument to the real implementation.
-// vocab/symbol: ...args = collect all arguments into an array, then spread them back out — this
-// keeps each wrapper signature-agnostic, so adding a parameter upstream needs no change here.
-// Manipulate here: to expose another CRM helper, add one matching line; don't add real logic in
-// this file — it's intentionally a pass-through so behavior has exactly one home.
-export const getClient = (...args) => trainerApp().getClient(...args);
-export const createOrUpdateClient = (...args) => trainerApp().createOrUpdateClient(...args);
-export const syncClientDataFromUsers = (...args) => trainerApp().syncClientDataFromUsers(...args);
-export const removeClient = (...args) => trainerApp().removeClient(...args);
-export const getTrainerClients = (...args) => trainerApp().getTrainerClients(...args);
-export const updateClient = (...args) => trainerApp().updateClient(...args);
-export const addProgress = (...args) => trainerApp().addProgress(...args);
-export const getProgressHistory = (...args) => trainerApp().getProgressHistory(...args);
-export const deleteProgress = (...args) => trainerApp().deleteProgress(...args);
-export const createTask = (...args) => trainerApp().createTask(...args);
-export const getTasks = (...args) => trainerApp().getTasks(...args);
-export const updateTask = (...args) => trainerApp().updateTask(...args);
-export const toggleTaskComplete = (...args) => trainerApp().toggleTaskComplete(...args);
-export const deleteTask = (...args) => trainerApp().deleteTask(...args);
-export const createNote = (...args) => trainerApp().createNote(...args);
-export const getNotes = (...args) => trainerApp().getNotes(...args);
-export const updateNote = (...args) => trainerApp().updateNote(...args);
-export const deleteNote = (...args) => trainerApp().deleteNote(...args);
-export const getWeightTrend = (...args) => trainerApp().getWeightTrend(...args);
-export const getTaskStats = (...args) => trainerApp().getTaskStats(...args);
-export const getClientAnalytics = (...args) => trainerApp().getClientAnalytics(...args);
-export const checkWeeklyDataAvailability = (...args) => trainerApp().checkWeeklyDataAvailability(...args);
+/**
+ * Forward every argument to the named CRM function.
+ * apply keeps `this` as the trainer module, the same as calling trainerAppModule.getClient(...).
+ * @param {string} functionName
+ * @param {Array} forwardedArguments
+ * @returns {*}
+ */
+function callTrainerClientFunction(functionName, forwardedArguments) {
+  const trainerAppModule = loadTrainerAppModule();
+  const clientFunction = trainerAppModule[functionName];
+  return clientFunction.apply(trainerAppModule, forwardedArguments);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Load one client record. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getClient = (...forwardedArguments) =>
+  callTrainerClientFunction('getClient', forwardedArguments);
+
+/**
+ * Create or update a client record. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const createOrUpdateClient = (...forwardedArguments) =>
+  callTrainerClientFunction('createOrUpdateClient', forwardedArguments);
+
+/**
+ * Copy client fields off the users collection. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const syncClientDataFromUsers = (...forwardedArguments) =>
+  callTrainerClientFunction('syncClientDataFromUsers', forwardedArguments);
+
+/**
+ * Remove a client record. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const removeClient = (...forwardedArguments) =>
+  callTrainerClientFunction('removeClient', forwardedArguments);
+
+/**
+ * Load the trainer's clients. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getTrainerClients = (...forwardedArguments) =>
+  callTrainerClientFunction('getTrainerClients', forwardedArguments);
+
+/**
+ * Update a client record. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const updateClient = (...forwardedArguments) =>
+  callTrainerClientFunction('updateClient', forwardedArguments);
+
+/**
+ * Add a progress entry. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const addProgress = (...forwardedArguments) =>
+  callTrainerClientFunction('addProgress', forwardedArguments);
+
+/**
+ * Load progress history. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getProgressHistory = (...forwardedArguments) =>
+  callTrainerClientFunction('getProgressHistory', forwardedArguments);
+
+/**
+ * Delete a progress entry. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const deleteProgress = (...forwardedArguments) =>
+  callTrainerClientFunction('deleteProgress', forwardedArguments);
+
+/**
+ * Create a client task. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const createTask = (...forwardedArguments) =>
+  callTrainerClientFunction('createTask', forwardedArguments);
+
+/**
+ * Load client tasks. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getTasks = (...forwardedArguments) =>
+  callTrainerClientFunction('getTasks', forwardedArguments);
+
+/**
+ * Update a client task. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const updateTask = (...forwardedArguments) =>
+  callTrainerClientFunction('updateTask', forwardedArguments);
+
+/**
+ * Toggle a task between open and complete. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const toggleTaskComplete = (...forwardedArguments) =>
+  callTrainerClientFunction('toggleTaskComplete', forwardedArguments);
+
+/**
+ * Delete a client task. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const deleteTask = (...forwardedArguments) =>
+  callTrainerClientFunction('deleteTask', forwardedArguments);
+
+/**
+ * Create a client note. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const createNote = (...forwardedArguments) =>
+  callTrainerClientFunction('createNote', forwardedArguments);
+
+/**
+ * Load client notes. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getNotes = (...forwardedArguments) =>
+  callTrainerClientFunction('getNotes', forwardedArguments);
+
+/**
+ * Update a client note. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const updateNote = (...forwardedArguments) =>
+  callTrainerClientFunction('updateNote', forwardedArguments);
+
+/**
+ * Delete a client note. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const deleteNote = (...forwardedArguments) =>
+  callTrainerClientFunction('deleteNote', forwardedArguments);
+
+/**
+ * Load the weight trend. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getWeightTrend = (...forwardedArguments) =>
+  callTrainerClientFunction('getWeightTrend', forwardedArguments);
+
+/**
+ * Load task counts. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getTaskStats = (...forwardedArguments) =>
+  callTrainerClientFunction('getTaskStats', forwardedArguments);
+
+/**
+ * Load client analytics. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const getClientAnalytics = (...forwardedArguments) =>
+  callTrainerClientFunction('getClientAnalytics', forwardedArguments);
+
+/**
+ * Check whether a week has enough data to report. Arguments are forwarded to the trainer CRM.
+ * @param {...any} forwardedArguments
+ * @returns {*}
+ */
+export const checkWeeklyDataAvailability = (...forwardedArguments) =>
+  callTrainerClientFunction('checkWeeklyDataAvailability', forwardedArguments);

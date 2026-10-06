@@ -1,31 +1,77 @@
-// Write a contentReports doc + best-effort support mailto so reports aren’t a dead inbox.
-// Flow: UI picks reason → submitContentReport → Firestore create + optional mailto to support.
-// Used by: ReportOrBlockPopup / report flows in chat + marketplace.
-// Key exports: submitContentReport
+// Saves a safety report and, when it can, opens a mail draft to support.
+// Flow: check the reporter and the target → write contentReports → open mail if that write succeeded.
+// Used by the report popup in chat and on trainer profiles.
 
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
 import { openSupportMailto } from '../settings/emailSupport';
 import { REPORT_REASONS, REPORT_TYPES } from './reportReasons';
 
-const VALID_TYPES = new Set(Object.values(REPORT_TYPES));
+// ===== NAMED CONSTANTS =====
 
+const CONTENT_REPORTS_COLLECTION = 'contentReports';
+const OPEN_STATUS = 'open';
+const OTHER_REASON = 'other';
+const MAX_DETAILS_LENGTH = 2000;
+const MAX_MAIL_DETAILS_LENGTH = 1500;
+const MAX_DISPLAY_NAME_LENGTH = 120;
+const VALID_REPORT_TYPES = new Set(Object.values(REPORT_TYPES));
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} reasonId
+ * @returns {string}
+ */
 function reasonLabel(reasonId) {
-  const hit = REPORT_REASONS.find((r) => r.id === reasonId);
-  return hit?.label || reasonId || 'other';
+  const matchingReason = REPORT_REASONS.find((reason) => reason.id === reasonId);
+  return matchingReason?.label || reasonId || OTHER_REASON;
 }
 
 /**
+ * @param {object} report
+ * @param {string} reportId
+ * @returns {string}
+ */
+function supportMailBody(report, reportId) {
+  const lines = [
+    'A user submitted an in-app safety report.',
+    '',
+    `Report id: ${reportId}`,
+    `Type: ${report.reportType}`,
+    `Reason: ${reasonLabel(report.reasonId)}`,
+    `Reporter uid: ${report.reporterUid}`,
+    `Target uid: ${report.targetUid}`,
+  ];
+  if (report.targetDisplayName) lines.push(`Target name: ${report.targetDisplayName}`);
+  if (report.conversationId) lines.push(`Conversation: ${report.conversationId}`);
+  if (report.messageId) lines.push(`Message: ${report.messageId}`);
+  if (report.details) {
+    lines.push('');
+    lines.push('Details:');
+    lines.push(String(report.details).slice(0, MAX_MAIL_DETAILS_LENGTH));
+  }
+  lines.push('');
+  lines.push('Please review in Firestore → contentReports.');
+  lines.push('');
+  return lines.join('\n');
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * The mail draft is optional. A failed mail open still returns the saved report id.
  * @param {object} params
  * @param {string} params.reporterId
- * @param {'user'|'message'|'trainer_profile'} params.type
+ * @param {string} params.type
  * @param {string} params.targetUid
- * @param {string} params.reason - REPORT_REASONS id
+ * @param {string} params.reason
  * @param {string} [params.details]
  * @param {string} [params.conversationId]
  * @param {string} [params.messageId]
  * @param {string} [params.targetDisplayName]
- * @param {boolean} [params.notifySupport=true] - open mailto after write
+ * @param {boolean} [params.notifySupport]
+ * @returns {Promise<{ id: string }>}
  */
 export async function submitContentReport({
   reporterId,
@@ -38,54 +84,52 @@ export async function submitContentReport({
   targetDisplayName = null,
   notifySupport = true,
 }) {
-  const reporter = String(reporterId || '').trim();
-  const target = String(targetUid || '').trim();
+  const reporterUid = String(reporterId || '').trim();
+  const targetUserUid = String(targetUid || '').trim();
   const reportType = String(type || '').trim();
-  const reasonId = String(reason || 'other').trim();
+  const reasonId = String(reason || OTHER_REASON).trim();
 
-  if (!reporter) throw new Error('You must be signed in to report.');
-  if (!target) throw new Error('Missing report target.');
-  if (!VALID_TYPES.has(reportType)) throw new Error('Invalid report type.');
-  if (reporter === target && reportType !== REPORT_TYPES.MESSAGE) {
+  if (!reporterUid) throw new Error('You must be signed in to report.');
+  if (!targetUserUid) throw new Error('Missing report target.');
+  if (!VALID_REPORT_TYPES.has(reportType)) throw new Error('Invalid report type.');
+  if (reporterUid === targetUserUid && reportType !== REPORT_TYPES.MESSAGE) {
     throw new Error('You cannot report yourself.');
   }
 
-  // vocab: contentReports = top-level moderation queue; clients may create, not list others’
+  // vocab: contentReports is the moderation queue. A client may create a report, not list other people's.
   const payload = {
-    reporterId: reporter,
+    reporterId: reporterUid,
     type: reportType,
-    targetUid: target,
+    targetUid: targetUserUid,
     reason: reasonId,
-    details: String(details || '').slice(0, 2000),
+    details: String(details || '').slice(0, MAX_DETAILS_LENGTH),
     conversationId: conversationId ? String(conversationId) : null,
     messageId: messageId ? String(messageId) : null,
-    targetDisplayName: targetDisplayName ? String(targetDisplayName).slice(0, 120) : null,
-    status: 'open',
+    targetDisplayName: targetDisplayName ? String(targetDisplayName).slice(0, MAX_DISPLAY_NAME_LENGTH) : null,
+    status: OPEN_STATUS,
     createdAt: serverTimestamp(),
   };
 
-  const ref = await addDoc(collection(db, 'contentReports'), payload);
+  const reportRef = await addDoc(collection(db, CONTENT_REPORTS_COLLECTION), payload);
 
   if (notifySupport) {
     const subject = `Content report — ${reportType} — Coach Connect`;
-    const body =
-      `A user submitted an in-app safety report.\n\n` +
-      `Report id: ${ref.id}\n` +
-      `Type: ${reportType}\n` +
-      `Reason: ${reasonLabel(reasonId)}\n` +
-      `Reporter uid: ${reporter}\n` +
-      `Target uid: ${target}\n` +
-      (targetDisplayName ? `Target name: ${targetDisplayName}\n` : '') +
-      (conversationId ? `Conversation: ${conversationId}\n` : '') +
-      (messageId ? `Message: ${messageId}\n` : '') +
-      (details ? `\nDetails:\n${String(details).slice(0, 1500)}\n` : '') +
-      `\nPlease review in Firestore → contentReports.\n`;
+    const body = supportMailBody({
+      reportType,
+      reasonId,
+      reporterUid,
+      targetUid: targetUserUid,
+      targetDisplayName,
+      conversationId,
+      messageId,
+      details,
+    }, reportRef.id);
     try {
       openSupportMailto({ subject, body });
     } catch (_) {
-      /* mailto is best-effort — Firestore write already succeeded */
+      // The report is already saved. A closed mail app should not fail the report.
     }
   }
 
-  return { id: ref.id };
+  return { id: reportRef.id };
 }
