@@ -1,13 +1,7 @@
-/**
- * Settings Screen
- *
- * Purpose: UI screen or component: Settings Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: SettingsScreen
- *
- * @file-header
- */
+// App settings: theme, reminders, AI toggle, billing/payouts, account, and support links.
+// Flow: load user doc → edit prefs → Stripe / delete account / open support sub-screens.
+// Used by: client and trainer shells. Firebase projectId stays anatrox-auth.
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -52,59 +46,370 @@ import { traineePaymentHistory } from '../for-both/payments/traineePaymentHistor
 import BlockedUsersScreen from '../block-and-report/BlockedUsersScreen';
 import { APPLE_MANAGE_SUBSCRIPTIONS_URL } from '../trainer-pro-plan/proPlanSwitches';
 
+// ===== NAMED CONSTANTS =====
+
 /** Settings UI — dark pink → dark orange gradient (no purple). */
 const ACCENT_PINK = '#BE185D';
 const ACCENT_ORANGE = '#C2410C';
 const SWITCH_ON = ACCENT_PINK;
+const SHELL_NAV_INSET = 24;
+const SEGMENT_TRACK_PAD = 4;
+const SPRING_FRICTION = 9;
+const SPRING_TENSION = 140;
+const SPRING_VELOCITY = 0.5;
+const CENTS_THRESHOLD = 100;
+const PERCENT_SCALE = 100;
+const HOLD_TO_DELETE_MS = 1200;
+const USERS_COLLECTION = 'users';
+const DELETE_ACCOUNT_URL =
+  'https://us-central1-anatrox-auth.cloudfunctions.net/auth/deleteAccount';
+const DEFAULT_TIME_ZONE = 'UTC';
+const PLATFORM_IOS = 'ios';
+const STATUS_ACTIVE = 'active';
+const STATUS_PENDING = 'pending';
+const STATUS_PENDING_VERIFICATION = 'pending_verification';
+const ROLE_TRAINER = 'trainer';
+const ROLE_CLIENT = 'client';
 
-/** Sliding pill segment control: animated highlight moves when selection changes. */
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Open a settings sub-screen, or warn if navigation is missing.
+ * @param {string} screen
+ * @param {Function} onNavigate
+ * @returns {void}
+ */
+function openSettingsSubScreen(screen, onNavigate) {
+  if (typeof onNavigate === 'function') {
+    onNavigate(screen);
+    return;
+  }
+  Alert.alert('Unavailable', 'This screen could not be opened.');
+}
+
+/**
+ * Wall-clock + IANA zone for the server-side workout reminder job.
+ * @param {Date} dateValue
+ * @returns {{ time: string, hourLocal: number, minuteLocal: number, timeZone: string }}
+ */
+function workoutReminderClockFromDate(dateValue) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIME_ZONE;
+  return {
+    time: dateValue.toISOString(),
+    hourLocal: dateValue.getHours(),
+    minuteLocal: dateValue.getMinutes(),
+    timeZone,
+  };
+}
+
+/**
+ * Text color for a status chip tone.
+ * @param {string} tone
+ * @param {object} colors
+ * @returns {string}
+ */
+function statusChipToneColor(tone, colors) {
+  if (tone === 'success') return colors.success;
+  if (tone === 'warning') return colors.warning;
+  if (tone === 'error') return colors.error;
+  return colors.textSecondary;
+}
+
+/**
+ * Background fill for a status chip tone (dark vs light).
+ * @param {string} tone
+ * @param {boolean} isDark
+ * @returns {string}
+ */
+function statusChipBackground(tone, isDark) {
+  if (tone === 'success') return isDark ? 'rgba(48,209,88,0.15)' : 'rgba(48,209,88,0.12)';
+  if (tone === 'warning') return isDark ? 'rgba(255,159,10,0.15)' : 'rgba(255,159,10,0.12)';
+  if (tone === 'error') return isDark ? 'rgba(255,59,48,0.15)' : 'rgba(255,59,48,0.12)';
+  return isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+}
+
+/**
+ * Format a monthly coaching rate for the billing chip.
+ * @param {number|string|null|undefined} rate
+ * @returns {string|null}
+ */
+function formatMonthlyRateLabel(rate) {
+  if (rate == null || rate === '') return null;
+  const amount = Number(rate);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const dollars = amount >= CENTS_THRESHOLD ? amount / CENTS_THRESHOLD : amount;
+  return `$${dollars.toFixed(0)}/mo`;
+}
+
+/**
+ * @param {string} status
+ * @returns {string}
+ */
+function payoutChipLabel(status) {
+  if (status === STATUS_ACTIVE) return 'Active';
+  if (status === STATUS_PENDING || status === STATUS_PENDING_VERIFICATION) return 'Pending';
+  return 'Not connected';
+}
+
+/**
+ * @param {string} status
+ * @returns {string}
+ */
+function payoutChipTone(status) {
+  if (status === STATUS_ACTIVE) return 'success';
+  if (status === STATUS_PENDING || status === STATUS_PENDING_VERIFICATION) return 'warning';
+  return 'neutral';
+}
+
+/**
+ * Mask a Stripe account id for display.
+ * @param {string} accountId
+ * @returns {string}
+ */
+function maskStripeAccountId(accountId) {
+  const id = String(accountId || '').trim();
+  if (!id) return '—';
+  return `****${id.slice(-4)}`;
+}
+
+/**
+ * True when the stored reminder is missing local hour/minute/zone fields.
+ * @param {object|undefined} workoutReminder
+ * @returns {boolean}
+ */
+function workoutReminderNeedsClockBackfill(workoutReminder) {
+  if (!workoutReminder?.enabled || !workoutReminder?.time) return false;
+  if (workoutReminder.hourLocal == null) return true;
+  if (workoutReminder.minuteLocal == null) return true;
+  if (!String(workoutReminder.timeZone || '').trim()) return true;
+  return false;
+}
+
+/**
+ * Write hourLocal / minuteLocal / timeZone from the stored ISO time.
+ * @param {*} userRef
+ * @param {string} isoTime
+ * @returns {Promise<void>}
+ */
+async function backfillWorkoutReminderClock(userRef, isoTime) {
+  const reminderDate = new Date(isoTime);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIME_ZONE;
+  try {
+    await updateDoc(userRef, {
+      'workoutReminder.hourLocal': reminderDate.getHours(),
+      'workoutReminder.minuteLocal': reminderDate.getMinutes(),
+      'workoutReminder.timeZone': timeZone,
+    });
+  } catch (error) {
+    console.warn('workoutReminder backfill', error?.message || error);
+  }
+}
+
+/**
+ * Apply one users/{uid} snapshot into settings local state.
+ * @param {object} data
+ * @param {object} setters
+ * @param {string|null} userRoleProp
+ * @param {*} userRef
+ * @returns {Promise<void>}
+ */
+async function applyUserSettingsDoc(data, setters, userRoleProp, userRef) {
+  setters.setResolvedUserRole((previous) => userRoleProp || data.role || previous || ROLE_CLIENT);
+  setters.setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || 'not_connected');
+  setters.setStripeAccountId(data.stripeAccountId || '');
+  setters.setMonthlyRate(data.monthlyRate ?? null);
+  setters.setPaymentStatus(data.paymentStatus || 'inactive');
+  setters.setWorkoutReminders(data.workoutReminder?.enabled || false);
+  if (data.workoutReminder?.time) {
+    setters.setReminderTime(new Date(data.workoutReminder.time));
+  }
+  if (workoutReminderNeedsClockBackfill(data.workoutReminder)) {
+    await backfillWorkoutReminderClock(userRef, data.workoutReminder.time);
+  }
+}
+
+/**
+ * Turn off the daily workout reminder notification + Firestore flag.
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
+async function disableWorkoutReminder(userId) {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+  try {
+    await updateDoc(doc(db, USERS_COLLECTION, userId), { 'workoutReminder.enabled': false });
+  } catch (ignoredError) {
+    await setDoc(
+      doc(db, USERS_COLLECTION, userId),
+      { workoutReminder: { enabled: false } },
+      { merge: true },
+    );
+  }
+}
+
+/**
+ * Schedule a repeating local notification at the picked wall-clock time.
+ * @param {Date} time
+ * @returns {Promise<void>}
+ */
+async function scheduleWorkoutReminder(time) {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Time to workout!',
+      body: 'Your daily workout reminder.',
+    },
+    trigger: { hour: time.getHours(), minute: time.getMinutes(), repeats: true },
+  });
+}
+
+/**
+ * Client billing chip label from rate + payment status.
+ * @param {object} args
+ * @returns {string}
+ */
+function buildClientBillingLabel({ monthlyRate, userDataProp, trainerDataProp, paymentStatus }) {
+  const assignedRate = monthlyRate ?? userDataProp?.monthlyRate ?? null;
+  const trainerListedRate =
+    trainerDataProp?.pricing?.perMonth ??
+    trainerDataProp?.monthlyRate ??
+    trainerDataProp?.price ??
+    null;
+  const effectiveRate = assignedRate ?? trainerListedRate;
+  const rateLabel = formatMonthlyRateLabel(effectiveRate);
+  const status = paymentStatus || userDataProp?.paymentStatus || 'inactive';
+  const hasTrainer = !!(userDataProp?.trainerId || trainerDataProp?.id);
+
+  if (status === STATUS_ACTIVE && rateLabel) return `Active — ${rateLabel}`;
+  if (status === 'past_due') return rateLabel ? `Past due — ${rateLabel}` : 'Past due';
+  if (status === 'payment_required') {
+    return rateLabel ? `Payment required — ${rateLabel}` : 'Payment required';
+  }
+  if (rateLabel && hasTrainer) return `Set up — ${rateLabel}`;
+  if (hasTrainer) return 'No rate set';
+  return 'No active subscription';
+}
+
+/**
+ * Client billing chip tone from rate + payment status.
+ * @param {object} args
+ * @returns {string}
+ */
+function buildClientBillingTone({ monthlyRate, userDataProp, trainerDataProp, paymentStatus }) {
+  const status = paymentStatus || userDataProp?.paymentStatus || 'inactive';
+  if (status === STATUS_ACTIVE) return 'success';
+  if (status === 'past_due') return 'error';
+  if (status === 'payment_required') return 'warning';
+  const assignedRate = monthlyRate ?? userDataProp?.monthlyRate ?? null;
+  const trainerListedRate =
+    trainerDataProp?.pricing?.perMonth ??
+    trainerDataProp?.monthlyRate ??
+    trainerDataProp?.price ??
+    null;
+  const hasRate = !!(assignedRate ?? trainerListedRate);
+  const hasTrainer = !!(userDataProp?.trainerId || trainerDataProp?.id);
+  if (hasRate && hasTrainer) return 'warning';
+  return 'neutral';
+}
+
+/**
+ * Theme subtitle under the Light/Dark pills.
+ * @param {string} themeMode
+ * @returns {string}
+ */
+function appearanceSubtitle(themeMode) {
+  if (themeMode === 'system') return 'Following your device — tap to set light or dark.';
+  if (themeMode === 'dark') return 'Dark mode is on.';
+  return 'Light mode is on.';
+}
+
+/**
+ * Platform Pro chip tone from the subscription status string.
+ * @param {string} platformSubscriptionStatus
+ * @returns {string}
+ */
+function platformSubTone(platformSubscriptionStatus) {
+  if (
+    platformSubscriptionStatus.includes(STATUS_ACTIVE) ||
+    platformSubscriptionStatus.includes('trial')
+  ) {
+    return 'success';
+  }
+  if (platformSubscriptionStatus.includes('Expired')) return 'error';
+  return 'neutral';
+}
+
+/**
+ * POST /auth/deleteAccount on the Cloud Function when the callable fails.
+ * vocab: anatrox-auth = production Firebase project id (do not rename to match app branding).
+ * @param {{ userId: string, idToken: string }} args
+ * @returns {Promise<boolean>}
+ */
+async function callDeleteAccountEndpoint({ userId, idToken }) {
+  const response = await fetch(DELETE_ACCOUNT_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ userId }),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json?.ok !== true) {
+    throw new Error(json?.error || `Delete failed (${response.status})`);
+  }
+  return true;
+}
+
+/**
+ * Sliding pill segment control: animated highlight moves when selection changes.
+ * @param {{ options: Array<{value: string, label: string}>, selectedValue: string, onChange: Function, isDark: boolean, colors: object }} props
+ */
 function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
-  const [trackW, setTrackW] = useState(0);
-  const pad = 4;
-  const n = options.length;
+  const [trackWidth, setTrackWidth] = useState(0);
+  const optionCount = options.length;
   const activeIndex = useMemo(() => {
-    const i = options.findIndex((o) => o.value === selectedValue);
-    return i >= 0 ? i : 0;
+    const foundIndex = options.findIndex((option) => option.value === selectedValue);
+    return foundIndex >= 0 ? foundIndex : 0;
   }, [options, selectedValue]);
 
-  const segmentW = trackW > 0 ? (trackW - pad * 2) / n : 0;
+  const segmentWidth = trackWidth > 0 ? (trackWidth - SEGMENT_TRACK_PAD * 2) / optionCount : 0;
   const slide = useRef(new Animated.Value(activeIndex)).current;
 
   useEffect(() => {
     Animated.spring(slide, {
       toValue: activeIndex,
       useNativeDriver: true,
-      friction: 9,
-      tension: 140,
-      velocity: 0.5,
+      friction: SPRING_FRICTION,
+      tension: SPRING_TENSION,
+      velocity: SPRING_VELOCITY,
     }).start();
   }, [activeIndex, slide]);
 
   const translateX =
-    segmentW > 0
+    segmentWidth > 0
       ? slide.interpolate({
-          inputRange: options.map((_, i) => i),
-          outputRange: options.map((_, i) => i * segmentW),
+          inputRange: options.map((_, index) => index),
+          outputRange: options.map((_, index) => index * segmentWidth),
         })
       : slide.interpolate({ inputRange: [0, 1], outputRange: [0, 0] });
 
-  const trackBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const trackBackground = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
 
   return (
     <View
-      style={[pillStyles.track, { backgroundColor: trackBg, borderColor: borderCol }]}
-      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      style={[pillStyles.track, { backgroundColor: trackBackground, borderColor }]}
+      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
     >
-      {segmentW > 0 ? (
+      {segmentWidth > 0 ? (
         <Animated.View
           pointerEvents="none"
           style={[
             pillStyles.thumb,
             {
-              width: segmentW,
+              width: segmentWidth,
               transform: [{ translateX }],
-              left: pad,
+              left: SEGMENT_TRACK_PAD,
             },
           ]}
         >
@@ -117,12 +422,12 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
         </Animated.View>
       ) : null}
       <View style={pillStyles.row}>
-        {options.map((opt) => {
-          const selected = opt.value === selectedValue;
+        {options.map((option) => {
+          const selected = option.value === selectedValue;
           return (
             <Pressable
-              key={String(opt.value)}
-              onPress={() => onChange(opt.value)}
+              key={String(option.value)}
+              onPress={() => onChange(option.value)}
               style={({ pressed }) => [pillStyles.cell, pressed && { opacity: 0.85 }]}
             >
               <Text
@@ -132,7 +437,7 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
                   selected && pillStyles.cellLabelSelected,
                 ]}
               >
-                {opt.label}
+                {option.label}
               </Text>
             </Pressable>
           );
@@ -142,101 +447,82 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
   );
 }
 
-const SectionHeader = ({ title, colors }) => (
-  <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>
-);
-
-function openSettingsSubScreen(screen, onNavigate) {
-  if (typeof onNavigate === 'function') {
-    onNavigate(screen);
-    return;
-  }
-  Alert.alert('Unavailable', 'This screen could not be opened.');
+/**
+ * @param {{ title: string, colors: object }} props
+ */
+function SectionHeader({ title, colors }) {
+  return <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>;
 }
 
-/** Wall-clock + IANA zone for server-side workout reminder job (matches user's picker). */
-function workoutReminderClockFromDate(d) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  return {
-    time: d.toISOString(),
-    hourLocal: d.getHours(),
-    minuteLocal: d.getMinutes(),
-    timeZone,
-  };
-}
-
-const SettingsRow = ({ label, value, onPress, children, colors, leftIcon }) => (
-  <TouchableOpacity onPress={onPress} style={styles.row} disabled={!onPress}>
-    <View style={styles.rowLabelWrap}>
-      {leftIcon ? <View style={styles.rowIcon}>{leftIcon}</View> : null}
-      <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
-    </View>
-    <View style={styles.rowValueContainer}>
-      {value && <Text style={[styles.rowValue, { color: colors.textSecondary }]}>{value}</Text>}
-      {children}
-    </View>
-  </TouchableOpacity>
-);
-
-function PaymentStatusChip({ label, tone, colors, isDark }) {
-  const toneColor =
-    tone === 'success'
-      ? colors.success
-      : tone === 'warning'
-        ? colors.warning
-        : tone === 'error'
-          ? colors.error
-          : colors.textSecondary;
-  const bg =
-    tone === 'success'
-      ? isDark
-        ? 'rgba(48,209,88,0.15)'
-        : 'rgba(48,209,88,0.12)'
-      : tone === 'warning'
-        ? isDark
-          ? 'rgba(255,159,10,0.15)'
-          : 'rgba(255,159,10,0.12)'
-        : tone === 'error'
-          ? isDark
-            ? 'rgba(255,59,48,0.15)'
-            : 'rgba(255,59,48,0.12)'
-          : isDark
-            ? 'rgba(255,255,255,0.08)'
-            : 'rgba(0,0,0,0.06)';
-
+/**
+ * @param {{ label: string, value?: string, onPress?: Function, children?: *, colors: object, leftIcon?: * }} props
+ */
+function SettingsRow({ label, value, onPress, children, colors, leftIcon }) {
   return (
-    <View style={[styles.statusChip, { backgroundColor: bg, borderColor: `${toneColor}44` }]}>
+    <TouchableOpacity onPress={onPress} style={styles.row} disabled={!onPress}>
+      <View style={styles.rowLabelWrap}>
+        {leftIcon ? <View style={styles.rowIcon}>{leftIcon}</View> : null}
+        <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
+      </View>
+      <View style={styles.rowValueContainer}>
+        {value ? <Text style={[styles.rowValue, { color: colors.textSecondary }]}>{value}</Text> : null}
+        {children}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Small status pill next to a settings row label.
+ * @param {{ label: string, tone: string, colors: object, isDark: boolean }} props
+ */
+function PaymentStatusChip({ label, tone, colors, isDark }) {
+  const toneColor = statusChipToneColor(tone, colors);
+  const chipBackground = statusChipBackground(tone, isDark);
+  return (
+    <View style={[styles.statusChip, { backgroundColor: chipBackground, borderColor: `${toneColor}44` }]}>
       <Text style={[styles.statusChipText, { color: toneColor }]}>{label}</Text>
     </View>
   );
 }
 
-function formatMonthlyRateLabel(rate) {
-  if (rate == null || rate === '') return null;
-  const n = Number(rate);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  const dollars = n >= 100 ? n / 100 : n;
-  return `$${dollars.toFixed(0)}/mo`;
+/**
+ * One payment history line under Coaching payment.
+ * @param {{ row: object, colors: object }} props
+ */
+function PaymentHistoryRow({ row, colors }) {
+  const amountText = row.amount % 1 === 0 ? String(row.amount) : row.amount.toFixed(2);
+  const statusColor = row.status === 'Completed' ? colors.success : colors.warning;
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: colors.border,
+      }}
+    >
+      <Text style={{ width: 52, fontSize: 12, color: colors.textSecondary }}>{row.date}</Text>
+      <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }} numberOfLines={1}>
+        {row.coach}
+      </Text>
+      <Text style={{ width: 52, fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right' }}>
+        ${amountText}
+      </Text>
+      <Text style={{ width: 78, fontSize: 11, fontWeight: '800', textAlign: 'right', color: statusColor }}>
+        {row.status}
+      </Text>
+    </View>
+  );
 }
 
-function payoutChipLabel(status) {
-  if (status === 'active') return 'Active';
-  if (status === 'pending' || status === 'pending_verification') return 'Pending';
-  return 'Not connected';
-}
+// ===== MAIN FUNCTION =====
 
-function payoutChipTone(status) {
-  if (status === 'active') return 'success';
-  if (status === 'pending' || status === 'pending_verification') return 'warning';
-  return 'neutral';
-}
-
-function maskStripeAccountId(accountId) {
-  const id = String(accountId || '').trim();
-  if (!id) return '—';
-  return `****${id.slice(-4)}`;
-}
-
+/**
+ * Client and trainer Settings screen.
+ * @param {object} props
+ */
 export default function SettingsScreen({
   onNavigate: onNavigateProp,
   onBack: onBackProp,
@@ -254,7 +540,7 @@ export default function SettingsScreen({
   const onBack = onBackProp || onClose;
   const go = (screen) => openSettingsSubScreen(screen, onNavigate);
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
-  const shellNavInset = useShellBottomNavInset(24);
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   /** Pill position: explicit light/dark, or match current UI when theme follows system. */
   const appearanceValue = themeMode === 'system' ? (isDark ? 'dark' : 'light') : themeMode;
   const { aiEnabled, toggleAI, toggleMeter, refreshToggleMeter } = useAI();
@@ -274,8 +560,8 @@ export default function SettingsScreen({
   const auth = getAuth();
   const user = auth.currentUser;
 
-  const userRole = userRoleProp || resolvedUserRole || 'client';
-  const isTrainer = userRole === 'trainer';
+  const userRole = userRoleProp || resolvedUserRole || ROLE_CLIENT;
+  const isTrainer = userRole === ROLE_TRAINER;
   const clientCoachName =
     trainerDataProp?.name || trainerDataProp?.displayName || trainerDataProp?.firstName || 'Coach';
   const { rows: clientPaymentHistory, loading: clientPaymentHistoryLoading } = traineePaymentHistory(
@@ -291,54 +577,36 @@ export default function SettingsScreen({
   const stripeConnect = trainerPayoutSetupFlow({
     email: user?.email || userDataProp?.email || '',
     onActive: async () => {
-      setStripeConnectStatus('active');
-      if (user?.uid) {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) {
-          const data = snap.data();
-          setStripeAccountId(data.stripeAccountId || '');
-          setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || 'active');
-        }
-      }
+      setStripeConnectStatus(STATUS_ACTIVE);
+      if (!user?.uid) return;
+      const snap = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      setStripeAccountId(data.stripeAccountId || '');
+      setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || STATUS_ACTIVE);
     },
   });
 
   useEffect(() => {
-    if (user) {
-      const userRef = doc(db, 'users', user.uid);
-      getDoc(userRef).then(async (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setResolvedUserRole((prev) => userRoleProp || data.role || prev || 'client');
-          setStripeConnectStatus(data.stripeStatus || data.stripeConnectStatus || 'not_connected');
-          setStripeAccountId(data.stripeAccountId || '');
-          setMonthlyRate(data.monthlyRate ?? null);
-          setPaymentStatus(data.paymentStatus || 'inactive');
-          setWorkoutReminders(data.workoutReminder?.enabled || false);
-          if (data.workoutReminder?.time) {
-            setReminderTime(new Date(data.workoutReminder.time));
-          }
-          const wr = data.workoutReminder;
-          if (
-            wr?.enabled &&
-            wr?.time &&
-            (wr.hourLocal == null || wr.minuteLocal == null || !String(wr.timeZone || '').trim())
-          ) {
-            const t = new Date(wr.time);
-            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-            try {
-              await updateDoc(userRef, {
-                'workoutReminder.hourLocal': t.getHours(),
-                'workoutReminder.minuteLocal': t.getMinutes(),
-                'workoutReminder.timeZone': tz,
-              });
-            } catch (e) {
-              console.warn('workoutReminder backfill', e?.message || e);
-            }
-          }
-        }
-      });
-    }
+    if (!user) return;
+    const userRef = doc(db, USERS_COLLECTION, user.uid);
+    getDoc(userRef).then(async (docSnap) => {
+      if (!docSnap.exists()) return;
+      await applyUserSettingsDoc(
+        docSnap.data(),
+        {
+          setResolvedUserRole,
+          setStripeConnectStatus,
+          setStripeAccountId,
+          setMonthlyRate,
+          setPaymentStatus,
+          setWorkoutReminders,
+          setReminderTime,
+        },
+        userRoleProp,
+        userRef,
+      );
+    });
   }, [user, userRoleProp]);
 
   useEffect(() => {
@@ -350,44 +618,15 @@ export default function SettingsScreen({
     }
   }, [userDataProp?.paymentStatus, userDataProp?.monthlyRate]);
 
-  const clientBillingLabel = useMemo(() => {
-    const assignedRate = monthlyRate ?? userDataProp?.monthlyRate ?? null;
-    const trainerListedRate =
-      trainerDataProp?.pricing?.perMonth ??
-      trainerDataProp?.monthlyRate ??
-      trainerDataProp?.price ??
-      null;
-    const effectiveRate = assignedRate ?? trainerListedRate;
-    const rateLabel = formatMonthlyRateLabel(effectiveRate);
-    const status = paymentStatus || userDataProp?.paymentStatus || 'inactive';
-    const hasTrainer = !!(userDataProp?.trainerId || trainerDataProp?.id);
+  const clientBillingLabel = useMemo(
+    () => buildClientBillingLabel({ monthlyRate, userDataProp, trainerDataProp, paymentStatus }),
+    [monthlyRate, paymentStatus, userDataProp, trainerDataProp],
+  );
 
-    if (status === 'active' && rateLabel) return `Active — ${rateLabel}`;
-    if (status === 'past_due') return rateLabel ? `Past due — ${rateLabel}` : 'Past due';
-    if (status === 'payment_required') {
-      return rateLabel ? `Payment required — ${rateLabel}` : 'Payment required';
-    }
-    if (rateLabel && hasTrainer) return `Set up — ${rateLabel}`;
-    if (hasTrainer) return 'No rate set';
-    return 'No active subscription';
-  }, [monthlyRate, paymentStatus, userDataProp, trainerDataProp]);
-
-  const clientBillingTone = useMemo(() => {
-    const status = paymentStatus || userDataProp?.paymentStatus || 'inactive';
-    if (status === 'active') return 'success';
-    if (status === 'past_due') return 'error';
-    if (status === 'payment_required') return 'warning';
-    const assignedRate = monthlyRate ?? userDataProp?.monthlyRate ?? null;
-    const trainerListedRate =
-      trainerDataProp?.pricing?.perMonth ??
-      trainerDataProp?.monthlyRate ??
-      trainerDataProp?.price ??
-      null;
-    if ((assignedRate ?? trainerListedRate) && (userDataProp?.trainerId || trainerDataProp?.id)) {
-      return 'warning';
-    }
-    return 'neutral';
-  }, [monthlyRate, paymentStatus, userDataProp, trainerDataProp]);
+  const clientBillingTone = useMemo(
+    () => buildClientBillingTone({ monthlyRate, userDataProp, trainerDataProp, paymentStatus }),
+    [monthlyRate, paymentStatus, userDataProp, trainerDataProp],
+  );
 
   useEffect(() => {
     if (user?.uid) {
@@ -395,54 +634,39 @@ export default function SettingsScreen({
     }
   }, [user?.uid, refreshToggleMeter]);
 
-  const scheduleWorkoutReminder = async (time) => {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Time to workout!',
-        body: 'Your daily workout reminder.',
-      },
-      trigger: { hour: time.getHours(), minute: time.getMinutes(), repeats: true },
-    });
-  };
-
+  // 1. Toggle reminders — on opens the time picker; off clears the local + Firestore flag.
   const handleReminderToggle = async (value) => {
     setWorkoutReminders(value);
-    if (user) {
-      if (value) {
-        setShowTimePicker(true);
-      } else {
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        try {
-          await updateDoc(doc(db, 'users', user.uid), { 'workoutReminder.enabled': false });
-        } catch (e) {
-          await setDoc(doc(db, 'users', user.uid), { workoutReminder: { enabled: false } }, { merge: true });
-        }
-      }
+    if (!user) return;
+    if (value) {
+      setShowTimePicker(true);
+      return;
     }
+    await disableWorkoutReminder(user.uid);
   };
 
+  // 2. Persist the picked reminder time and schedule the daily notification.
   const onTimeChange = async (event, selectedTime) => {
     const currentTime = selectedTime || reminderTime;
-    setShowTimePicker(Platform.OS === 'ios');
+    setShowTimePicker(Platform.OS === PLATFORM_IOS);
     setReminderTime(currentTime);
 
-    if (user) {
-      try {
-        await scheduleWorkoutReminder(currentTime);
-        await setDoc(
-          doc(db, 'users', user.uid),
-          { workoutReminder: { enabled: true, ...workoutReminderClockFromDate(currentTime) } },
-          { merge: true }
-        );
-        Alert.alert('Reminders set', `You'll be notified daily at ${currentTime.toLocaleTimeString()}.`);
-      } catch (error) {
-        console.error('Error setting reminder: ', error);
-        Alert.alert('Error', 'Could not set reminder. Please try again.');
-      }
+    if (!user) return;
+    try {
+      await scheduleWorkoutReminder(currentTime);
+      await setDoc(
+        doc(db, USERS_COLLECTION, user.uid),
+        { workoutReminder: { enabled: true, ...workoutReminderClockFromDate(currentTime) } },
+        { merge: true },
+      );
+      Alert.alert('Reminders set', `You'll be notified daily at ${currentTime.toLocaleTimeString()}.`);
+    } catch (error) {
+      console.error('Error setting reminder: ', error);
+      Alert.alert('Error', 'Could not set reminder. Please try again.');
     }
   };
 
+  // 3. Update Firebase Auth password from the bottom sheet.
   const handleChangePassword = () => {
     if (!newPassword) {
       Alert.alert('Error', 'Please enter a new password.');
@@ -459,23 +683,25 @@ export default function SettingsScreen({
       });
   };
 
-  async function callDeleteAccountEndpoint({ userId, idToken }) {
-    // Cloud Function endpoint (Firebase Functions): POST /auth/deleteAccount
-    // Note: function name is "auth" and route is "/deleteAccount"
-    const url = `https://us-central1-anatrox-auth.cloudfunctions.net/auth/deleteAccount`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({ userId }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json?.ok !== true) {
-      throw new Error(json?.error || `Delete failed (${res.status})`);
+  // 4. Delete via callable, then HTTP fallback, then sign out.
+  async function deleteViaCallableOrHttp() {
+    try {
+      const callable = httpsCallable(functions, 'deleteAccount');
+      const response = await callable({});
+      if (response?.data?.ok === true) return;
+      throw new Error('Delete failed');
+    } catch (_callableError) {
+      const idToken = await user.getIdToken(true);
+      await callDeleteAccountEndpoint({ userId: user.uid, idToken });
     }
-    return true;
+  }
+
+  async function deleteAuthUserQuietly() {
+    try {
+      await deleteUser(user);
+    } catch (_ignoredError) {
+      // ignore — backend already performed canonical deletion
+    }
   }
 
   async function performDeleteAccount() {
@@ -483,53 +709,47 @@ export default function SettingsScreen({
       throw new Error('Not signed in. Please sign in again and retry.');
     }
     try {
-      try {
-        const fn = httpsCallable(functions, 'deleteAccount');
-        const resp = await fn({});
-        const ok = resp?.data?.ok === true;
-        if (!ok) throw new Error('Delete failed');
-      } catch (callableError) {
-        const idToken = await user.getIdToken(true);
-        await callDeleteAccountEndpoint({ userId: user.uid, idToken });
-      }
-
-      try {
-        await deleteUser(user);
-      } catch (_) {
-        // ignore — backend already performed canonical deletion
-      }
-
+      await deleteViaCallableOrHttp();
+      await deleteAuthUserQuietly();
       await signOut(auth);
       Alert.alert('Account deleted', 'Your account and data have been permanently deleted.');
-    } catch (e) {
-      const msg = e?.message || 'Failed to delete account. Please try again.';
-      throw new Error(msg);
+    } catch (error) {
+      const message = error?.message || 'Failed to delete account. Please try again.';
+      throw new Error(message);
     }
   }
 
+  const showClientBilling = !isTrainer && !!(userDataProp?.trainerId || trainerDataProp?.id);
+  const showProSection = isTrainer && Platform.OS === PLATFORM_IOS && platformSubscriptionStatus;
+  const aiMeterPercent = Math.round((toggleMeter.monthlyUseFraction ?? 0) * PERCENT_SCALE);
+  const paymentButtonLabel =
+    (paymentStatus || userDataProp?.paymentStatus) === STATUS_ACTIVE
+      ? 'UPDATE PAYMENT METHOD'
+      : 'ADD PAYMENT METHOD';
+  const stripeButtonLabel =
+    resolvedStripeStatus === STATUS_ACTIVE ? 'UPDATE BANK ACCOUNT' : 'CONNECT WITH STRIPE';
+  const switchTrackOff = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const meterTrackBg = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="SETTINGS"
-          skipTopSafeInset
-          onBack={onBack || undefined}
-          onProfilePress={onNavigate ? () => go('profile') : null}
-          onSettingsPress={() => {}}
-        />
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
-          {...FORM_SCROLL_PROPS}
-        >
+      <TopHeader
+        title="SETTINGS"
+        skipTopSafeInset
+        onBack={onBack || undefined}
+        onProfilePress={onNavigate ? () => go('profile') : null}
+        onSettingsPress={() => {}}
+      />
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
+        {...FORM_SCROLL_PROPS}
+      >
         <SectionHeader title="APPEARANCE" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.appearanceBlock}>
             <Text style={[styles.blockTitle, { color: colors.text }]}>Theme</Text>
             <Text style={[styles.blockSubtitle, { color: colors.textSecondary }]}>
-              {themeMode === 'system'
-                ? 'Following your device — tap to set light or dark.'
-                : themeMode === 'dark'
-                  ? 'Dark mode is on.'
-                  : 'Light mode is on.'}
+              {appearanceSubtitle(themeMode)}
             </Text>
             <SegmentedPills
               options={[
@@ -550,13 +770,11 @@ export default function SettingsScreen({
             <Switch
               value={workoutReminders}
               onValueChange={handleReminderToggle}
-              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: SWITCH_ON }}
+              trackColor={{ false: switchTrackOff, true: SWITCH_ON }}
               thumbColor="#FFFFFF"
             />
           </SettingsRow>
         </View>
-
-        {/* Coaching subscription moved to trainer profile card on client dashboard */}
 
         <SectionHeader title="AI FEATURES" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -568,19 +786,16 @@ export default function SettingsScreen({
                   ? 'AI Fitness Coach and workout generator are on.'
                   : 'Off — your coach and manual tools still work.'}
               </Text>
-              {!toggleMeter.isFrozenFromChurn && (
+              {!toggleMeter.isFrozenFromChurn ? (
                 <>
                   <Text style={[styles.aiMeterLabel, { color: colors.text }]}>This month's switch use</Text>
                   <View
-                    style={[
-                      styles.aiMeterTrack,
-                      { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' },
-                    ]}
+                    style={[styles.aiMeterTrack, { backgroundColor: meterTrackBg }]}
                     accessibilityRole="progressbar"
                     accessibilityValue={{
                       min: 0,
-                      max: 100,
-                      now: Math.round((toggleMeter.monthlyUseFraction ?? 0) * 100),
+                      max: PERCENT_SCALE,
+                      now: aiMeterPercent,
                     }}
                     accessibilityLabel="How much of this month's AI switch allowance has been used"
                   >
@@ -588,36 +803,52 @@ export default function SettingsScreen({
                       style={[
                         styles.aiMeterFill,
                         {
-                          width: `${Math.min(100, Math.round((toggleMeter.monthlyUseFraction ?? 0) * 100))}%`,
+                          width: `${Math.min(PERCENT_SCALE, aiMeterPercent)}%`,
                           backgroundColor: SWITCH_ON,
                         },
                       ]}
                     />
                   </View>
                 </>
-              )}
+              ) : null}
               <Text style={[styles.aiMeterHint, { color: colors.textSecondary }]}>
                 {getAiToggleMeterHint(toggleMeter)}
               </Text>
               <Text style={[styles.aiFeaturesTitle, { color: colors.text }]}>What you can use when AI is on</Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>• AI Fitness Coach — chat for coaching-style tips</Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>• Workout generator — draft plans from your goals</Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>• Progress-style insights in supported screens</Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>• Form & recovery suggestions where available</Text>
+              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+                • AI Fitness Coach — chat for coaching-style tips
+              </Text>
+              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+                • Workout generator — draft plans from your goals
+              </Text>
+              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+                • Progress-style insights in supported screens
+              </Text>
+              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+                • Form & recovery suggestions where available
+              </Text>
             </View>
             <Switch
               value={!!aiEnabled}
-              onValueChange={(v) => toggleAI(v)}
-              trackColor={{ false: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', true: SWITCH_ON }}
+              onValueChange={(enabled) => toggleAI(enabled)}
+              trackColor={{ false: switchTrackOff, true: SWITCH_ON }}
               thumbColor="#FFFFFF"
               disabled={toggleMeter.isFrozenFromChurn && !aiEnabled}
             />
           </View>
         </View>
 
-        {showTimePicker && <DateTimePicker value={reminderTime} mode={'time'} is24Hour={true} display="default" onChange={onTimeChange} />}
+        {showTimePicker ? (
+          <DateTimePicker
+            value={reminderTime}
+            mode="time"
+            is24Hour={true}
+            display="default"
+            onChange={onTimeChange}
+          />
+        ) : null}
 
-        {!isTrainer && (userDataProp?.trainerId || trainerDataProp?.id) ? (
+        {showClientBilling ? (
           <>
             <SectionHeader title="BILLING" colors={colors} />
             <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -640,11 +871,7 @@ export default function SettingsScreen({
                     <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
                       Add or update the card you use to pay your coach. This is not a bank payout account — clients pay by card.
                     </Text>
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={onOpenCoachingPayment}
-                      style={{ marginTop: 12 }}
-                    >
+                    <TouchableOpacity activeOpacity={0.9} onPress={onOpenCoachingPayment} style={{ marginTop: 12 }}>
                       <LinearGradient
                         colors={['#FF6B9D', '#C084FC']}
                         start={{ x: 0, y: 0 }}
@@ -652,9 +879,7 @@ export default function SettingsScreen({
                         style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
                       >
                         <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                          {(paymentStatus || userDataProp?.paymentStatus) === 'active'
-                            ? 'UPDATE PAYMENT METHOD'
-                            : 'ADD PAYMENT METHOD'}
+                          {paymentButtonLabel}
                         </Text>
                       </LinearGradient>
                     </TouchableOpacity>
@@ -666,43 +891,17 @@ export default function SettingsScreen({
                     </Text>
                     {clientPaymentHistoryLoading ? (
                       <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>Loading…</Text>
-                    ) : clientPaymentHistory.length === 0 ? (
+                    ) : null}
+                    {!clientPaymentHistoryLoading && clientPaymentHistory.length === 0 ? (
                       <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
                         No payments yet. Completed payments appear here with date, amount, and status.
                       </Text>
-                    ) : (
-                      clientPaymentHistory.map((row) => (
-                        <View
-                          key={row.id}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingVertical: 8,
-                            borderTopWidth: StyleSheet.hairlineWidth,
-                            borderTopColor: colors.border,
-                          }}
-                        >
-                          <Text style={{ width: 52, fontSize: 12, color: colors.textSecondary }}>{row.date}</Text>
-                          <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }} numberOfLines={1}>
-                            {row.coach}
-                          </Text>
-                          <Text style={{ width: 52, fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right' }}>
-                            ${row.amount % 1 === 0 ? row.amount : row.amount.toFixed(2)}
-                          </Text>
-                          <Text
-                            style={{
-                              width: 78,
-                              fontSize: 11,
-                              fontWeight: '800',
-                              textAlign: 'right',
-                              color: row.status === 'Completed' ? colors.success : colors.warning,
-                            }}
-                          >
-                            {row.status}
-                          </Text>
-                        </View>
-                      ))
-                    )}
+                    ) : null}
+                    {!clientPaymentHistoryLoading && clientPaymentHistory.length > 0
+                      ? clientPaymentHistory.map((row) => (
+                          <PaymentHistoryRow key={row.id} row={row} colors={colors} />
+                        ))
+                      : null}
                   </View>
                 </>
               ) : null}
@@ -767,7 +966,7 @@ export default function SettingsScreen({
                     style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
                   >
                     <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                      {resolvedStripeStatus === 'active' ? 'UPDATE BANK ACCOUNT' : 'CONNECT WITH STRIPE'}
+                      {stripeButtonLabel}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -829,20 +1028,18 @@ export default function SettingsScreen({
           </>
         ) : null}
 
-        {isTrainer && Platform.OS === 'ios' && platformSubscriptionStatus ? (
+        {showProSection ? (
           <>
             <SectionHeader title="COACH CONNECT PRO" colors={colors} />
             <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <SettingsRow label="Platform subscription" colors={colors} leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}>
+              <SettingsRow
+                label="Platform subscription"
+                colors={colors}
+                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
+              >
                 <PaymentStatusChip
                   label={platformSubscriptionStatus}
-                  tone={
-                    platformSubscriptionStatus.includes('active') || platformSubscriptionStatus.includes('trial')
-                      ? 'success'
-                      : platformSubscriptionStatus.includes('Expired')
-                        ? 'error'
-                        : 'neutral'
-                  }
+                  tone={platformSubTone(platformSubscriptionStatus)}
                   colors={colors}
                   isDark={isDark}
                 />
@@ -901,23 +1098,43 @@ export default function SettingsScreen({
 
         <SectionHeader title="SUPPORT" colors={colors} />
         <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Contact Support" onPress={() => openSettingsSubScreen('contactSupport', onNavigate)} colors={colors}>
+          <SettingsRow
+            label="Contact Support"
+            onPress={() => openSettingsSubScreen('contactSupport', onNavigate)}
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Report a Bug" onPress={() => openSettingsSubScreen('bugReport', onNavigate)} colors={colors}>
+          <SettingsRow
+            label="Report a Bug"
+            onPress={() => openSettingsSubScreen('bugReport', onNavigate)}
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="FAQ" onPress={() => openSettingsSubScreen('helpFaq', onNavigate)} colors={colors}>
+          <SettingsRow
+            label="FAQ"
+            onPress={() => openSettingsSubScreen('helpFaq', onNavigate)}
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Terms of Service" onPress={() => openSettingsSubScreen('terms', onNavigate)} colors={colors}>
+          <SettingsRow
+            label="Terms of Service"
+            onPress={() => openSettingsSubScreen('terms', onNavigate)}
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Privacy Policy" onPress={() => openSettingsSubScreen('privacy', onNavigate)} colors={colors}>
+          <SettingsRow
+            label="Privacy Policy"
+            onPress={() => openSettingsSubScreen('privacy', onNavigate)}
+            colors={colors}
+          >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -931,7 +1148,7 @@ export default function SettingsScreen({
                   { text: 'Privacy Policy', onPress: () => openSettingsSubScreen('privacy', onNavigate) },
                   { text: 'Contact Support', onPress: () => openSettingsSubScreen('contactSupport', onNavigate) },
                   { text: 'Close', style: 'cancel' },
-                ]
+                ],
               )
             }
             colors={colors}
@@ -946,11 +1163,21 @@ export default function SettingsScreen({
       </ScrollView>
 
       <Modal visible={isPasswordModalVisible} transparent={true} animationType="slide">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === PLATFORM_IOS ? 'padding' : 'height'}
+          style={styles.modalContainer}
+        >
           <View style={[styles.bottomSheet, { backgroundColor: colors.surface }]}>
             <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>Change Password</Text>
             <TextInput
-              style={[styles.passwordInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', color: colors.text, borderColor: colors.border }]}
+              style={[
+                styles.passwordInput,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
               placeholder="New Password"
               placeholderTextColor={colors.textSecondary}
               secureTextEntry
@@ -995,10 +1222,10 @@ export default function SettingsScreen({
         message={
           'This is permanent. Your profile, workouts, nutrition logs, and messages tied to this account will be removed.\n\n' +
           'Deleting your Coach Connect account does not cancel Coach Connect Pro. If you subscribe through Apple, manage or cancel in Settings → Apple ID → Subscriptions' +
-          (Platform.OS === 'ios' ? ` (${APPLE_MANAGE_SUBSCRIPTIONS_URL}).` : '.') +
+          (Platform.OS === PLATFORM_IOS ? ` (${APPLE_MANAGE_SUBSCRIPTIONS_URL}).` : '.') +
           '\n\nHold the button until the bar fills to confirm.'
         }
-        holdDurationMs={1200}
+        holdDurationMs={HOLD_TO_DELETE_MS}
         pillLabel="Hold until bar fills to delete account"
         barGradient={[ACCENT_PINK, ACCENT_ORANGE]}
         onHoldComplete={performDeleteAccount}
@@ -1022,7 +1249,7 @@ export default function SettingsScreen({
           />
         </ShellBottomNavAnchor>
       ) : null}
-      </SafeAreaView>
+    </SafeAreaView>
   );
 }
 
@@ -1129,6 +1356,5 @@ const styles = StyleSheet.create({
   confirmButtonGradient: { paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center' },
   confirmButtonText: { color: 'white', fontWeight: 'bold' },
   cancelButton: { padding: 16, alignItems: 'center' },
-  cancelButtonText: { },
+  cancelButtonText: {},
 });
-

@@ -25,6 +25,22 @@ const RANDOM_ID_END = 7;
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Append one base-26 digit (A–Z) onto the front of the letter string, then shift remaining.
+ * @param {number} remaining
+ * @param {string} lettersSoFar
+ * @returns {{ remaining: number, letters: string }}
+ */
+function takeNextColumnLetter(remaining, lettersSoFar) {
+  const digitIndex = remaining % ALPHABET_SIZE;
+  const nextLetter = String.fromCharCode(LETTER_A_CHAR_CODE + digitIndex);
+  const nextRemaining = Math.floor(remaining / ALPHABET_SIZE) - 1;
+  return {
+    remaining: nextRemaining,
+    letters: nextLetter + lettersSoFar,
+  };
+}
+
+/**
  * Base-26 with no zero digit. A is both the first letter and the value 0, so the carry subtracts 1.
  * vocab: String.fromCharCode(65) is capital A.
  * @param {number} columnIndex
@@ -33,18 +49,36 @@ const RANDOM_ID_END = 7;
 function columnLetters(columnIndex) {
   let letters = '';
   let remaining = columnIndex;
-  while (true) {
-    letters = String.fromCharCode(LETTER_A_CHAR_CODE + (remaining % ALPHABET_SIZE)) + letters;
-    remaining = Math.floor(remaining / ALPHABET_SIZE) - 1;
-    // Stop after the shift. Checking before it would drop the last letter.
-    if (remaining < 0) break;
+  while (remaining >= 0) {
+    const step = takeNextColumnLetter(remaining, letters);
+    letters = step.letters;
+    remaining = step.remaining;
   }
   return letters;
+}
+
+/**
+ * One letter of a column label → its 1-based alphabet value (A=1 … Z=26).
+ * @param {string} letter
+ * @returns {number}
+ */
+function letterToOneBasedValue(letter) {
+  return letter.charCodeAt(0) - LETTER_A_ONE_BASED;
+}
+
+/**
+ * Short random suffix used in new sheet ids.
+ * vocab: toString(36) makes a short id from random digits and letters.
+ * @returns {string}
+ */
+function randomSheetIdSuffix() {
+  return Math.random().toString(RANDOM_ID_RADIX).slice(RANDOM_ID_START, RANDOM_ID_END);
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Column index 0 → "A", 25 → "Z", 26 → "AA".
  * @param {number} columnIndex
  * @returns {string}
  */
@@ -58,8 +92,9 @@ export const colLabel = (columnIndex) => columnLetters(columnIndex);
  */
 export const labelToCol = (label) => {
   let columnNumber = 0;
-  for (const letter of label.toUpperCase()) {
-    columnNumber = columnNumber * ALPHABET_SIZE + (letter.charCodeAt(0) - LETTER_A_ONE_BASED);
+  const upperLabel = label.toUpperCase();
+  for (const letter of upperLabel) {
+    columnNumber = columnNumber * ALPHABET_SIZE + letterToOneBasedValue(letter);
   }
   return columnNumber - 1;
 };
@@ -74,12 +109,11 @@ export const keyOf = (rowIndex, columnIndex) => `${rowIndex},${columnIndex}`;
 
 /**
  * A blank tab stores only the cells the user touched, so a 200 by 26 grid stays small.
- * vocab: toString(36) makes a short id from random digits and letters.
  * @param {number} sheetIndex
  * @returns {object}
  */
 export const newSheet = (sheetIndex) => ({
-  id: `s${sheetIndex}-${Math.random().toString(RANDOM_ID_RADIX).slice(RANDOM_ID_START, RANDOM_ID_END)}`,
+  id: `s${sheetIndex}-${randomSheetIdSuffix()}`,
   name: `Sheet ${sheetIndex}`,
   cells: {},
   colWidths: {},
@@ -92,11 +126,15 @@ export const newSheet = (sheetIndex) => ({
  * @returns {{ r1: number, r2: number, c1: number, c2: number }}
  */
 export function normalizeSel(selection) {
+  const topRow = Math.min(selection.anchor.r, selection.focus.r);
+  const bottomRow = Math.max(selection.anchor.r, selection.focus.r);
+  const leftColumn = Math.min(selection.anchor.c, selection.focus.c);
+  const rightColumn = Math.max(selection.anchor.c, selection.focus.c);
   return {
-    r1: Math.min(selection.anchor.r, selection.focus.r),
-    r2: Math.max(selection.anchor.r, selection.focus.r),
-    c1: Math.min(selection.anchor.c, selection.focus.c),
-    c2: Math.max(selection.anchor.c, selection.focus.c),
+    r1: topRow,
+    r2: bottomRow,
+    c1: leftColumn,
+    c2: rightColumn,
   };
 }
 

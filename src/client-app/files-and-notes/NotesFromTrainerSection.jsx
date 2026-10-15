@@ -1,84 +1,229 @@
 // "Notes from trainer" block on the client's files screen: 3 most recent notes + an unread badge.
-// Flow: filter the mixed items list down to trainer notes → sort newest first → show 3 → tapping one
-// opens a bottom sheet and marks it read; "See all" reuses the same sheet in list mode.
-// Note: the parent owns fetching; this component only presents `items` and reports reads upward.
+// Flow: filter mixed items → newest first → show 3 → tap opens a sheet and marks read; "See all" is the same sheet.
+// Used by: the client files screen. The parent owns fetching; this file only presents `items`.
+
 import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { formatDateShort } from '../../helpers/fileSizeAndDateText';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
+// ===== NAMED CONSTANTS =====
+
+const NOTE_TYPE = 'note';
+const ADDED_BY_TRAINER = 'trainer';
+const ALL_NOTES_MODE = 'all';
+const FALLBACK_NOTE_TITLE = 'Note from your coach';
+const EMPTY_BODY_PLACEHOLDER = '—';
+// Manipulate here: how many notes appear inline before "See all" takes over.
+const INLINE_NOTE_COUNT = 3;
+const UNREAD_PILL_FILL = 'rgba(255, 107, 157, 0.18)';
+const UNREAD_PILL_BORDER = 'rgba(255, 107, 157, 0.45)';
+const UNREAD_PILL_TEXT = '#FF6B9D';
+const UNREAD_ROW_FILL = 'rgba(255, 107, 157, 0.10)';
+const UNREAD_ROW_BORDER = 'rgba(255, 107, 157, 0.35)';
+const READ_ROW_FILL = 'rgba(255,255,255,0.04)';
+const READ_ROW_BORDER = 'rgba(255,255,255,0.10)';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * The client's own notes live in the same list, so we require both type=note AND addedBy=trainer.
+ * @param {object} item
+ * @returns {boolean}
+ */
+function isTrainerNote(item) {
+  return item?.type === NOTE_TYPE && item?.addedBy === ADDED_BY_TRAINER;
+}
+
+/**
+ * createdAt arrives as a Date, a Firestore Timestamp, or a cached string. Normalize so sort and
+ * formatDateShort only deal with one type.
+ * vocab: ?.toDate?.() = call toDate only if the value exists AND has that method.
+ * @param {*} createdAt
+ */
+function createdAtAsDate(createdAt) {
+  if (createdAt instanceof Date) return createdAt;
+  return createdAt?.toDate?.() || createdAt;
+}
+
+/**
+ * Newest first. Missing dates go to epoch (0) so the comparison never becomes NaN.
+ * @param {object[]} notes
+ */
+function sortNotesNewestFirst(notes) {
+  notes.sort((leftNote, rightNote) => {
+    return new Date(rightNote.createdAt || 0) - new Date(leftNote.createdAt || 0);
+  });
+}
+
+/**
+ * @param {Array} items
+ * @returns {object[]}
+ */
+function trainerNotesFromItems(items) {
+  const list = Array.isArray(items) ? items : [];
+  const notes = list.filter(isTrainerNote).map((item) => ({
+    ...item,
+    createdAt: createdAtAsDate(item?.createdAt),
+  }));
+  sortNotesNewestFirst(notes);
+  return notes;
+}
+
+/**
+ * Strict === false: a note with no isRead field is legacy data and counts as already read,
+ * so old notes do not suddenly light up the unread badge.
+ * @param {object[]} notes
+ * @returns {number}
+ */
+function countUnreadNotes(notes) {
+  return notes.filter((note) => note?.isRead === false).length;
+}
+
+/**
+ * @param {object} note
+ * @returns {string}
+ */
+function displayNoteTitle(note) {
+  return note?.title || FALLBACK_NOTE_TITLE;
+}
+
+/**
+ * @param {object} note
+ * @returns {string}
+ */
+function displayNoteBody(note) {
+  return String(note?.content || '').trim() || EMPTY_BODY_PLACEHOLDER;
+}
+
+/**
+ * @param {object} note
+ * @returns {boolean}
+ */
+function isNoteUnread(note) {
+  return note?.isRead === false;
+}
+
+/**
+ * Open the sheet first so the UI responds instantly, then write the read receipt.
+ * A failed write still leaves the note open — the user can read it either way.
+ * @param {object} note
+ * @param {Function} setSelected
+ * @param {Function} [onMarkRead]
+ */
+async function openNoteAndMarkRead(note, setSelected, onMarkRead) {
+  setSelected(note);
+  if (!isNoteUnread(note)) return;
+  try {
+    await onMarkRead?.(note);
+  } catch {
+    // mark-read is best-effort; the sheet stays open
+  }
+}
+
+/**
+ * Compact row on the files screen (and again inside the all-notes sheet).
+ */
+function TrainerNoteRow({ note, onPress, extraBodyStyle }) {
+  const unread = isNoteUnread(note);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        borderRadius: 16,
+        padding: 12,
+        backgroundColor: unread ? UNREAD_ROW_FILL : READ_ROW_FILL,
+        borderWidth: 1,
+        borderColor: unread ? UNREAD_ROW_BORDER : READ_ROW_BORDER,
+        flexDirection: extraBodyStyle ? undefined : 'row',
+        gap: extraBodyStyle ? undefined : 10,
+        alignItems: extraBodyStyle ? undefined : 'flex-start',
+      }}
+    >
+      <View style={extraBodyStyle ? undefined : { flex: 1, gap: 6 }}>
+        <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14 }} numberOfLines={1}>
+          {displayNoteTitle(note)}
+        </Text>
+        <Text
+          style={{
+            color: 'rgba(255,255,255,0.70)',
+            fontWeight: '700',
+            fontSize: 12,
+            lineHeight: 18,
+            ...(extraBodyStyle || {}),
+          }}
+          numberOfLines={2}
+        >
+          {displayNoteBody(note)}
+        </Text>
+        <Text
+          style={{
+            color: 'rgba(255,255,255,0.45)',
+            fontWeight: '800',
+            fontSize: 11,
+            ...(extraBodyStyle ? { marginTop: 6 } : {}),
+          }}
+        >
+          {note?.createdAt ? formatDateShort(note.createdAt) : ''}
+        </Text>
+      </View>
+      {extraBodyStyle ? null : (
+        <Feather name="chevron-right" size={18} color="rgba(255,255,255,0.28)" />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Notes-from-trainer section: three newest notes, unread pill, and a shared detail/list sheet.
+ * vocab: useTheme = light/dark tokens for this screen.
+ * vocab: useMemo = rebuild the filtered list only when `items` changes.
+ * @param {{ items: Array, onMarkRead?: Function }} props
+ */
 export function NotesFromTrainerSection({ items, onMarkRead }) {
   const { colors, isDark } = useTheme();
-  // `selected` drives the bottom sheet and doubles as its mode: null = closed, a note object = read
-  // that note, and the sentinel { __mode: 'all' } = show the full list instead of one note.
+  // `selected` drives the sheet: null = closed, a note = detail, { __mode: 'all' } = full list.
   const [selected, setSelected] = useState(null);
 
-  // Derive the note list from the parent's mixed items (files AND notes). useMemo so the filter,
-  // date normalization, and sort only re-run when `items` actually changes — not on every keystroke
-  // or theme flip elsewhere on the screen.
-  const notes = useMemo(() => {
-    const list = Array.isArray(items) ? items : [];
-    const n = list
-      // Two conditions: it's a note, and the TRAINER wrote it. The client's own notes live in the
-      // same collection, so without the addedBy check they'd show up here too.
-      .filter((x) => x?.type === 'note' && x?.addedBy === 'trainer')
-      .map((x) => ({
-        ...x,
-        // createdAt arrives in three shapes depending on where it came from: an already-converted
-        // Date, a Firestore Timestamp (which needs .toDate()), or a raw string from cache.
-        // Normalizing here means the sort and the formatter below only deal with one type.
-        // vocab: ?.toDate?.() = call toDate only if the value exists AND has that method
-        createdAt: x?.createdAt instanceof Date ? x.createdAt : x?.createdAt?.toDate?.() || x?.createdAt,
-      }));
-    // Newest first. `|| 0` sends undated notes to the bottom (epoch) rather than making the
-    // comparison NaN, which would leave the sort order undefined.
-    n.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    return n;
-  }, [items]);
+  const notes = useMemo(() => trainerNotesFromItems(items), [items]);
 
-  // Manipulate here: 3 is how many notes appear inline before the "See all" button takes over.
-  // Both lines use the same number, so change them together.
-  const displayed = notes.slice(0, 3);
-  const hasMore = notes.length > 3;
-  // Strict === false, not a falsy check: a note with no isRead field at all is legacy data and is
-  // treated as already read, so old notes don't suddenly light up the unread badge.
-  const unreadCount = notes.filter((n) => n?.isRead === false).length;
+  const displayed = notes.slice(0, INLINE_NOTE_COUNT);
+  const hasMore = notes.length > INLINE_NOTE_COUNT;
+  const unreadCount = countUnreadNotes(notes);
+  const isAllNotesMode = selected?.__mode === ALL_NOTES_MODE;
+  const sheetTitle = isAllNotesMode ? 'All notes' : displayNoteTitle(selected);
 
-  // Open the sheet and mark the note read. Order matters: the sheet opens FIRST so the UI responds
-  // instantly, then the read receipt is written. The try/catch means a failed write still leaves the
-  // note open and readable rather than surfacing an error the user can't act on.
   const openNote = async (note) => {
-    setSelected(note);
-    if (note?.isRead === false) {
-      try { await onMarkRead?.(note); } catch (_) {}
-    }
+    await openNoteAndMarkRead(note, setSelected, onMarkRead);
   };
 
   return (
     <View style={{ marginBottom: 26 }}>
-      {/* SECTION HEADER — small-caps label on the left, unread pill pushed right by
-          justifyContent: 'space-between'.
-          Manipulate here: letterSpacing 2 with weight 900 is the app's section-label treatment. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 2, color: colors.textSecondary }}>
           NOTES FROM TRAINER
         </Text>
-        {/* Unread pill only when there's something unread — no "0 unread" state.
-            Manipulate here: the pink rgba trio (fill / border / text) is the app's "needs attention"
-            accent, and borderRadius 999 is the standard trick for a fully rounded capsule. */}
         {unreadCount > 0 && (
-          <View style={{ backgroundColor: 'rgba(255, 107, 157, 0.18)', borderColor: 'rgba(255, 107, 157, 0.45)', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
-            <Text style={{ color: '#FF6B9D', fontWeight: '900', fontSize: 11 }}>
+          <View
+            style={{
+              backgroundColor: UNREAD_PILL_FILL,
+              borderColor: UNREAD_PILL_BORDER,
+              borderWidth: 1,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+            }}
+          >
+            <Text style={{ color: UNREAD_PILL_TEXT, fontWeight: '900', fontSize: 11 }}>
               {unreadCount} unread
             </Text>
           </View>
         )}
       </View>
 
-      {/* EMPTY vs LIST. The empty state is a real bordered card rather than blank space, so the
-          section still reads as "a place where notes appear" before the first one arrives.
-          Manipulate here: the copy below is what a client sees before their coach writes anything. */}
       {notes.length === 0 ? (
         <View
           style={{
@@ -96,52 +241,13 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
         </View>
       ) : (
         <View style={{ gap: 10 }}>
-          {/* NOTE ROWS. Unread rows get a pink tinted fill + border while read rows are plain
-              white-on-transparent — that contrast is the only visual difference, and it's what makes
-              new notes findable at a glance.
-              Manipulate here: 'Note from your coach' is the fallback title when the trainer left it
-              blank, and body is trimmed so a whitespace-only note falls back to '—' below. */}
-          {displayed.map((note) => {
-            const isUnread = note?.isRead === false;
-            const title = note?.title || 'Note from your coach';
-            const body = String(note?.content || '').trim();
-            return (
-              <TouchableOpacity
-                key={note.id}
-                onPress={() => openNote(note)}
-                style={{
-                  borderRadius: 16,
-                  padding: 12,
-                  backgroundColor: isUnread ? 'rgba(255, 107, 157, 0.10)' : 'rgba(255,255,255,0.04)',
-                  borderWidth: 1,
-                  borderColor: isUnread ? 'rgba(255, 107, 157, 0.35)' : 'rgba(255,255,255,0.10)',
-                  flexDirection: 'row',
-                  gap: 10,
-                  alignItems: 'flex-start',
-                }}
-              >
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14 }} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.70)', fontWeight: '700', fontSize: 12, lineHeight: 18 }} numberOfLines={2}>
-                    {body || '—'}
-                  </Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.45)', fontWeight: '800', fontSize: 11 }}>
-                    {note?.createdAt ? formatDateShort(note.createdAt) : ''}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={18} color="rgba(255,255,255,0.28)" />
-              </TouchableOpacity>
-            );
-          })}
+          {displayed.map((note) => (
+            <TrainerNoteRow key={note.id} note={note} onPress={() => openNote(note)} />
+          ))}
 
-          {/* "See all" — opens the SAME sheet in list mode by setting the __mode sentinel instead of
-              a note. That's why there's no second modal in this file.
-              Manipulate here: height 50 with a 2px pink outline is the app's secondary-button style. */}
           {hasMore && (
             <TouchableOpacity
-              onPress={() => setSelected({ __mode: 'all' })}
+              onPress={() => setSelected({ __mode: ALL_NOTES_MODE })}
               style={{
                 height: 50,
                 borderRadius: 14,
@@ -159,65 +265,45 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
         </View>
       )}
 
-      {/* DETAIL / ALL-NOTES SHEET. One Modal serves both jobs, switched by selected.__mode.
-          vocab/symbol: !!selected coerces the object-or-null into the boolean `visible` wants.
-          transparent + justifyContent 'flex-end' is what makes it a bottom sheet over a dimmed
-          backdrop; onRequestClose wires up the Android back button.
-          Manipulate here: rgba(0,0,0,0.78) is the backdrop dim, and maxHeight '82%' below caps how
-          far the sheet can grow. */}
+      {/* vocab/symbol: !!selected coerces the object-or-null into the boolean `visible` wants. */}
       <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#12121A', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', maxHeight: '82%' }}>
+          <View
+            style={{
+              backgroundColor: '#12121A',
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              padding: 18,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.10)',
+              maxHeight: '82%',
+            }}
+          >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: '900', color: '#fff' }}>
-                {selected?.__mode === 'all' ? 'All notes' : (selected?.title || 'Note from your coach')}
-              </Text>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: '#fff' }}>{sheetTitle}</Text>
               <TouchableOpacity onPress={() => setSelected(null)} hitSlop={12}>
                 <Feather name="x" size={22} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
             </View>
 
-            {/* LIST MODE — every note, tappable. Tapping one calls openNote, which REPLACES
-                `selected` with that note, so the same sheet switches from list to detail in place.
-                Note these rows repeat the unread styling inline rather than reusing the rows above:
-                they're inside a ScrollView with slightly different spacing. */}
-            {selected?.__mode === 'all' ? (
+            {isAllNotesMode ? (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 10 }}>
                 {notes.map((note) => (
-                  <TouchableOpacity
+                  <TrainerNoteRow
                     key={note.id}
+                    note={note}
                     onPress={() => openNote(note)}
-                    style={{
-                      borderRadius: 16,
-                      padding: 12,
-                      backgroundColor: note?.isRead === false ? 'rgba(255, 107, 157, 0.10)' : 'rgba(255,255,255,0.04)',
-                      borderWidth: 1,
-                      borderColor: note?.isRead === false ? 'rgba(255, 107, 157, 0.35)' : 'rgba(255,255,255,0.10)',
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14 }} numberOfLines={1}>
-                      {note?.title || 'Note from your coach'}
-                    </Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.70)', fontWeight: '700', fontSize: 12, lineHeight: 18, marginTop: 6 }} numberOfLines={2}>
-                      {String(note?.content || '').trim() || '—'}
-                    </Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.45)', fontWeight: '800', fontSize: 11, marginTop: 6 }}>
-                      {note?.createdAt ? formatDateShort(note.createdAt) : ''}
-                    </Text>
-                  </TouchableOpacity>
+                    extraBodyStyle={{ marginTop: 6 }}
+                  />
                 ))}
               </ScrollView>
             ) : (
-              /* DETAIL MODE — date line, then the full note body (no numberOfLines cap, so it can
-                 run as long as the trainer wrote it and the ScrollView handles overflow).
-                 Manipulate here: lineHeight 22 against fontSize 14 is the comfortable reading
-                 measure for long note text. */
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
                 <Text style={{ color: 'rgba(255,255,255,0.55)', fontWeight: '800', fontSize: 12 }}>
                   {selected?.createdAt ? formatDateShort(selected.createdAt) : ''}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.86)', fontWeight: '700', fontSize: 14, lineHeight: 22, marginTop: 10 }}>
-                  {String(selected?.content || '').trim() || '—'}
+                  {displayNoteBody(selected)}
                 </Text>
               </ScrollView>
             )}
@@ -227,4 +313,3 @@ export function NotesFromTrainerSection({ items, onMarkRead }) {
     </View>
   );
 }
-

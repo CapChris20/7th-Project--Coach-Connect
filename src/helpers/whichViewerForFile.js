@@ -17,6 +17,9 @@ const OFFICE_VIEWER_PREFIX = 'https://view.officeapps.live.com/op/embed.aspx?src
 const PDF_URL_PATTERN = /\.pdf(\?|$)/i;
 // Manipulate here: add an extension to send that format to the Office viewer instead of Google's.
 const OFFICE_EXTENSION_PATTERN = /\.(doc|docx|ppt|pptx|xls|xlsx|csv)$/i;
+const IMAGE_MIME_PREFIX = 'image/';
+const VIDEO_MIME_PREFIX = 'video/';
+const PDF_EXTENSION = '.pdf';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -29,15 +32,19 @@ function mediaTypeLower(file) {
   return String(file.mimeType).toLowerCase();
 }
 
-// Office MIME types vary by uploader, so the extension, our tag, and several MIME fragments all count.
-function isOfficeFile(file, fileName, mediaType) {
-  if (OFFICE_EXTENSION_PATTERN.test(fileName)) return true;
-  if (file?.type === FILE_TAG_SPREADSHEET) return true;
+function mediaTypeLooksLikeOffice(mediaType) {
   if (mediaType.includes('spreadsheet')) return true;
   if (mediaType.includes('word')) return true;
   if (mediaType.includes('officedocument')) return true;
   if (mediaType.includes('msword')) return true;
   return false;
+}
+
+// Office MIME types vary by uploader, so the extension, our tag, and several MIME fragments all count.
+function isOfficeFile(file, fileName, mediaType) {
+  if (OFFICE_EXTENSION_PATTERN.test(fileName)) return true;
+  if (file?.type === FILE_TAG_SPREADSHEET) return true;
+  return mediaTypeLooksLikeOffice(mediaType);
 }
 
 // Firestore Timestamp objects compare by reference, so two copies of one file would never dedupe
@@ -47,10 +54,19 @@ function createdAtToMilliseconds(createdAt) {
     if (createdAt && typeof createdAt.toDate === 'function') return createdAt.toDate().getTime();
     if (createdAt instanceof Date) return createdAt.getTime();
     return new Date(createdAt || 0).getTime();
-  } catch (_) {
+  } catch {
     // An unreadable date becomes 0 so two copies of the same broken row still collapse together.
     return 0;
   }
+}
+
+function buildLegacyDedupeKey(fileItem) {
+  const createdAtMilliseconds = createdAtToMilliseconds(fileItem?.createdAt);
+  const fileType = fileItem?.type || '';
+  const fileUrl = fileItem?.url || '';
+  const fileName = fileItem?.name || fileItem?.title || '';
+  // "leg:" marks the fingerprint form so it can never collide with an id key.
+  return `leg:${fileType}|${fileUrl}|${createdAtMilliseconds}|${fileName}`;
 }
 
 // ===== MAIN FUNCTION =====
@@ -63,7 +79,7 @@ function createdAtToMilliseconds(createdAt) {
 export function isImageFile(file) {
   if (!file) return false;
   if (file.type === FILE_TAG_PHOTO) return true;
-  if (file.mimeType && String(file.mimeType).startsWith('image/')) return true;
+  if (file.mimeType && String(file.mimeType).startsWith(IMAGE_MIME_PREFIX)) return true;
   return false;
 }
 
@@ -75,7 +91,7 @@ export function isImageFile(file) {
 export function isVideoFile(file) {
   if (!file) return false;
   if (file.type === FILE_TAG_VIDEO) return true;
-  if (file.mimeType && String(file.mimeType).startsWith('video/')) return true;
+  if (file.mimeType && String(file.mimeType).startsWith(VIDEO_MIME_PREFIX)) return true;
   return false;
 }
 
@@ -90,7 +106,7 @@ export function isPdfFile(file, url) {
   const fileName = fileNameLower(file);
   const mediaType = mediaTypeLower(file);
   if (file?.type === FILE_TAG_PDF) return true;
-  if (fileName.endsWith('.pdf')) return true;
+  if (fileName.endsWith(PDF_EXTENSION)) return true;
   if (mediaType.includes('pdf')) return true;
   if (url && PDF_URL_PATTERN.test(String(url))) return true;
   return false;
@@ -125,13 +141,7 @@ export function officeEmbedUrl(url) {
  */
 export function notesFileDedupeKey(fileItem) {
   if (fileItem?.id) return `id:${String(fileItem.id)}`;
-
-  const createdAtMilliseconds = createdAtToMilliseconds(fileItem?.createdAt);
-  const fileType = fileItem?.type || '';
-  const fileUrl = fileItem?.url || '';
-  const fileName = fileItem?.name || fileItem?.title || '';
-  // "leg:" marks the fingerprint form so it can never collide with an id key.
-  return `leg:${fileType}|${fileUrl}|${createdAtMilliseconds}|${fileName}`;
+  return buildLegacyDedupeKey(fileItem);
 }
 
 /**

@@ -25,6 +25,7 @@ function isClientErrorStatus(statusCode) {
   return statusCode >= CLIENT_ERROR_MIN && statusCode < CLIENT_ERROR_MAX;
 }
 
+// vocab: AbortController = cancel this fetch when CHARGE_TIMEOUT_MS fires. RN fetch has no timeout option.
 async function postChargeToBase(apiBase, idToken, chargeBody) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CHARGE_TIMEOUT_MS);
@@ -74,16 +75,16 @@ async function tryChargeOnOneBase(apiBase, idToken, chargeBody) {
  * @returns {Promise<{ success: boolean, charge_id: string, trainer_gets: number }>}
  */
 export async function postCoachingCharge({ trainerId, amount, token, idempotencyKey }) {
+  // 1. Fresh login token — the charges route rejects a stale one.
   const idToken = await getIdToken();
   const apiBases = getResilientApiBases();
-  const chargeBody = {
-    trainerId,
-    amount,
-    token,
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-  };
+
+  // 2. Body keeps the Stripe token, not the card number. Keys stay trainerId / amount / token.
+  const chargeBody = { trainerId, amount, token };
+  if (idempotencyKey) chargeBody.idempotencyKey = idempotencyKey;
   let lastError = null;
 
+  // 3. Try each API base. A 4xx (decline, not verified, bad amount) stops the loop.
   for (const apiBase of apiBases) {
     const attempt = await tryChargeOnOneBase(apiBase, idToken, chargeBody);
     if (attempt.responseBody) return attempt.responseBody;
@@ -91,6 +92,7 @@ export async function postCoachingCharge({ trainerId, amount, token, idempotency
     lastError = attempt.retryableError;
   }
 
+  // 4. Every base dropped or timed out → one network error the popup can map.
   const networkError = new Error(lastError?.message || 'Network error, try again');
   networkError.code = 'network_error';
   throw networkError;

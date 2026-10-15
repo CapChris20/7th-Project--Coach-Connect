@@ -113,7 +113,11 @@ function analyze(file) {
   return { file: rel, lines: lineCount, pass: reasons.length === 0, reasons };
 }
 
-const files = walk(join(ROOT, 'src'));
+const listArgs = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const files =
+  listArgs.length > 0
+    ? listArgs.map((rel) => join(ROOT, rel.replace(/^\.\//, '')))
+    : walk(join(ROOT, 'src'));
 const results = files.map(analyze);
 const pass = results.filter(r => r.pass);
 const fail = results.filter(r => !r.pass);
@@ -125,10 +129,15 @@ console.log('\n--- NEEDS REWRITE ---');
 for (const f of fail.sort((a,b) => (b.lines||0) - (a.lines||0))) {
   console.log(`${f.file} — ${f.reasons.join(' | ')}`);
 }
-console.log('\n--- ALREADY READABLE (count by folder) ---');
-const by = {};
-for (const p of pass) {
-  const folder = p.file.split('/').slice(0, 2).join('/');
-  by[folder] = (by[folder] || 0) + 1;
+if (listArgs.length === 0) {
+  console.log('\n--- ALREADY READABLE (count by folder) ---');
+  const by = {};
+  for (const p of pass) {
+    const folder = p.file.split('/').slice(0, 2).join('/');
+    by[folder] = (by[folder] || 0) + 1;
+  }
+  Object.entries(by).sort((a,b)=>b[1]-a[1]).forEach(([k,v]) => console.log(`${v}\t${k}`));
 }
-Object.entries(by).sort((a,b)=>b[1]-a[1]).forEach(([k,v]) => console.log(`${v}\t${k}`));
+if (listArgs.length > 0 && fail.length > 0) {
+  process.exit(1);
+}

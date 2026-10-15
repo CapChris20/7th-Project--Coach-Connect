@@ -1,13 +1,7 @@
-/**
- * Client Payment Modal
- *
- * Purpose: In-app card form for a client to pay their coach via Stripe (POST /api/charges).
- * Why it matters: Turns the "Pay Coach" flow into a real, tokenized charge without cards touching our backend.
- * Area: src/components
- * Key exports: PayTrainerPopup
- *
- * @file-header
- */
+// In-app card form so a client can pay their coach (POST /api/charges).
+// Flow: pick amount → enter card → Stripe token → charge → success, then close.
+// Used by the client Pay Coach sheet. Cards never hit our server — Stripe tokenizes them.
+
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -34,9 +28,13 @@ import {
   formatPaymentDollars,
 } from './howPaymentsWorkText';
 
+// ===== NAMED CONSTANTS =====
+
 const QUICK_AMOUNTS = [50, 100, 150];
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
+// Manipulate here: how long the success screen stays up before we close.
+const SUCCESS_CLOSE_MS = 2000;
 
 // Prefer CardField — CardForm on iOS ignores text colors and looks broken in dark mode.
 const stripeModule = getStripeNativeModule();
@@ -44,6 +42,8 @@ const CardField = stripeModule?.CardField || null;
 const useStripeHook =
   typeof stripeModule?.useStripe === 'function' ? stripeModule.useStripe : () => null;
 const cardPaymentBlock = getStripeCardPaymentBlockReason();
+
+// ===== HELPER FUNCTIONS =====
 
 function formatMoney(value) {
   return formatPaymentDollars(value);
@@ -56,6 +56,57 @@ function newChargeIdempotencyKey() {
   return `cc_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function digitsOnlyAmountText(typedAmount) {
+  return String(typedAmount || '').replace(/[^0-9.]/g, '');
+}
+
+function cardUnavailableDetail() {
+  const block = cardPaymentBlock || getStripeCardPaymentBlockReason();
+  return block?.detail || 'Payments are unavailable on this build. Please update the app.';
+}
+
+function trainerGetsFromCharge(result, amountDollars) {
+  if (Number.isFinite(result.trainer_gets)) return result.trainer_gets;
+  return trainerGetsFromAmount(amountDollars);
+}
+
+/**
+ * Tokenize the card, then POST /api/charges. Failures come back as { ok: false, reason }.
+ * @param {{ stripe: object, trainerId: string, amountDollars: number }} args
+ * @returns {Promise<{ ok: boolean, reason?: string, trainerGets?: number, chargeId?: string, result?: object }>}
+ */
+async function tokenizeAndCharge({ stripe, trainerId, amountDollars }) {
+  const { token, error: tokenError } = await stripe.createToken({ type: 'Card' });
+  if (tokenError) {
+    return { ok: false, reason: tokenError.message || 'Please check your card details.' };
+  }
+  if (!token || !token.id) {
+    return { ok: false, reason: 'Could not read your card. Please try again.' };
+  }
+
+  const result = await postCoachingCharge({
+    trainerId,
+    amount: amountDollars,
+    token: token.id,
+    idempotencyKey: newChargeIdempotencyKey(),
+  });
+  if (!result || !result.success) {
+    return { ok: false, reason: 'Payment could not be completed. Please try again.' };
+  }
+  return {
+    ok: true,
+    trainerGets: trainerGetsFromCharge(result, amountDollars),
+    chargeId: result.charge_id,
+    result,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Charge this coach now. Failures first: bad amount, no Stripe, incomplete card.
+ * @param {{ trainerId: string, trainerName?: string, onClose?: Function, onSuccess?: Function }} props
+ */
 function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   const { colors, isDark } = useTheme();
   const stripe = useStripeHook();
@@ -107,21 +158,22 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   }, []);
 
   const handleCancel = useCallback(() => {
+    // 1. Wipe the form, then close. Closing first would leave stale amount/error on reopen.
     resetForm();
     onClose?.();
   }, [resetForm, onClose]);
 
-  const mapError = useCallback((e) => {
-    const msg = e?.message || '';
-    if (e?.code === 'network_error' || /network|timeout|aborted/i.test(msg)) {
+  const mapError = useCallback((chargeError) => {
+    const errorMessage = chargeError?.message || '';
+    if (chargeError?.code === 'network_error' || /network|timeout|aborted/i.test(errorMessage)) {
       return 'Network error, try again';
     }
-    if (/declin/i.test(msg)) return 'Card declined, try different card';
-    if (/set up payments|not set up|not verified/i.test(msg)) {
+    if (/declin/i.test(errorMessage)) return 'Card declined, try different card';
+    if (/set up payments|not set up|not verified/i.test(errorMessage)) {
       return "Trainer hasn't set up payments yet";
     }
-    if (/trainer not found/i.test(msg)) return 'Trainer not found';
-    return msg || 'Payment failed, try again';
+    if (/trainer not found/i.test(errorMessage)) return 'Trainer not found';
+    return errorMessage || 'Payment failed, try again';
   }, []);
 
   const onCardChange = useCallback((details) => {
@@ -137,61 +189,53 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   }, []);
 
   const handlePayNow = useCallback(async () => {
+    // 1. Ignore a second tap while a charge is already in flight.
     if (payInFlightRef.current) return;
     setError(null);
 
-    const value = parseFloat(amount);
-    if (!Number.isFinite(value) || value < MIN_AMOUNT || value > MAX_AMOUNT) {
+    // 2. Amount must be $1–$10,000.
+    const amountDollars = parseFloat(amount);
+    if (!Number.isFinite(amountDollars) || amountDollars < MIN_AMOUNT || amountDollars > MAX_AMOUNT) {
       setError('Enter an amount between $1 and $10,000');
       return;
     }
 
-    if (!stripe?.createToken) {
-      const block = cardPaymentBlock || getStripeCardPaymentBlockReason();
-      setError(block?.detail || 'Payments are unavailable on this build. Please update the app.');
+    // 3. This install must be able to create a Stripe card token.
+    const canCreateCardToken = stripe && stripe.createToken;
+    if (!canCreateCardToken) {
+      setError(cardUnavailableDetail());
       return;
     }
 
+    // 4. Card field must be complete (number, expiry, CVC, ZIP).
     if (CardField && !cardReady) {
       setError('Enter your card number, expiry, CVC, and ZIP.');
       return;
     }
 
+    // 5. Tokenize the card and POST the charge. Failures first inside tokenizeAndCharge.
     payInFlightRef.current = true;
     setLoading(true);
     try {
-      const { token, error: tokenError } = await stripe.createToken({ type: 'Card' });
-      if (tokenError) {
-        setError(tokenError.message || 'Please check your card details.');
-        return;
-      }
-      if (!token?.id) {
-        setError('Could not read your card. Please try again.');
+      const outcome = await tokenizeAndCharge({ stripe, trainerId, amountDollars });
+      if (!outcome.ok) {
+        setError(outcome.reason);
         return;
       }
 
-      const result = await postCoachingCharge({
-        trainerId,
-        amount: value,
-        token: token.id,
-        idempotencyKey: newChargeIdempotencyKey(),
+      // 6. Show success, tell the parent, then close after a short beat.
+      setSuccess({
+        amount: amountDollars,
+        trainerGets: outcome.trainerGets,
+        chargeId: outcome.chargeId,
       });
-
-      if (result?.success) {
-        const gets = Number.isFinite(result.trainer_gets)
-          ? result.trainer_gets
-          : trainerGetsFromAmount(value);
-        setSuccess({ amount: value, trainerGets: gets, chargeId: result.charge_id });
-        onSuccess?.(result);
-        setTimeout(() => {
-          resetForm();
-          onClose?.();
-        }, 2000);
-      } else {
-        setError('Payment could not be completed. Please try again.');
-      }
-    } catch (e) {
-      setError(mapError(e));
+      onSuccess?.(outcome.result);
+      setTimeout(() => {
+        resetForm();
+        onClose?.();
+      }, SUCCESS_CLOSE_MS);
+    } catch (chargeError) {
+      setError(mapError(chargeError));
     } finally {
       payInFlightRef.current = false;
       setLoading(false);
@@ -232,8 +276,8 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
             ref={amountInputRef}
             style={styles.amountInput}
             value={amount}
-            onChangeText={(t) => {
-              setAmount(t.replace(/[^0-9.]/g, ''));
+            onChangeText={(typedAmount) => {
+              setAmount(digitsOnlyAmountText(typedAmount));
               setError(null);
             }}
             keyboardType="decimal-pad"

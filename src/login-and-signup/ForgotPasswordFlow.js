@@ -28,6 +28,10 @@ const ACCENT = ['#FF6B9D', '#C084FC'];
 const CTA_RING = ['#C1265A', '#D84315'];
 const AUTH_ERROR_INVALID_EMAIL = 'auth/invalid-email';
 const AUTH_ERROR_MISSING_EMAIL = 'auth/missing-email';
+const KEYBOARD_OFFSET_IOS = 10;
+const KEYBOARD_OFFSET_ANDROID = 0;
+const SCROLL_BOTTOM_PAD_MIN = 16;
+const SCROLL_BOTTOM_PAD_EXTRA = 24;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -43,7 +47,33 @@ function messageForPasswordResetError(error) {
   const code = error?.code || '';
   if (code === AUTH_ERROR_INVALID_EMAIL) return 'Invalid email address';
   if (code === AUTH_ERROR_MISSING_EMAIL) return 'Email is required';
-  return error?.message || 'Failed to send reset email';
+  if (error?.message) return error.message;
+  return 'Failed to send reset email';
+}
+
+function keyboardAvoidBehavior() {
+  if (Platform.OS === 'ios') return 'padding';
+  return 'height';
+}
+
+function keyboardVerticalOffset() {
+  if (Platform.OS === 'ios') return KEYBOARD_OFFSET_IOS;
+  return KEYBOARD_OFFSET_ANDROID;
+}
+
+function scrollBottomPadding(bottomInset) {
+  return Math.max(bottomInset, SCROLL_BOTTOM_PAD_MIN) + SCROLL_BOTTOM_PAD_EXTRA;
+}
+
+function landingPalette(isDark) {
+  return {
+    backgroundColor: isDark ? '#0A0A0F' : '#F5F5F7',
+    textMain: isDark ? '#FFFFFF' : '#0A0A0F',
+    textSub: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.58)',
+    glassInner: isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)',
+    inputBorder: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)',
+    labelColor: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.72)',
+  };
 }
 
 // ===== MAIN FUNCTION =====
@@ -64,12 +94,14 @@ export default function ResetPasswordScreen({ navigation }) {
   const onBack = navigation?.goBack ?? navigation?.navigate;
   const emailRegex = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/, []);
 
-  const backgroundColor = isDark ? '#0A0A0F' : '#F5F5F7';
-  const textMain = isDark ? '#FFFFFF' : '#0A0A0F';
-  const textSub = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.58)';
-  const glassInner = isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)';
-  const inputBorder = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)';
-  const labelColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.72)';
+  const {
+    backgroundColor,
+    textMain,
+    textSub,
+    glassInner,
+    inputBorder,
+    labelColor,
+  } = landingPalette(isDark);
 
   const handleReset = async () => {
     setErrorMessage('');
@@ -99,9 +131,9 @@ export default function ResetPasswordScreen({ navigation }) {
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={keyboardAvoidBehavior()}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        keyboardVerticalOffset={keyboardVerticalOffset()}
       >
         <ScrollView
           style={{ flex: 1 }}
@@ -111,7 +143,7 @@ export default function ResetPasswordScreen({ navigation }) {
             justifyContent: 'center',
             paddingHorizontal: 22,
             paddingTop: spacing.sm,
-            paddingBottom: Math.max(insets.bottom, 16) + 24,
+            paddingBottom: scrollBottomPadding(insets.bottom),
           }}
           keyboardShouldPersistTaps="handled"
         >

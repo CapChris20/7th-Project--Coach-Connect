@@ -31,8 +31,9 @@ export function fixBarcodeDigits(raw) {
   const digitsOnly = String(raw || '').replace(/\D/g, '');
   if (!digitsOnly) return '';
   if (digitsOnly.length === TRUNCATED_UPC_LENGTH) return padToUpcLength(digitsOnly);
-  const lengthIsUseful = digitsOnly.length >= SHORTEST_USEFUL_BARCODE && digitsOnly.length <= LONGEST_ACCEPTED_BARCODE;
-  if (lengthIsUseful) return digitsOnly;
-  if (digitsOnly.length < SHORTEST_USEFUL_BARCODE) return padToUpcLength(digitsOnly);
+  const longEnough = digitsOnly.length >= SHORTEST_USEFUL_BARCODE;
+  const shortEnough = digitsOnly.length <= LONGEST_ACCEPTED_BARCODE;
+  if (longEnough && shortEnough) return digitsOnly;
+  if (!longEnough) return padToUpcLength(digitsOnly);
   return digitsOnly.slice(0, LONGEST_ACCEPTED_BARCODE);
 }

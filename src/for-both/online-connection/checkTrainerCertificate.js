@@ -114,6 +114,23 @@ function successfulVerification(data) {
   };
 }
 
+function httpErrorFromResponse(data, statusCode) {
+  return new Error(data?.error || `HTTP ${statusCode}`);
+}
+
+function timeoutOrNetworkError(error) {
+  if (error?.name === 'AbortError') return new Error('Verification timed out');
+  return error;
+}
+
+async function parseJsonOrEmpty(response) {
+  try {
+    return await response.json();
+  } catch (ignoredError) {
+    return {};
+  }
+}
+
 // Does not throw. A failure comes back as error so the caller can try the next base.
 async function requestCertificationVerification(baseUrl, idToken, requestBody) {
   const controller = new AbortController();
@@ -130,17 +147,58 @@ async function requestCertificationVerification(baseUrl, idToken, requestBody) {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    const data = await response.json().catch(() => ({}));
+    const data = await parseJsonOrEmpty(response);
     if (!response.ok) {
-      return { error: new Error(data?.error || `HTTP ${response.status}`) };
+      return { error: httpErrorFromResponse(data, response.status) };
     }
     return { result: successfulVerification(data) };
   } catch (error) {
     clearTimeout(timeoutId);
-    const timeoutOrNetworkError =
-      error?.name === 'AbortError' ? new Error('Verification timed out') : error;
-    return { error: timeoutOrNetworkError };
+    return { error: timeoutOrNetworkError(error) };
   }
+}
+
+async function readLocalCertificateBase64(localUri, mimeType) {
+  const shouldReadLocalFile = localUri && isImageOrUnknownMimeType(mimeType);
+  if (!shouldReadLocalFile) return null;
+  try {
+    return await localImageUriToBase64(localUri);
+  } catch (error) {
+    if (__DEV__) console.warn('cert base64 read failed:', error?.message || error);
+    return null;
+  }
+}
+
+function buildVerificationRequestBody({
+  trainerId,
+  trainerName,
+  imageBase64,
+  imageUrl,
+  mediaType,
+  storagePath,
+  fileName,
+}) {
+  // Send base64 when we have it, and only then omit imageUrl. The server should see one source.
+  // mediaType keeps the caller's original spelling; the lowercase copy was only for the image/ check.
+  return {
+    trainerId: trainerId || auth?.currentUser?.uid || undefined,
+    trainerName,
+    imageBase64,
+    imageUrl: imageBase64 ? undefined : imageUrl,
+    mediaType: mediaType || DEFAULT_CERTIFICATE_MIME_TYPE,
+    storagePath,
+    fileName,
+  };
+}
+
+async function verifyOnFirstAcceptingBase(idToken, requestBody) {
+  let lastError = null;
+  for (const baseUrl of cloudHostedApiBases()) {
+    const outcome = await requestCertificationVerification(baseUrl, idToken, requestBody);
+    if (outcome.result) return outcome.result;
+    lastError = outcome.error;
+  }
+  throw lastError || new Error('Certification verification failed');
 }
 
 // ===== MAIN FUNCTION =====
@@ -221,42 +279,32 @@ export async function checkTrainerCertificate(options = {}) {
   } = options;
 
   const mimeType = String(mediaType || '').toLowerCase();
+
+  // 1. PDFs and other non-images skip AI. The file is already uploaded for a human.
   if (isNonImageMimeType(mimeType)) {
     return manualReviewSkip(NON_IMAGE_ERROR);
   }
 
-  let imageBase64 = null;
-  if (localUri && isImageOrUnknownMimeType(mimeType)) {
-    try {
-      imageBase64 = await localImageUriToBase64(localUri);
-    } catch (error) {
-      if (__DEV__) console.warn('cert base64 read failed:', error?.message || error);
-    }
-  }
-
+  // 2. Read the local photo. No bytes and no hosted URL → skip the same way.
+  const imageBase64 = await readLocalCertificateBase64(localUri, mimeType);
   if (!imageBase64 && !imageUrl) {
     return manualReviewSkip(UNREADABLE_IMAGE_ERROR);
   }
 
+  // 3. Fresh login token — the verify route rejects a stale one.
   const idToken = await requireSignedInIdToken();
-  // Send base64 when we have it, and only then omit imageUrl. The server should see one source.
-  // mediaType keeps the caller's original spelling; the lowercase copy was only for the image/ check.
-  const requestBody = {
-    trainerId: trainerId || auth?.currentUser?.uid || undefined,
+
+  // 4. One body: base64 when we have it, otherwise the hosted URL.
+  const requestBody = buildVerificationRequestBody({
+    trainerId,
     trainerName,
     imageBase64,
-    imageUrl: imageBase64 ? undefined : imageUrl,
-    mediaType: mediaType || DEFAULT_CERTIFICATE_MIME_TYPE,
+    imageUrl,
+    mediaType,
     storagePath,
     fileName,
-  };
+  });
 
-  let lastError = null;
-  for (const baseUrl of cloudHostedApiBases()) {
-    const outcome = await requestCertificationVerification(baseUrl, idToken, requestBody);
-    if (outcome.result) return outcome.result;
-    lastError = outcome.error;
-  }
-
-  throw lastError || new Error('Certification verification failed');
+  // 5. Try each cloud API base until one accepts.
+  return verifyOnFirstAcceptingBase(idToken, requestBody);
 }

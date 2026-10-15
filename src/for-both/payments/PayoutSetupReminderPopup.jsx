@@ -1,6 +1,7 @@
-/**
- * Post-signup payment setup modal — shown on trainer dashboard, not during onboarding.
- */
+// After signup, remind the trainer to finish Stripe payout setup on the dashboard.
+// Flow: show why payments matter → Start setup → Stripe phases (connecting / pending / active) → done or later.
+// Used by trainer home. Not shown during the onboarding wizard.
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -27,6 +28,9 @@ import {
 } from './HowPaymentsWorkSections';
 import { auth } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: how long we wait on "verifying" before we say they can finish later.
 const PENDING_DONE_MS = 30000;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -40,6 +44,39 @@ const COLORS = {
   accentSoft: 'rgba(255,61,138,0.14)',
 };
 
+// ===== HELPER FUNCTIONS =====
+
+function applyStripePhaseToPopup(phase, stripeError, setters) {
+  if (phase === 'connecting') {
+    setters.setStatus('connecting');
+    setters.setLoading(true);
+    setters.setErrorMessage(null);
+    return;
+  }
+  if (phase === 'pending') {
+    setters.setStatus('verifying');
+    setters.setLoading(true);
+    setters.setErrorMessage(null);
+    return;
+  }
+  if (phase === 'active') {
+    setters.setStatus('success');
+    setters.setLoading(false);
+    return;
+  }
+  if (phase === 'error') {
+    setters.setStatus('error');
+    setters.setLoading(false);
+    setters.setErrorMessage(stripeError || 'Connection failed, try again');
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Dashboard reminder to finish Stripe payout setup.
+ * @param {{ visible: boolean, onClose: Function, userEmail?: string, stripeAccountId?: string }} props
+ */
 export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAccountId = '' }) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
@@ -60,22 +97,11 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
   });
 
   useEffect(() => {
-    if (stripeConnect.phase === 'connecting') {
-      setStatus('connecting');
-      setLoading(true);
-      setErrorMessage(null);
-    } else if (stripeConnect.phase === 'pending') {
-      setStatus('verifying');
-      setLoading(true);
-      setErrorMessage(null);
-    } else if (stripeConnect.phase === 'active') {
-      setStatus('success');
-      setLoading(false);
-    } else if (stripeConnect.phase === 'error') {
-      setStatus('error');
-      setLoading(false);
-      setErrorMessage(stripeConnect.error || 'Connection failed, try again');
-    }
+    applyStripePhaseToPopup(stripeConnect.phase, stripeConnect.error, {
+      setStatus,
+      setLoading,
+      setErrorMessage,
+    });
   }, [stripeConnect.phase, stripeConnect.error]);
 
   useEffect(() => {
@@ -100,34 +126,39 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
   }, [status]);
 
   const handleSetupNow = useCallback(async () => {
+    // 1. Clear the last error and show the connecting spinner.
     setErrorMessage(null);
     setPendingTimedOut(false);
     setStatus('connecting');
     setLoading(true);
     try {
+      // 2. Open the Stripe Connect form (WebView comes from trainerPayoutSetupFlow).
       await stripeConnect.startConnect();
-    } catch (e) {
+    } catch (caughtError) {
       setStatus('error');
       setLoading(false);
-      setErrorMessage(e?.message || 'Connection failed, try again');
+      setErrorMessage(caughtError?.message || 'Connection failed, try again');
     }
   }, [stripeConnect]);
 
   const handleMaybeLater = useCallback(async () => {
+    // 1. Save "Maybe later" so we stay quiet for 30 days. A write fail still closes.
     try {
       const uid = auth?.currentUser?.uid;
       if (uid) await dismissPayoutSetupReminderPopup(uid);
-    } catch (e) {
-      console.warn('Failed to save payment popup dismissal:', e?.message || e);
+    } catch (caughtError) {
+      console.warn('Failed to save payment popup dismissal:', caughtError?.message || caughtError);
     }
     onClose?.();
   }, [onClose]);
 
   const handleDone = useCallback(() => {
+    // 1. Close after success or after the verifying timeout ("check back soon").
     onClose?.();
   }, [onClose]);
 
   const handleRetry = useCallback(() => {
+    // 1. Clear the error and ask Stripe to open the form again.
     setErrorMessage(null);
     setStatus(null);
     stripeConnect.retry();

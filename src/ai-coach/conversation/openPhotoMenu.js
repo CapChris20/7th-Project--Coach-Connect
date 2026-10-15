@@ -1,80 +1,76 @@
-// The attach menu on a coach chat: photo library, camera, or file.
-// Flow: show the native menu → wait until it finishes dismissing → run the picker callback.
+// Native attach sheet for coach chat: library, camera, or file.
+// Flow: show menu → wait for dismiss animation → invoke the matching picker callback.
 // Used by CoachConversationScreen and CoachHomeScreen.
 
 import { ActionSheetIOS, Alert, Platform } from 'react-native';
 
 // ===== NAMED CONSTANTS =====
 
-// Cancel is first so iOS can draw it as the system cancel button. Indexes must match this order.
-const CANCEL_OPTION_INDEX = 0;
-const PHOTO_LIBRARY_OPTION_INDEX = 1;
-const CAMERA_OPTION_INDEX = 2;
-const FILE_OPTION_INDEX = 3;
+// Cancel row first — iOS uses cancelButtonIndex for the system cancel styling.
+const ATTACH_MENU_LABELS = ['Cancel', 'Photo Library', 'Camera', 'File'];
+const CANCEL_MENU_INDEX = 0;
+const LIBRARY_MENU_INDEX = 1;
+const CAMERA_MENU_INDEX = 2;
+const FILE_MENU_INDEX = 3;
 
-const CANCEL_LABEL = 'Cancel';
-const PHOTO_LIBRARY_LABEL = 'Photo Library';
-const CAMERA_LABEL = 'Camera';
-const FILE_LABEL = 'File';
-
-// Manipulate here: the picker has to open after the menu is gone.
-// iOS dismisses faster than Android's Alert. Too short and the picker stacks under the menu.
-const IOS_PICKER_DELAY_MS = 50;
-const OTHER_PLATFORM_PICKER_DELAY_MS = 150;
-
-// ===== HELPER FUNCTIONS =====
-
-// A screen that cannot attach files still shares this menu, so a missing callback is a no-op.
-// The timeout is why this file exists: opening the picker in the same turn as the dismiss
-// stacks two native modals, and the picker never shows.
-function runAfterAttachMenuCloses(pickerCallback) {
-  if (typeof pickerCallback !== 'function') return;
-  const isIos = Platform.OS === 'ios';
-  const delayMs = isIos ? IOS_PICKER_DELAY_MS : OTHER_PLATFORM_PICKER_DELAY_MS;
-  setTimeout(() => pickerCallback(), delayMs);
-}
-
-function pickerForMenuIndex(selectedIndex, { onPhotoLibrary, onCamera, onFile }) {
-  if (selectedIndex === PHOTO_LIBRARY_OPTION_INDEX) return onPhotoLibrary;
-  if (selectedIndex === CAMERA_OPTION_INDEX) return onCamera;
-  if (selectedIndex === FILE_OPTION_INDEX) return onFile;
-  return null;
-}
-
-function showIosAttachMenu(callbacks) {
-  // vocab: ActionSheetIOS = the native bottom menu. cancelButtonIndex is the row that only dismisses.
-  ActionSheetIOS.showActionSheetWithOptions(
-    {
-      options: [CANCEL_LABEL, PHOTO_LIBRARY_LABEL, CAMERA_LABEL, FILE_LABEL],
-      cancelButtonIndex: CANCEL_OPTION_INDEX,
-    },
-    (selectedIndex) => {
-      runAfterAttachMenuCloses(pickerForMenuIndex(selectedIndex, callbacks));
-    },
-  );
-}
-
-function showOtherPlatformAttachMenu({ onPhotoLibrary, onCamera, onFile }) {
-  Alert.alert('Attach', 'Choose an option', [
-    { text: CANCEL_LABEL, style: 'cancel' },
-    { text: PHOTO_LIBRARY_LABEL, onPress: () => runAfterAttachMenuCloses(onPhotoLibrary) },
-    { text: CAMERA_LABEL, onPress: () => runAfterAttachMenuCloses(onCamera) },
-    { text: FILE_LABEL, onPress: () => runAfterAttachMenuCloses(onFile) },
-  ]);
-}
+// Manipulate here: delay before opening ImagePicker so it does not stack under the menu modal.
+const IOS_DISMISS_WAIT_MS = 50;
+const ANDROID_DISMISS_WAIT_MS = 150;
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Native attach menu. iOS uses the action sheet; other platforms use an alert.
+ * Show the attach menu and route the user's choice to the right picker.
  * @param {{ onPhotoLibrary?: function, onCamera?: function, onFile?: function }} callbacks
  * @returns {void}
  */
 export function showCoachAttachMenu(callbacks) {
-  const isIos = Platform.OS === 'ios';
-  if (isIos) {
-    showIosAttachMenu(callbacks);
+  // 1. iOS native sheet; everything else uses Alert.
+  const isIosDevice = Platform.OS === 'ios';
+  if (isIosDevice) {
+    openIosAttachSheet(callbacks);
     return;
   }
-  showOtherPlatformAttachMenu(callbacks);
+  openAlertAttachMenu(callbacks);
+}
+
+// ===== HELPER FUNCTIONS =====
+
+function attachPickerCallbackForIndex(selectedIndex, callbacks) {
+  if (selectedIndex === LIBRARY_MENU_INDEX) return callbacks.onPhotoLibrary ?? null;
+  if (selectedIndex === CAMERA_MENU_INDEX) return callbacks.onCamera ?? null;
+  if (selectedIndex === FILE_MENU_INDEX) return callbacks.onFile ?? null;
+  return null;
+}
+
+function schedulePickerAfterMenuDismiss(pickerCallback) {
+  if (typeof pickerCallback !== 'function') return;
+  const isIosDevice = Platform.OS === 'ios';
+  const waitMs = isIosDevice ? IOS_DISMISS_WAIT_MS : ANDROID_DISMISS_WAIT_MS;
+  setTimeout(() => {
+    pickerCallback();
+  }, waitMs);
+}
+
+function openIosAttachSheet(callbacks) {
+  ActionSheetIOS.showActionSheetWithOptions(
+    {
+      options: ATTACH_MENU_LABELS,
+      cancelButtonIndex: CANCEL_MENU_INDEX,
+    },
+    (selectedIndex) => {
+      const pickerCallback = attachPickerCallbackForIndex(selectedIndex, callbacks);
+      schedulePickerAfterMenuDismiss(pickerCallback);
+    },
+  );
+}
+
+function openAlertAttachMenu(callbacks) {
+  const wrap = (pickerCallback) => () => schedulePickerAfterMenuDismiss(pickerCallback);
+  Alert.alert('Attach', 'Choose an option', [
+    { text: ATTACH_MENU_LABELS[CANCEL_MENU_INDEX], style: 'cancel' },
+    { text: ATTACH_MENU_LABELS[LIBRARY_MENU_INDEX], onPress: wrap(callbacks.onPhotoLibrary) },
+    { text: ATTACH_MENU_LABELS[CAMERA_MENU_INDEX], onPress: wrap(callbacks.onCamera) },
+    { text: ATTACH_MENU_LABELS[FILE_MENU_INDEX], onPress: wrap(callbacks.onFile) },
+  ]);
 }

@@ -1,13 +1,7 @@
 // Sends the "your coach scheduled a session" push notification straight from the trainer's device.
-// Flow: resolve the trainer's name → build title/body copy → try a DIRECT Expo push first → if that
-// fails for a non-fatal reason, fall back to our own API endpoint.
-// Why direct-first: this path works with no Node server and no Cloud Functions deployed, so a
-// trainer can schedule a session and the client still gets notified.
+// Flow: resolve the trainer's name → build title/body → try Expo direct → if that fails non-fatally, try our API.
+// Used by: the trainer scheduling screen. Direct-first so this works with no Node server deployed.
 
-/**
- * Send a session-scheduled push to the client from the trainer app.
- * Does not require the Node server or Cloud Functions (reads client pushToken from users/{clientId}).
- */
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
 import { getApiBase } from '../../for-both/online-connection/whereToConnect';
@@ -17,47 +11,205 @@ import {
   randomSessionScheduledDetailBody,
 } from '../../notifications/writeAlertText';
 
-// vocab: Expo's hosted push relay. You POST a token + message here and Expo forwards it to
-// Apple's APNs or Google's FCM, which is why the app never touches those services directly.
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+// ===== NAMED CONSTANTS =====
 
-// "14:30" → "2:30 PM". Sessions are stored as 24-hour strings; notification copy reads better in
-// 12-hour form.
+// vocab: Expo's hosted push relay. You POST a token + message here and Expo forwards it to APNs / FCM.
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const USERS_COLLECTION = 'users';
+const FALLBACK_TRAINER_NAME = 'Your coach';
+const NOON_ANCHOR = 'T12:00:00';
+const HOURS_PER_HALF_DAY = 12;
+const NOON_HOUR = 12;
+const MINUTE_PAD_LENGTH = 2;
+const NOTIFICATION_TYPE_SESSION = 'session_scheduled';
+const DATE_FORMAT = { weekday: 'short', month: 'short', day: 'numeric' };
+const EXPO_TOKEN_PREFIX_A = 'ExponentPushToken[';
+const EXPO_TOKEN_PREFIX_B = 'ExpoPushToken[';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * "14:30" → "2:30 PM". Sessions are stored as 24-hour strings; notification copy reads better in 12-hour form.
+ * @param {string} hhmm
+ * @returns {string}
+ */
 function formatTime12(hhmm) {
   if (!hhmm || typeof hhmm !== 'string') return '';
-  const [hStr, mStr] = hhmm.split(':');
-  const h = parseInt(hStr, 10);
-  // `mStr || '0'` covers a bare "14" with no minutes.
-  const m = parseInt(mStr || '0', 10);
-  // Unparseable hour → return the original string rather than showing "NaN:00" in a push.
-  if (Number.isNaN(h)) return hhmm;
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  // The ((h + 11) % 12) + 1 trick maps 0→12, 13→1, 12→12 in one expression — the plain h % 12
-  // would wrongly turn both midnight and noon into "0".
-  const h12 = ((h + 11) % 12) + 1;
-  // padStart keeps "2:5 PM" from happening — minutes are always two digits.
-  return `${h12}:${String(Number.isNaN(m) ? 0 : m).padStart(2, '0')} ${ampm}`;
-}
-
-// "2026-03-14" → "Sat, Mar 14".
-function formatDateShort(isoDate) {
-  if (!isoDate || typeof isoDate !== 'string') return '';
-  // slice(0,10) tolerates a full ISO timestamp being passed in, and the 'T12:00:00' anchor at local
-  // noon prevents the classic off-by-one-day bug (a bare date parses as UTC midnight, which is the
-  // previous day in western timezones).
-  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return isoDate;
-  // Manipulate here: the date format used in the notification body.
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const [hourText, minuteText] = hhmm.split(':');
+  const hour24 = parseInt(hourText, 10);
+  const minuteValue = parseInt(minuteText || '0', 10);
+  if (Number.isNaN(hour24)) return hhmm;
+  const meridiem = hour24 >= NOON_HOUR ? 'PM' : 'AM';
+  // ((hour + 11) % 12) + 1 maps 0→12, 13→1, 12→12. Plain hour % 12 would turn noon into 0.
+  const hour12 = ((hour24 + 11) % HOURS_PER_HALF_DAY) + 1;
+  const safeMinute = Number.isNaN(minuteValue) ? 0 : minuteValue;
+  return `${hour12}:${String(safeMinute).padStart(MINUTE_PAD_LENGTH, '0')} ${meridiem}`;
 }
 
 /**
- * Try server endpoint first (if API is up). Falls back to direct Expo push from device.
- * @returns {{ ok: boolean, channel?: string, reason?: string }}
+ * "2026-03-14" → "Sat, Mar 14".
+ * The T12:00:00 anchor at local noon prevents a UTC-midnight parse from becoming the previous day.
+ * @param {string} isoDate
+ * @returns {string}
  */
-// Returns a result object instead of throwing, because the caller (a scheduling screen) needs to
-// know WHY delivery failed to decide whether to warn the trainer — and a failed notification must
-// never roll back a successfully saved session.
+function formatDateShort(isoDate) {
+  if (!isoDate || typeof isoDate !== 'string') return '';
+  const dateAtNoon = new Date(`${isoDate.slice(0, 10)}${NOON_ANCHOR}`);
+  if (Number.isNaN(dateAtNoon.getTime())) return isoDate;
+  // Manipulate here: the date format used in the notification body.
+  return dateAtNoon.toLocaleDateString('en-US', DATE_FORMAT);
+}
+
+/**
+ * Use the caller's trainer name if it has one (saves a read), otherwise fetch users/{trainerUid}.
+ * Manipulate here: FALLBACK_TRAINER_NAME is what the client sees when the profile has no name.
+ * @param {string} [trainerNameArg]
+ * @param {string} trainerUid
+ * @returns {Promise<string>}
+ */
+async function resolveTrainerDisplayName(trainerNameArg, trainerUid) {
+  if (trainerNameArg) return trainerNameArg;
+  try {
+    const trainerSnap = await getDoc(doc(db, USERS_COLLECTION, trainerUid));
+    const trainerData = trainerSnap.data();
+    return trainerData?.displayName || trainerData?.name || trainerData?.firstName || FALLBACK_TRAINER_NAME;
+  } catch {
+    return FALLBACK_TRAINER_NAME;
+  }
+}
+
+/**
+ * "Sat, Mar 14 at 2:30 PM", or just the date, or a generic line when both parts are missing.
+ * @param {string} date
+ * @param {string} time
+ * @returns {string}
+ */
+function sessionDetailLine(date, time) {
+  const dateLabel = formatDateShort(String(date || ''));
+  const timeLabel = formatTime12(String(time || ''));
+  const parts = [dateLabel, timeLabel].filter(Boolean);
+  if (parts.length > 0) return `Session scheduled: ${parts.join(' at ')}`;
+  return 'You have a new scheduled session.';
+}
+
+/**
+ * Server path. Returns a plain boolean because every failure here is treated the same: fall back.
+ * @param {object} payload
+ * @returns {Promise<boolean>}
+ */
+async function tryServerNotify({ recipientId, senderName, messageText, senderId, notificationType }) {
+  try {
+    const base = String(getApiBase() || '').replace(/\/$/, '');
+    if (!base) return false;
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+    if (!headers.Authorization) return false;
+
+    const response = await fetch(`${base}/api/notifications/send`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        recipientId,
+        senderName,
+        messageText,
+        senderId: senderId || '',
+        notificationType: notificationType || NOTIFICATION_TYPE_SESSION,
+      }),
+    });
+    const json = await response.json().catch(() => ({}));
+    if (json?.success === true) return true;
+  } catch {
+    // fall through to direct Expo
+  }
+  return false;
+}
+
+/**
+ * True when the token is one of the two Expo formats we can send to exp.host.
+ * @param {string} expoPushToken
+ * @returns {boolean}
+ */
+function isSupportedExpoToken(expoPushToken) {
+  return expoPushToken.startsWith(EXPO_TOKEN_PREFIX_A) || expoPushToken.startsWith(EXPO_TOKEN_PREFIX_B);
+}
+
+/**
+ * Direct-to-Expo path. Every early return names a distinct reason so the caller can tell
+ * "can't ever work" from "try the other channel".
+ * @param {object} args
+ * @returns {Promise<{ ok: boolean, channel?: string, reason?: string }>}
+ */
+async function sendExpoDirect({ clientId, trainerUid, sessionId, title, body }) {
+  try {
+    const snap = await getDoc(doc(db, USERS_COLLECTION, clientId));
+    if (!snap.exists) {
+      console.warn('[session push] Client user doc missing', clientId);
+      return { ok: false, reason: 'no_user_doc' };
+    }
+    const expoPushToken = snap.data()?.expoPushToken || snap.data()?.pushToken;
+    if (!expoPushToken || typeof expoPushToken !== 'string') {
+      console.warn('[session push] No Expo push token on client — open client app once & allow notifications');
+      return { ok: false, reason: 'no_push_token' };
+    }
+    if (!isSupportedExpoToken(expoPushToken)) {
+      console.warn('[session push] Unsupported token format');
+      return { ok: false, reason: 'bad_token_format' };
+    }
+
+    const response = await fetch(EXPO_PUSH_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: expoPushToken,
+        title,
+        body,
+        sound: 'default',
+        priority: 'high',
+        channelId: 'default',
+        interruptionLevel: 'active',
+        data: {
+          type: NOTIFICATION_TYPE_SESSION,
+          clientId,
+          trainerId: trainerUid || '',
+          sessionId: sessionId || '',
+        },
+      }),
+    });
+
+    const json = await response.json().catch(() => ({}));
+    // vocab: ticket = Expo's per-message receipt. status 'ok' means Expo ACCEPTED it, not that the phone showed it.
+    const ticket = json?.data?.[0];
+    if (ticket?.status === 'ok') {
+      console.log('[session push] Expo delivered');
+      return { ok: true, channel: 'expo_direct' };
+    }
+    console.warn('[session push] Expo ticket', ticket);
+    return { ok: false, reason: ticket?.message || 'expo_error' };
+  } catch (error) {
+    console.warn('[session push] failed', error?.message || error);
+    return { ok: false, reason: 'exception' };
+  }
+}
+
+/**
+ * Fatal direct failures the server cannot fix — skip the extra network call and keep the specific reason.
+ * @param {string} [reason]
+ * @returns {boolean}
+ */
+function isTerminalPushFailure(reason) {
+  return reason === 'no_push_token' || reason === 'no_user_doc';
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Send a session-scheduled push to the client from the trainer app.
+ * Returns a result object instead of throwing: a failed notification must never roll back a saved session.
+ * @param {{ clientId: string, trainerUid: string, date: string, time: string, sessionId: string, trainerName?: string }} args
+ * @returns {Promise<{ ok: boolean, channel?: string, reason?: string }>}
+ */
 export async function sendSessionScheduledPushToClient({
   clientId,
   trainerUid,
@@ -70,39 +222,11 @@ export async function sendSessionScheduledPushToClient({
     return { ok: false, reason: 'missing_ids' };
   }
 
-  // Use the caller's trainer name if it has one (saves a read), otherwise fetch it. The immediately
-  // -invoked async function is what lets a try/catch live inside this single expression.
-  // Manipulate here: 'Your coach' is the fallback name, used both when the fetch fails and when the
-  // trainer's profile has no name field at all.
-  const trainerName =
-    trainerNameArg ||
-    (await (async () => {
-      try {
-        const t = await getDoc(doc(db, 'users', trainerUid));
-        const d = t.data();
-        return d?.displayName || d?.name || d?.firstName || 'Your coach';
-      } catch {
-        return 'Your coach';
-      }
-    })());
-
-  // Build the detail line from whichever parts we have. filter(Boolean) then join(' at ') is what
-  // produces "Sat, Mar 14 at 2:30 PM", or just the date if the time is missing — never a dangling
-  // " at " with nothing after it.
-  const dateLabel = formatDateShort(String(date || ''));
-  const timeLabel = formatTime12(String(time || ''));
-  const bits = [dateLabel, timeLabel].filter(Boolean);
-  // Manipulate here: these two strings are the notification's detail line.
-  const messageText =
-    bits.length > 0
-      ? `Session scheduled: ${bits.join(' at ')}`
-      : 'You have a new scheduled session.';
-
-  // Title and body are randomized from a copy pool so repeat notifications don't read identically.
+  const trainerName = await resolveTrainerDisplayName(trainerNameArg, trainerUid);
+  const messageText = sessionDetailLine(date, time);
   const title = randomSessionScheduledTitle(trainerName);
   const body = randomSessionScheduledDetailBody(trainerName, messageText);
 
-  // ATTEMPT 1 — direct to Expo. Tried first because it needs no backend of ours to be running.
   const direct = await sendExpoDirect({
     clientId,
     trainerUid,
@@ -111,133 +235,16 @@ export async function sendSessionScheduledPushToClient({
     body,
   });
   if (direct.ok) return direct;
+  if (isTerminalPushFailure(direct.reason)) return direct;
 
-  // These two failures are TERMINAL, not transport problems: the client has no push token (never
-  // opened the app or denied notifications) or has no user doc. Our server can't fix either, so
-  // returning early avoids a pointless network call and preserves the specific reason for the UI.
-  if (direct.reason === 'no_push_token' || direct.reason === 'no_user_doc') {
-    return direct;
-  }
-
-  // ATTEMPT 2 — our API. Reached only when the direct send failed for some OTHER reason (Expo
-  // rejected it, network hiccup), where a server with different credentials might still succeed.
   const apiOk = await tryServerNotify({
     recipientId: clientId,
     senderName: trainerName,
     messageText,
     senderId: trainerUid,
-    notificationType: 'session_scheduled',
+    notificationType: NOTIFICATION_TYPE_SESSION,
   });
   if (apiOk) return { ok: true, channel: 'server' };
 
-  // Both failed — return the DIRECT result, since its reason is the more specific diagnostic.
   return direct;
-}
-
-// Server path. Returns a plain boolean (not a result object) because every failure here is treated
-// identically by the caller: fall back.
-async function tryServerNotify({ recipientId, senderName, messageText, senderId, notificationType }) {
-  try {
-    // Strip a trailing slash so the template below can't produce a double slash in the URL.
-    const base = String(getApiBase() || '').replace(/\/$/, '');
-    // No API configured (common in local/offline builds) — bail before attempting a fetch.
-    if (!base) return false;
-    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
-    // No auth token means the request would be rejected anyway, so skip the round trip.
-    if (!headers.Authorization) return false;
-
-    const res = await fetch(`${base}/api/notifications/send`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        recipientId,
-        senderName,
-        messageText,
-        senderId: senderId || '',
-        notificationType: notificationType || 'session_scheduled',
-      }),
-    });
-    // `.catch(() => ({}))` guards against a non-JSON error page (an HTML 502, say) throwing during
-    // parse — we'd rather treat that as "not successful" than crash.
-    const json = await res.json().catch(() => ({}));
-    // Strict === true: only an explicit success flag counts. Note we don't check res.ok, because
-    // this endpoint reports application-level outcomes in the body.
-    if (json?.success === true) return true;
-  } catch {
-    // fall through to direct Expo
-  }
-  return false;
-}
-
-// Direct-to-Expo path. Every early return names a distinct reason so the caller can distinguish
-// "can't ever work" from "try the other channel".
-async function sendExpoDirect({ clientId, trainerUid, sessionId, title, body }) {
-  try {
-    const snap = await getDoc(doc(db, 'users', clientId));
-    if (!snap.exists) {
-      console.warn('[session push] Client user doc missing', clientId);
-      return { ok: false, reason: 'no_user_doc' };
-    }
-    // Two field names because the token has been stored under both across app versions.
-    const expoPushToken = snap.data()?.expoPushToken || snap.data()?.pushToken;
-    if (!expoPushToken || typeof expoPushToken !== 'string') {
-      // The log spells out the fix, since this is by far the most common cause of "my client didn't
-      // get the notification".
-      console.warn('[session push] No Expo push token on client — open client app once & allow notifications');
-      return { ok: false, reason: 'no_push_token' };
-    }
-    // Validate the token shape locally so we don't burn a network call on a token we know Expo will
-    // reject. Both prefixes are legitimate Expo formats.
-    if (!expoPushToken.startsWith('ExponentPushToken[') && !expoPushToken.startsWith('ExpoPushToken[')) {
-      console.warn('[session push] Unsupported token format');
-      return { ok: false, reason: 'bad_token_format' };
-    }
-
-    const res = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: expoPushToken,
-        title,
-        body,
-        // Manipulate here: the delivery/attention settings.
-        //   sound 'default'          = play the standard notification tone (null for silent)
-        //   priority 'high'          = wake the device now rather than batching for later
-        //   channelId 'default'      = Android notification channel (must exist on the client)
-        //   interruptionLevel 'active' = iOS 15+; shows even in some Focus modes
-        sound: 'default',
-        priority: 'high',
-        channelId: 'default',
-        interruptionLevel: 'active',
-        // `data` is the invisible payload the client app reads on tap to deep-link straight to the
-        // session. The `type` string is what the client's notification handler matches on, so it
-        // must stay in sync with that handler.
-        data: {
-          type: 'session_scheduled',
-          clientId,
-          trainerId: trainerUid || '',
-          sessionId: sessionId || '',
-        },
-      }),
-    });
-
-    const json = await res.json().catch(() => ({}));
-    // vocab: ticket = Expo's per-message receipt. We send one message, so it's data[0]. status 'ok'
-    // means Expo ACCEPTED it for delivery — not that the phone has shown it yet.
-    const ticket = json?.data?.[0];
-    if (ticket?.status === 'ok') {
-      console.log('[session push] Expo delivered');
-      return { ok: true, channel: 'expo_direct' };
-    }
-    console.warn('[session push] Expo ticket', ticket);
-    // Prefer Expo's own message (e.g. "DeviceNotRegistered") over a generic label — it's the
-    // actionable detail when debugging a delivery failure.
-    return { ok: false, reason: ticket?.message || 'expo_error' };
-  } catch (e) {
-    console.warn('[session push] failed', e?.message || e);
-    return { ok: false, reason: 'exception' };
-  }
 }

@@ -21,7 +21,7 @@ const DOUBLE_SPACE_PATTERN = /\s{2,}/g;
 function stripPictographs(alertText) {
   try {
     return alertText.replace(PICTOGRAPH_PATTERN, '');
-  } catch (_) {
+  } catch (unicodeError) {
     return alertText;
   }
 }

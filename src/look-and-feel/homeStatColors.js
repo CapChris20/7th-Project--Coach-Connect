@@ -70,21 +70,25 @@ export const GradientOutlineText = ({
   start,
   end,
   textProps,
-}) => (
-  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-    {OUTLINE_OFFSETS.map(([offsetX, offsetY], ringIndex) => (
-      <View
-        key={`ring-${ringIndex}`}
-        style={outlineCopyStyle(offsetX, offsetY, stroke)}
-        pointerEvents="none"
-      >
-        <StatColorText style={style} colors={colors} start={start} end={end} textProps={textProps}>
-          {children}
-        </StatColorText>
-      </View>
-    ))}
-    <Text {...textProps} style={[style, { color: fillColor }]}>
-      {children}
-    </Text>
-  </View>
-);
+}) => {
+  const wrapStyle = { alignItems: 'center', justifyContent: 'center' };
+  const fillStyle = [style, { color: fillColor }];
+  return (
+    <View style={wrapStyle}>
+      {OUTLINE_OFFSETS.map(([offsetX, offsetY], ringIndex) => (
+        <View
+          key={`ring-${ringIndex}`}
+          style={outlineCopyStyle(offsetX, offsetY, stroke)}
+          pointerEvents="none"
+        >
+          <StatColorText style={style} colors={colors} start={start} end={end} textProps={textProps}>
+            {children}
+          </StatColorText>
+        </View>
+      ))}
+      <Text {...textProps} style={fillStyle}>
+        {children}
+      </Text>
+    </View>
+  );
+};

@@ -1,3 +1,7 @@
+// Trainer Pro paywall shown during new-trainer setup (step 8).
+// Flow: pick a plan on the scroll content → sticky footer starts the trial or continues setup.
+// Used by NewUserSetupScreen. Export names TrainerProOfferStep and TrainerSubscriptionCtaFooter stay frozen.
+
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -20,6 +24,8 @@ import {
   TRAINER_PRO_MONTHLY_PRODUCT_ID,
 } from '../../trainer-pro-plan/proPlanSwitches';
 import ProLegalFooter from '../../trainer-pro-plan/ProLegalFooter';
+
+// ===== NAMED CONSTANTS =====
 
 const SUBSCRIPTION_HERO = require('../../assets/icons/digital-gift-card-abstract-concept-illustration.png');
 
@@ -79,6 +85,9 @@ const TRUST_ROW = [
  * In live IAP builds a tier only shows once StoreKit returns its product
  * (monthly is always shown — it is the shipping App Store Connect product).
  */
+
+// ===== HELPER FUNCTIONS =====
+
 export function useTrainerPaywallPlans(selectedPlanId) {
   const subscription = useSubscription();
   const { storeProducts } = subscription;
@@ -114,24 +123,24 @@ function ColorText({ children, style }) {
   );
 }
 
-function BrandRow({ t, isDark }) {
+function BrandRow({ uiTokens, isDark }) {
   return (
     <View style={styles.brandRow}>
       <View style={styles.brandLeft}>
         <AppLogo width={36} />
-        <Text style={[styles.brandName, { color: t.textPrimary }]}>Coach Connect</Text>
+        <Text style={[styles.brandName, { color: uiTokens.textPrimary }]}>Coach Connect</Text>
       </View>
       <View
         style={[
           styles.brandPill,
           {
-            borderColor: t.cardBorder,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : t.cardBg,
+            borderColor: uiTokens.cardBorder,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : uiTokens.cardBg,
           },
         ]}
       >
         <Ionicons name="star" size={13} color={PAYWALL_GOLD} />
-        <Text style={[styles.brandPillText, { color: t.textSecondary }]}>
+        <Text style={[styles.brandPillText, { color: uiTokens.textSecondary }]}>
           {TRAINER_SUBSCRIPTION_TRIAL_LABEL}
         </Text>
       </View>
@@ -139,7 +148,7 @@ function BrandRow({ t, isDark }) {
   );
 }
 
-function FeatureList({ t, isDark }) {
+function FeatureList({ uiTokens, isDark }) {
   return (
     <View style={styles.featureList}>
       {PAYWALL_FEATURES.map(({ icon, label, detail }) => (
@@ -148,8 +157,8 @@ function FeatureList({ t, isDark }) {
           style={[
             styles.featureCard,
             {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : t.cardBg,
-              borderColor: t.cardBorder,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : uiTokens.cardBg,
+              borderColor: uiTokens.cardBorder,
             },
           ]}
         >
@@ -162,8 +171,8 @@ function FeatureList({ t, isDark }) {
             <Ionicons name={icon} size={19} color={PAYWALL_PINK} />
           </LinearGradient>
           <View style={styles.featureContent}>
-            <Text style={[styles.featureLabel, { color: t.textPrimary }]}>{label}</Text>
-            <Text style={[styles.featureDetail, { color: t.textSecondary }]}>{detail}</Text>
+            <Text style={[styles.featureLabel, { color: uiTokens.textPrimary }]}>{label}</Text>
+            <Text style={[styles.featureDetail, { color: uiTokens.textSecondary }]}>{detail}</Text>
           </View>
         </View>
       ))}
@@ -171,10 +180,10 @@ function FeatureList({ t, isDark }) {
   );
 }
 
-function PlanTab({ tier, active, t, onPress }) {
+function PlanTab({ tier, active, uiTokens, onPress }) {
   const inner = (
     <View style={styles.planTabInner}>
-      <Text style={[styles.planTabText, { color: active ? '#FFFFFF' : t.textSecondary }]}>
+      <Text style={[styles.planTabText, { color: active ? '#FFFFFF' : uiTokens.textSecondary }]}>
         {tier.tabLabel}
       </Text>
       {tier.badge ? (
@@ -211,30 +220,30 @@ function PlanTab({ tier, active, t, onPress }) {
   );
 }
 
-function PriceCard({ tier, t, isDark }) {
+function PriceCard({ tier, uiTokens, isDark }) {
   return (
     <View
       style={[
         styles.priceCard,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : t.cardBg,
-          borderColor: t.cardBorder,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : uiTokens.cardBg,
+          borderColor: uiTokens.cardBorder,
         },
       ]}
     >
       <View style={styles.priceRow}>
         <ColorText style={styles.priceAmount}>{tier.priceAmount}</ColorText>
-        <Text style={[styles.priceUnit, { color: t.textSecondary }]}>/month</Text>
+        <Text style={[styles.priceUnit, { color: uiTokens.textSecondary }]}>/month</Text>
       </View>
-      <Text style={[styles.priceBillingLine, { color: t.textSecondary }]}>{tier.billingLine}</Text>
+      <Text style={[styles.priceBillingLine, { color: uiTokens.textSecondary }]}>{tier.billingLine}</Text>
 
-      <View style={[styles.priceDivider, { backgroundColor: t.cardBorder }]} />
+      <View style={[styles.priceDivider, { backgroundColor: uiTokens.cardBorder }]} />
 
       <View style={styles.priceChecklist}>
         {PRICE_CARD_CHECKLIST.map((line) => (
           <View key={line} style={styles.priceCheckRow}>
             <Ionicons name="checkmark" size={16} color={PAYWALL_CYAN} />
-            <Text style={[styles.priceCheckText, { color: t.textSecondary }]}>{line}</Text>
+            <Text style={[styles.priceCheckText, { color: uiTokens.textSecondary }]}>{line}</Text>
           </View>
         ))}
       </View>
@@ -242,18 +251,46 @@ function PriceCard({ tier, t, isDark }) {
   );
 }
 
-function TrustRow({ t }) {
+function TrustRow({ uiTokens }) {
   return (
     <View style={styles.trustRow}>
       {TRUST_ROW.map((label) => (
         <View key={label} style={styles.trustItem}>
           <Ionicons name="shield-checkmark" size={13} color={PAYWALL_CYAN} />
-          <Text style={[styles.trustText, { color: t.textSecondary }]}>{label}</Text>
+          <Text style={[styles.trustText, { color: uiTokens.textSecondary }]}>{label}</Text>
         </View>
       ))}
     </View>
   );
 }
+
+function footerCtaLabelAndPress({ live, subscribed, connected, selectedTier, startFreeTrial, onComplete }) {
+  if (!live) {
+    return { ctaLabel: 'Got it — continue setup', onPress: onComplete };
+  }
+  if (subscribed) {
+    return { ctaLabel: 'Complete setup', onPress: onComplete };
+  }
+  const ctaLabel = connected ? 'Start 3-day free trial' : 'Connect to App Store…';
+  return {
+    ctaLabel,
+    onPress: () => startFreeTrial(selectedTier?.productId),
+  };
+}
+
+function footerMetaLine({ live, subscribed, selectedTier }) {
+  if (!live) return 'Payments are not active in this build';
+  if (subscribed) return 'Your Pro access is ready';
+  const priceLine = selectedTier?.ctaPriceLine || selectedTier?.priceLabel;
+  return `Then ${priceLine} · Cancel anytime`;
+}
+
+function footerBackgroundColor(isDark) {
+  if (isDark) return 'rgba(10,10,15,0.92)';
+  return 'rgba(255,255,255,0.92)';
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Trainer onboarding step 8 — FitFlow-style Pro paywall (scroll content).
@@ -264,7 +301,7 @@ export function TrainerProOfferStep({
   selectedPlanId,
   onSelectPlan,
 }) {
-  const t = getOnboardingUiTokens(isDark);
+  const uiTokens = getOnboardingUiTokens(isDark);
   const [internalPlanId, setInternalPlanId] = useState(null);
   const planId = selectedPlanId ?? internalPlanId;
   const selectPlan = onSelectPlan ?? setInternalPlanId;
@@ -277,7 +314,7 @@ export function TrainerProOfferStep({
 
   return (
     <View style={styles.root}>
-      <BrandRow t={t} isDark={isDark} />
+      <BrandRow uiTokens={uiTokens} isDark={isDark} />
 
       {!live ? (
         <View style={styles.testingBadge}>
@@ -295,22 +332,22 @@ export function TrainerProOfferStep({
         />
       </View>
 
-      <Text style={[styles.headline, { color: t.textPrimary }]}>Unlimited coaching,</Text>
+      <Text style={[styles.headline, { color: uiTokens.textPrimary }]}>Unlimited coaching,</Text>
       <ColorText style={styles.headlineGradient}>one subscription.</ColorText>
 
-      <Text style={[styles.subtitle, { color: t.textSecondary }]}>
+      <Text style={[styles.subtitle, { color: uiTokens.textSecondary }]}>
         Run your entire coaching business from one app. Try every Pro tool free for 3 days.
       </Text>
 
-      <FeatureList t={t} isDark={isDark} />
+      <FeatureList uiTokens={uiTokens} isDark={isDark} />
 
       {availableTiers.length > 1 ? (
         <View
           style={[
             styles.planTabs,
             {
-              borderColor: t.cardBorder,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : t.cardBg,
+              borderColor: uiTokens.cardBorder,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : uiTokens.cardBg,
             },
           ]}
           accessibilityRole="tablist"
@@ -320,16 +357,16 @@ export function TrainerProOfferStep({
               key={tier.id}
               tier={tier}
               active={tier.id === selectedTier?.id}
-              t={t}
+              uiTokens={uiTokens}
               onPress={() => selectPlan(tier.id)}
             />
           ))}
         </View>
       ) : null}
 
-      {selectedTier ? <PriceCard tier={selectedTier} t={t} isDark={isDark} /> : null}
+      {selectedTier ? <PriceCard tier={selectedTier} uiTokens={uiTokens} isDark={isDark} /> : null}
 
-      <TrustRow t={t} />
+      <TrustRow uiTokens={uiTokens} />
 
       {subscribed ? (
         <View style={styles.successBox}>
@@ -347,20 +384,20 @@ export function TrainerProOfferStep({
       ) : null}
 
       {live && !connected && !subscribed ? (
-        <Text style={[styles.hint, { color: t.textSecondary }]}>
+        <Text style={[styles.hint, { color: uiTokens.textSecondary }]}>
           Connecting to the App Store…
         </Text>
       ) : null}
 
       <ProLegalFooter
-        textColor={t.textSecondary}
+        textColor={uiTokens.textSecondary}
         linkColor={PAYWALL_PINK}
         priceLine={`${selectedTier?.priceLabel || ''} · ${selectedTier?.trialLabel || TRAINER_SUBSCRIPTION_TRIAL_LABEL}`}
         durationLabel={selectedTier?.duration}
       />
 
       {!live ? (
-        <Text style={[styles.hint, { color: t.textSecondary }]}>
+        <Text style={[styles.hint, { color: uiTokens.textSecondary }]}>
           Payments are not active in this build.
         </Text>
       ) : null}
@@ -378,7 +415,7 @@ export function TrainerSubscriptionCtaFooter({
   onComplete,
   bottomInset = 12,
 }) {
-  const t = getOnboardingUiTokens(isDark);
+  const uiTokens = getOnboardingUiTokens(isDark);
   const { subscription, selectedTier } = useTrainerPaywallPlans(selectedPlanId);
   const {
     accessState,
@@ -394,81 +431,72 @@ export function TrainerSubscriptionCtaFooter({
   const busy = live && (actionLoading || firestoreLoading);
   // Never hard-block Continue — if StoreKit is slow, still let trainers finish setup.
   const ctaDisabled = busy;
+  const { ctaLabel, onPress } = footerCtaLabelAndPress({
+    live,
+    subscribed,
+    connected,
+    selectedTier,
+    startFreeTrial,
+    onComplete,
+  });
+  const metaLine = footerMetaLine({ live, subscribed, selectedTier });
+  const showRestoreAndSkip = live && !subscribed;
+  const footerBg = footerBackgroundColor(isDark);
+  const ctaOpacityStyle = ctaDisabled ? { opacity: 0.5 } : null;
 
-  let ctaLabel = 'Start 3-day free trial';
-  let onPress = () => startFreeTrial(selectedTier?.productId);
-  if (!live) {
-    ctaLabel = 'Got it — continue setup';
-    onPress = onComplete;
-  } else if (subscribed) {
-    ctaLabel = 'Complete setup';
-    onPress = onComplete;
-  } else {
-    // Two actions: try purchase, but primary path for TestFlight can use Continue below
-    ctaLabel = connected ? 'Start 3-day free trial' : 'Connect to App Store…';
-    onPress = () => startFreeTrial(selectedTier?.productId);
+  let primaryButton = (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      disabled={ctaDisabled}
+      onPress={onPress}
+      style={[styles.ctaButtonWrap, ctaOpacityStyle]}
+    >
+      <LinearGradient
+        colors={PAYWALL_GRADIENT}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.ctaButton}
+      >
+        <Text style={styles.ctaButtonText}>{ctaLabel}</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+  if (busy) {
+    primaryButton = (
+      <View style={styles.footerLoading}>
+        <ActivityIndicator color={PAYWALL_PINK} />
+      </View>
+    );
   }
 
   return (
-    <View
-      style={[
-        styles.footer,
-        {
-          paddingBottom: bottomInset,
-          backgroundColor: isDark ? 'rgba(10,10,15,0.92)' : 'rgba(255,255,255,0.92)',
-        },
-      ]}
-    >
-      {busy ? (
-        <View style={styles.footerLoading}>
-          <ActivityIndicator color={PAYWALL_PINK} />
-        </View>
-      ) : (
-        <TouchableOpacity
-          activeOpacity={0.88}
-          disabled={ctaDisabled}
-          onPress={onPress}
-          style={[styles.ctaButtonWrap, ctaDisabled && { opacity: 0.5 }]}
-        >
-          <LinearGradient
-            colors={PAYWALL_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaButton}
-          >
-            <Text style={styles.ctaButtonText}>{ctaLabel}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
+    <View style={[styles.footer, { paddingBottom: bottomInset, backgroundColor: footerBg }]}>
+      {primaryButton}
 
       <View style={styles.footerMetaRow}>
-        <Text style={[styles.footerMetaText, { color: t.textSecondary }]} numberOfLines={1}>
-          {!live
-            ? 'Payments are not active in this build'
-            : subscribed
-              ? 'Your Pro access is ready'
-              : `Then ${selectedTier?.ctaPriceLine || selectedTier?.priceLabel} · Cancel anytime`}
+        <Text style={[styles.footerMetaText, { color: uiTokens.textSecondary }]} numberOfLines={1}>
+          {metaLine}
         </Text>
-        {live && !subscribed ? (
+        {showRestoreAndSkip && (
           <TouchableOpacity onPress={restorePurchases} disabled={busy} accessibilityRole="link">
-            <Text style={[styles.footerRestoreText, { color: t.textPrimary }]}>
+            <Text style={[styles.footerRestoreText, { color: uiTokens.textPrimary }]}>
               Restore purchases
             </Text>
           </TouchableOpacity>
-        ) : null}
+        )}
       </View>
-      {live && !subscribed ? (
+      {showRestoreAndSkip && (
         <TouchableOpacity
           onPress={onComplete}
           disabled={busy}
           accessibilityRole="button"
           style={{ marginTop: 10, alignItems: 'center', paddingVertical: 6 }}
         >
-          <Text style={[styles.footerRestoreText, { color: t.textSecondary }]}>
+          <Text style={[styles.footerRestoreText, { color: uiTokens.textSecondary }]}>
             Continue without Pro for now
           </Text>
         </TouchableOpacity>
-      ) : null}
+      )}
     </View>
   );
 }

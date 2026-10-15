@@ -14,6 +14,7 @@ const weeklyReportThemeContext = createContext(null);
 
 const DARK_MODE = 'dark';
 const LIGHT_MODE = 'light';
+const THEME_PROVIDER_MISSING_ERROR = 'useTheme must be used within WeeklyReportThemeProvider';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -25,7 +26,9 @@ function startingColorMode(initialMode) {
 
 // AsyncStorage hands back a string. Only the two modes we write are safe to apply.
 function isStoredColorMode(storedValue) {
-  return storedValue === DARK_MODE || storedValue === LIGHT_MODE;
+  if (storedValue === DARK_MODE) return true;
+  if (storedValue === LIGHT_MODE) return true;
+  return false;
 }
 
 // The toggle has no third mode. Any unexpected current value lands on dark, matching the old ternary.
@@ -42,6 +45,26 @@ function rememberColorMode(colorMode) {
 function colorsForMode(colorMode) {
   if (colorMode === DARK_MODE) return DARK_COLORS;
   return LIGHT_COLORS;
+}
+
+function buildThemeValue(colorMode, isLoaded, setColorMode) {
+  return {
+    mode: colorMode,
+    colors: colorsForMode(colorMode),
+    loaded: isLoaded,
+    toggle: () => {
+      setColorMode((currentMode) => {
+        const flippedMode = flippedColorMode(currentMode);
+        rememberColorMode(flippedMode);
+        return flippedMode;
+      });
+    },
+    setMode: (requestedMode) => {
+      if (!isStoredColorMode(requestedMode)) return;
+      setColorMode(requestedMode);
+      rememberColorMode(requestedMode);
+    },
+  };
 }
 
 // ===== MAIN FUNCTION =====
@@ -71,26 +94,10 @@ export function WeeklyReportThemeProvider({ children, initialMode = DARK_MODE })
   }, []);
 
   // vocab: useMemo = rebuild this object only when the mode or the loaded flag changes.
-  // The storage write stays inside the toggle updater so it still runs with that state update.
-  const themeValue = useMemo(() => {
-    return {
-      mode: colorMode,
-      colors: colorsForMode(colorMode),
-      loaded: isLoaded,
-      toggle: () => {
-        setColorMode((currentMode) => {
-          const flippedMode = flippedColorMode(currentMode);
-          rememberColorMode(flippedMode);
-          return flippedMode;
-        });
-      },
-      setMode: (requestedMode) => {
-        if (!isStoredColorMode(requestedMode)) return;
-        setColorMode(requestedMode);
-        rememberColorMode(requestedMode);
-      },
-    };
-  }, [colorMode, isLoaded]);
+  const themeValue = useMemo(
+    () => buildThemeValue(colorMode, isLoaded, setColorMode),
+    [colorMode, isLoaded],
+  );
 
   return (
     <weeklyReportThemeContext.Provider value={themeValue}>
@@ -105,7 +112,7 @@ export function WeeklyReportThemeProvider({ children, initialMode = DARK_MODE })
  */
 export function useTheme() {
   const themeSettings = useContext(weeklyReportThemeContext);
-  if (!themeSettings) throw new Error('useTheme must be used within WeeklyReportThemeProvider');
+  if (!themeSettings) throw new Error(THEME_PROVIDER_MISSING_ERROR);
   return themeSettings;
 }
 

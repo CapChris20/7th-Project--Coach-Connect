@@ -74,11 +74,13 @@ function equipmentIconSource(onboardingData) {
 // ===== MAIN FUNCTION =====
 
 /**
+ * Picture for one profile-card field. Onboarding art first, then the static PNG map.
  * @param {string} itemId
  * @param {object|undefined} onboardingData
  * @returns {object|null}
  */
 export const resolveProfileIconSource = (itemId, onboardingData) => {
+  // 1. Age / gender / height / weight / fitness level read the onboarding art first.
   if (itemId === 'age') return getOnboardingIconSource('age');
   if (itemId === 'gender') return getOnboardingIconSource(onboardingData?.gender);
   if (itemId === 'height') return getOnboardingIconSource('height');
@@ -86,7 +88,11 @@ export const resolveProfileIconSource = (itemId, onboardingData) => {
     return getOnboardingIconSource('weight') || getOnboardingIconSource('scales');
   }
   if (itemId === 'fitnessLevel') return getOnboardingIconSource(onboardingData?.fitnessLevel);
+
+  // 2. Equipment uses the first item they listed, then a dumbbell, then the goal picture.
   if (itemId === 'equipment') return equipmentIconSource(onboardingData);
+
+  // 3. Everything else is the static PNG map, or null when we have no art.
   return PROFILE_CARD_ICON_ASSETS[itemId] || null;
 };
 
@@ -95,14 +101,18 @@ export const resolveProfileIconSource = (itemId, onboardingData) => {
  * @param {{ wrapSize?: number }} [options]
  * @returns {object}
  */
-export const profileCardIconWrapStyle = (isDark, { wrapSize = PROFILE_CARD_ICON_WRAP } = {}) => ({
-  width: wrapSize,
-  height: wrapSize,
-  borderRadius: Math.round(wrapSize * ICON_CORNER_RATIO),
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: isDark ? DARK_ICON_BACKGROUND : LIGHT_ICON_BACKGROUND,
-});
+export const profileCardIconWrapStyle = (isDark, { wrapSize = PROFILE_CARD_ICON_WRAP } = {}) => {
+  let iconBackground = LIGHT_ICON_BACKGROUND;
+  if (isDark) iconBackground = DARK_ICON_BACKGROUND;
+  return {
+    width: wrapSize,
+    height: wrapSize,
+    borderRadius: Math.round(wrapSize * ICON_CORNER_RATIO),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: iconBackground,
+  };
+};
 
 export {
   PROFILE_CARD_ICON_SIZE,

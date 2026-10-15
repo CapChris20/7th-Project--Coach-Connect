@@ -1,22 +1,24 @@
-/**
- * Session Card
- *
- * Purpose: UI screen or component: Session Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/components
- * Key exports: SessionCard
- *
- * @file-header
- */
+// One coaching-session row for the trainer calendar and upcoming-session lists.
+// Flow: map status → chip colors → show client, time, duration, and a notes/Zoom preview.
+// Used by trainer scheduling screens. `showDate` adds a date chip when the list spans several days.
+
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTime12 } from '../../helpers/sessionTimeText';
 
+// ===== NAMED CONSTANTS =====
+
 const BORDER_GRADIENT = ['#9333EA', '#DB2777'];
 const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
 const BG_GRADIENT_LIGHT = ['#F3F0FA', '#FFFFFF'];
+const CLIENT_NAME_DEFAULT = 'Client';
+const DEFAULT_DURATION_MIN = 60;
+const STATUS_ACCEPTED = 'accepted';
+const STATUS_DECLINED = 'declined';
+const STATUS_PENDING = 'pending';
+const NOON_CLOCK_SUFFIX = 'T12:00:00';
 
 const STATUS_META = {
   accepted: {
@@ -39,47 +41,130 @@ const STATUS_META = {
   },
 };
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Noon local time avoids a YYYY-MM-DD string sliding to the previous day in US timezones.
+ * @param {string} dateKey
+ * @returns {string}
+ */
 function formatDateChip(dateKey) {
   if (!dateKey) return '';
-  const d = new Date(`${String(dateKey).slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return String(dateKey);
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const dateAtNoon = new Date(`${String(dateKey).slice(0, 10)}${NOON_CLOCK_SUFFIX}`);
+  if (Number.isNaN(dateAtNoon.getTime())) return String(dateKey);
+  return dateAtNoon.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/**
+ * Unknown statuses look like pending so a typo in Firestore still shows a chip, not a crash.
+ * @param {string} status
+ * @param {boolean} isDark
+ */
 function resolveStatusMeta(status, isDark) {
-  const key = ['accepted', 'declined'].includes(status) ? status : 'pending';
-  const meta = STATUS_META[key];
+  const isKnownStatus = status === STATUS_ACCEPTED || status === STATUS_DECLINED;
+  const statusKey = isKnownStatus ? status : STATUS_PENDING;
+  const meta = STATUS_META[statusKey];
   return { ...meta, colors: isDark ? meta.dark : meta.light };
 }
 
 /**
+ * @param {boolean} isDark
+ */
+function sessionCardPalette(isDark) {
+  if (isDark) {
+    return {
+      innerBackground: '#0A0812',
+      headlineColor: '#FFFFFF',
+      subColor: 'rgba(255,255,255,0.58)',
+      kickerColor: 'rgba(233,213,255,0.72)',
+      detailBackground: 'rgba(255,255,255,0.04)',
+      detailBorder: 'rgba(255,255,255,0.08)',
+      iconInnerBackground: 'rgba(14,12,22,0.98)',
+      iconColor: '#E9D5FF',
+      backgroundGradient: BG_GRADIENT_DARK,
+      chevronColor: 'rgba(255,255,255,0.35)',
+    };
+  }
+  return {
+    innerBackground: '#FFFFFF',
+    headlineColor: '#0A0A0F',
+    subColor: 'rgba(15,23,42,0.55)',
+    kickerColor: 'rgba(109,40,217,0.75)',
+    detailBackground: 'rgba(15,23,42,0.04)',
+    detailBorder: 'rgba(15,23,42,0.08)',
+    iconInnerBackground: 'rgba(255,255,255,0.98)',
+    iconColor: '#7C3AED',
+    backgroundGradient: BG_GRADIENT_LIGHT,
+    chevronColor: 'rgba(15,23,42,0.35)',
+  };
+}
+
+/**
+ * Footer line: real notes win, else a Zoom hint, else a placeholder so the row height stays even.
+ * @param {object} session
+ * @returns {{ preview: string, icon: string }}
+ */
+function sessionNotePreview(session) {
+  if (session?.notes) {
+    return { preview: session.notes, icon: 'document-text-outline' };
+  }
+  if (session?.zoomLink) {
+    return { preview: 'Video link attached', icon: 'videocam-outline' };
+  }
+  return { preview: 'No notes yet', icon: 'ellipsis-horizontal' };
+}
+
+/**
+ * Date chip only when the parent list spans more than one day.
+ * @param {object} props
+ */
+function SessionDateTimeRow({ showDate, dateChip, time, durationMin, palette }) {
+  const shouldShowDate = Boolean(showDate && dateChip);
+  return (
+    <View style={[styles.detailPanel, { backgroundColor: palette.detailBackground, borderColor: palette.detailBorder }]}>
+      <View style={styles.detailRow}>
+        {shouldShowDate ? (
+          <>
+            <View style={styles.detailItem}>
+              <Ionicons name="calendar-outline" size={16} color={palette.iconColor} />
+              <Text style={[styles.detailValue, { color: palette.headlineColor }]} numberOfLines={1}>
+                {dateChip}
+              </Text>
+            </View>
+            <View style={[styles.dot, { backgroundColor: palette.subColor }]} />
+          </>
+        ) : null}
+        <View style={styles.detailItem}>
+          <Ionicons name="time-outline" size={16} color="#DB2777" />
+          <Text style={[styles.detailValue, { color: palette.headlineColor }]}>{time || '—'}</Text>
+        </View>
+        <View style={[styles.dot, { backgroundColor: palette.subColor }]} />
+        <View style={styles.detailItem}>
+          <Ionicons name="fitness-outline" size={16} color="#9333EA" />
+          <Text style={[styles.detailValue, { color: palette.headlineColor }]}>{durationMin} min</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
  * Premium session row for trainer calendar / list views.
  * `showDate` — include date chip (useful in upcoming list across multiple days).
+ * @param {{ session: object, theme?: string, showDate?: boolean }} props
  */
 export const SessionCard = ({ session, theme = 'dark', showDate = false }) => {
   const isDark = theme === 'dark';
-  const innerBg = isDark ? '#0A0812' : '#FFFFFF';
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.58)' : 'rgba(15,23,42,0.55)';
-  const kickerColor = isDark ? 'rgba(233,213,255,0.72)' : 'rgba(109,40,217,0.75)';
-  const detailBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)';
-  const detailBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)';
-  const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
-  const iconColor = isDark ? '#E9D5FF' : '#7C3AED';
-  const bgGrad = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
+  const palette = sessionCardPalette(isDark);
 
+  // Hook order: formatted clock first, then the date chip. Duration sits between them as plain data.
   const time = useMemo(() => formatTime12(session?.time), [session?.time]);
-  const durationMin = session?.durationMin || session?.duration || 60;
+  const durationMin = session?.durationMin || session?.duration || DEFAULT_DURATION_MIN;
   const dateChip = useMemo(() => formatDateChip(session?.date), [session?.date]);
   const statusMeta = resolveStatusMeta(session?.status, isDark);
-
-  const notePreview = session?.notes
-    ? session.notes
-    : session?.zoomLink
-      ? 'Video link attached'
-      : 'No notes yet';
-
-  const noteIcon = session?.notes ? 'document-text-outline' : session?.zoomLink ? 'videocam-outline' : 'ellipsis-horizontal';
+  const note = sessionNotePreview(session);
 
   return (
     <View style={styles.outer}>
@@ -89,8 +174,8 @@ export const SessionCard = ({ session, theme = 'dark', showDate = false }) => {
         end={{ x: 1, y: 1 }}
         style={[styles.borderRing, isDark ? styles.shadowDark : styles.shadowLight]}
       >
-        <View style={[styles.innerClip, { backgroundColor: innerBg }]}>
-          <LinearGradient colors={bgGrad} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
+        <View style={[styles.innerClip, { backgroundColor: palette.innerBackground }]}>
+          <LinearGradient colors={palette.backgroundGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
             <LinearGradient
               colors={BORDER_GRADIENT}
               start={{ x: 0, y: 0 }}
@@ -119,50 +204,33 @@ export const SessionCard = ({ session, theme = 'dark', showDate = false }) => {
                   end={{ x: 1, y: 1 }}
                   style={styles.iconRing}
                 >
-                  <View style={[styles.iconInner, { backgroundColor: iconInnerBg }]}>
-                    <Ionicons name="calendar" size={20} color={iconColor} />
+                  <View style={[styles.iconInner, { backgroundColor: palette.iconInnerBackground }]}>
+                    <Ionicons name="calendar" size={20} color={palette.iconColor} />
                   </View>
                 </LinearGradient>
               </View>
 
-              <Text style={[styles.kicker, { color: kickerColor }]}>SESSION</Text>
-              <Text style={[styles.title, { color: headlineColor }]} numberOfLines={1}>
-                {session?.clientName || 'Client'}
+              <Text style={[styles.kicker, { color: palette.kickerColor }]}>SESSION</Text>
+              <Text style={[styles.title, { color: palette.headlineColor }]} numberOfLines={1}>
+                {session?.clientName || CLIENT_NAME_DEFAULT}
               </Text>
 
-              <View style={[styles.detailPanel, { backgroundColor: detailBg, borderColor: detailBorder }]}>
-                <View style={styles.detailRow}>
-                  {showDate && dateChip ? (
-                    <>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="calendar-outline" size={16} color={iconColor} />
-                        <Text style={[styles.detailValue, { color: headlineColor }]} numberOfLines={1}>
-                          {dateChip}
-                        </Text>
-                      </View>
-                      <View style={[styles.dot, { backgroundColor: subColor }]} />
-                    </>
-                  ) : null}
-                  <View style={styles.detailItem}>
-                    <Ionicons name="time-outline" size={16} color="#DB2777" />
-                    <Text style={[styles.detailValue, { color: headlineColor }]}>{time || '—'}</Text>
-                  </View>
-                  <View style={[styles.dot, { backgroundColor: subColor }]} />
-                  <View style={styles.detailItem}>
-                    <Ionicons name="fitness-outline" size={16} color="#9333EA" />
-                    <Text style={[styles.detailValue, { color: headlineColor }]}>{durationMin} min</Text>
-                  </View>
-                </View>
-              </View>
+              <SessionDateTimeRow
+                showDate={showDate}
+                dateChip={dateChip}
+                time={time}
+                durationMin={durationMin}
+                palette={palette}
+              />
 
               <View style={styles.footerRow}>
                 <View style={styles.noteRow}>
-                  <Ionicons name={noteIcon} size={14} color={subColor} style={styles.noteIcon} />
-                  <Text style={[styles.noteText, { color: subColor }]} numberOfLines={2}>
-                    {notePreview}
+                  <Ionicons name={note.icon} size={14} color={palette.subColor} style={styles.noteIcon} />
+                  <Text style={[styles.noteText, { color: palette.subColor }]} numberOfLines={2}>
+                    {note.preview}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.35)'} />
+                <Ionicons name="chevron-forward" size={18} color={palette.chevronColor} />
               </View>
             </View>
           </LinearGradient>

@@ -1,6 +1,7 @@
-/**
- * Food Confirm Sheet — Weber-style premium Confirm & log UI (barcode + search).
- */
+// Confirm & log sheet for barcode + search: amount, unit, macros, optional nutrition edit.
+// Flow: normalize food → pick unit/amount → scale macros → confirm writes a logged portion.
+// Used by: FoodSearchScreen and barcode scan verify. Export name FoodConfirmSheet is frozen.
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -28,6 +29,8 @@ import ColorText from '../food-cards/ColorText';
 import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
+
+// ===== NAMED CONSTANTS =====
 
 const UNIT_OPTIONS = [
   { id: 'servings', label: 'Servings' },
@@ -72,29 +75,68 @@ const DISPLAY = Platform.select({
 });
 const DISPLAY_SEMI = 'SpaceGrotesk_600SemiBold';
 
+const GRAMS_PER_OUNCE = 28.3495;
+const GRAMS_PER_CUP = 240;
+const GRAMS_PER_TBSP = 15;
+const GRAMS_PER_TSP = 5;
+const DEFAULT_SERVING_GRAMS = 100;
+const MAX_SERVING_GRAMS = 10000;
+const MIN_SERVING_GRAMS = 1;
+const SHELL_BOTTOM_INSET_EXTRA = 16;
+const FOOTER_PAD_IOS = 12;
+const FOOTER_PAD_ANDROID = 16;
+const AMOUNT_ROUND_FACTOR = 100;
+const MIN_SERVINGS_LOGGED = 0.01;
+const HALF_SERVING = 0.5;
+const BLUR_INTENSITY_DARK = 28;
+const BLUR_INTENSITY_LIGHT = 40;
+const THEME_FALLBACK_BG = '#1A1B20';
+const GRADIENT_DIAGONAL_START = { x: 0, y: 0 };
+const GRADIENT_DIAGONAL_END = { x: 1, y: 1 };
+const KEYBOARD_OFFSET = 8;
+const SCROLL_BOTTOM_PAD = 28;
+
+const UNIT_TO_GRAMS = {
+  oz: (amount) => amount * GRAMS_PER_OUNCE,
+  cups: (amount) => amount * GRAMS_PER_CUP,
+  ml: (amount) => amount,
+  servings: (amount, servingGrams) => amount * servingGrams,
+  tbsp: (amount) => amount * GRAMS_PER_TBSP,
+  tsp: (amount) => amount * GRAMS_PER_TSP,
+  g: (amount) => amount,
+};
+
+const GRAMS_TO_UNIT_DIVISOR = {
+  oz: GRAMS_PER_OUNCE,
+  cups: GRAMS_PER_CUP,
+  tbsp: GRAMS_PER_TBSP,
+  tsp: GRAMS_PER_TSP,
+};
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Convert a typed amount + unit into grams for macro scaling.
+ * @param {*} value
+ * @param {string} unit
+ * @param {number} servingGrams
+ * @returns {number}
+ */
 function unitToGrams(value, unit, servingGrams) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return servingGrams || 100;
-  const sg = servingGrams || 100;
-  switch (unit) {
-    case 'oz':
-      return n * 28.3495;
-    case 'cups':
-      return n * 240;
-    case 'ml':
-      return n;
-    case 'servings':
-      return n * sg;
-    case 'tbsp':
-      return n * 15;
-    case 'tsp':
-      return n * 5;
-    case 'g':
-    default:
-      return n;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return servingGrams || DEFAULT_SERVING_GRAMS;
   }
+  const gramsPerServing = servingGrams || DEFAULT_SERVING_GRAMS;
+  const convert = UNIT_TO_GRAMS[unit] || UNIT_TO_GRAMS.g;
+  return convert(amount, gramsPerServing);
 }
 
+/**
+ * Theme paint tokens for dark vs light confirm sheet.
+ * @param {boolean} isDark
+ * @returns {object}
+ */
 function themeTokens(isDark) {
   return {
     bg: isDark ? '#0B0E14' : '#F8FAFC',
@@ -111,29 +153,38 @@ function themeTokens(isDark) {
   };
 }
 
+/**
+ * Uppercase section eyebrow above a glass card block.
+ */
 function SectionLabel({ children, color }) {
   return (
     <Text style={[styles.sectionLabel, { color }]}>{children}</Text>
   );
 }
 
-function GlassCard({ isDark, children, style }) {
-  const t = themeTokens(isDark);
+/**
+ * Frosted card shell. Blur only on iOS; Android uses the translucent fill alone.
+ */
+function ConfirmGlassCard({ isDark, children, style }) {
+  const tokens = themeTokens(isDark);
+  const blurIntensity = isDark ? BLUR_INTENSITY_DARK : BLUR_INTENSITY_LIGHT;
+  const blurTint = isDark ? 'dark' : 'light';
+
   return (
     <View
       style={[
         styles.glassCard,
         {
-          backgroundColor: t.glassBg,
-          borderColor: t.glassBorder,
+          backgroundColor: tokens.glassBg,
+          borderColor: tokens.glassBorder,
         },
         style,
       ]}
     >
       {Platform.OS === 'ios' ? (
         <BlurView
-          intensity={isDark ? 28 : 40}
-          tint={isDark ? 'dark' : 'light'}
+          intensity={blurIntensity}
+          tint={blurTint}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
@@ -145,9 +196,15 @@ function GlassCard({ isDark, children, style }) {
   );
 }
 
+/**
+ * Tappable macro tile. Tap cycles the gradient palette for that macro.
+ */
 function MacroTile({ label, value, gradientKey, onCycle, isDark }) {
-  const g = MACRO_GRADIENTS[gradientKey] || MACRO_GRADIENTS.carbs;
-  const t = themeTokens(isDark);
+  const gradientStyle = MACRO_GRADIENTS[gradientKey] || MACRO_GRADIENTS.carbs;
+  const tokens = themeTokens(isDark);
+  const tileBg = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.02)';
+  const contentBg = isDark ? 'rgba(11,14,20,0.92)' : 'rgba(248,250,252,0.94)';
+
   return (
     <Pressable
       onPress={() => {
@@ -157,37 +214,203 @@ function MacroTile({ label, value, gradientKey, onCycle, isDark }) {
       style={({ pressed }) => [
         styles.macroTile,
         {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.02)',
-          shadowColor: g.glow,
+          backgroundColor: tileBg,
+          shadowColor: gradientStyle.glow,
         },
         pressed && { transform: [{ scale: 0.98 }], opacity: 0.92 },
       ]}
     >
       <LinearGradient
-        colors={g.colors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        colors={gradientStyle.colors}
+        start={GRADIENT_DIAGONAL_START}
+        end={GRADIENT_DIAGONAL_END}
         style={styles.macroTileBorder}
       />
-      <View
-        style={[
-          styles.macroTileContent,
-          { backgroundColor: isDark ? 'rgba(11,14,20,0.92)' : 'rgba(248,250,252,0.94)' },
-        ]}
-      >
-        <Text style={[styles.macroTileLabel, { color: g.label }]}>{label}</Text>
+      <View style={[styles.macroTileContent, { backgroundColor: contentBg }]}>
+        <Text style={[styles.macroTileLabel, { color: gradientStyle.label }]}>{label}</Text>
         <View style={styles.macroTileValueRow}>
-          <Text style={[styles.macroTileValue, { color: t.primary, fontFamily: DISPLAY }]}>
+          <Text style={[styles.macroTileValue, { color: tokens.primary, fontFamily: DISPLAY }]}>
             {Math.round(Number(value) || 0)}
           </Text>
-          <Text style={[styles.macroTileUnit, { color: t.secondary }]}>g</Text>
+          <Text style={[styles.macroTileUnit, { color: tokens.secondary }]}>g</Text>
         </View>
       </View>
     </Pressable>
   );
 }
 
+/**
+ * Parse typed amount: fractions via parseServingQtyInput, else Number with comma→dot.
+ * @param {*} rawValue
+ * @returns {number|null}
+ */
+function parseAmountNumber(rawValue) {
+  const parsed = parseServingQtyInput(rawValue);
+  if (parsed != null) return parsed;
+  if (rawValue === '' || rawValue == null) return null;
+  return Number(String(rawValue).replace(',', '.'));
+}
 
+/**
+ * Clamp gram amount into the sane 1–10000 range.
+ * @param {number} gramsRaw
+ * @returns {number}
+ */
+function clampGrams(gramsRaw) {
+  return Math.min(MAX_SERVING_GRAMS, Math.max(MIN_SERVING_GRAMS, Math.round(gramsRaw)));
+}
+
+/**
+ * Convert previous grams into the display string for a newly selected unit.
+ * @param {number} prevGrams
+ * @param {string} unitId
+ * @param {number} defaultAmount
+ * @returns {string}
+ */
+function amountStringForUnit(prevGrams, unitId, defaultAmount) {
+  if (unitId === 'servings') {
+    const servings =
+      Math.round((prevGrams / Math.max(1, defaultAmount)) * AMOUNT_ROUND_FACTOR) /
+      AMOUNT_ROUND_FACTOR;
+    return String(servings || 1);
+  }
+  if (unitId === 'g' || unitId === 'ml') {
+    return String(Math.round(prevGrams) || defaultAmount);
+  }
+  const divisor = GRAMS_TO_UNIT_DIVISOR[unitId];
+  if (divisor) {
+    return String(
+      Math.round((prevGrams / divisor) * AMOUNT_ROUND_FACTOR) / AMOUNT_ROUND_FACTOR,
+    );
+  }
+  return String(prevGrams);
+}
+
+/**
+ * Human serving summary under the calorie hero.
+ * @param {string} selectedUnit
+ * @param {boolean} hasValidAmount
+ * @param {number|null} entered
+ * @returns {string}
+ */
+function servingSummaryLabel(selectedUnit, hasValidAmount, entered) {
+  if (selectedUnit === 'servings' && hasValidAmount && entered === 1) return '1 serving';
+  if (selectedUnit === 'servings' && hasValidAmount && entered === HALF_SERVING) {
+    return '½ serving';
+  }
+  if (selectedUnit === 'servings' && hasValidAmount) return `${entered} servings`;
+  if (hasValidAmount) return `${entered} ${selectedUnit}`;
+  return '1 serving';
+}
+
+/**
+ * Label above the amount field for the active unit.
+ * @param {string} selectedUnit
+ * @returns {string}
+ */
+function amountInputLabel(selectedUnit) {
+  if (selectedUnit === 'servings') return 'Number of servings';
+  const match = UNIT_OPTIONS.find((option) => option.id === selectedUnit);
+  return match?.label || selectedUnit;
+}
+
+/**
+ * Package serving line shown under the food name.
+ * @param {object} normalized
+ * @param {number} defaultAmount
+ * @returns {string}
+ */
+function packageServingLabelFromFood(normalized, defaultAmount) {
+  const fromFields = String(
+    normalized?.serving_label
+      || normalized?.servingLabel
+      || normalized?.portion_text
+      || normalized?.serving_description
+      || '',
+  ).trim();
+  return fromFields || `${defaultAmount} g per serving`;
+}
+
+/**
+ * Build the nutrition override object when the user edits package macros.
+ * @param {object} normalized
+ * @param {object} labelServingMacros
+ * @param {number|null} calories
+ * @param {number|null} protein
+ * @param {number|null} carbs
+ * @param {number|null} fat
+ * @param {number} defaultAmount
+ * @returns {object}
+ */
+function nutritionOverrideFromEdits(
+  normalized,
+  labelServingMacros,
+  calories,
+  protein,
+  carbs,
+  fat,
+  defaultAmount,
+) {
+  return {
+    ...normalized,
+    calories: calories ?? labelServingMacros?.calories ?? normalized.calories,
+    protein: protein ?? labelServingMacros?.protein ?? normalized.protein,
+    carbs: carbs ?? labelServingMacros?.carbs ?? normalized.carbs,
+    fat: fat ?? labelServingMacros?.fat ?? normalized.fat,
+    dataBasis: 'label_serving',
+    servingGrams: defaultAmount,
+    userEditedNutrition: true,
+  };
+}
+
+/**
+ * Build the confirmed food payload for onConfirm.
+ * @param {object} options
+ * @returns {object}
+ */
+function buildConfirmedFoodPayload({
+  nutritionBase,
+  macros,
+  grams,
+  servingsLogged,
+  entered,
+  selectedUnit,
+  defaultAmount,
+  packageServingLabel,
+  notes,
+  nutritionOverride,
+  scannedBarcode,
+}) {
+  return {
+    ...nutritionBase,
+    calories: macros.calories,
+    protein: macros.protein,
+    carbs: macros.carbs,
+    fat: macros.fat,
+    servingGrams: grams,
+    servingAmount: grams,
+    servingSize: servingsLogged,
+    dataBasis: 'logged_total',
+    loggedAmount: entered,
+    loggedUnit: selectedUnit,
+    preferredUnit: selectedUnit,
+    originalUnit: selectedUnit,
+    originalAmount: entered,
+    labelServingGrams: defaultAmount,
+    serving_label: packageServingLabel,
+    userVerified: true,
+    notes: notes.trim() || undefined,
+    userEditedNutrition: Boolean(nutritionOverride || nutritionBase?.userEditedNutrition),
+    scannedBarcode: scannedBarcode || nutritionBase?.scannedBarcode || null,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Premium Confirm & log UI for barcode + search hits.
+ * @param {{ food: object, onConfirm?: Function, onCancel?: Function, onWrongItem?: Function, title?: string, theme?: object, showVerification?: boolean, scannedBarcode?: string|null, reserveShellBottomNav?: boolean }} props
+ */
 export default function FoodConfirmSheet({
   food,
   onConfirm,
@@ -201,8 +424,8 @@ export default function FoodConfirmSheet({
 }) {
   const { isDark: appIsDark } = useTheme();
   const isDark = theme?.isDark != null ? theme.isDark : appIsDark;
-  const t = themeTokens(isDark);
-  const shellBottomPad = useShellBottomNavInset(16);
+  const tokens = themeTokens(isDark);
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
 
   const [amountValue, setAmountValue] = useState('1');
   const [preset, setPreset] = useState('full');
@@ -214,10 +437,17 @@ export default function FoodConfirmSheet({
   const [editCarbs, setEditCarbs] = useState('');
   const [editFat, setEditFat] = useState('');
   const [nutritionOverride, setNutritionOverride] = useState(null);
-  const [grads, setGrads] = useState({ c: 0, p: 1, f: 2 });
+  const [macroGradients, setMacroGradients] = useState({
+    carbs: 0,
+    protein: 1,
+    fat: 2,
+  });
 
-  const cycleGrad = (key) => {
-    setGrads((g) => ({ ...g, [key]: (g[key] + 1) % GRADIENT_KEYS.length }));
+  const cycleMacroGradient = (macroKey) => {
+    setMacroGradients((previous) => ({
+      ...previous,
+      [macroKey]: (previous[macroKey] + 1) % GRADIENT_KEYS.length,
+    }));
   };
 
   const normalized = useMemo(
@@ -228,16 +458,8 @@ export default function FoodConfirmSheet({
     if (!normalized) return null;
     return normalizeFoodRecordForStorage(normalized);
   }, [normalized]);
-  const defaultAmount = normalized ? resolveServingGrams(normalized) : 100;
-  const packageServingLabel =
-    String(
-      normalized?.serving_label
-      || normalized?.servingLabel
-      || normalized?.portion_text
-      || normalized?.serving_description
-      || '',
-    ).trim()
-    || `${defaultAmount} g per serving`;
+  const defaultAmount = normalized ? resolveServingGrams(normalized) : DEFAULT_SERVING_GRAMS;
+  const packageServingLabel = packageServingLabelFromFood(normalized, defaultAmount);
 
   const foodKey = `${food?.id || ''}|${food?.scannedBarcode || scannedBarcode || ''}|${food?.name || ''}|${defaultAmount}`;
 
@@ -251,17 +473,12 @@ export default function FoodConfirmSheet({
     setNotes('');
   }, [foodKey, food]);
 
-  const parseNum = (v) => {
-    const parsed = parseServingQtyInput(v);
-    if (parsed != null) return parsed;
-    return v === '' || v == null ? null : Number(String(v).replace(',', '.'));
-  };
-  const entered = parseNum(amountValue);
+  const entered = parseAmountNumber(amountValue);
   const hasValidAmount = entered != null && !Number.isNaN(entered) && entered > 0;
   const gramsRaw = hasValidAmount
     ? unitToGrams(entered, selectedUnit, defaultAmount)
     : defaultAmount;
-  const grams = Math.min(10000, Math.max(1, Math.round(gramsRaw)));
+  const grams = clampGrams(gramsRaw);
 
   const labelServingMacros = useMemo(
     () => (normalized ? macrosAtGrams(normalized, defaultAmount) : null),
@@ -272,22 +489,33 @@ export default function FoodConfirmSheet({
     if (!normalized) return null;
     if (nutritionOverride) return nutritionOverride;
     if (!editNutritionOpen) return normalized;
-    const cal = parseNum(editCal);
-    const protein = parseNum(editProtein);
-    const carbs = parseNum(editCarbs);
-    const fat = parseNum(editFat);
-    if (cal == null && protein == null && carbs == null && fat == null) return normalized;
-    return {
-      ...normalized,
-      calories: cal ?? labelServingMacros?.calories ?? normalized.calories,
-      protein: protein ?? labelServingMacros?.protein ?? normalized.protein,
-      carbs: carbs ?? labelServingMacros?.carbs ?? normalized.carbs,
-      fat: fat ?? labelServingMacros?.fat ?? normalized.fat,
-      dataBasis: 'label_serving',
-      servingGrams: defaultAmount,
-      userEditedNutrition: true,
-    };
-  }, [normalized, nutritionOverride, editNutritionOpen, editCal, editProtein, editCarbs, editFat, defaultAmount, labelServingMacros]);
+    const calories = parseAmountNumber(editCal);
+    const protein = parseAmountNumber(editProtein);
+    const carbs = parseAmountNumber(editCarbs);
+    const fat = parseAmountNumber(editFat);
+    if (calories == null && protein == null && carbs == null && fat == null) {
+      return normalized;
+    }
+    return nutritionOverrideFromEdits(
+      normalized,
+      labelServingMacros,
+      calories,
+      protein,
+      carbs,
+      fat,
+      defaultAmount,
+    );
+  }, [
+    normalized,
+    nutritionOverride,
+    editNutritionOpen,
+    editCal,
+    editProtein,
+    editCarbs,
+    editFat,
+    defaultAmount,
+    labelServingMacros,
+  ]);
 
   const macros = useMemo(
     () => (nutritionBase ? macrosAtGrams(nutritionBase, grams) : null),
@@ -308,44 +536,34 @@ export default function FoodConfirmSheet({
   };
 
   const closeEditNutrition = () => {
-    const cal = parseNum(editCal);
-    const protein = parseNum(editProtein);
-    const carbs = parseNum(editCarbs);
-    const fat = parseNum(editFat);
-    if (cal != null || protein != null || carbs != null || fat != null) {
-      setNutritionOverride({
-        ...normalized,
-        calories: cal ?? labelServingMacros?.calories ?? normalized.calories,
-        protein: protein ?? labelServingMacros?.protein ?? normalized.protein,
-        carbs: carbs ?? labelServingMacros?.carbs ?? normalized.carbs,
-        fat: fat ?? labelServingMacros?.fat ?? normalized.fat,
-        dataBasis: 'label_serving',
-        servingGrams: defaultAmount,
-        userEditedNutrition: true,
-      });
+    const calories = parseAmountNumber(editCal);
+    const protein = parseAmountNumber(editProtein);
+    const carbs = parseAmountNumber(editCarbs);
+    const fat = parseAmountNumber(editFat);
+    if (calories != null || protein != null || carbs != null || fat != null) {
+      setNutritionOverride(
+        nutritionOverrideFromEdits(
+          normalized,
+          labelServingMacros,
+          calories,
+          protein,
+          carbs,
+          fat,
+          defaultAmount,
+        ),
+      );
     }
     setEditNutritionOpen(false);
   };
 
+  // 1. Keep grams constant when switching units — rewrite the amount field for the new unit.
   const applyUnit = (unitId) => {
     const prevGrams = hasValidAmount
       ? unitToGrams(entered, selectedUnit, defaultAmount)
       : defaultAmount;
     setSelectedUnit(unitId);
     setPreset('custom');
-    if (unitId === 'servings') {
-      setAmountValue(String(Math.round((prevGrams / Math.max(1, defaultAmount)) * 100) / 100 || 1));
-    } else if (unitId === 'g' || unitId === 'ml') {
-      setAmountValue(String(Math.round(prevGrams) || defaultAmount));
-    } else if (unitId === 'oz') {
-      setAmountValue(String(Math.round((prevGrams / 28.3495) * 100) / 100));
-    } else if (unitId === 'cups') {
-      setAmountValue(String(Math.round((prevGrams / 240) * 100) / 100));
-    } else if (unitId === 'tbsp') {
-      setAmountValue(String(Math.round((prevGrams / 15) * 100) / 100));
-    } else if (unitId === 'tsp') {
-      setAmountValue(String(Math.round((prevGrams / 5) * 100) / 100));
-    }
+    setAmountValue(amountStringForUnit(prevGrams, unitId, defaultAmount));
   };
 
   const applyPreset = (fraction, key) => {
@@ -361,6 +579,7 @@ export default function FoodConfirmSheet({
     setAmountValue(cleaned);
   };
 
+  // 2. Fail loud if amount is empty; otherwise hand a normalized logged portion up.
   const handleConfirm = () => {
     if (!hasValidAmount) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -369,125 +588,144 @@ export default function FoodConfirmSheet({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     const servingsLogged =
       selectedUnit === 'servings'
-        ? Math.max(0.01, entered)
-        : Math.max(0.01, grams / Math.max(1, defaultAmount));
-    const adjusted = {
-      ...nutritionBase,
-      calories: macros.calories,
-      protein: macros.protein,
-      carbs: macros.carbs,
-      fat: macros.fat,
-      servingGrams: grams,
-      servingAmount: grams,
-      servingSize: servingsLogged,
-      dataBasis: 'logged_total',
-      loggedAmount: entered,
-      loggedUnit: selectedUnit,
-      preferredUnit: selectedUnit,
-      originalUnit: selectedUnit,
-      originalAmount: entered,
-      labelServingGrams: defaultAmount,
-      serving_label: packageServingLabel,
-      userVerified: true,
-      notes: notes.trim() || undefined,
-      userEditedNutrition: Boolean(nutritionOverride || nutritionBase?.userEditedNutrition),
-      scannedBarcode: scannedBarcode || nutritionBase?.scannedBarcode || null,
-    };
+        ? Math.max(MIN_SERVINGS_LOGGED, entered)
+        : Math.max(MIN_SERVINGS_LOGGED, grams / Math.max(1, defaultAmount));
+    const adjusted = buildConfirmedFoodPayload({
+      nutritionBase,
+      macros,
+      grams,
+      servingsLogged,
+      entered,
+      selectedUnit,
+      defaultAmount,
+      packageServingLabel,
+      notes,
+      nutritionOverride,
+      scannedBarcode,
+    });
     onConfirm?.(normalizeFoodForLog(normalizeFoodRecordForStorage(adjusted)));
   };
 
-  const footerBottomPad = reserveShellBottomNav ? shellBottomPad : (Platform.OS === 'ios' ? 12 : 16);
-  const screenBg = theme?.screenBg && theme.screenBg !== '#1A1B20' ? theme.screenBg : t.bg;
+  const footerBottomPad = reserveShellBottomNav
+    ? shellBottomPad
+    : Platform.OS === 'ios'
+      ? FOOTER_PAD_IOS
+      : FOOTER_PAD_ANDROID;
+  const screenBg =
+    theme?.screenBg && theme.screenBg !== THEME_FALLBACK_BG ? theme.screenBg : tokens.bg;
 
-  const servingSummary =
-    selectedUnit === 'servings' && hasValidAmount && entered === 1
-      ? '1 serving'
-      : selectedUnit === 'servings' && hasValidAmount && entered === 0.5
-        ? '½ serving'
-        : selectedUnit === 'servings' && hasValidAmount
-          ? `${entered} servings`
-          : hasValidAmount
-            ? `${entered} ${selectedUnit}`
-            : '1 serving';
+  const servingSummary = servingSummaryLabel(selectedUnit, hasValidAmount, entered);
+  const inputLabel = amountInputLabel(selectedUnit);
+  const amountPlaceholder =
+    selectedUnit === 'servings' ? '1' : String(defaultAmount);
+  const helperExtra = !hasValidAmount ? ' · enter a number greater than 0' : '';
+  const editNutritionLabel = editNutritionOpen
+    ? 'Done editing nutrition'
+    : 'Edit nutrition from package';
+  const foodDisplayName = display?.name || normalized.name;
+  const foodBrand = display?.brand || normalized.brand;
+  const calHeroAmountLine =
+    servingSummary && servingSummary !== packageServingLabel
+      ? `${packageServingLabel} · ${servingSummary}`
+      : packageServingLabel;
 
-  const inputLabel =
-    selectedUnit === 'servings'
-      ? 'Number of servings'
-      : UNIT_OPTIONS.find((u) => u.id === selectedUnit)?.label || selectedUnit;
+  const presetButtons = [
+    { label: '1 serving', key: 'full', fraction: 1 },
+    { label: '½ serving', key: 'half', fraction: HALF_SERVING },
+  ];
+
+  const editFields = [
+    { label: 'Calories', value: editCal, set: setEditCal },
+    { label: 'Protein (g)', value: editProtein, set: setEditProtein },
+    { label: 'Carbs (g)', value: editCarbs, set: setEditCarbs },
+    { label: 'Fat (g)', value: editFat, set: setEditFat },
+  ];
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: screenBg }]}
-      edges={reserveShellBottomNav ? SHELL_SAFE_AREA_EDGES : [...SHELL_SAFE_AREA_EDGES, 'bottom']}
+      edges={
+        reserveShellBottomNav
+          ? SHELL_SAFE_AREA_EDGES
+          : [...SHELL_SAFE_AREA_EDGES, 'bottom']
+      }
     >
       <TopHeader title={title} skipTopSafeInset onBack={onCancel} />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={8}
+        keyboardVerticalOffset={KEYBOARD_OFFSET}
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: SCROLL_BOTTOM_PAD }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <Text style={[styles.screenTitle, { color: t.primary, fontFamily: DISPLAY_SEMI }]}>
+          <Text style={[styles.screenTitle, { color: tokens.primary, fontFamily: DISPLAY_SEMI }]}>
             {title}
           </Text>
 
-          {/* Food header */}
           <View style={styles.foodHeader}>
-            <Text style={[styles.foodName, { color: t.primary, fontFamily: DISPLAY }]} numberOfLines={3}>
-              {display?.name || normalized.name}
+            <Text
+              style={[styles.foodName, { color: tokens.primary, fontFamily: DISPLAY }]}
+              numberOfLines={3}
+            >
+              {foodDisplayName}
             </Text>
             <View style={styles.foodMetaRow}>
-              {(display?.brand || normalized.brand) ? (
+              {foodBrand ? (
                 <>
-                  <Text style={[styles.foodMeta, { color: t.muted }]} numberOfLines={1}>
-                    {display?.brand || normalized.brand}
+                  <Text style={[styles.foodMeta, { color: tokens.muted }]} numberOfLines={1}>
+                    {foodBrand}
                   </Text>
-                  <Text style={{ color: t.secondary }}> · </Text>
+                  <Text style={{ color: tokens.secondary }}> · </Text>
                 </>
               ) : null}
-              <Text style={[styles.foodMeta, { color: t.muted }]} numberOfLines={1}>
+              <Text style={[styles.foodMeta, { color: tokens.muted }]} numberOfLines={1}>
                 {packageServingLabel}
               </Text>
-              <Text style={{ color: t.secondary }}> · </Text>
+              <Text style={{ color: tokens.secondary }}> · </Text>
               <ColorText colors={['#FF8C42', '#FF69B4', '#FF1493']} style={styles.foodMetaCal}>
                 {labelServingMacros?.calories ?? '—'} cal
               </ColorText>
             </View>
           </View>
 
-          {/* Nutrition summary */}
-          <GlassCard isDark={isDark} style={styles.cardGap}>
-            <SectionLabel color={t.label}>Per serving on label</SectionLabel>
-            <Text style={[styles.labelInfo, { color: t.primary }]}>
+          <ConfirmGlassCard isDark={isDark} style={styles.cardGap}>
+            <SectionLabel color={tokens.label}>Per serving on label</SectionLabel>
+            <Text style={[styles.labelInfo, { color: tokens.primary }]}>
               {packageServingLabel} · {labelServingMacros?.calories ?? '—'} cal ·{' '}
               {labelServingMacros?.protein ?? '—'}g protein · {labelServingMacros?.fat ?? '—'}g fat
             </Text>
 
             <View style={styles.divider} />
 
-            <SectionLabel color={t.label}>Nutrition summary</SectionLabel>
+            <SectionLabel color={tokens.label}>Nutrition summary</SectionLabel>
             <View style={styles.calHeroRow}>
               <View style={styles.calHeroLeft}>
-                <Text style={[styles.calHeroHint, { color: t.secondary }]}>Total for this amount</Text>
-                <Text style={[styles.calHeroAmount, { color: t.primary, fontFamily: DISPLAY_SEMI }]}>
-                  {packageServingLabel}
-                  {servingSummary && servingSummary !== packageServingLabel
-                    ? ` · ${servingSummary}`
-                    : ''}
+                <Text style={[styles.calHeroHint, { color: tokens.secondary }]}>
+                  Total for this amount
+                </Text>
+                <Text
+                  style={[
+                    styles.calHeroAmount,
+                    { color: tokens.primary, fontFamily: DISPLAY_SEMI },
+                  ]}
+                >
+                  {calHeroAmountLine}
                 </Text>
               </View>
               <View style={styles.calHeroRight}>
-                <ColorText colors={CAL_GRADIENT} style={[styles.calHeroValue, { fontFamily: DISPLAY }]}>
+                <ColorText
+                  colors={CAL_GRADIENT}
+                  style={[styles.calHeroValue, { fontFamily: DISPLAY }]}
+                >
                   {macros.calories}
                 </ColorText>
-                <Text style={[styles.calHeroSuffix, { color: t.secondary }]}>KCAL</Text>
+                <Text style={[styles.calHeroSuffix, { color: tokens.secondary }]}>KCAL</Text>
               </View>
             </View>
 
@@ -495,60 +733,63 @@ export default function FoodConfirmSheet({
               <MacroTile
                 label="Carbs"
                 value={macros.carbs}
-                gradientKey={GRADIENT_KEYS[grads.c]}
-                onCycle={() => cycleGrad('c')}
+                gradientKey={GRADIENT_KEYS[macroGradients.carbs]}
+                onCycle={() => cycleMacroGradient('carbs')}
                 isDark={isDark}
               />
               <MacroTile
                 label="Protein"
                 value={macros.protein}
-                gradientKey={GRADIENT_KEYS[grads.p]}
-                onCycle={() => cycleGrad('p')}
+                gradientKey={GRADIENT_KEYS[macroGradients.protein]}
+                onCycle={() => cycleMacroGradient('protein')}
                 isDark={isDark}
               />
               <MacroTile
                 label="Fat"
                 value={macros.fat}
-                gradientKey={GRADIENT_KEYS[grads.f]}
-                onCycle={() => cycleGrad('f')}
+                gradientKey={GRADIENT_KEYS[macroGradients.fat]}
+                onCycle={() => cycleMacroGradient('fat')}
                 isDark={isDark}
               />
             </View>
-          </GlassCard>
+          </ConfirmGlassCard>
 
-          {/* Serving size */}
-          <GlassCard isDark={isDark} style={styles.cardGap}>
-            <SectionLabel color={t.label}>Serving size</SectionLabel>
-            <Text style={[styles.labelInfo, { color: t.muted, marginTop: 6 }]}>
+          <ConfirmGlassCard isDark={isDark} style={styles.cardGap}>
+            <SectionLabel color={tokens.label}>Serving size</SectionLabel>
+            <Text style={[styles.labelInfo, { color: tokens.muted, marginTop: 6 }]}>
               Real serving on label: {packageServingLabel}
               {defaultAmount ? ` (≈${defaultAmount} g)` : ''}
             </Text>
 
-            {/* Unit segmented switcher */}
-            <View style={[styles.unitSwitcher, { backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>
-              {UNIT_OPTIONS.map((u) => {
-                const active = selectedUnit === u.id;
+            <View
+              style={[
+                styles.unitSwitcher,
+                { backgroundColor: tokens.chipBg, borderColor: tokens.chipBorder },
+              ]}
+            >
+              {UNIT_OPTIONS.map((unitOption) => {
+                const isActive = selectedUnit === unitOption.id;
                 return (
                   <Pressable
-                    key={u.id}
-                    onPress={() => applyUnit(u.id)}
+                    key={unitOption.id}
+                    onPress={() => applyUnit(unitOption.id)}
                     style={styles.unitTab}
                   >
-                    {active ? (
+                    {isActive ? (
                       <LinearGradient
                         colors={UNIT_ACTIVE_GRADIENT}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
+                        start={GRADIENT_DIAGONAL_START}
+                        end={GRADIENT_DIAGONAL_END}
                         style={StyleSheet.absoluteFill}
                       />
                     ) : null}
                     <Text
                       style={[
                         styles.unitTabText,
-                        { color: active ? '#fff' : t.secondary },
+                        { color: isActive ? '#fff' : tokens.secondary },
                       ]}
                     >
-                      {u.label}
+                      {unitOption.label}
                     </Text>
                   </Pressable>
                 );
@@ -556,52 +797,54 @@ export default function FoodConfirmSheet({
             </View>
 
             <View style={styles.presetRow}>
-              {[
-                { label: '1 serving', key: 'full', fraction: 1 },
-                { label: '½ serving', key: 'half', fraction: 0.5 },
-              ].map((p) => {
-                const active = preset === p.key;
+              {presetButtons.map((presetButton) => {
+                const isActive = preset === presetButton.key;
                 return (
                   <Pressable
-                    key={p.key}
-                    onPress={() => applyPreset(p.fraction, p.key)}
+                    key={presetButton.key}
+                    onPress={() => applyPreset(presetButton.fraction, presetButton.key)}
                     style={({ pressed }) => [
                       styles.presetPill,
                       {
-                        backgroundColor: t.chipBg,
-                        borderColor: active ? 'rgba(236,72,153,0.55)' : t.chipBorder,
+                        backgroundColor: tokens.chipBg,
+                        borderColor: isActive ? 'rgba(236,72,153,0.55)' : tokens.chipBorder,
                       },
                       pressed && { transform: [{ scale: 0.98 }] },
                     ]}
                   >
-                    {active ? (
+                    {isActive ? (
                       <LinearGradient
                         colors={['rgba(249,115,22,0.35)', 'rgba(236,72,153,0.35)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
+                        start={GRADIENT_DIAGONAL_START}
+                        end={GRADIENT_DIAGONAL_END}
                         style={StyleSheet.absoluteFill}
                       />
                     ) : null}
-                    <Text style={[styles.presetPillText, { color: active ? '#fff' : t.muted }]}>
-                      {p.label}
+                    <Text
+                      style={[
+                        styles.presetPillText,
+                        { color: isActive ? '#fff' : tokens.muted },
+                      ]}
+                    >
+                      {presetButton.label}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
 
-            <Text style={[styles.inputLabel, { color: t.primary }]}>{inputLabel}</Text>
+            <Text style={[styles.inputLabel, { color: tokens.primary }]}>{inputLabel}</Text>
             <TextInput
               style={[
                 styles.amountInput,
                 {
-                  color: t.primary,
-                  backgroundColor: t.inputBg,
-                  borderColor: t.inputBorder,
+                  color: tokens.primary,
+                  backgroundColor: tokens.inputBg,
+                  borderColor: tokens.inputBorder,
                 },
               ]}
-              placeholder={selectedUnit === 'servings' ? '1' : String(defaultAmount)}
-              placeholderTextColor={t.secondary}
+              placeholder={amountPlaceholder}
+              placeholderTextColor={tokens.secondary}
               value={amountValue}
               onChangeText={handleAmountChange}
               keyboardType="decimal-pad"
@@ -610,9 +853,9 @@ export default function FoodConfirmSheet({
               returnKeyType="done"
               blurOnSubmit
             />
-            <Text style={[styles.helper, { color: t.secondary }]}>
+            <Text style={[styles.helper, { color: tokens.secondary }]}>
               ≈ {grams} g · macros update as you type
-              {!hasValidAmount ? ' · enter a number greater than 0' : ''}
+              {helperExtra}
             </Text>
 
             <Pressable
@@ -620,87 +863,93 @@ export default function FoodConfirmSheet({
               style={({ pressed }) => [
                 styles.editNutritionBtn,
                 {
-                  backgroundColor: t.chipBg,
-                  borderColor: t.chipBorder,
+                  backgroundColor: tokens.chipBg,
+                  borderColor: tokens.chipBorder,
                 },
                 pressed && { opacity: 0.85 },
               ]}
             >
-              <Pencil size={14} color={t.muted} strokeWidth={2.2} />
-              <Text style={[styles.editNutritionBtnText, { color: t.muted }]}>
-                {editNutritionOpen ? 'Done editing nutrition' : 'Edit nutrition from package'}
+              <Pencil size={14} color={tokens.muted} strokeWidth={2.2} />
+              <Text style={[styles.editNutritionBtnText, { color: tokens.muted }]}>
+                {editNutritionLabel}
               </Text>
             </Pressable>
 
             {editNutritionOpen ? (
               <View style={styles.editGrid}>
-                {[
-                  { label: 'Calories', value: editCal, set: setEditCal },
-                  { label: 'Protein (g)', value: editProtein, set: setEditProtein },
-                  { label: 'Carbs (g)', value: editCarbs, set: setEditCarbs },
-                  { label: 'Fat (g)', value: editFat, set: setEditFat },
-                ].map((row) => (
-                  <View key={row.label} style={styles.editField}>
-                    <Text style={[styles.editFieldLabel, { color: t.secondary }]}>{row.label}</Text>
+                {editFields.map((field) => (
+                  <View key={field.label} style={styles.editField}>
+                    <Text style={[styles.editFieldLabel, { color: tokens.secondary }]}>
+                      {field.label}
+                    </Text>
                     <TextInput
                       style={[
                         styles.editFieldInput,
                         {
-                          color: t.primary,
-                          backgroundColor: t.inputBg,
-                          borderColor: t.inputBorder,
+                          color: tokens.primary,
+                          backgroundColor: tokens.inputBg,
+                          borderColor: tokens.inputBorder,
                           fontFamily: DISPLAY_SEMI,
                         },
                       ]}
-                      value={row.value}
-                      onChangeText={row.set}
+                      value={field.value}
+                      onChangeText={field.set}
                       keyboardType="decimal-pad"
                       placeholder="0"
-                      placeholderTextColor={t.secondary}
+                      placeholderTextColor={tokens.secondary}
                     />
                   </View>
                 ))}
               </View>
             ) : null}
-          </GlassCard>
+          </ConfirmGlassCard>
 
-          {/* Notes */}
-          <GlassCard isDark={isDark} style={[styles.cardGap, { padding: 6 }]}>
+          <ConfirmGlassCard isDark={isDark} style={[styles.cardGap, { padding: 6 }]}>
             <TextInput
-              style={[styles.notesInput, { color: t.primary }]}
+              style={[styles.notesInput, { color: tokens.primary }]}
               value={notes}
               onChangeText={setNotes}
               placeholder="Notes (optional)"
-              placeholderTextColor={t.secondary}
+              placeholderTextColor={tokens.secondary}
               multiline
               textAlignVertical="top"
             />
-          </GlassCard>
+          </ConfirmGlassCard>
 
-          {/* Formula strip */}
-          <View style={[styles.formulaStrip, { backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>
-            <Text style={[styles.formulaText, { color: t.muted }]}>
+          <View
+            style={[
+              styles.formulaStrip,
+              { backgroundColor: tokens.chipBg, borderColor: tokens.chipBorder },
+            ]}
+          >
+            <Text style={[styles.formulaText, { color: tokens.muted }]}>
               Logging ≈ {macros.calories} cal · {macros.protein}P · {macros.carbs}C · {macros.fat}F
             </Text>
           </View>
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: footerBottomPad, backgroundColor: screenBg }]}>
+        <View
+          style={[styles.footer, { paddingBottom: footerBottomPad, backgroundColor: screenBg }]}
+        >
           {showVerification && onWrongItem ? (
             <Pressable
               onPress={onWrongItem}
               style={({ pressed }) => [
                 styles.wrongItemButton,
                 {
-                  backgroundColor: t.glassBg,
-                  borderColor: t.glassBorder,
+                  backgroundColor: tokens.glassBg,
+                  borderColor: tokens.glassBorder,
                 },
                 pressed && { opacity: 0.85 },
               ]}
             >
-              <Text style={[styles.wrongItemButtonText, { color: t.primary }]}>Wrong item</Text>
-              <ArrowRight size={16} color={t.primary} strokeWidth={2.2} />
-              <Text style={[styles.wrongItemButtonText, { color: t.primary }]}>search by name</Text>
+              <Text style={[styles.wrongItemButtonText, { color: tokens.primary }]}>
+                Wrong item
+              </Text>
+              <ArrowRight size={16} color={tokens.primary} strokeWidth={2.2} />
+              <Text style={[styles.wrongItemButtonText, { color: tokens.primary }]}>
+                search by name
+              </Text>
             </Pressable>
           ) : null}
 
@@ -715,8 +964,8 @@ export default function FoodConfirmSheet({
           >
             <LinearGradient
               colors={LOG_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              start={GRADIENT_DIAGONAL_START}
+              end={GRADIENT_DIAGONAL_END}
               style={styles.logButton}
             >
               <Text style={[styles.logButtonText, { fontFamily: DISPLAY_SEMI }]}>
@@ -725,14 +974,18 @@ export default function FoodConfirmSheet({
             </LinearGradient>
           </Pressable>
 
-          <Pressable onPress={onCancel} style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.7 }]}>
-            <Text style={[styles.cancelButtonText, { color: t.secondary }]}>Cancel</Text>
+          <Pressable
+            onPress={onCancel}
+            style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.cancelButtonText, { color: tokens.secondary }]}>Cancel</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

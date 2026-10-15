@@ -24,7 +24,8 @@ function gramsToUse(food, grams) {
   const requestedGrams = Number(grams);
   if (requestedGrams > 0) return requestedGrams;
   const servingGrams = Number(food?.servingGrams);
-  return servingGrams > 0 ? servingGrams : DEFAULT_SERVING_GRAMS;
+  if (servingGrams > 0) return servingGrams;
+  return DEFAULT_SERVING_GRAMS;
 }
 
 // ===== MAIN FUNCTION =====

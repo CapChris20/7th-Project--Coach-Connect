@@ -1,27 +1,157 @@
-/**
- * Coach Paste Sheet
- *
- * Purpose: UI screen or component: Coach Paste Sheet. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/aiChat
- * Key exports: PasteTextPopup
- *
- * @file-header
- */
+// Sheet for pasting coach-chat text when the simulator clipboard is stale.
+// Flow: open → focus the field after a short delay → confirm sends the draft, cancel just closes.
+// Used by: CoachConversationScreen. Callers pass the conversation theme as `t`.
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
+// ===== NAMED CONSTANTS =====
+
+const PLATFORM_IOS = 'ios';
+const IOS_KEYBOARD_BEHAVIOR = 'padding';
+// Manipulate here: delay before focusing so the slide animation finishes first.
+const FOCUS_AFTER_OPEN_MS = 120;
+const SHEET_TITLE = 'Paste text';
+const SHEET_HINT = 'Copy on your Mac, then paste here (⌘V).';
+const DRAFT_PLACEHOLDER = 'Paste your message…';
+const CANCEL_LABEL = 'Cancel';
+const CONFIRM_LABEL = 'Add to message';
+const DARK_TEXT_PRIMARY = '#FFFFFF';
+const LIGHT_TEXT_PRIMARY = '#0A0A0F';
+const DARK_TEXT_MUTED = 'rgba(255,255,255,0.45)';
+const LIGHT_TEXT_MUTED = 'rgba(10,10,15,0.45)';
+const DARK_BACKGROUND = '#141418';
+const LIGHT_BACKGROUND = '#FFFFFF';
+const DARK_BORDER = 'rgba(255,255,255,0.12)';
+const LIGHT_BORDER = 'rgba(0,0,0,0.1)';
+const SCRIM_COLOR = 'rgba(0,0,0,0.55)';
+const DARK_INPUT_BACKGROUND = 'rgba(255,255,255,0.04)';
+const LIGHT_INPUT_BACKGROUND = 'rgba(0,0,0,0.03)';
+const CONFIRM_BUTTON_COLOR = '#FF6B9D';
+const CONFIRM_LABEL_COLOR = '#FFFFFF';
+const DISABLED_CONFIRM_OPACITY = 0.45;
+const ENABLED_CONFIRM_OPACITY = 1;
+
+// ===== HELPER FUNCTIONS =====
+
+function readThemeField(theme, fieldName) {
+  if (!theme) return undefined;
+  return theme[fieldName];
+}
+
+function themeColorOrFallback(themeColor, isDark, darkColor, lightColor) {
+  if (themeColor) return themeColor;
+  if (isDark) return darkColor;
+  return lightColor;
+}
+
+function backgroundForSheet(isDark) {
+  if (isDark) return DARK_BACKGROUND;
+  return LIGHT_BACKGROUND;
+}
+
+function borderForSheet(isDark) {
+  if (isDark) return DARK_BORDER;
+  return LIGHT_BORDER;
+}
+
+function inputBackgroundForSheet(isDark) {
+  if (isDark) return DARK_INPUT_BACKGROUND;
+  return LIGHT_INPUT_BACKGROUND;
+}
+
+/**
+ * Theme colors for this sheet. `theme` is the parent `t` object; missing keys fall back by isDark.
+ * @param {object} [theme]
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function pasteSheetColors(theme, isDark) {
+  const textPrimaryFromTheme = readThemeField(theme, 'textPrimary');
+  const textMutedFromTheme = readThemeField(theme, 'textMuted');
+
+  return {
+    textPrimary: themeColorOrFallback(textPrimaryFromTheme, isDark, DARK_TEXT_PRIMARY, LIGHT_TEXT_PRIMARY),
+    textMuted: themeColorOrFallback(textMutedFromTheme, isDark, DARK_TEXT_MUTED, LIGHT_TEXT_MUTED),
+    backgroundColor: backgroundForSheet(isDark),
+    borderColor: borderForSheet(isDark),
+    inputBackground: inputBackgroundForSheet(isDark),
+  };
+}
+
+/**
+ * Empty or whitespace-only drafts cannot be added.
+ * @param {string} draft
+ * @returns {boolean}
+ */
+function hasPasteDraftText(draft) {
+  if (!draft) return false;
+  return Boolean(String(draft).trim());
+}
+
+function confirmButtonOpacity(canConfirmPaste) {
+  if (canConfirmPaste) return ENABLED_CONFIRM_OPACITY;
+  return DISABLED_CONFIRM_OPACITY;
+}
+
+function keyboardAvoidBehaviorForPlatform() {
+  if (Platform.OS === PLATFORM_IOS) return IOS_KEYBOARD_BEHAVIOR;
+  return undefined;
+}
+
+function focusPasteField(inputRef) {
+  const input = inputRef.current;
+  if (!input) return;
+  if (typeof input.focus !== 'function') return;
+  input.focus();
+}
+
+function sendPastedDraft(onConfirm, draft) {
+  if (!onConfirm) return;
+  onConfirm(draft);
+}
+
+/**
+ * Cancel + confirm row at the bottom of the paste sheet.
+ * @param {{ sheetColors: object, canConfirmPaste: boolean, onClose: Function, onConfirmDraft: Function }} props
+ */
+function PasteSheetActions({ sheetColors, canConfirmPaste, onClose, onConfirmDraft }) {
+  const confirmOpacity = confirmButtonOpacity(canConfirmPaste);
+
+  return (
+    <View style={styles.actionsRow}>
+      <TouchableOpacity
+        onPress={onClose}
+        style={[styles.cancelButton, { borderColor: sheetColors.borderColor }]}
+      >
+        <Text style={[styles.cancelLabel, { color: sheetColors.textPrimary }]}>{CANCEL_LABEL}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onConfirmDraft}
+        disabled={!canConfirmPaste}
+        style={[styles.confirmButton, { opacity: confirmOpacity }]}
+      >
+        <Text style={styles.confirmLabel}>{CONFIRM_LABEL}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Dedicated paste surface — avoids stale Simulator clipboard reads.
+ * @param {{ visible: boolean, onClose: Function, onConfirm?: Function, t?: object, isDark?: boolean }} props
  */
 export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark = true }) {
   const [draft, setDraft] = useState('');
@@ -30,86 +160,117 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark 
   useEffect(() => {
     if (!visible) {
       setDraft('');
-      return;
+      return undefined;
     }
-    const tmr = setTimeout(() => inputRef.current?.focus?.(), 120);
-    return () => clearTimeout(tmr);
+    const focusTimeoutId = setTimeout(() => focusPasteField(inputRef), FOCUS_AFTER_OPEN_MS);
+    return () => clearTimeout(focusTimeoutId);
   }, [visible]);
 
-  const textPrimary = t?.textPrimary || (isDark ? '#FFFFFF' : '#0A0A0F');
-  const textMuted = t?.textMuted || (isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)');
-  const bg = isDark ? '#141418' : '#FFFFFF';
-  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)';
+  const theme = t;
+  const sheetColors = pasteSheetColors(theme, isDark);
+  const canConfirmPaste = hasPasteDraftText(draft);
+  const keyboardAvoidBehavior = keyboardAvoidBehaviorForPlatform();
+
+  function handleConfirmPaste() {
+    sendPastedDraft(onConfirm, draft);
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} onPress={onClose} />
+      <Pressable style={styles.scrim} onPress={onClose} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{
-          backgroundColor: bg,
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          padding: 20,
-          borderTopWidth: 1,
-          borderColor: border,
-        }}
+        behavior={keyboardAvoidBehavior}
+        style={[
+          styles.sheet,
+          {
+            backgroundColor: sheetColors.backgroundColor,
+            borderColor: sheetColors.borderColor,
+          },
+        ]}
       >
-        <Text style={{ fontSize: 17, fontWeight: '800', color: textPrimary, marginBottom: 6 }}>
-          Paste text
-        </Text>
-        <Text style={{ fontSize: 13, color: textMuted, marginBottom: 14 }}>
-          Copy on your Mac, then paste here (⌘V).
+        <Text style={[styles.sheetTitle, { color: sheetColors.textPrimary }]}>{SHEET_TITLE}</Text>
+        <Text style={[styles.sheetHint, { color: sheetColors.textMuted }]}>
+          {SHEET_HINT}
         </Text>
         <TextInput
           ref={inputRef}
           value={draft}
           onChangeText={setDraft}
           multiline
-          placeholder="Paste your message…"
-          placeholderTextColor={textMuted}
-          style={{
-            minHeight: 100,
-            maxHeight: 180,
-            borderWidth: 1,
-            borderColor: border,
-            borderRadius: 14,
-            padding: 14,
-            color: textPrimary,
-            fontSize: 15,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-          }}
+          placeholder={DRAFT_PLACEHOLDER}
+          placeholderTextColor={sheetColors.textMuted}
+          style={[
+            styles.draftInput,
+            {
+              borderColor: sheetColors.borderColor,
+              color: sheetColors.textPrimary,
+              backgroundColor: sheetColors.inputBackground,
+            },
+          ]}
         />
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-          <TouchableOpacity
-            onPress={onClose}
-            style={{
-              flex: 1,
-              paddingVertical: 14,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: border,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: textPrimary, fontWeight: '700' }}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => onConfirm?.(draft)}
-            disabled={!String(draft || '').trim()}
-            style={{
-              flex: 1,
-              paddingVertical: 14,
-              borderRadius: 14,
-              backgroundColor: '#FF6B9D',
-              alignItems: 'center',
-              opacity: String(draft || '').trim() ? 1 : 0.45,
-            }}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Add to message</Text>
-          </TouchableOpacity>
-        </View>
+        <PasteSheetActions
+          sheetColors={sheetColors}
+          canConfirmPaste={canConfirmPaste}
+          onClose={onClose}
+          onConfirmDraft={handleConfirmPaste}
+        />
       </KeyboardAvoidingView>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  scrim: {
+    flex: 1,
+    backgroundColor: SCRIM_COLOR,
+  },
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    borderTopWidth: 1,
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  sheetHint: {
+    fontSize: 13,
+    marginBottom: 14,
+  },
+  draftInput: {
+    minHeight: 100,
+    maxHeight: 180,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    fontSize: 15,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  cancelLabel: {
+    fontWeight: '700',
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: CONFIRM_BUTTON_COLOR,
+    alignItems: 'center',
+  },
+  confirmLabel: {
+    color: CONFIRM_LABEL_COLOR,
+    fontWeight: '800',
+  },
+});

@@ -1,17 +1,8 @@
-/**
- * Trainer Messaging Screen
- *
- * Purpose: UI screen or component: Trainer Messaging Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: ChatWithTraineeScreen
- *
- * @file-header
- */
-/**
- * Trainer Messaging (Chat) Screen — new glass UI, existing Firebase and send flow.
- * Real-time via subscribeToMessages; send via trainerMessaging.sendMessage.
- */
+// ChatScreen.jsx
+//
+// One-on-one messaging thread between a trainer and a client (or two users).
+// Flow: open thread → load/create conversation → live messages → send text/photos/files.
+// Used by: trainer Messaging tab and client Messages. Export: ChatWithTraineeScreen.
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -64,7 +55,8 @@ import {
   REPORT_TYPES,
 } from '../block-and-report';
 
-// ── DESIGN TOKENS ─────────────────────────────────────────────
+// ===== NAMED CONSTANTS =====
+
 const DARK = {
   bg: ['#0a0a1a', '#1a0825', '#0d1117'],
   glass: 'rgba(255,255,255,0.05)',
@@ -94,19 +86,89 @@ const GRADIENT = {
   sentBubble: ['#C084FC', '#FF6B9D', '#F97316'],
   send: ['#FF6B9D', '#C084FC'],
 };
-/** Thread header accent rim (aligned with session / marketplace heroes). */
 
+// Manipulate here: relative-time thresholds for bubble timestamps.
+const MS_PER_MINUTE = 60000;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 1440;
+// Manipulate here: file-size display units (1024 bytes = 1 KB).
+const BYTES_PER_KB = 1024;
+// Manipulate here: typing-indicator poll + debounce before pulse / clear.
+const TYPING_STALE_TICK_MS = 400;
+const TYPING_PULSE_DELAY_MS = 450;
+const TYPING_STOP_DELAY_MS = 2800;
+// Manipulate here: delay before scrolling to newest message after a live update.
+const SCROLL_AFTER_MESSAGE_MS = 100;
+const USERS_COLLECTION = 'users';
+const ROLE_TRAINER = 'trainer';
+
+// ===== HELPER FUNCTIONS =====
+
+/** Pick the glass color set for dark or light mode. */
+function paletteForTheme(isDark) {
+  return isDark ? DARK : LIGHT;
+}
+
+/** Resolve the other person's uid from the trainer prop (object or string id). */
+function otherParticipantIdFromProp(trainerProp) {
+  if (trainerProp?.id) return trainerProp.id;
+  if (typeof trainerProp === 'string') return trainerProp;
+  return null;
+}
+
+/**
+ * Decide who is client vs trainer for getOrCreateConversation.
+ * Prefer ids already on the conversation row; otherwise use the signed-in user's role.
+ */
+async function resolveClientAndTrainerIds({ conversation, currentUserUid, otherParticipantId }) {
+  if (conversation?.clientId != null && conversation?.trainerId != null) {
+    return { clientId: conversation.clientId, trainerId: conversation.trainerId };
+  }
+  const userDoc = await getDoc(doc(db, USERS_COLLECTION, currentUserUid));
+  const signedInIsTrainer = userDoc.exists() && userDoc.data().role === ROLE_TRAINER;
+  if (signedInIsTrainer) {
+    return { clientId: otherParticipantId, trainerId: currentUserUid };
+  }
+  return { clientId: currentUserUid, trainerId: otherParticipantId };
+}
+
+/**
+ * Read users/{uid}.role and whether peerId is already on this trainer's client list.
+ */
+async function loadTrainerRoleAndClientFlag(currentUserUid, peerId) {
+  const userDoc = await getDoc(doc(db, USERS_COLLECTION, currentUserUid));
+  if (!userDoc.exists()) {
+    return { isTrainer: false, isAlreadyClient: false };
+  }
+  const userData = userDoc.data();
+  const isTrainer = userData.role === ROLE_TRAINER;
+  if (!isTrainer || !peerId) {
+    return { isTrainer, isAlreadyClient: false };
+  }
+  const clients = await getTrainerClients(currentUserUid);
+  const isAlreadyClient = clients.some((client) => client.id === peerId);
+  return { isTrainer, isAlreadyClient };
+}
+
+/**
+ * Turn a Firestore timestamp into a short "Just now" / "5m ago" label.
+ * @param {object|number|Date|null} timestamp
+ * @returns {string}
+ */
 function formatTimestamp(timestamp) {
   if (!timestamp) return '';
   try {
+    // vocab: toDate = Firestore Timestamp helper → JS Date
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     if (isNaN(date.getTime())) return '';
     const now = new Date();
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+    const diffMs = now - date;
+    const minutesAgo = Math.floor(diffMs / MS_PER_MINUTE);
+    if (minutesAgo < 1) return 'Just now';
+    if (minutesAgo < MINUTES_PER_HOUR) return `${minutesAgo}m ago`;
+    if (minutesAgo < MINUTES_PER_DAY) {
+      return `${Math.floor(minutesAgo / MINUTES_PER_HOUR)}h ago`;
+    }
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   } catch (e) {
     return '';
@@ -118,11 +180,11 @@ function formatTimestamp(timestamp) {
  * defaults to column. Pass row/padding via `contentWrapperStyle` (see BottomMenuBar.js).
  */
 const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
+  const palette = paletteForTheme(isDark);
   const cardStyle = {
-    backgroundColor: t.glass,
+    backgroundColor: palette.glass,
     borderWidth: 1,
-    borderColor: t.glassBorder,
+    borderColor: palette.glassBorder,
     borderRadius: 20,
     ...(Platform.OS === 'ios' && {
       shadowColor: '#FF6B9D',
@@ -147,7 +209,7 @@ const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
 };
 
 const PlainAvatar = ({ name, photoURL, size = 44, isDark }) => {
-  const initials = (name || '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  const initials = (name || '?').split(' ').map((word) => word[0]).join('').slice(0, 2).toUpperCase();
   const borderColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)';
   const fallbackBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
   const fallbackText = isDark ? '#FFFFFF' : '#1A1040';
@@ -187,15 +249,22 @@ const bubbleStyles = StyleSheet.create({
   attachmentDownload: { fontSize: 12, fontWeight: '600', color: '#C084FC', marginTop: 4 },
 });
 
+/**
+ * Human-readable file size for attachment bubbles.
+ * @param {number|null|undefined} bytes
+ * @returns {string}
+ */
 function formatFileSize(bytes) {
   if (bytes == null || bytes === 0) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < BYTES_PER_KB) return `${bytes} B`;
+  if (bytes < BYTES_PER_KB * BYTES_PER_KB) {
+    return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
+  }
+  return `${(bytes / (BYTES_PER_KB * BYTES_PER_KB)).toFixed(1)} MB`;
 }
 
 function ChatBubble({ message, isDark, onLongPress }) {
-  const t = isDark ? DARK : LIGHT;
+  const palette = paletteForTheme(isDark);
   const isImage = message.type === 'image';
   const isFile = message.type === 'file';
   const isText = !isImage && !isFile;
@@ -214,10 +283,10 @@ function ChatBubble({ message, isDark, onLongPress }) {
       );
     }
     if (isFile && message.fileUrl) {
-      const fileCardBg = message.sent ? 'rgba(0,0,0,0.2)' : t.msgReceivedBg;
-      const fileCardBorder = message.sent ? 'rgba(255,255,255,0.2)' : t.msgReceivedBorder;
-      const fileTextColor = message.sent ? '#ffffff' : t.textPrimary;
-      const fileMutedColor = message.sent ? 'rgba(255,255,255,0.6)' : t.msgTimestamp;
+      const fileCardBg = message.sent ? 'rgba(0,0,0,0.2)' : palette.msgReceivedBg;
+      const fileCardBorder = message.sent ? 'rgba(255,255,255,0.2)' : palette.msgReceivedBorder;
+      const fileTextColor = message.sent ? '#ffffff' : palette.textPrimary;
+      const fileMutedColor = message.sent ? 'rgba(255,255,255,0.6)' : palette.msgTimestamp;
       return (
         <TouchableOpacity
           activeOpacity={0.85}
@@ -236,7 +305,7 @@ function ChatBubble({ message, isDark, onLongPress }) {
         </TouchableOpacity>
       );
     }
-    return <Text style={[bubbleStyles.text, !message.sent && { color: t.textPrimary }]}>{message.text || ''}</Text>;
+    return <Text style={[bubbleStyles.text, !message.sent && { color: palette.textPrimary }]}>{message.text || ''}</Text>;
   };
 
   if (message.sent) {
@@ -246,7 +315,7 @@ function ChatBubble({ message, isDark, onLongPress }) {
           <LinearGradient colors={GRADIENT.sentBubble} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[bubbleStyles.sent, (isImage || isFile) ? { padding: 0, overflow: 'hidden' } : null]}>
             {renderContent()}
           </LinearGradient>
-          <Text style={[bubbleStyles.timestamp, { color: t.msgTimestamp, textAlign: 'right' }]}>{message.timestamp}</Text>
+          <Text style={[bubbleStyles.timestamp, { color: palette.msgTimestamp, textAlign: 'right' }]}>{message.timestamp}</Text>
         </View>
       </View>
     );
@@ -260,10 +329,10 @@ function ChatBubble({ message, isDark, onLongPress }) {
         style={{ maxWidth: '75%' }}
         accessibilityHint="Long press to report this message"
       >
-        <View style={[bubbleStyles.received, { backgroundColor: t.msgReceivedBg, borderColor: t.msgReceivedBorder }, (isImage || isFile) ? { padding: 0, overflow: 'hidden' } : null]}>
+        <View style={[bubbleStyles.received, { backgroundColor: palette.msgReceivedBg, borderColor: palette.msgReceivedBorder }, (isImage || isFile) ? { padding: 0, overflow: 'hidden' } : null]}>
           {renderContent()}
         </View>
-        <Text style={[bubbleStyles.timestamp, { color: t.msgTimestamp, textAlign: 'left' }]}>{message.timestamp}</Text>
+        <Text style={[bubbleStyles.timestamp, { color: palette.msgTimestamp, textAlign: 'left' }]}>{message.timestamp}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -365,13 +434,19 @@ const chatStyles = StyleSheet.create({
   clientBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 });
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Live chat thread UI for one trainer↔client conversation.
+ * @param {object} props
+ */
 export default function ChatWithTraineeScreen({ trainer, conversation, onClose, onProfilePress, onSettingsPress, embedInLayout }) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
   // Parent shell hides BottomMenuBar on threads — only reserve safe area on the composer.
   const embedBottomPad = embedInLayout ? Math.max(insets.bottom, 12) : 0;
-  const t = isDark ? DARK : LIGHT;
+  const palette = paletteForTheme(isDark);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -451,58 +526,44 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         remoteTypingPulseMsRef.current = 0;
         setRemoteTyping(false);
       }
-    }, 400);
+    }, TYPING_STALE_TICK_MS);
     return () => {
       unsub();
       clearInterval(tick);
     };
   }, [conversationId, currentUser?.uid]);
 
+  // 1. Are we the trainer, and is this peer already on our client list?
   const checkTrainerRole = async () => {
     if (!currentUser || !db) return;
     try {
-      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setIsTrainer(userData.role === 'trainer');
-        if (userData.role === 'trainer' && trainer?.id) {
-          const clients = await getTrainerClients(currentUser.uid);
-          setIsAlreadyClient(clients.some((c) => c.id === trainer.id));
-        }
-      }
+      const flags = await loadTrainerRoleAndClientFlag(currentUser.uid, trainer?.id);
+      setIsTrainer(flags.isTrainer);
+      setIsAlreadyClient(flags.isAlreadyClient);
     } catch (error) {
       console.error('Error checking trainer role:', error);
     }
   };
 
   const loadTrainerData = async () => {
-    const otherId = trainer?.id ?? (typeof trainer === 'string' ? trainer : null);
+    const otherId = otherParticipantIdFromProp(trainer);
     if (!otherId) return;
     const data = await getUserData(otherId);
     setTrainerData(data);
   };
 
+  // 2. Create or reuse the conversation, then subscribe to live messages.
   const initializeConversation = async () => {
     try {
       setLoading(true);
-      const otherId = trainer?.id ?? (typeof trainer === 'string' ? trainer : null);
+      const otherId = otherParticipantIdFromProp(trainer);
       if (!otherId) throw new Error('Other participant information missing');
 
-      let clientId, trainerId;
-      if (conversation?.clientId != null && conversation?.trainerId != null) {
-        clientId = conversation.clientId;
-        trainerId = conversation.trainerId;
-      } else {
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        const isUserTrainer = userDoc.exists() && userDoc.data().role === 'trainer';
-        if (isUserTrainer) {
-          clientId = otherId;
-          trainerId = currentUser.uid;
-        } else {
-          clientId = currentUser.uid;
-          trainerId = otherId;
-        }
-      }
+      const { clientId, trainerId } = await resolveClientAndTrainerIds({
+        conversation,
+        currentUserUid: currentUser.uid,
+        otherParticipantId: otherId,
+      });
 
       const convId = conversation?.id || await getOrCreateConversation(clientId, trainerId);
       if (!convId) throw new Error('Failed to create conversation');
@@ -514,7 +575,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         oldestTimestampRef.current =
           meta?.oldestTimestamp ?? (newMessages.length ? newMessages[0].timestamp : null);
         markMessagesAsRead(convId, currentUser.uid);
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), SCROLL_AFTER_MESSAGE_MS);
       });
       return () => unsubscribe();
     } catch (error) {
@@ -535,10 +596,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     }
     typingPulseTimerRef.current = setTimeout(() => {
       pulseConversationTyping(conversationId, currentUser.uid);
-    }, 450);
+    }, TYPING_PULSE_DELAY_MS);
     typingStopTimerRef.current = setTimeout(() => {
       clearMyConversationTyping(conversationId, currentUser.uid);
-    }, 2800);
+    }, TYPING_STOP_DELAY_MS);
   };
 
   const handleSendMessage = async () => {
@@ -686,7 +747,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   };
 
   const displayName = trainerData?.name || trainer?.name || 'User';
-  const peerUid = trainer?.id ?? (typeof trainer === 'string' ? trainer : null);
+  const peerUid = otherParticipantIdFromProp(trainer);
 
   const runReport = (type, extra = {}) => {
     if (!currentUser?.uid || !peerUid) return;
@@ -751,7 +812,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <LinearGradient colors={t.bg} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={palette.bg} style={StyleSheet.absoluteFill} />
         <ActivityIndicator size="large" color="#C084FC" />
       </View>
     );
@@ -770,7 +831,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         <PlainAvatar name={displayName} photoURL={trainerData?.photoURL} size={48} isDark={isDark} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }} pointerEvents="box-none">
-        <Text style={[chatStyles.headerName, { color: t.textPrimary }]} numberOfLines={1}>
+        <Text style={[chatStyles.headerName, { color: palette.textPrimary }]} numberOfLines={1}>
           {displayName}
         </Text>
         <View
@@ -780,7 +841,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
           ]}
         >
           <View style={[chatStyles.onlineDot, { backgroundColor: statusDot }]} />
-          <Text style={[chatStyles.onlineLabel, { color: t.textMuted }]}>{statusOnline ? 'Online now' : 'Offline'}</Text>
+          <Text style={[chatStyles.onlineLabel, { color: palette.textMuted }]}>{statusOnline ? 'Online now' : 'Offline'}</Text>
         </View>
       </View>
     </>
@@ -828,7 +889,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
               ]}
             >
               <Ionicons name="checkmark-circle" size={15} color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.45)'} />
-              <Text style={[chatStyles.clientBadgeText, { color: t.textMuted }]}>Client</Text>
+              <Text style={[chatStyles.clientBadgeText, { color: palette.textMuted }]}>Client</Text>
             </View>
           )}
           {peerUid ? (
@@ -844,7 +905,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
               ]}
             >
               <View style={chatStyles.closeBtnInner}>
-                <Ionicons name="ellipsis-horizontal" size={16} color={t.textPrimary} />
+                <Ionicons name="ellipsis-horizontal" size={16} color={palette.textPrimary} />
               </View>
             </TouchableOpacity>
           ) : null}
@@ -860,7 +921,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
             ]}
           >
             <View style={chatStyles.closeBtnInner}>
-              <Text style={{ color: t.textPrimary, fontSize: 13, fontWeight: '800' }}>Close</Text>
+              <Text style={{ color: palette.textPrimary, fontSize: 13, fontWeight: '800' }}>Close</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -884,7 +945,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         {messagesForBubbles.length === 0 ? (
           <View style={{ paddingVertical: 48, alignItems: 'center' }}>
             <Text style={{ fontSize: 48, marginBottom: 16 }}>💬</Text>
-            <Text style={{ color: t.textMuted, fontSize: 16, textAlign: 'center' }}>Start a conversation with {displayName}</Text>
+            <Text style={{ color: palette.textMuted, fontSize: 16, textAlign: 'center' }}>Start a conversation with {displayName}</Text>
           </View>
         ) : (
           <>
@@ -919,7 +980,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
                 {loadingEarlier ? (
                   <ActivityIndicator size="small" color="#C084FC" />
                 ) : (
-                  <Text style={{ color: t.textMuted, fontSize: 13, fontWeight: '700' }}>Load earlier messages</Text>
+                  <Text style={{ color: palette.textMuted, fontSize: 13, fontWeight: '700' }}>Load earlier messages</Text>
                 )}
               </TouchableOpacity>
             ) : null}
@@ -947,7 +1008,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
                   contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }}
                 >
                   <ActivityIndicator size="small" color="#C084FC" />
-                  <Text style={{ color: t.textPrimary, fontSize: 13 }} numberOfLines={1}>{uploadingFileName}</Text>
+                  <Text style={{ color: palette.textPrimary, fontSize: 13 }} numberOfLines={1}>{uploadingFileName}</Text>
                 </GlassCard>
               </View>
             )}
@@ -957,11 +1018,11 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
 
       {remoteTyping ? (
         <View style={chatStyles.typingStrip}>
-          <View style={[chatStyles.typingBubble, { backgroundColor: t.msgReceivedBg, borderColor: t.msgReceivedBorder }]}>
-            <Text style={[chatStyles.typingText, { color: t.textMuted }]} numberOfLines={1}>
+          <View style={[chatStyles.typingBubble, { backgroundColor: palette.msgReceivedBg, borderColor: palette.msgReceivedBorder }]}>
+            <Text style={[chatStyles.typingText, { color: palette.textMuted }]} numberOfLines={1}>
               {displayName} is typing
             </Text>
-            <Text style={[chatStyles.typingDots, { color: t.textMuted }]}> •••</Text>
+            <Text style={[chatStyles.typingDots, { color: palette.textMuted }]}> •••</Text>
           </View>
         </View>
       ) : null}
@@ -980,10 +1041,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       <View style={[chatStyles.inputBarOuter, { paddingBottom: 16 + embedBottomPad }]}>
         <GlassCard isDark={isDark} contentWrapperStyle={chatStyles.inputBarInner}>
           <TouchableOpacity onPress={showAttachmentOptions} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="attach-outline" size={22} color={t.inputPlaceholder} />
+            <Ionicons name="attach-outline" size={22} color={palette.inputPlaceholder} />
           </TouchableOpacity>
           <TextInput
-            style={[chatStyles.input, { color: t.textPrimary }]}
+            style={[chatStyles.input, { color: palette.textPrimary }]}
             value={messageText}
             onChangeText={(txt) => {
               setMessageText(txt);
@@ -997,7 +1058,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
               }
             }}
             placeholder="Type a message..."
-            placeholderTextColor={t.inputPlaceholder}
+            placeholderTextColor={palette.inputPlaceholder}
             returnKeyType="send"
             onSubmitEditing={handleSendMessage}
             multiline={false}
@@ -1014,7 +1075,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   );
 
   const inner = (
-    <LinearGradient colors={t.bg} style={{ flex: 1 }}>
+    <LinearGradient colors={palette.bg} style={{ flex: 1 }}>
       {chatBody}
     </LinearGradient>
   );

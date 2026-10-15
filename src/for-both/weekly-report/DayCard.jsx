@@ -1,3 +1,7 @@
+// One day’s card on the weekly report: workout, food, wellness chips, then notes.
+// Flow: format the date → pick which chips to show → expand if they tap the card.
+// Used by WeeklyReportScreen for both trainer and client views.
+
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,8 +12,14 @@ import { ColorBorder } from './ColorBorder';
 import { StatIcon } from './StatIcon';
 import { HOME_STAT_WORKOUT_GRADIENT } from '../../look-and-feel/homeStatColors';
 
+// ===== NAMED CONSTANTS =====
+
+const STEPS_THOUSAND = 1000;
+const SHORT_SUMMARY_MAX_CHARS = 48;
+const PREVIEW_ICON_SIZE = 24;
+
 const CARD_BORDER = GRADIENTS.g4;
-const PREVIEW_ICON = { size: 48, imageSize: 24 };
+const PREVIEW_ICON = { size: 48, imageSize: PREVIEW_ICON_SIZE };
 const SECTION_ICON = { size: 44, imageSize: 22 };
 
 const SECTION_THEMES = {
@@ -21,6 +31,8 @@ const SECTION_THEMES = {
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// ===== HELPER FUNCTIONS =====
 
 function fmtDate(d) {
   const parts = d.split('-').map(Number);
@@ -34,14 +46,14 @@ function isRestWorkout(workouts = []) {
 
 function formatSteps(steps) {
   if (!steps) return '0';
-  if (steps >= 1000) return `${(steps / 1000).toFixed(1)}k`;
+  if (steps >= STEPS_THOUSAND) return `${(steps / STEPS_THOUSAND).toFixed(1)}k`;
   return String(steps);
 }
 
 function shouldShowDaySummary(day, wellnessCount) {
   const fb = String(day.summaryFallback || '').trim();
   if (!fb) return false;
-  if (wellnessCount > 0 && fb.length < 48 && /^(sleep|water|steps|energy|mood|stress|soreness|weight|body fat|workout)/i.test(fb)) {
+  if (wellnessCount > 0 && fb.length < SHORT_SUMMARY_MAX_CHARS && /^(sleep|water|steps|energy|mood|stress|soreness|weight|body fat|workout)/i.test(fb)) {
     return false;
   }
   return true;
@@ -138,6 +150,12 @@ function NotePanel({ themeKey, text }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * One day’s weekly-report card. Expand to see the full notes.
+ * @param {{ day: object, index?: number }} props
+ */
 export function DayCard({ day, index }) {
   const { colors, mode } = useTheme();
   const [expanded, setExpanded] = useState(false);

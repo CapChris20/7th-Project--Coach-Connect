@@ -36,7 +36,10 @@ async function loadSavedThemeMode(setThemeMode) {
  * @returns {boolean}
  */
 function isDarkForMode(themeMode, systemColorScheme) {
-  if (themeMode === SYSTEM_MODE) return systemColorScheme === DARK_MODE;
+  if (themeMode === SYSTEM_MODE) {
+    const phoneIsDark = systemColorScheme === DARK_MODE;
+    return phoneIsDark;
+  }
   return themeMode === DARK_MODE;
 }
 

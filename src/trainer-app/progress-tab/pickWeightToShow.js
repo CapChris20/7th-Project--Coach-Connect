@@ -1,8 +1,11 @@
 // Decides which weight the trainer Progress tab shows for a client.
-// Flow: today's log wins, then the newest log, then the profile. A second helper picks the "was" number.
-// Used by: the trainer progress hero card. The sources disagree, so the order lives in one place.
+// Flow: try today's log → try newest log → fall back to profile. A second helper picks the "was" number.
+// Used by: the trainer progress hero card. Sources disagree, so the order lives in one place.
 
 // ===== NAMED CONSTANTS =====
+
+// Empty string is treated like "no value" even though Number('') is 0.
+const EMPTY_WEIGHT_TEXT = '';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -13,10 +16,26 @@
  */
 function parseFiniteWeight(value) {
   // vocab: == null is true for both null and undefined.
-  if (value == null || value === '') return null;
+  const isMissing = value == null || value === EMPTY_WEIGHT_TEXT;
+  if (isMissing) return null;
+
   const numericWeight = Number(value);
-  if (!Number.isFinite(numericWeight)) return null;
+  const isRealNumber = Number.isFinite(numericWeight);
+  if (!isRealNumber) return null;
   return numericWeight;
+}
+
+/**
+ * Walk a priority list and return the first weight that parses.
+ * @param {unknown[]} weightCandidates
+ * @returns {number|null}
+ */
+function firstFiniteWeightAmong(weightCandidates) {
+  for (let i = 0; i < weightCandidates.length; i += 1) {
+    const parsedWeight = parseFiniteWeight(weightCandidates[i]);
+    if (parsedWeight != null) return parsedWeight;
+  }
+  return null;
 }
 
 // ===== MAIN FUNCTION =====
@@ -31,11 +50,14 @@ export function resolveTrainerProgressCurrentWeight({
   latestLoggedWeight,
   profileWeight,
 } = {}) {
-  const todayWeight = parseFiniteWeight(todayDashboardWeight);
-  if (todayWeight != null) return todayWeight;
-  const loggedWeight = parseFiniteWeight(latestLoggedWeight);
-  if (loggedWeight != null) return loggedWeight;
-  return parseFiniteWeight(profileWeight);
+  // 1. Prefer the number the client logged today on the dashboard.
+  // 2. Else the newest historical log.
+  // 3. Else whatever is on the profile (often stale).
+  return firstFiniteWeightAmong([
+    todayDashboardWeight,
+    latestLoggedWeight,
+    profileWeight,
+  ]);
 }
 
 /**
@@ -49,10 +71,11 @@ export function resolveTrainerProgressBeforeWeight({
   crmStartingWeight,
   crmWeight,
 } = {}) {
-  return (
-    parseFiniteWeight(startingWeight)
-    ?? parseFiniteWeight(crmStartingWeight)
-    ?? parseFiniteWeight(profileWeight)
-    ?? parseFiniteWeight(crmWeight)
-  );
+  // vocab/symbol: ?? = use the right side only when the left is null or undefined (0 is kept).
+  return firstFiniteWeightAmong([
+    startingWeight,
+    crmStartingWeight,
+    profileWeight,
+    crmWeight,
+  ]);
 }

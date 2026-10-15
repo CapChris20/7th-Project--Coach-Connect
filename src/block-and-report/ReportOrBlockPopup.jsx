@@ -24,14 +24,20 @@ const REASON_PROMPT = 'Choose a reason';
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * @returns {boolean}
+ */
+function runningOnIos() {
+  return Platform.OS === IOS_PLATFORM;
+}
+
+/**
  * The next alert has to wait until this sheet is gone, or the two native menus stack.
  * @param {Function} menuCallback
  * @returns {void}
  */
 function runAfterMenuCloses(menuCallback) {
   if (typeof menuCallback !== 'function') return;
-  const isIos = Platform.OS === IOS_PLATFORM;
-  const delayMs = isIos ? IOS_MENU_DELAY_MS : OTHER_PLATFORM_MENU_DELAY_MS;
+  const delayMs = runningOnIos() ? IOS_MENU_DELAY_MS : OTHER_PLATFORM_MENU_DELAY_MS;
   setTimeout(() => menuCallback(), delayMs);
 }
 
@@ -46,6 +52,15 @@ function reasonIdForMenuIndex(selectedIndex) {
   return reason ? reason.id : null;
 }
 
+/**
+ * @param {string|undefined} peerName
+ * @returns {string}
+ */
+function safetyMenuTitle(peerName) {
+  if (peerName) return `Safety — ${peerName}`;
+  return SAFETY_TITLE;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -53,11 +68,10 @@ function reasonIdForMenuIndex(selectedIndex) {
  * @returns {void}
  */
 export function showSafetyPeerMenu({ peerName, onReport, onBlock }) {
-  const title = peerName ? `Safety — ${peerName}` : SAFETY_TITLE;
+  const title = safetyMenuTitle(peerName);
   const options = [CANCEL_LABEL, REPORT_LABEL, BLOCK_LABEL];
-  const isIos = Platform.OS === IOS_PLATFORM;
 
-  if (isIos) {
+  if (runningOnIos()) {
     ActionSheetIOS.showActionSheetWithOptions(
       { title, options, cancelButtonIndex: CANCEL_INDEX, destructiveButtonIndex: BLOCK_INDEX },
       (selectedIndex) => {
@@ -81,9 +95,8 @@ export function showSafetyPeerMenu({ peerName, onReport, onBlock }) {
  */
 export function showReportReasonPicker({ onPick, title = REASON_TITLE }) {
   const reasonLabels = REPORT_REASONS.map((reason) => reason.label);
-  const isIos = Platform.OS === IOS_PLATFORM;
 
-  if (isIos) {
+  if (runningOnIos()) {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title,

@@ -31,12 +31,13 @@ export function unreadAlertCount(userId) {
     rebuildUnreadIndexForUser(userId).catch(() => {});
 
     const unsubscribe = subscribeToUnreadCount(userId, (count) => {
-      setUnreadCount(Number(count) || EMPTY_UNREAD_COUNT);
+      const nextCount = Number(count) || EMPTY_UNREAD_COUNT;
+      setUnreadCount(nextCount);
     });
 
     // vocab: unsubscribe may be missing if the subscribe call bailed out early.
     return () => {
-      unsubscribe?.();
+      if (unsubscribe) unsubscribe();
     };
   }, [userId]);
 

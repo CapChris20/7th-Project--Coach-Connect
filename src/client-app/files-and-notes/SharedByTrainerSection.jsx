@@ -1,77 +1,150 @@
-/**
- * Trainer Shared Section
- *
- * Purpose: UI screen or component: Trainer Shared Section. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: SharedByTrainerSection
- *
- * @file-header
- */
+// "Trainer shared" accordion on the client's files screen: files grouped by type, unread badge, optional detail sheet.
+// Flow: keep trainer-authored items → bucket by file type → newest first → tap a category to expand FileCards.
+// Used by: the client files screen. Opening a new file marks it read, then calls onOpenItem.
+
 import React, { useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { FileCard } from './FileCard';
 import { getFileTypeFromItem } from '../../helpers/fileSizeAndDateText';
 
+// ===== NAMED CONSTANTS =====
+
+const ADDED_BY_TRAINER = 'trainer';
+const DOCUMENT_TYPE = 'document';
+const DEFAULT_EXPANDED_CATEGORY = 'documents';
+const EPOCH = 0;
+
 const CATEGORIES = [
-  { id: 'documents', label: 'Documents', color: '#3B82F6', match: (t) => t === 'document' },
-  { id: 'spreadsheets', label: 'Spreadsheets', color: '#10B981', match: (t) => t === 'spreadsheet' },
-  { id: 'pdfs', label: 'PDFs', color: '#EF4444', match: (t) => t === 'pdf' },
-  { id: 'images', label: 'Images', color: '#06B6D4', match: (t) => t === 'image' },
-  { id: 'videos', label: 'Videos', color: '#A855F7', match: (t) => t === 'video' },
-  { id: 'other', label: 'Other', color: '#9CA3AF', match: (t) => t === 'file' },
+  { id: 'documents', label: 'Documents', color: '#3B82F6', match: (fileType) => fileType === 'document' },
+  { id: 'spreadsheets', label: 'Spreadsheets', color: '#10B981', match: (fileType) => fileType === 'spreadsheet' },
+  { id: 'pdfs', label: 'PDFs', color: '#EF4444', match: (fileType) => fileType === 'pdf' },
+  { id: 'images', label: 'Images', color: '#06B6D4', match: (fileType) => fileType === 'image' },
+  { id: 'videos', label: 'Videos', color: '#A855F7', match: (fileType) => fileType === 'video' },
+  { id: 'other', label: 'Other', color: '#9CA3AF', match: (fileType) => fileType === 'file' },
 ];
 
+const FALLBACK_CATEGORY = CATEGORIES[CATEGORIES.length - 1];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {boolean} isDark
+ */
+function sharedSectionTheme(isDark) {
+  if (isDark) {
+    return {
+      card: '#141419',
+      text: '#FFFFFF',
+      text60: 'rgba(255,255,255,0.6)',
+      text50: 'rgba(255,255,255,0.5)',
+      border: 'rgba(255,255,255,0.10)',
+      inputBg: 'rgba(255,255,255,0.08)',
+    };
+  }
+  return {
+    card: '#F8F8FB',
+    text: '#0A0A0F',
+    text60: 'rgba(10,10,15,0.6)',
+    text50: 'rgba(10,10,15,0.5)',
+    border: 'rgba(10,10,15,0.10)',
+    inputBg: 'rgba(10,10,15,0.05)',
+  };
+}
+
+/**
+ * Trainer-authored files, plus documents that carry a trainerId (older docs may omit addedBy).
+ * @param {object} item
+ * @returns {boolean}
+ */
+function isTrainerSharedItem(item) {
+  if (item?.addedBy === ADDED_BY_TRAINER) return true;
+  return item?.type === DOCUMENT_TYPE && item?.trainerId;
+}
+
+/**
+ * createdAt arrives as a Date, a Firestore Timestamp, or a cached string.
+ * @param {object} item
+ * @returns {Date}
+ */
+function itemCreatedAtDate(item) {
+  if (item?.createdAt instanceof Date) return item.createdAt;
+  return item?.createdAt?.toDate?.() || new Date(item?.createdAt || EPOCH);
+}
+
+/**
+ * @param {object[]} files
+ */
+function sortNewestFirst(files) {
+  files.sort((leftFile, rightFile) => itemCreatedAtDate(rightFile) - itemCreatedAtDate(leftFile));
+}
+
+/**
+ * One bucket per category id. Unknown types fall into "Other".
+ * @param {object[]} trainerItems
+ * @returns {object}
+ */
+function groupTrainerItemsByCategory(trainerItems) {
+  const grouped = {};
+  for (const category of CATEGORIES) grouped[category.id] = [];
+
+  for (const item of trainerItems) {
+    const fileType = getFileTypeFromItem(item);
+    const category = CATEGORIES.find((entry) => entry.match(fileType)) || FALLBACK_CATEGORY;
+    grouped[category.id].push(item);
+  }
+
+  for (const categoryId of Object.keys(grouped)) {
+    sortNewestFirst(grouped[categoryId]);
+  }
+  return grouped;
+}
+
+/**
+ * Strict === false so items with no isRead field (legacy) do not light up as "new".
+ * @param {object[]} trainerItems
+ * @returns {number}
+ */
+function countUnreadSharedItems(trainerItems) {
+  return trainerItems.filter((item) => item?.isRead === false).length;
+}
+
+/**
+ * Mark read first (best-effort), then open. A failed write still opens the file.
+ * @param {object} item
+ * @param {Function} [onMarkRead]
+ * @param {Function} [onOpenItem]
+ */
+async function openSharedItem(item, onMarkRead, onOpenItem) {
+  if (item?.isRead === false) {
+    try {
+      await onMarkRead?.(item);
+    } catch {
+      // mark-read is best-effort
+    }
+  }
+  onOpenItem?.(item);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Accordion of files the trainer shared with this client.
+ * vocab: useState remembers which category is expanded (starts on Documents).
+ * @param {{ items: Array, isDark?: boolean, onOpenItem?: Function, onDownloadItem?: Function, onMarkRead?: Function }} props
+ */
 export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDownloadItem, onMarkRead }) {
-  const [expanded, setExpanded] = useState('documents');
+  const [expanded, setExpanded] = useState(DEFAULT_EXPANDED_CATEGORY);
   const [detail, setDetail] = useState(null);
-  const theme = isDark
-    ? {
-        card: '#141419',
-        text: '#FFFFFF',
-        text60: 'rgba(255,255,255,0.6)',
-        text50: 'rgba(255,255,255,0.5)',
-        border: 'rgba(255,255,255,0.10)',
-        inputBg: 'rgba(255,255,255,0.08)',
-      }
-    : {
-        card: '#F8F8FB',
-        text: '#0A0A0F',
-        text60: 'rgba(10,10,15,0.6)',
-        text50: 'rgba(10,10,15,0.5)',
-        border: 'rgba(10,10,15,0.10)',
-        inputBg: 'rgba(10,10,15,0.05)',
-      };
+  const theme = sharedSectionTheme(isDark);
 
   const trainerItems = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
-    return list.filter((x) => x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId));
+    return list.filter(isTrainerSharedItem);
   }, [items]);
 
-  const grouped = useMemo(() => {
-    const by = {};
-    for (const cat of CATEGORIES) by[cat.id] = [];
-    for (const x of trainerItems) {
-      const t = getFileTypeFromItem(x);
-      const cat = CATEGORIES.find((c) => c.match(t)) || CATEGORIES[CATEGORIES.length - 1];
-      by[cat.id].push(x);
-    }
-    // newest first
-    for (const k of Object.keys(by)) {
-      by[k].sort((a, b) => {
-        const da = a?.createdAt instanceof Date ? a.createdAt : a?.createdAt?.toDate?.() || new Date(a?.createdAt || 0);
-        const db = b?.createdAt instanceof Date ? b.createdAt : b?.createdAt?.toDate?.() || new Date(b?.createdAt || 0);
-        return db - da;
-      });
-    }
-    return by;
-  }, [trainerItems]);
-
-  const unreadCount = useMemo(
-    () => trainerItems.filter((x) => x?.isRead === false).length,
-    [trainerItems],
-  );
+  const grouped = useMemo(() => groupTrainerItemsByCategory(trainerItems), [trainerItems]);
+  const unreadCount = useMemo(() => countUnreadSharedItems(trainerItems), [trainerItems]);
 
   return (
     <View style={{ marginBottom: 26 }}>
@@ -107,16 +180,16 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
           gap: 12,
         }}
       >
-        {CATEGORIES.map((cat) => {
-          const files = grouped[cat.id] || [];
+        {CATEGORIES.map((category) => {
+          const files = grouped[category.id] || [];
           if (!files.length) return null;
-          const isExpanded = expanded === cat.id;
-          const newCount = files.filter((x) => x?.isRead === false).length;
+          const isExpanded = expanded === category.id;
+          const newCount = files.filter((item) => item?.isRead === false).length;
 
           return (
-            <View key={cat.id} style={{ gap: 10 }}>
+            <View key={category.id} style={{ gap: 10 }}>
               <TouchableOpacity
-                onPress={() => setExpanded(isExpanded ? null : cat.id)}
+                onPress={() => setExpanded(isExpanded ? null : category.id)}
                 style={{
                   paddingHorizontal: 12,
                   paddingVertical: 12,
@@ -130,10 +203,10 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ width: 4, height: 22, borderRadius: 2, backgroundColor: cat.color }} />
+                  <View style={{ width: 4, height: 22, borderRadius: 2, backgroundColor: category.color }} />
                   <View>
                     <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>
-                      {cat.label}
+                      {category.label}
                     </Text>
                     <Text style={{ color: theme.text60, fontWeight: '700', fontSize: 12 }}>
                       {files.length} {files.length === 1 ? 'file' : 'files'}
@@ -141,7 +214,12 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
                     </Text>
                   </View>
                 </View>
-                <Feather name="chevron-right" size={20} color={theme.text60} style={{ transform: isExpanded ? [{ rotate: '90deg' }] : [] }} />
+                <Feather
+                  name="chevron-right"
+                  size={20}
+                  color={theme.text60}
+                  style={{ transform: isExpanded ? [{ rotate: '90deg' }] : [] }}
+                />
               </TouchableOpacity>
 
               {isExpanded && (
@@ -153,12 +231,7 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
                       isTrainerShared
                       isNew={item?.isRead === false}
                       isDark={isDark}
-                      onOpen={async () => {
-                        if (item?.isRead === false) {
-                          try { await onMarkRead?.(item); } catch (_) {}
-                        }
-                        onOpenItem?.(item);
-                      }}
+                      onOpen={() => openSharedItem(item, onMarkRead, onOpenItem)}
                       onDownload={onDownloadItem ? () => onDownloadItem(item) : undefined}
                     />
                   ))}
@@ -186,7 +259,6 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
         )}
       </View>
 
-      {/* Optional: lightweight detail modal for metadata/notes (keeps UX parity with your spec) */}
       <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'flex-end' }}>
           <View
@@ -230,9 +302,9 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
             </ScrollView>
             <TouchableOpacity
               onPress={() => {
-                const x = detail;
+                const selectedItem = detail;
                 setDetail(null);
-                onOpenItem?.(x);
+                onOpenItem?.(selectedItem);
               }}
               style={{
                 height: 52,
@@ -251,4 +323,3 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
     </View>
   );
 }
-

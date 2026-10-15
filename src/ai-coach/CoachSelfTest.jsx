@@ -1,3 +1,7 @@
+// Dev screen that runs canned prompts against the AI Coach and grades the replies.
+// Flow: load the 7-day snapshot → pick a tab → send each prompt → show pass / warn / fail.
+// Used from the trainer/dev tools. Not part of the client chat.
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -14,6 +18,8 @@ import { sendToAI } from '../ai-coach/conversation/sendMessageToCoach';
 import { shouldRouteToPerplexity } from './internet-lookup/internetLookupRules';
 import { TOOL_NAME_ALIASES } from '../ai-coach/coach-actions/carryOutAction';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
+
+// ===== NAMED CONSTANTS =====
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -85,177 +91,283 @@ const TOOL_EXPECTATIONS = {
   notifyTrainer: ['notifyTrainer'],
 };
 
-function truncate(text, max = 100) {
-  const s = String(text || '');
-  if (s.length <= max) return s;
-  return `${s.slice(0, max)}…`;
+const STATUS_PASS = 'pass';
+const STATUS_FAIL = 'fail';
+const STATUS_WARN = 'warn';
+const STATUS_ERROR = 'error';
+const TAB_CONTEXT = 'context';
+const TAB_TOOLS = 'tools';
+const TAB_PERPLEXITY = 'perplexity';
+const DEFAULT_TRAINER_NAME = 'Coach';
+const PREVIEW_MESSAGE_CHARS = 120;
+const MINIMUM_REPLY_CHARS = 10;
+// Manipulate here: pause between prompts so the suite does not hammer the coach API.
+const TEST_PAUSE_MS = 1000;
+const SIGN_IN_ERROR = 'Sign in to run tests';
+const CONTEXT_LOAD_ERROR = 'Failed to load context — check Firebase / server';
+const CONTEXT_MISSING_MESSAGE = 'Context not loaded';
+
+const STATUS_COLORS = {
+  [STATUS_PASS]: COLORS.green,
+  [STATUS_FAIL]: COLORS.red,
+  [STATUS_WARN]: COLORS.orange,
+};
+
+const STATUS_ICONS = {
+  [STATUS_PASS]: 'check-circle',
+  [STATUS_FAIL]: 'close-circle',
+  [STATUS_WARN]: 'alert-circle',
+};
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} text
+ * @param {number} [maxChars]
+ * @returns {string}
+ */
+function truncateText(text, maxChars = 100) {
+  const fullText = String(text || '');
+  if (fullText.length <= maxChars) return fullText;
+  return `${fullText.slice(0, maxChars)}…`;
 }
 
+/**
+ * @param {string} testName
+ * @returns {string[]}
+ */
+function expectedToolNames(testName) {
+  return TOOL_EXPECTATIONS[testName] || [TOOL_NAME_ALIASES[testName] || testName];
+}
+
+/**
+ * @param {string} testName
+ * @param {object} toolCall
+ * @returns {boolean}
+ */
 function toolMatchesExpectation(testName, toolCall) {
   if (!toolCall?.name) return false;
-  const expected = TOOL_EXPECTATIONS[testName] || [TOOL_NAME_ALIASES[testName] || testName];
+  const expected = expectedToolNames(testName);
   return expected.includes(toolCall.name);
 }
 
-export default function CoachSelfTest({
-  userId,
-  userProfile = {},
-  trainerName = 'Coach',
+/**
+ * Fail already stays fail. Otherwise take the milder next status (warn).
+ * @param {string} currentStatus
+ * @param {string} nextStatus
+ * @returns {string}
+ */
+function worseStatus(currentStatus, nextStatus) {
+  if (currentStatus === STATUS_FAIL) return STATUS_FAIL;
+  return nextStatus;
+}
+
+/**
+ * @param {object} testItem
+ * @returns {object}
+ */
+function missingContextResult(testItem) {
+  return {
+    ...testItem,
+    status: STATUS_ERROR,
+    message: CONTEXT_MISSING_MESSAGE,
+    validations: [CONTEXT_MISSING_MESSAGE],
+  };
+}
+
+/**
+ * @param {object} testItem
+ * @param {*} error
+ * @returns {object}
+ */
+function testErrorResult(testItem, error) {
+  return {
+    ...testItem,
+    status: STATUS_ERROR,
+    message: error?.message || String(error),
+    validations: [error?.message || String(error)],
+  };
+}
+
+/**
+ * @param {object} response
+ * @returns {{ status: string, validations: string[] }}
+ */
+function gradeReplyLengthAndSuccess(response) {
+  if (!response?.success) {
+    return { status: STATUS_FAIL, validations: [response?.error || 'API call failed'] };
+  }
+  if (!response.message || response.message.length < MINIMUM_REPLY_CHARS) {
+    return { status: STATUS_FAIL, validations: ['Response too short'] };
+  }
+  return { status: STATUS_PASS, validations: [] };
+}
+
+/**
+ * @param {string} testName
+ * @param {object} response
+ * @param {string} status
+ * @param {string[]} validations
+ * @returns {string}
+ */
+function addToolValidations(testName, response, status, validations) {
+  if (!response.toolCall) {
+    validations.push('No tool call detected (expected for tool tests)');
+    return worseStatus(status, STATUS_WARN);
+  }
+  if (!toolMatchesExpectation(testName, response.toolCall)) {
+    validations.push(
+      `Tool was ${response.toolCall.name}; expected one of: ${(TOOL_EXPECTATIONS[testName] || [testName]).join(', ')}`,
+    );
+    return worseStatus(status, STATUS_WARN);
+  }
+  return status;
+}
+
+/**
+ * @param {boolean} isPerplexityRoute
+ * @param {object} response
+ * @param {string} status
+ * @param {string[]} validations
+ * @returns {string}
+ */
+function addPerplexityValidations(isPerplexityRoute, response, status, validations) {
+  let nextStatus = status;
+  if (!isPerplexityRoute) {
+    nextStatus = worseStatus(nextStatus, STATUS_WARN);
+    validations.push('Perplexity route heuristic did not match prompt');
+  }
+  if (response.source !== 'perplexity' && response.searchedWeb !== true) {
+    nextStatus = worseStatus(nextStatus, STATUS_WARN);
+    validations.push(
+      `Expected Perplexity (source=perplexity); got source=${response.source || 'unknown'}`,
+    );
+  }
+  return nextStatus;
+}
+
+/**
+ * @param {object} testItem
+ * @param {object} response
+ * @param {boolean} isPerplexityRoute
+ * @param {string} activeTab
+ * @returns {object}
+ */
+function gradeOneTest(testItem, response, isPerplexityRoute, activeTab) {
+  const graded = gradeReplyLengthAndSuccess(response);
+  let status = graded.status;
+  const validations = graded.validations;
+
+  if (activeTab === TAB_TOOLS) {
+    status = addToolValidations(testItem.name, response, status, validations);
+  }
+  if (activeTab === TAB_PERPLEXITY) {
+    status = addPerplexityValidations(isPerplexityRoute, response, status, validations);
+  }
+
+  return {
+    ...testItem,
+    status,
+    message: truncateText(response.message, PREVIEW_MESSAGE_CHARS),
+    fullResponse: response.message,
+    toolCall: response.toolCall,
+    source: response.source,
+    searchedWeb: response.searchedWeb,
+    isPerplexityRoute,
+    validations,
+  };
+}
+
+/**
+ * @returns {Promise<void>}
+ */
+function pauseBetweenTests() {
+  return new Promise((resolve) => setTimeout(resolve, TEST_PAUSE_MS));
+}
+
+/**
+ * @param {string} status
+ * @returns {string}
+ */
+function statusColor(status) {
+  return STATUS_COLORS[status] || COLORS.textSecondary;
+}
+
+/**
+ * @param {string} status
+ * @returns {string}
+ */
+function statusIcon(status) {
+  return STATUS_ICONS[status] || 'help-circle';
+}
+
+/**
+ * @param {Array} testResults
+ * @returns {{ passCount: number, failCount: number, warnCount: number }}
+ */
+function countResultsByStatus(testResults) {
+  let passCount = 0;
+  let failCount = 0;
+  let warnCount = 0;
+  for (const result of testResults) {
+    if (result.status === STATUS_PASS) passCount += 1;
+    if (result.status === STATUS_FAIL || result.status === STATUS_ERROR) failCount += 1;
+    if (result.status === STATUS_WARN) warnCount += 1;
+  }
+  return { passCount, failCount, warnCount };
+}
+
+function LoadingContextLine({ contextLoading }) {
+  if (!contextLoading) return null;
+  return <Text style={styles.contextInfo}>Loading 7-day context…</Text>;
+}
+
+function ContextErrorLine({ contextError }) {
+  if (!contextError) return null;
+  return <Text style={styles.error}>{contextError}</Text>;
+}
+
+function LoadedContextLine({ context, contextLoading }) {
+  if (!context || contextLoading) return null;
+  const contextSummary = `Context: ${context.userName} · ${context.goal} · ${context.nutritionDaysLogged}/7 nutrition days`;
+  return <Text style={styles.contextInfo}>{contextSummary}</Text>;
+}
+
+function RunTestsLabel({ running, tabTestCount }) {
+  if (running) return <ActivityIndicator color={COLORS.textPrimary} />;
+  return (
+    <>
+      <MaterialCommunityIcons
+        name="play"
+        size={20}
+        color={COLORS.textPrimary}
+        style={{ marginRight: 8 }}
+      />
+      <Text style={styles.runButtonText}>Run {tabTestCount} tests</Text>
+    </>
+  );
+}
+
+function CoachSelfTestLayout({
+  testResults,
+  activeTab,
+  insets,
   onBack,
+  trainerName,
+  contextLoading,
+  contextError,
+  context,
+  loadContext,
+  setActiveTab,
+  setTestResults,
+  running,
+  runAllTests,
 }) {
-  const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState('context');
-  const [testResults, setTestResults] = useState([]);
-  const [running, setRunning] = useState(false);
-  const [context, setContext] = useState(null);
-  const [contextError, setContextError] = useState(null);
-  const [contextLoading, setContextLoading] = useState(true);
-
-  const loadContext = useCallback(async () => {
-    if (!userId) {
-      setContextError('Sign in to run tests');
-      setContextLoading(false);
-      return;
-    }
-    setContextLoading(true);
-    setContextError(null);
-    try {
-      const ctx = await loadCoachContext(userId, userProfile);
-      if (ctx) {
-        setContext(ctx);
-      } else {
-        setContextError('Failed to load context — check Firebase / server');
-      }
-    } catch (error) {
-      setContextError(error?.message || String(error));
-    } finally {
-      setContextLoading(false);
-    }
-  }, [userId, userProfile]);
-
-  useEffect(() => {
-    loadContext();
-  }, [loadContext]);
-
-  const runSingleTest = async (testItem) => {
-    try {
-      if (!context) {
-        return {
-          ...testItem,
-          status: 'error',
-          message: 'Context not loaded',
-          validations: ['Context not loaded'],
-        };
-      }
-
-      const isPerplexityRoute = shouldRouteToPerplexity(testItem.prompt);
-      const response = await sendToAI(testItem.prompt, context, userId, userProfile);
-
-      let status = 'pass';
-      const validations = [];
-
-      if (!response?.success) {
-        status = 'fail';
-        validations.push(response?.error || 'API call failed');
-      } else if (!response.message || response.message.length < 10) {
-        status = 'fail';
-        validations.push('Response too short');
-      }
-
-      if (activeTab === 'tools') {
-        if (!response.toolCall) {
-          status = status === 'fail' ? 'fail' : 'warn';
-          validations.push('No tool call detected (expected for tool tests)');
-        } else if (!toolMatchesExpectation(testItem.name, response.toolCall)) {
-          status = status === 'fail' ? 'fail' : 'warn';
-          validations.push(
-            `Tool was ${response.toolCall.name}; expected one of: ${(TOOL_EXPECTATIONS[testItem.name] || [testItem.name]).join(', ')}`
-          );
-        }
-      }
-
-      if (activeTab === 'perplexity') {
-        if (!isPerplexityRoute) {
-          status = status === 'fail' ? 'fail' : 'warn';
-          validations.push('Perplexity route heuristic did not match prompt');
-        }
-        if (response.source !== 'perplexity' && response.searchedWeb !== true) {
-          status = status === 'fail' ? 'fail' : 'warn';
-          validations.push(
-            `Expected Perplexity (source=perplexity); got source=${response.source || 'unknown'}`
-          );
-        }
-      }
-
-      return {
-        ...testItem,
-        status,
-        message: truncate(response.message, 120),
-        fullResponse: response.message,
-        toolCall: response.toolCall,
-        source: response.source,
-        searchedWeb: response.searchedWeb,
-        isPerplexityRoute,
-        validations,
-      };
-    } catch (error) {
-      return {
-        ...testItem,
-        status: 'error',
-        message: error?.message || String(error),
-        validations: [error?.message || String(error)],
-      };
-    }
-  };
-
-  const runAllTests = async () => {
-    if (!context || running) return;
-    setRunning(true);
-    setTestResults([]);
-
-    const tests = TEST_SUITES[activeTab] || [];
-    const results = [];
-
-    for (const test of tests) {
-      const result = await runSingleTest(test);
-      results.push(result);
-      setTestResults([...results]);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-
-    setRunning(false);
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pass':
-        return COLORS.green;
-      case 'fail':
-        return COLORS.red;
-      case 'warn':
-        return COLORS.orange;
-      default:
-        return COLORS.textSecondary;
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'pass':
-        return 'check-circle';
-      case 'fail':
-        return 'close-circle';
-      case 'warn':
-        return 'alert-circle';
-      default:
-        return 'help-circle';
-    }
-  };
-
-  const passCount = testResults.filter((r) => r.status === 'pass').length;
-  const failCount = testResults.filter((r) => r.status === 'fail' || r.status === 'error').length;
-  const warnCount = testResults.filter((r) => r.status === 'warn').length;
+  const { passCount, failCount, warnCount } = countResultsByStatus(testResults);
   const tabTests = TEST_SUITES[activeTab] || [];
+  const footerPad = Math.max(insets.bottom, 12);
+  const canRunTests = Boolean(context) && !running && !contextLoading;
+  const showSummary = testResults.length > 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -264,16 +376,9 @@ export default function CoachSelfTest({
       <View style={styles.header}>
         <Text style={styles.title}>AI Coach Test Suite</Text>
         <Text style={styles.subtitle}>Trainer: {trainerName}</Text>
-        {contextLoading && (
-          <Text style={styles.contextInfo}>Loading 7-day context…</Text>
-        )}
-        {contextError && <Text style={styles.error}>{contextError}</Text>}
-        {context && !contextLoading && (
-          <Text style={styles.contextInfo}>
-            Context: {context.userName} · {context.goal} · {context.nutritionDaysLogged}/7 nutrition
-            days
-          </Text>
-        )}
+        <LoadingContextLine contextLoading={contextLoading} />
+        <ContextErrorLine contextError={contextError} />
+        <LoadedContextLine context={context} contextLoading={contextLoading} />
         <TouchableOpacity onPress={loadContext} style={styles.reloadContext} disabled={contextLoading}>
           <MaterialCommunityIcons name="refresh" size={16} color={COLORS.pink} />
           <Text style={styles.reloadText}>Reload context</Text>
@@ -295,7 +400,7 @@ export default function CoachSelfTest({
         ))}
       </View>
 
-      {testResults.length > 0 && (
+      {showSummary && (
         <View style={styles.summary}>
           <View style={styles.summaryItem}>
             <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.green} />
@@ -316,7 +421,7 @@ export default function CoachSelfTest({
         {testResults.map((result, idx) => (
           <View
             key={`${result.name}-${idx}`}
-            style={[styles.resultCard, { borderLeftColor: getStatusColor(result.status) }]}
+            style={[styles.resultCard, { borderLeftColor: statusColor(result.status) }]}
           >
             <View style={styles.resultHeader}>
               <View style={{ flex: 1 }}>
@@ -324,9 +429,9 @@ export default function CoachSelfTest({
                 <Text style={styles.resultPrompt}>&ldquo;{result.prompt}&rdquo;</Text>
               </View>
               <MaterialCommunityIcons
-                name={getStatusIcon(result.status)}
+                name={statusIcon(result.status)}
                 size={24}
-                color={getStatusColor(result.status)}
+                color={statusColor(result.status)}
               />
             </View>
 
@@ -368,30 +473,124 @@ export default function CoachSelfTest({
         )}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.footer, { paddingBottom: footerPad }]}>
         <TouchableOpacity
-          style={[styles.runButton, (running || !context || contextLoading) && styles.runButtonDisabled]}
+          style={[styles.runButton, !canRunTests && styles.runButtonDisabled]}
           onPress={runAllTests}
-          disabled={running || !context || contextLoading}
+          disabled={!canRunTests}
         >
-          {running ? (
-            <ActivityIndicator color={COLORS.textPrimary} />
-          ) : (
-            <>
-              <MaterialCommunityIcons
-                name="play"
-                size={20}
-                color={COLORS.textPrimary}
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.runButtonText}>Run {tabTests.length} tests</Text>
-            </>
-          )}
+          <RunTestsLabel running={running} tabTestCount={tabTests.length} />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Runs the canned coach prompts for one signed-in user and grades each reply.
+ * @param {{ userId?: string, userProfile?: object, trainerName?: string, onBack?: Function }} props
+ */
+export default function CoachSelfTest({
+  userId,
+  userProfile = {},
+  trainerName = DEFAULT_TRAINER_NAME,
+  onBack,
+}) {
+  const insets = useSafeAreaInsets();
+  const [activeTab, setActiveTab] = useState(TAB_CONTEXT);
+  const [testResults, setTestResults] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [context, setContext] = useState(null);
+  const [contextError, setContextError] = useState(null);
+  const [contextLoading, setContextLoading] = useState(true);
+
+  const loadContext = useCallback(async () => {
+    // 1. Tests need a signed-in user.
+    if (!userId) {
+      setContextError(SIGN_IN_ERROR);
+      setContextLoading(false);
+      return;
+    }
+
+    // 2. Load the 7-day coach snapshot this suite grades against.
+    setContextLoading(true);
+    setContextError(null);
+    try {
+      const weekContext = await loadCoachContext(userId, userProfile);
+      if (weekContext) {
+        setContext(weekContext);
+      } else {
+        setContextError(CONTEXT_LOAD_ERROR);
+      }
+    } catch (error) {
+      setContextError(error?.message || String(error));
+    } finally {
+      setContextLoading(false);
+    }
+  }, [userId, userProfile]);
+
+  useEffect(() => {
+    loadContext();
+  }, [loadContext]);
+
+  const runSingleTest = async (testItem) => {
+    try {
+      // 1. Need week context first — a missing snapshot is an error, not a fail.
+      if (!context) return missingContextResult(testItem);
+
+      // 2. Ask the coach the canned prompt.
+      const isPerplexityRoute = shouldRouteToPerplexity(testItem.prompt);
+      const response = await sendToAI(testItem.prompt, context, userId, userProfile);
+
+      // 3. Grade length, then the tool / Perplexity extras for that tab.
+      return gradeOneTest(testItem, response, isPerplexityRoute, activeTab);
+    } catch (error) {
+      return testErrorResult(testItem, error);
+    }
+  };
+
+  const runAllTests = async () => {
+    if (!context || running) return;
+
+    // 1. Clear last run and lock the button.
+    setRunning(true);
+    setTestResults([]);
+
+    // 2. Run each prompt in this tab, pausing so we do not hammer the API.
+    const tests = TEST_SUITES[activeTab] || [];
+    const results = [];
+    for (const testItem of tests) {
+      const result = await runSingleTest(testItem);
+      results.push(result);
+      setTestResults([...results]);
+      await pauseBetweenTests();
+    }
+
+    // 3. Unlock the button.
+    setRunning(false);
+  };
+
+  return (
+    <CoachSelfTestLayout
+      testResults={testResults}
+      activeTab={activeTab}
+      insets={insets}
+      onBack={onBack}
+      trainerName={trainerName}
+      contextLoading={contextLoading}
+      contextError={contextError}
+      context={context}
+      loadContext={loadContext}
+      setActiveTab={setActiveTab}
+      setTestResults={setTestResults}
+      running={running}
+      runAllTests={runAllTests}
+    />
+  );
+}
+
 
 const styles = StyleSheet.create({
   container: {

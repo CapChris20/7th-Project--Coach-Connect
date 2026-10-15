@@ -55,6 +55,75 @@ function isReminderMode(mode) {
   return mode === REMINDER_MODE;
 }
 
+function passOnThisInvite(onRespond, sessionId) {
+  if (!onRespond) return;
+  onRespond({ sessionId, status: SESSION_STATUS_DECLINED });
+}
+
+function acceptThisInvite(onRespond, sessionId) {
+  if (!onRespond) return;
+  onRespond({ sessionId, status: SESSION_STATUS_ACCEPTED });
+}
+
+function InviteActionButtons({ theme, isDark, sessionId, onRespond }) {
+  return (
+    <View style={styles.actions}>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => passOnThisInvite(onRespond, sessionId)}
+        style={[
+          styles.outlineBtn,
+          { borderColor: theme.border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
+        ]}
+        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+      >
+        <Text style={[styles.outlineBtnText, { color: theme.muted }]}>Pass</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => acceptThisInvite(onRespond, sessionId)}
+        style={{ flex: 1 }}
+      >
+        <LinearGradient
+          colors={[PINK, PURPLE]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.primaryBtn}
+        >
+          <Text style={styles.primaryBtnText}>I’m in</Text>
+          <Ionicons name="arrow-forward" size={18} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ReminderWorkoutButton({ onPressViewWorkout }) {
+  if (!onPressViewWorkout) return null;
+  return (
+    <TouchableOpacity activeOpacity={0.92} onPress={onPressViewWorkout} style={{ marginTop: 4 }}>
+      <LinearGradient colors={[PINK, PURPLE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnFull}>
+        <Text style={styles.primaryBtnText}>View / Log Workout</Text>
+        <Ionicons name="barbell-outline" size={20} color="#fff" />
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
+function SessionActionBar({ mode, theme, isDark, sessionId, onRespond, onPressViewWorkout }) {
+  if (mode === INVITE_MODE) {
+    return (
+      <InviteActionButtons
+        theme={theme}
+        isDark={isDark}
+        sessionId={sessionId}
+        onRespond={onRespond}
+      />
+    );
+  }
+  return <ReminderWorkoutButton onPressViewWorkout={onPressViewWorkout} />;
+}
+
 function badgeColors(mode, isDark) {
   if (isReminderMode(mode)) {
     return {
@@ -95,10 +164,13 @@ export function UpcomingSessionCard({
   onPressViewWorkout,
 }) {
   const theme = glassTheme(isDark);
+  // vocab: useMemo = keep the first name unless coachName changes, so the card does not re-split on every paint.
   const coachFirst = useMemo(() => coachFirstName(coachName), [coachName]);
 
+  // 1. No session → hide the card.
   if (!session) return null;
 
+  // 2. Read date, time, and length. Invite asks Pass / I'm in. Reminder can open the workout.
   const durationMinutes = sessionDurationMinutes(session);
   const dateHuman = sessionDateLabel(session);
   const timeLabel = sessionTimeLabel(session);
@@ -181,43 +253,14 @@ export function UpcomingSessionCard({
         </View>
       ) : null}
 
-      {mode === INVITE_MODE ? (
-        <View style={styles.actions}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => onRespond?.({ sessionId: session.id, status: SESSION_STATUS_DECLINED })}
-            style={[
-              styles.outlineBtn,
-              { borderColor: theme.border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-            ]}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-          >
-            <Text style={[styles.outlineBtnText, { color: theme.muted }]}>Pass</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.92}
-            onPress={() => onRespond?.({ sessionId: session.id, status: SESSION_STATUS_ACCEPTED })}
-            style={{ flex: 1 }}
-          >
-            <LinearGradient
-              colors={[PINK, PURPLE]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryBtn}
-            >
-              <Text style={styles.primaryBtnText}>I’m in</Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      ) : onPressViewWorkout ? (
-        <TouchableOpacity activeOpacity={0.92} onPress={onPressViewWorkout} style={{ marginTop: 4 }}>
-          <LinearGradient colors={[PINK, PURPLE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnFull}>
-            <Text style={styles.primaryBtnText}>View / Log Workout</Text>
-            <Ionicons name="barbell-outline" size={20} color="#fff" />
-          </LinearGradient>
-        </TouchableOpacity>
-      ) : null}
+      <SessionActionBar
+        mode={mode}
+        theme={theme}
+        isDark={isDark}
+        sessionId={session.id}
+        onRespond={onRespond}
+        onPressViewWorkout={onPressViewWorkout}
+      />
     </View>
   );
 }

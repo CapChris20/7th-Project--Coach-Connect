@@ -46,20 +46,19 @@ export default function BlurredBackground({ intensity, tint, style, contentWrapp
   const flattenedStyle = StyleSheet.flatten(style) || {};
   const { shellStyle, contentInset } = splitShellPadding(flattenedStyle);
   const { backgroundColor, ...restOfShell } = shellStyle;
+  const shellFrameStyle = [restOfShell, { position: 'relative', overflow: 'hidden' }];
+  const contentLayerStyle = [{ position: 'relative', zIndex: 1 }, contentInset, contentWrapperStyle];
 
   return (
-    <View style={[restOfShell, { position: 'relative', overflow: 'hidden' }]}>
+    <View style={shellFrameStyle}>
       <BlurView intensity={intensity} tint={tint} pointerEvents="none" style={StyleSheet.absoluteFillObject} />
-      {backgroundColor ? (
+      {backgroundColor && (
         <View
           style={[StyleSheet.absoluteFillObject, { backgroundColor }]}
           pointerEvents="none"
         />
-      ) : null}
-      <View
-        style={[{ position: 'relative', zIndex: 1 }, contentInset, contentWrapperStyle]}
-        collapsable={false}
-      >
+      )}
+      <View style={contentLayerStyle} collapsable={false}>
         {children}
       </View>
     </View>

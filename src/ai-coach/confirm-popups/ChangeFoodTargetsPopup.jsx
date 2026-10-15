@@ -29,9 +29,12 @@ const CALORIES_PER_GRAM_FAT = 9;
 
 // ===== HELPER FUNCTIONS =====
 
-// Older goal docs stored `protein`. Newer ones store `protein_target`.
-// Either spelling is a real saved number. 0 counts as missing, same as the old || chain.
-function savedMacroTargetsFromGoalData(goalData) {
+/**
+ * Older goal docs stored `protein`. Newer ones store `protein_target`.
+ * @param {object} goalData
+ * @returns {{ protein: number, carbs: number, fat: number }}
+ */
+function macroTargetsFromFirestoreGoal(goalData) {
   return {
     protein: goalData.protein_target || goalData.protein || DEFAULT_PROTEIN_GRAMS,
     carbs: goalData.carbs_target || goalData.carbs || DEFAULT_CARBS_GRAMS,
@@ -39,9 +42,12 @@ function savedMacroTargetsFromGoalData(goalData) {
   };
 }
 
-// Null means "no saved targets" — the card then uses the defaults above.
-// A missing doc is normal for a new account, so that is not an error.
-async function loadSavedMacroTargets(currentUser) {
+/**
+ * Null means "no saved targets" — the card then uses the defaults above.
+ * @param {object|null} currentUser
+ * @returns {Promise<{ protein: number, carbs: number, fat: number }|null>}
+ */
+async function fetchSavedMacroTargetsForUser(currentUser) {
   if (!currentUser) return null;
   try {
     // vocab: doc() points at one Firestore document. getDoc() reads it once.
@@ -49,34 +55,106 @@ async function loadSavedMacroTargets(currentUser) {
     const goalSnapshot = await getDoc(goalsReference);
     // vocab: exists() is false when that user has never saved nutrition goals.
     if (!goalSnapshot.exists()) return null;
-    return savedMacroTargetsFromGoalData(goalSnapshot.data());
+    return macroTargetsFromFirestoreGoal(goalSnapshot.data());
   } catch (error) {
     console.warn('Failed to load current macros:', error.message);
     return null;
   }
 }
 
-// The coach tool has shipped under more than one key. This is the check that
-// used to be `Number(value) ?? fallback` plus a second finite test.
-// Number(undefined) is NaN, and NaN ?? fallback does NOT use the fallback,
-// because ?? only replaces null and undefined. The finite check is the real fallback.
-function finiteGramsOrFallback(rawValue, fallbackGrams) {
+/**
+ * Number(undefined) is NaN, and NaN ?? fallback does NOT use the fallback.
+ * The finite check is the real fallback path.
+ * @param {*} rawValue
+ * @param {number} fallbackGrams
+ * @returns {number}
+ */
+function parseFiniteGramsOrUseDefault(rawValue, fallbackGrams) {
   const parsedGrams = Number(rawValue);
   const withNullishFallback = parsedGrams ?? fallbackGrams;
   return Number.isFinite(withNullishFallback) ? withNullishFallback : fallbackGrams;
 }
 
-// Prefer the coach's calorie number only when it looks like a real daily target.
-// Otherwise rebuild calories from the grams so the card can't show 0 kcal beside a normal split.
-function resolveDailyCalories(params, proteinGrams, carbGrams, fatGrams) {
-  const explicitCalories = Number(params?.calories ?? params?.newCals);
-  const hasUsableExplicitCalories =
-    Number.isFinite(explicitCalories) && explicitCalories >= MINIMUM_EXPLICIT_CALORIES;
-  if (hasUsableExplicitCalories) return explicitCalories;
+/**
+ * @param {number} proteinGrams
+ * @param {number} carbGrams
+ * @param {number} fatGrams
+ * @returns {number}
+ */
+function estimateCaloriesFromMacroGrams(proteinGrams, carbGrams, fatGrams) {
   return Math.round(
     proteinGrams * CALORIES_PER_GRAM_PROTEIN +
       carbGrams * CALORIES_PER_GRAM_CARBS +
-      fatGrams * CALORIES_PER_GRAM_FAT
+      fatGrams * CALORIES_PER_GRAM_FAT,
+  );
+}
+
+/**
+ * Prefer the coach's calorie number only when it looks like a real daily target.
+ * @param {object|undefined} params
+ * @param {number} proteinGrams
+ * @param {number} carbGrams
+ * @param {number} fatGrams
+ * @returns {number}
+ */
+function chooseDailyCalorieTarget(params, proteinGrams, carbGrams, fatGrams) {
+  const explicitCalories = Number(params?.calories ?? params?.newCals);
+  const explicitLooksValid =
+    Number.isFinite(explicitCalories) && explicitCalories >= MINIMUM_EXPLICIT_CALORIES;
+  if (explicitLooksValid) return explicitCalories;
+  return estimateCaloriesFromMacroGrams(proteinGrams, carbGrams, fatGrams);
+}
+
+/**
+ * @param {object|null} savedTargets
+ * @param {object|undefined} params
+ * @returns {{ proteinGrams: number, carbGrams: number, fatGrams: number, dailyCalories: number, mergedParams: object }}
+ */
+function mergeCoachParamsWithSavedTargets(savedTargets, params) {
+  const defaultProteinGrams = savedTargets?.protein ?? DEFAULT_PROTEIN_GRAMS;
+  const defaultCarbGrams = savedTargets?.carbs ?? DEFAULT_CARBS_GRAMS;
+  const defaultFatGrams = savedTargets?.fat ?? DEFAULT_FAT_GRAMS;
+
+  const proteinGrams = parseFiniteGramsOrUseDefault(
+    params?.newProtein ?? params?.protein,
+    defaultProteinGrams,
+  );
+  const carbGrams = parseFiniteGramsOrUseDefault(
+    params?.newCarbs ?? params?.carbs,
+    defaultCarbGrams,
+  );
+  const fatGrams = parseFiniteGramsOrUseDefault(
+    params?.newFats ?? params?.fats ?? params?.fat,
+    defaultFatGrams,
+  );
+  const dailyCalories = chooseDailyCalorieTarget(params, proteinGrams, carbGrams, fatGrams);
+
+  const mergedParams = {
+    ...params,
+    protein: proteinGrams,
+    carbs: carbGrams,
+    fat: fatGrams,
+    calories: dailyCalories,
+  };
+
+  return { proteinGrams, carbGrams, fatGrams, dailyCalories, mergedParams };
+}
+
+function ChangeFoodTargetsLayout({ reasoning, resolved, params, onConfirm, onCancel, loading }) {
+  const handleConfirmSave = () => onConfirm(resolved.mergedParams);
+  return (
+    <ToolModalBody title="Update nutrition targets?" reasoning={reasoning}>
+      <DetailRow label="Daily calories" value={`${resolved.dailyCalories} kcal`} />
+      <DetailRow label="Protein" value={`${resolved.proteinGrams}g`} />
+      <DetailRow label="Carbs" value={`${resolved.carbGrams}g`} />
+      <DetailRow label="Fat" value={`${resolved.fatGrams}g`} />
+      <DetailRow label="Reason" value={params?.reason} />
+      <ConfirmCancelRow
+        onConfirm={handleConfirmSave}
+        onCancel={onCancel}
+        loading={loading}
+      />
+    </ToolModalBody>
   );
 }
 
@@ -92,59 +170,32 @@ function resolveDailyCalories(params, proteinGrams, carbGrams, fatGrams) {
  * @param {boolean} props.loading True while the save is in flight. Disables the buttons.
  */
 export default function ChangeFoodTargetsPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  const [currentMacros, setCurrentMacros] = useState(null);
+  // 1. Load saved targets so a blank coach field can fall back to what is already on the profile.
+  const [savedMacroTargets, setSavedMacroTargets] = useState(null);
 
   useEffect(() => {
     // Saved targets fill any macro the coach left blank. Read once on open —
     // reading again on each render would flicker the numbers on the card.
     // vocab: useEffect runs after paint. [] means only when this popup opens.
-    async function loadAndStoreSavedTargets() {
-      const savedTargets = await loadSavedMacroTargets(auth.currentUser);
-      if (savedTargets) setCurrentMacros(savedTargets);
+    async function loadTargetsOnce() {
+      const loaded = await fetchSavedMacroTargetsForUser(auth.currentUser);
+      if (loaded) setSavedMacroTargets(loaded);
     }
-    loadAndStoreSavedTargets();
+    loadTargetsOnce();
   }, []);
 
-  // vocab: ?? uses the right side only when the left is null or undefined. 0 would be kept.
-  // vocab: ?. skips the property read while currentMacros is still null (the Firestore read hasn't finished).
-  const defaultProteinGrams = currentMacros?.protein ?? DEFAULT_PROTEIN_GRAMS;
-  const defaultCarbGrams = currentMacros?.carbs ?? DEFAULT_CARBS_GRAMS;
-  const defaultFatGrams = currentMacros?.fat ?? DEFAULT_FAT_GRAMS;
+  // 2. Fill blank coach fields from saved targets (or the defaults).
+  const resolved = mergeCoachParamsWithSavedTargets(savedMacroTargets, params);
 
-  // First key that isn't null/undefined wins. 0 is a real suggestion and must not skip ahead.
-  const proteinGrams = finiteGramsOrFallback(
-    params?.newProtein ?? params?.protein,
-    defaultProteinGrams
-  );
-  const carbGrams = finiteGramsOrFallback(params?.newCarbs ?? params?.carbs, defaultCarbGrams);
-  const fatGrams = finiteGramsOrFallback(
-    params?.newFats ?? params?.fats ?? params?.fat,
-    defaultFatGrams
-  );
-  const dailyCalories = resolveDailyCalories(params, proteinGrams, carbGrams, fatGrams);
-
-  // Spread first so reason and any extra tool fields survive, then overwrite the numbers
-  // we just resolved. Confirm saves this object, so a blank macro can't land as 0.
-  const mergedParams = {
-    ...params,
-    protein: proteinGrams,
-    carbs: carbGrams,
-    fat: fatGrams,
-    calories: dailyCalories,
-  };
-
+  // 3. The layout shows those numbers. Confirm still sends the merged targets.
   return (
-    <ToolModalBody title="Update nutrition targets?" reasoning={reasoning}>
-      <DetailRow label="Daily calories" value={`${dailyCalories} kcal`} />
-      <DetailRow label="Protein" value={`${proteinGrams}g`} />
-      <DetailRow label="Carbs" value={`${carbGrams}g`} />
-      <DetailRow label="Fat" value={`${fatGrams}g`} />
-      <DetailRow label="Reason" value={params?.reason} />
-      <ConfirmCancelRow
-        onConfirm={() => onConfirm(mergedParams)}
-        onCancel={onCancel}
-        loading={loading}
-      />
-    </ToolModalBody>
+    <ChangeFoodTargetsLayout
+      reasoning={reasoning}
+      resolved={resolved}
+      params={params}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      loading={loading}
+    />
   );
 }

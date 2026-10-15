@@ -20,6 +20,11 @@ const TOKEN_LOG_PREFIX_LENGTH = 24;
 const TEST_NOTIFICATION_DELAY_SECONDS = 1;
 const ANDROID_VIBRATION_PATTERN = [0, 250, 250, 250];
 const NOTIFICATION_LED_COLOR = '#FF6B9D';
+const CLEARED_PUSH_TOKEN_FIELDS = {
+  expoPushToken: deleteField(),
+  fcmToken: deleteField(),
+  pushToken: deleteField(),
+};
 
 // ===== HELPER FUNCTIONS =====
 
@@ -62,6 +67,13 @@ async function isNotificationsDisabled(uid) {
   }
 }
 
+function optionalFcmField(fcmToken) {
+  // vocab/symbol: ...(condition ? { key } : {}) = include the key only when we have a value.
+  // Writing undefined makes Firestore throw, and the native token is optional.
+  if (!fcmToken) return {};
+  return { fcmToken };
+}
+
 function buildPushTokenPayload(expoPushToken, fcmToken) {
   const now = new Date().toISOString();
   return {
@@ -69,9 +81,7 @@ function buildPushTokenPayload(expoPushToken, fcmToken) {
     // pushToken is the legacy field. It mirrors the Expo token so older Cloud Functions keep working.
     pushToken: expoPushToken,
     pushTokenUpdatedAt: now,
-    // vocab/symbol: ...(condition ? { key } : {}) = include the key only when we have a value.
-    // Writing undefined makes Firestore throw, and the native token is optional.
-    ...(fcmToken ? { fcmToken } : {}),
+    ...optionalFcmField(fcmToken),
   };
 }
 
@@ -100,6 +110,13 @@ function readExpoProjectId() {
     Constants?.easConfig?.projectId ||
     undefined
   );
+}
+
+function shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun) {
+  // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
+  if (nextAppState !== 'active') return false;
+  if (!uid) return false;
+  return Boolean(shouldRun?.());
 }
 
 // ===== MAIN FUNCTION =====
@@ -312,16 +329,13 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
 export async function clearPushTokensForUid(uid) {
   if (!uid || !db) return;
   try {
-    await updateDoc(userDocRef(uid), {
-      expoPushToken: deleteField(),
-      fcmToken: deleteField(),
-      pushToken: deleteField(),
-    });
+    await updateDoc(userDocRef(uid), { ...CLEARED_PUSH_TOKEN_FIELDS });
     if (__DEV__) console.log('[push] tokens cleared for user');
   } catch (error) {
     if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', error?.message || error);
   }
 }
+
 
 /**
  * Re-save tokens when the app returns to the foreground.
@@ -332,11 +346,12 @@ export async function clearPushTokensForUid(uid) {
  * @returns {Function}
  */
 export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
-  // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
-  const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-    if (nextAppState !== 'active' || !uid || !shouldRun?.()) return;
+  const onAppStateChange = (nextAppState) => {
+    const shouldRefresh = shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun);
+    if (!shouldRefresh) return;
     persistPushTokensForUid(uid, { skipIfDisabled: true }).catch(() => {});
-  });
+  };
+  const appStateSubscription = AppState.addEventListener('change', onAppStateChange);
   return () => appStateSubscription.remove();
 }
 

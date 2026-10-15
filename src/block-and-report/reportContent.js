@@ -24,8 +24,11 @@ const VALID_REPORT_TYPES = new Set(Object.values(REPORT_TYPES));
  * @returns {string}
  */
 function reasonLabel(reasonId) {
-  const matchingReason = REPORT_REASONS.find((reason) => reason.id === reasonId);
-  return matchingReason?.label || reasonId || OTHER_REASON;
+  for (let index = 0; index < REPORT_REASONS.length; index += 1) {
+    const reason = REPORT_REASONS[index];
+    if (reason.id === reasonId) return reason.label;
+  }
+  return reasonId || OTHER_REASON;
 }
 
 /**
@@ -57,6 +60,43 @@ function supportMailBody(report, reportId) {
   return lines.join('\n');
 }
 
+/**
+ * @param {object} params
+ * @returns {object}
+ */
+function buildReportPayload(params) {
+  const reporterUid = String(params.reporterId || '').trim();
+  const targetUserUid = String(params.targetUid || '').trim();
+  const reportType = String(params.type || '').trim();
+  const reasonId = String(params.reason || OTHER_REASON).trim();
+
+  return {
+    reporterUid,
+    targetUserUid,
+    reportType,
+    reasonId,
+    details: String(params.details || '').slice(0, MAX_DETAILS_LENGTH),
+    conversationId: params.conversationId ? String(params.conversationId) : null,
+    messageId: params.messageId ? String(params.messageId) : null,
+    targetDisplayName: params.targetDisplayName
+      ? String(params.targetDisplayName).slice(0, MAX_DISPLAY_NAME_LENGTH)
+      : null,
+  };
+}
+
+/**
+ * @param {object} built
+ * @returns {void}
+ */
+function assertReportIsAllowed(built) {
+  if (!built.reporterUid) throw new Error('You must be signed in to report.');
+  if (!built.targetUserUid) throw new Error('Missing report target.');
+  if (!VALID_REPORT_TYPES.has(built.reportType)) throw new Error('Invalid report type.');
+  if (built.reporterUid === built.targetUserUid && built.reportType !== REPORT_TYPES.MESSAGE) {
+    throw new Error('You cannot report yourself.');
+  }
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -84,28 +124,28 @@ export async function submitContentReport({
   targetDisplayName = null,
   notifySupport = true,
 }) {
-  const reporterUid = String(reporterId || '').trim();
-  const targetUserUid = String(targetUid || '').trim();
-  const reportType = String(type || '').trim();
-  const reasonId = String(reason || OTHER_REASON).trim();
-
-  if (!reporterUid) throw new Error('You must be signed in to report.');
-  if (!targetUserUid) throw new Error('Missing report target.');
-  if (!VALID_REPORT_TYPES.has(reportType)) throw new Error('Invalid report type.');
-  if (reporterUid === targetUserUid && reportType !== REPORT_TYPES.MESSAGE) {
-    throw new Error('You cannot report yourself.');
-  }
+  const built = buildReportPayload({
+    reporterId,
+    type,
+    targetUid,
+    reason,
+    details,
+    conversationId,
+    messageId,
+    targetDisplayName,
+  });
+  assertReportIsAllowed(built);
 
   // vocab: contentReports is the moderation queue. A client may create a report, not list other people's.
   const payload = {
-    reporterId: reporterUid,
-    type: reportType,
-    targetUid: targetUserUid,
-    reason: reasonId,
-    details: String(details || '').slice(0, MAX_DETAILS_LENGTH),
-    conversationId: conversationId ? String(conversationId) : null,
-    messageId: messageId ? String(messageId) : null,
-    targetDisplayName: targetDisplayName ? String(targetDisplayName).slice(0, MAX_DISPLAY_NAME_LENGTH) : null,
+    reporterId: built.reporterUid,
+    type: built.reportType,
+    targetUid: built.targetUserUid,
+    reason: built.reasonId,
+    details: built.details,
+    conversationId: built.conversationId,
+    messageId: built.messageId,
+    targetDisplayName: built.targetDisplayName,
     status: OPEN_STATUS,
     createdAt: serverTimestamp(),
   };
@@ -113,17 +153,20 @@ export async function submitContentReport({
   const reportRef = await addDoc(collection(db, CONTENT_REPORTS_COLLECTION), payload);
 
   if (notifySupport) {
-    const subject = `Content report — ${reportType} — Coach Connect`;
-    const body = supportMailBody({
-      reportType,
-      reasonId,
-      reporterUid,
-      targetUid: targetUserUid,
-      targetDisplayName,
-      conversationId,
-      messageId,
-      details,
-    }, reportRef.id);
+    const subject = `Content report — ${built.reportType} — Coach Connect`;
+    const body = supportMailBody(
+      {
+        reportType: built.reportType,
+        reasonId: built.reasonId,
+        reporterUid: built.reporterUid,
+        targetUid: built.targetUserUid,
+        targetDisplayName: built.targetDisplayName,
+        conversationId: built.conversationId,
+        messageId: built.messageId,
+        details: built.details,
+      },
+      reportRef.id,
+    );
     try {
       openSupportMailto({ subject, body });
     } catch (_) {

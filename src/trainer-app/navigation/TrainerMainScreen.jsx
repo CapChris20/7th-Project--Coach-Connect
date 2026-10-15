@@ -1,13 +1,7 @@
-/**
- * Trainer Main Screen
- *
- * Purpose: UI screen or component: Trainer Main Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: TrainerMainScreen
- *
- * @file-header
- */
+// Trainer shell: pick which trainer screen to show from the shared tracker.
+// Flow: read the open-screen tracker → paint that tab under the header and bottom bar.
+// Used once as the trainer app’s main surface after login.
+
 import React from 'react';
 import {
   Alert,
@@ -39,153 +33,162 @@ import { useTrainerAppStartShell } from './TrainerOpenScreenTracker';
 import ProAccessCheck from '../../trainer-pro-plan/ProAccessCheck';
 import FreeTrialBanner from '../../trainer-pro-plan/FreeTrialBanner';
 
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer app shell. Screen choice lives on the open-screen tracker.
+ */
 export default function TrainerMainScreen() {
-  const s = useTrainerAppStartShell();
+  const shell = useTrainerAppStartShell();
   return (
     <ProAccessCheck
-      onOpenSettings={s.openSettings}
-      onOpenTerms={s.openTerms}
-      onOpenPrivacy={s.openPrivacy}
+      onOpenSettings={shell.openSettings}
+      onOpenTerms={shell.openTerms}
+      onOpenPrivacy={shell.openPrivacy}
     >
-      <LinearGradient colors={s.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
+      <LinearGradient colors={shell.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
         <FreeTrialBanner />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
-        <StatusBar barStyle={s.isDark ? 'light-content' : 'dark-content'} />
-        {!s.showWorkoutGenerator &&
-          !s.showPlanViewer &&
-          !s.showTrainerMessaging &&
-          !s.showConversationsList &&
-          !s.showClientRequests &&
-          !s.showClientsList &&
-          !s.showAIWorkouts &&
-          !s.showPhotoGallery && (
+        <StatusBar barStyle={shell.isDark ? 'light-content' : 'dark-content'} />
+        {!shell.showWorkoutGenerator &&
+          !shell.showPlanViewer &&
+          !shell.showTrainerMessaging &&
+          !shell.showConversationsList &&
+          !shell.showClientRequests &&
+          !shell.showClientsList &&
+          !shell.showAIWorkouts &&
+          !shell.showPhotoGallery && (
           <TopHeader
-            isDark={s.isDark}
+            isDark={shell.isDark}
             skipTopSafeInset
-            onBack={s.showClientsList ? () => s.setShowClientsList(false) : undefined}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
+            onBack={shell.showClientsList ? () => shell.setShowClientsList(false) : undefined}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
           />
         )}
 
-        {s.showTrainerMessaging && (
+        {shell.showTrainerMessaging && (
           <ChatWithTraineeScreen
             embedInLayout
-            trainer={s.selectedTrainer}
-            conversation={s.selectedConversation}
+            trainer={shell.selectedTrainer}
+            conversation={shell.selectedConversation}
             onClose={() => {
-              s.setShowTrainerMessaging(false);
-              s.setShowConversationsList(true);
+              shell.setShowTrainerMessaging(false);
+              shell.setShowConversationsList(true);
             }}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
           />
         )}
-        {!s.showTrainerMessaging && s.showConversationsList && (
+        {!shell.showTrainerMessaging && shell.showConversationsList && (
           <View style={{ flex: 1 }}>
             <InboxScreen
               embedInLayout
-              onClose={() => s.setShowConversationsList(false)}
-              onSelectConversation={(c, o) => { s.setSelectedConversation(c); s.setSelectedTrainer(o); s.setShowConversationsList(false); s.setShowTrainerMessaging(true); }}
-              onProfilePress={() => s.openProfile()}
-              onSettingsPress={() => s.openSettings()}
-              selectedClientId={s.selectedClientIdForMessages}
+              onClose={() => shell.setShowConversationsList(false)}
+              onSelectConversation={(c, o) => { shell.setSelectedConversation(c); shell.setSelectedTrainer(o); shell.setShowConversationsList(false); shell.setShowTrainerMessaging(true); }}
+              onProfilePress={() => shell.openProfile()}
+              onSettingsPress={() => shell.openSettings()}
+              selectedClientId={shell.selectedClientIdForMessages}
             />
           </View>
         )}
-        {!s.showTrainerMessaging && s.showClientRequests && (
+        {!shell.showTrainerMessaging && shell.showClientRequests && (
           <NewTraineeRequestsScreen
             embedInLayout
-            onClose={() => s.setShowClientRequests(false)}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
-            onClientAdded={s.refreshClients}
+            onClose={() => shell.setShowClientRequests(false)}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
+            onClientAdded={shell.refreshClients}
           />
         )}
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showClientsList && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showClientsList && (
           <ClientsListScreen
             embedInLayout
-            clients={s.clients}
-            trainerId={s.user?.uid}
-            isDark={s.isDark}
-            hasMore={s.clientsHasMore}
-            loadingMore={s.clientsLoadingMore}
-            onLoadMore={s.loadMoreClients}
-            onBack={() => s.setShowClientsList(false)}
+            clients={shell.clients}
+            trainerId={shell.user?.uid}
+            isDark={shell.isDark}
+            hasMore={shell.clientsHasMore}
+            loadingMore={shell.clientsLoadingMore}
+            onLoadMore={shell.loadMoreClients}
+            onBack={() => shell.setShowClientsList(false)}
             onSelectClient={(id) => {
-              s.setNavSelectedClientId(id);
-              s.setShowClientsList(false);
+              shell.setNavSelectedClientId(id);
+              shell.setShowClientsList(false);
             }}
-            onClientRemoved={s.handleTrainerClientRemovedFromRoster}
+            onClientRemoved={shell.handleTrainerClientRemovedFromRoster}
             onOpenClientRequests={() => {
-              s.setShowClientsList(false);
-              s.setShowClientRequests(true);
+              shell.setShowClientsList(false);
+              shell.setShowClientRequests(true);
             }}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
-            onHomePress={s.handleHomePress}
-            onPlusPress={s.handlePlusPress}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
+            onHomePress={shell.handleHomePress}
+            onPlusPress={shell.handlePlusPress}
             onVoicePress={() => {
-              s.handleHomePress();
-              s.openVoiceAI();
-              s.setAiChatState('home');
+              shell.handleHomePress();
+              shell.openVoiceAI();
+              shell.setAiChatState('home');
             }}
             onNutritionPress={() => {
-              s.handleHomePress();
-              s.openNutrition();
+              shell.handleHomePress();
+              shell.openNutrition();
             }}
             onWorkoutPress={() => {
-              s.handleHomePress();
-              s.openWorkoutPlan();
+              shell.handleHomePress();
+              shell.openWorkoutPlan();
             }}
             onMessagesPress={() => {
-              s.handleHomePress();
-              s.setShowConversationsList(true);
+              shell.handleHomePress();
+              shell.setShowConversationsList(true);
             }}
           />
         )}
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && !s.showClientsList && !s.showPhotoGallery && !s.showAIWorkouts && !s.showWorkoutGenerator && !s.showPlanViewer && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && !shell.showClientsList && !shell.showPhotoGallery && !shell.showAIWorkouts && !shell.showWorkoutGenerator && !shell.showPlanViewer && (
           <DashboardContent
-            isDark={s.isDark} clients={s.clients} clientsLoading={s.clientsLoading}
-            pendingRequestsCount={s.pendingRequests?.length ?? 0} unreadMessageCount={s.unreadMessageCount}
-            onClientRequestsPress={() => s.setShowClientRequests(true)}
-            onClientsPress={() => s.setShowClientsList(true)}
-            onMessagesPress={(clientId) => { s.setSelectedClientIdForMessages(clientId); s.setShowTrainerMessaging(false); s.setShowConversationsList(true); }}
+            isDark={shell.isDark} clients={shell.clients} clientsLoading={shell.clientsLoading}
+            pendingRequestsCount={shell.pendingRequests?.length ?? 0} unreadMessageCount={shell.unreadMessageCount}
+            onClientRequestsPress={() => shell.setShowClientRequests(true)}
+            onClientsPress={() => shell.setShowClientsList(true)}
+            onMessagesPress={(clientId) => { shell.setSelectedClientIdForMessages(clientId); shell.setShowTrainerMessaging(false); shell.setShowConversationsList(true); }}
             onOpenPhotoGallery={(client) => {
               if (!client?.id) return;
-              s.setDay6Client(client);
-              s.setShowConversationsList(false);
-              s.setShowTrainerMessaging(false);
-              s.setShowClientRequests(false);
-              s.setShowPhotoGallery(true);
-              s.setShowAIWorkouts(false);
+              shell.setDay6Client(client);
+              shell.setShowConversationsList(false);
+              shell.setShowTrainerMessaging(false);
+              shell.setShowClientRequests(false);
+              shell.setShowPhotoGallery(true);
+              shell.setShowAIWorkouts(false);
             }}
             onOpenAIWorkouts={(client) => {
               if (!client?.id) return;
-              s.setDay6Client(client);
-              s.setShowConversationsList(false);
-              s.setShowTrainerMessaging(false);
-              s.setShowClientRequests(false);
-              s.setShowPhotoGallery(false);
-              s.setShowAIWorkouts(true);
+              shell.setDay6Client(client);
+              shell.setShowConversationsList(false);
+              shell.setShowTrainerMessaging(false);
+              shell.setShowClientRequests(false);
+              shell.setShowPhotoGallery(false);
+              shell.setShowAIWorkouts(true);
             }}
-            onRefreshClients={s.refreshClients} userName={s.userName}
-            trainerId={s.user?.uid} pdfViewer={s.pdfViewer} setPdfViewer={s.setPdfViewer}
-            defaultClientId={s.navSelectedClientId}
-            onSelectedClientChange={s.setSelectedClientIdFromDashboard}
+            onRefreshClients={shell.refreshClients} userName={shell.userName}
+            trainerId={shell.user?.uid} pdfViewer={shell.pdfViewer} setPdfViewer={shell.setPdfViewer}
+            defaultClientId={shell.navSelectedClientId}
+            onSelectedClientChange={shell.setSelectedClientIdFromDashboard}
             onOpenWeeklyReport={(clientId, clientName) =>
-              s.openWeeklyReport(clientId, clientName)
+              shell.openWeeklyReport(clientId, clientName)
             }
-            onTrainerClientRemoved={s.handleTrainerClientRemovedFromRoster} trainerDocsRefreshKey={s.trainerDocsRefreshKey}
-            stripeConnectStatus={s.trainerProfileDoc?.stripeConnectStatus || 'not_connected'}
-            onOpenPayments={s.openPayments}
-            appSessionId={s.appSessionId}
-            userEmail={s.user?.email || ''}
+            onTrainerClientRemoved={shell.handleTrainerClientRemovedFromRoster} trainerDocsRefreshKey={shell.trainerDocsRefreshKey}
+            stripeConnectStatus={shell.trainerProfileDoc?.stripeConnectStatus || 'not_connected'}
+            onOpenPayments={shell.openPayments}
+            appSessionId={shell.appSessionId}
+            userEmail={shell.user?.email || ''}
             onOpenDocumentEditor={({ documentId = null } = {}) => {
-              s.setDocumentEditor({ visible: true, documentId: documentId || null });
+              shell.setDocumentEditor({ visible: true, documentId: documentId || null });
             }}
             onOpenSpreadsheetEditor={({ documentId = null, title = '', rows = null } = {}) => {
-              s.setSpreadsheetEditor({
+              shell.setSpreadsheetEditor({
                 visible: true,
                 documentId: documentId || null,
                 title: title || '',
@@ -195,131 +198,131 @@ export default function TrainerMainScreen() {
           />
         )}
 
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showPhotoGallery && s.day6Client?.id && !s.showWorkoutGenerator && !s.showPlanViewer && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showPhotoGallery && shell.day6Client?.id && !shell.showWorkoutGenerator && !shell.showPlanViewer && (
           <MyProgressPhotosScreen
             route={{
               params: {
-                clientId: s.day6Client.id,
-                clientName: s.day6Client.name,
+                clientId: shell.day6Client.id,
+                clientName: shell.day6Client.name,
                 allowUpload: false,
                 reserveShellBottomNav: true,
               },
             }}
-            navigation={{ goBack: () => s.setShowPhotoGallery(false) }}
+            navigation={{ goBack: () => shell.setShowPhotoGallery(false) }}
           />
         )}
 
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showAIWorkouts && s.day6Client?.id && !s.showWorkoutGenerator && !s.showPlanViewer && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showAIWorkouts && shell.day6Client?.id && !shell.showWorkoutGenerator && !shell.showPlanViewer && (
           <>
             <TopHeader
               title=""
-              isDark={s.isDark}
+              isDark={shell.isDark}
               skipTopSafeInset
-              onBack={() => s.setShowAIWorkouts(false)}
-              onProfilePress={() => s.openProfile()}
-              onSettingsPress={() => s.openSettings()}
+              onBack={() => shell.setShowAIWorkouts(false)}
+              onProfilePress={() => shell.openProfile()}
+              onSettingsPress={() => shell.openSettings()}
             />
             <View style={{ flex: 1 }}>
           <SavedWorkoutsScreen
-            key={`aiwp-${s.day6Client.id}-${s.aiWorkoutsListKey}`}
+            key={`aiwp-${shell.day6Client.id}-${shell.aiWorkoutsListKey}`}
             embedInLayout
-            client={s.day6Client}
-            trainerId={s.user?.uid}
-            onBack={() => s.setShowAIWorkouts(false)}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
+            client={shell.day6Client}
+            trainerId={shell.user?.uid}
+            onBack={() => shell.setShowAIWorkouts(false)}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
             onGenerateWorkout={(client) => {
-              s.setGeneratorClient(client);
-              s.setShowAIWorkouts(false);
-              s.setShowWorkoutGenerator(true);
+              shell.setGeneratorClient(client);
+              shell.setShowAIWorkouts(false);
+              shell.setShowWorkoutGenerator(true);
             }}
             onBuildCustom={() => {
-              s.setManualPlanEditId(null);
-              s.setManualPlanBuilderClientIds(s.day6Client?.id ? [s.day6Client.id] : []);
-              s.setManualBuilderReturnToAI(true);
-              s.setShowAIWorkouts(false);
-              s.openManualPlanBuilder();
+              shell.setManualPlanEditId(null);
+              shell.setManualPlanBuilderClientIds(shell.day6Client?.id ? [shell.day6Client.id] : []);
+              shell.setManualBuilderReturnToAI(true);
+              shell.setShowAIWorkouts(false);
+              shell.openManualPlanBuilder();
             }}
             onEditManualPlan={(planId) => {
-              s.setManualPlanEditId(planId);
-              s.setManualPlanBuilderClientIds(s.day6Client?.id ? [s.day6Client.id] : []);
-              s.setManualBuilderReturnToAI(true);
-              s.setShowAIWorkouts(false);
-              s.openManualPlanBuilder();
+              shell.setManualPlanEditId(planId);
+              shell.setManualPlanBuilderClientIds(shell.day6Client?.id ? [shell.day6Client.id] : []);
+              shell.setManualBuilderReturnToAI(true);
+              shell.setShowAIWorkouts(false);
+              shell.openManualPlanBuilder();
             }}
             onViewPlan={(plan) => {
-              s.setViewingPlan(plan);
-              s.setShowAIWorkouts(false);
-              s.setShowPlanViewer(true);
+              shell.setViewingPlan(plan);
+              shell.setShowAIWorkouts(false);
+              shell.setShowPlanViewer(true);
             }}
-            route={{ params: { clientId: s.day6Client.id, clientName: s.day6Client.name } }}
-            navigation={{ goBack: () => s.setShowAIWorkouts(false) }}
+            route={{ params: { clientId: shell.day6Client.id, clientName: shell.day6Client.name } }}
+            navigation={{ goBack: () => shell.setShowAIWorkouts(false) }}
           />
             </View>
           </>
         )}
 
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showWorkoutGenerator && s.generatorClient?.id && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showWorkoutGenerator && shell.generatorClient?.id && (
           <CreateWorkoutPlanScreen
-            userId={s.generatorClient.id}
+            userId={shell.generatorClient.id}
             coachCanGeneratePlans
             hideBottomNav={true}
             onBack={() => {
-              s.setShowWorkoutGenerator(false);
-              s.setShowAIWorkouts(true);
+              shell.setShowWorkoutGenerator(false);
+              shell.setShowAIWorkouts(true);
             }}
             onPlanGenerated={() => {
-              s.setShowWorkoutGenerator(false);
-              s.setShowAIWorkouts(true);
+              shell.setShowWorkoutGenerator(false);
+              shell.setShowAIWorkouts(true);
             }}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
           />
         )}
 
-        {!s.showTrainerMessaging && !s.showConversationsList && !s.showClientRequests && s.showPlanViewer && s.viewingPlan && (
+        {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showPlanViewer && shell.viewingPlan && (
           <CreateWorkoutPlanScreen
-            userId={s.day6Client?.id}
-            plan={s.viewingPlan}
+            userId={shell.day6Client?.id}
+            plan={shell.viewingPlan}
             readOnly={true}
             hideBottomNav={true}
             onBack={() => {
-              s.setShowPlanViewer(false);
-              s.setShowAIWorkouts(true);
+              shell.setShowPlanViewer(false);
+              shell.setShowAIWorkouts(true);
             }}
             onPlanGenerated={() => {
-              s.setShowPlanViewer(false);
-              s.setShowAIWorkouts(true);
+              shell.setShowPlanViewer(false);
+              shell.setShowAIWorkouts(true);
             }}
-            onProfilePress={() => s.openProfile()}
-            onSettingsPress={() => s.openSettings()}
+            onProfilePress={() => shell.openProfile()}
+            onSettingsPress={() => shell.openSettings()}
           />
         )}
 
-        {!s.showWorkoutGenerator &&
-          !s.showPlanViewer &&
-          !s.showTrainerMessaging && (
+        {!shell.showWorkoutGenerator &&
+          !shell.showPlanViewer &&
+          !shell.showTrainerMessaging && (
           <ShellBottomNavAnchor>
             <BottomMenuBar
-              onHomePress={s.handleHomePress}
-              onPlusPress={s.handlePlusPress}
-              onVoicePress={s.openVoiceAI}
-              onNutritionPress={() => { s.openNutrition(); }}
-              onWorkoutPress={() => { s.openWorkoutPlan(); }}
-              onMessagesPress={(clientId) => { s.setSelectedClientIdForMessages(clientId); s.setShowTrainerMessaging(false); s.setShowConversationsList(true); }}
+              onHomePress={shell.handleHomePress}
+              onPlusPress={shell.handlePlusPress}
+              onVoicePress={shell.openVoiceAI}
+              onNutritionPress={() => { shell.openNutrition(); }}
+              onWorkoutPress={() => { shell.openWorkoutPlan(); }}
+              onMessagesPress={(clientId) => { shell.setSelectedClientIdForMessages(clientId); shell.setShowTrainerMessaging(false); shell.setShowConversationsList(true); }}
             />
           </ShellBottomNavAnchor>
         )}
 
         <AddFilePopup
-          visible={s.showAddFilePopup}
-          onClose={() => { s.setShowAddFilePopup(false); s.setAddNotesFilesClientId(null); }}
-          onAdded={() => { s.setShowAddFilePopup(false); s.setAddNotesFilesClientId(null); s.refreshClients(); }}
-          isDark={s.isDark}
-          clientId={s.addNotesFilesClientId}
+          visible={shell.showAddFilePopup}
+          onClose={() => { shell.setShowAddFilePopup(false); shell.setAddNotesFilesClientId(null); }}
+          onAdded={() => { shell.setShowAddFilePopup(false); shell.setAddNotesFilesClientId(null); shell.refreshClients(); }}
+          isDark={shell.isDark}
+          clientId={shell.addNotesFilesClientId}
           addedBy="trainer"
-          onNewDocument={() => s.setDocumentEditor({ visible: true, documentId: null, title: '' })}
-          onNewSpreadsheet={() => s.setSpreadsheetEditor({ visible: true, documentId: null, title: '', rows: null })}
+          onNewDocument={() => shell.setDocumentEditor({ visible: true, documentId: null, title: '' })}
+          onNewSpreadsheet={() => shell.setSpreadsheetEditor({ visible: true, documentId: null, title: '', rows: null })}
           onImportSpreadsheet={async () => {
             try {
               const result = await DocumentPicker.getDocumentAsync({
@@ -337,11 +340,11 @@ export default function TrainerMainScreen() {
               const wb = XLSX.read(base64, { type: 'base64' });
               const firstSheetName = wb.SheetNames[0];
               const ws = firstSheetName ? wb.Sheets[firstSheetName] : null;
-              const data = ws ? XLSX.utils.sheet_to_json(ws, { header: 1 }) : [];
+              const data = ws ? XLSX.utilshell.sheet_to_json(ws, { header: 1 }) : [];
               const rows = (data || []).map((row) =>
                 (row || []).map((val) => (val != null ? String(val) : '')),
               );
-              s.setSpreadsheetEditor({
+              shell.setSpreadsheetEditor({
                 visible: true,
                 documentId: null,
                 title: file.name || 'Imported Spreadsheet',
@@ -354,37 +357,37 @@ export default function TrainerMainScreen() {
         />
         
         <PdfViewer
-          visible={s.pdfViewer.visible}
-          url={s.pdfViewer.url}
-          name={s.pdfViewer.name}
-          isDark={s.isDark}
-          onClose={() => s.setPdfViewer({ visible: false, url: null, name: null })}
+          visible={shell.pdfViewer.visible}
+          url={shell.pdfViewer.url}
+          name={shell.pdfViewer.name}
+          isDark={shell.isDark}
+          onClose={() => shell.setPdfViewer({ visible: false, url: null, name: null })}
         />
         <SpreadsheetEditor
-          visible={s.spreadsheetEditor.visible}
-          trainerId={s.user?.uid}
-          documentId={s.spreadsheetEditor.documentId}
-          isDark={s.isDark}
-          initialTitle={s.spreadsheetEditor.title}
-          initialRows={s.spreadsheetEditor.rows}
-          onClose={() => s.setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
+          visible={shell.spreadsheetEditor.visible}
+          trainerId={shell.user?.uid}
+          documentId={shell.spreadsheetEditor.documentId}
+          isDark={shell.isDark}
+          initialTitle={shell.spreadsheetEditor.title}
+          initialRows={shell.spreadsheetEditor.rows}
+          onClose={() => shell.setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
           onSaved={() => {
-            s.refreshClients();
-            s.setTrainerDocsRefreshKey((k) => k + 1);
+            shell.refreshClients();
+            shell.setTrainerDocsRefreshKey((k) => k + 1);
           }}
-          trainerNavChrome={s.getTrainerEditorNavChrome()}
+          trainerNavChrome={shell.getTrainerEditorNavChrome()}
         />
         <DocumentEditor
-          visible={s.documentEditor.visible}
-          trainerId={s.user?.uid}
-          documentId={s.documentEditor.documentId}
-          isDark={s.isDark}
-          onClose={() => s.setDocumentEditor({ visible: false, documentId: null })}
+          visible={shell.documentEditor.visible}
+          trainerId={shell.user?.uid}
+          documentId={shell.documentEditor.documentId}
+          isDark={shell.isDark}
+          onClose={() => shell.setDocumentEditor({ visible: false, documentId: null })}
           onSaved={() => {
-            s.refreshClients();
-            s.setTrainerDocsRefreshKey((k) => k + 1);
+            shell.refreshClients();
+            shell.setTrainerDocsRefreshKey((k) => k + 1);
           }}
-          trainerNavChrome={s.getTrainerEditorNavChrome()}
+          trainerNavChrome={shell.getTrainerEditorNavChrome()}
         />
       </SafeAreaView>
     </LinearGradient>

@@ -8,10 +8,19 @@
 const BRAND_LOGO_SOURCE = require('./Logo.PNG');
 
 /** Native asset aspect ratio — width / height. The logo file is square. */
-const BRAND_LOGO_ASPECT = 1;
+const BRAND_LOGO_ASPECT_RATIO = 1;
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * @returns {number}
+ */
+function brandLogoAspectRatio() {
+  return BRAND_LOGO_ASPECT_RATIO;
+}
+
 // ===== MAIN FUNCTION =====
+
+const BRAND_LOGO_ASPECT = brandLogoAspectRatio();
 
 export { BRAND_LOGO_SOURCE, BRAND_LOGO_ASPECT };

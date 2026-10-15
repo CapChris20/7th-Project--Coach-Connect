@@ -1,7 +1,8 @@
-/**
- * Pure helpers for trainer platform subscription access.
- * Firestore shape: users/{uid}.subscription
- */
+// Pure helpers for trainer platform subscription access.
+// Flow: parse dates on users/{uid}.subscription → pick free_trial / active / expired → format the trial countdown.
+// Used by Pro screens and gates. No React and no Firestore reads here.
+
+// ===== NAMED CONSTANTS =====
 
 export const SUBSCRIPTION_STATUSES = {
   FREE_TRIAL: 'free_trial',
@@ -10,7 +11,81 @@ export const SUBSCRIPTION_STATUSES = {
   CANCELLED: 'cancelled',
 };
 
+const ACCESS_NONE = 'no_subscription';
+const ACCESS_FREE_TRIAL = 'free_trial';
+const ACCESS_ACTIVE = 'active';
+const ACCESS_EXPIRED = 'expired';
+
+const MS_PER_MINUTE = 60000;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_DAY = MINUTES_PER_HOUR * HOURS_PER_DAY;
+
 /** @typedef {'no_subscription' | 'free_trial' | 'active' | 'expired'} SubscriptionAccess */
+
+// ===== HELPER FUNCTIONS =====
+
+function emptyAccessState() {
+  return {
+    access: /** @type {SubscriptionAccess} */ (ACCESS_NONE),
+    hasFullAccess: false,
+    status: null,
+    trialEndsAt: null,
+    expiresAt: null,
+    nextBillingDate: null,
+    trialCountdownMs: null,
+  };
+}
+
+function isDateStillInTheFuture(date, nowMs) {
+  return date && date.getTime() > nowMs;
+}
+
+function subscriptionStatusKey(subscription) {
+  return String(subscription.status || '').toLowerCase() || null;
+}
+
+function fullAccessState({ access, status, trialEndsAt, expiresAt, nextBillingDate, trialCountdownMs }) {
+  return {
+    access,
+    hasFullAccess: true,
+    status,
+    trialEndsAt,
+    expiresAt,
+    nextBillingDate,
+    trialCountdownMs,
+  };
+}
+
+function expiredAccessState({ status, isPaidPeriodStillOpen, trialEndsAt, expiresAt, nextBillingDate }) {
+  return {
+    access: ACCESS_EXPIRED,
+    hasFullAccess: false,
+    status:
+      status === SUBSCRIPTION_STATUSES.CANCELLED && !isPaidPeriodStillOpen
+        ? SUBSCRIPTION_STATUSES.EXPIRED
+        : status || SUBSCRIPTION_STATUSES.EXPIRED,
+    trialEndsAt,
+    expiresAt,
+    nextBillingDate,
+    trialCountdownMs: null,
+  };
+}
+
+function isKnownSubscriptionStatus(status) {
+  return (
+    status === SUBSCRIPTION_STATUSES.EXPIRED ||
+    status === SUBSCRIPTION_STATUSES.CANCELLED ||
+    status === SUBSCRIPTION_STATUSES.FREE_TRIAL ||
+    status === SUBSCRIPTION_STATUSES.ACTIVE
+  );
+}
+
+function isPaidStatusStillActive(status) {
+  return status === SUBSCRIPTION_STATUSES.ACTIVE || status === SUBSCRIPTION_STATUSES.CANCELLED;
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * @param {string | Date | null | undefined} value
@@ -21,8 +96,8 @@ export function parseIsoDate(value) {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
   }
-  const d = new Date(String(value));
-  return Number.isNaN(d.getTime()) ? null : d;
+  const parsedDate = new Date(String(value));
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 }
 
 /**
@@ -39,73 +114,50 @@ export function parseIsoDate(value) {
  * }}
  */
 export function resolveSubscriptionAccess(subscription, now = new Date()) {
-  const empty = {
-    access: /** @type {SubscriptionAccess} */ ('no_subscription'),
-    hasFullAccess: false,
-    status: null,
-    trialEndsAt: null,
-    expiresAt: null,
-    nextBillingDate: null,
-    trialCountdownMs: null,
-  };
-
+  const empty = emptyAccessState();
   if (!subscription || typeof subscription !== 'object') {
     return empty;
   }
 
-  const status = String(subscription.status || '').toLowerCase() || null;
+  const status = subscriptionStatusKey(subscription);
   const trialEndsAt = parseIsoDate(subscription.trialEndsAt);
   const expiresAt = parseIsoDate(subscription.expiresAt);
   const nextBillingDate = parseIsoDate(subscription.nextBillingDate);
   const nowMs = now.getTime();
 
-  const trialActive = trialEndsAt && trialEndsAt.getTime() > nowMs;
-  const paidActive = expiresAt && expiresAt.getTime() > nowMs;
+  const isTrialStillRunning = isDateStillInTheFuture(trialEndsAt, nowMs);
+  const isPaidPeriodStillOpen = isDateStillInTheFuture(expiresAt, nowMs);
 
-  if (status === SUBSCRIPTION_STATUSES.FREE_TRIAL && trialActive) {
-    return {
-      access: 'free_trial',
-      hasFullAccess: true,
+  if (status === SUBSCRIPTION_STATUSES.FREE_TRIAL && isTrialStillRunning) {
+    return fullAccessState({
+      access: ACCESS_FREE_TRIAL,
       status,
       trialEndsAt,
       expiresAt,
       nextBillingDate,
       trialCountdownMs: trialEndsAt.getTime() - nowMs,
-    };
+    });
   }
 
-  if (
-    (status === SUBSCRIPTION_STATUSES.ACTIVE || status === SUBSCRIPTION_STATUSES.CANCELLED) &&
-    paidActive
-  ) {
-    return {
-      access: 'active',
-      hasFullAccess: true,
+  if (isPaidStatusStillActive(status) && isPaidPeriodStillOpen) {
+    return fullAccessState({
+      access: ACCESS_ACTIVE,
       status,
       trialEndsAt,
       expiresAt,
       nextBillingDate,
       trialCountdownMs: null,
-    };
+    });
   }
 
-  if (
-    status === SUBSCRIPTION_STATUSES.EXPIRED ||
-    status === SUBSCRIPTION_STATUSES.CANCELLED ||
-    status === SUBSCRIPTION_STATUSES.FREE_TRIAL ||
-    status === SUBSCRIPTION_STATUSES.ACTIVE
-  ) {
-    return {
-      access: 'expired',
-      hasFullAccess: false,
-      status: status === SUBSCRIPTION_STATUSES.CANCELLED && !paidActive
-        ? SUBSCRIPTION_STATUSES.EXPIRED
-        : status || SUBSCRIPTION_STATUSES.EXPIRED,
+  if (isKnownSubscriptionStatus(status)) {
+    return expiredAccessState({
+      status,
+      isPaidPeriodStillOpen,
       trialEndsAt,
       expiresAt,
       nextBillingDate,
-      trialCountdownMs: null,
-    };
+    });
   }
 
   return empty;
@@ -113,14 +165,15 @@ export function resolveSubscriptionAccess(subscription, now = new Date()) {
 
 /**
  * Human-readable trial countdown, e.g. "2d 5h left in trial".
- * @param {number | null} ms
+ * @param {number | null} remainingMs
+ * @returns {string}
  */
-export function formatTrialCountdown(ms) {
-  if (ms == null || ms <= 0) return 'Trial ended';
-  const totalMinutes = Math.ceil(ms / 60000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
+export function formatTrialCountdown(remainingMs) {
+  if (remainingMs == null || remainingMs <= 0) return 'Trial ended';
+  const totalMinutes = Math.ceil(remainingMs / MS_PER_MINUTE);
+  const days = Math.floor(totalMinutes / MINUTES_PER_DAY);
+  const hours = Math.floor((totalMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR);
+  const minutes = totalMinutes % MINUTES_PER_HOUR;
   if (days > 0) return `${days}d ${hours}h left in trial`;
   if (hours > 0) return `${hours}h ${minutes}m left in trial`;
   return `${minutes}m left in trial`;

@@ -1,13 +1,7 @@
-/**
- * Aurora Hero Banner
- *
- * Purpose: UI screen or component: Aurora Hero Banner. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: getAuroraHeroGreeting, TODAY_CARD_TOP_STRIPE, AURORA_HERO_BORDER, HomeTopBanner
- *
- * @file-header
- */
+// Welcome hero at the top of client and trainer home: greeting, brand line, quote, live clock.
+// Flow: pick morning/afternoon/evening/night → paint the gradient card → clock ticks every second.
+// Used by client home, trainer home, and any screen that wants the same aurora banner.
+
 import React, { useEffect, useState } from 'react';
 import {
   Platform,
@@ -24,6 +18,8 @@ import CardGlow from './CardGlow';
 import ColorText from '../../look-and-feel/ColorText';
 import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
 
+// ===== NAMED CONSTANTS =====
+
 /** Dark purple → dark orange — Today/time card icon accent. */
 export const TODAY_CARD_TOP_STRIPE = ['#6D28D9', '#C2410C'];
 
@@ -33,71 +29,111 @@ export const AURORA_HERO_BORDER = ['#FF6B9D', '#C2410C'];
 /** @deprecated Prefer AURORA_HERO_BORDER — kept so stale bundles/imports do not crash. */
 export const HERO_TOP_STRIPE = AURORA_HERO_BORDER;
 
-/** Inner fill — same family as FilesHeaderCard (not flat black). */
 const HERO_INNER_BG_DARK = ['#1a0a2e', '#0f0a1a'];
 const HERO_INNER_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
+const DEFAULT_USER_NAME = 'User';
+const FALLBACK_FIRST_NAME = 'User';
 
+// Manipulate here: greeting windows. The clock icon uses a slightly earlier evening cutoff.
+const MORNING_START_HOUR = 5;
+const NOON_HOUR = 12;
+const AFTERNOON_END_HOUR = 17;
+const GREETING_EVENING_END_HOUR = 23;
+const CLOCK_ICON_EVENING_END_HOUR = 21;
+const HOURS_ON_CLOCK = 12;
+// Manipulate here: how often the live clock redraws.
+const CLOCK_TICK_MS = 1000;
+const HERO_CORNER_RADIUS = 24;
+const WIDE_BANNER_MIN_WIDTH = 600;
+const HERO_HORIZONTAL_PAD = 32;
+const LOTTIE_MAX_WIDE = 150;
+const LOTTIE_MAX_NARROW = 130;
+const LOTTIE_MIN_SIZE = 96;
+const LOTTIE_WIDTH_FRACTION = 0.36;
+const TITLE_SIZE_WIDE = 38;
+const TITLE_SIZE_NARROW = 34;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * One word for the "Good Morning," line from the current hour.
+ * @returns {'Morning'|'Afternoon'|'Evening'|'Night'}
+ */
 export function getAuroraHeroGreeting() {
   const hour = new Date().getHours();
-  // 5am–12pm morning · 12–5pm afternoon · 5–11pm evening · 11pm–5am night
-  if (hour >= 5 && hour < 12) return 'Morning';
-  if (hour >= 12 && hour < 17) return 'Afternoon';
-  if (hour >= 17 && hour < 23) return 'Evening';
+  if (hour >= MORNING_START_HOUR && hour < NOON_HOUR) return 'Morning';
+  if (hour >= NOON_HOUR && hour < AFTERNOON_END_HOUR) return 'Afternoon';
+  if (hour >= AFTERNOON_END_HOUR && hour < GREETING_EVENING_END_HOUR) return 'Evening';
   return 'Night';
 }
 
-/** Full phrase for AI Coach / copy: "Good morning" */
+/**
+ * Full phrase for AI Coach / copy: "Good morning"
+ * @returns {string}
+ */
 export function getAuroraHeroGreetingPhrase() {
   return `Good ${getAuroraHeroGreeting().toLowerCase()}`;
 }
 
-function auroraHeroDaySegment(hour) {
-  const h = Number(hour);
-  if (!Number.isFinite(h)) return '';
-  if (h >= 5 && h < 12) return 'morning';
-  if (h >= 12 && h < 17) return 'afternoon';
-  if (h >= 17 && h < 21) return 'evening';
+function dayPartForClockIcon(hour) {
+  const clockHour = Number(hour);
+  if (!Number.isFinite(clockHour)) return '';
+  if (clockHour >= MORNING_START_HOUR && clockHour < NOON_HOUR) return 'morning';
+  if (clockHour >= NOON_HOUR && clockHour < AFTERNOON_END_HOUR) return 'afternoon';
+  if (clockHour >= AFTERNOON_END_HOUR && clockHour < CLOCK_ICON_EVENING_END_HOUR) return 'evening';
   return 'night';
 }
 
-function auroraHeroSegmentIcon(seg) {
-  if (seg === 'morning') return 'sunny-outline';
-  if (seg === 'afternoon') return 'partly-sunny-outline';
-  if (seg === 'evening') return 'cloudy-night-outline';
+function ioniconForDayPart(dayPart) {
+  if (dayPart === 'morning') return 'sunny-outline';
+  if (dayPart === 'afternoon') return 'partly-sunny-outline';
+  if (dayPart === 'evening') return 'cloudy-night-outline';
   return 'moon-outline';
 }
 
-function auroraLiveClockParts(now) {
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const s = now.getSeconds();
-  const hour12 = h % 12 || 12;
-  const main = `${hour12}:${String(m).padStart(2, '0')}`;
-  const seconds = String(s).padStart(2, '0');
-  const ampm = h >= 12 ? 'PM' : 'AM';
+function liveClockParts(now) {
+  const hour24 = now.getHours();
+  const minute = now.getMinutes();
+  const second = now.getSeconds();
+  const hour12 = hour24 % HOURS_ON_CLOCK || HOURS_ON_CLOCK;
+  const main = `${hour12}:${String(minute).padStart(2, '0')}`;
+  const seconds = String(second).padStart(2, '0');
+  const ampm = hour24 >= NOON_HOUR ? 'PM' : 'AM';
   return { main, seconds, ampm };
+}
+
+function firstNameFromUserName(userName) {
+  const trimmed = String(userName || DEFAULT_USER_NAME).trim();
+  return trimmed.split(/\s+/)[0] || FALLBACK_FIRST_NAME;
+}
+
+function clockTextColors(isDark) {
+  return {
+    overline: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
+    secondary: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(10,10,15,0.58)',
+    primary: isDark ? '#FFFFFF' : '#0A0A0F',
+    clockBg: isDark ? '#0A0A0F' : '#FFFFFF',
+    hairline: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
+    secondsColor: isDark ? 'rgba(255,255,255,0.40)' : 'rgba(10,10,15,0.40)',
+  };
 }
 
 function AuroraHeroLiveClock({ isDark }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const tickId = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
+    return () => clearInterval(tickId);
   }, []);
 
-  const { main, seconds, ampm } = auroraLiveClockParts(now);
+  const { main, seconds, ampm } = liveClockParts(now);
   const dateLine = now.toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
   });
-  const seg = auroraHeroDaySegment(now.getHours());
-  const segLabel = seg.charAt(0).toUpperCase() + seg.slice(1);
-  const overline = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
-  const secondary = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(10,10,15,0.58)';
-  const primary = isDark ? '#FFFFFF' : '#0A0A0F';
-  const clockBg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)';
+  const dayPart = dayPartForClockIcon(now.getHours());
+  const dayPartLabel = dayPart.charAt(0).toUpperCase() + dayPart.slice(1);
+  const colors = clockTextColors(isDark);
 
   return (
     <View style={[clockStyles.wrap, isDark ? clockStyles.wrapGlowDark : clockStyles.wrapGlowLight]}>
@@ -105,16 +141,16 @@ function AuroraHeroLiveClock({ isDark }) {
         style={[
           clockStyles.frame,
           {
-            backgroundColor: clockBg,
+            backgroundColor: colors.clockBg,
             borderWidth: 1,
-            borderColor: hairline,
+            borderColor: colors.hairline,
           },
         ]}
       >
         <View style={clockStyles.body}>
             <View style={clockStyles.dateCol}>
-              <Text style={[clockStyles.overline, { color: overline }]}>Today</Text>
-              <Text style={[clockStyles.dateText, { color: primary }]} numberOfLines={2}>
+              <Text style={[clockStyles.overline, { color: colors.overline }]}>Today</Text>
+              <Text style={[clockStyles.dateText, { color: colors.primary }]} numberOfLines={2}>
                 {dateLine}
               </Text>
               <View style={clockStyles.segRow}>
@@ -124,27 +160,27 @@ function AuroraHeroLiveClock({ isDark }) {
                   end={{ x: 1, y: 1 }}
                   style={clockStyles.iconCircle}
                 >
-                  <Ionicons name={auroraHeroSegmentIcon(seg)} size={20} color="#FFFFFF" />
+                  <Ionicons name={ioniconForDayPart(dayPart)} size={20} color="#FFFFFF" />
                 </LinearGradient>
-                <Text style={[clockStyles.segText, { color: secondary }]}>{segLabel}</Text>
+                <Text style={[clockStyles.segText, { color: colors.secondary }]}>{dayPartLabel}</Text>
               </View>
             </View>
 
             <View style={clockStyles.timeCol}>
               <View style={clockStyles.timeRow}>
                 <Text
-                  style={[clockStyles.timeMain, { color: primary }]}
+                  style={[clockStyles.timeMain, { color: colors.primary }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.75}
                 >
                   {main}
                 </Text>
-                <Text style={[clockStyles.timeSec, { color: isDark ? 'rgba(255,255,255,0.40)' : 'rgba(10,10,15,0.40)' }]}>
+                <Text style={[clockStyles.timeSec, { color: colors.secondsColor }]}>
                   :{seconds}
                 </Text>
               </View>
-              <Text style={[clockStyles.timeAmPm, { color: overline }]}>{ampm}</Text>
+              <Text style={[clockStyles.timeAmPm, { color: colors.overline }]}>{ampm}</Text>
             </View>
         </View>
       </View>
@@ -152,10 +188,9 @@ function AuroraHeroLiveClock({ isDark }) {
   );
 }
 
-/** Welcome shell — gradient rim + flat glow behind card (FilesHeaderCard style). */
 function HeroGradientFrame({ isDark, layout, children }) {
   const shellStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
-  const radius = shellStyle.borderRadius ?? 24;
+  const radius = shellStyle.borderRadius ?? HERO_CORNER_RADIUS;
   const innerBg = isDark ? HERO_INNER_BG_DARK : HERO_INNER_BG_LIGHT;
 
   return (
@@ -201,23 +236,33 @@ function HeroGradientFrame({ isDark, layout, children }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Welcome banner: Good {period}, {firstName} + Coach Connect + quote + live clock.
+ * @param {object} props
+ */
 export default function HomeTopBanner({
   isDark,
   userId,
-  userName = 'User',
+  userName = DEFAULT_USER_NAME,
   greetingPeriod,
   textColor,
   showLiveClock = true,
   layout = 'client',
 }) {
   const { width } = useWindowDimensions();
-  const isWide = width >= 600;
-  const titleSize = isWide ? 38 : 34;
-  const lottieSize = Math.min(isWide ? 150 : 130, Math.max(96, Math.round((width - 32) * 0.36)));
-  const firstName = String(userName || 'User').trim().split(/\s+/)[0] || 'User';
+  const isWide = width >= WIDE_BANNER_MIN_WIDTH;
+  const titleSize = isWide ? TITLE_SIZE_WIDE : TITLE_SIZE_NARROW;
+  const lottieSize = Math.min(
+    isWide ? LOTTIE_MAX_WIDE : LOTTIE_MAX_NARROW,
+    Math.max(LOTTIE_MIN_SIZE, Math.round((width - HERO_HORIZONTAL_PAD) * LOTTIE_WIDTH_FRACTION)),
+  );
+  const firstName = firstNameFromUserName(userName);
   const period = greetingPeriod || getAuroraHeroGreeting();
   const greetingColor = textColor ?? (isDark ? '#FFFFFF' : '#111827');
 
+  // 1. Greeting line, then the brand block, then the quote animation.
   return (
     <HeroGradientFrame isDark={isDark} layout={layout}>
       <View style={{ marginBottom: layout === 'trainer' ? 6 : 4, alignItems: 'center' }}>

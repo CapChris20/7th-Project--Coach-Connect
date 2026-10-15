@@ -26,6 +26,11 @@ function statusBarStyleForTheme(isDark) {
   return STATUS_BAR_DARK_CONTENT;
 }
 
+function shellStyleForTheme(isDark) {
+  if (isDark) return styles.dark;
+  return styles.light;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -35,10 +40,15 @@ function statusBarStyleForTheme(isDark) {
  * @returns {JSX.Element}
  */
 export default function AppLoadingScreen({ isDark = true }) {
+  const statusBarStyle = statusBarStyleForTheme(isDark);
+  const shellStyle = shellStyleForTheme(isDark);
+
+  // 1. Dark or light shell, and a status-bar color that stays readable on it.
+  // 2. Center the shared loading bar.
   return (
     // vocab: SafeAreaView = pads inside the notch and home indicator so the spinner is not clipped.
-    <SafeAreaView style={[styles.container, isDark ? styles.dark : styles.light]}>
-      <StatusBar barStyle={statusBarStyleForTheme(isDark)} />
+    <SafeAreaView style={[styles.container, shellStyle]}>
+      <StatusBar barStyle={statusBarStyle} />
       <View style={styles.content}>
         <LoadingBarAnimation isDark={isDark} width={LOADING_BAR_WIDTH} />
       </View>

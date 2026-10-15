@@ -1,19 +1,8 @@
-/**
- * Onboarding Screen
- *
- * Purpose: UI screen or component: Onboarding Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/auth
- * Key exports: OnboardingProgressBar, SelectionCard, OnboardingTextArea, OnboardingSectionLabel, OnboardingInputRow, OnboardingDayPicker, OnboardingOptionChips, OnboardingMultiSelectPills
- *
- * @file-header
- */
-/**
- * NewUserSetupScreen - Combined onboarding flow for clients and trainers
- * 
- * Handles all 6 onboarding steps for both client and trainer roles
- * with Apple-style subtle gradients throughout.
- */
+// NewUserSetupScreen.jsx
+//
+// First-run setup questionnaire for clients and trainers (role comes from signup).
+// Flow: answer each step → validate → save phone + Firestore + server → enter the app.
+// Used by: LoginGate after signup. Named exports are shared onboarding UI primitives.
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
@@ -109,17 +98,115 @@ import {
   OnboardingPrimaryButton,
 } from '../for-both/setup-steps/setupStepPieces';
 
+// ===== NAMED CONSTANTS =====
+
 const { width } = Dimensions.get('window');
 const SCREEN_PAD = 16;
 const GRID_GUTTER = 16;
 const TWO_COL_ITEM = (width - SCREEN_PAD * 2 - GRID_GUTTER) / 2;
+
+// Manipulate here: icon size when SelectionCard is "large".
+const ICON_SIZE_LARGE = 24;
+// Manipulate here: default max length for onboarding text areas.
+const DEFAULT_TEXTAREA_MAX_CHARS = 500;
+// Manipulate here: trainer philosophy / bio hard cap.
+const PHILOSOPHY_MAX_CHARS = 1000;
+const PHILOSOPHY_MIN_CHARS = 50;
+// Day-of-week picker shows Mon–Sun as 1…7.
+const DAYS_IN_WEEK = 7;
+const DAY_OF_WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, DAYS_IN_WEEK];
+// Client step tint index for trainer-code / invite step.
+const CLIENT_INVITE_STEP = 7;
+// Trainer invite-code step number in the trainer flow.
+const TRAINER_INVITE_STEP = 7;
+// Invite code display "XXX-XXX" is 7 chars including the dash.
+const INVITE_CODE_DISPLAY_LENGTH = 7;
+// Manipulate here: orange warning when bio is near the limit.
+const BIO_WARN_NEAR_LIMIT = 450;
+const BIO_WARN_AT_LIMIT = 500;
+// Manipulate here: spinning border duration on the invite-code card.
+const INVITE_BORDER_SPIN_MS = 6000;
+// Manipulate here: onboarding API request timeout.
+const ONBOARDING_API_TIMEOUT_MS = 15000;
+const HTTP_UNAUTHORIZED = 401;
+// Manipulate here: extra bottom pad on the trainer paywall step.
+const TRAINER_PAYWALL_EXTRA_PAD = 60;
+// Layout tokens used by getStyles (plain object, not StyleSheet.create).
+const STYLE_SPACE_LG = 24;
+const STYLE_FONT_TITLE = 24;
+const STYLE_UNIT_MIN_WIDTH = 60;
+
+// ===== HELPER FUNCTIONS =====
+
+
+/**
+ * AI-verify image cert sheets; non-images go straight to manual review.
+ */
+async function verifyUploadedCertificationSheet({
+  trainerUid,
+  trainerName,
+  file,
+  url,
+  meta,
+  setOnboardingData,
+}) {
+  let verifyMessage = 'Certification sheet saved for review.';
+  const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
+  const isImage =
+    mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''));
+
+  if (!isImage) {
+    setOnboardingData((prev) => ({
+      ...prev,
+      certificationVerificationStatus: 'manual_review',
+    }));
+    return 'Uploaded — Under review. Usually reviewed within 24–48 hours (use a JPG/PNG for instant AI check).';
+  }
+
+  try {
+    setOnboardingData((prev) => ({
+      ...prev,
+      certificationVerificationStatus: 'checking',
+    }));
+    const verification = await checkTrainerCertificate({
+      trainerId: trainerUid,
+      trainerName,
+      localUri: file.uri,
+      imageUrl: url,
+      mediaType: file.mimeType || 'image/jpeg',
+      storagePath: meta?.storagePath,
+      fileName: meta?.fileName,
+    });
+    verifyMessage =
+      verification.userMessage ||
+      certificationStatusLabel(verification.status) ||
+      verifyMessage;
+    if (verification.status === 'manual_review') {
+      verifyMessage = `${verifyMessage}\nUsually reviewed within 24–48 hours.`;
+    }
+    setOnboardingData((prev) => ({
+      ...prev,
+      aiVerification: verification.aiVerification || verification.analysis || null,
+      certificationVerificationStatus: verification.status,
+      isVerified: verification.isVerified === true,
+    }));
+    return verifyMessage;
+  } catch (verifyErr) {
+    if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
+    setOnboardingData((prev) => ({
+      ...prev,
+      certificationVerificationStatus: 'manual_review',
+    }));
+    return 'Uploaded — Under review. AI check was unavailable; usually reviewed within 24–48 hours.';
+  }
+}
 
 // --- Onboarding UI primitives (rest of components live in this file; tokens + primary CTA in setupStepPieces.jsx) ---
 
 function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) {
   const [imageFailed, setImageFailed] = useState(false);
   const dim = grid ? 40 : large ? 36 : row ? 28 : 28;
-  const ionSize = grid ? 26 : large ? 24 : 20;
+  const ionSize = grid ? 26 : large ? ICON_SIZE_LARGE : 20;
 
   useEffect(() => {
     setImageFailed(false);
@@ -141,11 +228,17 @@ function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) 
   return null;
 }
 
+/**
+ * Thin progress bar for the onboarding header (current step / total steps).
+ * @param {{current: number, total: number, t: object, gradientColors?: string[]}} props
+ */
 export function OnboardingProgressBar({ current, total, t, gradientColors }) {
   const pct = Math.min((current / total) * 100, 100);
-  const g =
-    Array.isArray(gradientColors) && gradientColors.length >= 2 ? gradientColors : ONBOARDING_BRAND_GRADIENT;
-  const gEnd = g[g.length - 1];
+  const barGradient =
+    Array.isArray(gradientColors) && gradientColors.length >= 2
+      ? gradientColors
+      : ONBOARDING_BRAND_GRADIENT;
+  const gradientEnd = barGradient[barGradient.length - 1];
   return (
     <View
       style={{
@@ -158,7 +251,7 @@ export function OnboardingProgressBar({ current, total, t, gradientColors }) {
       }}
     >
       <LinearGradient
-        colors={[g[0], gEnd]}
+        colors={[barGradient[0], gradientEnd]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={{ width: `${pct}%`, height: 4, borderRadius: 2 }}
@@ -167,6 +260,10 @@ export function OnboardingProgressBar({ current, total, t, gradientColors }) {
   );
 }
 
+/**
+ * Tappable choice card used on most onboarding steps (goal, specialty, etc.).
+ * @param {object} props
+ */
 export function SelectionCard({
   selected,
   onPress,
@@ -178,7 +275,7 @@ export function SelectionCard({
   t,
   accentGradient,
 }) {
-  const bg = selected ? t.cardSelectedBg : t.cardBg;
+  const cardBackground = selected ? t.cardSelectedBg : t.cardBg;
   const border = selected ? t.cardSelectedBorder : t.cardBorder;
   const gradient = accentGradient || ONBOARDING_BRAND_GRADIENT;
   const iconColor = selected ? gradient[1] : gradient[0];
@@ -192,7 +289,7 @@ export function SelectionCard({
         style={{
           flex: 1,
           minHeight: 100,
-          backgroundColor: bg,
+          backgroundColor: cardBackground,
           borderWidth: 1.5,
           borderColor: border,
           borderRadius: 14,
@@ -224,7 +321,7 @@ export function SelectionCard({
         activeOpacity={0.8}
         style={{
           flex: 1,
-          backgroundColor: bg,
+          backgroundColor: cardBackground,
           borderWidth: 1.5,
           borderColor: border,
           borderRadius: 14,
@@ -256,7 +353,7 @@ export function SelectionCard({
         alignItems: 'center',
         width: '100%',
         minHeight: 64,
-        backgroundColor: bg,
+        backgroundColor: cardBackground,
         borderWidth: 1.5,
         borderColor: border,
         borderRadius: 14,
@@ -280,11 +377,12 @@ export function SelectionCard({
   );
 }
 
+/** Multiline text box with a character counter for onboarding answers. */
 export function OnboardingTextArea({
   value,
   onChangeText,
   placeholder,
-  maxLength = 500,
+  maxLength = DEFAULT_TEXTAREA_MAX_CHARS,
   numberOfLines = 5,
   t,
   editable = true,
@@ -322,6 +420,7 @@ export function OnboardingTextArea({
   );
 }
 
+/** Small uppercase label above an onboarding field group. */
 export function OnboardingSectionLabel({ text, t, style }) {
   return (
     <Text
@@ -342,6 +441,7 @@ export function OnboardingSectionLabel({ text, t, style }) {
   );
 }
 
+/** Single-line input row with optional leading icon and trailing unit. */
 export function OnboardingInputRow({
   iconName,
   iconSource,
@@ -404,13 +504,14 @@ export function OnboardingInputRow({
   );
 }
 
+/** Week-day chip row (1–7) for training-frequency answers. */
 export function OnboardingDayPicker({ value, onChange, t }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 20, marginBottom: 8 }}>
-      {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+      {DAY_OF_WEEK_NUMBERS.map((dayNumber) => (
         <TouchableOpacity
-          key={n}
-          onPress={() => onChange(n)}
+          key={dayNumber}
+          onPress={() => onChange(dayNumber)}
           activeOpacity={0.8}
           style={{
             width: 40,
@@ -421,7 +522,7 @@ export function OnboardingDayPicker({ value, onChange, t }) {
             overflow: 'hidden',
           }}
         >
-          {value === n ? (
+          {value === dayNumber ? (
             <LinearGradient
               colors={ONBOARDING_CTA_GRADIENT}
               start={{ x: 0, y: 0 }}
@@ -439,13 +540,22 @@ export function OnboardingDayPicker({ value, onChange, t }) {
               }}
             />
           )}
-          <Text style={{ fontSize: 14, fontWeight: '700', color: value === n ? '#fff' : t.textPrimary }}>{n}</Text>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '700',
+              color: value === dayNumber ? '#fff' : t.textPrimary,
+            }}
+          >
+            {dayNumber}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
   );
 }
 
+/** Horizontal chip list for single-select onboarding options. */
 export function OnboardingOptionChips({ options, selected, onSelect, t }) {
   return (
     <View
@@ -499,6 +609,7 @@ export function OnboardingOptionChips({ options, selected, onSelect, t }) {
   );
 }
 
+/** Wrap of pills for multi-select answers (injuries, specialties, …). */
 export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, t }) {
   const set = new Set(selectedValues || []);
   return (
@@ -557,6 +668,7 @@ export const onboardingHeadingStyles = StyleSheet.create({
   },
 });
 
+/** Half-width for a 2-column SelectionCard grid on this screen. */
 export function onboardingGridHalfWidth() {
   return (width - 48) / 2;
 }
@@ -574,7 +686,7 @@ const getClientStepTint = (step, section) => {
   if (step === 4) return GLASS_TINTS.cyan;
   if (step === 5) return GLASS_TINTS.violet;
   if (step === 6) return GLASS_TINTS.orange;
-  if (step === 7) return GLASS_TINTS.magenta;
+  if (step === CLIENT_INVITE_STEP) return GLASS_TINTS.magenta;
   if (step === 8) return GLASS_TINTS.cyan;
   return GLASS_TINTS.cyan;
 };
@@ -1188,7 +1300,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
     const [isFocused, setIsFocused] = useState(false);
     const count = value?.length || 0;
     const counterColor =
-      count >= 500 ? '#EF4444' : count >= 450 ? '#F97316' : isFocused ? (isDark ? 'rgba(255,255,255,0.90)' : 'rgba(15,23,42,0.92)') : (isDark ? 'rgba(255,255,255,0.62)' : 'rgba(51,65,85,0.65)');
+      count >= BIO_WARN_AT_LIMIT ? '#EF4444' : count >= BIO_WARN_NEAR_LIMIT ? '#F97316' : isFocused ? (isDark ? 'rgba(255,255,255,0.90)' : 'rgba(15,23,42,0.92)') : (isDark ? 'rgba(255,255,255,0.62)' : 'rgba(51,65,85,0.65)');
 
     const borderColors = isDark
       ? ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.00)']
@@ -1251,7 +1363,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
     const [isFocused, setIsFocused] = useState(false);
     const charCount = situationDescription.length;
     const minChars = 50;
-    const maxChars = 1000;
+    const maxChars = PHILOSOPHY_MAX_CHARS;
     
     const getCharCountColor = () => {
       if (charCount < minChars) return isDark ? '#9CA3AF' : '#6B7280';
@@ -1278,7 +1390,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
             source={lottie}
             autoPlay
             loop
-            style={{ width: 280, height: 168, marginBottom: 24, alignSelf: 'center' }} // Reduced height by 40%
+            style={{ width: 280, height: 168, marginBottom: STYLE_SPACE_LG, alignSelf: 'center' }} // Reduced height by 40%
           />
         )}
         <Text style={dynamicStyles.liquidHeading}>{heading}</Text>
@@ -1349,8 +1461,8 @@ Examples:
     shakeAnimation,
     isDark = true,
   }) => {
-    const t = getOnboardingUiTokens(isDark);
-    const H = onboardingHeadingStyles;
+    const tokens = getOnboardingUiTokens(isDark);
+    const headingStyles = onboardingHeadingStyles;
     const [choice, setChoice] = useState(trainerCode ? 'yes' : 'no');
     const debounceTimer = useRef(null);
 
@@ -1374,8 +1486,8 @@ Examples:
       paddingVertical: 12,
       borderRadius: 14,
       borderWidth: 1.5,
-      borderColor: selected ? ONBOARDING_ACCENT : t.cardBorder,
-      backgroundColor: selected ? t.cardSelectedBg : t.cardBg,
+      borderColor: selected ? ONBOARDING_ACCENT : tokens.cardBorder,
+      backgroundColor: selected ? tokens.cardSelectedBg : tokens.cardBg,
       marginBottom: 10,
     });
 
@@ -1385,11 +1497,11 @@ Examples:
           <LottieView source={safeTrainerLottie} autoPlay loop style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
         ) : (
           <View style={[styles.iconPlaceholder, { width: 260, height: 260 }]}>
-            <Ionicons name="person-add-outline" size={72} color={t.textSecondary} />
+            <Ionicons name="person-add-outline" size={72} color={tokens.textSecondary} />
           </View>
         )}
-        <Text style={[H.heading, { color: t.textPrimary }]}>{heading}</Text>
-        <Text style={[H.subtitle, { color: t.textSecondary, marginBottom: 16 }]}>
+        <Text style={[headingStyles.heading, { color: tokens.textPrimary }]}>{heading}</Text>
+        <Text style={[headingStyles.subtitle, { color: tokens.textSecondary, marginBottom: 16 }]}>
           Have an invite from a coach? Enter it below. Otherwise choose independent training.
         </Text>
 
@@ -1404,7 +1516,7 @@ Examples:
             <Ionicons name="key-outline" size={20} color={choice === 'yes' ? onboardingOptionGradient(0)[1] : onboardingOptionGradient(0)[0]} />
           </IconGradientWrap>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: t.textPrimary }}>Yes, I have a trainer code</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: tokens.textPrimary }}>Yes, I have a trainer code</Text>
           </View>
           {choice === 'yes' ? (
             <Ionicons name="checkmark-circle" size={22} color={ONBOARDING_ACCENT} />
@@ -1418,7 +1530,7 @@ Examples:
                 fontSize: 11,
                 fontWeight: '700',
                 letterSpacing: 1.2,
-                color: t.textLabel,
+                color: tokens.textLabel,
                 marginBottom: 8,
               }}
             >
@@ -1431,16 +1543,16 @@ Examples:
                   borderRadius: 14,
                   borderWidth: 1.5,
                   borderColor: codeValid === false ? '#F87171' : ONBOARDING_ACCENT,
-                  backgroundColor: t.inputBg,
+                  backgroundColor: tokens.inputBg,
                   paddingHorizontal: 16,
                   fontSize: 17,
                   fontWeight: '700',
                   letterSpacing: 3,
-                  color: t.textPrimary,
+                  color: tokens.textPrimary,
                   textAlign: 'center',
                 }}
                 placeholder="ABC-123"
-                placeholderTextColor={t.textLabel}
+                placeholderTextColor={tokens.textLabel}
                 value={trainerCode}
                 onChangeText={(text) => {
                   const next = text.toUpperCase();
@@ -1479,8 +1591,8 @@ Examples:
             <Ionicons name="barbell-outline" size={20} color={choice === 'no' ? onboardingOptionGradient(1)[1] : onboardingOptionGradient(1)[0]} />
           </IconGradientWrap>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: t.textPrimary }}>{'No, I\u2019ll train independently'}</Text>
-            <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: tokens.textPrimary }}>{'No, I\u2019ll train independently'}</Text>
+            <Text style={{ fontSize: 13, color: tokens.textSecondary, marginTop: 2 }}>
               Browse trainers anytime from the app
             </Text>
           </View>
@@ -1493,11 +1605,18 @@ Examples:
   };
 
 /** Role comes from signup / Firestore via LoginGate; default client — never show a duplicate full-screen role picker. */
+/** Normalize signup role to 'trainer' or 'client'. */
 function cleanUpRoleName(roleProp, routeRole) {
-  const s = String(roleProp ?? routeRole ?? '').toLowerCase().trim();
-  return s === 'trainer' ? 'trainer' : 'client';
+  const roleText = String(roleProp ?? routeRole ?? '').toLowerCase().trim();
+  return roleText === 'trainer' ? 'trainer' : 'client';
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full client/trainer onboarding wizard. Role is fixed from signup — no role picker here.
+ * @param {object} props
+ */
 export default function NewUserSetupScreen({
   route,
   onComplete,
@@ -1651,7 +1770,7 @@ export default function NewUserSetupScreen({
 
   // Generate unique invite code for trainers (final step)
   useEffect(() => {
-    if (role === 'trainer' && currentStep === 7 && !inviteCode) {
+    if (role === 'trainer' && currentStep === TRAINER_INVITE_STEP && !inviteCode) {
       if (previewMode) {
         setInviteCode('DEM-O12');
         setOnboardingData((prev) => ({ ...prev, inviteCode: 'DEM-O12' }));
@@ -1662,7 +1781,7 @@ export default function NewUserSetupScreen({
   }, [role, currentStep, previewMode]);
 
   useEffect(() => {
-    if (!(role === 'trainer' && currentStep === 7)) return;
+    if (!(role === 'trainer' && currentStep === TRAINER_INVITE_STEP)) return;
 
     inviteBorderRotation.stopAnimation();
     inviteBorderPulse.stopAnimation();
@@ -1670,7 +1789,7 @@ export default function NewUserSetupScreen({
     inviteBorderPulse.setValue(0);
 
     const rotateLoop = Animated.loop(
-      Animated.timing(inviteBorderRotation, { toValue: 1, duration: 6000, useNativeDriver: true })
+      Animated.timing(inviteBorderRotation, { toValue: 1, duration: INVITE_BORDER_SPIN_MS, useNativeDriver: true })
     );
     const pulseLoop = Animated.loop(
       Animated.sequence([
@@ -1733,76 +1852,103 @@ export default function NewUserSetupScreen({
     return <LottieView source={src} autoPlay loop style={style || styles.lottieAnimation} />;
   };
 
+
+  /**
+   * POST JSON to one onboarding API base with a Firebase ID token and timeout.
+   */
+  const fetchOnboardingWithToken = async (baseUrl, path, body, firebaseUser) => {
+    await firebaseUser.reload();
+    const idToken = await firebaseUser.getIdToken(true);
+    if (!idToken || typeof idToken !== 'string') {
+      throw new Error('Missing/invalid Firebase ID token');
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ONBOARDING_API_TIMEOUT_MS);
+    try {
+      return await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  /** Read error text; on 401 retry once with a fresh token. */
+  const fetchOnboardingUntilOk = async (baseUrl, path, body, firebaseUser) => {
+    let resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
+    if (resp.ok) return resp;
+
+    const text = await resp.text().catch(() => '');
+    if (resp.status !== HTTP_UNAUTHORIZED) {
+      throw new Error(`Server ${path} failed (${resp.status}) ${text}`.trim());
+    }
+
+    resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
+    if (resp.ok) return resp;
+    const retryText = await resp.text().catch(() => '');
+    throw new Error(`Server ${path} failed (${resp.status}) ${retryText}`.trim());
+  };
+
+  /** Map a fetch failure into a clearer lastErr for the caller. */
+  const onboardingFetchFailure = (error, baseUrl, path) => {
+    const msg = error?.message || String(error);
+    if (msg.includes('Network request failed')) {
+      return new Error(`Network request failed for ${baseUrl}${path}`);
+    }
+    if (msg.includes('aborted') || msg.includes('AbortError')) {
+      return new Error(`Request timed out for ${baseUrl}${path}`);
+    }
+    return error;
+  };
+
+  // 1. Try each API base until one accepts the onboarding POST.
   const postOnboardingApi = async (path, body) => {
     const baseUrls = getApiBaseCandidates();
-
     const firebaseUser = auth?.currentUser;
     if (!firebaseUser) throw new Error('Missing Firebase auth user.');
 
     let lastErr = null;
-    const fetchWithToken = async (baseUrl) => {
-      await firebaseUser.reload();
-      const idToken = await firebaseUser.getIdToken(true);
-      if (!idToken || typeof idToken !== 'string') {
-        throw new Error('Missing/invalid Firebase ID token');
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      try {
-        return await fetch(`${baseUrl}${path}`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify(body ?? {}),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    };
-
     const tried = [];
     for (const baseUrl of baseUrls) {
+      tried.push(baseUrl);
       try {
-        tried.push(baseUrl);
-        let resp = await fetchWithToken(baseUrl);
-
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => '');
-          if (resp.status === 401) {
-            resp = await fetchWithToken(baseUrl);
-            if (!resp.ok) {
-              const retryText = await resp.text().catch(() => '');
-              throw new Error(`Server ${path} failed (${resp.status}) ${retryText}`.trim());
-            }
-          } else {
-            throw new Error(`Server ${path} failed (${resp.status}) ${text}`.trim());
-          }
-        }
-
+        const resp = await fetchOnboardingUntilOk(baseUrl, path, body, firebaseUser);
         return await resp.json();
-      } catch (e) {
-        const msg = e?.message || String(e);
-        // Add a bit more context for the common RN error: "Network request failed"
-        if (msg.includes('Network request failed')) {
-          lastErr = new Error(`Network request failed for ${baseUrl}${path}`);
-        } else if (msg.includes('aborted') || msg.includes('AbortError')) {
-          lastErr = new Error(`Request timed out for ${baseUrl}${path}`);
-        } else {
-          lastErr = e;
-        }
+      } catch (error) {
+        lastErr = onboardingFetchFailure(error, baseUrl, path);
       }
     }
 
     if (lastErr) {
-      const err = new Error(`${lastErr.message || String(lastErr)} (tried: ${tried.join(', ')})`);
-      throw err;
+      throw new Error(`${lastErr.message || String(lastErr)} (tried: ${tried.join(', ')})`);
     }
     throw new Error(`Request failed: ${path} (tried: ${tried.join(', ')})`);
+  };
+
+  /** Build one XXX-XXX invite code from random A–Z / 0–9 chars. */
+  const buildRandomInviteCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const part1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const part2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    return `${part1}-${part2}`;
+  };
+
+  /** Ask the server if this invite code is free; on network error, assume unique. */
+  const isInviteCodeAvailable = async (code) => {
+    try {
+      const resp = await postOnboardingApi('/api/onboarding/check-invite-code', { code });
+      return !resp?.exists;
+    } catch (error) {
+      console.warn('Invite code uniqueness check failed; assuming unique:', error?.message || error);
+      return true;
+    }
   };
 
   const generateInviteCode = async () => {
@@ -1813,28 +1959,14 @@ export default function NewUserSetupScreen({
     const maxAttempts = 10;
 
     while (!isUnique && attempts < maxAttempts) {
-      // Generate 6-character alphanumeric code
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      const part1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      const part2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      code = `${part1}-${part2}`;
-
-      // Check if code exists on the server (avoids Expo Go Firestore transport)
-      try {
-        const resp = await postOnboardingApi('/api/onboarding/check-invite-code', { code });
-        if (!resp?.exists) isUnique = true;
-      } catch (error) {
-        console.warn('Invite code uniqueness check failed; assuming unique:', error?.message || error);
-        // If error, assume unique and continue so onboarding isn't blocked
-        isUnique = true;
-      }
-      
-      attempts++;
+      code = buildRandomInviteCode();
+      isUnique = await isInviteCodeAvailable(code);
+      attempts += 1;
     }
 
     if (isUnique) {
       setInviteCode(code);
-      setOnboardingData(prev => ({ ...prev, inviteCode: code }));
+      setOnboardingData((prev) => ({ ...prev, inviteCode: code }));
     } else {
       Alert.alert('Error', 'Could not generate unique invite code. Please try again.');
     }
@@ -1843,16 +1975,18 @@ export default function NewUserSetupScreen({
 
   /** Normalize client input to match stored format (XXX-XXX). Returns null if invalid. */
   const normalizeInviteCodeForQuery = (raw) => {
-    let s = String(raw || '').trim();
-    if (!s) return null;
+    let rawText = String(raw || '').trim();
+    if (!rawText) return null;
     // Strip TRAINER- prefix (case-insensitive)
-    if (/^trainer/i.test(s)) s = s.replace(/^trainer[\-\s]*/i, '').trim();
+    if (/^trainer/i.test(rawText)) {
+      rawText = rawText.replace(/^trainer[\-\s]*/i, '').trim();
+    }
     // Remove ALL non-alphanumeric characters, uppercase
-    const cleaned = s.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const cleaned = rawText.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     // Must be exactly 6 alphanumeric chars for XXX-XXX format
     if (cleaned.length !== 6) return null;
     const result = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}`;
-    return result.length === 7 ? result : null;
+    return result.length === INVITE_CODE_DISPLAY_LENGTH ? result : null;
   };
 
   const validateTrainerCode = async (code) =>
@@ -1969,12 +2103,12 @@ export default function NewUserSetupScreen({
           return onboardingData.daysPerWeek !== null;
         case 6:
           return true; // Optional
-        case 7:
+        case CLIENT_INVITE_STEP:
           return true; // Optional
         case 8:
           // Situation description required: 50-1000 characters
           const desc = onboardingData.situationDescription || '';
-          return desc.length >= 50 && desc.length <= 1000;
+          return desc.length >= PHILOSOPHY_MIN_CHARS && desc.length <= PHILOSOPHY_MAX_CHARS;
         case 9:
           // AI opt-in required (must explicitly choose)
           return onboardingData.aiEnabled === true || onboardingData.aiEnabled === false;
@@ -1997,7 +2131,7 @@ export default function NewUserSetupScreen({
           return !!onboardingData.trainerAvailabilityStatus && !!onboardingData.sessionType;
         case 6:
           return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
-        case 7:
+        case CLIENT_INVITE_STEP:
           return true; // Auto-generated invite code
         case 8:
           // Pro IAP is offered here but not required to finish setup / enter the app.
@@ -2061,6 +2195,80 @@ export default function NewUserSetupScreen({
     else handleFinish();
   };
 
+  /** Queue a deferred server sync when Firestore saved but API did not. */
+  const queueOnboardingServerSync = async (userId, finalRole, updateData, overrideData) => {
+    if (!userId) return;
+    const queuedUpdate =
+      updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
+    await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
+    await queuePendingOnboardingSync(userId, {
+      path: '/api/onboarding/complete',
+      body: {
+        finalRole,
+        onboardingData: queuedUpdate,
+        displayName: auth?.currentUser?.displayName || null,
+      },
+    });
+  };
+
+  /** Firestore OK but server failed — welcome the user and sync later. */
+  const finishAfterDeferredServerSync = async ({
+    userId,
+    finalRole,
+    updateData,
+    overrideData,
+    finishToApp,
+    error,
+  }) => {
+    if (__DEV__) {
+      console.log(
+        '[onboarding] Server sync deferred (Firestore OK):',
+        error?.message || String(error),
+      );
+    }
+    try {
+      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
+    } catch (_) {
+      /* queue best-effort */
+    }
+    Alert.alert(
+      "You're all set",
+      'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
+      [{ text: 'Continue', style: 'default', onPress: finishToApp }],
+    );
+  };
+
+  /** Neither Firestore nor server — offer continue-anyway with a queued sync. */
+  const finishAfterHardSaveFailure = async ({
+    userId,
+    finalRole,
+    updateData,
+    overrideData,
+    error,
+  }) => {
+    console.error('❌ Error saving onboarding data:', error);
+    try {
+      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
+    } catch (_) {
+      /* queue best-effort */
+    }
+    Alert.alert(
+      'Save Failed',
+      "Failed to save onboarding data. You can continue, but your preferences won't be saved.",
+      [
+        {
+          text: 'Continue Anyway',
+          onPress: () => {
+            const fallback =
+              updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
+            onComplete && onComplete(finalRole, fallback);
+          },
+        },
+        { text: 'Try Again', onPress: handleFinish },
+      ],
+    );
+  };
+
   const handleFinish = async (overrideData = null) => {
     if (previewMode) {
       Alert.alert('Preview mode', 'Onboarding would finish here — nothing was saved.');
@@ -2077,7 +2285,6 @@ export default function NewUserSetupScreen({
     let updateData = null;
     const userId = auth.currentUser.uid;
     const finalRole = role || onboardingData.role || 'client';
-
     const finishToApp = () => {
       if (onComplete) onComplete(finalRole, updateData);
     };
@@ -2099,10 +2306,7 @@ export default function NewUserSetupScreen({
 
       updateData = result.updateData;
       firestoreSynced = result.firestoreSynced;
-
-      if (result.error) {
-        throw result.error;
-      }
+      if (result.error) throw result.error;
 
       if (firestoreSynced) {
         console.log('✅ Onboarding merged to Firestore (users/' + userId + ')');
@@ -2115,84 +2319,26 @@ export default function NewUserSetupScreen({
       ]);
     } catch (error) {
       if (firestoreSynced) {
-        // Do not console.error — LogBox shows it as a red overlay even though Firestore succeeded.
-        // Typical cause: dev API (localhost / 127.0.0.1) unreachable from a physical device; payload is queued.
-        if (__DEV__) {
-          console.log(
-            '[onboarding] Server sync deferred (Firestore OK):',
-            error?.message || String(error)
-          );
-        }
-        // Profile + onboardingCompleted are already on users/{uid}; queue server for trainer doc / CRM links.
-        try {
-          if (userId) {
-            const queuedUpdate =
-              updateData ||
-              buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-            await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
-            await queuePendingOnboardingSync(userId, {
-              path: '/api/onboarding/complete',
-              body: {
-                finalRole,
-                onboardingData: queuedUpdate,
-                displayName: auth?.currentUser?.displayName || null,
-              },
-            });
-          }
-        } catch (_) {}
-
-        Alert.alert(
-          "You're all set",
-          'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
-          [{ text: 'Continue', style: 'default', onPress: finishToApp }]
-        );
+        await finishAfterDeferredServerSync({
+          userId,
+          finalRole,
+          updateData,
+          overrideData,
+          finishToApp,
+          error,
+        });
         return;
       }
-
-      console.error('❌ Error saving onboarding data:', error);
-
-      // Queue a sync attempt for next app start / when API becomes reachable.
-      try {
-        if (userId) {
-          const queuedUpdate =
-            updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-          await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
-          await queuePendingOnboardingSync(userId, {
-            path: '/api/onboarding/complete',
-            body: {
-              finalRole,
-              onboardingData: queuedUpdate,
-              displayName: auth?.currentUser?.displayName || null,
-            },
-          });
-        }
-      } catch (_) {}
-
-      Alert.alert(
-        'Save Failed',
-        'Failed to save onboarding data. You can continue, but your preferences won\'t be saved.',
-        [
-          {
-            text: 'Continue Anyway',
-            onPress: () => {
-              const fallback =
-                updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-              onComplete && onComplete(finalRole, fallback);
-            },
-          },
-          { text: 'Try Again', onPress: handleFinish },
-        ]
-      );
+      await finishAfterHardSaveFailure({
+        userId,
+        finalRole,
+        updateData,
+        overrideData,
+        error,
+      });
     } finally {
       setLoading(false);
     }
-  };
-
-  const isOptionalStep = () => {
-    if (role === 'client') {
-      return currentStep === 6 || currentStep === 7; // Injuries and Trainer Code (steps 8-9 are required)
-    }
-    return currentStep === 4 || currentStep === 8; // philosophy + Pro IAP optional
   };
 
   const getStepTitle = () => {
@@ -2225,14 +2371,14 @@ export default function NewUserSetupScreen({
   };
 
   const renderClientStep = () => {
-    const H = onboardingHeadingStyles;
+    const headingStyles = onboardingHeadingStyles;
     switch (currentStep) {
       case 1:
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>This helps us personalize your experience</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>This helps us personalize your experience</Text>
             <OnboardingInputRow
               t={ot}
               iconSource={getOnboardingIconSource('weight')}
@@ -2311,7 +2457,7 @@ export default function NewUserSetupScreen({
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
             <View style={{ marginTop: 12 }}>
               {[
                 { id: 'beginner', label: 'Beginner', desc: 'New to working out', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
@@ -2341,8 +2487,8 @@ export default function NewUserSetupScreen({
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
             <View style={{ marginTop: 12 }}>
               {[
                 { value: 'lose_fat', label: 'Lose Fat', icon: 'trending-down-outline', accentGradient: onboardingOptionGradient(0) },
@@ -2381,8 +2527,8 @@ export default function NewUserSetupScreen({
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE_EQUIPMENT} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 10 }}>
               {[
                 { value: 'full_gym', label: 'Full Gym', icon: 'fitness-outline', accentGradient: onboardingOptionGradient(0) },
@@ -2460,7 +2606,7 @@ export default function NewUserSetupScreen({
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
             <OnboardingDayPicker
               t={ot}
               value={onboardingData.daysPerWeek}
@@ -2495,8 +2641,8 @@ export default function NewUserSetupScreen({
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>{"We'll help you work around them safely"}</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>{"We'll help you work around them safely"}</Text>
             <OnboardingSectionLabel text="INJURIES OR PHYSICAL LIMITATIONS (RECOMMENDED)" t={ot} style={{ marginTop: 8 }} />
             <OnboardingTextArea
               t={ot}
@@ -2540,7 +2686,7 @@ export default function NewUserSetupScreen({
         );
       }
 
-      case 7:
+      case CLIENT_INVITE_STEP:
         return (
           <TrainerCodeStep
             lottie={getSafeLottie()}
@@ -2559,12 +2705,12 @@ export default function NewUserSetupScreen({
       case 8: {
         const charCount = (onboardingData.situationDescription || '').length;
         const minChars = 50;
-        const maxChars = 1000;
+        const maxChars = PHILOSOPHY_MAX_CHARS;
         return (
           <View style={styles.stepContainer}>
             <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE} />
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Optional details — then tell us your story below (required)</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Optional details — then tell us your story below (required)</Text>
             <OnboardingSectionLabel text="CURRENT STRESS LEVEL (OPTIONAL)" t={ot} style={{ marginTop: 4 }} />
             <OnboardingOptionChips
               t={ot}
@@ -2667,10 +2813,64 @@ Examples:
     }
   };
 
+
+  /** Pick a cert sheet, upload it, then optionally AI-verify image uploads. */
+  const handleUploadCertificationSheet = async () => {
+    const trainerUid = auth?.currentUser?.uid;
+    if (!trainerUid) {
+      Alert.alert('Sign in required', 'Finish signup first so we can save your certification sheet.');
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'image/*',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      setCertUploading(true);
+      const { url, meta } = await uploadTrainerCertificationSheet(trainerUid, {
+        localUri: file.uri,
+        filename: file.name || 'certification.pdf',
+        mimeType: file.mimeType,
+        fileSize: file.size,
+      });
+      setOnboardingData((prev) => ({
+        ...prev,
+        certificationSheetURLs: [...(prev.certificationSheetURLs || []), url],
+        certificationSheets: [...(prev.certificationSheets || []), meta].filter(Boolean),
+      }));
+
+      const trainerName =
+        String(onboardingData.name || '').trim() ||
+        String(auth?.currentUser?.displayName || '').trim() ||
+        'Trainer';
+      const verifyMessage = await verifyUploadedCertificationSheet({
+        trainerUid,
+        trainerName,
+        file,
+        url,
+        meta,
+        setOnboardingData,
+      });
+      Alert.alert('Certification', verifyMessage);
+    } catch (error) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload certification.');
+    } finally {
+      setCertUploading(false);
+    }
+  };
+
   // Render trainer step — purple/pink Lovable-style cards (matches TrainerNewUserSetupScreen reference)
   const renderTrainerStep = () => {
     const ot = getOnboardingUiTokens(isDark);
-    const H = onboardingHeadingStyles;
+    const headingStyles = onboardingHeadingStyles;
     const safeTrainerLottie = getSafeLottie();
     const trainerLottie =
       safeTrainerLottie != null ? (
@@ -2682,8 +2882,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
             <View style={{ marginTop: 16 }}>
               {[
                 { value: 'NASM-CPT', label: 'NASM-CPT', icon: 'medal-outline', accentGradient: onboardingOptionGradient(0) },
@@ -2737,96 +2937,7 @@ Examples:
             <TouchableOpacity
               activeOpacity={0.85}
               disabled={certUploading || !auth?.currentUser?.uid}
-              onPress={async () => {
-                const tid = auth?.currentUser?.uid;
-                if (!tid) {
-                  Alert.alert('Sign in required', 'Finish signup first so we can save your certification sheet.');
-                  return;
-                }
-                try {
-                  const result = await DocumentPicker.getDocumentAsync({
-                    type: [
-                      'application/pdf',
-                      'application/msword',
-                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                      'image/*',
-                      '*/*',
-                    ],
-                    copyToCacheDirectory: true,
-                  });
-                  if (result.canceled) return;
-                  const file = result.assets[0];
-                  setCertUploading(true);
-                  const { url, meta } = await uploadTrainerCertificationSheet(tid, {
-                    localUri: file.uri,
-                    filename: file.name || 'certification.pdf',
-                    mimeType: file.mimeType,
-                    fileSize: file.size,
-                  });
-                  setOnboardingData((prev) => ({
-                    ...prev,
-                    certificationSheetURLs: [...(prev.certificationSheetURLs || []), url],
-                    certificationSheets: [...(prev.certificationSheets || []), meta].filter(Boolean),
-                  }));
-
-                  const trainerName =
-                    String(onboardingData.name || '').trim() ||
-                    String(auth?.currentUser?.displayName || '').trim() ||
-                    'Trainer';
-                  let verifyMessage = 'Certification sheet saved for review.';
-                  const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
-                  if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''))) {
-                    try {
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        certificationVerificationStatus: 'checking',
-                      }));
-                      const verification = await checkTrainerCertificate({
-                        trainerId: tid,
-                        trainerName,
-                        localUri: file.uri,
-                        imageUrl: url,
-                        mediaType: file.mimeType || 'image/jpeg',
-                        storagePath: meta?.storagePath,
-                        fileName: meta?.fileName,
-                      });
-                      verifyMessage =
-                        verification.userMessage ||
-                        certificationStatusLabel(verification.status) ||
-                        verifyMessage;
-                      if (verification.status === 'manual_review') {
-                        verifyMessage = `${verifyMessage}\nUsually reviewed within 24–48 hours.`;
-                      }
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        aiVerification: verification.aiVerification || verification.analysis || null,
-                        certificationVerificationStatus: verification.status,
-                        isVerified: verification.isVerified === true,
-                      }));
-                    } catch (verifyErr) {
-                      if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        certificationVerificationStatus: 'manual_review',
-                      }));
-                      verifyMessage =
-                        'Uploaded — Under review. AI check was unavailable; usually reviewed within 24–48 hours.';
-                    }
-                  } else {
-                    setOnboardingData((prev) => ({
-                      ...prev,
-                      certificationVerificationStatus: 'manual_review',
-                    }));
-                    verifyMessage =
-                      'Uploaded — Under review. Usually reviewed within 24–48 hours (use a JPG/PNG for instant AI check).';
-                  }
-                  Alert.alert('Certification', verifyMessage);
-                } catch (e) {
-                  Alert.alert('Upload failed', e?.message || 'Could not upload certification.');
-                } finally {
-                  setCertUploading(false);
-                }
-              }}
+              onPress={handleUploadCertificationSheet}
               style={{
                 marginTop: 16,
                 borderRadius: 14,
@@ -2870,8 +2981,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Tell clients how long you've been coaching.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Tell clients how long you've been coaching.</Text>
             <View style={{ marginTop: 16 }}>
               {[
                 { value: 'less_than_1', label: 'Less than 1 year', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
@@ -2898,8 +3009,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
             <OnboardingMultiSelectPills
               t={ot}
               selectedValues={onboardingData.specialties}
@@ -2926,8 +3037,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Help clients understand your approach.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Help clients understand your approach.</Text>
             <View style={{ marginTop: 16 }}>
               <OnboardingTextArea
                 t={ot}
@@ -2946,8 +3057,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Set how clients can book with you.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Set how clients can book with you.</Text>
 
             <OnboardingSectionLabel text="AVAILABILITY" t={ot} />
             <SelectionCard
@@ -3004,8 +3115,8 @@ Examples:
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>A few last details for your profile.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>A few last details for your profile.</Text>
             <View style={{ marginTop: 20, gap: 12 }}>
               <OnboardingInputRow
                 t={ot}
@@ -3084,15 +3195,15 @@ Examples:
           </View>
         );
 
-      case 7: {
+      case CLIENT_INVITE_STEP: {
         const rotate = inviteBorderRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
         const pulseScale = inviteBorderPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
         const displayCode = inviteCode ? inviteCode.replace('-', '') : 'XXXXXX';
         return (
           <View style={styles.stepContainer}>
             {trainerLottie}
-            <Text style={[H.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[H.subtitle, { color: ot.textSecondary }]}>Share this with your clients to get started.</Text>
+            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
+            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Share this with your clients to get started.</Text>
 
             <View style={styles.codeCardOuter}>
               <Animated.View style={{ transform: [{ scale: pulseScale }] }}>
@@ -3169,7 +3280,7 @@ Examples:
   const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
   const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
   // Paywall footer is taller (CTA + price/restore row below it).
-  const scrollBottomPad = onboardingFooterBarHeight + (isTrainerPaywallStep ? 60 : 28);
+  const scrollBottomPad = onboardingFooterBarHeight + (isTrainerPaywallStep ? TRAINER_PAYWALL_EXTRA_PAD : 28);
   const ScreenRoot = previewMode ? View : SafeAreaView;
 
   return (
@@ -3427,7 +3538,7 @@ const getStyles = (isDark = true) => ({
     fontSize: 16,
     color: isDark ? '#9CA3AF' : '#6B7280',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: STYLE_SPACE_LG,
   },
   cardTitle: {
     fontSize: 18,
@@ -3453,7 +3564,7 @@ const getStyles = (isDark = true) => ({
     borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
   },
   pricingInput: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     fontWeight: '700',
     color: isDark ? '#F9FAFB' : '#1F2937',
     textAlign: 'center',
@@ -3492,7 +3603,7 @@ const getStyles = (isDark = true) => ({
     alignItems: 'center',
   },
   backButtonIcon: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     color: isDark ? '#F9FAFB' : '#1F2937',
   },
   skipButtonText: {
@@ -3533,7 +3644,7 @@ const getStyles = (isDark = true) => ({
     color: isDark ? '#FFFFFF' : '#1F2937',
     textAlign: 'center',
     flex: 1,
-    minWidth: 60,
+    minWidth: STYLE_UNIT_MIN_WIDTH,
   },
   modernUnitLabel: {
     fontSize: 14,
@@ -3677,7 +3788,7 @@ const styles = StyleSheet.create({
     right: 16,
     top: '50%',
     marginTop: -12,
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     color: '#10B981',
     fontWeight: 'bold',
   },
@@ -3686,7 +3797,7 @@ const styles = StyleSheet.create({
     right: 16,
     top: '50%',
     marginTop: -12,
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     color: '#EF4444',
     fontWeight: 'bold',
   },
@@ -3740,7 +3851,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pricingInput: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
@@ -3751,7 +3862,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   inviteCardContainer: {
-    marginBottom: 24,
+    marginBottom: STYLE_SPACE_LG,
   },
   inviteCard: {
     borderRadius: 20,
@@ -3833,7 +3944,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backButtonIcon: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     color: '#1F2937',
   },
   skipButton: {
@@ -3928,7 +4039,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   numberInput: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
@@ -4066,7 +4177,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   codeCardText: {
-    fontSize: 24,
+    fontSize: STYLE_FONT_TITLE,
     fontWeight: '700',
     letterSpacing: 2,
     color: COLORS.textPrimary,
@@ -4370,7 +4481,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: STYLE_SPACE_LG,
   },
 
   // Gradient floating-label input

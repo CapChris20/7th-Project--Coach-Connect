@@ -1,152 +1,68 @@
-/**
- * Exercise Row
- *
- * Purpose: Exercise Row — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: ExerciseRow
- *
- * @file-header
- */
-/**
- * ExerciseRow Component
- * 
- * Displays a single exercise with inline editing for sets, reps, rest, and notes.
- * This is a UI-only component for cleaner organization.
- */
+// One exercise in a workout plan: name, sets, reps, rest, optional notes.
+// Flow: tap the row to edit inline → on blur, parse the numbers and tell the parent.
+// Used by: workout plan builders. UI only — the parent owns the saved plan.
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 
-export default function ExerciseRow({ 
-  exercise, 
-  index, 
-  onUpdate,
-  isDark,
-  colors,
-  spacing 
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [localSets, setLocalSets] = useState(String(exercise.sets || 3));
-  const [localReps, setLocalReps] = useState(String(exercise.reps || 10));
-  const [localRest, setLocalRest] = useState(String(exercise.restSeconds || 60));
-  const [localNotes, setLocalNotes] = useState(exercise.notes || '');
+// ===== NAMED CONSTANTS =====
 
-  const styles = createStyles(spacing, colors, isDark);
+const DEFAULT_SETS = 3;
+const DEFAULT_REPS = 10;
+const SECONDS_PER_MINUTE = 60;
+const DEFAULT_REST_SECONDS = SECONDS_PER_MINUTE;
 
-  const handleBlur = () => {
-    // Update parent when editing is done
-    if (onUpdate) {
-      onUpdate({
-        sets: parseInt(localSets) || exercise.sets || 3,
-        reps: parseInt(localReps) || exercise.reps || 10,
-        restSeconds: parseInt(localRest) || exercise.restSeconds || 60,
-        notes: localNotes,
-      });
-    }
-    setIsEditing(false);
-  };
+// ===== HELPER FUNCTIONS =====
 
-  const formatRestTime = (seconds) => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  };
-
-  return (
-    <TouchableOpacity
-      style={styles.exerciseRow}
-      onPress={() => setIsEditing(true)}
-      activeOpacity={0.7}
-    >
-      {/* Exercise Name */}
-      <View style={styles.exerciseHeader}>
-        <Text style={styles.exerciseNumber}>{index + 1}</Text>
-        <View style={styles.exerciseNameContainer}>
-          <Text style={styles.exerciseName}>
-            {exercise.name || exercise.exerciseName || `Exercise ${index + 1}`}
-          </Text>
-          {(exercise.target || exercise.bodyPart) && (
-            <Text style={styles.exerciseTarget}>
-              {[exercise.bodyPart, exercise.target].filter(Boolean).join(' • ')}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* Exercise Details - Inline Editable */}
-      <View style={styles.exerciseDetails}>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Sets</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.detailInput}
-              value={localSets}
-              onChangeText={setLocalSets}
-              onBlur={handleBlur}
-              keyboardType="numeric"
-              selectTextOnFocus
-            />
-          ) : (
-            <Text style={styles.detailValue}>{exercise.sets || 3}</Text>
-          )}
-        </View>
-
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Reps</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.detailInput}
-              value={localReps}
-              onChangeText={setLocalReps}
-              onBlur={handleBlur}
-              keyboardType="numeric"
-              selectTextOnFocus
-            />
-          ) : (
-            <Text style={styles.detailValue}>{exercise.reps || 10}</Text>
-          )}
-        </View>
-
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Rest</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.detailInput}
-              value={localRest}
-              onChangeText={setLocalRest}
-              onBlur={handleBlur}
-              keyboardType="numeric"
-              placeholder="seconds"
-              selectTextOnFocus
-            />
-          ) : (
-            <Text style={styles.detailValue}>{formatRestTime(exercise.restSeconds || 60)}</Text>
-          )}
-        </View>
-      </View>
-
-      {/* Notes Section */}
-      {(isEditing || localNotes) && (
-        <View style={styles.notesContainer}>
-          <TextInput
-            style={styles.notesInput}
-            value={localNotes}
-            onChangeText={setLocalNotes}
-            onBlur={handleBlur}
-            placeholder="Add notes (optional)"
-            placeholderTextColor={colors.textSecondary}
-            multiline
-          />
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+/**
+ * "45s" under a minute, "2m" on the minute, "1m 30s" otherwise.
+ * @param {number} seconds
+ * @returns {string}
+ */
+function formatRestTime(seconds) {
+  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
+  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const leftoverSeconds = seconds % SECONDS_PER_MINUTE;
+  if (leftoverSeconds > 0) return `${minutes}m ${leftoverSeconds}s`;
+  return `${minutes}m`;
 }
 
-const createStyles = (spacing, colors, isDark) =>
-  StyleSheet.create({
+/**
+ * parseInt of empty/garbage input falls back to the saved exercise value, then the default.
+ * @param {string} rawValue
+ * @param {number} savedValue
+ * @param {number} fallbackValue
+ * @returns {number}
+ */
+function parsedCountOrFallback(rawValue, savedValue, fallbackValue) {
+  return parseInt(rawValue) || savedValue || fallbackValue;
+}
+
+/**
+ * @param {object} exercise
+ * @param {number} index
+ * @returns {string}
+ */
+function exerciseDisplayName(exercise, index) {
+  return exercise.name || exercise.exerciseName || `Exercise ${index + 1}`;
+}
+
+/**
+ * bodyPart • target, skipping whichever is missing.
+ * @param {object} exercise
+ * @returns {string}
+ */
+function exerciseTargetLine(exercise) {
+  return [exercise.bodyPart, exercise.target].filter(Boolean).join(' • ');
+}
+
+/**
+ * @param {object} spacing
+ * @param {object} colors
+ * @param {boolean} isDark
+ */
+function createStyles(spacing, colors, isDark) {
+  return StyleSheet.create({
     exerciseRow: {
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
       borderRadius: 12,
@@ -230,4 +146,126 @@ const createStyles = (spacing, colors, isDark) =>
       textAlignVertical: 'top',
     },
   });
+}
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Inline-editable exercise row. Hooks stay in this original order so the parent screen cannot skip a field.
+ * vocab: useState holds the draft strings until blur, when we parse and send numbers upward.
+ * @param {{ exercise: object, index: number, onUpdate?: Function, isDark: boolean, colors: object, spacing: object }} props
+ */
+export default function ExerciseRow({
+  exercise,
+  index,
+  onUpdate,
+  isDark,
+  colors,
+  spacing,
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localSets, setLocalSets] = useState(String(exercise.sets || DEFAULT_SETS));
+  const [localReps, setLocalReps] = useState(String(exercise.reps || DEFAULT_REPS));
+  const [localRest, setLocalRest] = useState(String(exercise.restSeconds || DEFAULT_REST_SECONDS));
+  const [localNotes, setLocalNotes] = useState(exercise.notes || '');
+
+  const styles = createStyles(spacing, colors, isDark);
+  const targetLine = exerciseTargetLine(exercise);
+
+  const handleBlur = () => {
+    if (onUpdate) {
+      onUpdate({
+        sets: parsedCountOrFallback(localSets, exercise.sets, DEFAULT_SETS),
+        reps: parsedCountOrFallback(localReps, exercise.reps, DEFAULT_REPS),
+        restSeconds: parsedCountOrFallback(localRest, exercise.restSeconds, DEFAULT_REST_SECONDS),
+        notes: localNotes,
+      });
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <TouchableOpacity
+      style={styles.exerciseRow}
+      onPress={() => setIsEditing(true)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.exerciseHeader}>
+        <Text style={styles.exerciseNumber}>{index + 1}</Text>
+        <View style={styles.exerciseNameContainer}>
+          <Text style={styles.exerciseName}>{exerciseDisplayName(exercise, index)}</Text>
+          {(exercise.target || exercise.bodyPart) && (
+            <Text style={styles.exerciseTarget}>{targetLine}</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.exerciseDetails}>
+        <View style={styles.detailItem}>
+          <Text style={styles.detailLabel}>Sets</Text>
+          {isEditing ? (
+            <TextInput
+              style={styles.detailInput}
+              value={localSets}
+              onChangeText={setLocalSets}
+              onBlur={handleBlur}
+              keyboardType="numeric"
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.detailValue}>{exercise.sets || DEFAULT_SETS}</Text>
+          )}
+        </View>
+
+        <View style={styles.detailItem}>
+          <Text style={styles.detailLabel}>Reps</Text>
+          {isEditing ? (
+            <TextInput
+              style={styles.detailInput}
+              value={localReps}
+              onChangeText={setLocalReps}
+              onBlur={handleBlur}
+              keyboardType="numeric"
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.detailValue}>{exercise.reps || DEFAULT_REPS}</Text>
+          )}
+        </View>
+
+        <View style={styles.detailItem}>
+          <Text style={styles.detailLabel}>Rest</Text>
+          {isEditing ? (
+            <TextInput
+              style={styles.detailInput}
+              value={localRest}
+              onChangeText={setLocalRest}
+              onBlur={handleBlur}
+              keyboardType="numeric"
+              placeholder="seconds"
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.detailValue}>
+              {formatRestTime(exercise.restSeconds || DEFAULT_REST_SECONDS)}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {(isEditing || localNotes) && (
+        <View style={styles.notesContainer}>
+          <TextInput
+            style={styles.notesInput}
+            value={localNotes}
+            onChangeText={setLocalNotes}
+            onBlur={handleBlur}
+            placeholder="Add notes (optional)"
+            placeholderTextColor={colors.textSecondary}
+            multiline
+          />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}

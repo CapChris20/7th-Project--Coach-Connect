@@ -51,6 +51,24 @@ import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
 // all four spellings is cheaper than guessing which flow ran.
 // vocab: idToken = the signed proof of WHO the user is (this is what Firebase needs).
 // vocab: accessToken = permission to call Google APIs on their behalf (optional for us).
+// ===== NAMED CONSTANTS =====
+
+const MIN_NAME_LENGTH = 2;
+const MIN_PASSWORD_LENGTH = 8;
+const THEME_ANIM_MS = 250;
+const PROFILE_IMAGE_QUALITY = 0.8;
+const GOOGLE_OAUTH_TIMEOUT_MS = 1000;
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const NEW_ACCOUNT_WINDOW_DAYS = 7;
+const NEW_ACCOUNT_WINDOW_MS =
+  NEW_ACCOUNT_WINDOW_DAYS * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// ===== HELPER FUNCTIONS =====
+
 function extractGoogleOAuthTokens(authentication, params = {}) {
   const idToken =
     authentication?.idToken ||
@@ -105,9 +123,9 @@ async function readNormalizedFirestoreRole(uid) {
     if (!snap.exists()) return null;
     const raw = snap.data()?.role;
     if (raw == null || String(raw).trim() === '') return null;
-    const s = String(raw).toLowerCase().trim();
-    if (s === 'trainer') return 'trainer';
-    if (s === 'client') return 'client';
+    const roleText = String(raw).toLowerCase().trim();
+    if (roleText === 'trainer') return 'trainer';
+    if (roleText === 'client') return 'client';
     return null;
   } catch (e) {
     console.warn('readNormalizedFirestoreRole:', e?.message || e);
@@ -151,6 +169,504 @@ const LIGHT = {
   cardBorder: 'rgba(10,10,15,0.10)',
   quoteBorder: 'rgba(193, 38, 90, 0.22)',
 };
+
+
+
+function nameFieldError(nameValue) {
+  const trimmedName = nameValue.trim();
+  if (!trimmedName) return 'Name is required';
+  if (trimmedName.length < MIN_NAME_LENGTH) return 'Name must be at least 2 characters';
+  return null;
+}
+
+function emailFieldError(emailValue) {
+  const trimmedEmail = emailValue.trim();
+  if (!trimmedEmail) return 'Email is required';
+  if (!EMAIL_PATTERN.test(trimmedEmail)) return 'Please enter a valid email address';
+  return null;
+}
+
+function passwordFieldError(passwordValue) {
+  if (!passwordValue) return 'Password is required';
+  if (passwordValue.length < MIN_PASSWORD_LENGTH) return 'Password must be at least 8 characters';
+  const hasLetter = /[A-Za-z]/.test(passwordValue);
+  const hasNumber = /[0-9]/.test(passwordValue);
+  if (!hasLetter || !hasNumber) return 'Password must include at least one letter and one number';
+  return null;
+}
+
+function confirmPasswordFieldError(passwordValue, confirmValue) {
+  if (!confirmValue) return 'Please confirm your password';
+  if (passwordValue !== confirmValue) return 'Passwords do not match';
+  return null;
+}
+
+function collectSignupErrors({ name, email, password, confirmPassword }) {
+  const errors = {};
+  const nameError = nameFieldError(name);
+  if (nameError) errors.name = nameError;
+  const emailError = emailFieldError(email);
+  if (emailError) errors.email = emailError;
+  const passwordError = passwordFieldError(password);
+  if (passwordError) errors.password = passwordError;
+  const confirmError = confirmPasswordFieldError(password, confirmPassword);
+  if (confirmError) errors.confirmPassword = confirmError;
+  return errors;
+}
+
+function collectLoginErrors({ loginEmail, loginPassword }) {
+  const errors = {};
+  const emailError = emailFieldError(loginEmail);
+  if (emailError) errors.email = emailError;
+  if (!loginPassword) errors.password = 'Password is required';
+  return errors;
+}
+
+function messageForSignupAuthError(error) {
+  if (error?.code === 'auth/email-already-in-use') return 'An account with this email already exists.';
+  if (error?.code === 'auth/invalid-email') return 'Invalid email address.';
+  if (error?.code === 'auth/weak-password') return 'Password is too weak. Please use a stronger password.';
+  return error?.message || 'Failed to create account. Please try again.';
+}
+
+function messageForGoogleSignUpError(error) {
+  let errorMessage = 'Failed to sign up with Google. ';
+  if (error?.code === 'auth/account-exists-with-different-credential') {
+    return errorMessage + 'An account already exists with this email. Please sign in instead.';
+  }
+  if (error?.code === 'auth/operation-not-allowed') {
+    return errorMessage + 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
+  }
+  if (error?.message?.includes('blocked') || error?.message?.includes('disabled')) {
+    return errorMessage + 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
+  }
+  return errorMessage + (error?.message || 'Please try again.');
+}
+
+function messageForGoogleSignInError(error) {
+  let errorMessage = 'Failed to sign in with Google. ';
+  if (error?.code === 'auth/account-exists-with-different-credential') {
+    return errorMessage + 'An account already exists with this email. Please sign in with email/password first.';
+  }
+  if (error?.code === 'auth/popup-blocked') {
+    return errorMessage + 'Popup was blocked. Please allow popups and try again.';
+  }
+  if (error?.code === 'auth/popup-closed-by-user') {
+    return errorMessage + 'Sign-in was cancelled.';
+  }
+  if (error?.code === 'auth/operation-not-allowed') {
+    return errorMessage + 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
+  }
+  if (error?.message?.includes('blocked') || error?.message?.includes('disabled')) {
+    return errorMessage + 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
+  }
+  return errorMessage + (error?.message || 'Please try again.');
+}
+
+function messageForAppleAuthError(error, mode) {
+  let errorMessage =
+    mode === 'signup' ? 'Failed to sign up with Apple. ' : 'Failed to sign in with Apple. ';
+  if (error?.code === 'auth/account-exists-with-different-credential') {
+    return errorMessage + 'An account already exists with this email. Try email/password or the other sign-in method.';
+  }
+  if (error?.code === 'auth/operation-not-allowed') {
+    return errorMessage + 'Apple Sign-In is not enabled. Enable it in Firebase Console > Authentication > Sign-in methods.';
+  }
+  return errorMessage + (error?.message || 'Please try again.');
+}
+
+function onboardingIsExplicitlyIncomplete(existing) {
+  if (existing.onboardingCompleted === false) return true;
+  if (existing.onboardingCompleted === 'false') return true;
+  if (existing.onboardingCompleted === 0) return true;
+  return false;
+}
+
+function accountCreatedRecently(existing) {
+  const createdMs = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
+  if (!Number.isFinite(createdMs)) return false;
+  return Date.now() - createdMs < NEW_ACCOUNT_WINDOW_MS;
+}
+
+function recentProviderWithoutOnboarding(existing, authProvider) {
+  if (existing.authProvider !== authProvider) return false;
+  if (existing.onboardingCompletedAt) return false;
+  if (existing.onboardingCompleted === true) return false;
+  if (existing.onboardingCompleted === 'true') return false;
+  if (existing.onboardingCompleted === 1) return false;
+  return accountCreatedRecently(existing);
+}
+
+async function routeIncompleteSocialUser({
+  existing,
+  authProvider,
+  userRef,
+  user,
+  fallbackRole,
+  onSignupSuccess,
+}) {
+  const explicitlyIncomplete = onboardingIsExplicitlyIncomplete(existing);
+  const recentWithoutOnboarding = recentProviderWithoutOnboarding(existing, authProvider);
+  if (!explicitlyIncomplete && !recentWithoutOnboarding) return false;
+  if (recentWithoutOnboarding && !explicitlyIncomplete) {
+    await setDoc(userRef, { onboardingCompleted: false }, { merge: true });
+  }
+  if (!onSignupSuccess) return false;
+  onSignupSuccess(user, existing.role || fallbackRole);
+  return true;
+}
+
+async function createNewGoogleUserDoc({ user, role, AsyncStorage, includeInviteTitle }) {
+  const photoURL = user.photoURL || null;
+  await cachePendingSignupProfile(user.uid, role, AsyncStorage);
+  const userPayload = {
+    uid: user.uid,
+    email: user.email || '',
+    name: user.displayName || 'User',
+    onboardingCompleted: false,
+    createdAt: new Date().toISOString(),
+    authProvider: 'google',
+    photoURL,
+  };
+  if (includeInviteTitle) userPayload.title = 'Coach Connect Invite Code';
+  await setDoc(doc(db, 'users', user.uid), userPayload);
+  if (role === 'trainer' && photoURL) {
+    await setDoc(
+      doc(db, 'trainers', user.uid),
+      { photoURL, avatarUrl: photoURL },
+      { merge: true },
+    );
+  }
+}
+
+async function createNewAppleUserDoc({
+  user,
+  role,
+  AsyncStorage,
+  resolvedName,
+  resolvedEmail,
+  includeInviteTitle,
+}) {
+  await cachePendingSignupProfile(user.uid, role, AsyncStorage);
+  const userPayload = {
+    uid: user.uid,
+    email: resolvedEmail,
+    name: resolvedName,
+    onboardingCompleted: false,
+    createdAt: new Date().toISOString(),
+    authProvider: 'apple',
+    photoURL: includeInviteTitle ? null : user.photoURL || null,
+  };
+  if (includeInviteTitle) userPayload.title = 'Coach Connect Invite Code';
+  await setDoc(doc(db, 'users', user.uid), userPayload);
+}
+
+async function finishExistingGoogleSignup(user, role, userRef, ensureRoleMatchesToggle) {
+  const roleMatches = await ensureRoleMatchesToggle(user.uid, role);
+  if (!roleMatches) return false;
+  await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
+  return true;
+}
+
+async function finishExistingSocialLogin({
+  user,
+  role,
+  userRef,
+  existing,
+  authProvider,
+  ensureRoleMatchesToggle,
+  onSignupSuccess,
+}) {
+  const roleOk = await ensureRoleMatchesToggle(user.uid, role);
+  if (!roleOk) return { stopped: true };
+  const routedToOnboarding = await routeIncompleteSocialUser({
+    existing,
+    authProvider,
+    userRef,
+    user,
+    fallbackRole: role,
+    onSignupSuccess,
+  });
+  if (routedToOnboarding) return { stopped: true };
+  await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
+  return { stopped: false };
+}
+
+async function finishAppleSignupMode({
+  userDoc,
+  user,
+  role,
+  userRef,
+  AsyncStorage,
+  resolvedName,
+  resolvedEmail,
+  ensureRoleMatchesToggle,
+  onSignupSuccess,
+}) {
+  if (!userDoc.exists()) {
+    await createNewAppleUserDoc({
+      user,
+      role,
+      AsyncStorage,
+      resolvedName,
+      resolvedEmail,
+      includeInviteTitle: false,
+    });
+    console.log('New user created with Apple sign-up:', resolvedEmail || user.uid, 'Role:', role);
+  } else {
+    const roleOk = await ensureRoleMatchesToggle(user.uid, role);
+    if (!roleOk) return;
+    await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
+    console.log('Existing user signed in with Apple:', resolvedEmail || user.uid);
+  }
+  if (onSignupSuccess) onSignupSuccess(user, role);
+}
+
+async function finishAppleLoginMode({
+  userDoc,
+  user,
+  role,
+  userRef,
+  AsyncStorage,
+  resolvedName,
+  resolvedEmail,
+  ensureRoleMatchesToggle,
+  onSignupSuccess,
+  onLoginSuccess,
+}) {
+  if (userDoc.exists()) {
+    const result = await finishExistingSocialLogin({
+      user,
+      role,
+      userRef,
+      existing: userDoc.data() || {},
+      authProvider: 'apple',
+      ensureRoleMatchesToggle,
+      onSignupSuccess,
+    });
+    if (result.stopped) return;
+  } else {
+    await createNewAppleUserDoc({
+      user,
+      role,
+      AsyncStorage,
+      resolvedName,
+      resolvedEmail,
+      includeInviteTitle: true,
+    });
+    console.log('New user created via Apple sign-in — routing to onboarding');
+    if (onSignupSuccess) {
+      onSignupSuccess(user, role);
+      return;
+    }
+  }
+  console.log('Apple sign-in successful:', resolvedEmail || user.uid);
+  if (onLoginSuccess) onLoginSuccess(user);
+}
+
+async function storeAppleAuthCodeBestEffort(authorizationCode) {
+  if (!authorizationCode) return;
+  try {
+    const storeApple = httpsCallable(functions, 'storeAppleAuthForRevoke');
+    await storeApple({ authorizationCode });
+  } catch (storeErr) {
+    if (__DEV__) console.warn('storeAppleAuthForRevoke:', storeErr?.message || storeErr);
+  }
+}
+
+async function applyAppleDisplayName(user, appleResult) {
+  const appleDisplayName = buildAppleDisplayName(appleResult);
+  if (!(appleDisplayName && !user.displayName)) {
+    return appleDisplayName || user.displayName || 'User';
+  }
+  try {
+    await updateProfile(user, { displayName: appleDisplayName });
+  } catch (profileErr) {
+    console.warn('Apple updateProfile displayName:', profileErr?.message || profileErr);
+  }
+  return appleDisplayName || user.displayName || 'User';
+}
+
+async function signInWithGoogleCredential(authentication) {
+  const params = authentication?.params || {};
+  const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
+  const id_token = authentication?.id_token ?? idToken;
+  const access_token = authentication?.access_token ?? accessToken;
+  if (!id_token) throw new Error('No ID token received from Google');
+  const credential = GoogleAuthProvider.credential(id_token, access_token);
+  return signInWithCredential(auth, credential);
+}
+
+async function runGoogleSignUpFlow({ authentication, role, AsyncStorage, ensureRoleMatchesToggle, onSignupSuccess }) {
+  const userCredential = await signInWithGoogleCredential(authentication);
+  const userRef = doc(db, 'users', userCredential.user.uid);
+  const userDoc = await getDoc(userRef);
+  if (!userDoc.exists()) {
+    await createNewGoogleUserDoc({
+      user: userCredential.user,
+      role,
+      AsyncStorage,
+      includeInviteTitle: false,
+    });
+  } else {
+    const keptGoing = await finishExistingGoogleSignup(
+      userCredential.user,
+      role,
+      userRef,
+      ensureRoleMatchesToggle,
+    );
+    if (!keptGoing) return;
+  }
+  if (onSignupSuccess) onSignupSuccess(userCredential.user, role);
+}
+
+async function runGoogleSignInFlow({
+  authentication,
+  role,
+  AsyncStorage,
+  ensureRoleMatchesToggle,
+  onSignupSuccess,
+  onLoginSuccess,
+}) {
+  const userCredential = await signInWithGoogleCredential(authentication);
+  const userRef = doc(db, 'users', userCredential.user.uid);
+  const userDoc = await getDoc(userRef);
+  if (userDoc.exists()) {
+    const result = await finishExistingSocialLogin({
+      user: userCredential.user,
+      role,
+      userRef,
+      existing: userDoc.data() || {},
+      authProvider: 'google',
+      ensureRoleMatchesToggle,
+      onSignupSuccess,
+    });
+    if (result.stopped) return;
+  } else {
+    await createNewGoogleUserDoc({
+      user: userCredential.user,
+      role,
+      AsyncStorage,
+      includeInviteTitle: true,
+    });
+    console.log('New user created via Google sign-in — routing to onboarding');
+    if (onSignupSuccess) {
+      onSignupSuccess(userCredential.user, role);
+      return;
+    }
+  }
+  console.log('Google sign-in successful:', userCredential.user.email);
+  if (onLoginSuccess) onLoginSuccess(userCredential.user);
+}
+
+async function signInWithAppleCredential() {
+  const available = await AppleAuthentication.isAvailableAsync();
+  if (!available) {
+    const unavailableError = new Error('Apple Sign-In is not available on this device.');
+    unavailableError.code = 'apple_unavailable';
+    throw unavailableError;
+  }
+  const rawNonce = Crypto.randomUUID();
+  const hashedNonce = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    rawNonce,
+  );
+  const appleResult = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+    nonce: hashedNonce,
+  });
+  if (!appleResult?.identityToken) {
+    throw new Error('No identity token received from Apple');
+  }
+  const provider = new OAuthProvider('apple.com');
+  const firebaseCredential = provider.credential({
+    idToken: appleResult.identityToken,
+    rawNonce,
+  });
+  const userCredential = await signInWithCredential(auth, firebaseCredential);
+  return { userCredential, appleResult };
+}
+
+async function runAppleAuthFlow({
+  mode,
+  role,
+  AsyncStorage,
+  ensureRoleMatchesToggle,
+  onSignupSuccess,
+  onLoginSuccess,
+}) {
+  const { userCredential, appleResult } = await signInWithAppleCredential();
+  await storeAppleAuthCodeBestEffort(appleResult?.authorizationCode);
+  const resolvedName = await applyAppleDisplayName(userCredential.user, appleResult);
+  const resolvedEmail = userCredential.user.email || appleResult.email || '';
+  const userRef = doc(db, 'users', userCredential.user.uid);
+  const userDoc = await getDoc(userRef);
+  if (mode === 'signup') {
+    await finishAppleSignupMode({
+      userDoc,
+      user: userCredential.user,
+      role,
+      userRef,
+      AsyncStorage,
+      resolvedName,
+      resolvedEmail,
+      ensureRoleMatchesToggle,
+      onSignupSuccess,
+    });
+    return;
+  }
+  await finishAppleLoginMode({
+    userDoc,
+    user: userCredential.user,
+    role,
+    userRef,
+    AsyncStorage,
+    resolvedName,
+    resolvedEmail,
+    ensureRoleMatchesToggle,
+    onSignupSuccess,
+    onLoginSuccess,
+  });
+}
+
+function splitSpecializationList(specializationsText) {
+  return specializationsText
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+async function uploadTrainerProfilePhotoIfNeeded({ profileImageUri, role, user, displayName }) {
+  if (!(profileImageUri && role === 'trainer')) {
+    await updateProfile(user, { displayName });
+    return null;
+  }
+  const uploadResult = await uploadProfileImage(user.uid, { uri: profileImageUri });
+  if (!uploadResult.success) return null;
+  const photoURL = uploadResult.downloadURL;
+  await updateProfile(user, { displayName, photoURL });
+  return photoURL;
+}
+
+function buildEmailSignupUserData({ name, email, role, bio, credentials, specializations, location, photoURL }) {
+  const userData = {
+    name: name.trim(),
+    email: email.trim(),
+    onboardingCompleted: false,
+    createdAt: new Date().toISOString(),
+  };
+  if (role === 'trainer') {
+    userData.bio = bio.trim();
+    userData.credentials = credentials.trim();
+    userData.specializations = splitSpecializationList(specializations);
+    userData.location = location.trim();
+  }
+  if (photoURL) userData.photoURL = photoURL;
+  return userData;
+}
 
 function FloatingInput({
   label,
@@ -438,6 +954,8 @@ function SocialGlassButton({
   );
 }
 
+// ===== MAIN FUNCTION =====
+
 export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotPasswordFlowPress }) {
   const { colors, typography, spacing, isDark, themeMode = 'dark', toggleTheme: togglelightDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
@@ -486,12 +1004,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     togglelightDarkMode?.(next ? 'dark' : 'light');
     RNAnimated.timing(bgAnim, {
       toValue: next ? 1 : 0,
-      duration: 250,
+      duration: THEME_ANIM_MS,
       useNativeDriver: false,
     }).start();
   };
 
-  const t = isDarkLanding ? DARK : LIGHT;
+  const landingTheme = isDarkLanding ? DARK : LIGHT;
 
   const animatedBg = bgAnim.interpolate({
     inputRange: [0, 1],
@@ -631,7 +1149,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   // ==================== SIGNUP HANDLERS ====================
   const handlePickImage = async () => {
     try {
-      const image = await pickImage({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+      const image = await pickImage({ allowsEditing: true, aspect: [1, 1], quality: PROFILE_IMAGE_QUALITY });
       if (image && image.uri) {
         setProfileImageUri(image.uri);
       }
@@ -650,35 +1168,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   const validateSignupForm = () => {
-    const newErrors = {};
-    
-    if (!name.trim()) {
-      newErrors.name = 'Name is required';
-    } else if (name.trim().length < 2) {
-      newErrors.name = 'Name must be at least 2 characters';
-    }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!emailRegex.test(email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-    
-    if (!password) {
-      newErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-      newErrors.password = 'Password must include at least one letter and one number';
-    }
-    
-    if (!confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-    
+    const newErrors = collectSignupErrors({ name, email, password, confirmPassword });
     setSignupErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -686,14 +1176,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const handleSignup = async () => {
     console.log('🚀 Starting signup process...');
     console.log('📝 Form data:', { name: name.trim(), email: email.trim(), role, bioLength: bio.length, credentialsLength: credentials.length, locationLength: location.length });
-    
+
     if (!validateSignupForm()) {
       console.log('❌ Form validation failed:', signupErrors);
       return;
     }
-    
-    console.log('✅ Form validation passed');
-    
+
     if (!auth || !db) {
       console.error('❌ Firebase not initialized:', { auth: !!auth, db: !!db });
       setErrorPopup({
@@ -703,95 +1191,48 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       return;
     }
 
-    console.log('✅ Firebase initialized, creating user...');
     setSignupLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      console.log('✅ User created in Firebase Auth:', userCredential.user.uid);
-      
+      const displayName = name.trim();
       let photoURL = null;
-      
-      if (profileImageUri && role === 'trainer') {
-        console.log('📷 Uploading profile image...');
-        setUploadingImage(true);
-        try {
-          const uploadResult = await uploadProfileImage(userCredential.user.uid, { uri: profileImageUri });
-          if (uploadResult.success) {
-            photoURL = uploadResult.downloadURL;
-            await updateProfile(userCredential.user, {
-              displayName: name.trim(),
-              photoURL: photoURL,
-            });
-            console.log('✅ Profile image uploaded and user profile updated');
-          }
-        } catch (uploadError) {
-          console.error('❌ Error uploading profile image:', uploadError);
-        } finally {
-          setUploadingImage(false);
-        }
-      } else {
-        await updateProfile(userCredential.user, {
-          displayName: name.trim(),
+      setUploadingImage(Boolean(profileImageUri && role === 'trainer'));
+      try {
+        photoURL = await uploadTrainerProfilePhotoIfNeeded({
+          profileImageUri,
+          role,
+          user: userCredential.user,
+          displayName,
         });
-        console.log('✅ User profile updated (no image)');
+      } catch (uploadError) {
+        console.error('❌ Error uploading profile image:', uploadError);
+      } finally {
+        setUploadingImage(false);
       }
-      
+
       await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
+      const userData = buildEmailSignupUserData({
+        name,
+        email,
+        role,
+        bio,
+        credentials,
+        specializations,
+        location,
+        photoURL,
+      });
 
-      // Prepare user data (role is server-only — see firestore.rules users/{userId} create)
-      const userData = {
-        name: name.trim(),
-        email: email.trim(),
-        onboardingCompleted: false, // Set to false so onboarding shows after signup
-        createdAt: new Date().toISOString(),
-      };
-      
-      if (role === 'trainer') {
-        userData.bio = bio.trim();
-        userData.credentials = credentials.trim();
-        userData.specializations = specializations.split(',').map(s => s.trim()).filter(s => s.length > 0);
-        userData.location = location.trim();
-        console.log('👨‍🏫 Adding trainer-specific data:', { bioLength: userData.bio.length, credentials: userData.credentials, specializationsCount: userData.specializations.length, location: userData.location });
-      }
-
-      if (photoURL) {
-        userData.photoURL = photoURL;
-      }
-      
-      console.log('💾 Saving user data to Firestore...');
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
       if (role === 'trainer' && photoURL) {
         await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL, avatarUrl: photoURL }, { merge: true });
       }
-      console.log('✅ User data saved to Firestore');
-      
-      console.log('🎉 Signup successful:', userCredential.user.email, 'Role:', role);
-      
-      if (onSignupSuccess) {
-        onSignupSuccess(userCredential.user, role);
-      }
+
+      if (onSignupSuccess) onSignupSuccess(userCredential.user, role);
     } catch (error) {
       console.error('❌ Signup error:', error);
-      console.error('❌ Error details:', { code: error.code, message: error.message, stack: error.stack });
-      let errorMessage = 'Failed to create account. Please try again.';
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'An account with this email already exists.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'Password is too weak. Please use a stronger password.';
-          break;
-        default:
-          errorMessage = error.message || errorMessage;
-      }
-      
       setErrorPopup({
         title: 'Signup Failed',
-        message: errorMessage,
+        message: messageForSignupAuthError(error),
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
@@ -808,72 +1249,20 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       setErrorPopup({ title: 'Error', message: 'Firebase is not initialized.' });
       return;
     }
-
     setSignupLoading(true);
     try {
-      const params = authentication?.params || {};
-      const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
-      const id_token = authentication?.id_token ?? idToken;
-      const access_token = authentication?.access_token ?? accessToken;
-
-      if (!id_token) {
-        throw new Error('No ID token received from Google');
-      }
-
-      const credential = GoogleAuthProvider.credential(id_token, access_token);
-      const userCredential = await signInWithCredential(auth, credential);
-      
-      const userRef = doc(db, 'users', userCredential.user.uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
-        const userData = {
-          uid: userCredential.user.uid,
-          name: userCredential.user.displayName || 'User',
-          email: userCredential.user.email || '',
-          onboardingCompleted: false, // Set to false so onboarding shows after signup
-          createdAt: new Date().toISOString(),
-          authProvider: 'google',
-          photoURL: userCredential.user.photoURL || null,
-        };
-        await setDoc(userRef, userData);
-        if (role === 'trainer' && userCredential.user.photoURL) {
-          await setDoc(doc(db, 'trainers', userCredential.user.uid), {
-            photoURL: userCredential.user.photoURL,
-            avatarUrl: userCredential.user.photoURL,
-          }, { merge: true });
-        }
-        console.log('New user created with Google sign-up:', userCredential.user.email, 'Role:', role);
-      } else {
-        const ok = await ensureRoleMatchesToggle(userCredential.user.uid, role);
-        if (!ok) return;
-        await setDoc(userRef, {
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
-        console.log('Existing user signed in with Google:', userCredential.user.email);
-      }
-      
-      if (onSignupSuccess) {
-        onSignupSuccess(userCredential.user, role);
-      }
+      await runGoogleSignUpFlow({
+        authentication,
+        role,
+        AsyncStorage,
+        ensureRoleMatchesToggle,
+        onSignupSuccess,
+      });
     } catch (error) {
       console.error('Google sign-up error:', error);
-      let errorMessage = 'Failed to sign up with Google. ';
-      
-      if (error.code === 'auth/account-exists-with-different-credential') {
-        errorMessage += 'An account already exists with this email. Please sign in instead.';
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errorMessage += 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
-      } else if (error.message?.includes('blocked') || error.message?.includes('disabled')) {
-        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
-      } else {
-        errorMessage += error.message || 'Please try again.';
-      }
-      
       setErrorPopup({
         title: 'Google Sign-Up Failed',
-        message: errorMessage,
+        message: messageForGoogleSignUpError(error),
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
@@ -887,19 +1276,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
 
   // ==================== LOGIN HANDLERS ====================
   const validateLoginForm = () => {
-    const newErrors = {};
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!loginEmail.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!emailRegex.test(loginEmail)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-    
-    if (!loginPassword) {
-      newErrors.password = 'Password is required';
-    }
-    
+    const newErrors = collectLoginErrors({ loginEmail, loginPassword });
     setLoginErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -969,112 +1346,21 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       setErrorPopup({ title: 'Error', message: 'Firebase is not initialized.' });
       return;
     }
-
     setLoginLoading(true);
     try {
-      const params = authentication?.params || {};
-      const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
-      const id_token = authentication?.id_token ?? idToken;
-      const access_token = authentication?.access_token ?? accessToken;
-
-      if (!id_token) {
-        throw new Error('No ID token received from Google');
-      }
-
-      const credential = GoogleAuthProvider.credential(id_token, access_token);
-      const userCredential = await signInWithCredential(auth, credential);
-      
-      const userRef = doc(db, 'users', userCredential.user.uid);
-      const userDoc = await getDoc(userRef);
-
-      if (userDoc.exists()) {
-        const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
-        if (!roleOk) return;
-
-        const existing = userDoc.data() || {};
-        const explicitlyIncomplete =
-          existing.onboardingCompleted === false ||
-          existing.onboardingCompleted === 'false' ||
-          existing.onboardingCompleted === 0;
-        const createdMs = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
-        const recentAccount =
-          Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
-        const recentGoogleWithoutOnboarding =
-          existing.authProvider === 'google' &&
-          !existing.onboardingCompletedAt &&
-          existing.onboardingCompleted !== true &&
-          existing.onboardingCompleted !== 'true' &&
-          existing.onboardingCompleted !== 1 &&
-          recentAccount;
-
-        if (explicitlyIncomplete || recentGoogleWithoutOnboarding) {
-          if (recentGoogleWithoutOnboarding && !explicitlyIncomplete) {
-            await setDoc(userRef, { onboardingCompleted: false }, { merge: true });
-          }
-          if (onSignupSuccess) {
-            onSignupSuccess(userCredential.user, existing.role || role);
-            return;
-          }
-        }
-      }
-
-      if (!userDoc.exists()) {
-        const gPhoto = userCredential.user.photoURL || null;
-        await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
-        await setDoc(userRef, {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email || '',
-          name: userCredential.user.displayName || 'User',
-          onboardingCompleted: false,
-          title: 'Coach Connect Invite Code',
-          createdAt: new Date().toISOString(),
-          authProvider: 'google',
-          photoURL: gPhoto,
-        });
-        if (role === 'trainer' && gPhoto) {
-          await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL: gPhoto, avatarUrl: gPhoto }, { merge: true });
-        }
-        console.log('New user created via Google sign-in — routing to onboarding');
-        if (onSignupSuccess) {
-          onSignupSuccess(userCredential.user, role);
-          return;
-        }
-      } else {
-        await setDoc(
-          userRef,
-          {
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      }
-
-      console.log('Google sign-in successful:', userCredential.user.email);
-
-      if (onLoginSuccess) {
-        onLoginSuccess(userCredential.user);
-      }
+      await runGoogleSignInFlow({
+        authentication,
+        role,
+        AsyncStorage,
+        ensureRoleMatchesToggle,
+        onSignupSuccess,
+        onLoginSuccess,
+      });
     } catch (error) {
       console.error('Google sign-in error:', error);
-      let errorMessage = 'Failed to sign in with Google. ';
-      
-      if (error.code === 'auth/account-exists-with-different-credential') {
-        errorMessage += 'An account already exists with this email. Please sign in with email/password first.';
-      } else if (error.code === 'auth/popup-blocked') {
-        errorMessage += 'Popup was blocked. Please allow popups and try again.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage += 'Sign-in was cancelled.';
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errorMessage += 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
-      } else if (error.message?.includes('blocked') || error.message?.includes('disabled')) {
-        errorMessage += 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
-      } else {
-        errorMessage += error.message || 'Please try again.';
-      }
-      
       setErrorPopup({
         title: 'Google Sign-In Failed',
-        message: errorMessage,
+        message: messageForGoogleSignInError(error),
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
@@ -1107,176 +1393,27 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     setLoading(true);
 
     try {
-      const available = await AppleAuthentication.isAvailableAsync();
-      if (!available) {
+      await runAppleAuthFlow({
+        mode,
+        role,
+        AsyncStorage,
+        ensureRoleMatchesToggle,
+        onSignupSuccess,
+        onLoginSuccess,
+      });
+    } catch (appleError) {
+      if (appleError?.code === 'ERR_REQUEST_CANCELED') return;
+      if (appleError?.code === 'apple_unavailable') {
         setErrorPopup({
           title: 'Apple Sign-In',
           message: 'Apple Sign-In is not available on this device.',
         });
         return;
       }
-
-      const rawNonce = Crypto.randomUUID();
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce,
-      );
-
-      const appleResult = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
-      });
-
-      if (!appleResult?.identityToken) {
-        throw new Error('No identity token received from Apple');
-      }
-
-      const provider = new OAuthProvider('apple.com');
-      const firebaseCredential = provider.credential({
-        idToken: appleResult.identityToken,
-        rawNonce,
-      });
-      const userCredential = await signInWithCredential(auth, firebaseCredential);
-
-      // Best-effort: stash Apple authorizationCode server-side for revoke on account delete.
-      // vocab: authorizationCode = one-time code from Sign in with Apple — server exchanges/stores it.
-      if (appleResult?.authorizationCode) {
-        try {
-          const storeApple = httpsCallable(functions, 'storeAppleAuthForRevoke');
-          await storeApple({ authorizationCode: appleResult.authorizationCode });
-        } catch (storeErr) {
-          if (__DEV__) {
-            console.warn(
-              'storeAppleAuthForRevoke:',
-              storeErr?.message || storeErr,
-            );
-          }
-        }
-      }
-
-      const appleDisplayName = buildAppleDisplayName(appleResult);
-      if (appleDisplayName && !userCredential.user.displayName) {
-        try {
-          await updateProfile(userCredential.user, { displayName: appleDisplayName });
-        } catch (profileErr) {
-          console.warn('Apple updateProfile displayName:', profileErr?.message || profileErr);
-        }
-      }
-
-      const resolvedName =
-        appleDisplayName ||
-        userCredential.user.displayName ||
-        'User';
-      const resolvedEmail = userCredential.user.email || appleResult.email || '';
-
-      const userRef = doc(db, 'users', userCredential.user.uid);
-      const userDoc = await getDoc(userRef);
-
-      if (mode === 'signup') {
-        if (!userDoc.exists()) {
-          await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
-          await setDoc(userRef, {
-            uid: userCredential.user.uid,
-            name: resolvedName,
-            email: resolvedEmail,
-            onboardingCompleted: false,
-            createdAt: new Date().toISOString(),
-            authProvider: 'apple',
-            photoURL: userCredential.user.photoURL || null,
-          });
-          console.log('New user created with Apple sign-up:', resolvedEmail || userCredential.user.uid, 'Role:', role);
-        } else {
-          const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
-          if (!roleOk) return;
-          await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
-          console.log('Existing user signed in with Apple:', resolvedEmail || userCredential.user.uid);
-        }
-
-        if (onSignupSuccess) {
-          onSignupSuccess(userCredential.user, role);
-        }
-        return;
-      }
-
-      if (userDoc.exists()) {
-        const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
-        if (!roleOk) return;
-
-        const existing = userDoc.data() || {};
-        const explicitlyIncomplete =
-          existing.onboardingCompleted === false ||
-          existing.onboardingCompleted === 'false' ||
-          existing.onboardingCompleted === 0;
-        const createdMs = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
-        const recentAccount =
-          Number.isFinite(createdMs) && Date.now() - createdMs < 7 * 24 * 60 * 60 * 1000;
-        const recentAppleWithoutOnboarding =
-          existing.authProvider === 'apple' &&
-          !existing.onboardingCompletedAt &&
-          existing.onboardingCompleted !== true &&
-          existing.onboardingCompleted !== 'true' &&
-          existing.onboardingCompleted !== 1 &&
-          recentAccount;
-
-        if (explicitlyIncomplete || recentAppleWithoutOnboarding) {
-          if (recentAppleWithoutOnboarding && !explicitlyIncomplete) {
-            await setDoc(userRef, { onboardingCompleted: false }, { merge: true });
-          }
-          if (onSignupSuccess) {
-            onSignupSuccess(userCredential.user, existing.role || role);
-            return;
-          }
-        }
-      }
-
-      if (!userDoc.exists()) {
-        await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
-        await setDoc(userRef, {
-          uid: userCredential.user.uid,
-          email: resolvedEmail,
-          name: resolvedName,
-          onboardingCompleted: false,
-          title: 'Coach Connect Invite Code',
-          createdAt: new Date().toISOString(),
-          authProvider: 'apple',
-          photoURL: null,
-        });
-        console.log('New user created via Apple sign-in — routing to onboarding');
-        if (onSignupSuccess) {
-          onSignupSuccess(userCredential.user, role);
-          return;
-        }
-      } else {
-        await setDoc(userRef, { updatedAt: new Date().toISOString() }, { merge: true });
-      }
-
-      console.log('Apple sign-in successful:', resolvedEmail || userCredential.user.uid);
-      if (onLoginSuccess) {
-        onLoginSuccess(userCredential.user);
-      }
-    } catch (e) {
-      if (e?.code === 'ERR_REQUEST_CANCELED') {
-        return;
-      }
-      console.error('Apple auth error:', e);
-      let errorMessage = mode === 'signup'
-        ? 'Failed to sign up with Apple. '
-        : 'Failed to sign in with Apple. ';
-
-      if (e?.code === 'auth/account-exists-with-different-credential') {
-        errorMessage += 'An account already exists with this email. Try email/password or the other sign-in method.';
-      } else if (e?.code === 'auth/operation-not-allowed') {
-        errorMessage += 'Apple Sign-In is not enabled. Enable it in Firebase Console > Authentication > Sign-in methods.';
-      } else {
-        errorMessage += e?.message || 'Please try again.';
-      }
-
+      console.error('Apple auth error:', appleError);
       setErrorPopup({
         title: mode === 'signup' ? 'Apple Sign-Up Failed' : 'Apple Sign-In Failed',
-        message: errorMessage,
+        message: messageForAppleAuthError(appleError, mode),
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
@@ -1321,8 +1458,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             height: 40,
             borderRadius: 20,
             borderWidth: 1,
-            backgroundColor: t.toggleBg,
-            borderColor: t.toggleBorder,
+            backgroundColor: landingTheme.toggleBg,
+            borderColor: landingTheme.toggleBorder,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -1330,7 +1467,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           <Ionicons
             name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
             size={18}
-            color={t.toggleIcon}
+            color={landingTheme.toggleIcon}
           />
         </TouchableOpacity>
       </View>
@@ -1347,7 +1484,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1,
-            borderColor: t.cardBorder,
+            borderColor: landingTheme.cardBorder,
             backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.72)',
           }}
         >
@@ -1357,7 +1494,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               fontWeight: '900',
               letterSpacing: 3,
               textAlign: 'center',
-              color: t.wordmark,
+              color: landingTheme.wordmark,
             }}
           >
             COACH
@@ -1384,7 +1521,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               alignSelf: 'stretch',
               maxWidth: 340,
               borderWidth: 1,
-              borderColor: t.quoteBorder,
+              borderColor: landingTheme.quoteBorder,
               backgroundColor: isDarkLanding ? 'rgba(255,107,157,0.10)' : 'rgba(193,38,90,0.06)',
             }}
           >
@@ -1393,7 +1530,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 fontSize: 16,
                 fontWeight: '800',
                 letterSpacing: 0.2,
-                color: t.heading,
+                color: landingTheme.heading,
                 textAlign: 'center',
                 fontStyle: 'italic',
               }}
@@ -1422,7 +1559,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               width: 160,
               height: 160,
               borderRadius: 80,
-              backgroundColor: t.lottieGlow,
+              backgroundColor: landingTheme.lottieGlow,
             }}
           />
           <LottieView
@@ -1439,7 +1576,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               width: 160,
               height: 160,
               borderRadius: 80,
-              backgroundColor: t.lottieGlow,
+              backgroundColor: landingTheme.lottieGlow,
             }}
           />
           <LottieView
@@ -1466,7 +1603,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             textAlign: 'center',
             lineHeight: 42,
             letterSpacing: 0.3,
-            color: t.heading,
+            color: landingTheme.heading,
             marginBottom: 12,
           }}
         >
@@ -1478,7 +1615,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             fontSize: 15,
             textAlign: 'center',
             lineHeight: 22,
-            color: t.subtitle,
+            color: landingTheme.subtitle,
             marginBottom: 28,
           }}
         >
@@ -1530,7 +1667,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         </LinearGradient>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ fontSize: 14, color: t.signinMuted }}>
+          <Text style={{ fontSize: 14, color: landingTheme.signinMuted }}>
             Already have an account?{' '}
           </Text>
           <TouchableOpacity onPress={onSignIn} activeOpacity={0.7}>
@@ -1538,7 +1675,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               style={{
                 fontSize: 14,
                 fontWeight: '700',
-                color: t.signinLink,
+                color: landingTheme.signinLink,
               }}
             >
               Sign In
@@ -1557,7 +1694,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     const signupStyles = StyleSheet.create({
       container: {
         flex: 1,
-        backgroundColor: t.bg,
+        backgroundColor: landingTheme.bg,
       },
       keyboardView: {
         flex: 1,
@@ -1832,8 +1969,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               paddingVertical: 7,
               borderRadius: 20,
               borderWidth: 1,
-              backgroundColor: t.toggleBg,
-              borderColor: t.toggleBorder,
+              backgroundColor: landingTheme.toggleBg,
+              borderColor: landingTheme.toggleBorder,
               alignItems: 'center',
               justifyContent: 'center',
               marginLeft: 12,
@@ -1842,7 +1979,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             <Ionicons
               name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
               size={18}
-              color={t.toggleIcon}
+              color={landingTheme.toggleIcon}
             />
           </TouchableOpacity>
         </View>
@@ -2098,7 +2235,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     const loginStyles = StyleSheet.create({
       container: {
         flex: 1,
-        backgroundColor: t.bg,
+        backgroundColor: landingTheme.bg,
       },
       keyboardView: {
         flex: 1,
@@ -2389,7 +2526,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     const onApple = () => handleAppleAuth({ mode: 'signup' });
 
     return (
-      <View style={{ flex: 1, backgroundColor: t.bg }}>
+      <View style={{ flex: 1, backgroundColor: landingTheme.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -2431,7 +2568,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chevron-back" size={20} color={t.heading} />
+                <Ionicons name="chevron-back" size={20} color={landingTheme.heading} />
               </TouchableOpacity>
 
               <AppLogo width={108} />
@@ -2444,8 +2581,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   paddingVertical: 7,
                   borderRadius: 20,
                   borderWidth: 1,
-                  backgroundColor: t.toggleBg,
-                  borderColor: t.toggleBorder,
+                  backgroundColor: landingTheme.toggleBg,
+                  borderColor: landingTheme.toggleBorder,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -2453,7 +2590,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 <Ionicons
                   name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
                   size={18}
-                  color={t.toggleIcon}
+                  color={landingTheme.toggleIcon}
                 />
               </TouchableOpacity>
             </View>
@@ -2463,7 +2600,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               style={{
                 fontSize: 30,
                 fontWeight: '800',
-                color: t.heading,
+                color: landingTheme.heading,
                 textAlign: 'center',
                 letterSpacing: -0.8,
                 marginBottom: 8,
@@ -2476,7 +2613,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             <Text
               style={{
                 fontSize: 14,
-                color: t.subtitle,
+                color: landingTheme.subtitle,
                 textAlign: 'center',
                 marginBottom: 28,
               }}
@@ -2754,7 +2891,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     const onApple = () => handleAppleAuth({ mode: 'login' });
 
     return (
-      <View style={{ flex: 1, backgroundColor: t.bg }}>
+      <View style={{ flex: 1, backgroundColor: landingTheme.bg }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -2796,7 +2933,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chevron-back" size={20} color={t.heading} />
+                <Ionicons name="chevron-back" size={20} color={landingTheme.heading} />
               </TouchableOpacity>
 
               <AppLogo width={108} />
@@ -2810,7 +2947,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   borderRadius: 18,
                   borderWidth: 1,
                   borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
-                  backgroundColor: t.toggleBg,
+                  backgroundColor: landingTheme.toggleBg,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -2818,7 +2955,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 <Ionicons
                   name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
                   size={18}
-                  color={t.toggleIcon}
+                  color={landingTheme.toggleIcon}
                 />
               </TouchableOpacity>
             </View>
@@ -2828,7 +2965,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               style={{
                 fontSize: 30,
                 fontWeight: '800',
-                color: t.heading,
+                color: landingTheme.heading,
                 textAlign: 'center',
                 letterSpacing: -0.8,
                 marginBottom: 8,
@@ -2841,7 +2978,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             <Text
               style={{
                 fontSize: 14,
-                color: t.subtitle,
+                color: landingTheme.subtitle,
                 textAlign: 'center',
                 marginBottom: 28,
               }}

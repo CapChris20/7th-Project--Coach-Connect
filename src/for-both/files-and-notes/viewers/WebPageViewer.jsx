@@ -44,11 +44,19 @@ export default function WebPageViewer({ visible, uri, title, isDark = true, onCl
     if (visible && uri) setIsLoadingPreview(true);
   }, [visible, uri]);
 
+  // 1. Hidden or no link → render nothing.
   if (!visible || !uri) return null;
 
-  const pageColor = isDark ? DARK_PAGE_COLOR : LIGHT_PAGE_COLOR;
-  const textColor = isDark ? DARK_TEXT_COLOR : LIGHT_TEXT_COLOR;
-  const hintColor = isDark ? DARK_HINT_COLOR : LIGHT_HINT_COLOR;
+  // 2. Show the page. Hide the spinner when it finishes or fails.
+  let pageColor = LIGHT_PAGE_COLOR;
+  let textColor = LIGHT_TEXT_COLOR;
+  let hintColor = LIGHT_HINT_COLOR;
+  if (isDark) {
+    pageColor = DARK_PAGE_COLOR;
+    textColor = DARK_TEXT_COLOR;
+    hintColor = DARK_HINT_COLOR;
+  }
+  const pageTitle = title || DEFAULT_TITLE;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -58,7 +66,7 @@ export default function WebPageViewer({ visible, uri, title, isDark = true, onCl
             <Text style={[styles.closeText, { color: textColor }]}>{CLOSE_LABEL}</Text>
           </TouchableOpacity>
           <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
-            {title || DEFAULT_TITLE}
+            {pageTitle}
           </Text>
           <View style={{ width: 60 }} />
         </View>
@@ -73,12 +81,12 @@ export default function WebPageViewer({ visible, uri, title, isDark = true, onCl
             allowsInlineMediaPlayback
             androidLayerType="hardware"
           />
-          {isLoadingPreview ? (
+          {isLoadingPreview && (
             <View style={styles.loader}>
               <ActivityIndicator size="large" color={SPINNER_COLOR} />
               <Text style={[styles.hint, { color: hintColor }]}>{LOADING_HINT}</Text>
             </View>
-          ) : null}
+          )}
         </View>
       </SafeAreaView>
     </Modal>

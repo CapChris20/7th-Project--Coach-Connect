@@ -1,16 +1,6 @@
-/**
- * Review Submit Sheet
- *
- * Purpose: UI screen or component: Review Submit Sheet. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: WriteTrainerReviewPopup
- *
- * @file-header
- */
-/**
- * Bottom sheet for submitting or editing a trainer review.
- */
+// Bottom sheet where a client rates a trainer, edits that review, or deletes it.
+// Flow: open with any saved stars and text → write reviews/{trainerId}_{clientId} → refresh the trainer average.
+// Used by the client home and the trainer profile. One review per client-trainer pair.
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -35,116 +25,213 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
+const REVIEWS_COLLECTION = 'reviews';
+const USERS_COLLECTION = 'users';
+const TRAINERS_COLLECTION = 'trainers';
+const STAR_COUNT = 5;
 const RATING_LABELS = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+const MAX_REVIEW_CHARS = 500;
+const EMPTY_RATING_AVERAGE = null;
+const EMPTY_REVIEW_COUNT = 0;
+const RATING_DECIMAL_PLACES = 10;
+const FILLED_STAR_COLOR = '#F97316';
+const EMPTY_STAR_COLOR = 'rgba(255,255,255,0.2)';
+const DIM_SUBMIT_OPACITY = 0.4;
+const FULL_SUBMIT_OPACITY = 1;
+const FALLBACK_TRAINER_NAME = 'this trainer';
+
+// ===== HELPER FUNCTIONS =====
+
+function reviewDocumentId(trainerId, clientId) {
+  return `${trainerId}_${clientId}`;
+}
+
+function ratingSummaryFromReviews(snapshot) {
+  if (snapshot.empty) {
+    return { rating: EMPTY_RATING_AVERAGE, reviewCount: EMPTY_REVIEW_COUNT };
+  }
+  let totalStars = 0;
+  for (const reviewDoc of snapshot.docs) {
+    totalStars += reviewDoc.data().rating || 0;
+  }
+  const average = totalStars / snapshot.docs.length;
+  return {
+    rating: Math.round(average * RATING_DECIMAL_PLACES) / RATING_DECIMAL_PLACES,
+    reviewCount: snapshot.docs.length,
+  };
+}
 
 function updateTrainerRating(trainerId) {
-  return getDocs(
-    query(collection(db, 'reviews'), where('trainerId', '==', trainerId))
-  ).then(async (snap) => {
-    const payload = snap.empty
-      ? { rating: null, reviewCount: 0 }
-      : {
-          rating: Math.round((snap.docs.reduce((sum, d) => sum + (d.data().rating || 0), 0) / snap.docs.length) * 10) / 10,
-          reviewCount: snap.docs.length,
-        };
-    await setDoc(doc(db, 'users', trainerId), payload, { merge: true });
+  const reviewsQuery = query(
+    collection(db, REVIEWS_COLLECTION),
+    where('trainerId', '==', trainerId),
+  );
+  return getDocs(reviewsQuery).then(async (snapshot) => {
+    const payload = ratingSummaryFromReviews(snapshot);
+    await setDoc(doc(db, USERS_COLLECTION, trainerId), payload, { merge: true });
     try {
-      await setDoc(doc(db, 'trainers', trainerId), payload, { merge: true });
-    } catch (_) {}
+      await setDoc(doc(db, TRAINERS_COLLECTION, trainerId), payload, { merge: true });
+    } catch (ignoredError) {
+      /* listing copy is optional */
+    }
   });
 }
 
-
-
-export default function WriteTrainerReviewPopup({
-  visible,
-  onClose,
-  onSubmitComplete,
-  trainerName,
+function reviewDocumentPayload({
   trainerId,
   clientId,
   clientFirstName,
+  rating,
+  reviewText,
   existingReview,
 }) {
-  const [rating, setRating] = useState(0);
-  const [reviewText, setReviewText] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [removing, setRemoving] = useState(false);
-
-  useEffect(() => {
-    if (visible) {
-      setRating(existingReview?.rating ?? 0);
-      setReviewText(existingReview?.text ?? '');
-    }
-  }, [visible, existingReview]);
-
-  const handleSubmit = async () => {
-    if (!trainerId || !clientId || rating <= 0) return;
-    setSubmitting(true);
-    try {
-      const reviewId = `${trainerId}_${clientId}`;
-      await setDoc(
-        doc(db, 'reviews', reviewId),
-        {
-          trainerId,
-          clientId,
-          clientFirstName: clientFirstName || null,
-          rating,
-          text: reviewText.trim() || null,
-          createdAt: existingReview?.createdAt ?? serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      await updateTrainerRating(trainerId);
-      onSubmitComplete?.();
-      onClose?.();
-    } catch (e) {
-      console.error('WriteTrainerReviewPopup submit error:', e);
-      Alert.alert('Error', 'Could not save review. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+  const savedCreatedAt = existingReview ? existingReview.createdAt : undefined;
+  return {
+    trainerId,
+    clientId,
+    clientFirstName: clientFirstName || null,
+    rating,
+    text: reviewText.trim() || null,
+    createdAt: savedCreatedAt ?? serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
+}
 
-  const handleRemove = () => {
-    Alert.alert(
-      'Remove your review?',
-      'This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            if (!trainerId || !clientId) return;
-            setRemoving(true);
-            try {
-              await deleteDoc(doc(db, 'reviews', `${trainerId}_${clientId}`));
-              await updateTrainerRating(trainerId);
-              onSubmitComplete?.();
-              onClose?.();
-            } catch (e) {
-              console.error('WriteTrainerReviewPopup remove error:', e);
-              Alert.alert('Error', 'Could not remove review. Please try again.');
-            } finally {
-              setRemoving(false);
-            }
-          },
-        },
-      ]
-    );
-  };
+function starIndexes() {
+  const indexes = [];
+  for (let starIndex = 1; starIndex <= STAR_COUNT; starIndex += 1) {
+    indexes.push(starIndex);
+  }
+  return indexes;
+}
 
-  if (!visible) return null;
+function starColor(starIndex, rating) {
+  if (starIndex <= rating) return FILLED_STAR_COLOR;
+  return EMPTY_STAR_COLOR;
+}
 
+function ratingWord(rating) {
+  return RATING_LABELS[rating] || '';
+}
+
+function submitButtonOpacity(rating) {
+  if (rating <= 0) return DIM_SUBMIT_OPACITY;
+  return FULL_SUBMIT_OPACITY;
+}
+
+function reviewSheetTitle(trainerName) {
+  if (trainerName) return `Rate your experience with ${trainerName}`;
+  return `Rate your experience with ${FALLBACK_TRAINER_NAME}`;
+}
+
+function submitButtonLabel(existingReview) {
+  if (existingReview) return 'Update Review';
+  return 'Submit Review';
+}
+
+function finishReviewAndClose(onSubmitComplete, onClose) {
+  if (onSubmitComplete) onSubmitComplete();
+  if (onClose) onClose();
+}
+
+function StarRow({ rating, onChangeRating }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+      }}
     >
+      {starIndexes().map((starIndex) => (
+        <TouchableOpacity
+          key={starIndex}
+          onPress={() => onChangeRating(starIndex)}
+          style={{ padding: 4 }}
+        >
+          <Ionicons name="star" size={36} color={starColor(starIndex, rating)} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function RatingWordLine({ rating }) {
+  const word = ratingWord(rating);
+  if (!word) return null;
+  return (
+    <Text
+      style={{
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.6)',
+        textAlign: 'center',
+        marginTop: 8,
+      }}
+    >
+      {word}
+    </Text>
+  );
+}
+
+function SubmitReviewButton({ submitting, submitLabel, rating, onPress }) {
+  const isSubmitDisabled = rating <= 0 || submitting;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={isSubmitDisabled}
+      style={{
+        width: '100%',
+        height: 50,
+        borderRadius: 12,
+        backgroundColor: '#FF6B9D',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 20,
+        opacity: submitButtonOpacity(rating),
+      }}
+    >
+      <SubmitReviewButtonFace submitting={submitting} submitLabel={submitLabel} />
+    </TouchableOpacity>
+  );
+}
+
+function SubmitReviewButtonFace({ submitting, submitLabel }) {
+  if (submitting) return <ActivityIndicator size="small" color="#fff" />;
+  return <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>{submitLabel}</Text>;
+}
+
+function RemoveReviewButton({ existingReview, removing, onPress }) {
+  if (!existingReview) return null;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={removing}
+      style={{ alignItems: 'center', marginTop: 12 }}
+    >
+      <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Remove review</Text>
+    </TouchableOpacity>
+  );
+}
+
+function WriteTrainerReviewSheet({
+  visible,
+  onClose,
+  trainerName,
+  rating,
+  onChangeRating,
+  reviewText,
+  onChangeReviewText,
+  submitting,
+  removing,
+  existingReview,
+  onSubmit,
+  onRemove,
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}
         activeOpacity={1}
@@ -168,52 +255,20 @@ export default function WriteTrainerReviewPopup({
               marginBottom: 24,
             }}
           >
-            Rate your experience with {trainerName || 'this trainer'}
+            {reviewSheetTitle(trainerName)}
           </Text>
 
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {[1, 2, 3, 4, 5].map((i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={() => setRating(i)}
-                style={{ padding: 4 }}
-              >
-                <Ionicons
-                  name="star"
-                  size={36}
-                  color={i <= rating ? '#F97316' : 'rgba(255,255,255,0.2)'}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-          {RATING_LABELS[rating] ? (
-            <Text
-              style={{
-                fontSize: 14,
-                color: 'rgba(255,255,255,0.6)',
-                textAlign: 'center',
-                marginTop: 8,
-              }}
-            >
-              {RATING_LABELS[rating]}
-            </Text>
-          ) : null}
+          <StarRow rating={rating} onChangeRating={onChangeRating} />
+          <RatingWordLine rating={rating} />
 
           <TextInput
             placeholder="Share your experience (optional)"
             placeholderTextColor="rgba(255,255,255,0.35)"
             value={reviewText}
-            onChangeText={setReviewText}
+            onChangeText={onChangeReviewText}
             multiline
             numberOfLines={5}
-            maxLength={500}
+            maxLength={MAX_REVIEW_CHARS}
             style={{
               backgroundColor: 'rgba(255,255,255,0.05)',
               borderWidth: 1,
@@ -235,52 +290,112 @@ export default function WriteTrainerReviewPopup({
               marginTop: 4,
             }}
           >
-            {reviewText.length}/500
+            {reviewText.length}/{MAX_REVIEW_CHARS}
           </Text>
 
-          <TouchableOpacity
-            onPress={handleSubmit}
-            disabled={rating <= 0 || submitting}
-            style={{
-              width: '100%',
-              height: 50,
-              borderRadius: 12,
-              backgroundColor: '#FF6B9D',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: 20,
-              opacity: rating <= 0 ? 0.4 : 1,
-            }}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text
-                style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}
-              >
-                {existingReview ? 'Update Review' : 'Submit Review'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {existingReview ? (
-            <TouchableOpacity
-              onPress={handleRemove}
-              disabled={removing}
-              style={{ alignItems: 'center', marginTop: 12 }}
-            >
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: 'rgba(255,255,255,0.4)',
-                }}
-              >
-                Remove review
-              </Text>
-            </TouchableOpacity>
-          ) : null}
+          <SubmitReviewButton
+            submitting={submitting}
+            submitLabel={submitButtonLabel(existingReview)}
+            rating={rating}
+            onPress={onSubmit}
+          />
+          <RemoveReviewButton existingReview={existingReview} removing={removing} onPress={onRemove} />
         </View>
       </TouchableOpacity>
     </Modal>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+export default function WriteTrainerReviewPopup({
+  visible,
+  onClose,
+  onSubmitComplete,
+  trainerName,
+  trainerId,
+  clientId,
+  clientFirstName,
+  existingReview,
+}) {
+  const [rating, setRating] = useState(0);
+  const [reviewText, setReviewText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    const savedRating = existingReview ? existingReview.rating : undefined;
+    const savedText = existingReview ? existingReview.text : undefined;
+    setRating(savedRating ?? 0);
+    setReviewText(savedText ?? '');
+  }, [visible, existingReview]);
+
+  const saveReview = async () => {
+    if (!trainerId || !clientId || rating <= 0) return;
+    setSubmitting(true);
+    try {
+      const reviewId = reviewDocumentId(trainerId, clientId);
+      await setDoc(
+        doc(db, REVIEWS_COLLECTION, reviewId),
+        reviewDocumentPayload({
+          trainerId,
+          clientId,
+          clientFirstName,
+          rating,
+          reviewText,
+          existingReview,
+        }),
+        { merge: true },
+      );
+      await updateTrainerRating(trainerId);
+      finishReviewAndClose(onSubmitComplete, onClose);
+    } catch (error) {
+      console.error('WriteTrainerReviewPopup submit error:', error);
+      Alert.alert('Error', 'Could not save review. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmRemoveReview = async () => {
+    if (!trainerId || !clientId) return;
+    setRemoving(true);
+    try {
+      await deleteDoc(doc(db, REVIEWS_COLLECTION, reviewDocumentId(trainerId, clientId)));
+      await updateTrainerRating(trainerId);
+      finishReviewAndClose(onSubmitComplete, onClose);
+    } catch (error) {
+      console.error('WriteTrainerReviewPopup remove error:', error);
+      Alert.alert('Error', 'Could not remove review. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const askToRemoveReview = () => {
+    Alert.alert('Remove your review?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: confirmRemoveReview },
+    ]);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <WriteTrainerReviewSheet
+      visible={visible}
+      onClose={onClose}
+      trainerName={trainerName}
+      rating={rating}
+      onChangeRating={setRating}
+      reviewText={reviewText}
+      onChangeReviewText={setReviewText}
+      submitting={submitting}
+      removing={removing}
+      existingReview={existingReview}
+      onSubmit={saveReview}
+      onRemove={askToRemoveReview}
+    />
   );
 }

@@ -1,13 +1,7 @@
-/**
- * Help FAQScreen
- *
- * Purpose: UI screen or component: Help FAQScreen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/settings
- * Key exports: HelpFAQScreen
- *
- * @file-header
- */
+// Help / FAQ: accordion answers for billing, workouts, trainers, and AI Coach.
+// Flow: fade the page in → tap a question to expand one answer → email in the footer.
+// Used from Settings for both client and trainer. Copy in FAQ_SECTIONS is what ships.
+
 import React, { useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,35 +12,15 @@ import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
 const PURPLE = '#C084FC';
 const PINK = '#FF6B9D';
 const BORDER_PAD = 0.35;
-
-function getCardTokens(isDark) {
-  return isDark
-    ? {
-        bg: '#141419',
-        border: 'rgba(255,255,255,0.08)',
-        text2: 'rgba(255,255,255,0.92)',
-        text3: 'rgba(255,255,255,0.72)',
-        chev: 'rgba(255,255,255,0.65)',
-      }
-    : {
-        bg: '#FFFFFF',
-        border: 'rgba(10,10,15,0.06)',
-        text2: 'rgba(10,10,15,0.86)',
-        text3: 'rgba(10,10,15,0.68)',
-        chev: 'rgba(10,10,15,0.65)',
-      };
-}
-
-function GradientCard({ borderColors, style, innerStyle, children }) {
-  return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
-      <View style={innerStyle}>{children}</View>
-    </LinearGradient>
-  );
-}
+const SHELL_NAV_INSET = 24;
+const EXTRA_SCROLL_PAD = 16;
+const FADE_MS = 350;
+const RISE_FROM = 10;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -183,27 +157,107 @@ const FAQ_SECTIONS = [
   },
 ];
 
-export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const shellNavInset = useShellBottomNavInset(24);
-  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
-  const supportEmail = getSupportEmail();
-  const [openKey, setOpenKey] = useState(null);
-  const t = getCardTokens(isDark);
+// ===== HELPER FUNCTIONS =====
 
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(10)).current;
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: 350, useNativeDriver: true }),
-    ]).start();
-  }, [fade, rise]);
+/**
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function getCardTokens(isDark) {
+  if (isDark) {
+    return {
+      cardBackground: '#141419',
+      border: 'rgba(255,255,255,0.08)',
+      text2: 'rgba(255,255,255,0.92)',
+      text3: 'rgba(255,255,255,0.72)',
+      chev: 'rgba(255,255,255,0.65)',
+    };
+  }
+  return {
+    cardBackground: '#FFFFFF',
+    border: 'rgba(10,10,15,0.06)',
+    text2: 'rgba(10,10,15,0.86)',
+    text3: 'rgba(10,10,15,0.68)',
+    chev: 'rgba(10,10,15,0.65)',
+  };
+}
 
-  const rows = useMemo(() => FAQ_SECTIONS, []);
+function GradientCard({ borderColors, style, innerStyle, children }) {
+  return (
+    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
+      <View style={innerStyle}>{children}</View>
+    </LinearGradient>
+  );
+}
 
-  const styles = StyleSheet.create({
+/**
+ * Extra room above the shell tab bar, or the home-indicator when this screen owns the stack.
+ * @param {boolean} embedShellBottomNav
+ * @param {number} shellNavInset
+ * @param {number} bottomInset
+ * @returns {number}
+ */
+function faqScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
+  if (embedShellBottomNav) return shellNavInset;
+  return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
+}
+
+function FaqHero({ styles: cardStyles }) {
+  return (
+    <GradientCard borderColors={[PURPLE, PINK]} style={cardStyles.heroOuter} innerStyle={cardStyles.heroInner}>
+      <GradientCard borderColors={[PURPLE, PINK]} style={cardStyles.heroIconOuter} innerStyle={cardStyles.heroIconInner}>
+        <Ionicons name="help-circle-outline" size={34} color="#FFFFFF" />
+      </GradientCard>
+      <Text style={cardStyles.heroTitle}>Frequently Asked Questions</Text>
+      <Text style={cardStyles.heroSub}>Quick answers, no jargon.</Text>
+    </GradientCard>
+  );
+}
+
+function FaqHeading({ title, styles: cardStyles }) {
+  return (
+    <View style={cardStyles.sectionHeaderRow}>
+      <Text style={cardStyles.sectionHeading}>{title}</Text>
+      <View style={cardStyles.sectionUnderline} />
+    </View>
+  );
+}
+
+function FaqQuestionCard({ item, index, openKey, onToggle, styles: cardStyles }) {
+  const key = `${item.question}-${index}`;
+  const isOpen = openKey === key;
+  return (
+    <View key={key} style={cardStyles.faqCard}>
+      <View style={cardStyles.faqCardBody}>
+        <Pressable onPress={() => onToggle(key)} style={cardStyles.questionRow}>
+          <Text style={cardStyles.qText}>{item.question}</Text>
+          <Text style={cardStyles.chev}>{isOpen ? '⌄' : '›'}</Text>
+        </Pressable>
+        {isOpen ? <Text style={cardStyles.answerText}>{item.answer}</Text> : null}
+      </View>
+      <LinearGradient
+        colors={[PURPLE, PINK]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={cardStyles.faqBottomAccent}
+      />
+    </View>
+  );
+}
+
+function FaqFooter({ supportEmail, styles: cardStyles }) {
+  const footerCopy = supportEmail
+    ? `Questions? Email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
+    : 'We can’t give medical advice; for health emergencies, contact local emergency services.';
+  return (
+    <View style={cardStyles.footer}>
+      <Text style={cardStyles.footerText}>{footerCopy}</Text>
+    </View>
+  );
+}
+
+function buildFaqStyles(isDark, cardTokens, scrollBottomPad, colors, spacing) {
+  return StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
@@ -217,7 +271,7 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
     heroInner: {
       borderRadius: 14,
       padding: 24,
-      backgroundColor: t.bg,
+      backgroundColor: cardTokens.cardBackground,
       alignItems: 'center',
       borderWidth: 0,
     },
@@ -231,8 +285,7 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
       borderWidth: 0,
     },
     heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
-
+    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
     introTitle: { fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 8 },
     introSub: { fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.lg },
     sectionHeading: {
@@ -240,14 +293,14 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
       fontWeight: '900',
       letterSpacing: 0.5,
       textTransform: 'uppercase',
-      color: getCardTokens(isDark).text3,
+      color: cardTokens.text3,
       marginTop: 24,
       marginBottom: 12,
     },
     sectionUnderline: { width: 22, height: 1.5, backgroundColor: PURPLE, marginTop: 8, borderRadius: 999 },
     sectionHeaderRow: { marginTop: 8, marginBottom: 12 },
     faqCard: {
-      backgroundColor: getCardTokens(isDark).bg,
+      backgroundColor: cardTokens.cardBackground,
       borderRadius: 12,
       marginBottom: 10,
       overflow: 'hidden',
@@ -265,21 +318,45 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
     },
     questionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     qText: { flex: 1, fontSize: 14, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', lineHeight: 19, letterSpacing: -0.15 },
-    chev: { fontSize: 18, fontWeight: '900', color: getCardTokens(isDark).chev },
-    answerText: { marginTop: 10, fontSize: 14, fontWeight: '600', color: getCardTokens(isDark).text2, lineHeight: 22 },
+    chev: { fontSize: 18, fontWeight: '900', color: cardTokens.chev },
+    answerText: { marginTop: 10, fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22 },
     footer: {
       marginTop: 16,
       padding: 16,
-      backgroundColor: getCardTokens(isDark).bg,
+      backgroundColor: cardTokens.cardBackground,
       borderRadius: 12,
       borderWidth: 0,
     },
-    footerText: { fontSize: 13, fontWeight: '600', color: getCardTokens(isDark).text2, lineHeight: 20 },
+    footerText: { fontSize: 13, fontWeight: '600', color: cardTokens.text2, lineHeight: 20 },
   });
+}
+
+// ===== MAIN FUNCTION =====
+
+export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
+  const { colors, spacing, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
+  const scrollBottomPad = faqScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
+  const supportEmail = getSupportEmail();
+  const [openKey, setOpenKey] = useState(null);
+  const cardTokens = getCardTokens(isDark);
+
+  const fade = useRef(new Animated.Value(0)).current;
+  const rise = useRef(new Animated.Value(RISE_FROM)).current;
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+    ]).start();
+  }, [fade, rise]);
+
+  const rows = useMemo(() => FAQ_SECTIONS, []);
+  const styles = buildFaqStyles(isDark, cardTokens, scrollBottomPad, colors, spacing);
 
   const toggle = (key) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenKey((prev) => (prev === key ? null : key));
+    setOpenKey((previousKey) => (previousKey === key ? null : key));
   };
 
   return (
@@ -294,51 +371,25 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroOuter} innerStyle={styles.heroInner}>
-            <GradientCard borderColors={[PURPLE, PINK]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>
-              <Ionicons name="help-circle-outline" size={34} color="#FFFFFF" />
-            </GradientCard>
-            <Text style={styles.heroTitle}>Frequently Asked Questions</Text>
-            <Text style={styles.heroSub}>Quick answers, no jargon.</Text>
-          </GradientCard>
+          <FaqHero styles={styles} />
 
           {rows.map((item, index) => {
-          if (item.type === 'heading') {
+            if (item.type === 'heading') {
+              return <FaqHeading key={`h-${item.title}`} title={item.title} styles={styles} />;
+            }
             return (
-              <View key={`h-${item.title}`} style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionHeading}>{item.title}</Text>
-                <View style={styles.sectionUnderline} />
-              </View>
-            );
-          }
-          const key = `${item.question}-${index}`;
-          const isOpen = openKey === key;
-          return (
-            <View key={key} style={styles.faqCard}>
-              <View style={styles.faqCardBody}>
-                <Pressable onPress={() => toggle(key)} style={styles.questionRow}>
-                  <Text style={styles.qText}>{item.question}</Text>
-                  <Text style={styles.chev}>{isOpen ? '⌄' : '›'}</Text>
-                </Pressable>
-                {isOpen ? <Text style={styles.answerText}>{item.answer}</Text> : null}
-              </View>
-              <LinearGradient
-                colors={[PURPLE, PINK]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.faqBottomAccent}
+              <FaqQuestionCard
+                key={`${item.question}-${index}`}
+                item={item}
+                index={index}
+                openKey={openKey}
+                onToggle={toggle}
+                styles={styles}
               />
-            </View>
-          );
+            );
           })}
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              {supportEmail
-                ? `Questions? Email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
-                : 'We can’t give medical advice; for health emergencies, contact local emergency services.'}
-            </Text>
-          </View>
+          <FaqFooter supportEmail={supportEmail} styles={styles} />
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

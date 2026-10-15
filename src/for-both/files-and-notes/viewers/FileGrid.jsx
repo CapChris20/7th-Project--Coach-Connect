@@ -1,17 +1,6 @@
-/**
- * File Gallery Grid
- *
- * Purpose: File Gallery Grid — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: FileGrid
- *
- * @file-header
- */
-/**
- * Shared file gallery UI — gradient-bordered cards in a 2-column grid.
- * Previews: stored thumbnailUrl (upload), Google embedded viewer for PDFs/docs/sheets, expo-av Video for video without thumb.
- */
+// Two-column file gallery: photos, videos, PDFs, and trainer document stubs.
+// Flow: pick a palette → image card or file card → hold-to-delete overlay when asked.
+// Used by Notes & Files screens and compact file modals.
 
 import React from 'react';
 import { View, Text, TouchableOpacity, Pressable, StyleSheet, Image, Platform, Animated } from 'react-native';
@@ -27,7 +16,13 @@ import {
 } from 'lucide-react-native';
 import { getFriendlyFileTitle } from '../../../helpers/fileSizeAndDateText';
 
+// ===== NAMED CONSTANTS =====
+
 const PALETTES = ['cyan', 'pink', 'purple', 'orange'];
+const HOLD_DURATION_MS = 850;
+const HOLD_MIN_DURATION_MS = 250;
+const HOLD_RESET_DELAY_MS = 250;
+const DEFAULT_ICON_SIZE = 26;
 
 const COLORS = {
   light: {
@@ -55,16 +50,19 @@ const GRADIENTS = {
   orange: '#F97316',
 };
 
-const paletteClass = (i) => PALETTES[i % PALETTES.length];
+const PALETTE_GRADIENTS = {
+  cyan: [GRADIENTS.cyan, GRADIENTS.pink],
+  pink: [GRADIENTS.pink, GRADIENTS.purple],
+  purple: [GRADIENTS.purple, GRADIENTS.orange],
+  orange: [GRADIENTS.orange, GRADIENTS.cyan],
+};
+
+// ===== HELPER FUNCTIONS =====
+
+const paletteClass = (index) => PALETTES[index % PALETTES.length];
 
 const getPaletteGradient = (palette) => {
-  const map = {
-    cyan: [GRADIENTS.cyan, GRADIENTS.pink],
-    pink: [GRADIENTS.pink, GRADIENTS.purple],
-    purple: [GRADIENTS.purple, GRADIENTS.orange],
-    orange: [GRADIENTS.orange, GRADIENTS.cyan],
-  };
-  return map[palette] || map.cyan;
+  return PALETTE_GRADIENTS[palette] || PALETTE_GRADIENTS.cyan;
 };
 
 function thumbHeight(dense) {
@@ -91,63 +89,69 @@ function decodeFileTitle(file) {
   }
 }
 
-function normalizePreviewText(s) {
-  if (!s || typeof s !== 'string') return '';
-  return s.replace(/[#*_`[\]]/g, '').replace(/\s+/g, ' ').trim();
+function normalizePreviewText(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  return rawText.replace(/[#*_`[\]]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function buildEmbedStrategies(file, url) {
-  if (!url) return [];
-  const name = (file.name || file.title || '').toLowerCase();
-  const mime = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
-  const strategies = [];
-  const isPdf = file.type === 'pdf' || name.endsWith('.pdf') || mime.includes('pdf');
-  const isOffice =
-    /\.(doc|docx|ppt|pptx|xls|xlsx|csv)$/i.test(name) ||
-    file.type === 'spreadsheet' ||
-    mime.includes('spreadsheet') ||
-    mime.includes('word') ||
-    mime.includes('officedocument') ||
-    mime.includes('msword');
+function isPdfFile(file, fileName, mimeType) {
+  return file.type === 'pdf' || fileName.endsWith('.pdf') || mimeType.includes('pdf');
+}
 
-  // 1) Native PDF in WebView (works with Firebase download URLs on-device)
-  if (isPdf) {
-    strategies.push({ uri: url, key: 'pdf-direct' });
-  }
-  // 2) Microsoft viewer for Office files (often works when Google cannot fetch private URLs)
-  if (isOffice) {
-    strategies.push({ uri: officeEmbedUrl(url), key: 'office' });
-  }
-  // 3) Google viewer fallback
-  strategies.push({ uri: googleEmbedUrl(url), key: 'google' });
+function isOfficeFile(file, fileName, mimeType) {
+  if (/\.(doc|docx|ppt|pptx|xls|xlsx|csv)$/i.test(fileName)) return true;
+  if (file.type === 'spreadsheet') return true;
+  if (mimeType.includes('spreadsheet')) return true;
+  if (mimeType.includes('word')) return true;
+  if (mimeType.includes('officedocument')) return true;
+  if (mimeType.includes('msword')) return true;
+  return false;
+}
 
+function uniqueStrategies(strategies) {
   const seen = new Set();
-  return strategies.filter((s) => {
-    if (!s.uri || seen.has(s.uri)) return false;
-    seen.add(s.uri);
+  return strategies.filter((strategy) => {
+    if (!strategy.uri || seen.has(strategy.uri)) return false;
+    seen.add(strategy.uri);
     return true;
   });
 }
 
+function buildEmbedStrategies(file, url) {
+  if (!url) return [];
+  const fileName = (file.name || file.title || '').toLowerCase();
+  const mimeType = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
+  const strategies = [];
+
+  if (isPdfFile(file, fileName, mimeType)) {
+    strategies.push({ uri: url, key: 'pdf-direct' });
+  }
+  if (isOfficeFile(file, fileName, mimeType)) {
+    strategies.push({ uri: officeEmbedUrl(url), key: 'office' });
+  }
+  strategies.push({ uri: googleEmbedUrl(url), key: 'google' });
+  return uniqueStrategies(strategies);
+}
+
 /** Try PDF → Office → Google until one loads (snapshots for uploaded files with url). */
-function MultiStrategyDocPreview({ file, url, height, bg, fallback }) {
+function MultiStrategyDocPreview({ file, url, height, previewBackground, fallback }) {
   const strategies = React.useMemo(() => buildEmbedStrategies(file, url), [file, url]);
-  const [idx, setIdx] = React.useState(0);
+  const [strategyIndex, setStrategyIndex] = React.useState(0);
 
   React.useEffect(() => {
-    setIdx(0);
+    setStrategyIndex(0);
   }, [url, strategies.length]);
 
-  if (strategies.length === 0 || idx >= strategies.length) {
+  if (strategies.length === 0 || strategyIndex >= strategies.length) {
     return fallback;
   }
 
-  const s = strategies[idx];
+  const strategy = strategies[strategyIndex];
   return (
-    <View style={[styles.previewSlot, { height, backgroundColor: bg, overflow: 'hidden' }]}>
+    <View style={[styles.previewSlot, { height, backgroundColor: previewBackground, overflow: 'hidden' }]}>
       <WebView
-        key={s.key}
-        source={{ uri: s.uri }}
+        key={strategy.key}
+        source={{ uri: strategy.uri }}
         style={styles.webInner}
         scrollEnabled={false}
         pointerEvents="none"
@@ -155,8 +159,8 @@ function MultiStrategyDocPreview({ file, url, height, bg, fallback }) {
         androidLayerType="hardware"
         mixedContentMode="always"
         allowsInlineMediaPlayback
-        onError={() => setIdx((i) => i + 1)}
-        onHttpError={() => setIdx((i) => i + 1)}
+        onError={() => setStrategyIndex((index) => index + 1)}
+        onHttpError={() => setStrategyIndex((index) => index + 1)}
       />
     </View>
   );
@@ -179,10 +183,10 @@ function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
         </Text>
       ) : showSkeleton ? (
         <View style={styles.fakeLines}>
-          {[0.92, 0.85, 0.72, 0.88].map((w, i) => (
+          {[0.92, 0.85, 0.72, 0.88].map((widthFraction, index) => (
             <View
-              key={i}
-              style={[styles.fakeLine, { width: `${w * 100}%`, backgroundColor: colors.border }]}
+              key={index}
+              style={[styles.fakeLine, { width: `${widthFraction * 100}%`, backgroundColor: colors.border }]}
             />
           ))}
         </View>
@@ -191,20 +195,13 @@ function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
   );
 }
 
-function iconForDisplayType(type, size = 26, iconColor = '#FFFFFF') {
-  const c = iconColor;
-  switch (type) {
-    case 'PDF':
-      return <FileText size={size} color={c} />;
-    case 'Document':
-      return <FileType2 size={size} color={c} />;
-    case 'Spreadsheet':
-      return <FileSpreadsheet size={size} color={c} />;
-    case 'Image':
-      return <ImageIcon size={size} color={c} />;
-    default:
-      return <FileIcon size={size} color={c} />;
-  }
+function iconForDisplayType(type, size = DEFAULT_ICON_SIZE, iconColor = '#FFFFFF') {
+  const iconTint = iconColor;
+  if (type === 'PDF') return <FileText size={size} color={iconTint} />;
+  if (type === 'Document') return <FileType2 size={size} color={iconTint} />;
+  if (type === 'Spreadsheet') return <FileSpreadsheet size={size} color={iconTint} />;
+  if (type === 'Image') return <ImageIcon size={size} color={iconTint} />;
+  return <FileIcon size={size} color={iconTint} />;
 }
 
 function displayTypeForFile(file) {
@@ -214,19 +211,19 @@ function displayTypeForFile(file) {
   if (file.type === 'pdf') return 'PDF';
   if (file.type === 'photo') return 'Image';
   if (file.type === 'video') return 'Video';
-  const n = (file.name || file.title || '').toLowerCase();
-  if (n.endsWith('.pdf')) return 'PDF';
-  if (n.endsWith('.csv') || n.endsWith('.xlsx') || n.endsWith('.xls')) return 'Spreadsheet';
-  if (n.endsWith('.doc') || n.endsWith('.docx')) return 'Document';
+  const fileName = (file.name || file.title || '').toLowerCase();
+  if (fileName.endsWith('.pdf')) return 'PDF';
+  if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) return 'Spreadsheet';
+  if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) return 'Document';
   return 'File';
 }
 
-function shortDate(d) {
-  if (!d) return '';
+function shortDate(dateValue) {
+  if (!dateValue) return '';
   try {
-    const t = d instanceof Date ? d : new Date(d);
-    if (Number.isNaN(t.getTime())) return '';
-    return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const parsedDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    if (Number.isNaN(parsedDate.getTime())) return '';
+    return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   } catch {
     return '';
   }
@@ -250,20 +247,32 @@ function isVideoFile(file) {
   return false;
 }
 
+function mimeLooksLikeImage(file) {
+  return file.mimeType && String(file.mimeType).startsWith('image/');
+}
+
+function nameLooksLikeDocument(fileName) {
+  return /\.(pdf|doc|docx|xlsx|xls|csv|ppt|pptx)(\?|$)/i.test(fileName);
+}
+
+function mimeLooksLikeDocument(mimeType) {
+  if (mimeType.includes('pdf')) return true;
+  if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.includes('msword')) return true;
+  if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('csv')) return true;
+  return false;
+}
+
 /** PDF, Word, spreadsheet, etc. — embed snapshot via Google viewer (public HTTPS URLs). */
 function shouldEmbedDocumentPreview(file) {
   if (!file?.url) return false;
-  const mime = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
-  if (mime.startsWith('image/') || mime.startsWith('video/')) return false;
-  const t = file.type;
-  if (t === 'photo' || t === 'video') return false;
-  if (t === 'pdf' || t === 'spreadsheet' || t === 'document' || t === 'doc') return true;
-  const n = (file.name || file.title || '').toLowerCase();
-  if (/\.(pdf|doc|docx|xlsx|xls|csv|ppt|pptx)(\?|$)/i.test(n)) return true;
-  if (mime.includes('pdf')) return true;
-  if (mime.includes('word') || mime.includes('officedocument') || mime.includes('msword')) return true;
-  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return true;
-  return false;
+  const mimeType = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
+  if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) return false;
+  const fileType = file.type;
+  if (fileType === 'photo' || fileType === 'video') return false;
+  if (fileType === 'pdf' || fileType === 'spreadsheet' || fileType === 'document' || fileType === 'doc') return true;
+  const fileName = (file.name || file.title || '').toLowerCase();
+  if (nameLooksLikeDocument(fileName)) return true;
+  return mimeLooksLikeDocument(mimeType);
 }
 
 function VideoThumb({ url, posterUri, height }) {
@@ -288,7 +297,7 @@ function VideoThumb({ url, posterUri, height }) {
 
 function HoldPressable({
   enabled,
-  durationMs = 850,
+  durationMs = HOLD_DURATION_MS,
   onPress,
   onHoldComplete,
   children,
@@ -309,15 +318,14 @@ function HoldPressable({
     progress.setValue(0);
     Animated.timing(progress, {
       toValue: 1,
-      duration: Math.max(250, Number(durationMs) || 850),
+      duration: Math.max(HOLD_MIN_DURATION_MS, Number(durationMs) || HOLD_DURATION_MS),
       useNativeDriver: false,
     }).start(({ finished }) => {
       if (!finished) return;
       if (didCompleteRef.current) return;
       didCompleteRef.current = true;
       onHoldComplete?.();
-      // Keep a subtle completion flash, then reset.
-      setTimeout(() => reset(), 250);
+      setTimeout(() => reset(), HOLD_RESET_DELAY_MS);
     });
   }, [enabled, durationMs, onHoldComplete, progress, reset]);
 
@@ -356,7 +364,7 @@ function HoldPressable({
   );
 }
 
-function GalleryImageCard({ file, palette, colors, onPress, onLongPress, thumbH, holdToAction }) {
+function GalleryImageCard({ file, palette, colors, onPress, thumbH, holdToAction }) {
   const uri = storedThumbnailUri(file) || file.url || file.src;
   const label = displayTypeForFile(file);
   const metaDate = shortDate(file.createdAt);
@@ -399,12 +407,63 @@ function GalleryImageCard({ file, palette, colors, onPress, onLongPress, thumbH,
   );
 }
 
+function shouldShowPaperPreview(isTrainerDocStub, url, snippet) {
+  if (!(isTrainerDocStub || (!url && snippet))) return false;
+  return !!(snippet || isTrainerDocStub);
+}
+
+function previewForGalleryFile({
+  file,
+  title,
+  snippet,
+  isTrainerDocStub,
+  stored,
+  url,
+  thumbH,
+  tintBase,
+  label,
+  colors,
+  iconFallback,
+}) {
+  if (stored) {
+    return <Image source={{ uri: stored }} style={[styles.previewImg, { height: thumbH }]} />;
+  }
+  if (isVideoFile(file) && url) {
+    return <VideoThumb url={url} posterUri={null} height={thumbH} />;
+  }
+  if (shouldShowPaperPreview(isTrainerDocStub, url, snippet)) {
+    return (
+      <PaperDocPreview
+        title={title}
+        excerpt={snippet}
+        height={thumbH}
+        colors={colors}
+        showSkeleton={isTrainerDocStub && !snippet}
+      />
+    );
+  }
+  if (url && shouldEmbedDocumentPreview(file)) {
+    return (
+      <MultiStrategyDocPreview
+        file={file}
+        url={url}
+        height={thumbH}
+        previewBackground={tintBase}
+        fallback={iconFallback}
+      />
+    );
+  }
+  if (url && (label === 'Image' || mimeLooksLikeImage(file))) {
+    return <Image source={{ uri: url }} style={[styles.previewImg, { height: thumbH }]} />;
+  }
+  return iconFallback;
+}
+
 function GalleryFileCard({
   file,
   palette,
   colors,
   onPress,
-  onLongPress,
   displayType,
   thumbH,
   holdToAction,
@@ -428,36 +487,19 @@ function GalleryFileCard({
     </View>
   );
 
-  let inner = null;
-  if (stored) {
-    inner = <Image source={{ uri: stored }} style={[styles.previewImg, { height: thumbH }]} />;
-  } else if (isVideoFile(file) && url) {
-    inner = <VideoThumb url={url} posterUri={null} height={thumbH} />;
-  } else if ((isTrainerDocStub || (!url && snippet)) && (snippet || isTrainerDocStub)) {
-    inner = (
-      <PaperDocPreview
-        title={title}
-        excerpt={snippet}
-        height={thumbH}
-        colors={colors}
-        showSkeleton={isTrainerDocStub && !snippet}
-      />
-    );
-  } else if (url && shouldEmbedDocumentPreview(file)) {
-    inner = (
-      <MultiStrategyDocPreview
-        file={file}
-        url={url}
-        height={thumbH}
-        bg={tintBase}
-        fallback={iconFallback}
-      />
-    );
-  } else if (url && (label === 'Image' || (file.mimeType && String(file.mimeType).startsWith('image/')))) {
-    inner = <Image source={{ uri: url }} style={[styles.previewImg, { height: thumbH }]} />;
-  } else {
-    inner = iconFallback;
-  }
+  const inner = previewForGalleryFile({
+    file,
+    title,
+    snippet,
+    isTrainerDocStub,
+    stored,
+    url,
+    thumbH,
+    tintBase,
+    label,
+    colors,
+    iconFallback,
+  });
 
   return (
     <HoldPressable
@@ -501,8 +543,50 @@ function GalleryFileCard({
   );
 }
 
+function holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs) {
+  if (!holdToDelete || !onLongPressItem) return null;
+  return { durationMs: holdDurationMs, onComplete: (file) => onLongPressItem?.(file) };
+}
+
+function FileGridCard({ file, index, colors, thumbH, onPressItem, onLongPressItem, holdToDelete, holdDurationMs }) {
+  const palette = paletteClass(index);
+  const handler = () => onPressItem?.(file);
+  const holdToAction = holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs);
+  const cardKey = file.id || `${file.name || file.title || 'file'}_${index}`;
+
+  if (isImageFile(file) && file.url) {
+    return (
+      <GalleryImageCard
+        key={cardKey}
+        file={file}
+        palette={palette}
+        colors={colors}
+        onPress={handler}
+        thumbH={thumbH}
+        holdToAction={holdToAction}
+      />
+    );
+  }
+  return (
+    <GalleryFileCard
+      key={cardKey}
+      file={file}
+      palette={palette}
+      colors={colors}
+      onPress={handler}
+      displayType={displayTypeForFile(file)}
+      thumbH={thumbH}
+      holdToAction={holdToAction}
+    />
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * @param {boolean} [props.dense] — tighter thumbnail height (modal / compact)
+ * Shared file gallery — gradient-bordered cards in a 2-column grid.
+ * @param {object} props
+ * @param {boolean} [props.dense] tighter thumbnail height (modal / compact)
  */
 export default function FileGrid({
   isDark,
@@ -514,54 +598,32 @@ export default function FileGrid({
   hideWhenEmpty,
   dense = false,
   holdToDelete = false,
-  holdDurationMs = 850,
+  holdDurationMs = HOLD_DURATION_MS,
 }) {
   const colors = isDark ? COLORS.dark : COLORS.light;
   const list = typeof maxItems === 'number' ? files.slice(0, maxItems) : [...files];
   const thumbH = thumbHeight(dense);
 
+  // 1. Hide the whole block when asked and there is nothing to show.
   if (hideWhenEmpty && list.length === 0) return null;
 
+  // 2. One image card or file card per item. Optional footer link under the grid.
   return (
     <View>
       <View style={styles.gallery}>
-        {list.map((file, i) => {
-          const palette = paletteClass(i);
-          const imageKind = isImageFile(file);
-          const handler = () => onPressItem?.(file);
-          const longHandler = onLongPressItem ? () => onLongPressItem(file) : undefined;
-          const holdToAction =
-            holdToDelete && onLongPressItem
-              ? { durationMs: holdDurationMs, onComplete: (f) => onLongPressItem?.(f) }
-              : null;
-          if (imageKind && file.url) {
-            return (
-              <GalleryImageCard
-                key={file.id || `${file.name || file.title || 'img'}_${i}`}
-                file={file}
-                palette={palette}
-                colors={colors}
-                onPress={handler}
-                onLongPress={longHandler}
-                thumbH={thumbH}
-                holdToAction={holdToAction}
-              />
-            );
-          }
-          return (
-            <GalleryFileCard
-              key={file.id || `${file.name || file.title || 'f'}_${i}`}
-              file={file}
-              palette={palette}
-              colors={colors}
-              onPress={handler}
-              onLongPress={longHandler}
-              displayType={displayTypeForFile(file)}
-              thumbH={thumbH}
-              holdToAction={holdToAction}
-            />
-          );
-        })}
+        {list.map((file, index) => (
+          <FileGridCard
+            key={file.id || `${file.name || file.title || 'file'}_${index}`}
+            file={file}
+            index={index}
+            colors={colors}
+            thumbH={thumbH}
+            onPressItem={onPressItem}
+            onLongPressItem={onLongPressItem}
+            holdToDelete={holdToDelete}
+            holdDurationMs={holdDurationMs}
+          />
+        ))}
       </View>
       {footerLink ? (
         <TouchableOpacity activeOpacity={0.85} onPress={footerLink.onPress} style={styles.footerBtn}>

@@ -1,46 +1,81 @@
-/**
- * Pdf Viewer Modal
- *
- * Purpose: UI screen or component: Pdf Viewer Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: PdfViewer
- *
- * @file-header
- */
+// Full-screen modal that loads a PDF URL in a WebView.
+// Flow: parent sets visible + url → show title bar → WebView loads → spinner hides on load or error.
+// Used by the files-and-notes viewers. Missing url returns null so an empty modal never mounts.
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_DOCUMENT_NAME = 'Document';
+const TITLE_MAX_LENGTH = 40;
+const TITLE_TRIM_LENGTH = 37;
+const CLOSE_HIT_SLOP = { top: 14, bottom: 14, left: 14, right: 14 };
+const WEBVIEW_ORIGIN_WHITELIST = ['*'];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Long file names get an ellipsis so the header stays one line.
+ * @param {string|undefined} name
+ * @returns {string}
+ */
+function shortenDocumentTitle(name) {
+  const rawTitle = String(name || DEFAULT_DOCUMENT_NAME);
+  if (rawTitle.length > TITLE_MAX_LENGTH) return `${rawTitle.slice(0, TITLE_TRIM_LENGTH)}…`;
+  return rawTitle;
+}
+
+function viewerColors(isDark) {
+  return {
+    background: isDark ? '#020617' : '#F8FAFC',
+    textColor: isDark ? '#F8FAFC' : '#0F172A',
+    muted: isDark ? 'rgba(226,232,240,0.72)' : 'rgba(51,65,85,0.72)',
+  };
+}
+
+function headerGradient(isDark) {
+  return isDark
+    ? ['rgba(2,6,23,0.96)', 'rgba(2,6,23,0.70)']
+    : ['rgba(248,250,252,0.98)', 'rgba(248,250,252,0.75)'];
+}
+
+function loadingCardGradient(isDark) {
+  return isDark
+    ? ['rgba(15,23,42,0.96)', 'rgba(2,6,23,0.88)']
+    : ['rgba(255,255,255,0.96)', 'rgba(241,245,249,0.92)'];
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full-screen PDF preview. Reloading `visible`/`url` puts the spinner back until the WebView finishes.
+ * @param {{ visible: boolean, url?: string, name?: string, isDark?: boolean, onClose: Function }} props
+ */
 export default function PdfViewer({ visible, url, name, isDark = true, onClose }) {
   if (!url) return null;
-  const bg = isDark ? '#020617' : '#F8FAFC';
-  const textColor = isDark ? '#F8FAFC' : '#0F172A';
-  const muted = isDark ? 'rgba(226,232,240,0.72)' : 'rgba(51,65,85,0.72)';
-  const [loading, setLoading] = useState(true);
+  const { background, textColor, muted } = viewerColors(isDark);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (visible && url) setLoading(true);
+    if (visible && url) setIsLoading(true);
   }, [visible, url]);
 
-  const title = useMemo(() => {
-    const raw = name || 'Document';
-    const s = String(raw);
-    return s.length > 40 ? `${s.slice(0, 37)}…` : s;
-  }, [name]);
+  const title = useMemo(() => shortenDocumentTitle(name), [name]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: background }]}>
         <LinearGradient
-          colors={isDark ? ['rgba(2,6,23,0.96)', 'rgba(2,6,23,0.70)'] : ['rgba(248,250,252,0.98)', 'rgba(248,250,252,0.75)']}
+          colors={headerGradient(isDark)}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.header}
         >
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }} style={styles.headerBtn}>
+          <TouchableOpacity onPress={onClose} hitSlop={CLOSE_HIT_SLOP} style={styles.headerBtn}>
             <Ionicons name="close" size={22} color={textColor} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
@@ -53,19 +88,19 @@ export default function PdfViewer({ visible, url, name, isDark = true, onClose }
           </View>
           <View style={styles.headerBtn} />
         </LinearGradient>
-        <View style={[styles.webviewWrapper, { backgroundColor: bg }]}>
+        <View style={[styles.webviewWrapper, { backgroundColor: background }]}>
           <WebView
             source={{ uri: url }}
             style={styles.webview}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => setLoading(false)}
-            originWhitelist={['*']}
+            onLoadEnd={() => setIsLoading(false)}
+            onError={() => setIsLoading(false)}
+            originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
             mixedContentMode="always"
           />
-          {loading && (
+          {isLoading && (
             <View style={styles.loadingOverlay}>
               <LinearGradient
-                colors={isDark ? ['rgba(15,23,42,0.96)', 'rgba(2,6,23,0.88)'] : ['rgba(255,255,255,0.96)', 'rgba(241,245,249,0.92)']}
+                colors={loadingCardGradient(isDark)}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[styles.loadingCard, { borderColor: isDark ? 'rgba(148,163,184,0.35)' : 'rgba(2,6,23,0.10)' }]}
@@ -168,4 +203,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

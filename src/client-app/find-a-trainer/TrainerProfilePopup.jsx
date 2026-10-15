@@ -1,6 +1,7 @@
-/**
- * Marketplace Trainer Profile Sheet
- */
+// Full trainer profile: photo, stats, about, specialties, price, and Message / Connect / Report.
+// Flow: normalize the trainer → paint the sheet → Connect or Message, or report/block from the safety menu.
+// Used by SearchTrainersScreen (embedded) and as a standalone modal. `embedded` skips the Modal chrome.
+
 import React from 'react';
 import {
   Alert,
@@ -42,6 +43,18 @@ import {
   REPORT_TYPES,
 } from '../../block-and-report';
 
+// ===== NAMED CONSTANTS =====
+
+const CONNECTED_VARIANT = 'connected';
+const DEFAULT_MODE = 'Remote';
+const DEFAULT_BIO = 'No bio yet.';
+const DEFAULT_RESPONDS = 'within 2 hours';
+const DEFAULT_TRAINER_NAME = 'Trainer';
+const DEFAULT_TRIAL_DAYS = 5;
+const SCROLL_BOTTOM_PAD = 28;
+const FOOTER_PAD = 12;
+const SPECIALTY_TILE_COLORS = [BRAND.pink, BRAND.orange, BRAND.cyan, BRAND.purple];
+
 const FEATURES = [
   { label: 'Custom workouts', icon: 'barbell-outline', color: BRAND.pink },
   { label: 'Direct messaging', icon: 'chatbubbles-outline', color: BRAND.purple },
@@ -49,22 +62,157 @@ const FEATURES = [
   { label: 'Session booking', icon: 'calendar-outline', color: BRAND.orange },
 ];
 
-function InfoPill({ icon, label, t, active }) {
+// ===== HELPER FUNCTIONS =====
+
+function InfoPill({ icon, label, theme, active }) {
   return (
     <View
       style={[
-        s.infoPill,
+        styles.infoPill,
         active
           ? { borderColor: `${BRAND.orange}66`, backgroundColor: `${BRAND.pink}28` }
           : { borderColor: `${BRAND.purple}55`, backgroundColor: `${BRAND.purple}12` },
       ]}
     >
       <Ionicons name={icon} size={12} color={active ? BRAND.cyan : BRAND.purple} />
-      <Text style={[s.infoPillText, { color: t.foreground }]}>{label}</Text>
+      <Text style={[styles.infoPillText, { color: theme.foreground }]}>{label}</Text>
     </View>
   );
 }
 
+/**
+ * Marketplace cards store the uid on the projection, the raw doc, or the original trainer object.
+ * @param {object} display
+ * @param {object} trainer
+ * @returns {string|null}
+ */
+function trainerUidFromDisplay(display, trainer) {
+  return (
+    display?.uid ||
+    display?.id ||
+    display?._firebase?.uid ||
+    trainer?.uid ||
+    trainer?.id ||
+    null
+  );
+}
+
+/**
+ * @param {object} display
+ * @param {object} trainer
+ */
+function readProfileFields(display, trainer) {
+  const firstName = trainerFirstName(display.name || display.displayName);
+  const photoUri = display.photoURL || trainerPhotoUri(display._firebase || display);
+  const price = getTrainerPrice(display._firebase || display) ?? display.price;
+  const showPrice = price != null && Number(price) > 0;
+  return {
+    firstName,
+    avatarColors: gradGradient(display.grad),
+    photoUri,
+    price,
+    showPrice,
+    trainerUid: trainerUidFromDisplay(display, trainer),
+    trainerName: display.name || display.displayName || DEFAULT_TRAINER_NAME,
+  };
+}
+
+/**
+ * @param {string} reporterUid
+ * @param {string} trainerUid
+ * @param {string} trainerName
+ * @param {string} reasonId
+ */
+async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, reasonId) {
+  try {
+    await submitContentReport({
+      reporterId: reporterUid,
+      type: REPORT_TYPES.TRAINER_PROFILE,
+      targetUid: String(trainerUid),
+      reason: reasonId,
+      targetDisplayName: trainerName,
+    });
+    Alert.alert('Report sent', 'Thanks — we’ll review this trainer listing.');
+  } catch (error) {
+    Alert.alert('Report failed', error?.message || 'Try again.');
+  }
+}
+
+/**
+ * @param {string} reporterUid
+ * @param {string} trainerUid
+ * @param {string} trainerName
+ * @param {Function} [onClose]
+ */
+async function blockThisTrainer(reporterUid, trainerUid, trainerName, onClose) {
+  try {
+    await blockUser(reporterUid, String(trainerUid), { displayName: trainerName });
+    Alert.alert('Blocked', `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`);
+    onClose?.();
+  } catch (error) {
+    Alert.alert('Block failed', error?.message || 'Try again.');
+  }
+}
+
+/**
+ * Safety menu: pick Report (reason list) or Block (hold-to-confirm).
+ * You cannot report your own listing.
+ * @param {string} trainerUid
+ * @param {string} trainerName
+ * @param {Function} [onClose]
+ */
+function openReportOrBlockMenu(trainerUid, trainerName, onClose) {
+  const signedInUid = getAuth()?.currentUser?.uid;
+  if (!signedInUid || !trainerUid || signedInUid === trainerUid) {
+    Alert.alert('Report', 'You can’t report this profile.');
+    return;
+  }
+
+  showSafetyPeerMenu({
+    peerName: trainerName,
+    onReport: () => {
+      showReportReasonPicker({
+        onPick: (reasonId) => sendTrainerProfileReport(signedInUid, trainerUid, trainerName, reasonId),
+      });
+    },
+    onBlock: () => {
+      confirmBlockUser({
+        peerName: trainerName,
+        onConfirm: () => blockThisTrainer(signedInUid, trainerUid, trainerName, onClose),
+      });
+    },
+  });
+}
+
+function specialtyTileColor(index) {
+  return SPECIALTY_TILE_COLORS[index % SPECIALTY_TILE_COLORS.length];
+}
+
+function profileFooterBackground(embedded, isDark, theme) {
+  if (embedded) return 'transparent';
+  if (isDark) return theme.card;
+  return theme.background;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer profile sheet. `embedded` paints inside SearchTrainersScreen; otherwise it is a Modal.
+ * vocab: useSafeAreaInsets pads the footer above the home indicator when this is a full-screen modal.
+ * @param {{
+ *   trainer: object,
+ *   visible: boolean,
+ *   onClose: Function,
+ *   onConnect?: Function,
+ *   onRequest?: Function,
+ *   isDark?: boolean,
+ *   requesting?: boolean,
+ *   variant?: string,
+ *   onMessage?: Function,
+ *   embedded?: boolean,
+ *   shellBottomInset?: number,
+ * }} props
+ */
 export function TrainerProfileSheet({
   trainer,
   visible,
@@ -84,83 +232,27 @@ export function TrainerProfileSheet({
   if (embedded && !visible) return null;
 
   const display = normalizeTrainer(trainer?._firebase || trainer, 0);
-  const t = getTheme(isDark);
-  const isConnected = variant === 'connected';
-  const firstName = trainerFirstName(display.name || display.displayName);
-  const avatarColors = gradGradient(display.grad);
-  const photoUri = display.photoURL || trainerPhotoUri(display._firebase || display);
-  const price = getTrainerPrice(display._firebase || display) ?? display.price;
-  const showPrice = price != null && Number(price) > 0;
+  const theme = getTheme(isDark);
+  const isConnected = variant === CONNECTED_VARIANT;
+  const fields = readProfileFields(display, trainer);
   const handleMessage = onMessage;
   const handleConnect = onConnect || onRequest;
   const shellNavClearance = embedded ? Math.max(0, shellBottomInset) : 0;
   // Footer is in-flow under the scroll view — only the footer needs shell clearance.
-  const scrollBottomPad = 28;
-
-  const trainerUid =
-    display?.uid ||
-    display?.id ||
-    display?._firebase?.uid ||
-    trainer?.uid ||
-    trainer?.id ||
-    null;
-
-  const openTrainerSafety = () => {
-    const me = getAuth()?.currentUser?.uid;
-    if (!me || !trainerUid || me === trainerUid) {
-      Alert.alert('Report', 'You can’t report this profile.');
-      return;
-    }
-    const name = display.name || display.displayName || 'Trainer';
-    showSafetyPeerMenu({
-      peerName: name,
-      onReport: () => {
-        showReportReasonPicker({
-          onPick: async (reasonId) => {
-            try {
-              await submitContentReport({
-                reporterId: me,
-                type: REPORT_TYPES.TRAINER_PROFILE,
-                targetUid: String(trainerUid),
-                reason: reasonId,
-                targetDisplayName: name,
-              });
-              Alert.alert('Report sent', 'Thanks — we’ll review this trainer listing.');
-            } catch (e) {
-              Alert.alert('Report failed', e?.message || 'Try again.');
-            }
-          },
-        });
-      },
-      onBlock: () => {
-        confirmBlockUser({
-          peerName: name,
-          onConfirm: async () => {
-            try {
-              await blockUser(me, String(trainerUid), { displayName: name });
-              Alert.alert('Blocked', `${name} is blocked. Unblock anytime in Settings → Blocked users.`);
-              onClose?.();
-            } catch (e) {
-              Alert.alert('Block failed', e?.message || 'Try again.');
-            }
-          },
-        });
-      },
-    });
-  };
+  const scrollBottomPad = SCROLL_BOTTOM_PAD;
 
   const footer = (
     <View
       style={[
-        s.profileFooter,
+        styles.profileFooter,
         {
-          borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : t.border,
-          backgroundColor: embedded ? 'transparent' : isDark ? t.card : t.background,
-          paddingBottom: embedded ? Math.max(12, shellNavClearance) : 12 + insets.bottom,
+          borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border,
+          backgroundColor: profileFooterBackground(embedded, isDark, theme),
+          paddingBottom: embedded ? Math.max(FOOTER_PAD, shellNavClearance) : FOOTER_PAD + insets.bottom,
         },
       ]}
     >
-      <View style={s.footerActionsRow}>
+      <View style={styles.footerActionsRow}>
         {isConnected && typeof handleMessage === 'function' ? (
           <PrimaryButton onPress={handleMessage} style={{ flex: 1 }} disabled={requesting} icon="chatbubble-outline">
             Message
@@ -170,7 +262,7 @@ export function TrainerProfileSheet({
             <SecondaryButton
               onPress={() => handleMessage?.(display)}
               style={{ flex: 1 }}
-              textColor={t.foreground}
+              textColor={theme.foreground}
               disabled={requesting || !handleMessage}
               icon="chatbubble-outline"
               isDark={isDark}
@@ -183,15 +275,15 @@ export function TrainerProfileSheet({
               disabled={requesting}
               icon="flash-outline"
             >
-              Connect with {firstName}
+              Connect with {fields.firstName}
             </PrimaryButton>
           </>
         )}
       </View>
       <SecondaryButton
-        onPress={openTrainerSafety}
+        onPress={() => openReportOrBlockMenu(fields.trainerUid, fields.trainerName, onClose)}
         style={{ width: '100%' }}
-        textColor={t.mutedForeground}
+        textColor={theme.mutedForeground}
         icon="flag-outline"
         isDark={isDark}
       >
@@ -203,128 +295,128 @@ export function TrainerProfileSheet({
   const body = (
     <View
       style={[
-        s.root,
-        embedded ? s.rootEmbedded : null,
+        styles.root,
+        embedded ? styles.rootEmbedded : null,
         {
-          backgroundColor: embedded ? 'transparent' : t.background,
+          backgroundColor: embedded ? 'transparent' : theme.background,
         },
       ]}
     >
       <ScrollView
-        style={s.scroll}
-        contentContainerStyle={[s.scrollContent, { paddingBottom: scrollBottomPad }]}
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <View style={s.profileHero}>
-          {photoUri ? (
-            <LinearGradient colors={avatarColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarRing}>
-              <Image source={{ uri: photoUri }} style={s.avatarXlImg} />
+        <View style={styles.profileHero}>
+          {fields.photoUri ? (
+            <LinearGradient colors={fields.avatarColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarRing}>
+              <Image source={{ uri: fields.photoUri }} style={styles.avatarXlImg} />
             </LinearGradient>
           ) : (
             <LinearGradient
-              colors={avatarColors}
+              colors={fields.avatarColors}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={s.avatarBox}
+              style={styles.avatarBox}
             >
-              <Text style={s.avatarXlText}>{display.initials}</Text>
+              <Text style={styles.avatarXlText}>{display.initials}</Text>
             </LinearGradient>
           )}
 
-          <Text style={[s.profileName, { color: t.foreground }]}>
+          <Text style={[styles.profileName, { color: theme.foreground }]}>
             {display.name || display.displayName}
           </Text>
 
-          <View style={s.locRow}>
-            <Ionicons name="location-outline" size={14} color={t.mutedForeground} />
-            <Text style={{ color: t.mutedForeground, fontSize: 14, fontWeight: '500' }}>
-              {display.location || '—'}  •  {display.mode || 'Remote'}
+          <View style={styles.locRow}>
+            <Ionicons name="location-outline" size={14} color={theme.mutedForeground} />
+            <Text style={{ color: theme.mutedForeground, fontSize: 14, fontWeight: '500' }}>
+              {display.location || '—'}  •  {display.mode || DEFAULT_MODE}
             </Text>
           </View>
 
-          <View style={[s.pillWrap, { marginTop: 14 }]}>
+          <View style={[styles.pillWrap, { marginTop: 14 }]}>
             {isConnected ? (
-              <InfoPill icon="checkmark-circle" label="Your coach" t={t} active />
+              <InfoPill icon="checkmark-circle" label="Your coach" theme={theme} active />
             ) : null}
             {display.verified === true ? (
-              <InfoPill icon="shield-checkmark" label="Verified" t={t} active />
+              <InfoPill icon="shield-checkmark" label="Verified" theme={theme} active />
             ) : null}
             <InfoPill
               icon="time-outline"
-              label={`Responds ${display.responds || 'within 2 hours'}`}
-              t={t}
+              label={`Responds ${display.responds || DEFAULT_RESPONDS}`}
+              theme={theme}
             />
           </View>
         </View>
 
-        <View style={s.statRow}>
-          <GlassCard isDark={isDark} style={s.statCardWrap} contentStyle={s.statCard}>
-            <Text style={[s.statVal, { color: BRAND.purple }]}>{display.years || '—'}</Text>
-            <Text style={[s.statLabel, { color: t.mutedForeground }]}>Years coaching</Text>
+        <View style={styles.statRow}>
+          <GlassCard isDark={isDark} style={styles.statCardWrap} contentStyle={styles.statCard}>
+            <Text style={[styles.statVal, { color: BRAND.purple }]}>{display.years || '—'}</Text>
+            <Text style={[styles.statLabel, { color: theme.mutedForeground }]}>Years coaching</Text>
           </GlassCard>
-          <GlassCard isDark={isDark} style={s.statCardWrap} contentStyle={s.statCard}>
-            <Text style={[s.statVal, { color: BRAND.cyan }]}>{(display.specialties || []).length}</Text>
-            <Text style={[s.statLabel, { color: t.mutedForeground }]}>Specialties</Text>
+          <GlassCard isDark={isDark} style={styles.statCardWrap} contentStyle={styles.statCard}>
+            <Text style={[styles.statVal, { color: BRAND.cyan }]}>{(display.specialties || []).length}</Text>
+            <Text style={[styles.statLabel, { color: theme.mutedForeground }]}>Specialties</Text>
           </GlassCard>
         </View>
 
-        <GlassCard t={t} isDark={isDark}>
+        <GlassCard t={theme} isDark={isDark}>
           <SectionLabel>About</SectionLabel>
-          <Text style={{ color: t.foreground, lineHeight: 22, marginTop: 10, fontSize: 15, fontWeight: '500' }}>
-            {display.bio || 'No bio yet.'}
+          <Text style={{ color: theme.foreground, lineHeight: 22, marginTop: 10, fontSize: 15, fontWeight: '500' }}>
+            {display.bio || DEFAULT_BIO}
           </Text>
         </GlassCard>
 
-        <GlassCard t={t} isDark={isDark}>
+        <GlassCard t={theme} isDark={isDark}>
           <SectionLabel>Specialties</SectionLabel>
-          <View style={s.specGrid}>
-            {(display.specialties || []).map((spec, idx) => {
-              const c = [BRAND.pink, BRAND.orange, BRAND.cyan, BRAND.purple][idx % 4];
+          <View style={styles.specGrid}>
+            {(display.specialties || []).map((spec, index) => {
+              const tileColor = specialtyTileColor(index);
               return (
-                <View key={spec} style={[s.specTile, { borderColor: t.border, backgroundColor: t.muted }]}>
-                  <LinearGradient colors={[c, `${c}88`]} style={s.specIcon}>
+                <View key={spec} style={[styles.specTile, { borderColor: theme.border, backgroundColor: theme.muted }]}>
+                  <LinearGradient colors={[tileColor, `${tileColor}88`]} style={styles.specIcon}>
                     <Ionicons name="fitness-outline" size={18} color="#fff" />
                   </LinearGradient>
-                  <Text style={{ color: t.foreground, fontWeight: '700', fontSize: 13 }}>{spec}</Text>
+                  <Text style={{ color: theme.foreground, fontWeight: '700', fontSize: 13 }}>{spec}</Text>
                 </View>
               );
             })}
           </View>
         </GlassCard>
 
-        <GlassCard t={t} isDark={isDark}>
+        <GlassCard t={theme} isDark={isDark}>
           <SectionLabel>What you get</SectionLabel>
-          <View style={s.specGrid}>
-            {FEATURES.map((f) => (
-              <View key={f.label} style={[s.specTile, { borderColor: t.border, backgroundColor: t.muted }]}>
-                <LinearGradient colors={[f.color, `${f.color}99`]} style={s.specIcon}>
-                  <Ionicons name={f.icon} size={18} color="#fff" />
+          <View style={styles.specGrid}>
+            {FEATURES.map((feature) => (
+              <View key={feature.label} style={[styles.specTile, { borderColor: theme.border, backgroundColor: theme.muted }]}>
+                <LinearGradient colors={[feature.color, `${feature.color}99`]} style={styles.specIcon}>
+                  <Ionicons name={feature.icon} size={18} color="#fff" />
                 </LinearGradient>
-                <Text style={{ color: t.foreground, fontWeight: '700', fontSize: 13 }}>{f.label}</Text>
+                <Text style={{ color: theme.foreground, fontWeight: '700', fontSize: 13 }}>{feature.label}</Text>
               </View>
             ))}
           </View>
         </GlassCard>
 
-        {showPrice ? (
-          <GlassCard t={t} isDark={isDark}>
+        {fields.showPrice ? (
+          <GlassCard t={theme} isDark={isDark}>
             <SectionLabel>Investment</SectionLabel>
-            <View style={s.priceRow}>
-              <ColorText style={s.priceGradient}>${price}</ColorText>
-              <Text style={{ color: t.mutedForeground, fontSize: 17, fontWeight: '600' }}>/mo</Text>
+            <View style={styles.priceRow}>
+              <ColorText style={styles.priceGradient}>${fields.price}</ColorText>
+              <Text style={{ color: theme.mutedForeground, fontSize: 17, fontWeight: '600' }}>/mo</Text>
             </View>
-            <Text style={{ color: t.mutedForeground, marginTop: 10, lineHeight: 21, fontSize: 14 }}>
+            <Text style={{ color: theme.mutedForeground, marginTop: 10, lineHeight: 21, fontSize: 14 }}>
               Personalized programming, weekly check-ins, unlimited messaging.
             </Text>
             <LinearGradient
               colors={[`${BRAND.pink}33`, `${BRAND.purple}22`]}
-              style={[s.trialBox, { borderColor: `${BRAND.purple}55` }]}
+              style={[styles.trialBox, { borderColor: `${BRAND.purple}55` }]}
             >
-              <Text style={{ color: t.foreground, fontWeight: '800', textAlign: 'center', fontSize: 14 }}>
-                FREE {display.trialDays ?? 5}-day trial · no card required
+              <Text style={{ color: theme.foreground, fontWeight: '800', textAlign: 'center', fontSize: 14 }}>
+                FREE {display.trialDays ?? DEFAULT_TRIAL_DAYS}-day trial · no card required
               </Text>
             </LinearGradient>
           </GlassCard>
@@ -339,10 +431,10 @@ export function TrainerProfileSheet({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[s.modalShell, { backgroundColor: t.background }]}>
-        <View style={s.profileTop}>
-          <Pressable onPress={onClose} style={[s.modalBackBtn, { borderColor: t.border }]}>
-            <Ionicons name="chevron-back" size={22} color={t.foreground} />
+      <View style={[styles.modalShell, { backgroundColor: theme.background }]}>
+        <View style={styles.profileTop}>
+          <Pressable onPress={onClose} style={[styles.modalBackBtn, { borderColor: theme.border }]}>
+            <Ionicons name="chevron-back" size={22} color={theme.foreground} />
           </Pressable>
         </View>
         {body}
@@ -353,7 +445,7 @@ export function TrainerProfileSheet({
 
 export default TrainerProfileSheet;
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   root: { flex: 1 },
   rootEmbedded: { flex: 1, minHeight: 0 },
   modalShell: { flex: 1 },

@@ -31,7 +31,11 @@ async function getLocationModule() {
 
 // City can live on different fields depending on the country. First non-empty wins.
 function cityLabelFromPlace(place) {
-  return place.city || place.subregion || place.district || place.name || '';
+  if (place.city) return place.city;
+  if (place.subregion) return place.subregion;
+  if (place.district) return place.district;
+  if (place.name) return place.name;
+  return '';
 }
 
 function trimmedPlaceField(value) {

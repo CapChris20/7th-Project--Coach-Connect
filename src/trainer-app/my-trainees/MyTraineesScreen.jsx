@@ -1,14 +1,7 @@
-/**
- * Trainer Clients List Screen
- *
- * Purpose: UI screen or component: Trainer Clients List Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: (see file)
- *
- * @file-header
- */
-/** Trainer — full client roster list */
+// Trainer’s full client roster: swipe to remove, tap to open a client.
+// Flow: show the list → confirm remove → call the cloud function → refresh.
+// Used by the trainer Clients tab.
+
 import React, { useState, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -36,12 +29,23 @@ import {
   getClientRosterStats,
 } from '../home/trainerHomePieces';
 
+// ===== NAMED CONSTANTS =====
+
+const SHELL_NAV_INSET_FALLBACK = 24;
+
 const CLIENT_LIST_DELETE_GRADIENT = ['#BE185D', '#C2410C'];
 const ROSTER_LIST_AVATAR_GRADIENT = ['#9F1239', '#C2410C'];
 const ROSTER_LIST_RIM_GRADIENT = ['#BE185D', '#C2410C'];
 const SWIPE_DELETE_WIDTH = 88;
 const DELETE_ICON_PINK = '#FF6B9D';
 
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer roster list.
+ */
 const ClientsListScreen = ({
   clients,
   trainerId,
@@ -64,7 +68,7 @@ const ClientsListScreen = ({
   isDark = true,
 }) => {
   // Floating shell BottomMenuBar overlays embed + standalone — always reserve it.
-  const scrollBottomPad = useShellBottomNavInset(24);
+  const scrollBottomPad = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
   const [deletePending, setDeletePending] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   const swipeRefs = useRef(new Map());

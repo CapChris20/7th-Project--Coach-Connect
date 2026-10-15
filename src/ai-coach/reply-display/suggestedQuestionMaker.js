@@ -75,7 +75,7 @@ function topicTextFromParts(...parts) {
   return parts.join(' ').toLowerCase();
 }
 
-function pickUnique(prompts, maximumCount = MAXIMUM_FOLLOW_UP_PROMPTS) {
+function keepFirstUniquePrompts(prompts, maximumCount = MAXIMUM_FOLLOW_UP_PROMPTS) {
   const seenPrompts = new Set();
   const uniquePrompts = [];
   for (const item of prompts) {
@@ -282,7 +282,7 @@ export function buildContextualFollowUps({
   const sectionTitles = extractReplySections(replyText);
   const replyBullets = extractReplyBullets(replyText);
 
-  // Order is the priority. pickUnique keeps the first three, so earlier groups win.
+  // Order is the priority. keepFirstUniquePrompts keeps the first three, so earlier groups win.
   const prompts = [
     ...followUpsFromUserAsk(searchedWeb, userAsk),
     ...followUpsFromSectionTitles(sectionTitles),
@@ -297,7 +297,7 @@ export function buildContextualFollowUps({
     ...CLOSING_FOLLOW_UP_PROMPTS,
   ];
 
-  return pickUnique(
+  return keepFirstUniquePrompts(
     prompts.filter((prompt) => !isGenericProfilePrompt(prompt)),
     MAXIMUM_FOLLOW_UP_PROMPTS,
   );
@@ -324,6 +324,6 @@ export function prepareCoachReplyForDisplay(rawText, options = {}) {
 
   return {
     displayText,
-    followUpPrompts: pickUnique(followUpPrompts, MAXIMUM_FOLLOW_UP_PROMPTS),
+    followUpPrompts: keepFirstUniquePrompts(followUpPrompts, MAXIMUM_FOLLOW_UP_PROMPTS),
   };
 }

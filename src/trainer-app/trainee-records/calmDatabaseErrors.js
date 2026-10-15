@@ -6,10 +6,31 @@
 
 const PERMISSION_DENIED_CODE = 'permission-denied';
 const UNAVAILABLE_CODE = 'unavailable';
+
+// Manipulate here: add a code to silence another flicker without hiding real bugs.
+const BENIGN_FIRESTORE_CODES = [PERMISSION_DENIED_CODE, UNAVAILABLE_CODE];
+
 const MISSING_PERMISSIONS_TEXT = 'Missing or insufficient permissions';
 const FAILED_TO_GET_DOCUMENT_TEXT = 'Failed to get document';
 
+// Manipulate here: add a message snippet when a new benign flicker shows up in logs.
+const BENIGN_MESSAGE_SNIPPETS = [
+  MISSING_PERMISSIONS_TEXT,
+  FAILED_TO_GET_DOCUMENT_TEXT,
+];
+
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string} errorMessage
+ * @returns {boolean}
+ */
+function messageLooksBenign(errorMessage) {
+  for (let i = 0; i < BENIGN_MESSAGE_SNIPPETS.length; i += 1) {
+    if (errorMessage.includes(BENIGN_MESSAGE_SNIPPETS[i])) return true;
+  }
+  return false;
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -23,10 +44,8 @@ export function isBenignTrainerClientFirestoreError(firestoreError) {
   // vocab: ?. reads .code only when the error object exists.
   const errorCode = firestoreError?.code || '';
   const errorMessage = String(firestoreError?.message || firestoreError || '');
-  // Manipulate here: add a code or a snippet to silence another flicker.
-  const isPermissionDenied = errorCode === PERMISSION_DENIED_CODE;
-  const isUnavailable = errorCode === UNAVAILABLE_CODE;
-  const messageIsBenign = errorMessage.includes(MISSING_PERMISSIONS_TEXT)
-    || errorMessage.includes(FAILED_TO_GET_DOCUMENT_TEXT);
-  return isPermissionDenied || isUnavailable || messageIsBenign;
+
+  const codeIsBenign = BENIGN_FIRESTORE_CODES.includes(errorCode);
+  if (codeIsBenign) return true;
+  return messageLooksBenign(errorMessage);
 }

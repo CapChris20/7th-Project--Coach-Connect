@@ -11,7 +11,7 @@ import ColorText from '../../look-and-feel/ColorText';
 
 const SECTION_TITLE_FONT = 'SpaceGrotesk_600SemiBold';
 
-// Brighter pink → orange, matching the workout tab header.
+// Manipulate here: brighter pink → orange, matching the workout tab header.
 const SECTION_HEADER_GRADIENT = ['#FF6B9D', '#FB923C'];
 
 const DARK_UNDERLINE_COLORS = [
@@ -48,6 +48,37 @@ function sectionTitleFontFamily() {
   });
 }
 
+function uppercaseSectionLabel(text) {
+  const rawLabel = text || '';
+  return String(rawLabel).toUpperCase();
+}
+
+function SectionTitleWords({ label, fontFamily }) {
+  const titleStyle = [styles.label, { fontFamily, alignSelf: 'center' }];
+  return (
+    <ColorText
+      colors={SECTION_HEADER_GRADIENT}
+      start={HORIZONTAL_GRADIENT_START}
+      end={HORIZONTAL_GRADIENT_END}
+      style={titleStyle}
+    >
+      {label}
+    </ColorText>
+  );
+}
+
+function SectionTitleRule({ colors }) {
+  return (
+    <LinearGradient
+      colors={colors}
+      locations={UNDERLINE_LOCATIONS}
+      start={HORIZONTAL_GRADIENT_START}
+      end={HORIZONTAL_GRADIENT_END}
+      style={styles.rule}
+    />
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -56,29 +87,16 @@ function sectionTitleFontFamily() {
  * @returns {import('react').ReactElement}
  */
 export default function SectionTitle({ text, isDark = true, style }) {
+  const sectionLabel = uppercaseSectionLabel(text);
+  const titleFontFamily = sectionTitleFontFamily();
+  const ruleColors = underlineColors(isDark);
+
+  // 1. Uppercase the label and paint it in the pink-to-orange gradient.
+  // 2. Draw the short rule under it that fades at both ends.
   return (
     <View style={[styles.wrap, style]}>
-      <ColorText
-        colors={SECTION_HEADER_GRADIENT}
-        start={HORIZONTAL_GRADIENT_START}
-        end={HORIZONTAL_GRADIENT_END}
-        style={[
-          styles.label,
-          {
-            fontFamily: sectionTitleFontFamily(),
-            alignSelf: 'center',
-          },
-        ]}
-      >
-        {String(text || '').toUpperCase()}
-      </ColorText>
-      <LinearGradient
-        colors={underlineColors(isDark)}
-        locations={UNDERLINE_LOCATIONS}
-        start={HORIZONTAL_GRADIENT_START}
-        end={HORIZONTAL_GRADIENT_END}
-        style={styles.rule}
-      />
+      <SectionTitleWords label={sectionLabel} fontFamily={titleFontFamily} />
+      <SectionTitleRule colors={ruleColors} />
     </View>
   );
 }

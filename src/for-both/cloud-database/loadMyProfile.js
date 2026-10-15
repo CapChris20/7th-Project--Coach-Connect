@@ -46,7 +46,9 @@ async function fetchProfileFromBaseUrl(baseUrl, idToken) {
       throw new Error(`${PROFILE_API_PATH} failed (${response.status})`);
     }
     const profileJson = await response.json();
-    return profileJson?.user || profileJson || null;
+    if (profileJson && profileJson.user) return profileJson.user;
+    if (profileJson) return profileJson;
+    return null;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -66,7 +68,7 @@ export async function loadMyProfileFromFirestore(uid) {
     const profileSnapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (!profileSnapshot.exists()) return null;
     return { uid, ...(profileSnapshot.data() || {}) };
-  } catch (_error) {
+  } catch (profileReadError) {
     return null;
   }
 }
@@ -100,8 +102,11 @@ export async function loadMyProfileFromApi(user) {
  * @returns {Promise<object|null>}
  */
 export async function loadMyProfile(user) {
+  // 1. Firestore users/{uid} is the source of truth when the doc exists.
   const uid = user?.uid;
   const profileFromFirestore = await loadMyProfileFromFirestore(uid);
   if (profileFromFirestore) return profileFromFirestore;
+
+  // 2. Miss or read error → try /api/me on each known base.
   return loadMyProfileFromApi(user);
 }

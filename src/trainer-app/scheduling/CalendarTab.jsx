@@ -1,6 +1,7 @@
-/**
- * Trainer Sessions tab — calendar home + inline form routing.
- */
+// Trainer Sessions tab: month calendar, upcoming list, and the new/edit session form.
+// Flow: pick calendar or list → tap a day or a strip → open the schedule screen in this tab.
+// Used on the trainer's client profile. Colors come from getSessionSchedulingColors (keys bg, cardBg, text).
+
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { format } from 'date-fns';
@@ -18,29 +19,80 @@ import {
   SESSION_GRADIENT,
 } from '../scheduling/schedulingColors';
 
+// ===== NAMED CONSTANTS =====
+
+const REQUEST_STATUS_PENDING = 'pending';
+const CLIENT_NAME_DEFAULT = 'Client';
+const MINUTES_PER_HOUR = 60;
+const UPCOMING_SESSION_LIMIT = 8;
+const ISO_DATE_LENGTH = 10;
+const NOON_ON_DAY_SUFFIX = 'T12:00:00';
+const HOME_ROUTE = '/';
+const NEW_SESSION_ROUTE = '/sessions/new';
+const SESSIONS_ROUTE_PREFIX = '/sessions/';
+const TAB_CALENDAR = 'calendar';
+const TAB_LIST = 'list';
+const WHITE = '#FFFFFF';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Tiny query-string reader for paths like /sessions/new?date=2026-10-08.
+ * @param {string} path
+ * @returns {object}
+ */
 function parseQuery(path) {
-  const s = String(path || '');
-  const [, qs] = s.split('?');
+  const pathText = String(path || '');
+  const queryString = pathText.split('?')[1];
   const params = {};
-  if (qs) {
-    for (const part of qs.split('&')) {
-      const [k, v] = part.split('=');
-      if (!k) continue;
-      params[decodeURIComponent(k)] = v != null ? decodeURIComponent(v) : '';
-    }
+  if (!queryString) return params;
+  for (const part of queryString.split('&')) {
+    assignQueryPart(params, part);
   }
   return params;
 }
 
-function formatDurationMin(min) {
-  const n = Number(min) || 60;
-  if (n < 60) return `${n}m`;
-  if (n % 60 === 0) return `${n / 60}h`;
-  return `${Math.floor(n / 60)}h ${n % 60}m`;
+/**
+ * @param {object} params
+ * @param {string} part
+ */
+function assignQueryPart(params, part) {
+  const [rawKey, rawValue] = part.split('=');
+  if (!rawKey) return;
+  params[decodeURIComponent(rawKey)] = rawValue != null ? decodeURIComponent(rawValue) : '';
+}
+
+/**
+ * 45 → "45m", 60 → "1h", 90 → "1h 30m". Missing duration counts as one hour.
+ * @param {number} durationMin
+ * @returns {string}
+ */
+function formatDurationMin(durationMin) {
+  const minutes = Number(durationMin) || MINUTES_PER_HOUR;
+  if (minutes < MINUTES_PER_HOUR) return `${minutes}m`;
+  if (minutes % MINUTES_PER_HOUR === 0) return `${minutes / MINUTES_PER_HOUR}h`;
+  return `${Math.floor(minutes / MINUTES_PER_HOUR)}h ${minutes % MINUTES_PER_HOUR}m`;
+}
+
+/**
+ * @param {string} dateKey
+ * @returns {string}
+ */
+function newSessionPath(dateKey) {
+  if (!dateKey) return NEW_SESSION_ROUTE;
+  return `${NEW_SESSION_ROUTE}?date=${encodeURIComponent(dateKey)}`;
+}
+
+/**
+ * @param {object} session
+ * @returns {string}
+ */
+function sessionSortKey(session) {
+  return String(session.date) + String(session.time);
 }
 
 function SessionStrip({ session, colors, onPress }) {
-  const status = String(session?.status || 'pending');
+  const status = String(session?.status || REQUEST_STATUS_PENDING);
   const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
   return (
     <TouchableOpacity
@@ -56,55 +108,155 @@ function SessionStrip({ session, colors, onPress }) {
   );
 }
 
+function SegBtn({ active, onPress, icon, label, colors }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={[styles.segBtn, active && { backgroundColor: SESSION_GRADIENT[0] }]}
+    >
+      {icon}
+      <Text style={[styles.segBtnText, { color: active ? WHITE : colors.muted }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function SessionStripList({ sessions, colors, onNavigate }) {
+  return (
+    <View style={styles.stripList}>
+      {sessions.map((session) => (
+        <SessionStrip
+          key={session.id}
+          session={session}
+          colors={colors}
+          onPress={() => onNavigate(`/sessions/${session.id}`)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function DaySessionsSection({ daySectionTitle, dayList, colors, onClearDate, onNavigate }) {
+  return (
+    <View style={styles.daySection}>
+      <View style={styles.dayHeader}>
+        <Text style={[styles.dayTitle, { color: colors.text }]}>{daySectionTitle}</Text>
+        <TouchableOpacity onPress={onClearDate}>
+          <Text style={[styles.clearLink, { color: DARK_PINK }]}>Clear</Text>
+        </TouchableOpacity>
+      </View>
+      {dayList.length === 0 ? (
+        <Text style={[styles.emptyCopy, { color: colors.muted }]}>
+          No sessions on this day.
+        </Text>
+      ) : (
+        <SessionStripList sessions={dayList} colors={colors} onNavigate={onNavigate} />
+      )}
+    </View>
+  );
+}
+
+function CalendarSection({
+  sessionsForClient,
+  selectedDate,
+  setSelectedDate,
+  setCalendarMonth,
+  theme,
+  colors,
+  daySectionTitle,
+  dayList,
+  onNavigate,
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={[styles.calendarCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+        <MonthCalendar
+          sessions={sessionsForClient}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          onMonthChange={setCalendarMonth}
+          theme={theme}
+          borderless
+          accentColor={DARK_PINK}
+          cardBg={colors.cardBg}
+        />
+      </View>
+      {daySectionTitle ? (
+        <DaySessionsSection
+          daySectionTitle={daySectionTitle}
+          dayList={dayList}
+          colors={colors}
+          onClearDate={() => setSelectedDate(null)}
+          onNavigate={onNavigate}
+        />
+      ) : (
+        <Text style={[styles.hint, { color: colors.muted }]}>
+          Tap a day to see sessions for that date.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function UpcomingListSection({ upcoming, clientLabel, colors, onNavigate }) {
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.dayTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
+      {upcoming.length === 0 ? (
+        <Text style={[styles.emptyCopy, { color: colors.muted }]}>No upcoming sessions.</Text>
+      ) : (
+        <SessionStripList sessions={upcoming} colors={colors} onNavigate={onNavigate} />
+      )}
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 const CalendarTab = ({ clientId, clientName }) => {
   const { isDark } = useTheme();
   const colors = getSessionSchedulingColors(isDark);
   const theme = isDark ? 'dark' : 'light';
   const { sessions } = useSessions();
-  const [route, setRoute] = useState('/');
-  const [tab, setTab] = useState('calendar');
+  const [route, setRoute] = useState(HOME_ROUTE);
+  const [tab, setTab] = useState(TAB_CALENDAR);
   const [selectedDate, setSelectedDate] = useState(null);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
-  const clientLabel = clientName || 'Client';
-  const onNavigate = (path) => setRoute(path || '/');
+  const clientLabel = clientName || CLIENT_NAME_DEFAULT;
+  const onNavigate = (path) => setRoute(path || HOME_ROUTE);
 
   const sessionsForClient = useMemo(() => {
     if (!clientId) return [];
-    const cid = String(clientId);
-    return (sessions || []).filter((s) => s?.clientId != null && String(s.clientId) === cid);
+    const clientIdText = String(clientId);
+    return (sessions || []).filter((session) => session?.clientId != null && String(session.clientId) === clientIdText);
   }, [sessions, clientId]);
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = new Date().toISOString().slice(0, ISO_DATE_LENGTH);
 
   const upcoming = useMemo(
     () =>
       [...sessionsForClient]
-        .filter((s) => (s.date || '') >= todayKey)
-        .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
-        .slice(0, 8),
+        .filter((session) => (session.date || '') >= todayKey)
+        .sort((leftSession, rightSession) => sessionSortKey(leftSession).localeCompare(sessionSortKey(rightSession)))
+        .slice(0, UPCOMING_SESSION_LIMIT),
     [sessionsForClient, todayKey],
   );
 
   const dayList = selectedDate
     ? sessionsForClient
-        .filter((s) => s.date === selectedDate)
-        .sort((a, b) => String(a.time).localeCompare(String(b.time)))
+        .filter((session) => session.date === selectedDate)
+        .sort((leftSession, rightSession) => String(leftSession.time).localeCompare(String(rightSession.time)))
     : [];
 
   const monthLabel = format(calendarMonth, 'MMM yyyy');
   const daySectionTitle = selectedDate
-    ? `${format(new Date(`${selectedDate}T12:00:00`), 'MMM d')} Sessions:`
+    ? `${format(new Date(`${selectedDate}${NOON_ON_DAY_SUFFIX}`), 'MMM d')} Sessions:`
     : null;
 
-  const newSessionPath = (dateKey) => {
-    if (!dateKey) return '/sessions/new';
-    return `/sessions/new?date=${encodeURIComponent(dateKey)}`;
-  };
-
-  const routeStr = typeof route === 'string' ? route : '/';
-  const isNewSession = routeStr.startsWith('/sessions/new');
-  const isEditSession = routeStr.startsWith('/sessions/') && !isNewSession;
+  const routeStr = typeof route === 'string' ? route : HOME_ROUTE;
+  const isNewSession = routeStr.startsWith(NEW_SESSION_ROUTE);
+  const isEditSession = routeStr.startsWith(SESSIONS_ROUTE_PREFIX) && !isNewSession;
 
   if (isNewSession) {
     const params = parseQuery(routeStr);
@@ -139,85 +291,40 @@ const CalendarTab = ({ clientId, clientName }) => {
 
       <View style={[styles.segmented, { borderColor: colors.divider, backgroundColor: colors.cardBg }]}>
         <SegBtn
-          active={tab === 'calendar'}
-          onPress={() => setTab('calendar')}
-          icon={<CalendarDays size={14} color={tab === 'calendar' ? '#FFFFFF' : colors.muted} />}
+          active={tab === TAB_CALENDAR}
+          onPress={() => setTab(TAB_CALENDAR)}
+          icon={<CalendarDays size={14} color={tab === TAB_CALENDAR ? WHITE : colors.muted} />}
           label="Calendar"
           colors={colors}
         />
         <SegBtn
-          active={tab === 'list'}
-          onPress={() => setTab('list')}
-          icon={<ListIcon size={14} color={tab === 'list' ? '#FFFFFF' : colors.muted} />}
+          active={tab === TAB_LIST}
+          onPress={() => setTab(TAB_LIST)}
+          icon={<ListIcon size={14} color={tab === TAB_LIST ? WHITE : colors.muted} />}
           label="List"
           colors={colors}
         />
       </View>
 
-      {tab === 'calendar' ? (
-        <View style={styles.section}>
-          <View style={[styles.calendarCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-            <MonthCalendar
-              sessions={sessionsForClient}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              onMonthChange={setCalendarMonth}
-              theme={theme}
-              borderless
-              accentColor={DARK_PINK}
-              cardBg={colors.cardBg}
-            />
-          </View>
-
-          {daySectionTitle ? (
-            <View style={styles.daySection}>
-              <View style={styles.dayHeader}>
-                <Text style={[styles.dayTitle, { color: colors.text }]}>{daySectionTitle}</Text>
-                <TouchableOpacity onPress={() => setSelectedDate(null)}>
-                  <Text style={[styles.clearLink, { color: DARK_PINK }]}>Clear</Text>
-                </TouchableOpacity>
-              </View>
-              {dayList.length === 0 ? (
-                <Text style={[styles.emptyCopy, { color: colors.muted }]}>
-                  No sessions on this day.
-                </Text>
-              ) : (
-                <View style={styles.stripList}>
-                  {dayList.map((s) => (
-                    <SessionStrip
-                      key={s.id}
-                      session={s}
-                      colors={colors}
-                      onPress={() => onNavigate(`/sessions/${s.id}`)}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          ) : (
-            <Text style={[styles.hint, { color: colors.muted }]}>
-              Tap a day to see sessions for that date.
-            </Text>
-          )}
-        </View>
+      {tab === TAB_CALENDAR ? (
+        <CalendarSection
+          sessionsForClient={sessionsForClient}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          setCalendarMonth={setCalendarMonth}
+          theme={theme}
+          colors={colors}
+          daySectionTitle={daySectionTitle}
+          dayList={dayList}
+          onNavigate={onNavigate}
+        />
       ) : (
-        <View style={styles.section}>
-          <Text style={[styles.dayTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
-          {upcoming.length === 0 ? (
-            <Text style={[styles.emptyCopy, { color: colors.muted }]}>No upcoming sessions.</Text>
-          ) : (
-            <View style={styles.stripList}>
-              {upcoming.map((s) => (
-                <SessionStrip
-                  key={s.id}
-                  session={s}
-                  colors={colors}
-                  onPress={() => onNavigate(`/sessions/${s.id}`)}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+        <UpcomingListSection
+          upcoming={upcoming}
+          clientLabel={clientLabel}
+          colors={colors}
+          onNavigate={onNavigate}
+        />
       )}
 
       <TouchableOpacity
@@ -231,27 +338,14 @@ const CalendarTab = ({ clientId, clientName }) => {
           end={{ x: 1, y: 0 }}
           style={styles.newBtn}
         >
-          <Check color="#FFFFFF" size={18} />
+          <Check color={WHITE} size={18} />
           <Text style={styles.newBtnText}>+ New Session</Text>
-          <ArrowRight color="#FFFFFF" size={18} />
+          <ArrowRight color={WHITE} size={18} />
         </LinearGradient>
       </TouchableOpacity>
     </View>
   );
 };
-
-function SegBtn({ active, onPress, icon, label, colors }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={[styles.segBtn, active && { backgroundColor: SESSION_GRADIENT[0] }]}
-    >
-      {icon}
-      <Text style={[styles.segBtnText, { color: active ? '#FFFFFF' : colors.muted }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
 
 export default CalendarTab;
 

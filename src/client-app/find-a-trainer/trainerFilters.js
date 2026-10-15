@@ -34,6 +34,8 @@ const DEFAULT_BIO = 'This coach is setting up their profile. Message them to lea
 // Manipulate here: trial length shown when the trainer doc does not set one.
 const DEFAULT_TRIAL_DAYS = 5;
 const WAITLIST_AVAILABILITY = 'Waitlist';
+// Midpoint years for the stored "6_10" experience band (used only when parseInt cannot read a leading digit).
+const YEARS_FOR_SIX_TO_TEN_RANGE = 7;
 
 export const DEFAULT_FILTERS = {
   sort: 'Newest',
@@ -135,7 +137,7 @@ const EXPERIENCE_YEAR_VALUES = {
   '1_2': 2,
   '3_5': 4,
   '5_8': 6,
-  '6_10': 7,
+  '6_10': YEARS_FOR_SIX_TO_TEN_RANGE,
   '8_plus': 9,
   '10_plus': 10,
 };
@@ -521,13 +523,16 @@ export function normalizeTrainer(raw, index = 0) {
  * @returns {object[]}
  */
 export function filterTrainers(trainers, filters, { query = '', quickSpecialty = 'All' } = {}) {
+  // 1. Turn the typed min/max into numbers. Blank stays null so that filter is skipped.
   const minPrice = filters.priceMin.trim() ? Number(filters.priceMin) : null;
   const maxPrice = filters.priceMax.trim() ? Number(filters.priceMax) : null;
   const searchText = query.trim().toLowerCase();
 
+  // 2. Drop any card that misses search, the quick chip, or the filter sheet (AND).
   const matching = trainers.filter((trainer) =>
     doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice),
   );
 
+  // 3. Price sorts read the raw doc. Newest uses the joined-at timestamp.
   return sortTrainers(matching, filters.sort || SORT_NEWEST);
 }

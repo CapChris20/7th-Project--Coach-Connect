@@ -30,7 +30,8 @@ const CHIP_IDLE_OPACITY = 1;
  */
 function promptsToShow(prompts) {
   const promptList = prompts || [];
-  return promptList.filter(Boolean).slice(0, MAX_VISIBLE_PROMPTS);
+  const nonBlankPrompts = promptList.filter(Boolean);
+  return nonBlankPrompts.slice(0, MAX_VISIBLE_PROMPTS);
 }
 
 /**
@@ -92,6 +93,26 @@ function chipPressStyle(palette, isPressed) {
   ];
 }
 
+/**
+ * One lavender follow-up pill. Kept in-file so the main export stays a short checklist.
+ * @param {{ prompt: string, promptIndex: number, palette: object, onPress: Function }} props
+ */
+function FollowUpQuestionChip({ prompt, promptIndex, palette, onPress }) {
+  const handlePress = () => onPress(prompt);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      // vocab: Pressable's style function receives pressed so the chip can fade only while the finger is down.
+      style={({ pressed: isPressed }) => chipPressStyle(palette, isPressed)}
+      accessibilityRole="button"
+      accessibilityLabel={prompt}
+    >
+      <Text style={[styles.chipText, { color: palette.textColor }]}>{prompt}</Text>
+    </Pressable>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -111,16 +132,13 @@ export default function SuggestedQuestionChips({ prompts = [], onPress, isDark =
   return (
     <View style={styles.wrap} accessibilityRole="list" accessibilityLabel="Suggested follow-up questions">
       {visiblePrompts.map((prompt, promptIndex) => (
-        <Pressable
+        <FollowUpQuestionChip
           key={chipKey(prompt, promptIndex)}
-          onPress={() => onPress(prompt)}
-          // vocab: Pressable's style function receives pressed so the chip can fade only while the finger is down.
-          style={({ pressed: isPressed }) => chipPressStyle(palette, isPressed)}
-          accessibilityRole="button"
-          accessibilityLabel={prompt}
-        >
-          <Text style={[styles.chipText, { color: palette.textColor }]}>{prompt}</Text>
-        </Pressable>
+          prompt={prompt}
+          promptIndex={promptIndex}
+          palette={palette}
+          onPress={onPress}
+        />
       ))}
     </View>
   );

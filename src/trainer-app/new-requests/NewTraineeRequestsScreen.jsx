@@ -1,13 +1,7 @@
-/**
- * Client Requests Screen
- *
- * Purpose: UI screen or component: Client Requests Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: NewTraineeRequestsScreen
- *
- * @file-header
- */
+// Trainer inbox of "a client wants to work with you" cards (not the Messages tab).
+// Flow: load pending cards → tap a row → TrainerListingPopup to accept or reject → refresh the list.
+// Used by the trainer shell. Cards keep the keys from pendingRequestCount / getTrainerPendingRequests.
+
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -29,17 +23,222 @@ import { pendingRequestCount } from './pendingRequestCount';
 import TrainerListingPopup from '../home/TrainerListingPopup';
 import { clientRequestTypeLabel } from '../../ai-coach/coach-actions/alertTrainer';
 
-const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
+// ===== NAMED CONSTANTS =====
 
-export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSettingsPress, onClientAdded, embedInLayout }) {
+const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
+const EMPTY_ACCENT_GRADIENT = ['#fb7185', '#a78bfa'];
+const EMPTY_ICON_GRADIENT = ['#7C3AED', '#EC4899'];
+const UNKNOWN_INITIAL = '?';
+const INITIALS_MAX_CHARS = 2;
+const LIST_BOTTOM_INSET = 32;
+const CLIENT_NAME_FALLBACK = 'No goals';
+const EXPERIENCE_FALLBACK = '—';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * First letters of the given name, uppercased, max two characters. "?" when the name is missing.
+ * @param {string} clientName
+ * @returns {string}
+ */
+function clientInitials(clientName) {
+  return (clientName || UNKNOWN_INITIAL)
+    .split(' ')
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, INITIALS_MAX_CHARS);
+}
+
+/**
+ * Card keys callers read: clientName, requestTitle, requestType, message, clientGoals, clientExperienceLevel.
+ * Prefer the typed message; otherwise show goals · experience so a blank request still has a preview.
+ * @param {object} requestItem
+ * @returns {string}
+ */
+function requestPreviewText(requestItem) {
+  if (requestItem.message) return requestItem.message;
+  const goals = requestItem.clientGoals || CLIENT_NAME_FALLBACK;
+  const experience = requestItem.clientExperienceLevel || EXPERIENCE_FALLBACK;
+  return `${goals} · ${experience}`;
+}
+
+function requestTypeLine(requestItem) {
+  return requestItem.requestTitle || clientRequestTypeLabel(requestItem.requestType);
+}
+
+function inboxPalette(isDark) {
+  if (isDark) {
+    return {
+      screenBackground: '#0a0a1a',
+      textColor: '#ffffff',
+      mutedColor: 'rgba(255,255,255,0.55)',
+      cardBackground: 'rgba(255,255,255,0.06)',
+      nameColor: '#fff',
+      typeColor: '#C084FC',
+      previewColor: 'rgba(255,255,255,0.6)',
+      loadingColor: 'rgba(255,255,255,0.6)',
+      emptyCardBackground: 'rgba(12,12,18,0.96)',
+      emptyCardBorder: 'rgba(255,255,255,0.1)',
+    };
+  }
+  return {
+    screenBackground: '#f5f3ff',
+    textColor: '#1a0a2e',
+    mutedColor: 'rgba(26,10,46,0.55)',
+    cardBackground: 'rgba(0,0,0,0.04)',
+    nameColor: '#1e293b',
+    typeColor: '#7c3aed',
+    previewColor: '#64748b',
+    loadingColor: '#64748b',
+    emptyCardBackground: 'rgba(255,255,255,0.98)',
+    emptyCardBorder: 'rgba(15,23,42,0.1)',
+  };
+}
+
+/**
+ * One pending-request row. `item.id` is the list key the parent FlatList already uses.
+ * @param {object} props
+ */
+function RequestCard({ item, palette, onPress }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => onPress(item)}
+      style={[styles.requestCard, { backgroundColor: palette.cardBackground }]}
+    >
+      <LinearGradient colors={GRADIENT_AVATAR} style={styles.avatar}>
+        <Text style={styles.avatarText}>{clientInitials(item.clientName)}</Text>
+      </LinearGradient>
+      <View style={styles.requestContent}>
+        <Text style={[styles.requestName, { color: palette.nameColor }]}>{item.clientName}</Text>
+        <Text style={[styles.requestType, { color: palette.typeColor }]}>{requestTypeLine(item)}</Text>
+        <Text style={[styles.requestPreview, { color: palette.previewColor }]} numberOfLines={2}>
+          {requestPreviewText(item)}
+        </Text>
+      </View>
+      <Text style={styles.chevron}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+function LoadingRequests({ palette }) {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#7c3aed" />
+      <Text style={[styles.loadingText, { color: palette.loadingColor }]}>Loading requests...</Text>
+    </View>
+  );
+}
+
+function RequestsError({ error, palette, onRetry }) {
+  return (
+    <View style={styles.center}>
+      <Text style={[styles.errorText, { color: '#ef4444' }]}>{error}</Text>
+      <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
+        <Text style={styles.retryText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function EmptyInboxCard({ palette }) {
+  return (
+    <View style={styles.emptyWrap}>
+      <View
+        style={[
+          styles.emptyCardShell,
+          {
+            backgroundColor: palette.emptyCardBackground,
+            borderColor: palette.emptyCardBorder,
+          },
+          Platform.select({
+            ios: {
+              shadowColor: '#6366f1',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.14,
+              shadowRadius: 12,
+            },
+            android: { elevation: 8 },
+          }),
+        ]}
+      >
+        <LinearGradient
+          colors={EMPTY_ACCENT_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.emptyTopAccent}
+        />
+        <View style={[styles.emptyInner, { borderColor: 'transparent' }]}>
+          <LinearGradient colors={EMPTY_ICON_GRADIENT} style={styles.emptyIconGrad}>
+            <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
+          </LinearGradient>
+          <Text style={[styles.emptyKicker, { color: palette.mutedColor }]}>INBOX</Text>
+          <Text style={[styles.emptyTitle, { color: palette.textColor }]}>You are all caught up</Text>
+          <Text style={[styles.emptySubtext, { color: palette.mutedColor }]}>
+            Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function RequestsListBody({ loading, error, requests, palette, listBottomPad, refresh, onSelectRequest }) {
+  if (loading) return <LoadingRequests palette={palette} />;
+  if (error) return <RequestsError error={error} palette={palette} onRetry={refresh} />;
+  if (requests.length === 0) return <EmptyInboxCard palette={palette} />;
+  return (
+    <FlatList
+      data={requests}
+      renderItem={({ item }) => (
+        <RequestCard item={item} palette={palette} onPress={onSelectRequest} />
+      )}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
+      {...FORM_SCROLL_PROPS}
+    />
+  );
+}
+
+function RequestsScreenChrome({ embedInLayout, palette, screenHeader, children }) {
+  const containerStyle = [styles.container, { backgroundColor: palette.screenBackground }];
+  if (embedInLayout) {
+    return (
+      <View style={[containerStyle, { flex: 1 }]}>
+        {screenHeader}
+        {children}
+      </View>
+    );
+  }
+  return (
+    <SafeAreaView style={containerStyle} edges={SHELL_SAFE_AREA_EDGES}>
+      {screenHeader}
+      {children}
+    </SafeAreaView>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer pending-request inbox. Accept/reject lives in TrainerListingPopup.
+ * @param {object} props
+ */
+export default function NewTraineeRequestsScreen({
+  onClose,
+  onProfilePress,
+  onSettingsPress,
+  onClientAdded,
+  embedInLayout,
+}) {
   const { isDark } = useTheme();
-  const listBottomPad = useShellBottomNavInset(32);
+  const listBottomPad = useShellBottomNavInset(LIST_BOTTOM_INSET);
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = pendingRequestCount(trainerUid);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(26,10,46,0.55)';
+  const palette = inboxPalette(isDark);
 
   const syncListWithParent = useCallback(async () => {
     setSelectedRequest(null);
@@ -50,111 +249,6 @@ export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSe
   const handleClientAdded = async () => {
     await syncListWithParent();
   };
-
-  const renderRequestItem = ({ item }) => {
-    const initials = (item.clientName || '?')
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-    return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => setSelectedRequest(item)}
-        style={[styles.requestCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}
-      >
-        <LinearGradient colors={GRADIENT_AVATAR} style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </LinearGradient>
-        <View style={styles.requestContent}>
-          <Text style={[styles.requestName, { color: isDark ? '#fff' : '#1e293b' }]}>{item.clientName}</Text>
-          <Text style={[styles.requestType, { color: isDark ? '#C084FC' : '#7c3aed' }]}>
-            {item.requestTitle || clientRequestTypeLabel(item.requestType)}
-          </Text>
-          <Text style={[styles.requestPreview, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }]} numberOfLines={2}>
-            {item.message || `${item.clientGoals || 'No goals'} · ${item.clientExperienceLevel || '—'}`}
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const requestsBody = (
-    <>
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#7c3aed" />
-          <Text style={[styles.loadingText, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748b' }]}>
-            Loading requests...
-          </Text>
-        </View>
-      ) : error ? (
-        <View style={styles.center}>
-          <Text style={[styles.errorText, { color: '#ef4444' }]}>{error}</Text>
-          <TouchableOpacity onPress={refresh} style={styles.retryButton}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      ) : requests.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <View
-            style={[
-              styles.emptyCardShell,
-              {
-                backgroundColor: isDark ? 'rgba(12,12,18,0.96)' : 'rgba(255,255,255,0.98)',
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
-              },
-              Platform.select({
-                ios: {
-                  shadowColor: '#6366f1',
-                  shadowOffset: { width: 0, height: 6 },
-                  shadowOpacity: 0.14,
-                  shadowRadius: 12,
-                },
-                android: { elevation: 8 },
-              }),
-            ]}
-          >
-            <LinearGradient
-              colors={['#fb7185', '#a78bfa']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.emptyTopAccent}
-            />
-            <View style={[styles.emptyInner, { borderColor: 'transparent' }]}>
-              <LinearGradient colors={['#7C3AED', '#EC4899']} style={styles.emptyIconGrad}>
-                <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
-              </LinearGradient>
-              <Text style={[styles.emptyKicker, { color: mutedColor }]}>INBOX</Text>
-              <Text style={[styles.emptyTitle, { color: textColor }]}>You are all caught up</Text>
-              <Text style={[styles.emptySubtext, { color: mutedColor }]}>
-                Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
-              </Text>
-            </View>
-          </View>
-        </View>
-      ) : (
-        <FlatList
-          data={requests}
-          renderItem={renderRequestItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
-          {...FORM_SCROLL_PROPS}
-        />
-      )}
-
-      <TrainerListingPopup
-        visible={!!selectedRequest}
-        clientRequest={selectedRequest}
-        trainerUid={trainerUid}
-        onClose={() => setSelectedRequest(null)}
-        onClientAdded={handleClientAdded}
-        onRequestRejected={syncListWithParent}
-      />
-    </>
-  );
 
   const screenHeader = (
     <TopHeader
@@ -167,19 +261,26 @@ export default function NewTraineeRequestsScreen({ onClose, onProfilePress, onSe
     />
   );
 
-  if (embedInLayout) {
-    return (
-      <View style={[styles.container, { flex: 1, backgroundColor: isDark ? '#0a0a1a' : '#f5f3ff' }]}>
-        {screenHeader}
-        {requestsBody}
-      </View>
-    );
-  }
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0a0a1a' : '#f5f3ff' }]} edges={SHELL_SAFE_AREA_EDGES}>
-      {screenHeader}
-      {requestsBody}
-    </SafeAreaView>
+    <RequestsScreenChrome embedInLayout={embedInLayout} palette={palette} screenHeader={screenHeader}>
+      <RequestsListBody
+        loading={loading}
+        error={error}
+        requests={requests}
+        palette={palette}
+        listBottomPad={listBottomPad}
+        refresh={refresh}
+        onSelectRequest={setSelectedRequest}
+      />
+      <TrainerListingPopup
+        visible={!!selectedRequest}
+        clientRequest={selectedRequest}
+        trainerUid={trainerUid}
+        onClose={() => setSelectedRequest(null)}
+        onClientAdded={handleClientAdded}
+        onRequestRejected={syncListWithParent}
+      />
+    </RequestsScreenChrome>
   );
 }
 

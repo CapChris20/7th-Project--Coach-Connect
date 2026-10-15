@@ -27,19 +27,24 @@ function pickName(source = {}) {
  * @returns {object|null}
  */
 export function buildClientRegistryDoc(uid, source = {}) {
+  // 1. Need an id or we cannot write the clients/{uid} document.
   const clientId = String(uid || source.uid || source.id || '').trim();
   if (!clientId) return null;
 
-  const trainerId = source.trainerId != null ? String(source.trainerId) : null;
+  // 2. Copy the marketplace fields. Keep ?? so 0 height / weight / age survive.
+  const trainerIdText = source.trainerId != null ? String(source.trainerId) : null;
+  const photoAddress = source.photoURL || source.photoUrl || null;
+  const clientName = pickName(source);
+  const emailAddress = source.email || null;
 
   return {
     uid: clientId,
     id: clientId,
     role: CLIENT_ROLE,
-    name: pickName(source),
-    email: source.email || null,
-    photoURL: source.photoURL || source.photoUrl || null,
-    trainerId: trainerId || null,
+    name: clientName,
+    email: emailAddress,
+    photoURL: photoAddress,
+    trainerId: trainerIdText || null,
     onboardingCompleted: source.onboardingCompleted === true,
     goals: source.primaryGoal || source.goals || null,
     fitnessLevel: source.fitnessLevel || null,

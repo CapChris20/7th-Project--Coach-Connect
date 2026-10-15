@@ -45,7 +45,46 @@ const LOG_REST_DAY_TOOL = 'logRestDay';
 const DELETE_LOG_TOOL = 'deleteLog';
 const CURRENT_PLAN_ID = 'current';
 
+// ===== MAIN FUNCTION =====
+
+export { isToolOutcomeMessage };
+
+/**
+ * Guess one coach tool call from the reply text plus the user's message.
+ * First match wins. Null means "do not show a confirm button."
+ * @param {string} text Coach reply
+ * @param {string} [userMessage]
+ * @returns {object|null}
+ */
+export function inferToolCallFromCoachMessage(text, userMessage = '') {
+  const replyText = String(text || '');
+  const userText = String(userMessage || '').trim();
+
+  // 1. A web lookup is research, not a dashboard write.
+  if (userText && shouldUseWebAuto(userText)) return null;
+
+  // 2. "Is 200g of protein too much?" is a question. Do not turn it into a button.
+  if (isInformationalUserMessage(userText) && !userExplicitlyRequestsAction(userText)) {
+    return null;
+  }
+
+  // 3. "I logged it" is past tense. Confirm would run the action twice.
+  if (isToolOutcomeMessage(replyText)) return null;
+
+  const combinedLower = `${userText}\n${replyText}`.toLowerCase();
+  const guessSteps = buildWordGuessPipeline(replyText, userText, combinedLower);
+
+  // 4. Run each guesser until one returns a normalized tool call.
+  for (const tryGuess of guessSteps) {
+    const guessed = tryGuess();
+    if (guessed) return guessed;
+  }
+
+  return null;
+}
+
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
 
 /**
  * True when the reply is describing a finished action.
@@ -111,12 +150,25 @@ function inferFoodLogParams(userText) {
   return {
     foodName,
     food: foodName,
-    calories: calorieMatch ? Number(calorieMatch[1]) : isChickenAndRice ? CHICKEN_AND_RICE_CALORIES : undefined,
-    protein: proteinMatch ? Number(proteinMatch[1]) : isChickenAndRice ? CHICKEN_AND_RICE_PROTEIN : undefined,
-    carbs: carbMatch ? Number(carbMatch[1]) : isChickenAndRice ? CHICKEN_AND_RICE_CARBS : undefined,
-    fat: fatMatch ? Number(fatMatch[1]) : isChickenAndRice ? CHICKEN_AND_RICE_FAT : undefined,
-    mealType: /breakfast/.test(lowerText) ? 'breakfast' : /dinner/.test(lowerText) ? 'dinner' : /snack/.test(lowerText) ? 'snack' : 'lunch',
+    calories: macroFromMatchOrChickenFallback(calorieMatch, isChickenAndRice, CHICKEN_AND_RICE_CALORIES),
+    protein: macroFromMatchOrChickenFallback(proteinMatch, isChickenAndRice, CHICKEN_AND_RICE_PROTEIN),
+    carbs: macroFromMatchOrChickenFallback(carbMatch, isChickenAndRice, CHICKEN_AND_RICE_CARBS),
+    fat: macroFromMatchOrChickenFallback(fatMatch, isChickenAndRice, CHICKEN_AND_RICE_FAT),
+    mealType: mealTypeFromSentence(lowerText),
   };
+}
+
+function macroFromMatchOrChickenFallback(numberMatch, isChickenAndRice, chickenFallback) {
+  if (numberMatch) return Number(numberMatch[1]);
+  if (isChickenAndRice) return chickenFallback;
+  return undefined;
+}
+
+function mealTypeFromSentence(lowerText) {
+  if (/breakfast/.test(lowerText)) return 'breakfast';
+  if (/dinner/.test(lowerText)) return 'dinner';
+  if (/snack/.test(lowerText)) return 'snack';
+  return 'lunch';
 }
 
 /**
@@ -335,67 +387,38 @@ function inferDeleteFromUserText(userText, replyText) {
   });
 }
 
-// ===== MAIN FUNCTION =====
-
-export { isToolOutcomeMessage };
-
 /**
- * Guess one coach tool call from the reply text plus the user's message.
- * First match wins. Null means "do not show a confirm button."
- * @param {string} text Coach reply
- * @param {string} [userMessage]
+ * Real JSON in the reply beats every word guess. Delete misroutes get corrected here.
+ * @param {string} replyText
+ * @param {string} userText
  * @returns {object|null}
  */
-export function inferToolCallFromCoachMessage(text, userMessage = '') {
-  const replyText = String(text || '');
-  const userText = String(userMessage || '').trim();
-
-  // A web lookup is research, not a dashboard write.
-  if (userText && shouldUseWebAuto(userText)) return null;
-
-  // "Is 200g of protein too much?" is a question. Do not turn it into a button.
-  if (isInformationalUserMessage(userText) && !userExplicitlyRequestsAction(userText)) return null;
-
-  // "I logged it" is past tense. Confirm would run the action twice.
-  if (isToolOutcomeMessage(replyText)) return null;
-
-  const combinedLower = `${userText}\n${replyText}`.toLowerCase();
-
-  const confirmLog = inferDashboardLogFromConfirmPrompt(replyText, userText);
-  if (confirmLog) return confirmLog;
-
-  // Real JSON in the reply beats every word guess. Delete misroutes get corrected here.
+function inferFromEmbeddedJson(replyText, userText) {
   const parsedActions = readActionsFromReply(replyText);
-  if (parsedActions.length) {
-    return coerceMisroutedDeleteTool(parsedActions[0], userText, replyText, normalizeToolCall);
-  }
-
-  const foodLog = inferFoodLogTool(userText);
-  if (foodLog) return foodLog;
-
-  const macroChange = inferMacroTargetChange(replyText, userText, combinedLower);
-  if (macroChange) return macroChange;
-
-  const sleepLog = inferSleepLog(userText, combinedLower);
-  if (sleepLog) return sleepLog;
-
-  const stepsLog = inferStepsLog(userText, combinedLower);
-  if (stepsLog) return stepsLog;
-
-  const waterLog = inferWaterLog(userText, combinedLower);
-  if (waterLog) return waterLog;
-
-  const energyRating = inferEnergyRating(userText, combinedLower);
-  if (energyRating) return energyRating;
-
-  const openPlan = inferOpenWorkoutPlan(userText);
-  if (openPlan) return openPlan;
-
-  const restDayLog = inferRestDayLog(userText, combinedLower);
-  if (restDayLog) return restDayLog;
-
-  const deleteLog = inferDeleteFromUserText(userText, replyText);
-  if (deleteLog) return deleteLog;
-
-  return null;
+  if (!parsedActions.length) return null;
+  return coerceMisroutedDeleteTool(parsedActions[0], userText, replyText, normalizeToolCall);
 }
+
+/**
+ * Ordered guessers after early exits. First non-null wins.
+ * @param {string} replyText
+ * @param {string} userText
+ * @param {string} combinedLower
+ * @returns {Array<() => object|null>}
+ */
+function buildWordGuessPipeline(replyText, userText, combinedLower) {
+  return [
+    () => inferDashboardLogFromConfirmPrompt(replyText, userText),
+    () => inferFromEmbeddedJson(replyText, userText),
+    () => inferFoodLogTool(userText),
+    () => inferMacroTargetChange(replyText, userText, combinedLower),
+    () => inferSleepLog(userText, combinedLower),
+    () => inferStepsLog(userText, combinedLower),
+    () => inferWaterLog(userText, combinedLower),
+    () => inferEnergyRating(userText, combinedLower),
+    () => inferOpenWorkoutPlan(userText),
+    () => inferRestDayLog(userText, combinedLower),
+    () => inferDeleteFromUserText(userText, replyText),
+  ];
+}
+

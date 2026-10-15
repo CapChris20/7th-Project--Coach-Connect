@@ -13,38 +13,62 @@ const GOLD = '#F59E0B';
 const SESSION_GRADIENT = [DARK_PINK, DARK_PURPLE];
 const ACCENT_GRADIENT = [GOLD, DARK_ORANGE];
 
+const DARK_THEME_COLORS = {
+  bg: '#0A0A0F',
+  cardBg: '#1A1A1F',
+  text: '#FFFFFF',
+  label: '#FFFFFF',
+  muted: 'rgba(255,255,255,0.62)',
+  divider: 'rgba(255,255,255,0.12)',
+  wheelShell: 'rgba(255,255,255,0.04)',
+  wheelInactive: 'rgba(255,255,255,0.5)',
+  inputBg: 'rgba(255,255,255,0.04)',
+};
+
+const LIGHT_THEME_COLORS = {
+  bg: '#FAFAF9',
+  cardBg: '#F5F5F3',
+  text: '#0A0A0F',
+  label: '#0A0A0F',
+  muted: 'rgba(10,10,15,0.55)',
+  divider: 'rgba(10,10,15,0.1)',
+  wheelShell: 'rgba(10,10,15,0.04)',
+  wheelInactive: 'rgba(10,10,15,0.45)',
+  inputBg: 'rgba(255,255,255,0.9)',
+};
+
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Pick the dark or light palette object. Border always stays brand pink.
  * @param {boolean} isDark
- * @param {string} darkValue
- * @param {string} lightValue
- * @returns {string}
+ * @returns {object}
  */
-function colorForTheme(isDark, darkValue, lightValue) {
-  if (isDark) return darkValue;
-  return lightValue;
+function themePalette(isDark) {
+  if (isDark) return DARK_THEME_COLORS;
+  return LIGHT_THEME_COLORS;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Returned keys are the names the scheduling screens already read.
+ * Returned keys are the names the scheduling screens already read (bg, cardBg, text, …).
  * @param {boolean} isDark
  * @returns {object}
  */
 export function getSessionSchedulingColors(isDark) {
+  const palette = themePalette(isDark);
   return {
-    bg: colorForTheme(isDark, '#0A0A0F', '#FAFAF9'),
-    cardBg: colorForTheme(isDark, '#1A1A1F', '#F5F5F3'),
-    text: colorForTheme(isDark, '#FFFFFF', '#0A0A0F'),
-    label: colorForTheme(isDark, '#FFFFFF', '#0A0A0F'),
-    muted: colorForTheme(isDark, 'rgba(255,255,255,0.62)', 'rgba(10,10,15,0.55)'),
-    divider: colorForTheme(isDark, 'rgba(255,255,255,0.12)', 'rgba(10,10,15,0.1)'),
+    bg: palette.bg,
+    cardBg: palette.cardBg,
+    text: palette.text,
+    label: palette.label,
+    muted: palette.muted,
+    divider: palette.divider,
     border: DARK_PINK,
-    wheelShell: colorForTheme(isDark, 'rgba(255,255,255,0.04)', 'rgba(10,10,15,0.04)'),
-    wheelInactive: colorForTheme(isDark, 'rgba(255,255,255,0.5)', 'rgba(10,10,15,0.45)'),
-    inputBg: colorForTheme(isDark, 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.9)'),
+    wheelShell: palette.wheelShell,
+    wheelInactive: palette.wheelInactive,
+    inputBg: palette.inputBg,
   };
 }
 

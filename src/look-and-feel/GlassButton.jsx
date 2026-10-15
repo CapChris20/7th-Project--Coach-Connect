@@ -33,8 +33,9 @@ function buttonOpacity(isDisabled, isPressed) {
  * @returns {object}
  */
 function gradientShape(radius) {
-  if (Platform.OS !== IOS_PLATFORM) return { borderRadius: radius };
-  return { borderRadius: radius, borderCurve: 'continuous' };
+  const shape = { borderRadius: radius };
+  if (Platform.OS === IOS_PLATFORM) shape.borderCurve = 'continuous';
+  return shape;
 }
 
 // ===== MAIN FUNCTION =====

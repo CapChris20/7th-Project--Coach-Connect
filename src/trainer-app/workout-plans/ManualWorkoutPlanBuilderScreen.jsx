@@ -1,13 +1,7 @@
-/**
- * Manual Workout Plan Builder Screen
- *
- * Purpose: UI screen or component: Manual Workout Plan Builder Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: ManualWorkoutPlanBuilderScreen
- *
- * @file-header
- */
+// Manual workout plan builder: name/type/duration → per-day exercises → assign clients → save draft.
+// Flow: edit steps → build setDetails → saveManualPlanDraft → hand plan id back to parent.
+// Used by the trainer workout-plans entry. Persistence helpers live in manualPlanToWorkoutPlan.js.
+
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -38,22 +32,35 @@ import {
   searchExercisesForBuilder,
 } from './manualPlanToWorkoutPlan';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_SET_COUNT = 3;
+const DEFAULT_REPS = 10;
+const DEFAULT_REST_SECONDS = 120;
+const SECONDS_PER_MINUTE = 60;
+const REST_PRESET_ONE_MIN = 60;
+const REST_PRESET_VALUES = [REST_PRESET_ONE_MIN, 90, 120, 150, 180];
+const EMBEDDED_SCROLL_PAD = 32;
+
+// ===== HELPER FUNCTIONS =====
+
+
 function buildDefaultSetDetails(ex) {
-  const n = Math.max(1, parseInt(String(ex?.sets), 10) || 3);
-  if (Array.isArray(ex?.setDetails) && ex.setDetails.length === n) {
-    return ex.setDetails.map((s, i) => ({
+  const setCount = Math.max(1, parseInt(String(ex?.sets), 10) || DEFAULT_SET_COUNT);
+  if (Array.isArray(ex?.setDetails) && ex.setDetails.length === setCount) {
+    return ex.setDetails.map((setRow, i) => ({
       setNumber: i + 1,
-      reps: String(s.reps ?? (ex.repMode === 'fixed' ? ex.repsSingle : ex.repsMax) ?? 10),
-      weight: String(s.weight ?? ex.weight ?? ''),
-      restSeconds: Number(s.restSeconds ?? ex.restSeconds ?? 120) || 120,
+      reps: String(setRow.reps ?? (ex.repMode === 'fixed' ? ex.repsSingle : ex.repsMax) ?? DEFAULT_REPS),
+      weight: String(setRow.weight ?? ex.weight ?? ''),
+      restSeconds: Number(setRow.restSeconds ?? ex.restSeconds ?? DEFAULT_REST_SECONDS) || DEFAULT_REST_SECONDS,
     }));
   }
   const defaultReps = ex?.repMode === 'fixed' ? ex?.repsSingle : ex?.repsMax;
-  return Array.from({ length: n }, (_, i) => ({
+  return Array.from({ length: setCount }, (_, i) => ({
     setNumber: i + 1,
-    reps: String(defaultReps ?? 10),
+    reps: String(defaultReps ?? DEFAULT_REPS),
     weight: String(ex?.weight ?? ''),
-    restSeconds: Number(ex?.restSeconds ?? 120) || 120,
+    restSeconds: Number(ex?.restSeconds ?? DEFAULT_REST_SECONDS) || DEFAULT_REST_SECONDS,
   }));
 }
 
@@ -63,7 +70,7 @@ const GRAD_CTA_ALT = ['#06B6D4', '#C084FC'];
 
 const PLAN_TYPES = ['Upper Body', 'Lower Body', 'Full Body', 'Push/Pull/Legs', 'Custom'];
 const DURATIONS = ['1 week', '2 weeks', '4 weeks', '8 weeks', '12 weeks', 'Ongoing'];
-const REST_PRESETS = [60, 90, 120, 150, 180];
+const REST_PRESETS = REST_PRESET_VALUES;
 
 function getBuilderPalette(isDark) {
   const accents = {
@@ -383,6 +390,12 @@ function exerciseCounts(days) {
   return (days || []).reduce((acc, d) => acc + (d.exercises?.length || 0), 0);
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Multi-step manual workout plan builder.
+ * @param {object} props
+ */
 export default function ManualWorkoutPlanBuilderScreen({
   trainerId,
   clients = [],
@@ -395,10 +408,10 @@ export default function ManualWorkoutPlanBuilderScreen({
 }) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const c = useMemo(() => getBuilderPalette(isDark), [isDark]);
-  const styles = useMemo(() => createBuilderStyles(c), [c]);
-  const themeValue = useMemo(() => ({ c, styles }), [c, styles]);
-  const scrollBottomPad = useEmbeddedScrollBottomPad(32);
+  const palette = useMemo(() => getBuilderPalette(isDark), [isDark]);
+  const styles = useMemo(() => createBuilderStyles(palette), [palette]);
+  const themeValue = useMemo(() => ({ c: palette, styles }), [palette, styles]);
+  const scrollBottomPad = useEmbeddedScrollBottomPad(EMBEDDED_SCROLL_PAD);
 
   const [step, setStep] = useState(1);
   const [planName, setPlanName] = useState('');
@@ -485,15 +498,15 @@ export default function ManualWorkoutPlanBuilderScreen({
       try {
         const doc = await getManualWorkoutPlan(trainerId, editPlanId);
         if (cancelled || !doc) return;
-        const d = draftFromTrainerPlanDoc(doc);
-        if (!d) return;
-        setPlanName(d.planName);
-        setPlanType(d.planType || 'Custom');
-        setDuration(d.duration || '4 weeks');
-        setDescription(d.description || '');
+        const draft = draftFromTrainerPlanDoc(doc);
+        if (!draft) return;
+        setPlanName(draft.planName);
+        setPlanType(draft.planType || 'Custom');
+        setDuration(draft.duration || '4 weeks');
+        setDescription(draft.description || '');
         setWorkoutDays(
-          (d.workoutDays && d.workoutDays.length
-            ? d.workoutDays
+          (draft.workoutDays && draft.workoutDays.length
+            ? draft.workoutDays
             : defaultWorkoutDays()
           ).map((x, i) => ({
             ...x,
@@ -617,9 +630,9 @@ export default function ManualWorkoutPlanBuilderScreen({
         const idx = list.findIndex((e) => e.id === exId);
         const j = idx + dir;
         if (idx < 0 || j < 0 || j >= list.length) return d;
-        const t = list[idx];
+        const swapped = list[idx];
         list[idx] = list[j];
-        list[j] = t;
+        list[j] = swapped;
         return { ...d, exercises: list };
       }),
     );
@@ -749,9 +762,9 @@ export default function ManualWorkoutPlanBuilderScreen({
   };
 
   const formatRest = (sec) => {
-    const s = Number(sec);
+    const seconds = Number(sec);
     if (!Number.isFinite(s) || s <= 0) return '—';
-    if (s >= 60 && s % 60 === 0) return `${s / 60} min`;
+    if (seconds >= SECONDS_PER_MINUTE && seconds % SECONDS_PER_MINUTE === 0) return `${seconds / SECONDS_PER_MINUTE} min`;
     return `${s}s`;
   };
 

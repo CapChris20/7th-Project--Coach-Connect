@@ -25,39 +25,63 @@ const DEFAULT_REASONING = 'This removes the entry from your app — you can alwa
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Human title for the delete modal — nutrition can mean one food, all foods, or the latest entry.
  * @param {string} logType
  * @param {boolean} isDeleteAll
  * @param {string|undefined} foodName
  * @returns {string}
  */
-function deleteTitle(logType, isDeleteAll, foodName) {
-  if (logType !== 'nutrition') {
-    return `Clear your ${LOG_TYPE_LABELS[logType] || logType}?`;
+function buildDeleteConfirmTitle(logType, isDeleteAll, foodName) {
+  const isNutritionLog = logType === 'nutrition';
+  if (!isNutritionLog) {
+    const typeLabel = LOG_TYPE_LABELS[logType] || logType;
+    return `Clear your ${typeLabel}?`;
   }
   if (isDeleteAll) return 'Delete all food logs for this day?';
   if (foodName) return `Delete "${foodName}" from your log?`;
   return 'Delete your most recent food entry?';
 }
 
-// ===== MAIN FUNCTION =====
-
 /**
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
+ * @param {object|undefined} params
+ * @returns {{ logType: string, logDate: string, foodName: string|undefined, isDeleteAll: boolean, title: string }}
  */
-export default function ConfirmDeletePopup({ params, reasoning, onConfirm, onCancel, loading }) {
+function readDeletePopupContext(params) {
   const logType = String(params?.logType || DEFAULT_LOG_TYPE).toLowerCase();
   const logDate = params?.date || DEFAULT_DATE_LABEL;
   const foodName = params?.foodName || params?.food;
   const isDeleteAll = Boolean(params?.deleteAll || params?.all);
-  const title = deleteTitle(logType, isDeleteAll, foodName);
+  const title = buildDeleteConfirmTitle(logType, isDeleteAll, foodName);
+  return { logType, logDate, foodName, isDeleteAll, title };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Modal before deleteLog runs — shows what row type and date will be cleared.
+ * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
+ */
+export default function ConfirmDeletePopup({ params, reasoning, onConfirm, onCancel, loading }) {
+  // 1. Read what to delete (food name, whole day, or one log type).
+  const deleteContext = readDeletePopupContext(params);
+  const typeLabel = LOG_TYPE_LABELS[deleteContext.logType] || deleteContext.logType;
+  const reasoningText = reasoning || DEFAULT_REASONING;
+  let foodRow = null;
+  if (deleteContext.foodName) {
+    foodRow = <DetailRow label="Food" value={deleteContext.foodName} />;
+  }
+
+  // 2. Confirm deletes. onConfirm still gets the original params.
+
+  const handleConfirmDelete = () => onConfirm(params);
 
   return (
-    <ToolModalBody title={title} reasoning={reasoning || DEFAULT_REASONING}>
-      <DetailRow label="Type" value={LOG_TYPE_LABELS[logType] || logType} />
-      {foodName ? <DetailRow label="Food" value={foodName} /> : null}
-      <DetailRow label="Date" value={logDate} />
+    <ToolModalBody title={deleteContext.title} reasoning={reasoningText}>
+      <DetailRow label="Type" value={typeLabel} />
+      {foodRow}
+      <DetailRow label="Date" value={deleteContext.logDate} />
       <ConfirmCancelRow
-        onConfirm={() => onConfirm(params)}
+        onConfirm={handleConfirmDelete}
         onCancel={onCancel}
         loading={loading}
         confirmLabel="Delete"

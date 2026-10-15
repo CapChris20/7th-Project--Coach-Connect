@@ -11,6 +11,19 @@ const BEARER_PREFIX = 'Bearer ';
 
 // ===== HELPER FUNCTIONS =====
 
+function headersThatAcceptJson(extraHeaders) {
+  return {
+    Accept: JSON_ACCEPT,
+    ...extraHeaders,
+  };
+}
+
+function attachBearerToken(headers, idToken) {
+  if (!idToken) return headers;
+  headers.Authorization = `${BEARER_PREFIX}${idToken}`;
+  return headers;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -19,14 +32,10 @@ const BEARER_PREFIX = 'Bearer ';
  * @returns {Promise<object>}
  */
 export async function getApiAuthHeaders(extraHeaders = {}) {
-  const headers = {
-    Accept: JSON_ACCEPT,
-    ...extraHeaders,
-  };
+  const headers = headersThatAcceptJson(extraHeaders);
   const currentUser = auth?.currentUser;
   if (!currentUser?.getIdToken) return headers;
 
   const idToken = await currentUser.getIdToken();
-  if (idToken) headers.Authorization = `${BEARER_PREFIX}${idToken}`;
-  return headers;
+  return attachBearerToken(headers, idToken);
 }

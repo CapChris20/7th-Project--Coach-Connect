@@ -106,6 +106,7 @@ function isWholeDollarAmount(amountNumber) {
  * @returns {number}
  */
 export function trainerGetsFromAmount(amountDollars) {
+  // 1. Trainer share of the typed dollars (90% today).
   return shareOfAmount(amountDollars, TRAINER_PAYOUT_SHARE);
 }
 
@@ -115,6 +116,7 @@ export function trainerGetsFromAmount(amountDollars) {
  * @returns {number}
  */
 export function platformFeeFromAmount(amountDollars) {
+  // 1. Platform fee of the typed dollars (10% today).
   return shareOfAmount(amountDollars, PLATFORM_FEE_RATE);
 }
 
@@ -124,10 +126,12 @@ export function platformFeeFromAmount(amountDollars) {
  * @returns {string}
  */
 export function formatPaymentDollars(amount) {
+  // 1. Blank, NaN, and Infinity print "$0" so a bad field cannot show "NaN".
   const amountNumber = Number(amount);
   if (!Number.isFinite(amountNumber)) return INVALID_AMOUNT_LABEL;
-  const decimalPlaces = isWholeDollarAmount(amountNumber)
-    ? WHOLE_DOLLAR_DECIMAL_PLACES
-    : CENTS_DECIMAL_PLACES;
+
+  // 2. Whole dollars drop the cents ($90). Anything else keeps two places ($90.50).
+  let decimalPlaces = CENTS_DECIMAL_PLACES;
+  if (isWholeDollarAmount(amountNumber)) decimalPlaces = WHOLE_DOLLAR_DECIMAL_PLACES;
   return `$${amountNumber.toFixed(decimalPlaces)}`;
 }

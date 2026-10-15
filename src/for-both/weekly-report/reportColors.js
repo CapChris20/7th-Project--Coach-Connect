@@ -4,12 +4,16 @@
 
 // ===== NAMED CONSTANTS =====
 
+const GRADIENT_ORANGE_PINK = ['#ff6b35', '#ff1493'];
+const GRADIENT_GOLD_PINK = ['#ffd700', '#ff1493'];
+const GRADIENT_SKY_PINK = ['#00bfff', '#ff1493'];
+
 const GRADIENTS = {
-  g1: ['#ff6b35', '#ff1493'],
-  g2: ['#ffd700', '#ff1493'],
-  g3: ['#ffd700', '#ff1493'],
-  g4: ['#00bfff', '#ff1493'],
-  g5: ['#ff6b35', '#ff1493'],
+  g1: GRADIENT_ORANGE_PINK,
+  g2: GRADIENT_GOLD_PINK,
+  g3: GRADIENT_GOLD_PINK,
+  g4: GRADIENT_SKY_PINK,
+  g5: GRADIENT_ORANGE_PINK,
 };
 
 const DARK_COLORS = {
@@ -41,6 +45,8 @@ const TREND_NEGATIVE = '#f87171';
 const STORAGE_KEY = 'coachconnect.theme.mode';
 
 // ===== HELPER FUNCTIONS =====
+
+// (palette only — no runtime helpers)
 
 // ===== MAIN FUNCTION =====
 

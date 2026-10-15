@@ -1,20 +1,6 @@
-/**
- * Food Search Screen
- *
- * Purpose: UI screen or component: Food Search Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: (see file)
- *
- * @file-header
- */
-/**
- * COACHCONNECT — Food Search Screen
- *
- * Server pipeline (keys in server/.env only):
- *   Branded / restaurant → FatSecret → Serper → USDA
- *   Packaged grocery     → USDA → FatSecret → OFF → Serper
- */
+// Food search screen: type a query → merge server hits → confirm & log into a meal.
+// Flow: debounce search → normalize hits → recent/favorites browse → open Confirm sheet → logFood.
+// Used by: LogTodaysMealsScreen and standalone Add Food. Server keys stay in server/.env.
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
@@ -48,51 +34,35 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// ===== NAMED CONSTANTS =====
+
 const HERO_TOP_BORDER = ['#BE185D', '#C2410C'];
 const HERO_BG_DARK = ['#1a0a2e', '#0f0a1a'];
 const HERO_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
 const HERO_CTA_GRADIENT = ['#BE185D', '#C2410C'];
+const SEARCH_DEBOUNCE_MS = 550;
+/** Auto-search from 2+ chars (6 was too high — short queries like "egg" never fired). */
+const MIN_CHARS_AUTO_SEARCH = 2;
+const RECENT_FOODS_LIMIT = 15;
+const SEARCH_RESULT_LIMIT = 20;
+const SHELL_BOTTOM_INSET_EXTRA = 16;
+const DEFAULT_LIST_BOTTOM_EXTRA = 32;
+const MIN_SAFE_BOTTOM = 12;
+const DEFAULT_SERVING_GRAMS = 100;
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
+const GRADIENT_DIAGONAL_END = { x: 1, y: 1 };
+const ACTIVE_TAB_BG = 'rgba(190,24,93,0.2)';
+const ACTIVE_TAB_BORDER = '#BE185D';
 
-function getColors(isDark) {
-  const shared = {
-    pink: brandColors.orangePink[1],
-    orange: brandColors.orangePink[0],
-    purple: brandColors.orangePurple[1],
-    cyan: brandColors.cyanPurple[0],
-    gold: brandColors.goldPink[0],
-    proteinGradient: gradients.protein,
-    carbsGradient: gradients.carbs,
-    fatGradient: gradients.fat,
-    calGradient: gradients.calories,
-    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
-  };
-  return isDark
-    ? {
-        ...shared,
-        bg: '#0A0A0F',
-        surface: '#1A1A24',
-        border: '#2A2A35',
-        text: '#FFFFFF',
-        textMuted: '#A6A6A6',
-        textDim: 'rgba(255,255,255,0.35)',
-        inputBg: '#1A1A24',
-        cardBg: '#1A1A24',
-        cardBorder: '#2A2A35',
-      }
-    : {
-        ...shared,
-        borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
-        bg: '#FFFFFF',
-        surface: '#F5F5F5',
-        border: '#E5E5E5',
-        text: '#0A0A0F',
-        textMuted: '#666666',
-        textDim: 'rgba(10,10,15,0.45)',
-        inputBg: '#F5F5F5',
-        cardBg: '#F5F5F5',
-        cardBorder: '#E5E5E5',
-      };
-}
+const QUICK_PICKS = [
+  { label: 'Chicken Breast', icon: 'barbell-outline', accentKey: 'pink' },
+  { label: 'Brown Rice', icon: 'leaf-outline', accentKey: 'orange' },
+  { label: 'Greek Yogurt', icon: 'cafe-outline', accentKey: 'cyan' },
+  { label: 'Avocado', icon: 'nutrition-outline', accentKey: 'orange' },
+  { label: 'Salmon', icon: 'fish-outline', accentKey: 'cyan' },
+  { label: 'Oatmeal', icon: 'restaurant-outline', accentKey: 'purple' },
+];
 
 // Static fallback for StyleSheets
 const DARK = {
@@ -110,9 +80,75 @@ const DARK = {
   borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
 };
 
-// Normalize into a "food" shape compatible with nutritionService.addFoodLog
-const normalizeFood = (item, searchQuery = '') => {
-  const round = (val) => Math.round(val ?? 0);
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Theme paint for the search screen (dark vs light).
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function getColors(isDark) {
+  const shared = {
+    pink: brandColors.orangePink[1],
+    orange: brandColors.orangePink[0],
+    purple: brandColors.orangePurple[1],
+    cyan: brandColors.cyanPurple[0],
+    gold: brandColors.goldPink[0],
+    proteinGradient: gradients.protein,
+    carbsGradient: gradients.carbs,
+    fatGradient: gradients.fat,
+    calGradient: gradients.calories,
+    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
+  };
+  if (isDark) {
+    return {
+      ...shared,
+      bg: '#0A0A0F',
+      surface: '#1A1A24',
+      border: '#2A2A35',
+      text: '#FFFFFF',
+      textMuted: '#A6A6A6',
+      textDim: 'rgba(255,255,255,0.35)',
+      inputBg: '#1A1A24',
+      cardBg: '#1A1A24',
+      cardBorder: '#2A2A35',
+    };
+  }
+  return {
+    ...shared,
+    borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
+    bg: '#FFFFFF',
+    surface: '#F5F5F5',
+    border: '#E5E5E5',
+    text: '#0A0A0F',
+    textMuted: '#666666',
+    textDim: 'rgba(10,10,15,0.45)',
+    inputBg: '#F5F5F5',
+    cardBg: '#F5F5F5',
+    cardBorder: '#E5E5E5',
+  };
+}
+
+/**
+ * Household serving text when the API only gave a unit (not "serving"/"g").
+ * @param {object} item
+ * @returns {string|null}
+ */
+function portionTextFromServingUnit(item) {
+  const servingUnit = String(item.serving_unit || item.servingUnit || '').trim();
+  if (!servingUnit) return null;
+  if (/^(serving|portion|each|g|gram|grams|ml)$/i.test(servingUnit)) return null;
+  return servingUnit;
+}
+
+/**
+ * Normalize a search / recent / favorite hit into the shape nutritionService.addFoodLog expects.
+ * @param {object} item
+ * @param {string} [searchQuery]
+ * @returns {object}
+ */
+function normalizeFood(item, searchQuery = '') {
+  const roundCalories = (rawValue) => Math.round(rawValue ?? 0);
   const meta = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
 
   const portion_text =
@@ -122,11 +158,7 @@ const normalizeFood = (item, searchQuery = '') => {
     meta.serving_label ||
     meta.servingLabel ||
     meta.householdServingFullText ||
-    (() => {
-      const u = String(item.serving_unit || item.servingUnit || '').trim();
-      if (u && !/^(serving|portion|each|g|gram|grams|ml)$/i.test(u)) return u;
-      return null;
-    })();
+    portionTextFromServingUnit(item);
 
   const rawName = item.name || item.food_name || item.description || 'Unknown Food';
   const foodName =
@@ -143,14 +175,14 @@ const normalizeFood = (item, searchQuery = '') => {
     brand: brandLabel,
     servingSize: item.servingSize || item.serving_qty || item.serving_size || 1,
     servingUnit: item.servingUnit || item.serving_unit || item.servingSizeUnit || 'serving',
-    servingGrams: item.servingGrams || item.serving_weight_grams || item.serving_grams || 100,
-    calories: round(item.calories ?? item.nf_calories),
-    protein: round(item.protein ?? item.nf_protein),
-    carbs: round(item.carbs ?? item.nf_total_carbohydrate),
-    fat: round(item.fat ?? item.nf_total_fat),
-    fiber: round(item.fiber ?? item.nf_dietary_fiber),
-    sugar: round(item.sugar ?? item.nf_sugars),
-    sodium: round(item.sodium ?? item.nf_sodium),
+    servingGrams: item.servingGrams || item.serving_weight_grams || item.serving_grams || DEFAULT_SERVING_GRAMS,
+    calories: roundCalories(item.calories ?? item.nf_calories),
+    protein: roundCalories(item.protein ?? item.nf_protein),
+    carbs: roundCalories(item.carbs ?? item.nf_total_carbohydrate),
+    fat: roundCalories(item.fat ?? item.nf_total_fat),
+    fiber: roundCalories(item.fiber ?? item.nf_dietary_fiber),
+    sugar: roundCalories(item.sugar ?? item.nf_sugars),
+    sodium: roundCalories(item.sodium ?? item.nf_sodium),
     source: item.source || 'server',
     nutrition_unverified: Boolean(item.nutrition_unverified),
     multiServingFallback: Boolean(item.multiServingFallback),
@@ -160,20 +192,94 @@ const normalizeFood = (item, searchQuery = '') => {
     brand_name: brandLabel,
     serving_size: item.serving_qty || item.servingSize || 1,
     serving_unit: item.serving_unit || item.servingUnit || 'serving',
-    serving_grams: item.serving_weight_grams || item.servingGrams || 100,
+    serving_grams: item.serving_weight_grams || item.servingGrams || DEFAULT_SERVING_GRAMS,
     serving_label: item.serving_label || item.servingLabel || item.householdServingFullText || null,
     portion_text,
 
     metadata: item,
   };
-};
+}
 
+/**
+ * Serving line shown on the premium card.
+ * @param {object} item
+ * @param {string} [userQuery]
+ * @returns {string}
+ */
 function formatServingLine(item, userQuery = '') {
   return formatServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
 }
 
+/**
+ * Map a favorite Firestore row into normalizeFood input.
+ * @param {object} favorite
+ * @returns {object}
+ */
+function normalizeFavoriteRow(favorite) {
+  return normalizeFood({
+    id: favorite.foodId,
+    name: favorite.foodName,
+    food_name: favorite.foodName,
+    calories: favorite.calories,
+    protein: favorite.macros?.protein,
+    carbs: favorite.macros?.carbs,
+    fat: favorite.macros?.fat,
+    brand: favorite.brand,
+  });
+}
+
+/**
+ * Stable id string used for the favorites Set.
+ * @param {object} item
+ * @returns {string}
+ */
+function foodFavoriteId(item) {
+  return String(item?.id || item?.food_id || item?.name || item?.food_name || '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Drop junk web titles, then normalize each hit with the active query.
+ * @param {Array} rawHits
+ * @param {string} trimmedQuery
+ * @returns {Array}
+ */
+function normalizeSearchHits(rawHits, trimmedQuery) {
+  return (rawHits || [])
+    .filter((item) => {
+      const title = item?.name || item?.food_name || '';
+      return !isJunkWebSearchTitle(title);
+    })
+    .map((item) => normalizeFood(item, trimmedQuery));
+}
+
+/**
+ * Which list the FlatList should show right now.
+ * @param {object} options
+ * @returns {Array}
+ */
+function pickListData({ showFavoritesBrowse, showRecent, showResults, favoriteFoods, recentFoods, results }) {
+  if (showFavoritesBrowse) return favoriteFoods;
+  if (showRecent) return recentFoods;
+  if (showResults) return results;
+  return [];
+}
+
+/**
+ * List key prefix so FlatList remounts when the browse mode changes.
+ * @param {boolean} showFavoritesBrowse
+ * @param {boolean} showRecent
+ * @returns {string}
+ */
+function listKeyForMode(showFavoritesBrowse, showRecent) {
+  if (showFavoritesBrowse) return 'favorites';
+  if (showRecent) return 'recent';
+  return 'results';
+}
+
 /** Saved / recent history — same premium card as logged foods on DailyFoodLogScreen. */
-const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
+function RecentHistoryFoodCard({ item, isDark, onAdd }) {
   const [expanded, setExpanded] = useState(false);
   const amount = formatServingLine(item);
   const food = useMemo(() => foodCardText(item, amount), [item, amount]);
@@ -185,15 +291,15 @@ const RecentHistoryFoodCard = ({ item, isDark, onAdd }) => {
         expanded={expanded}
         embedded
         isDark={isDark}
-        onToggle={() => setExpanded((v) => !v)}
+        onToggle={() => setExpanded((wasExpanded) => !wasExpanded)}
         onAdd={() => onAdd(item)}
       />
     </View>
   );
-};
+}
 
 /** Search hits — same logged-food card layout, plus to open confirm/log. */
-const FoodResultRow = ({ item, onAdd, isDark = true, isFavorite = false, onToggleFavorite, query = '' }) => {
+function FoodResultRow({ item, onAdd, isDark = true, isFavorite = false, onToggleFavorite, query = '' }) {
   const [expanded, setExpanded] = useState(false);
   const amount = formatServingLine(item, query);
   const food = useMemo(() => foodCardText(item, amount), [item, amount]);
@@ -205,14 +311,14 @@ const FoodResultRow = ({ item, onAdd, isDark = true, isFavorite = false, onToggl
         expanded={expanded}
         embedded
         isDark={isDark}
-        onToggle={() => setExpanded((v) => !v)}
+        onToggle={() => setExpanded((wasExpanded) => !wasExpanded)}
         onAdd={() => onAdd(item)}
         onFavorite={onToggleFavorite ? () => onToggleFavorite(item) : undefined}
         isFavorite={isFavorite}
       />
     </View>
   );
-};
+}
 
 const premiumSearchCardStyles = StyleSheet.create({
   wrap: {
@@ -220,17 +326,11 @@ const premiumSearchCardStyles = StyleSheet.create({
   },
 });
 
-const QUICK_PICKS = [
-  { label: 'Chicken Breast', icon: 'barbell-outline', accentKey: 'pink' },
-  { label: 'Brown Rice', icon: 'leaf-outline', accentKey: 'orange' },
-  { label: 'Greek Yogurt', icon: 'cafe-outline', accentKey: 'cyan' },
-  { label: 'Avocado', icon: 'nutrition-outline', accentKey: 'orange' },
-  { label: 'Salmon', icon: 'fish-outline', accentKey: 'cyan' },
-  { label: 'Oatmeal', icon: 'restaurant-outline', accentKey: 'purple' },
-];
-
-const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
-  const c = colors || DARK;
+/**
+ * Empty / quick-picks hero when there are no results or the user has not searched yet.
+ */
+function EmptyState({ query, onSuggestionPress, colors, isDark, hint }) {
+  const palette = colors || DARK;
   const bgGradient = isDark ? HERO_BG_DARK : HERO_BG_LIGHT;
   const labelMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
   const subColor = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.65)';
@@ -238,8 +338,9 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
   const chipBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
   const isNoResults = Boolean(query?.trim());
   const titleFill = isDark ? '#FFFFFF' : '#0A0A0F';
-
-  const accentColor = () => c.purple || brandColors.orangePurple[1];
+  const accentColor = palette.purple || brandColors.orangePurple[1];
+  const accentSoft = palette.accentSoft || '#FDBA74';
+  const accentMain = palette.accent || '#C2410C';
 
   return (
     <View style={empty.wrap}>
@@ -248,7 +349,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
           empty.glow,
           Platform.select({
             ios: {
-              shadowColor: c.accent || '#C2410C',
+              shadowColor: accentMain,
               shadowOpacity: isDark ? 0.35 : 0.15,
               shadowRadius: 24,
               shadowOffset: { width: 0, height: 8 },
@@ -260,23 +361,23 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
         <View style={empty.cardClip}>
           <LinearGradient
             colors={HERO_TOP_BORDER}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            start={GRADIENT_LEFT}
+            end={GRADIENT_RIGHT}
             style={empty.topBorder}
           />
           <LinearGradient colors={bgGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={empty.inner}>
             <View style={empty.iconRow}>
               <LinearGradient
-                colors={[c.accent || '#C2410C', c.accentSoft || '#FDBA74']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                colors={[accentMain, accentSoft]}
+                start={GRADIENT_LEFT}
+                end={GRADIENT_DIAGONAL_END}
                 style={empty.iconRing}
               >
                 <View style={[empty.iconCore, { backgroundColor: isDark ? '#120818' : '#FFF5FA' }]}>
                   <Ionicons
                     name={isNoResults ? 'search-outline' : 'sparkles-outline'}
                     size={28}
-                    color={c.accent || '#C2410C'}
+                    color={accentMain}
                   />
                 </View>
               </LinearGradient>
@@ -304,7 +405,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
 
             {!isNoResults ? (
               <View style={empty.chipGrid}>
-                {QUICK_PICKS.map(({ label, icon, accentKey }) => (
+                {QUICK_PICKS.map(({ label, icon }) => (
                   <Pressable
                     key={label}
                     style={empty.chipPressable}
@@ -313,8 +414,8 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
                     accessibilityLabel={`Search ${label}`}
                   >
                     <View style={[empty.chipInner, { backgroundColor: chipBg, borderColor: chipBorder, borderWidth: 1 }]}>
-                      <View style={[empty.chipIcon, { backgroundColor: `${accentColor()}22` }]}>
-                        <Ionicons name={icon} size={16} color={accentColor()} />
+                      <View style={[empty.chipIcon, { backgroundColor: `${accentColor}22` }]}>
+                        <Ionicons name={icon} size={16} color={accentColor} />
                       </View>
                       <Text style={[empty.chipLabel, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]} numberOfLines={1}>
                         {label}
@@ -338,7 +439,7 @@ const EmptyState = ({ query, onSuggestionPress, colors, isDark, hint }) => {
       </View>
     </View>
   );
-};
+}
 
 const empty = StyleSheet.create({
   wrap: {
@@ -454,7 +555,13 @@ const empty = StyleSheet.create({
   },
 });
 
-const FoodSearchScreen = ({
+// ===== MAIN FUNCTION =====
+
+/**
+ * Search foods, browse recent/favorites, then confirm & log into the active meal.
+ * @param {{ mealType?: string, defaultMeal?: string, onFoodSelected?: Function, onSelectFood?: Function, onClose?: Function, userId?: string, embedded?: boolean, reserveShellBottomNav?: boolean, initialQuery?: string }} props
+ */
+function FoodSearchScreen({
   mealType: mealTypeProp,
   defaultMeal,
   onFoodSelected,
@@ -465,15 +572,15 @@ const FoodSearchScreen = ({
   embedded = false,
   reserveShellBottomNav = false,
   initialQuery = '',
-}) => {
+}) {
   const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const shellBottomPad = useShellBottomNavInset(16);
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
   const colors = useMemo(() => getColors(isDark), [isDark]);
 
   const mealType = useMemo(
     () => String(mealTypeProp || defaultMeal || 'breakfast').toLowerCase(),
-    [mealTypeProp, defaultMeal]
+    [mealTypeProp, defaultMeal],
   );
 
   const logFood = onFoodSelected || onSelectFood;
@@ -489,7 +596,7 @@ const FoodSearchScreen = ({
   const [pendingFood, setPendingFood] = useState(null);
   const [favoriteFoods, setFavoriteFoods] = useState([]);
   const [favoriteIds, setFavoriteIds] = useState(() => new Set());
-  const [browseTab, setBrowseTab] = useState('recent'); // 'recent' | 'favorites'
+  const [browseTab, setBrowseTab] = useState('recent');
   const uid = userId || auth.currentUser?.uid;
 
   const confirmTheme = useMemo(
@@ -508,37 +615,28 @@ const FoodSearchScreen = ({
 
   useEffect(() => {
     if (!uid) return;
+
     const loadRecent = async () => {
       try {
-        const recent = await getRecentFoods(uid, 15);
+        const recent = await getRecentFoods(uid, RECENT_FOODS_LIMIT);
         setRecentFoods((recent || []).map(normalizeFood));
       } catch (err) {
         console.log('Recent foods unavailable:', err.message);
         setRecentFoods([]);
       }
     };
+
     const loadFavorites = async () => {
       try {
         const favs = await getFavoriteFoods(uid);
-        const mapped = (favs || []).map((f) =>
-          normalizeFood({
-            id: f.foodId,
-            name: f.foodName,
-            food_name: f.foodName,
-            calories: f.calories,
-            protein: f.macros?.protein,
-            carbs: f.macros?.carbs,
-            fat: f.macros?.fat,
-            brand: f.brand,
-          }),
-        );
-        setFavoriteFoods(mapped);
-        setFavoriteIds(new Set((favs || []).map((f) => String(f.foodId).toLowerCase())));
+        setFavoriteFoods((favs || []).map(normalizeFavoriteRow));
+        setFavoriteIds(new Set((favs || []).map((favorite) => String(favorite.foodId).toLowerCase())));
       } catch (err) {
         console.log('Favorite foods unavailable:', err.message);
         setFavoriteFoods([]);
       }
     };
+
     loadRecent();
     loadFavorites();
   }, [uid]);
@@ -547,29 +645,17 @@ const FoodSearchScreen = ({
     async (food) => {
       if (!uid || !food) return;
       try {
-        const { favorited, favorites } = await toggleFavoriteFood(uid, food);
-        setFavoriteIds(new Set((favorites || []).map((f) => String(f.foodId).toLowerCase())));
-        setFavoriteFoods(
-          (favorites || []).map((f) =>
-            normalizeFood({
-              id: f.foodId,
-              name: f.foodName,
-              food_name: f.foodName,
-              calories: f.calories,
-              protein: f.macros?.protein,
-              carbs: f.macros?.carbs,
-              fat: f.macros?.fat,
-              brand: f.brand,
-            }),
-          ),
-        );
-      } catch (e) {
-        console.warn('toggle favorite:', e?.message || e);
+        const { favorites } = await toggleFavoriteFood(uid, food);
+        setFavoriteIds(new Set((favorites || []).map((favorite) => String(favorite.foodId).toLowerCase())));
+        setFavoriteFoods((favorites || []).map(normalizeFavoriteRow));
+      } catch (err) {
+        console.warn('toggle favorite:', err?.message || err);
       }
     },
     [uid],
   );
 
+  // 1. Ask the server, drop junk titles, normalize for the confirm sheet.
   const handleSearch = useCallback(async (searchQuery) => {
     if (!searchQuery.trim()) {
       setResults([]);
@@ -581,16 +667,9 @@ const FoodSearchScreen = ({
     setEmptyHint(null);
     setHasSearched(true);
     try {
-      const raw = await searchFoods(searchQuery, 20);
-      const q = searchQuery.trim();
-      setResults(
-        (raw || [])
-          .filter((item) => {
-            const title = item?.name || item?.food_name || '';
-            return !isJunkWebSearchTitle(title);
-          })
-          .map((item) => normalizeFood(item, q)),
-      );
+      const rawHits = await searchFoods(searchQuery, SEARCH_RESULT_LIMIT);
+      const trimmedQuery = searchQuery.trim();
+      setResults(normalizeSearchHits(rawHits, trimmedQuery));
       setEmptyHint(getFoodSearchHint());
     } catch (err) {
       console.error('Food search error:', err);
@@ -601,24 +680,21 @@ const FoodSearchScreen = ({
     }
   }, []);
 
-  const SEARCH_DEBOUNCE_MS = 550;
-  /** Auto-search from 2+ chars (6 was too high — short queries like "egg" never fired). */
-  const MIN_CHARS_AUTO_SEARCH = 2;
-
+  // 2. Debounce auto-search once the query is long enough.
   useEffect(() => {
-    const q = String(query || '').trim();
-    if (q.length === 0) {
+    const trimmedQuery = String(query || '').trim();
+    if (trimmedQuery.length === 0) {
       setResults([]);
       setHasSearched(false);
       return;
     }
-    if (q.length < MIN_CHARS_AUTO_SEARCH) {
+    if (trimmedQuery.length < MIN_CHARS_AUTO_SEARCH) {
       setResults([]);
       setHasSearched(false);
       return;
     }
     const timer = setTimeout(() => {
-      handleSearch(q);
+      handleSearch(trimmedQuery);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query, handleSearch]);
@@ -636,6 +712,12 @@ const FoodSearchScreen = ({
     toggleTheme(isDark ? 'light' : 'dark');
   };
 
+  const clearSearch = () => {
+    setQuery('');
+    setResults([]);
+    setHasSearched(false);
+  };
+
   const hasRecentHistory = recentFoods.length > 0;
   const hasFavorites = favoriteFoods.length > 0;
   const showFavoritesBrowse = !hasSearched && browseTab === 'favorites';
@@ -648,36 +730,31 @@ const FoodSearchScreen = ({
       (showBrowseIdle && browseTab === 'recent' && !hasRecentHistory) ||
       (showFavoritesBrowse && !hasFavorites));
 
-  // Floating shell nav overlays when embedded; useShellBottomNavInset already includes safe area.
-  const listBottomPad =
-    embedded || reserveShellBottomNav
-      ? shellBottomPad
-      : Math.max(insets.bottom, 12) + 32;
-  const listData = showFavoritesBrowse
-    ? favoriteFoods
-    : showRecent
-      ? recentFoods
-      : showResults
-        ? results
-        : [];
-  const listKey = showFavoritesBrowse ? 'favorites' : showRecent ? 'recent' : 'results';
+  const listBottomPad = embedded || reserveShellBottomNav
+    ? shellBottomPad
+    : Math.max(insets.bottom, MIN_SAFE_BOTTOM) + DEFAULT_LIST_BOTTOM_EXTRA;
 
-  const foodIsFavorite = (item) => {
-    const id = String(item?.id || item?.food_id || item?.name || item?.food_name || '')
-      .trim()
-      .toLowerCase();
-    return favoriteIds.has(id);
-  };
+  const listData = pickListData({
+    showFavoritesBrowse,
+    showRecent,
+    showResults,
+    favoriteFoods,
+    recentFoods,
+    results,
+  });
+  const listKey = listKeyForMode(showFavoritesBrowse, showRecent);
+
+  const foodIsFavorite = (item) => favoriteIds.has(foodFavoriteId(item));
+
+  const browseTabs = [
+    { id: 'recent', label: 'Recent' },
+    { id: 'favorites', label: 'Favorites' },
+  ];
 
   const renderHeaderBlock = () => (
     <>
       {!embedded && (
-        <View
-          style={[
-            fs.topBar,
-            { paddingTop: Math.max(insets.top, 12) },
-          ]}
-        >
+        <View style={[screenStyles.topBar, { paddingTop: Math.max(insets.top, MIN_SAFE_BOTTOM) }]}>
           <TouchableOpacity
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -686,7 +763,7 @@ const FoodSearchScreen = ({
           >
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={[fs.topTitle, { color: colors.text }]} accessibilityRole="header">
+          <Text style={[screenStyles.topTitle, { color: colors.text }]} accessibilityRole="header">
             Add Food
           </Text>
           <TouchableOpacity
@@ -700,11 +777,11 @@ const FoodSearchScreen = ({
         </View>
       )}
 
-      <View style={[fs.searchOuter, embedded && fs.searchOuterEmbedded]}>
+      <View style={[screenStyles.searchOuter, embedded && screenStyles.searchOuterEmbedded]}>
         <LinearGradient
           colors={HOME_STAT_SLEEP_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          start={GRADIENT_LEFT}
+          end={GRADIENT_RIGHT}
           style={{ borderRadius: 16, padding: 1.5 }}
         >
           <View
@@ -733,11 +810,7 @@ const FoodSearchScreen = ({
             />
             {query.length > 0 && (
               <TouchableOpacity
-                onPress={() => {
-                  setQuery('');
-                  setResults([]);
-                  setHasSearched(false);
-                }}
+                onPress={clearSearch}
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"
               >
@@ -749,9 +822,9 @@ const FoodSearchScreen = ({
       </View>
 
       {searchError && (
-        <View style={fs.errorBanner}>
+        <View style={screenStyles.errorBanner}>
           <Ionicons name="warning-outline" size={14} color={colors.orange} />
-          <Text style={[fs.errorText, { color: colors.orange }]}>{searchError}</Text>
+          <Text style={[screenStyles.errorText, { color: colors.orange }]}>{searchError}</Text>
         </View>
       )}
 
@@ -766,11 +839,8 @@ const FoodSearchScreen = ({
 
       {showBrowseIdle ? (
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, paddingHorizontal: 0 }}>
-          {[
-            { id: 'recent', label: 'Recent' },
-            { id: 'favorites', label: 'Favorites' },
-          ].map((tab) => {
-            const active = browseTab === tab.id;
+          {browseTabs.map((tab) => {
+            const isActive = browseTab === tab.id;
             return (
               <TouchableOpacity
                 key={tab.id}
@@ -779,12 +849,18 @@ const FoodSearchScreen = ({
                   paddingHorizontal: 14,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: active ? 'rgba(190,24,93,0.2)' : colors.inputBg,
+                  backgroundColor: isActive ? ACTIVE_TAB_BG : colors.inputBg,
                   borderWidth: 1,
-                  borderColor: active ? '#BE185D' : colors.cardBorder,
+                  borderColor: isActive ? ACTIVE_TAB_BORDER : colors.cardBorder,
                 }}
               >
-                <Text style={{ color: active ? '#BE185D' : colors.textMuted, fontWeight: '700', fontSize: 13 }}>
+                <Text
+                  style={{
+                    color: isActive ? ACTIVE_TAB_BORDER : colors.textMuted,
+                    fontWeight: '700',
+                    fontSize: 13,
+                  }}
+                >
                   {tab.id === 'favorites' ? `♥ ${tab.label}` : tab.label}
                 </Text>
               </TouchableOpacity>
@@ -795,28 +871,28 @@ const FoodSearchScreen = ({
 
       {showBrowseIdle && browseTab === 'recent' && hasRecentHistory && (
         <Pressable
-          onPress={() => setRecentHistoryExpanded((v) => !v)}
+          onPress={() => setRecentHistoryExpanded((wasExpanded) => !wasExpanded)}
           accessibilityRole="button"
           accessibilityLabel={
             recentHistoryExpanded ? 'Hide saved foods' : 'Show saved foods'
           }
           style={({ pressed }) => [
-            fs.historyBtnWrap,
+            screenStyles.historyBtnWrap,
             pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
           ]}
         >
           <LinearGradient
             colors={HERO_CTA_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={fs.historyBtnGradient}
+            start={GRADIENT_LEFT}
+            end={GRADIENT_RIGHT}
+            style={screenStyles.historyBtnGradient}
           >
             <Ionicons
               name={recentHistoryExpanded ? 'chevron-up' : 'time-outline'}
               size={16}
               color="#FFFFFF"
             />
-            <Text style={fs.historyBtnText}>
+            <Text style={screenStyles.historyBtnText}>
               {recentHistoryExpanded ? 'Hide saved foods' : 'Show saved foods'}
             </Text>
           </LinearGradient>
@@ -829,8 +905,8 @@ const FoodSearchScreen = ({
     if (loading) return null;
     if (showRecent) {
       return (
-        <View style={fs.sectionTitleRowCompact}>
-          <Text style={[fs.sectionTitleCompact, { color: colors.textMuted }]}>
+        <View style={screenStyles.sectionTitleRowCompact}>
+          <Text style={[screenStyles.sectionTitleCompact, { color: colors.textMuted }]}>
             {recentFoods.length} recent {recentFoods.length === 1 ? 'item' : 'items'}
           </Text>
         </View>
@@ -838,9 +914,9 @@ const FoodSearchScreen = ({
     }
     if (showResults) {
       return (
-        <View style={fs.sectionTitleRow}>
-          <Text style={[fs.sectionTitleLeft, { color: colors.text }]}>Search results</Text>
-          <Text style={[fs.sectionTitleRight, { color: colors.textMuted }]}>
+        <View style={screenStyles.sectionTitleRow}>
+          <Text style={[screenStyles.sectionTitleLeft, { color: colors.text }]}>Search results</Text>
+          <Text style={[screenStyles.sectionTitleRight, { color: colors.textMuted }]}>
             {results.length} {results.length === 1 ? 'item' : 'items'}
           </Text>
         </View>
@@ -849,79 +925,84 @@ const FoodSearchScreen = ({
     return null;
   };
 
+  const onSuggestionPress = (suggestion) => {
+    setQuery(suggestion);
+    handleSearch(suggestion);
+  };
+
+  const emptyQueryForHero = hasSearched ? query : '';
+  const emptyHintForHero = hasSearched ? emptyHint : null;
+
   return (
     <>
-    <View style={{ flex: 1, minHeight: 0, backgroundColor: embedded ? 'transparent' : colors.bg }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1, minHeight: 0 }}
-        keyboardVerticalOffset={embedded ? 0 : Math.max(insets.top, 12)}
-      >
-        <FlatList
-          style={{ flex: 1 }}
-          data={loading ? [] : listData}
-          keyExtractor={(_, i) => `${listKey}-${i}`}
-          ListHeaderComponent={
-            <View>
-              {renderHeaderBlock()}
-              {showEmpty && !loading ? (
-                <EmptyState
-                  query={hasSearched ? query : ''}
-                  hint={hasSearched ? emptyHint : null}
+      <View style={{ flex: 1, minHeight: 0, backgroundColor: embedded ? 'transparent' : colors.bg }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, minHeight: 0 }}
+          keyboardVerticalOffset={embedded ? 0 : Math.max(insets.top, MIN_SAFE_BOTTOM)}
+        >
+          <FlatList
+            style={{ flex: 1 }}
+            data={loading ? [] : listData}
+            keyExtractor={(_, index) => `${listKey}-${index}`}
+            ListHeaderComponent={
+              <View>
+                {renderHeaderBlock()}
+                {showEmpty && !loading ? (
+                  <EmptyState
+                    query={emptyQueryForHero}
+                    hint={emptyHintForHero}
+                    isDark={isDark}
+                    onSuggestionPress={onSuggestionPress}
+                    colors={colors}
+                  />
+                ) : null}
+                {renderSectionTitle()}
+              </View>
+            }
+            renderItem={({ item }) =>
+              showRecent ? (
+                <RecentHistoryFoodCard item={item} isDark={isDark} onAdd={handleAddFood} />
+              ) : (
+                <FoodResultRow
+                  item={item}
+                  onAdd={handleAddFood}
                   isDark={isDark}
-                  onSuggestionPress={(s) => {
-                    setQuery(s);
-                    handleSearch(s);
-                  }}
-                  colors={colors}
+                  isFavorite={foodIsFavorite(item)}
+                  onToggleFavorite={handleToggleFavorite}
+                  query={query}
                 />
-              ) : null}
-              {renderSectionTitle()}
-            </View>
-          }
-          renderItem={({ item }) =>
-            showRecent ? (
-              <RecentHistoryFoodCard item={item} isDark={isDark} onAdd={handleAddFood} />
-            ) : (
-              <FoodResultRow
-                item={item}
-                onAdd={handleAddFood}
-                isDark={isDark}
-                isFavorite={foodIsFavorite(item)}
-                onToggleFavorite={handleToggleFavorite}
-                query={query}
-              />
-            )
-          }
-          ListEmptyComponent={null}
-          contentContainerStyle={{
-            paddingHorizontal: 20,
-            paddingBottom: listBottomPad,
-            flexGrow: showEmpty && !loading ? 0 : 1,
-          }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          scrollEventThrottle={16}
-          nestedScrollEnabled
-          alwaysBounceVertical
+              )
+            }
+            ListEmptyComponent={null}
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingBottom: listBottomPad,
+              flexGrow: showEmpty && !loading ? 0 : 1,
+            }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            scrollEventThrottle={16}
+            nestedScrollEnabled
+            alwaysBounceVertical
+          />
+        </KeyboardAvoidingView>
+      </View>
+      <Modal visible={!!pendingFood} animationType="slide" presentationStyle="pageSheet">
+        <FoodConfirmSheet
+          food={pendingFood}
+          theme={confirmTheme}
+          showVerification={false}
+          onConfirm={handleConfirmFood}
+          onCancel={() => setPendingFood(null)}
         />
-      </KeyboardAvoidingView>
-    </View>
-    <Modal visible={!!pendingFood} animationType="slide" presentationStyle="pageSheet">
-      <FoodConfirmSheet
-        food={pendingFood}
-        theme={confirmTheme}
-        showVerification={false}
-        onConfirm={handleConfirmFood}
-        onCancel={() => setPendingFood(null)}
-      />
-    </Modal>
+      </Modal>
     </>
   );
-};
+}
 
-const fs = StyleSheet.create({
+const screenStyles = StyleSheet.create({
   topBar: {
     paddingHorizontal: 20,
     paddingVertical: 16,
@@ -988,5 +1069,6 @@ const fs = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 
 export default FoodSearchScreen;

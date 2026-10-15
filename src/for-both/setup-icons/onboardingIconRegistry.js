@@ -76,12 +76,12 @@ export const onboardingIconRegistry = {
 function iconSourceForNormalizedKey(normalizedKey) {
   const aliasTarget = ICON_KEY_ALIASES[normalizedKey];
   const lookupKey = aliasTarget || normalizedKey;
-  return (
-    resolveGenerated(lookupKey) ||
-    resolveGenerated(normalizedKey) ||
-    onboardingIconRegistry[normalizedKey] ||
-    null
-  );
+  const fromAliasKey = resolveGenerated(lookupKey);
+  if (fromAliasKey) return fromAliasKey;
+  const fromNormalizedKey = resolveGenerated(normalizedKey);
+  if (fromNormalizedKey) return fromNormalizedKey;
+  if (onboardingIconRegistry[normalizedKey]) return onboardingIconRegistry[normalizedKey];
+  return null;
 }
 
 /**

@@ -1,17 +1,26 @@
 // Browser build of the spreadsheet parser. Hands back the real SheetJS library.
-// Flow: Metro picks this file on web instead of spreadsheetReader.js.
-// Used by: the spreadsheet viewer. The browser build does not need the native polyfills.
+// Flow: import SheetJS → wrap in a named loader → export that library as the default.
+// Used by: the spreadsheet viewer. Metro picks this file on web instead of spreadsheetReader.js.
 
 import * as XLSX from 'xlsx';
 
 // ===== NAMED CONSTANTS =====
 
+// No tweakable numbers here — this file only re-exports the web SheetJS build.
+
 // ===== HELPER FUNCTIONS =====
 
-// ===== MAIN FUNCTION =====
-
-function loadWebSheetJs() {
+/**
+ * Return the browser SheetJS build. Native uses a different file with polyfills.
+ * @returns {typeof XLSX}
+ */
+function getBrowserSheetJsLibrary() {
   return XLSX;
 }
 
-export default loadWebSheetJs();
+// ===== MAIN FUNCTION =====
+
+// Call once at module load so importers get the library object, not a function.
+const browserSheetJsLibrary = getBrowserSheetJsLibrary();
+
+export default browserSheetJsLibrary;

@@ -10,4 +10,5 @@ const FREQUENCY_ICON_SVG = "<svg   viewBox=\"0 0 1024 1024\" version=\"1.1\" xml
 
 // ===== MAIN FUNCTION =====
 
+export { FREQUENCY_ICON_SVG };
 export default FREQUENCY_ICON_SVG;

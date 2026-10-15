@@ -1,12 +1,31 @@
-/**
- * Trusted curated catalog for high-traffic restaurant searches.
- * Used as an authoritative first hit so Serper junk cannot crowd out famous items.
- *
- * Macros sourced from public chain nutrition pages / FastFoodNutrition (approx 2024–2026).
- * Ranges are intentional — restaurant formulas change; we store a representative serving.
- */
+// Curated restaurant cards (Big Mac, Crazy Bread) so famous items beat junk web hits.
+// Flow: score the typed text against each catalog row → keep the best matches → return search cards.
+// Used by food search as the first trusted hit. CommonJS so the food tests can require() it.
 
 const { normalizeQueryText, significantQueryTokens, countTokenHits } = require('./rankFoodResults');
+
+// ===== NAMED CONSTANTS =====
+
+const CHERRY_COKE_SODIUM_MG = 60;
+const BIG_MAC_CALORIES = 590;
+const MCNUGGETS_10_CALORIES = 410;
+const MCNUGGETS_10_PROTEIN_G = 24;
+const MCNUGGETS_10_FAT_G = 24;
+const DAVES_SINGLE_CALORIES = 590;
+const CHICK_FIL_A_SANDWICH_CALORIES = 440;
+const CRUNCHWRAP_CALORIES = 530;
+const ORANGE_CHICKEN_CALORIES = 490;
+const SUBWAY_TURKEY_CALORIES = 560;
+const LATTE_FAT_G = 7;
+const FROSTY_CARBS_G = 60;
+
+const REGEX_MATCH_SCORE = 50;
+const EXACT_ALIAS_SCORE = 100;
+const PARTIAL_ALIAS_SCORE = 40;
+const TOKEN_HIT_SCORE = 8;
+const MIN_KEEP_SCORE = 40;
+const DEFAULT_LOOKUP_LIMIT = 3;
+const MIN_TOKEN_HITS_FOR_BONUS = 2;
 
 /** @typedef {{ name: string, brand: string, calories: number, protein: number, carbs: number, fat: number, serving_label: string, match: RegExp, aliases?: string[] }} TrustedFood */
 
@@ -20,7 +39,7 @@ const TRUSTED_FOODS = [
     carbs: 70,
     fat: 0,
     sugar: 70,
-    sodium: 60,
+    sodium: CHERRY_COKE_SODIUM_MG,
     fiber: 0,
     serving_label: '1 bottle (20 fl oz)',
     match: /\bcherry\s*(coke|cola)\b.*\b20\s*(fl\s*)?oz\b|\b20\s*(fl\s*)?oz\b.*\bcherry\s*(coke|cola)\b/i,
@@ -114,7 +133,7 @@ const TRUSTED_FOODS = [
   {
     name: 'Big Mac',
     brand: "McDonald's",
-    calories: 590,
+    calories: BIG_MAC_CALORIES,
     protein: 25,
     carbs: 46,
     fat: 34,
@@ -125,10 +144,10 @@ const TRUSTED_FOODS = [
   {
     name: 'Chicken McNuggets',
     brand: "McDonald's",
-    calories: 410,
-    protein: 24,
+    calories: MCNUGGETS_10_CALORIES,
+    protein: MCNUGGETS_10_PROTEIN_G,
     carbs: 26,
-    fat: 24,
+    fat: MCNUGGETS_10_FAT_G,
     serving_label: '10 pc nuggets',
     match: /\b(10|ten)\s*(pc|piece|pieces)?\s*(chicken\s*)?(mc)?nuggets?\b/i,
     aliases: ['10 piece mcnuggets', '10pc mcnuggets', "mcdonald's 10 piece nuggets"],
@@ -169,7 +188,7 @@ const TRUSTED_FOODS = [
   {
     name: "Dave's Single",
     brand: "Wendy's",
-    calories: 590,
+    calories: DAVES_SINGLE_CALORIES,
     protein: 30,
     carbs: 39,
     fat: 34,
@@ -191,7 +210,7 @@ const TRUSTED_FOODS = [
   {
     name: 'Original Chicken Sandwich',
     brand: 'Chick-fil-A',
-    calories: 440,
+    calories: CHICK_FIL_A_SANDWICH_CALORIES,
     protein: 29,
     carbs: 41,
     fat: 18,
@@ -213,7 +232,7 @@ const TRUSTED_FOODS = [
   {
     name: 'Crunchwrap Supreme',
     brand: 'Taco Bell',
-    calories: 530,
+    calories: CRUNCHWRAP_CALORIES,
     protein: 16,
     carbs: 71,
     fat: 21,
@@ -224,7 +243,7 @@ const TRUSTED_FOODS = [
   {
     name: 'Orange Chicken',
     brand: 'Panda Express',
-    calories: 490,
+    calories: ORANGE_CHICKEN_CALORIES,
     protein: 25,
     carbs: 51,
     fat: 23,
@@ -235,7 +254,7 @@ const TRUSTED_FOODS = [
   {
     name: 'Footlong Turkey Breast',
     brand: 'Subway',
-    calories: 560,
+    calories: SUBWAY_TURKEY_CALORIES,
     protein: 36,
     carbs: 92,
     fat: 8,
@@ -249,7 +268,7 @@ const TRUSTED_FOODS = [
     calories: 190,
     protein: 13,
     carbs: 18,
-    fat: 7,
+    fat: LATTE_FAT_G,
     serving_label: 'Grande',
     match: /\bstarbucks\b.*\b(grande\s*)?latte\b|\bgrande\s+latte\b/i,
     aliases: ['starbucks grande latte', 'starbucks latte'],
@@ -259,7 +278,7 @@ const TRUSTED_FOODS = [
     brand: "Wendy's",
     calories: 350,
     protein: 9,
-    carbs: 60,
+    carbs: FROSTY_CARBS_G,
     fat: 9,
     serving_label: 'Small',
     match: /\b(small\s+)?frosty\b/i,
@@ -311,10 +330,54 @@ const TRUSTED_FOODS = [
   },
 ];
 
+// ===== HELPER FUNCTIONS =====
+
 function catalogKey(query) {
   return normalizeQueryText(query);
 }
 
+function scoreAliasMatch(typedKey, alias) {
+  const aliasKey = catalogKey(alias);
+  if (typedKey === aliasKey) return EXACT_ALIAS_SCORE;
+  if (typedKey.includes(aliasKey) || aliasKey.includes(typedKey)) return PARTIAL_ALIAS_SCORE;
+  return 0;
+}
+
+function scoreTrustedFoodMatch(food, typedText, typedKey) {
+  let score = 0;
+  if (food.match.test(typedText)) score += REGEX_MATCH_SCORE;
+  for (const alias of food.aliases || []) {
+    score += scoreAliasMatch(typedKey, alias);
+  }
+  const tokens = significantQueryTokens(`${food.brand} ${food.name}`);
+  const hits = countTokenHits(typedText, tokens);
+  if (hits >= Math.min(MIN_TOKEN_HITS_FOR_BONUS, tokens.length)) score += hits * TOKEN_HIT_SCORE;
+  return score;
+}
+
+function foodCatalogKey(food) {
+  return `${food.brand}|${food.name}|${food.serving_label}`;
+}
+
+function pickBestTrustedFoods(scored, limit) {
+  const out = [];
+  const seen = new Set();
+  for (const { food, score } of scored) {
+    if (score < MIN_KEEP_SCORE) continue;
+    const key = foodCatalogKey(food);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(food);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * @param {TrustedFood} food
+ * @param {string} query
+ * @returns {object}
+ */
 function toSearchRow(food, query) {
   const id = `trusted_${catalogKey(food.name + '_' + food.brand).replace(/\s+/g, '_')}`;
   return {
@@ -352,41 +415,30 @@ function toSearchRow(food, query) {
   };
 }
 
+// ===== MAIN FUNCTION =====
+
 /**
  * Find curated foods that match the user query. Most specific match first.
+ * @param {string} query
+ * @param {number} [limit]
  * @returns {object[]} zero or more search rows (usually 1)
  */
-function lookupTrustedFoods(query, limit = 3) {
-  const q = String(query || '').trim();
-  if (!q) return [];
-  const qNorm = catalogKey(q);
+function lookupTrustedFoods(query, limit = DEFAULT_LOOKUP_LIMIT) {
+  const typedText = String(query || '').trim();
+  if (!typedText) return [];
+  const typedKey = catalogKey(typedText);
   const scored = [];
 
   for (const food of TRUSTED_FOODS) {
-    let score = 0;
-    if (food.match.test(q)) score += 50;
-    for (const alias of food.aliases || []) {
-      const a = catalogKey(alias);
-      if (qNorm === a) score += 100;
-      else if (qNorm.includes(a) || a.includes(qNorm)) score += 40;
-    }
-    const tokens = significantQueryTokens(`${food.brand} ${food.name}`);
-    const hits = countTokenHits(q, tokens);
-    if (hits >= Math.min(2, tokens.length)) score += hits * 8;
+    const score = scoreTrustedFoodMatch(food, typedText, typedKey);
     if (score > 0) scored.push({ food, score });
   }
 
-  scored.sort((a, b) => b.score - a.score);
-  // Prefer stuffed crazy bread over plain when query says stuffed
+  scored.sort((left, right) => right.score - left.score);
+  const matchedFoods = pickBestTrustedFoods(scored, limit);
   const out = [];
-  const seen = new Set();
-  for (const { food, score } of scored) {
-    if (score < 40) continue;
-    const key = `${food.brand}|${food.name}|${food.serving_label}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(toSearchRow(food, q));
-    if (out.length >= limit) break;
+  for (const food of matchedFoods) {
+    out.push(toSearchRow(food, typedText));
   }
   return out;
 }

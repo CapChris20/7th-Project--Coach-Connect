@@ -71,6 +71,12 @@ function basalMetabolicRateForGender(weight, height, age, gender) {
   return restingCalories - BMR_FEMALE_CONSTANT;
 }
 
+function activityMultiplier(activityLevel) {
+  const namedMultiplier = ACTIVITY_MULTIPLIERS[activityLevel.toLowerCase()];
+  if (namedMultiplier) return namedMultiplier;
+  return SEDENTARY_ACTIVITY_MULTIPLIER;
+}
+
 function proteinGramsForGoal(goal, bodyWeight) {
   if (goal === WEIGHT_LOSS_GOAL) return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_WEIGHT_LOSS);
   if (goal === MUSCLE_GAIN_GOAL) return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_MUSCLE_GAIN);
@@ -114,6 +120,7 @@ function roundToOneDecimal(value) {
  */
 export function calculateBMR(weight, height, age, gender) {
   try {
+    // 1. Refuse zero height or weight. Missing gender is treated as male.
     let genderForFormula = gender;
     if (!genderForFormula) {
       console.warn('calculateBMR: missing gender, defaulting to male');
@@ -125,6 +132,7 @@ export function calculateBMR(weight, height, age, gender) {
     }
     console.log('Calculating BMR for:', { weight, height, age, gender: genderForFormula });
 
+    // 2. Mifflin-St Jeor, then round to a whole calorie.
     const basalMetabolicRate = basalMetabolicRateForGender(weight, height, age, genderForFormula);
 
     console.log('BMR calculated:', basalMetabolicRate);
@@ -144,10 +152,12 @@ export function calculateBMR(weight, height, age, gender) {
  */
 export function calculateTDEE(basalMetabolicRate, activityLevel) {
   try {
+    // 1. Unknown activity names use the sedentary multiplier.
     console.log('Calculating TDEE with activity level:', activityLevel);
 
-    const multiplier =
-      ACTIVITY_MULTIPLIERS[activityLevel.toLowerCase()] || SEDENTARY_ACTIVITY_MULTIPLIER;
+    const multiplier = activityMultiplier(activityLevel);
+
+    // 2. Resting calories times how active the person is.
     const totalDailyEnergyExpenditure = basalMetabolicRate * multiplier;
 
     console.log('TDEE calculated:', totalDailyEnergyExpenditure);
@@ -168,9 +178,12 @@ export function calculateTDEE(basalMetabolicRate, activityLevel) {
  */
 export function calculateMacros(calories, goal, bodyWeight) {
   try {
+    // 1. Protein grams from the goal. Everything else uses the maintenance rate.
     console.log('Calculating macros for calories:', calories, 'goal:', goal);
 
     const proteinGrams = proteinGramsForGoal(goal, bodyWeight);
+
+    // 2. Fat is a fixed share. Carbs get the leftover calories.
     const result = macroSplitFromProtein(calories, proteinGrams);
 
     console.log('Macros calculated:', result);
@@ -191,12 +204,15 @@ export function calculateMacros(calories, goal, bodyWeight) {
  */
 export function estimateBodyFat(gender, age, bodyMassIndex) {
   try {
+    // 1. Missing gender is treated as male. The log still shows what was passed in.
     console.log('Estimating body fat for:', { gender, age, bmi: bodyMassIndex });
 
     let genderForFormula = gender;
     if (!genderForFormula) {
       genderForFormula = MALE_GENDER;
     }
+
+    // 2. Deurenberg estimate, then clamp between 3% and 50%.
     const unclamped = bodyFatPercentForGender(genderForFormula, age, bodyMassIndex);
     const clamped = clampBodyFatPercent(unclamped);
 
@@ -216,9 +232,11 @@ export function estimateBodyFat(gender, age, bodyMassIndex) {
  */
 export function calculateBMI(weight, height) {
   try {
+    // 1. Height is centimeters. Zero or missing height cannot make a BMI.
     if (!height || height <= 0) return null;
     console.log('Calculating BMI for:', { weight, height });
 
+    // 2. kg / m², then one decimal place.
     const heightInMeters = height / CENTIMETERS_PER_METER;
     const bodyMassIndex = weight / (heightInMeters * heightInMeters);
 
@@ -240,10 +258,13 @@ export function calculateBMI(weight, height) {
  */
 export function calculateWeightGoal(currentWeight, targetWeight, timeframe) {
   try {
+    // 1. How far the target is, and how many kilograms that is per week.
     console.log('Calculating weight goal:', { currentWeight, targetWeight, timeframe });
 
     const weightDifference = targetWeight - currentWeight;
     const weeklyChange = weightDifference / (timeframe / DAYS_PER_WEEK);
+
+    // 2. Each kilogram per week shifts daily calories by the app's rule.
     const dailyCalorieAdjustment = weeklyChange * CALORIES_PER_KG_OF_WEEKLY_CHANGE;
 
     console.log('Weight goal calculated:', { weightDifference, weeklyChange, dailyCalorieAdjustment });

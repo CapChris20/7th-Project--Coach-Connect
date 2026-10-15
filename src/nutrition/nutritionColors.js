@@ -1,5 +1,5 @@
 // Nutrition gradients shared by food cards, rings, and section headers.
-// Flow: re-export the food-card palettes under nutrition names → look up a ring color by its label.
+// Flow: build the food-card palettes under nutrition names → look up a ring color by its label.
 // Used by the daily log, nutrition facts, nutrition settings, and the trainer nutrition tab.
 
 import { BRAND_NAV_ICON_GRADIENT } from '../look-and-feel/brandColors';
@@ -13,35 +13,38 @@ export const NUT_CALORIES_GRADIENT = gradients.calories;
 /** Dark orange to pink. Primary nutrition actions use this. */
 export const NUT_ACTION_GRADIENT = brandColors.orangePink;
 
-// Food cards look up macros with lowercase keys. Those keys are part of the card API.
-export const NUT_MACRO_GRADIENTS = {
-  protein: gradients.protein,
-  carbs: gradients.carbs,
-  fat: gradients.fat,
-};
-
-// Ring labels are the words shown on screen (Protein, Carbs), so this map is title case.
-export const NUT_MACRO_RING_GRADIENTS = {
-  Protein: gradients.protein,
-  Carbs: gradients.carbs,
-  Fat: gradients.fat,
-  Fiber: brandColors.goldPink,
-  Sugar: brandColors.orangePink,
-  Sodium: brandColors.cyanPurple,
-  Potassium: brandColors.orangePurple,
-};
-
 // Section headers reuse the nav-icon gradient so nutrition matches the rest of the app.
 export const NUT_SECTION_GRADIENT = BRAND_NAV_ICON_GRADIENT;
 
-// Macro bars on a food card use the same lowercase keys as NUT_MACRO_GRADIENTS.
-export const NUT_FOOD_MACRO_BAR_GRADIENTS = {
-  protein: gradients.protein,
-  carbs: gradients.carbs,
-  fat: gradients.fat,
-};
-
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * Lowercase macro keys for food cards (protein / carbs / fat).
+ * @returns {{ protein: Array, carbs: Array, fat: Array }}
+ */
+function buildMacroGradients() {
+  return {
+    protein: gradients.protein,
+    carbs: gradients.carbs,
+    fat: gradients.fat,
+  };
+}
+
+/**
+ * Title-case labels for the daily-log nutrient rings.
+ * @returns {object}
+ */
+function buildMacroRingGradients() {
+  return {
+    Protein: gradients.protein,
+    Carbs: gradients.carbs,
+    Fat: gradients.fat,
+    Fiber: brandColors.goldPink,
+    Sugar: brandColors.orangePink,
+    Sodium: brandColors.cyanPurple,
+    Potassium: brandColors.orangePurple,
+  };
+}
 
 /**
  * The ring map only knows the labeled nutrients. Anything else comes back undefined so the caller can fall back.
@@ -52,6 +55,24 @@ function knownNutrientGradient(label) {
   return NUT_MACRO_RING_GRADIENTS[label];
 }
 
+/**
+ * True when the label is one of the known ring nutrients.
+ * @param {string} label
+ * @returns {boolean}
+ */
+function hasKnownNutrientGradient(label) {
+  return knownNutrientGradient(label) != null;
+}
+
+// Food cards look up macros with lowercase keys. Those keys are part of the card API.
+export const NUT_MACRO_GRADIENTS = buildMacroGradients();
+
+// Ring labels are the words shown on screen (Protein, Carbs), so this map is title case.
+export const NUT_MACRO_RING_GRADIENTS = buildMacroRingGradients();
+
+// Macro bars on a food card use the same lowercase keys as NUT_MACRO_GRADIENTS.
+export const NUT_FOOD_MACRO_BAR_GRADIENTS = buildMacroGradients();
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -60,5 +81,6 @@ function knownNutrientGradient(label) {
  * @returns {Array}
  */
 export function gradientForNutrientLabel(label) {
-  return knownNutrientGradient(label) || NUT_CALORIES_GRADIENT;
+  if (hasKnownNutrientGradient(label)) return knownNutrientGradient(label);
+  return NUT_CALORIES_GRADIENT;
 }

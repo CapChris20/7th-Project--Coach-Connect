@@ -1,13 +1,7 @@
-/**
- * Trainer Request Intro Modal
- *
- * Purpose: UI screen or component: Trainer Request Intro Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/marketplace
- * Key exports: RequestIntroPopup
- *
- * @file-header
- */
+// Optional "send a message with this request" popup after a client taps Connect.
+// Flow: fade+scale in → optional draft → Skip (no message) or Send/Continue → Close on backdrop.
+// Used by: the find-a-trainer connect flow. Busy disables every tap so a double-send cannot fire.
+
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -25,11 +19,80 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);
+// ===== NAMED CONSTANTS =====
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const MODAL_MAX_WIDTH_PX = 400;
+const MODAL_WIDTH_RATIO = 0.9;
+const MODAL_MAX_W = Math.min(SCREEN_WIDTH * MODAL_WIDTH_RATIO, MODAL_MAX_WIDTH_PX);
 const BORDER_LOOP = ['#F06BA8', '#FB923C', '#C084FC', '#F06BA8'];
+const SEND_GRADIENT = ['#F06BA8', '#FB923C'];
+const FALLBACK_COACH_NAME = 'your coach';
+const OPEN_SCALE_START = 0.94;
+const OPEN_FADE_MS = 220;
+const SPRING_FRICTION = 8;
+const SPRING_TENSION = 65;
+const BUSY_OPACITY = 0.55;
+const KEYBOARD_PAD_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : undefined;
+const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
+const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * First name only, so the title stays short. Empty / missing names fall back to "your coach".
+ * @param {string} trainerName
+ * @returns {string}
+ */
+function firstNameForTitle(trainerName) {
+  const trimmedName = String(trainerName || FALLBACK_COACH_NAME).trim();
+  return trimmedName.split(/\s+/)[0] || FALLBACK_COACH_NAME;
+}
+
+/**
+ * @param {boolean} isDark
+ */
+function introPopupColors(isDark) {
+  return {
+    cardBackground: isDark ? '#141419' : '#F5F5F5',
+    textHigh: isDark ? '#FFFFFF' : '#0A0A0F',
+    textMuted: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.6)',
+    inputBackground: isDark ? '#0A0A0F' : '#FFFFFF',
+    inputBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.12)',
+    placeholder: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(10,10,15,0.45)',
+  };
+}
+
+/**
+ * Play the open animation from the starting scale/fade. Called whenever `visible` becomes true.
+ * vocab: useNativeDriver true = the animation runs on the native thread (smoother on the phone).
+ * @param {Animated.Value} fade
+ * @param {Animated.Value} scale
+ */
+function playIntroOpenAnimation(fade, scale) {
+  fade.setValue(0);
+  scale.setValue(OPEN_SCALE_START);
+  Animated.parallel([
+    Animated.timing(fade, { toValue: 1, duration: OPEN_FADE_MS, useNativeDriver: true }),
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: SPRING_FRICTION,
+      tension: SPRING_TENSION,
+      useNativeDriver: true,
+    }),
+  ]).start();
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Optional intro message before a connection request is sent.
+ * vocab: useRef holds the Animated.Value across re-renders without resetting the animation.
+ * vocab: useEffect re-runs the open animation each time the modal becomes visible.
+ * @param {{ visible: boolean, trainerName: string, messageDraft: string, onChangeMessage: Function, onSkip: Function, onSendMessage: Function, onClose: Function, isDark?: boolean, busy?: boolean }} props
+ */
 export default function RequestIntroPopup({
   visible,
   trainerName,
@@ -41,37 +104,29 @@ export default function RequestIntroPopup({
   isDark = true,
   busy = false,
 }) {
-  const scale = useRef(new Animated.Value(0.94)).current;
+  const scale = useRef(new Animated.Value(OPEN_SCALE_START)).current;
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      fade.setValue(0);
-      scale.setValue(0.94);
-      Animated.parallel([
-        Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
-      ]).start();
+      playIntroOpenAnimation(fade, scale);
     }
   }, [visible, fade, scale]);
 
-  const first = String(trainerName || 'your coach').trim().split(/\s+/)[0] || 'your coach';
+  const firstName = firstNameForTitle(trainerName);
   const hasDraft = String(messageDraft || '').trim().length > 0;
-
-  const bg = isDark ? '#141419' : '#F5F5F5';
-  const textHi = isDark ? '#FFFFFF' : '#0A0A0F';
-  const textMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.6)';
-  const inputBg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const inputBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.12)';
+  const colors = introPopupColors(isDark);
+  const closeUnlessBusy = busy ? undefined : onClose;
+  const skipUnlessBusy = busy ? undefined : onSkip;
+  const sendUnlessBusy = busy ? undefined : onSendMessage;
+  const busyOpacity = busy ? BUSY_OPACITY : 1;
+  const sendLabel = hasDraft ? 'Send message' : 'Continue';
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={busy ? undefined : onClose}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={closeUnlessBusy}>
+      <KeyboardAvoidingView style={styles.flex} behavior={KEYBOARD_PAD_BEHAVIOR}>
         <View style={styles.modalRoot}>
-          <Pressable style={styles.backdropPress} onPress={busy ? undefined : onClose} />
+          <Pressable style={styles.backdropPress} onPress={closeUnlessBusy} />
           <View style={styles.centerWrap} pointerEvents="box-none">
             <Animated.View
               style={{
@@ -81,15 +136,29 @@ export default function RequestIntroPopup({
                 maxWidth: '90%',
               }}
             >
-              <LinearGradient colors={BORDER_LOOP} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.borderRing}>
-                <View style={[styles.inner, { backgroundColor: bg }]}>
-                  <Text style={[styles.title, { color: textHi }]}>Send a message to {first}?</Text>
-                  <Text style={[styles.subtitle, { color: textMuted }]}>(Optional)</Text>
+              <LinearGradient
+                colors={BORDER_LOOP}
+                start={GRADIENT_TOP_LEFT}
+                end={GRADIENT_BOTTOM_RIGHT}
+                style={styles.borderRing}
+              >
+                <View style={[styles.inner, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.title, { color: colors.textHigh }]}>
+                    Send a message to {firstName}?
+                  </Text>
+                  <Text style={[styles.subtitle, { color: colors.textMuted }]}>(Optional)</Text>
 
                   <TextInput
-                    style={[styles.messageInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textHi }]}
+                    style={[
+                      styles.messageInput,
+                      {
+                        backgroundColor: colors.inputBackground,
+                        borderColor: colors.inputBorder,
+                        color: colors.textHigh,
+                      },
+                    ]}
                     placeholder="Write a message (optional)…"
-                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(10,10,15,0.45)'}
+                    placeholderTextColor={colors.placeholder}
                     value={messageDraft}
                     onChangeText={onChangeMessage}
                     multiline
@@ -109,26 +178,26 @@ export default function RequestIntroPopup({
 
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
-                      style={[styles.skipButton, { opacity: busy ? 0.55 : 1 }]}
-                      onPress={busy ? undefined : onSkip}
+                      style={[styles.skipButton, { opacity: busyOpacity }]}
+                      onPress={skipUnlessBusy}
                       disabled={busy}
                       activeOpacity={0.88}
                     >
                       <Text style={styles.skipButtonText}>Skip</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.sendButton, { opacity: busy ? 0.55 : 1 }]}
-                      onPress={busy ? undefined : onSendMessage}
+                      style={[styles.sendButton, { opacity: busyOpacity }]}
+                      onPress={sendUnlessBusy}
                       disabled={busy}
                       activeOpacity={0.88}
                     >
                       <LinearGradient
-                        colors={['#F06BA8', '#FB923C']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
+                        colors={SEND_GRADIENT}
+                        start={GRADIENT_LEFT}
+                        end={GRADIENT_RIGHT}
                         style={styles.sendGradient}
                       >
-                        <Text style={styles.sendButtonText}>{hasDraft ? 'Send message' : 'Continue'}</Text>
+                        <Text style={styles.sendButtonText}>{sendLabel}</Text>
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>

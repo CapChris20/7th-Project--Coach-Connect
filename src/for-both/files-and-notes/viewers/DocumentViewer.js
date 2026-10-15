@@ -53,6 +53,27 @@ function buildDocumentHtml(bodyHtml) {
   return `<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<style>\n  html,body{margin:0;padding:0;background:#0A0A0F;color:rgba(255,255,255,0.9);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}\n  .wrap{padding:16px;}\n  h1{font-size:28px;line-height:34px;margin:0 0 12px;font-weight:800;font-family:Georgia,serif;color:#fff;}\n  h2{font-size:20px;line-height:26px;margin:18px 0 10px;font-weight:800;color:#fff;}\n  h3{font-size:16px;line-height:22px;margin:16px 0 8px;font-weight:800;color:#fff;}\n  p,li{font-size:15px;line-height:24px;margin:0 0 10px;color:rgba(255,255,255,0.82);}\n  ul,ol{padding-left:20px;margin:8px 0 14px;}\n  blockquote{margin:14px 0;padding:12px 12px 12px 14px;border-left:3px solid #FF6B9D;background:rgba(255,255,255,0.03);border-radius:12px;color:rgba(255,255,255,0.72);font-style:italic;}\n  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:8px;font-size:13px;}\n  a{color:#06B6D4;text-decoration:none;}\n  img{max-width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.08);}\n  pre{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;overflow:auto;}\n</style></head><body><div class=\"wrap\">${bodyHtml}</div></body></html>`;
 }
 
+function documentBodyView(bodyHtml, body) {
+  if (bodyHtml) {
+    return (
+      <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+        <WebView
+          originWhitelist={['*']}
+          style={{ height: 520, backgroundColor: '#0A0A0F' }}
+          scrollEnabled={false}
+          source={{ html: buildDocumentHtml(bodyHtml) }}
+        />
+      </View>
+    );
+  }
+  const plainBody = body || 'No content.';
+  return (
+    <Text style={{ fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.85)' }} selectable>
+      {plainBody}
+    </Text>
+  );
+}
+
 async function shareDocument({ trainerName, title, body, trainerId, documentId }) {
   const result = await Share.share({
     message: `Check out this document from ${trainerName || 'your trainer'}: ${title}\n\n${body}`,
@@ -149,6 +170,7 @@ export default function DocumentViewer({
   }, [visible, trainerId, documentId, titleProp]);
 
   const handleShare = async () => {
+    // 1. Hand the title and body to the OS share sheet.
     try {
       await shareDocument({ trainerName, title, body, trainerId, documentId });
     } catch (error) {
@@ -157,6 +179,8 @@ export default function DocumentViewer({
   };
 
   const createdDateLabel = formatDocumentCreatedDate(createdAt || new Date());
+  const headingTitle = title || UNTITLED_DOCUMENT;
+  const trainerCreditName = trainerName || 'your trainer';
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -176,7 +200,7 @@ export default function DocumentViewer({
             <Ionicons name="chevron-back" size={24} color={'#fff'} />
           </TouchableOpacity>
           <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center' }} numberOfLines={1}>
-            {title || UNTITLED_DOCUMENT}
+            {headingTitle}
           </Text>
           <TouchableOpacity onPress={handleShare} style={{ padding: 4 }} hitSlop={12}>
             <Ionicons name="share-outline" size={22} color="rgba(255,255,255,0.5)" />
@@ -203,7 +227,7 @@ export default function DocumentViewer({
             showsVerticalScrollIndicator={true}
           >
             <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 12 }} selectable>
-              {title || UNTITLED_DOCUMENT}
+              {headingTitle}
             </Text>
             <View
               style={{
@@ -212,23 +236,10 @@ export default function DocumentViewer({
                 marginVertical: 12,
               }}
             />
-            {bodyHtml ? (
-              <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                <WebView
-                  originWhitelist={['*']}
-                  style={{ height: 520, backgroundColor: '#0A0A0F' }}
-                  scrollEnabled={false}
-                  source={{ html: buildDocumentHtml(bodyHtml) }}
-                />
-              </View>
-            ) : (
-              <Text style={{ fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.85)' }} selectable>
-                {body || 'No content.'}
-              </Text>
-            )}
+            {documentBodyView(bodyHtml, body)}
             <View style={{ marginTop: 24, alignItems: 'center' }}>
               <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
-                Shared by {trainerName || 'your trainer'} on {createdDateLabel}
+                Shared by {trainerCreditName} on {createdDateLabel}
               </Text>
             </View>
           </ScrollView>

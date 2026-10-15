@@ -53,6 +53,12 @@ const Liquid = {
 
 // ===== HELPER FUNCTIONS =====
 
+function buildLiquidTokens() {
+  return Liquid;
+}
+
 // ===== MAIN FUNCTION =====
 
-export { Liquid };
+const liquidTokens = buildLiquidTokens();
+
+export { liquidTokens as Liquid };

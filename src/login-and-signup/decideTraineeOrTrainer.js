@@ -1,32 +1,73 @@
 // Pure decision helpers LoginGate uses to answer "who is this user and where do they go?".
 // Flow: normalize the role string → decide if onboarding is still owed → detect brand-new accounts → cache/sanitize the local profile copy.
-// Kept free of React and Firebase imports so each rule can be unit-tested on its own.
-// Key exports: normalizeAppRole, profileNeedsOnboarding, isLikelyNewFirebaseUser, getProfileCacheKey,
-//              CLIENT_RESTRICTED_USER_DOC_FIELDS, omitRestrictedUserDocFields, cachePendingSignupProfile
+// Used by login/signup routing. Kept free of React and Firebase imports so each rule can be unit-tested on its own.
 
 // ===== NAMED CONSTANTS =====
 
 const TRAINER_ROLE = 'trainer';
 const CLIENT_ROLE = 'client';
 const GOOGLE_AUTH_PROVIDER = 'google';
+const DAYS_PER_WEEK = 7;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MILLISECONDS_PER_SECOND = 1000;
+const FIRST_SESSION_MINUTES = 3;
 // Manipulate here: a flagless Google account only counts as new inside this window.
-const NEW_GOOGLE_ACCOUNT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const NEW_GOOGLE_ACCOUNT_WINDOW_MS =
+  DAYS_PER_WEEK * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
 // Manipulate here: first sign-in timestamps this close together mean the account was just created.
-const FIRST_SESSION_WINDOW_MS = 3 * 60 * 1000;
+const FIRST_SESSION_WINDOW_MS =
+  FIRST_SESSION_MINUTES * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+const PROFILE_CACHE_PREFIX = 'auth_profile_';
+
+// Fields on users/{uid} that firestore.rules refuses to let a client write — they're set server-side
+// because they control access (what role you have, which trainer you're linked to).
+// Manipulate here: this list must stay in sync with firestore.rules; adding a field here without
+// changing the rules (or vice versa) causes silent permission-denied writes.
+export const CLIENT_RESTRICTED_USER_DOC_FIELDS = ['role', 'trainerId', 'linked'];
 
 // ===== HELPER FUNCTIONS =====
 
-// Role values arrive from several places (Firestore, cached JSON, signup form) with inconsistent
-// casing/whitespace. Everything funnels through here so routing compares one clean value.
-// Manipulate here: 'client' is the safe default — an unknown role must never fall into trainer tools.
+function isOnboardingMarkedComplete(onboardingCompletedFlag) {
+  return onboardingCompletedFlag === true || onboardingCompletedFlag === 'true' || onboardingCompletedFlag === 1;
+}
+
+function isOnboardingMarkedIncomplete(onboardingCompletedFlag) {
+  return onboardingCompletedFlag === false || onboardingCompletedFlag === 'false' || onboardingCompletedFlag === 0;
+}
+
+function isRecentFlaglessGoogleSignup(profile) {
+  if (profile.authProvider !== GOOGLE_AUTH_PROVIDER) return false;
+  if (profile.onboardingCompletedAt) return false;
+  if (!profile.createdAt) return false;
+  const createdMs = new Date(profile.createdAt).getTime();
+  // vocab: Number.isFinite = guards against an unparseable date, which gives NaN and would make
+  // the comparison below quietly false.
+  return Number.isFinite(createdMs) && Date.now() - createdMs < NEW_GOOGLE_ACCOUNT_WINDOW_MS;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Role values arrive from several places (Firestore, cached JSON, signup form) with inconsistent
+ * casing/whitespace. Everything funnels through here so routing compares one clean value.
+ * Manipulate here: 'client' is the safe default — an unknown role must never fall into trainer tools.
+ * @param {string|null|undefined} role
+ * @returns {string}
+ */
 export function normalizeAppRole(role) {
   return String(role || '').toLowerCase().trim() === TRAINER_ROLE ? TRAINER_ROLE : CLIENT_ROLE;
 }
 
-// Should we push this user into the onboarding wizard?
-// The guiding rule: only force onboarding when the profile explicitly says it's incomplete. A MISSING
-// flag means a legacy account created before we tracked onboarding — those people already use the
-// app, and dumping them back into the wizard would be a bug, so absence defaults to "no".
+/**
+ * Should we push this user into the onboarding wizard?
+ * Only force onboarding when the profile explicitly says it's incomplete. A MISSING
+ * flag means a legacy account created before we tracked onboarding — those people already use the
+ * app, and dumping them back into the wizard would be a bug, so absence defaults to "no".
+ * @param {object|null|undefined} profile
+ * @returns {boolean}
+ */
 export function profileNeedsOnboarding(profile) {
   // No profile loaded yet → don't assume anything; the caller will retry once Firestore answers.
   if (!profile || typeof profile !== 'object') return false;
@@ -37,35 +78,26 @@ export function profileNeedsOnboarding(profile) {
   // The flag has been written as a boolean, a string, and a number across app versions, so accept
   // all three spellings of true/false rather than trusting one type.
   const onboardingCompletedFlag = profile.onboardingCompleted;
-  if (onboardingCompletedFlag === true || onboardingCompletedFlag === 'true' || onboardingCompletedFlag === 1) return false;
-  if (onboardingCompletedFlag === false || onboardingCompletedFlag === 'false' || onboardingCompletedFlag === 0) return true;
+  if (isOnboardingMarkedComplete(onboardingCompletedFlag)) return false;
+  if (isOnboardingMarkedIncomplete(onboardingCompletedFlag)) return true;
 
   // Rescue case for Google sign-up: the account exists in Firebase Auth before our wizard writes any
   // flag, so a fresh Google user can legitimately have no onboarding field at all. We only treat that
   // as "needs onboarding" if the account is recent — an old Google account with no flag is a legacy
   // user who should be left alone.
-  if (
-    profile.authProvider === GOOGLE_AUTH_PROVIDER &&
-    !profile.onboardingCompletedAt &&
-    profile.createdAt
-  ) {
-    const createdMs = new Date(profile.createdAt).getTime();
-    // vocab: Number.isFinite = guards against an unparseable date, which gives NaN and would make
-    // the comparison below quietly false.
-    // Manipulate here: 7 * 24 * 60 * 60 * 1000 = 7 days in milliseconds — the window where a
-    // flagless Google account still counts as "new". Shorten it to be more conservative.
-    const recent =
-      Number.isFinite(createdMs) && Date.now() - createdMs < NEW_GOOGLE_ACCOUNT_WINDOW_MS;
-    if (recent) return true;
-  }
+  if (isRecentFlaglessGoogleSignup(profile)) return true;
 
   return false;
 }
 
-// Was this account created just now, in this same session?
-// Why it matters: the auth listener fires the instant Firebase creates the user, which can be BEFORE
-// our Firestore profile document exists. Without this check the app sees "no profile" and treats a
-// brand-new signup like a broken account.
+/**
+ * Was this account created just now, in this same session?
+ * Why it matters: the auth listener fires the instant Firebase creates the user, which can be BEFORE
+ * our Firestore profile document exists. Without this check the app sees "no profile" and treats a
+ * brand-new signup like a broken account.
+ * @param {object|null|undefined} firebaseUser
+ * @returns {boolean}
+ */
 export function isLikelyNewFirebaseUser(firebaseUser) {
   // vocab: metadata = Firebase's record of when this account was created and last signed in.
   if (!firebaseUser?.metadata) return false;
@@ -75,8 +107,6 @@ export function isLikelyNewFirebaseUser(firebaseUser) {
     if (!Number.isFinite(created) || !Number.isFinite(lastSignIn)) return false;
     // On a first-ever sign-in these two timestamps are nearly identical; on a returning user they're
     // far apart. Math.abs because clock skew can order them either way.
-    // Manipulate here: 3 * 60 * 1000 = a 3-minute window. Wider = more returning users misread as
-    // new; narrower = slow signups on bad networks get missed.
     return Math.abs(lastSignIn - created) < FIRST_SESSION_WINDOW_MS;
   } catch {
     // Unparseable metadata — fall back to "not new", the safer answer since it just means we wait
@@ -85,35 +115,43 @@ export function isLikelyNewFirebaseUser(firebaseUser) {
   }
 }
 
-// One naming scheme for the per-user cached profile in AsyncStorage. Keying by uid is what keeps two
-// accounts on the same device from reading each other's cached profile.
+/**
+ * One naming scheme for the per-user cached profile in AsyncStorage. Keying by uid is what keeps two
+ * accounts on the same device from reading each other's cached profile.
+ * @param {string} uid
+ * @returns {string}
+ */
 export function getProfileCacheKey(uid) {
-  return `auth_profile_${uid}`;
+  return `${PROFILE_CACHE_PREFIX}${uid}`;
 }
 
-// Fields on users/{uid} that firestore.rules refuses to let a client write — they're set server-side
-// because they control access (what role you have, which trainer you're linked to).
-// Manipulate here: this list must stay in sync with firestore.rules; adding a field here without
-// changing the rules (or vice versa) causes silent permission-denied writes.
-export const CLIENT_RESTRICTED_USER_DOC_FIELDS = ['role', 'trainerId', 'linked'];
-
-// Strips those protected fields before a client-side write, so an update that happens to carry a
-// cached `role` doesn't get the whole write rejected by the security rules.
+/**
+ * Strips protected fields before a client-side write, so an update that happens to carry a
+ * cached `role` doesn't get the whole write rejected by the security rules.
+ * @param {object|null|undefined} data
+ * @returns {object|null|undefined}
+ */
 export function omitRestrictedUserDocFields(data) {
   if (!data || typeof data !== 'object') return data;
   // vocab/symbol: { ...data } = shallow copy, so we delete from our copy and never mutate the
   // caller's object (which may still be React state elsewhere).
-  const out = { ...data };
+  const fieldsWithoutRestricted = { ...data };
   for (const key of CLIENT_RESTRICTED_USER_DOC_FIELDS) {
-    delete out[key];
+    delete fieldsWithoutRestricted[key];
   }
-  return out;
+  return fieldsWithoutRestricted;
 }
 
-// Remembers the role a user picked at signup, locally, for the gap between "account created" and
-// "server onboarding writes role onto the user doc". Without this the app briefly doesn't know
-// whether to show client or trainer onboarding and defaults everyone to client.
-// `storage` is injected (rather than importing AsyncStorage) so tests can pass a fake.
+/**
+ * Remembers the role a user picked at signup, locally, for the gap between "account created" and
+ * "server onboarding writes role onto the user doc". Without this the app briefly doesn't know
+ * whether to show client or trainer onboarding and defaults everyone to client.
+ * `storage` is injected (rather than importing AsyncStorage) so tests can pass a fake.
+ * @param {string} uid
+ * @param {string} role
+ * @param {{ setItem?: Function }} storage
+ * @returns {Promise<void>}
+ */
 export async function cachePendingSignupProfile(uid, role, storage) {
   if (!uid || !storage?.setItem) return;
   const payload = {

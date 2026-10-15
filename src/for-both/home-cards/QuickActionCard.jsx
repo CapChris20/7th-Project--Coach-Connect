@@ -1,17 +1,13 @@
-/**
- * Quick Action Card
- *
- * Purpose: UI screen or component: Quick Action Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: QuickActionCard
- *
- * @file-header
- */
+// Horizontal quick-action tile — centered icon, gradient rim, gradient CTA.
+// Flow: pick dark/light paint → optional badge → icon → label/subtitle → CTA pill.
+// Used by: home screens for shortcuts (messages, marketplace, workouts).
+
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+
+// ===== NAMED CONSTANTS =====
 
 /** Dark purple → dark orange (matches Today card & Training Agenda). */
 const BORDER_GRADIENT = ['#6D28D9', '#C2410C'];
@@ -20,52 +16,105 @@ const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
 const BG_GRADIENT_LIGHT = ['#F3F0FA', '#FFFFFF'];
 const ACCENT_ORANGE = '#C2410C';
 const ACCENT_PURPLE = '#9333EA';
+const DEFAULT_ICON = 'flash-outline';
+const DEFAULT_CTA_LABEL = 'View all';
+const DEFAULT_WIDTH = 216;
+// Manipulate here: badge digits stop at 99+.
+const BADGE_CAP = 99;
+const BADGE_OVERFLOW_LABEL = '99+';
+const GRADIENT_TOP = { x: 0, y: 0 };
+const GRADIENT_BOTTOM = { x: 0, y: 1 };
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * Premium horizontal quick-action tile — centered icon, gradient rim, gradient CTA.
+ * @param {boolean} isDark
+ */
+function quickActionColors(isDark) {
+  return {
+    innerBackground: isDark ? '#0A0812' : '#FFFFFF',
+    headlineColor: isDark ? '#FFFFFF' : '#0A0A0F',
+    subColor: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.52)',
+    iconInnerBackground: isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)',
+    iconColor: isDark ? '#FED7AA' : '#6D28D9',
+    backgroundGradient: isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT,
+    hairline: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
+  };
+}
+
+/**
+ * Badge shows the raw count until 99, then "99+".
+ * @param {number} badgeCount
+ * @returns {string|number}
+ */
+function badgeLabel(badgeCount) {
+  if (badgeCount > BADGE_CAP) return BADGE_OVERFLOW_LABEL;
+  return badgeCount;
+}
+
+/**
+ * Spoken label for VoiceOver / TalkBack when the parent did not pass one.
+ * @param {string} label
+ * @param {string} subtitle
+ * @param {string} ctaLabel
+ * @returns {string}
+ */
+function defaultAccessibilityLabel(label, subtitle, ctaLabel) {
+  return `${label}. ${subtitle}. ${ctaLabel}`;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Premium horizontal quick-action tile.
+ * @param {{ isDark?: boolean, label: string, subtitle: string, icon?: string, ctaLabel?: string, onPress?: Function, width?: number, badgeCount?: number, style?: object, accessibilityLabel?: string }} props
  */
 export default function QuickActionCard({
   isDark = true,
   label,
   subtitle,
-  icon = 'flash-outline',
-  ctaLabel = 'View all',
+  icon = DEFAULT_ICON,
+  ctaLabel = DEFAULT_CTA_LABEL,
   onPress,
-  width = 216,
+  width = DEFAULT_WIDTH,
   badgeCount,
   style,
   accessibilityLabel,
 }) {
-  const innerBg = isDark ? '#0A0812' : '#FFFFFF';
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.52)';
-  const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
-  const iconColor = isDark ? '#FED7AA' : '#6D28D9';
-  const bgGradient = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
-  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)';
+  const colors = quickActionColors(isDark);
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
+  const spokenLabel = accessibilityLabel || defaultAccessibilityLabel(label, subtitle, ctaLabel);
 
+  // 1. Dark vs light paint, and a spoken label if the parent did not pass one.
+  // 2. Paint the tile. The badge only appears when badgeCount is a number above 0.
   return (
     <TouchableOpacity
       activeOpacity={0.92}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel || `${label}. ${subtitle}. ${ctaLabel}`}
+      accessibilityLabel={spokenLabel}
       style={[{ width, marginRight: 12 }, style]}
     >
       <View
         style={[
           styles.borderRing,
           isDark ? styles.shadowDark : styles.shadowLight,
-          { borderWidth: 1, borderColor: hairline, padding: 0, backgroundColor: innerBg },
+          { borderWidth: 1, borderColor: colors.hairline, padding: 0, backgroundColor: colors.innerBackground },
         ]}
       >
         <View style={styles.innerClip}>
-          <LinearGradient colors={bgGradient} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.fill}>
+          <LinearGradient
+            colors={colors.backgroundGradient}
+            start={GRADIENT_TOP}
+            end={GRADIENT_BOTTOM}
+            style={styles.fill}
+          >
             <View style={styles.body}>
               {showBadge ? (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+                  <Text style={styles.badgeText}>{badgeLabel(badgeCount)}</Text>
                 </View>
               ) : null}
 
@@ -75,29 +124,29 @@ export default function QuickActionCard({
                     styles.iconRing,
                     {
                       borderWidth: 1,
-                      borderColor: hairline,
+                      borderColor: colors.hairline,
                       padding: 0,
-                      backgroundColor: iconInnerBg,
+                      backgroundColor: colors.iconInnerBackground,
                     },
                   ]}
                 >
                   <View style={[styles.iconInner, { backgroundColor: 'transparent' }]}>
-                    <Ionicons name={icon} size={26} color={iconColor} />
+                    <Ionicons name={icon} size={26} color={colors.iconColor} />
                   </View>
                 </View>
               </View>
 
-              <Text style={[styles.title, { color: headlineColor }]} numberOfLines={2}>
+              <Text style={[styles.title, { color: colors.headlineColor }]} numberOfLines={2}>
                 {label}
               </Text>
-              <Text style={[styles.sub, { color: subColor }]} numberOfLines={2}>
+              <Text style={[styles.sub, { color: colors.subColor }]} numberOfLines={2}>
                 {subtitle}
               </Text>
 
               <LinearGradient
                 colors={CTA_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                start={GRADIENT_LEFT}
+                end={GRADIENT_RIGHT}
                 style={styles.ctaPill}
               >
                 <View style={styles.ctaInner}>

@@ -1,6 +1,13 @@
-// Scroll body of the weekly report: stats, sleep chart, trainer snapshot, daily rows, wins.
-// Flow: pick the week → render the grid and chart → list logged days → tuck skipped days behind a toggle.
-// Used by WeeklyReportScreen once Firestore weeks are loaded.
+// WeeklyReportBody.jsx
+//
+// This is the scrollable middle of the weekly report: sleep/water/steps/calories cards,
+// the sleep chart, trainer tips, each day the client logged, and wins vs things to work on.
+// It does not talk to the database. WeeklyReportScreen already loaded the weeks and passes them in.
+//
+// How to read this file:
+//   1. Small pieces (labels, glow, sleep card, skipped days)
+//   2. WeeklyReportScrollLayout — the whole screen laid out
+//   3. WeeklyReportBody at the bottom — only remembers what you tapped (popup open, skipped days open)
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
@@ -24,21 +31,25 @@ const DARK_MODE = 'dark';
 
 // ===== HELPER FUNCTIONS =====
 
-function isDarkMode(mode) {
-  return mode === DARK_MODE;
+function reportIsUsingDarkColors(colorMode) {
+  return colorMode === DARK_MODE;
 }
 
-function checkInCountLabel(checkedDayCount) {
-  const pluralSuffix = checkedDayCount === 1 ? '' : 's';
-  return `${checkedDayCount} check-in${pluralSuffix} logged`;
+function checkInCountLabel(loggedDayCount) {
+  if (loggedDayCount === 1) {
+    return '1 check-in logged';
+  }
+  return `${loggedDayCount} check-ins logged`;
 }
 
 function skippedDayCountLabel(skippedDayCount) {
-  const pluralSuffix = skippedDayCount > 1 ? 's' : '';
-  return `${skippedDayCount} day${pluralSuffix} without check-in`;
+  if (skippedDayCount === 1) {
+    return '1 day without check-in';
+  }
+  return `${skippedDayCount} days without check-in`;
 }
 
-// "2026-03-15" → "03/15". Only the first hyphen is replaced, matching the old label.
+// Turns a stored date like "2026-03-15" into "03/15" so a skipped-day row can show the month and day.
 function formatSkippedMonthDay(dateKey) {
   return dateKey.slice(5).replace('-', '/');
 }
@@ -66,22 +77,24 @@ function DarkModeGlow() {
   );
 }
 
-function SleepTrendCard({ week, colors, mode }) {
+function SleepTrendCard({ week, colors, colorMode }) {
+  const usingDarkColors = reportIsUsingDarkColors(colorMode);
+  const cardBackgroundColor = usingDarkColors ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)';
+  const cardStyle = [
+    styles.chartCard,
+    { backgroundColor: cardBackgroundColor, borderColor: colors.border },
+  ];
+  const smallLabelStyle = [styles.sectionLabel, { color: colors.textMuted }];
+  const titleStyle = [styles.sectionTitle, { color: colors.textPrimary }];
+  const legendTextStyle = [styles.legendText, { color: colors.textSecondary }];
+
   return (
-    <View
-      style={[
-        styles.chartCard,
-        {
-          backgroundColor: isDarkMode(mode) ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)',
-          borderColor: colors.border,
-        },
-      ]}
-    >
+    <View style={cardStyle}>
       <BlurView intensity={25} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
       <View style={styles.chartHeader}>
         <View>
-          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>SLEEP TREND</Text>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>This week</Text>
+          <Text style={smallLabelStyle}>SLEEP TREND</Text>
+          <Text style={titleStyle}>This week</Text>
         </View>
         <View style={styles.legendChip}>
           <View style={styles.legendDot}>
@@ -92,7 +105,7 @@ function SleepTrendCard({ week, colors, mode }) {
               end={{ x: 1, y: 1 }}
             />
           </View>
-          <Text style={[styles.legendText, { color: colors.textSecondary }]}>Hours / night</Text>
+          <Text style={legendTextStyle}>Hours / night</Text>
         </View>
       </View>
       <WeeklyChart
@@ -105,63 +118,214 @@ function SleepTrendCard({ week, colors, mode }) {
   );
 }
 
-function SkippedDaysSection({ skippedDays, isShowingSkipped, onToggleSkipped, colors, mode }) {
-  if (skippedDays.length === 0) return null;
+function SkippedDayRow({ skippedDay, colors }) {
+  const rowStyle = [styles.skippedRow, { borderColor: colors.border }];
+  const dayNameStyle = [styles.skippedDay, { color: colors.textSecondary }];
+  const noLogStyle = [styles.skippedHint, { color: colors.textMuted }];
+  const dayName = skippedDay.fullDayName || skippedDay.dayName;
+  const monthAndDay = formatSkippedMonthDay(skippedDay.date);
+
+  return (
+    <View style={rowStyle}>
+      <Text style={dayNameStyle}>{dayName} · {monthAndDay}</Text>
+      <Text style={noLogStyle}>No log</Text>
+    </View>
+  );
+}
+
+function SkippedDaysSection({ skippedDays, skippedListIsOpen, onToggleSkippedList, colors, colorMode }) {
+  if (skippedDays.length === 0) {
+    return null;
+  }
+
+  const usingDarkColors = reportIsUsingDarkColors(colorMode);
+  const buttonBackgroundColor = usingDarkColors ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
+  const buttonStyle = [
+    styles.skippedToggle,
+    { backgroundColor: buttonBackgroundColor, borderColor: colors.border },
+  ];
+  const buttonLabelStyle = [styles.skippedText, { color: colors.textSecondary }];
+  const buttonLabel = skippedDayCountLabel(skippedDays.length);
+  const arrowIconName = skippedListIsOpen ? 'chevron-up' : 'chevron-down';
 
   return (
     <View>
-      <Pressable
-        testID="toggle-skipped"
-        onPress={onToggleSkipped}
-        style={[
-          styles.skippedToggle,
-          {
-            backgroundColor: isDarkMode(mode) ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-            borderColor: colors.border,
-          },
-        ]}
-      >
+      <Pressable testID="toggle-skipped" onPress={onToggleSkippedList} style={buttonStyle}>
         <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-        <Text style={[styles.skippedText, { color: colors.textSecondary }]}>
-          {skippedDayCountLabel(skippedDays.length)}
-        </Text>
-        <Ionicons
-          name={isShowingSkipped ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={colors.textMuted}
-        />
+        <Text style={buttonLabelStyle}>{buttonLabel}</Text>
+        <Ionicons name={arrowIconName} size={14} color={colors.textMuted} />
       </Pressable>
-      {isShowingSkipped && (
+      {skippedListIsOpen ? (
         <View style={styles.skippedList}>
           {skippedDays.map((skippedDay) => (
-            <View
-              key={skippedDay.date}
-              style={[styles.skippedRow, { borderColor: colors.border }]}
-            >
-              <Text style={[styles.skippedDay, { color: colors.textSecondary }]}>
-                {skippedDay.fullDayName || skippedDay.dayName} · {formatSkippedMonthDay(skippedDay.date)}
-              </Text>
-              <Text style={[styles.skippedHint, { color: colors.textMuted }]}>No log</Text>
-            </View>
+            <SkippedDayRow key={skippedDay.date} skippedDay={skippedDay} colors={colors} />
           ))}
         </View>
-      )}
+      ) : null}
+    </View>
+  );
+}
+
+function AverageStatCards({ week, colorMode }) {
+  const sleep = week.stats.display.sleep;
+  const water = week.stats.display.water;
+  const steps = week.stats.display.steps;
+  const calories = week.stats.display.calories;
+
+  return (
+    <View key={`stats-${week.id}-${colorMode}`} style={styles.statsGrid}>
+      <StatCard
+        testID="stat-card-sleep"
+        label="Avg Sleep"
+        value={sleep}
+        suffix="h"
+        trend={week.stats.sleepTrend}
+        icon="moon"
+        gradient={GRADIENTS.g1}
+      />
+      <StatCard
+        testID="stat-card-water"
+        label="Avg Water"
+        value={water}
+        suffix="oz"
+        trend={week.stats.waterTrend}
+        icon="water"
+        gradient={GRADIENTS.g4}
+      />
+      <StatCard
+        testID="stat-card-steps"
+        label="Avg Steps"
+        value={steps}
+        trend={week.stats.stepsTrend}
+        icon="footsteps"
+        gradient={GRADIENTS.g3}
+      />
+      <StatCard
+        testID="stat-card-calories"
+        label="Avg Calories"
+        value={calories}
+        suffix="cal"
+        trend={week.stats.caloriesTrend}
+        icon="restaurant"
+        gradient={GRADIENTS.g3}
+      />
+    </View>
+  );
+}
+
+// ===== SCREEN LAYOUT (what the user sees — read this first) =====
+
+// Lays out the whole report you scroll: week arrows, the four stat cards, sleep chart,
+// trainer tips, each logged day, skipped days, and the export popup.
+// It does not load anything. WeeklyReportBody (below) hands it a week that is already ready.
+function WeeklyReportScrollLayout({
+  week,
+  weeks,
+  weekIndex,
+  colors,
+  colorMode,
+  clientDisplayName,
+  loggedDays,
+  skippedDays,
+  skippedListIsOpen,
+  onToggleSkippedList,
+  onPreviousWeek,
+  onNextWeek,
+  onOpenSettings,
+  onCloseSettings,
+  settingsPopupIsOpen,
+  onExport,
+  contentBottomPad,
+}) {
+  const usingDarkColors = reportIsUsingDarkColors(colorMode);
+  const phoneStatusBarStyle = usingDarkColors ? 'light' : 'dark';
+  const screenStyle = [styles.root, { backgroundColor: colors.background }];
+  const canGoToOlderWeek = weekIndex < weeks.length - 1;
+  const canGoToNewerWeek = weekIndex > 0;
+  const scrollContentStyle = [styles.scrollContent, { paddingBottom: contentBottomPad }];
+  const clientNameStyle = [styles.clientLine, { color: colors.textSecondary }];
+  const smallLabelStyle = [styles.sectionLabel, { color: colors.textMuted }];
+  const titleStyle = [styles.sectionTitle, { color: colors.textPrimary }];
+  const loggedDayHeading = checkInCountLabel(loggedDays.length);
+
+  return (
+    <View style={screenStyle} testID="weekly-report-screen">
+      <StatusBar style={phoneStatusBarStyle} />
+
+      <LinearGradient
+        colors={colors.backgroundGradient}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+
+      {usingDarkColors ? <DarkModeGlow /> : null}
+
+      <WeekPicker
+        label={week.label}
+        canPrev={canGoToOlderWeek}
+        canNext={canGoToNewerWeek}
+        onPrev={onPreviousWeek}
+        onNext={onNextWeek}
+        onSettings={onOpenSettings}
+      />
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={scrollContentStyle}
+        showsVerticalScrollIndicator={false}
+      >
+        {clientDisplayName ? (
+          <Text style={clientNameStyle}>{`${clientDisplayName}'s week`}</Text>
+        ) : null}
+
+        <AverageStatCards week={week} colorMode={colorMode} />
+
+        <View key={`chart-${week.id}-${colorMode}`} style={styles.section}>
+          <SleepTrendCard week={week} colors={colors} colorMode={colorMode} />
+        </View>
+
+        <TrainerTipsForWeek week={week} />
+
+        <View key={`days-${week.id}-${colorMode}`} style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={smallLabelStyle}>DAILY BREAKDOWN</Text>
+              <Text style={titleStyle}>{loggedDayHeading}</Text>
+            </View>
+          </View>
+
+          {loggedDays.map((day, dayIndex) => (
+            <DayCard key={day.date || `day-${dayIndex}`} day={day} index={dayIndex} />
+          ))}
+
+          <SkippedDaysSection
+            skippedDays={skippedDays}
+            skippedListIsOpen={skippedListIsOpen}
+            onToggleSkippedList={onToggleSkippedList}
+            colors={colors}
+            colorMode={colorMode}
+          />
+        </View>
+
+        <WinsAndWorkOnsSection week={week} animationKey={`coaching-${week.id}-${colorMode}`} />
+      </ScrollView>
+
+      <ReportOptionsPopup
+        visible={settingsPopupIsOpen}
+        onClose={onCloseSettings}
+        onExport={onExport}
+      />
     </View>
   );
 }
 
 // ===== MAIN FUNCTION =====
+// (week index + “show skipped days” toggles — read this last; WeeklyReportScrollLayout above is the UI)
 
-/**
- * Weekly report scroll body.
- * @param {object} props
- * @param {object[]} props.weeks
- * @param {number} props.weekIndex
- * @param {Function} props.onWeekIndexChange
- * @param {string} [props.clientName]
- * @param {Function} [props.onExport]
- * @param {number} [props.contentBottomPad]
- */
+// What other screens import. It only remembers two taps:
+// whether the options popup is open, and whether the skipped-days list is open.
+// Then it sends the current week plus those taps up to WeeklyReportScrollLayout.
 export function WeeklyReportBody({
   weeks,
   weekIndex,
@@ -171,145 +335,61 @@ export function WeeklyReportBody({
   contentBottomPad = 32,
 }) {
   const { colors, mode } = useTheme();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isShowingSkipped, setIsShowingSkipped] = useState(false);
+  const [settingsPopupIsOpen, setSettingsPopupIsOpen] = useState(false);
+  const [skippedListIsOpen, setSkippedListIsOpen] = useState(false);
 
   const week = weeks[weekIndex];
-  if (!week) return null;
+  if (!week) {
+    return null;
+  }
 
-  const checkedDays = week.loggedDays || [];
+  const loggedDays = week.loggedDays || [];
   const skippedDays = week.skippedDays || [];
-  const displayName = clientName || week.clientName || '';
+  const clientDisplayName = clientName || week.clientName || '';
+  const olderWeekExists = weekIndex < weeks.length - 1;
+  const newerWeekExists = weekIndex > 0;
 
-  // Weeks are newest-first, so "previous" walks toward older weeks (a higher index).
-  const handlePreviousWeek = () => {
-    if (weekIndex < weeks.length - 1) onWeekIndexChange(weekIndex + 1);
-  };
-  const handleNextWeek = () => {
-    if (weekIndex > 0) onWeekIndexChange(weekIndex - 1);
-  };
+  function showOlderWeek() {
+    if (olderWeekExists) {
+      onWeekIndexChange(weekIndex + 1);
+    }
+  }
+
+  function showNewerWeek() {
+    if (newerWeekExists) {
+      onWeekIndexChange(weekIndex - 1);
+    }
+  }
+
+  function openSkippedDayList() {
+    const listIsCurrentlyOpen = skippedListIsOpen;
+    setSkippedListIsOpen(!listIsCurrentlyOpen);
+  }
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]} testID="weekly-report-screen">
-      <StatusBar style={isDarkMode(mode) ? 'light' : 'dark'} />
-
-      <LinearGradient
-        colors={colors.backgroundGradient}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-
-      {isDarkMode(mode) && <DarkModeGlow />}
-
-      <WeekPicker
-        label={week.label}
-        canPrev={weekIndex < weeks.length - 1}
-        canNext={weekIndex > 0}
-        onPrev={handlePreviousWeek}
-        onNext={handleNextWeek}
-        onSettings={() => setIsSettingsOpen(true)}
-      />
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPad }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {displayName ? (
-          <Text style={[styles.clientLine, { color: colors.textSecondary }]}>
-            {displayName}&apos;s week
-          </Text>
-        ) : null}
-
-        <View
-          key={`stats-${week.id}-${mode}`}
-          style={styles.statsGrid}
-        >
-          <StatCard
-            testID="stat-card-sleep"
-            label="Avg Sleep"
-            value={week.stats.display.sleep}
-            suffix="h"
-            trend={week.stats.sleepTrend}
-            icon="moon"
-            gradient={GRADIENTS.g1}
-          />
-          <StatCard
-            testID="stat-card-water"
-            label="Avg Water"
-            value={week.stats.display.water}
-            suffix="oz"
-            trend={week.stats.waterTrend}
-            icon="water"
-            gradient={GRADIENTS.g4}
-          />
-          <StatCard
-            testID="stat-card-steps"
-            label="Avg Steps"
-            value={week.stats.display.steps}
-            trend={week.stats.stepsTrend}
-            icon="footsteps"
-            gradient={GRADIENTS.g3}
-          />
-          <StatCard
-            testID="stat-card-calories"
-            label="Avg Calories"
-            value={week.stats.display.calories}
-            suffix="cal"
-            trend={week.stats.caloriesTrend}
-            icon="restaurant"
-            gradient={GRADIENTS.g3}
-          />
-        </View>
-
-        <View
-          key={`chart-${week.id}-${mode}`}
-          style={styles.section}
-        >
-          <SleepTrendCard week={week} colors={colors} mode={mode} />
-        </View>
-
-        <TrainerTipsForWeek week={week} />
-
-        <View
-          key={`days-${week.id}-${mode}`}
-          style={styles.section}
-        >
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>DAILY BREAKDOWN</Text>
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                {checkInCountLabel(checkedDays.length)}
-              </Text>
-            </View>
-          </View>
-
-          {checkedDays.map((day, dayIndex) => (
-            <DayCard key={day.date || `day-${dayIndex}`} day={day} index={dayIndex} />
-          ))}
-
-          <SkippedDaysSection
-            skippedDays={skippedDays}
-            isShowingSkipped={isShowingSkipped}
-            onToggleSkipped={() => setIsShowingSkipped((previous) => !previous)}
-            colors={colors}
-            mode={mode}
-          />
-        </View>
-
-        <WinsAndWorkOnsSection week={week} animationKey={`coaching-${week.id}-${mode}`} />
-      </ScrollView>
-
-      <ReportOptionsPopup
-        visible={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onExport={onExport}
-      />
-    </View>
+    <WeeklyReportScrollLayout
+      week={week}
+      weeks={weeks}
+      weekIndex={weekIndex}
+      colors={colors}
+      colorMode={mode}
+      clientDisplayName={clientDisplayName}
+      loggedDays={loggedDays}
+      skippedDays={skippedDays}
+      skippedListIsOpen={skippedListIsOpen}
+      onToggleSkippedList={openSkippedDayList}
+      onPreviousWeek={showOlderWeek}
+      onNextWeek={showNewerWeek}
+      onOpenSettings={() => setSettingsPopupIsOpen(true)}
+      onCloseSettings={() => setSettingsPopupIsOpen(false)}
+      settingsPopupIsOpen={settingsPopupIsOpen}
+      onExport={onExport}
+      contentBottomPad={contentBottomPad}
+    />
   );
 }
 
+// Fixed sizes, spacing, and card shapes for the layout above — colors come from reportColorSettings.
 const styles = StyleSheet.create({
   root: { flex: 1 },
   orb: {

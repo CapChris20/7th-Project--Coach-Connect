@@ -1,13 +1,7 @@
-/**
- * trainer Overlay Screens
- *
- * Purpose: UI screen or component: trainer Overlay Screens. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: TrainerViewMyMyProfileScreen, TrainerSettingsScreen, TrainerHelpFAQScreen, TrainerTermsScreen, TrainerPrivacyScreen, TrainerContactSupportScreen, TrainerBugReportScreen, TrainerDailyFoodLogScreen
- *
- * @file-header
- */
+// Overlay screens the trainer stack opens from home: profile, settings, FAQ, coach, plans, earnings.
+// Flow: read the trainer shell → wrap the shared screen in AppNavigationProvider → pass the same back/nav handlers.
+// Used by the trainer navigator. Route name strings stay exactly as the stack registers them.
+
 import React from 'react';
 import { Alert, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
@@ -33,296 +27,401 @@ import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import { useSubscription } from '../../trainer-pro-plan/ProPlanSetup';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../../trainer-pro-plan/proPlanSwitches';
 
+// ===== NAMED CONSTANTS =====
+
+const USER_ROLE_TRAINER_PROFILE = 'Trainer';
+const USER_ROLE_TRAINER_SETTINGS = 'trainer';
+const SETTINGS_ROUTE = 'settings';
+const ACCESS_FREE_TRIAL = 'free_trial';
+const ACCESS_ACTIVE = 'active';
+const ACCESS_EXPIRED = 'expired';
+const ADDED_BY_TRAINER = 'trainer';
+const IOS_PLATFORM = 'ios';
+
+// ===== HELPER FUNCTIONS =====
+
 function withNav(children, shell) {
   return <AppNavigationProvider {...shell.navProviderProps}>{children}</AppNavigationProvider>;
 }
 
-export function TrainerViewMyMyProfileScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(
-    <ViewMyMyProfileScreen
-      onBack={s.rootGoBack}
-      userRole="Trainer"
-      userData={s.trainerProfileDoc || {}}
-      onboardingData={s.trainerProfileDoc || {}}
-      onNavigate={s.onNavigate}
-      onProfileSaved={s.refreshTrainerUserDoc}
-      onOpenPayments={s.openPayments}
-      trainerClientCount={s.clients?.length ?? 0}
-    />,
-    s,
-  );
-}
-
-export function TrainerSettingsScreen() {
-  const s = useTrainerAppStartShell();
-  const onNavigate = buildNavigateFromShell(s);
-  const subscriptionProps = useTrainerPlatformSubscriptionSettings();
-  return withNav(
-    <SettingsScreen
-      userRole="trainer"
-      onClose={s.rootGoBack}
-      onNavigate={onNavigate}
-      {...subscriptionProps}
-    />,
-    s,
-  );
-}
-
+/**
+ * Short label for Settings. Empty object when this build does not sell the iOS trainer plan.
+ * vocab: useSubscription = live Pro access from Firestore + StoreKit.
+ * @returns {object}
+ */
 function useTrainerPlatformSubscriptionSettings() {
   const { accessState, restorePurchases, actionLoading, firestoreSubscription } = useSubscription();
 
-  if (Platform.OS !== 'ios' || !TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) {
+  if (Platform.OS !== IOS_PLATFORM || !TRAINER_PLATFORM_SUBSCRIPTION_ENABLED) {
     return {};
   }
 
-  const statusLabel = (() => {
-    if (accessState.access === 'free_trial') return 'Free trial active';
-    if (accessState.access === 'active') return 'Pro — active';
-    if (accessState.access === 'expired') return 'Expired';
-    return 'No active subscription';
-  })();
-
   return {
-    platformSubscriptionStatus: statusLabel,
+    platformSubscriptionStatus: platformSubscriptionStatusLabel(accessState.access),
     platformSubscriptionProductId: firestoreSubscription?.productId || null,
     onRestorePurchases: restorePurchases,
     restorePurchasesLoading: actionLoading,
   };
 }
 
-export function TrainerHelpFAQScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<HelpFAQScreen onClose={s.rootGoBack} />, s);
+/**
+ * @param {string} access
+ * @returns {string}
+ */
+function platformSubscriptionStatusLabel(access) {
+  if (access === ACCESS_FREE_TRIAL) return 'Free trial active';
+  if (access === ACCESS_ACTIVE) return 'Pro — active';
+  if (access === ACCESS_EXPIRED) return 'Expired';
+  return 'No active subscription';
 }
 
-export function TrainerTermsScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<TermsOfServiceScreen onClose={s.rootGoBack} />, s);
+/**
+ * Dashboard client the workout tab is editing. Empty roster → no userId.
+ * @param {object} shell
+ * @returns {{ clientId: string|null, clientName: string }}
+ */
+function workoutTabClient(shell) {
+  const hasClients = shell.clients?.length > 0;
+  const clientId = hasClients
+    ? shell.selectedClientIdFromDashboard || shell.clients[0]?.id
+    : null;
+  const clientRow = clientId
+    ? shell.clients.find((client) => client.id === clientId)
+    : null;
+  const clientName = String(clientRow?.name || clientRow?.displayName || '').trim() || '';
+  return { clientId, clientName };
 }
 
-export function TrainerPrivacyScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<PrivacyPolicyScreen onClose={s.rootGoBack} />, s);
+function openConversationsList(shell) {
+  shell.setShowTrainerMessaging(false);
+  shell.setShowConversationsList(true);
 }
 
-export function TrainerContactSupportScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<ContactSupportScreen onClose={s.rootGoBack} />, s);
+function trainerChatSessionKey(aiChatState) {
+  return JSON.stringify({
+    sid: aiChatState.sessionId ?? null,
+    pf: aiChatState.prefill ?? null,
+  });
 }
 
-export function TrainerBugReportScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<BugReportScreen onClose={s.rootGoBack} />, s);
+function isOpenCoachConversation(aiChatState) {
+  return aiChatState != null && typeof aiChatState === 'object';
 }
 
-export function TrainerDailyFoodLogScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(
-    <DailyLogContent
-      onBack={s.handleHomePress}
-      onProfilePress={s.openProfile}
-      onSettingsPress={s.openSettings}
-      onHomePress={s.handleHomePress}
-      onPlusPress={() => {}}
-      onVoicePress={s.openVoiceAI}
-      onNutritionPress={() => {}}
-      onWorkoutPress={s.openWorkoutPlan}
-      onMessagesPress={() => {
-        s.setShowTrainerMessaging(false);
-        s.setShowConversationsList(true);
+function TrainerCoachConversation({ shell }) {
+  return (
+    <CoachConversationScreen
+      key={trainerChatSessionKey(shell.aiChatState)}
+      userId={shell.user?.uid}
+      prefill={shell.aiChatState.prefill}
+      sessionId={shell.aiChatState.sessionId}
+      enableHistorySidebar
+      hideBottomNav={false}
+      onSessionSwitch={(session) =>
+        shell.openAIChatSession({ sessionId: session.sessionId || session.id })
+      }
+      onNewChat={() => shell.openAIChatSession({})}
+      onBack={() => shell.setAiChatState('home')}
+      onHomePress={() => {
+        shell.handleHomePress();
+        shell.setAiChatState('home');
       }}
-    />,
-    s,
+      onPlusPress={shell.handlePlusPress}
+      onVoicePress={shell.openVoiceAI}
+      onNutritionPress={shell.openNutrition}
+      onWorkoutPress={shell.openWorkoutPlan}
+      onMessagesPress={() => shell.setShowConversationsList(true)}
+      onProfilePress={shell.openProfile}
+    />
   );
 }
 
+function TrainerCoachHome({ shell }) {
+  return (
+    <>
+      <VoiceCoachScreen
+        userId={shell.user?.uid}
+        hideBottomNav={false}
+        onStartChat={({ prefill } = {}) => shell.openAIChatSession({ prefill })}
+        onSessionPress={(session) =>
+          shell.openAIChatSession({ sessionId: session.sessionId || session.id })
+        }
+        onHomePress={shell.handleHomePress}
+        onPlusPress={shell.handlePlusPress}
+        onVoicePress={shell.openVoiceAI}
+        onNutritionPress={shell.openNutrition}
+        onWorkoutPress={shell.openWorkoutPlan}
+        onMessagesPress={() => shell.setShowConversationsList(true)}
+        onProfilePress={shell.openProfile}
+        navigation={{ navigate: () => {}, goBack: shell.handleHomePress }}
+      />
+      <AddFilePopup
+        visible={shell.showAddFilePopup}
+        onClose={() => shell.setShowAddFilePopup(false)}
+        onAdded={() => {
+          shell.setShowAddFilePopup(false);
+          shell.refreshClients?.();
+        }}
+        isDark={shell.isDark}
+        clientId={shell.addNotesFilesClientId}
+        addedBy={ADDED_BY_TRAINER}
+      />
+    </>
+  );
+}
+
+function closeManualPlanBuilder(shell) {
+  const returnTo = shell.manualBuilderReturnToAI;
+  shell.setManualPlanEditId(null);
+  shell.setManualPlanBuilderClientIds([]);
+  shell.setManualBuilderReturnToAI(false);
+  shell.rootGoBack();
+  if (returnTo && shell.day6Client?.id) {
+    shell.setShowAIWorkouts(true);
+    shell.setAiWorkoutsListKey((listKey) => listKey + 1);
+  }
+}
+
+function handleWorkoutPlanNavigate(shell, route) {
+  if (route === SETTINGS_ROUTE) {
+    shell.rootGoBack();
+    shell.openSettings();
+    return;
+  }
+  shell.handleHomePress();
+}
+
+function openWeeklyReportMessages(shell, clientId) {
+  shell.setSelectedClientIdForMessages(clientId);
+  shell.setShowTrainerMessaging(false);
+  shell.setShowConversationsList(true);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer's own profile, with trainer-role copy and payout entry.
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerViewMyMyProfileScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(
+    <ViewMyMyProfileScreen
+      onBack={shell.rootGoBack}
+      userRole={USER_ROLE_TRAINER_PROFILE}
+      userData={shell.trainerProfileDoc || {}}
+      onboardingData={shell.trainerProfileDoc || {}}
+      onNavigate={shell.onNavigate}
+      onProfileSaved={shell.refreshTrainerUserDoc}
+      onOpenPayments={shell.openPayments}
+      trainerClientCount={shell.clients?.length ?? 0}
+    />,
+    shell,
+  );
+}
+
+/**
+ * Settings. iOS Pro restore controls are added only when that product is enabled.
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerSettingsScreen() {
+  const shell = useTrainerAppStartShell();
+  const onNavigate = buildNavigateFromShell(shell);
+  const subscriptionProps = useTrainerPlatformSubscriptionSettings();
+  return withNav(
+    <SettingsScreen
+      userRole={USER_ROLE_TRAINER_SETTINGS}
+      onClose={shell.rootGoBack}
+      onNavigate={onNavigate}
+      {...subscriptionProps}
+    />,
+    shell,
+  );
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerHelpFAQScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(<HelpFAQScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerTermsScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(<TermsOfServiceScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerPrivacyScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(<PrivacyPolicyScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerContactSupportScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(<ContactSupportScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerBugReportScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(<BugReportScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * Trainer viewing a client's daily food log.
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerDailyFoodLogScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(
+    <DailyLogContent
+      onBack={shell.handleHomePress}
+      onProfilePress={shell.openProfile}
+      onSettingsPress={shell.openSettings}
+      onHomePress={shell.handleHomePress}
+      onPlusPress={() => {}}
+      onVoicePress={shell.openVoiceAI}
+      onNutritionPress={() => {}}
+      onWorkoutPress={shell.openWorkoutPlan}
+      onMessagesPress={() => openConversationsList(shell)}
+    />,
+    shell,
+  );
+}
+
+/**
+ * Find-a-trainer overlay, same marketplace screen the client uses.
+ * @returns {import('react').ReactElement}
+ */
 export function SearchTrainersScreenOverlay() {
-  const s = useTrainerAppStartShell();
+  const shell = useTrainerAppStartShell();
   return withNav(
     <SearchTrainersScreen
       title="Find a Trainer"
-      onBack={s.rootGoBack}
-      onSelectTrainer={(t) => {
-        s.setSelectedTrainer(t);
-        s.rootGoBack();
-        s.setShowTrainerMessaging(true);
+      onBack={shell.rootGoBack}
+      onSelectTrainer={(trainer) => {
+        shell.setSelectedTrainer(trainer);
+        shell.rootGoBack();
+        shell.setShowTrainerMessaging(true);
       }}
-      onProfilePress={s.openProfile}
-      onSettingsPress={s.openSettings}
-      isDark={s.isDark}
-      onHomePress={s.handleHomePress}
-      onPlusPress={s.handlePlusPress}
-      onVoicePress={s.openVoiceAI}
-      onNutritionPress={s.openNutrition}
-      onWorkoutPress={s.openWorkoutPlan}
-      onMessagesPress={() => s.setShowConversationsList(true)}
+      onProfilePress={shell.openProfile}
+      onSettingsPress={shell.openSettings}
+      isDark={shell.isDark}
+      onHomePress={shell.handleHomePress}
+      onPlusPress={shell.handlePlusPress}
+      onVoicePress={shell.openVoiceAI}
+      onNutritionPress={shell.openNutrition}
+      onWorkoutPress={shell.openWorkoutPlan}
+      onMessagesPress={() => shell.setShowConversationsList(true)}
     />,
-    s,
+    shell,
   );
 }
 
+/**
+ * AI Coach home, or the open conversation when aiChatState is a session object.
+ * @returns {import('react').ReactElement}
+ */
 export function TrainerVoiceAIScreen() {
-  const s = useTrainerAppStartShell();
-  if (s.aiChatState != null && typeof s.aiChatState === 'object') {
-    return withNav(
-      <CoachConversationScreen
-        key={JSON.stringify({
-          sid: s.aiChatState.sessionId ?? null,
-          pf: s.aiChatState.prefill ?? null,
-        })}
-        userId={s.user?.uid}
-        prefill={s.aiChatState.prefill}
-        sessionId={s.aiChatState.sessionId}
-        enableHistorySidebar
-        hideBottomNav={false}
-        onSessionSwitch={(session) =>
-          s.openAIChatSession({ sessionId: session.sessionId || session.id })
-        }
-        onNewChat={() => s.openAIChatSession({})}
-        onBack={() => s.setAiChatState('home')}
-        onHomePress={() => {
-          s.handleHomePress();
-          s.setAiChatState('home');
-        }}
-        onPlusPress={s.handlePlusPress}
-        onVoicePress={s.openVoiceAI}
-        onNutritionPress={s.openNutrition}
-        onWorkoutPress={s.openWorkoutPlan}
-        onMessagesPress={() => s.setShowConversationsList(true)}
-        onProfilePress={s.openProfile}
-      />,
-      s,
-    );
+  const shell = useTrainerAppStartShell();
+  if (isOpenCoachConversation(shell.aiChatState)) {
+    return withNav(<TrainerCoachConversation shell={shell} />, shell);
   }
-  return withNav(
-    <>
-      <VoiceCoachScreen
-        userId={s.user?.uid}
-        hideBottomNav={false}
-        onStartChat={({ prefill } = {}) => s.openAIChatSession({ prefill })}
-        onSessionPress={(session) =>
-          s.openAIChatSession({ sessionId: session.sessionId || session.id })
-        }
-        onHomePress={s.handleHomePress}
-        onPlusPress={s.handlePlusPress}
-        onVoicePress={s.openVoiceAI}
-        onNutritionPress={s.openNutrition}
-        onWorkoutPress={s.openWorkoutPlan}
-        onMessagesPress={() => s.setShowConversationsList(true)}
-        onProfilePress={s.openProfile}
-        navigation={{ navigate: () => {}, goBack: s.handleHomePress }}
-      />
-      <AddFilePopup
-        visible={s.showAddFilePopup}
-        onClose={() => s.setShowAddFilePopup(false)}
-        onAdded={() => {
-          s.setShowAddFilePopup(false);
-          s.refreshClients?.();
-        }}
-        isDark={s.isDark}
-        clientId={s.addNotesFilesClientId}
-        addedBy="trainer"
-      />
-    </>,
-    s,
-  );
+  return withNav(<TrainerCoachHome shell={shell} />, shell);
 }
 
+/**
+ * Weekly report for the client in route params, or the shell's stored client.
+ * @returns {import('react').ReactElement|null}
+ */
 export function TrainerWeeklyReportScreenOverlay() {
-  const s = useTrainerAppStartShell();
+  const shell = useTrainerAppStartShell();
   const route = useRoute();
-  const clientId = route.params?.clientId || s.weeklyReportScreen?.clientId;
-  const clientName = route.params?.clientName || s.weeklyReportScreen?.clientName || '';
+  const clientId = route.params?.clientId || shell.weeklyReportScreen?.clientId;
+  const clientName = route.params?.clientName || shell.weeklyReportScreen?.clientName || '';
   if (!clientId) {
-    s.rootGoBack();
+    shell.rootGoBack();
     return null;
   }
   return withNav(
     <TrainerWeeklyReportScreen
       clientId={clientId}
       clientName={clientName}
-      isDark={s.isDark}
-      onClose={s.rootGoBack}
-      onHomePress={s.handleHomePress}
-      onPlusPress={s.handlePlusPress}
-      onVoicePress={s.openVoiceAI}
-      onNutritionPress={s.openNutrition}
-      onWorkoutPress={s.openWorkoutPlan}
-      onMessagesPress={(cid) => {
-        s.setSelectedClientIdForMessages(cid);
-        s.setShowTrainerMessaging(false);
-        s.setShowConversationsList(true);
-      }}
-      onProfilePress={s.openProfile}
-      onSettingsPress={s.openSettings}
+      isDark={shell.isDark}
+      onClose={shell.rootGoBack}
+      onHomePress={shell.handleHomePress}
+      onPlusPress={shell.handlePlusPress}
+      onVoicePress={shell.openVoiceAI}
+      onNutritionPress={shell.openNutrition}
+      onWorkoutPress={shell.openWorkoutPlan}
+      onMessagesPress={(id) => openWeeklyReportMessages(shell, id)}
+      onProfilePress={shell.openProfile}
+      onSettingsPress={shell.openSettings}
     />,
-    s,
+    shell,
   );
 }
 
+/**
+ * Create-plan screen aimed at the dashboard's selected client.
+ * @returns {import('react').ReactElement}
+ */
 export function TrainerWorkoutPlanScreen() {
-  const s = useTrainerAppStartShell();
-  const workoutTabClientId =
-    s.clients?.length > 0
-      ? s.selectedClientIdFromDashboard || s.clients[0]?.id
-      : null;
-  const workoutTabClientRow = workoutTabClientId
-    ? s.clients.find((c) => c.id === workoutTabClientId)
-    : null;
-  const workoutTabClientName =
-    String(workoutTabClientRow?.name || workoutTabClientRow?.displayName || '').trim() || '';
+  const shell = useTrainerAppStartShell();
+  const { clientId, clientName } = workoutTabClient(shell);
 
   return withNav(
     <CreateWorkoutPlanScreen
-      userId={workoutTabClientId || undefined}
-      trainerRosterEmpty={!s.clients?.length}
-      viewingClientName={workoutTabClientName}
-      onBack={s.handleHomePress}
-      onPlanGenerated={s.handleHomePress}
-      onNavigate={(route) => {
-        if (route === 'settings') {
-          s.rootGoBack();
-          s.openSettings();
-          return;
-        }
-        s.handleHomePress();
-      }}
-      onProfilePress={s.openProfile}
-      onSettingsPress={s.openSettings}
+      userId={clientId || undefined}
+      trainerRosterEmpty={!shell.clients?.length}
+      viewingClientName={clientName}
+      onBack={shell.handleHomePress}
+      onPlanGenerated={shell.handleHomePress}
+      onNavigate={(route) => handleWorkoutPlanNavigate(shell, route)}
+      onProfilePress={shell.openProfile}
+      onSettingsPress={shell.openSettings}
     />,
-    s,
+    shell,
   );
 }
 
+/**
+ * Manual spreadsheet-style plan builder. Missing uid returns null so we do not save as nobody.
+ * @returns {import('react').ReactElement|null}
+ */
 export function TrainerManualPlanBuilderScreen() {
-  const s = useTrainerAppStartShell();
-  if (!s.user?.uid) return null;
+  const shell = useTrainerAppStartShell();
+  if (!shell.user?.uid) return null;
   return withNav(
     <ManualWorkoutPlanBuilderScreen
-      trainerId={s.user.uid}
-      clients={s.clients}
-      editPlanId={s.manualPlanEditId}
-      defaultAssignedClientIds={s.manualPlanBuilderClientIds}
-      onClose={() => {
-        const returnTo = s.manualBuilderReturnToAI;
-        s.setManualPlanEditId(null);
-        s.setManualPlanBuilderClientIds([]);
-        s.setManualBuilderReturnToAI(false);
-        s.rootGoBack();
-        if (returnTo && s.day6Client?.id) {
-          s.setShowAIWorkouts(true);
-          s.setAiWorkoutsListKey((k) => k + 1);
-        }
-      }}
-      onProfilePress={s.openProfile}
-      onSettingsPress={s.openSettings}
+      trainerId={shell.user.uid}
+      clients={shell.clients}
+      editPlanId={shell.manualPlanEditId}
+      defaultAssignedClientIds={shell.manualPlanBuilderClientIds}
+      onClose={() => closeManualPlanBuilder(shell)}
+      onProfilePress={shell.openProfile}
+      onSettingsPress={shell.openSettings}
     />,
-    s,
+    shell,
   );
 }
 
+/**
+ * @returns {import('react').ReactElement}
+ */
 export function TrainerEarningsScreen() {
-  const s = useTrainerAppStartShell();
-  return withNav(<EarningsScreen />, s);
+  const shell = useTrainerAppStartShell();
+  return withNav(<EarningsScreen />, shell);
 }

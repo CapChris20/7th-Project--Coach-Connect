@@ -1,56 +1,88 @@
-/**
- * Maps a logged food entry (Firestore / meal list) to premium FoodCard shape.
- */
+// Maps a logged food entry (Firestore / meal list) to the premium FoodCard shape.
+// Flow: read macros → format serving/brand → percent of calories from each macro → micronutrients + source label.
+// Used by the food log cards. Keep require() so this file stays CommonJS-compatible with readableFoodTitle.
+
 const { readableFoodTitle } = require('../food-search/readableFoodTitle');
 
-function formatNutrient(n, decimals = 1) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return '0';
-  const oneDec = Math.round(x * 10 ** decimals) / 10 ** decimals;
-  if (Math.abs(oneDec - Math.round(oneDec)) < 1e-6) return String(Math.round(oneDec));
-  return oneDec.toFixed(decimals);
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_NUTRIENT_DECIMALS = 1;
+const CALORIES_PER_GRAM_CARB = 4;
+const CALORIES_PER_GRAM_PROTEIN = 4;
+const CALORIES_PER_GRAM_FAT = 9;
+const NEARLY_WHOLE_THRESHOLD = 1e-6;
+const GRAMS_UNIT = 'g';
+const MILLIGRAMS_UNIT = 'mg';
+const DEFAULT_FOOD_NAME = 'Food';
+const DEFAULT_SERVING_LABEL = '1 serving';
+const DEFAULT_SOURCE_LABEL = 'CoachConnect';
+const EMPTY_AMOUNT_PLACEHOLDER = '—';
+const DEMO_YOGURT_CALORIES = 412;
+const DEMO_YOGURT_SODIUM_MG = '480';
+const SOURCE_USDA = 'usda';
+const SOURCE_USDA_FDC = 'usdaFdc';
+const SOURCE_FATSECRET = 'fatsecret';
+const SOURCE_FAT_SECRET = 'fatSecret';
+const SOURCE_OPENFOODFACTS = 'openfoodfacts';
+const SOURCE_OPEN_FOOD_FACTS = 'openFoodFacts';
+const SOURCE_NUTRITION_CONSENSUS = 'nutrition_consensus';
+const SOURCE_CONSENSUS = 'consensus';
+const USDA_WITH_FDC_PREFIX = 'USDA · FDC #';
+const USDA_FALLBACK_LABEL = 'USDA FoodData Central';
+const FATSECRET_LABEL = 'FatSecret';
+const OPEN_FOOD_FACTS_LABEL = 'Open Food Facts';
+const NUTRITION_CONSENSUS_LABEL = 'Nutrition consensus';
+
+// ===== HELPER FUNCTIONS =====
+
+function formatNutrient(nutrientValue, decimals = DEFAULT_NUTRIENT_DECIMALS) {
+  const numericValue = Number(nutrientValue);
+  if (!Number.isFinite(numericValue)) return '0';
+  const rounded = Math.round(numericValue * 10 ** decimals) / 10 ** decimals;
+  if (Math.abs(rounded - Math.round(rounded)) < NEARLY_WHOLE_THRESHOLD) return String(Math.round(rounded));
+  return rounded.toFixed(decimals);
 }
 
 function macroCaloriePercents(carbs, protein, fat, calories) {
-  const cCal = Math.max(0, Number(carbs) || 0) * 4;
-  const pCal = Math.max(0, Number(protein) || 0) * 4;
-  const fCal = Math.max(0, Number(fat) || 0) * 9;
-  const total = cCal + pCal + fCal || Math.max(1, Number(calories) || 0);
+  const carbCalories = Math.max(0, Number(carbs) || 0) * CALORIES_PER_GRAM_CARB;
+  const proteinCalories = Math.max(0, Number(protein) || 0) * CALORIES_PER_GRAM_PROTEIN;
+  const fatCalories = Math.max(0, Number(fat) || 0) * CALORIES_PER_GRAM_FAT;
+  const total = carbCalories + proteinCalories + fatCalories || Math.max(1, Number(calories) || 0);
   return {
-    carbs: Math.round((cCal / total) * 100),
-    protein: Math.round((pCal / total) * 100),
-    fat: Math.round((fCal / total) * 100),
+    carbs: Math.round((carbCalories / total) * 100),
+    protein: Math.round((proteinCalories / total) * 100),
+    fat: Math.round((fatCalories / total) * 100),
   };
 }
 
 function formatSource(log) {
-  const src = log?.source || log?.metadata?.source || '';
+  const sourceKey = log?.source || log?.metadata?.source || '';
   const fdc = log?.metadata?.fdcId || log?.fdc_id || log?.fdcId;
-  if (src === 'usda' || src === 'usdaFdc') {
-    return fdc ? `USDA · FDC #${fdc}` : 'USDA FoodData Central';
+  if (sourceKey === SOURCE_USDA || sourceKey === SOURCE_USDA_FDC) {
+    return fdc ? `${USDA_WITH_FDC_PREFIX}${fdc}` : USDA_FALLBACK_LABEL;
   }
-  if (src === 'fatsecret' || src === 'fatSecret') return 'FatSecret';
-  if (src === 'openfoodfacts' || src === 'openFoodFacts') return 'Open Food Facts';
-  if (src === 'nutrition_consensus' || src === 'consensus') return 'Nutrition consensus';
-  if (src) return String(src).replace(/_/g, ' ');
-  return 'CoachConnect';
+  if (sourceKey === SOURCE_FATSECRET || sourceKey === SOURCE_FAT_SECRET) return FATSECRET_LABEL;
+  if (sourceKey === SOURCE_OPENFOODFACTS || sourceKey === SOURCE_OPEN_FOOD_FACTS) return OPEN_FOOD_FACTS_LABEL;
+  if (sourceKey === SOURCE_NUTRITION_CONSENSUS || sourceKey === SOURCE_CONSENSUS) return NUTRITION_CONSENSUS_LABEL;
+  if (sourceKey) return String(sourceKey).replace(/_/g, ' ');
+  return DEFAULT_SOURCE_LABEL;
+}
+
+function micronutrientIfPresent(value, unit) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return null;
+  return { value: formatNutrient(numericValue), unit };
 }
 
 function buildMicronutrients(log) {
-  const m = log?.metadata || {};
-  const pick = (value, unit) => {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return { value: formatNutrient(n), unit };
-  };
-
+  const metadata = log?.metadata || {};
   return {
-    fiber: pick(log.fiber ?? m.fiber, 'g'),
-    saturatedFat: pick(log.saturated_fat ?? log.saturatedFat ?? m.saturated_fat, 'g'),
-    cholesterol: pick(log.cholesterol ?? m.cholesterol, 'mg'),
-    sugar: pick(log.sugar ?? m.sugar, 'g'),
-    sodium: pick(log.sodium ?? m.sodium, 'mg'),
-    potassium: pick(log.potassium ?? m.potassium, 'mg'),
+    fiber: micronutrientIfPresent(log.fiber ?? metadata.fiber, GRAMS_UNIT),
+    saturatedFat: micronutrientIfPresent(log.saturated_fat ?? log.saturatedFat ?? metadata.saturated_fat, GRAMS_UNIT),
+    cholesterol: micronutrientIfPresent(log.cholesterol ?? metadata.cholesterol, MILLIGRAMS_UNIT),
+    sugar: micronutrientIfPresent(log.sugar ?? metadata.sugar, GRAMS_UNIT),
+    sodium: micronutrientIfPresent(log.sodium ?? metadata.sodium, MILLIGRAMS_UNIT),
+    potassium: micronutrientIfPresent(log.potassium ?? metadata.potassium, MILLIGRAMS_UNIT),
   };
 }
 
@@ -61,9 +93,35 @@ function buildSubtitle(brand, serving, weightG) {
   return parts.join(' · ');
 }
 
+function servingLabel(log, amountDisplay, weightG) {
+  const originalAmount = log?.originalAmount ?? log?.loggedAmount ?? log?.metadata?.originalAmount;
+  const originalUnit = log?.originalUnit || log?.loggedUnit || log?.metadata?.originalUnit || '';
+  return (
+    (originalAmount != null && originalUnit
+      ? `${originalAmount} ${originalUnit}${weightG ? ` (≈${Math.round(weightG)}g)` : ''}`
+      : null) ||
+    log?.serving_description ||
+    log?.servingDescription ||
+    (amountDisplay && amountDisplay !== EMPTY_AMOUNT_PLACEHOLDER ? amountDisplay : '') ||
+    DEFAULT_SERVING_LABEL
+  );
+}
+
+function isVerifiedFood(log) {
+  return (
+    log?.verified === true ||
+    log?.source === SOURCE_USDA ||
+    log?.source === SOURCE_USDA_FDC ||
+    Boolean(log?.metadata?.fdcId || log?.fdc_id)
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * @param {object} log — meal food row from DailyFoodLogScreen
  * @param {string} [amountDisplay] — preformatted serving string
+ * @returns {object}
  */
 export function foodCardText(log, amountDisplay) {
   const carbs = Number(log?.carbs) || 0;
@@ -71,27 +129,14 @@ export function foodCardText(log, amountDisplay) {
   const fat = Number(log?.fat) || 0;
   const calories = Math.round(Number(log?.calories) || 0);
   const weightG = log?.serving_grams != null ? Number(log.serving_grams) : null;
-  const origAmt = log?.originalAmount ?? log?.loggedAmount ?? log?.metadata?.originalAmount;
-  const origUnit = log?.originalUnit || log?.loggedUnit || log?.metadata?.originalUnit || '';
-  const serving =
-    (origAmt != null && origUnit
-      ? `${origAmt} ${origUnit}${weightG ? ` (≈${Math.round(weightG)}g)` : ''}`
-      : null) ||
-    log?.serving_description ||
-    log?.servingDescription ||
-    (amountDisplay && amountDisplay !== '—' ? amountDisplay : '') ||
-    '1 serving';
+  const serving = servingLabel(log, amountDisplay, weightG);
   const brandRaw = (log?.brand_name || log?.brand || '').trim();
   const { name, brand } = readableFoodTitle({
-    name: log?.food_name || log?.name || 'Food',
+    name: log?.food_name || log?.name || DEFAULT_FOOD_NAME,
     brand: brandRaw,
     source: log?.source || log?.metadata?.source,
   });
-  const verified =
-    log?.verified === true ||
-    log?.source === 'usda' ||
-    log?.source === 'usdaFdc' ||
-    Boolean(log?.metadata?.fdcId || log?.fdc_id);
+  const verified = isVerifiedFood(log);
 
   return {
     name,
@@ -118,7 +163,7 @@ export const DEMO_YOGURT_BOWL = {
   serving: '1 bowl',
   weightG: 320,
   subtitle: 'Chobani · 1 bowl · 320g',
-  calories: 412,
+  calories: DEMO_YOGURT_CALORIES,
   carbs: 42,
   protein: 32,
   fat: 16,
@@ -128,7 +173,7 @@ export const DEMO_YOGURT_BOWL = {
     saturatedFat: { value: '3.2', unit: 'g' },
     cholesterol: { value: '75', unit: 'mg' },
     sugar: { value: '8', unit: 'g' },
-    sodium: { value: '480', unit: 'mg' },
+    sodium: { value: DEMO_YOGURT_SODIUM_MG, unit: 'mg' },
     potassium: { value: '620', unit: 'mg' },
   },
   source: 'USDA · FDC #170894',

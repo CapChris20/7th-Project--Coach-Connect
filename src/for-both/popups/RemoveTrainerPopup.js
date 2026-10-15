@@ -1,17 +1,6 @@
-/**
- * Remove Trainer Sheet
- *
- * Purpose: UI screen or component: Remove Trainer Sheet. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: RemoveTrainerPopup
- *
- * @file-header
- */
-/**
- * Bottom sheet for removing trainer/client relationship.
- * Used from client Settings (Remove Trainer) and trainer ClientDetail (Remove Client).
- */
+// Bottom sheet to end a trainer–client link, with reasons and a hold-to-confirm.
+// Flow: pick why → hold the button → call removeTrainerClientLink → close.
+// Used from client Settings (Remove Trainer) and trainer client detail (Remove Client).
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -28,6 +17,11 @@ import { collection, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: how long they must hold before the link is removed.
+const HOLD_TO_REMOVE_MS = 3000;
+
 const REASONS = [
   'Not seeing results',
   'Poor communication',
@@ -37,6 +31,41 @@ const REASONS = [
   'Other',
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+function nextSelectedReasons(currentReasons, reasonLabel) {
+  if (currentReasons.includes(reasonLabel)) {
+    return currentReasons.filter((label) => label !== reasonLabel);
+  }
+  return [...currentReasons, reasonLabel];
+}
+
+/**
+ * Cloud Function that ends the trainer–client link. Same argument keys as before.
+ * @param {{ trainerId: string, clientId: string, reasons: string[], otherText: string|null, removedBy: string }} args
+ * @returns {Promise<unknown>}
+ */
+async function callRemoveTrainerClientLink({ trainerId, clientId, reasons, otherText, removedBy }) {
+  if (!functions) {
+    throw new Error('Cloud Functions not initialized');
+  }
+  // vocab: httpsCallable = Firebase callable. The server name stays removeTrainerClientLink.
+  const removeLinkCall = httpsCallable(functions, 'removeTrainerClientLink');
+  return removeLinkCall({
+    trainerId,
+    clientId,
+    reasons,
+    otherText,
+    removedBy,
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Remove trainer or client after they pick reasons and hold to confirm.
+ * @param {object} props
+ */
 export default function RemoveTrainerPopup({
   visible,
   onClose,
@@ -65,22 +94,18 @@ export default function RemoveTrainerPopup({
     }
   }, [visible, holdAnim]);
 
-  const toggleReason = (r) => {
-    setSelectedReasons((prev) =>
-      prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]
-    );
+  const toggleReason = (reasonLabel) => {
+    // 1. Tap again to uncheck. First tap adds the reason chip.
+    setSelectedReasons((currentReasons) => nextSelectedReasons(currentReasons, reasonLabel));
   };
 
   const handleRemoval = async () => {
+    // 1. Need both ids. Missing either one is a no-op, not a half-delete.
     if (!trainerId || !clientId) return;
     setRemovalError(null);
     try {
-      if (!functions) {
-        throw new Error('Cloud Functions not initialized');
-      }
-
-      const fn = httpsCallable(functions, 'removeTrainerClientLink');
-      await fn({
+      // 2. Call the server. Reasons and "Other" text stay on the request.
+      await callRemoveTrainerClientLink({
         trainerId,
         clientId,
         reasons: selectedReasons,
@@ -88,10 +113,11 @@ export default function RemoveTrainerPopup({
         removedBy,
       });
 
+      // 3. Parent refreshes, then we close.
       onRemovalComplete?.();
       onClose?.();
-    } catch (e) {
-      console.error('RemoveTrainerPopup removal error:', e);
+    } catch (caughtError) {
+      console.error('RemoveTrainerPopup removal error:', caughtError);
       setRemovalError('Something went wrong. Please try again.');
     } finally {
       setIsRemoving(false);
@@ -101,7 +127,10 @@ export default function RemoveTrainerPopup({
   const displayName = removedBy === 'client' ? trainerName : clientName;
 
   const startHold = () => {
+    // 1. Already removing → ignore a second press.
     if (isRemoving) return;
+
+    // 2. When the bar fills (3 seconds), lock and call the server.
     const listenerId = holdAnim.addListener(({ value }) => {
       if (value >= 1) {
         holdAnim.removeListener(listenerId);
@@ -111,12 +140,13 @@ export default function RemoveTrainerPopup({
     });
     Animated.timing(holdAnim, {
       toValue: 1,
-      duration: 3000,
+      duration: HOLD_TO_REMOVE_MS,
       useNativeDriver: false,
     }).start();
   };
 
   const cancelHold = () => {
+    // 1. Release early → bar springs back. A finished hold is not cancelled.
     if (isRemoving) return;
     Animated.spring(holdAnim, {
       toValue: 0,
@@ -155,15 +185,15 @@ export default function RemoveTrainerPopup({
               marginBottom: 24,
             }}
           >
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3].map((stepNumber) => (
               <View
-                key={s}
+                key={stepNumber}
                 style={{
-                  width: step === s ? 8 : 6,
-                  height: step === s ? 8 : 6,
+                  width: step === stepNumber ? 8 : 6,
+                  height: step === stepNumber ? 8 : 6,
                   borderRadius: 4,
                   backgroundColor:
-                    step === s ? '#FF6B9D' : 'rgba(255,255,255,0.2)',
+                    step === stepNumber ? '#FF6B9D' : 'rgba(255,255,255,0.2)',
                 }}
               />
             ))}
@@ -198,12 +228,12 @@ export default function RemoveTrainerPopup({
                   marginBottom: 20,
                 }}
               >
-                {REASONS.map((r) => {
-                  const selected = selectedReasons.includes(r);
+                {REASONS.map((reasonLabel) => {
+                  const selected = selectedReasons.includes(reasonLabel);
                   return (
                     <TouchableOpacity
-                      key={r}
-                      onPress={() => toggleReason(r)}
+                      key={reasonLabel}
+                      onPress={() => toggleReason(reasonLabel)}
                       style={{
                         height: 36,
                         paddingHorizontal: 12,
@@ -222,7 +252,7 @@ export default function RemoveTrainerPopup({
                           color: selected ? '#FF6B9D' : 'rgba(255,255,255,0.5)',
                         }}
                       >
-                        {r}
+                        {reasonLabel}
                       </Text>
                     </TouchableOpacity>
                   );

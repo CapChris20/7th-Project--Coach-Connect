@@ -17,6 +17,7 @@ const INSUFFICIENT_PERMISSIONS_TEXT = 'insufficient permissions';
  * @returns {boolean}
  */
 export function isFirestorePermissionDenied(firestoreError) {
+  // 1. Firestore uses the code. Some wrappers only keep the sentence.
   const errorCode = String(firestoreError?.code || '');
   const errorMessage = String(firestoreError?.message || '').toLowerCase();
   const isPermissionDenied = errorCode === PERMISSION_DENIED_CODE;
@@ -31,7 +32,13 @@ export function isFirestorePermissionDenied(firestoreError) {
  * @returns {void}
  */
 export function logSnapshotError(firestoreError, label) {
+  // 1. Sign-out permission denial is expected — stay quiet.
   if (isFirestorePermissionDenied(firestoreError)) return;
-  if (label) console.error(label, firestoreError);
-  else console.error(firestoreError);
+
+  // 2. Everything else is a real listener failure — print it.
+  if (label) {
+    console.error(label, firestoreError);
+    return;
+  }
+  console.error(firestoreError);
 }

@@ -1,3 +1,7 @@
+// Onboarding-style Pro paywall: hero, benefit cards, subscribe CTA, restore, legal links.
+// Flow: pick expired vs first-subscribe copy → list TRAINER_SUBSCRIPTION_BENEFITS → primary IAP action.
+// Used by trainer Pro upgrade / expired-subscription screens. Product ids live in the parent, not here.
+
 import React, { useMemo } from 'react';
 import {
   View,
@@ -22,7 +26,18 @@ import {
 } from './proPlanSwitches';
 import ProLegalFooter from './ProLegalFooter';
 
+// ===== NAMED CONSTANTS =====
+
 const SUBSCRIPTION_HERO = require('../assets/icons/digital-gift-card-abstract-concept-illustration.png');
+const VARIANT_EXPIRED = 'expired';
+const VARIANT_PAYWALL = 'paywall';
+const DEFAULT_FEATURE_ICON = 'checkmark-circle';
+const DEFAULT_FEATURE_COLOR = '#FF6B9D';
+const LEGAL_LINK_COLOR = '#FF6B9D';
+const LOADING_SPINNER_COLOR = '#C1265A';
+const CHECKMARK_COLOR = '#34D399';
+const ERROR_TYPE_NETWORK = 'network';
+const ERROR_TYPE_VERIFICATION = 'verification';
 
 const FEATURE_META = [
   { icon: 'people', color: '#FF6B9D' },
@@ -32,12 +47,157 @@ const FEATURE_META = [
   { icon: 'chatbubbles', color: '#10B981' },
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Pair each benefit string with a color/icon. Extra benefits reuse the checkmark fallback.
+ * @returns {Array<{ title: string, icon: string, color: string }>}
+ */
+function featureCardsFromBenefits() {
+  return TRAINER_SUBSCRIPTION_BENEFITS.map((title, index) => ({
+    title,
+    icon: FEATURE_META[index]?.icon || DEFAULT_FEATURE_ICON,
+    color: FEATURE_META[index]?.color || DEFAULT_FEATURE_COLOR,
+  }));
+}
+
+/**
+ * Expired vs first-subscribe headlines. Price line from the parent wins on the paywall variant.
+ * @param {object} args
+ */
+function offerCopy({ variant, priceLine, primaryLabel }) {
+  const isExpired = variant === VARIANT_EXPIRED;
+  const defaultSubtitle = `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
+  const expiredSubtitle = `Renew Pro (${TRAINER_SUBSCRIPTION_PRICE_LABEL}) to keep managing clients, AI tools, and your dashboard.`;
+  const defaultCta = isExpired ? 'Re-subscribe' : 'Start free trial';
+  return {
+    title: isExpired ? 'Subscription expired' : 'Coach Connect Pro',
+    subtitle: isExpired ? expiredSubtitle : (priceLine || defaultSubtitle),
+    ctaLabel: primaryLabel || defaultCta,
+    showPaywallHint: variant === VARIANT_PAYWALL,
+  };
+}
+
+/**
+ * StoreKit / network failures. Only the matching type shows its extra link.
+ * @param {object} props
+ */
+function OfferErrorBox({ lastError, onPrimary, onContactSupport }) {
+  if (!lastError) return null;
+  const showRetry = lastError.type === ERROR_TYPE_NETWORK && onPrimary;
+  const showSupport = lastError.type === ERROR_TYPE_VERIFICATION && onContactSupport;
+  return (
+    <View style={styles.errorBox}>
+      <Text style={styles.errorText}>{lastError.message}</Text>
+      {showRetry ? (
+        <TouchableOpacity onPress={onPrimary}>
+          <Text style={styles.errorLink}>Retry</Text>
+        </TouchableOpacity>
+      ) : null}
+      {showSupport ? (
+        <TouchableOpacity onPress={onContactSupport}>
+          <Text style={styles.errorLink}>Contact support</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * @param {object} props
+ */
+function FeatureCardList({ features, isDark, tokens }) {
+  return (
+    <View style={styles.featuresContainer}>
+      {features.map((feature) => (
+        <View
+          key={feature.title}
+          style={[
+            styles.featureCard,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+            },
+          ]}
+        >
+          <View style={[styles.featureIcon, { backgroundColor: `${feature.color}20` }]}>
+            <Ionicons name={feature.icon} size={20} color={feature.color} />
+          </View>
+          <View style={styles.featureContent}>
+            <Text style={[styles.featureTitle, { color: tokens.textPrimary }]}>{feature.title}</Text>
+          </View>
+          <Ionicons name="checkmark-circle" size={18} color={CHECKMARK_COLOR} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Subscribe stays tappable while StoreKit is still connecting so the user can retry and see lastError.
+ * @param {object} props
+ */
+function OfferActionButtons({
+  actionLoading,
+  tokens,
+  ctaLabel,
+  ctaDisabled,
+  onPrimary,
+  onRestore,
+  onOpenSettings,
+  isDark,
+}) {
+  return (
+    <View style={styles.buttonContainer}>
+      {actionLoading ? (
+        <View style={styles.loadingBtn}>
+          <ActivityIndicator color={LOADING_SPINNER_COLOR} />
+        </View>
+      ) : (
+        <OnboardingPrimaryButton
+          t={tokens}
+          label={ctaLabel}
+          disabled={ctaDisabled}
+          onPress={onPrimary}
+        />
+      )}
+
+      {typeof onRestore === 'function' ? (
+        <TouchableOpacity
+          activeOpacity={0.88}
+          style={[
+            styles.secondaryButton,
+            {
+              borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent',
+            },
+          ]}
+          onPress={onRestore}
+          disabled={actionLoading}
+        >
+          <Text style={[styles.secondaryButtonText, { color: tokens.textPrimary }]}>Restore purchases</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {typeof onOpenSettings === 'function' ? (
+        <TouchableOpacity onPress={onOpenSettings} style={styles.settingsLink}>
+          <Text style={[styles.settingsLinkText, { color: tokens.textSecondary }]}>Settings</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Onboarding step-9 style Pro subscription offer (hero image + feature cards + CTA).
+ * IAP product ids (com.coachconnect.month / year) stay in the purchase parent — this screen only labels the CTA.
+ * @param {object} props
  */
 export default function ProUpgradeOffer({
   isDark = true,
-  variant = 'paywall',
+  variant = VARIANT_PAYWALL,
   priceLine,
   actionLoading = false,
   lastError = null,
@@ -50,31 +210,15 @@ export default function ProUpgradeOffer({
   onOpenPrivacy,
   connected = true,
 }) {
-  const t = getOnboardingUiTokens(isDark);
+  const tokens = getOnboardingUiTokens(isDark);
 
-  const features = useMemo(
-    () =>
-      TRAINER_SUBSCRIPTION_BENEFITS.map((title, index) => ({
-        title,
-        icon: FEATURE_META[index]?.icon || 'checkmark-circle',
-        color: FEATURE_META[index]?.color || '#FF6B9D',
-      })),
-    [],
-  );
-
-  const title = variant === 'expired' ? 'Subscription expired' : 'Coach Connect Pro';
-  const subtitle =
-    variant === 'expired'
-      ? `Renew Pro (${TRAINER_SUBSCRIPTION_PRICE_LABEL}) to keep managing clients, AI tools, and your dashboard.`
-      : priceLine ||
-        `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
-
-  const ctaLabel = primaryLabel || (variant === 'expired' ? 'Re-subscribe' : 'Start free trial');
+  const features = useMemo(() => featureCardsFromBenefits(), []);
+  const copy = offerCopy({ variant, priceLine, primaryLabel });
   // Don't hard-disable when StoreKit is still connecting — user can retry and see lastError.
   const ctaDisabled = actionLoading;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: tokens.bg }]} edges={['top', 'bottom']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -85,97 +229,39 @@ export default function ProUpgradeOffer({
         </View>
 
         <View style={styles.titleSection}>
-          <Text style={[styles.title, { color: t.textPrimary }]}>{title}</Text>
-          <Text style={[styles.subtitle, { color: t.textSecondary }]}>{subtitle}</Text>
-          {variant === 'paywall' ? (
-            <Text style={[styles.stepHint, { color: t.textLabel }]}>Trainer platform subscription</Text>
+          <Text style={[styles.title, { color: tokens.textPrimary }]}>{copy.title}</Text>
+          <Text style={[styles.subtitle, { color: tokens.textSecondary }]}>{copy.subtitle}</Text>
+          {copy.showPaywallHint ? (
+            <Text style={[styles.stepHint, { color: tokens.textLabel }]}>Trainer platform subscription</Text>
           ) : null}
         </View>
 
-        <View style={styles.featuresContainer}>
-          {features.map((feature) => (
-            <View
-              key={feature.title}
-              style={[
-                styles.featureCard,
-                {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
-                },
-              ]}
-            >
-              <View style={[styles.featureIcon, { backgroundColor: `${feature.color}20` }]}>
-                <Ionicons name={feature.icon} size={20} color={feature.color} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={[styles.featureTitle, { color: t.textPrimary }]}>{feature.title}</Text>
-              </View>
-              <Ionicons name="checkmark-circle" size={18} color="#34D399" />
-            </View>
-          ))}
-        </View>
+        <FeatureCardList features={features} isDark={isDark} tokens={tokens} />
 
-        {lastError ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{lastError.message}</Text>
-            {lastError.type === 'network' && onPrimary ? (
-              <TouchableOpacity onPress={onPrimary}>
-                <Text style={styles.errorLink}>Retry</Text>
-              </TouchableOpacity>
-            ) : null}
-            {lastError.type === 'verification' && onContactSupport ? (
-              <TouchableOpacity onPress={onContactSupport}>
-                <Text style={styles.errorLink}>Contact support</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
+        <OfferErrorBox
+          lastError={lastError}
+          onPrimary={onPrimary}
+          onContactSupport={onContactSupport}
+        />
 
         <ProLegalFooter
-          textColor={t.textSecondary}
-          linkColor="#FF6B9D"
-          priceLine={subtitle}
+          textColor={tokens.textSecondary}
+          linkColor={LEGAL_LINK_COLOR}
+          priceLine={copy.subtitle}
           onOpenTerms={onOpenTerms}
           onOpenPrivacy={onOpenPrivacy}
         />
 
-        <View style={styles.buttonContainer}>
-          {actionLoading ? (
-            <View style={styles.loadingBtn}>
-              <ActivityIndicator color="#C1265A" />
-            </View>
-          ) : (
-            <OnboardingPrimaryButton
-              t={t}
-              label={ctaLabel}
-              disabled={ctaDisabled}
-              onPress={onPrimary}
-            />
-          )}
-
-          {typeof onRestore === 'function' ? (
-            <TouchableOpacity
-              activeOpacity={0.88}
-              style={[
-                styles.secondaryButton,
-                {
-                  borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent',
-                },
-              ]}
-              onPress={onRestore}
-              disabled={actionLoading}
-            >
-              <Text style={[styles.secondaryButtonText, { color: t.textPrimary }]}>Restore purchases</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {typeof onOpenSettings === 'function' ? (
-            <TouchableOpacity onPress={onOpenSettings} style={styles.settingsLink}>
-              <Text style={[styles.settingsLinkText, { color: t.textSecondary }]}>Settings</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
+        <OfferActionButtons
+          actionLoading={actionLoading}
+          tokens={tokens}
+          ctaLabel={copy.ctaLabel}
+          ctaDisabled={ctaDisabled}
+          onPrimary={onPrimary}
+          onRestore={onRestore}
+          onOpenSettings={onOpenSettings}
+          isDark={isDark}
+        />
       </ScrollView>
     </SafeAreaView>
   );

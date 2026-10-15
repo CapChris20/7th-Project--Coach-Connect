@@ -1,6 +1,6 @@
 // Stripe Connect calls for a trainer's payout account: create it, check it, read the balance.
 // Flow: require a signed-in user → POST only cloud API bases → one status word the screens can switch on.
-// Used by the payout setup flow, the earnings screen, and Settings. HTTP errors are not retried.
+// Used by: the payout setup flow, the earnings screen, and Settings. HTTP errors are not retried.
 
 import { auth } from '../../app-start/cloudConnection';
 import { getResilientApiBases, isCloudHostedApiBase } from '../online-connection/whereToConnect';
@@ -26,70 +26,112 @@ const LABEL_ACTIVE = 'Active';
 const LABEL_PENDING = 'Pending';
 const LABEL_NOT_CONNECTED = 'Not connected';
 
+const JSON_CONTENT_TYPE = 'application/json';
+
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * vocab: getIdToken(true) = force a new Firebase ID token so Stripe does not see an expired one.
+ * @returns {Promise<string>}
+ */
 async function getIdToken() {
   const currentUser = auth?.currentUser;
   if (!currentUser) throw new Error(LOGIN_REQUIRED_MESSAGE);
-  // vocab: getIdToken(true) = force a new Firebase ID token so Stripe does not see an expired one.
   return currentUser.getIdToken(true);
 }
 
-// A phone pointing at localhost cannot finish Stripe hosted onboarding. Prefer a cloud base.
-// If every base was filtered out, keep the first candidate so the error is a real HTTP failure,
-// not a silent "we tried zero servers".
+/**
+ * A phone pointing at localhost cannot finish Stripe hosted onboarding. Prefer a cloud base.
+ * If every base was filtered out, keep the first candidate so the error is a real HTTP failure,
+ * not a silent "we tried zero servers".
+ * @returns {string[]}
+ */
 function stripeApiBases() {
   const cloudBases = getResilientApiBases().filter(isCloudHostedApiBase);
   if (cloudBases.length) return cloudBases;
   return getResilientApiBases().slice(0, 1);
 }
 
-// An error we built from an HTTP response carries .status. A dropped network does not.
-// Only the HTTP one should stop the loop — retrying a 400 on the next base will fail the same way.
+/**
+ * An error we built from an HTTP response carries .status. A dropped network does not.
+ * Only the HTTP one should stop the loop — retrying a 400 on the next base will fail the same way.
+ * @param {Error} error
+ * @returns {boolean}
+ */
 function isHttpStatusError(error) {
   return Boolean(error?.status);
 }
 
-async function postStripeToBase(apiBase, path, idToken, body) {
-  // vocab: AbortController = a handle that can cancel this fetch. The timer calls abort().
+/**
+ * POST JSON to one API base. The timeout aborts this attempt so the caller can try the next base.
+ * vocab: AbortController = a handle that can cancel this fetch. The timer calls abort().
+ * @param {string} apiBase
+ * @param {string} path
+ * @param {string} idToken
+ * @param {object} requestBody
+ * @returns {Promise<object>}
+ */
+async function postStripeToBase(apiBase, path, idToken, requestBody) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), STRIPE_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${apiBase}${path}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+        'Content-Type': JSON_CONTENT_TYPE,
+        Accept: JSON_CONTENT_TYPE,
         Authorization: `Bearer ${idToken}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
-    const responseBody = await response.json().catch(() => ({}));
+    const responseJson = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const requestError = new Error(responseBody?.error || `Request failed (${response.status})`);
+      const requestError = new Error(responseJson?.error || `Request failed (${response.status})`);
       requestError.status = response.status;
-      requestError.code = responseBody?.code;
+      requestError.code = responseJson?.code;
       throw requestError;
     }
-    return responseBody;
+    return responseJson;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function postStripe(path, body = {}) {
+/**
+ * One base: capture HTTP vs network so the walker can throw or continue without nested try/if.
+ * @param {string} apiBase
+ * @param {string} path
+ * @param {string} idToken
+ * @param {object} requestBody
+ * @returns {Promise<{ didSucceed: boolean, responseJson?: object, httpError?: Error, error?: Error }>}
+ */
+async function attemptPostStripe(apiBase, path, idToken, requestBody) {
+  try {
+    const responseJson = await postStripeToBase(apiBase, path, idToken, requestBody);
+    return { didSucceed: true, responseJson };
+  } catch (error) {
+    if (isHttpStatusError(error)) return { didSucceed: false, httpError: error };
+    return { didSucceed: false, error };
+  }
+}
+
+/**
+ * Walk each API base. An HTTP status error is final; a network drop tries the next base.
+ * @param {string} path
+ * @param {object} [requestBody]
+ * @returns {Promise<object>}
+ */
+async function postStripe(path, requestBody = {}) {
   const idToken = await getIdToken();
   const apiBases = stripeApiBases();
   let lastError = null;
 
   for (const apiBase of apiBases) {
-    try {
-      return await postStripeToBase(apiBase, path, idToken, body);
-    } catch (error) {
-      if (isHttpStatusError(error)) throw error;
-      lastError = error;
-    }
+    const attempt = await attemptPostStripe(apiBase, path, idToken, requestBody);
+    if (attempt.httpError) throw attempt.httpError;
+    if (attempt.didSucceed) return attempt.responseJson;
+    lastError = attempt.error;
   }
 
   const networkError = new Error(lastError?.message || CONNECTION_FAILED_MESSAGE);
@@ -97,6 +139,10 @@ async function postStripe(path, body = {}) {
   throw networkError;
 }
 
+/**
+ * @param {string} rawStatus
+ * @returns {boolean}
+ */
 function isPendingStripeStatus(rawStatus) {
   return rawStatus === STATUS_PENDING_VERIFICATION || rawStatus === STATUS_PENDING;
 }
@@ -109,6 +155,7 @@ function isPendingStripeStatus(rawStatus) {
  * @returns {Promise<object>}
  */
 export function createStripeConnectAccount(email) {
+  // 1. POST /api/stripe/create-account with the trainer email.
   return postStripe(CREATE_ACCOUNT_PATH, { email });
 }
 
@@ -117,6 +164,7 @@ export function createStripeConnectAccount(email) {
  * @returns {Promise<object>}
  */
 export function verifyStripeConnectStatus() {
+  // 1. POST /api/stripe/verify-status — has Stripe finished verifying this trainer?
   return postStripe(VERIFY_STATUS_PATH);
 }
 
@@ -125,6 +173,7 @@ export function verifyStripeConnectStatus() {
  * @returns {Promise<object>}
  */
 export function getStripeConnectBalance() {
+  // 1. POST /api/stripe/get-balance for the signed-in trainer.
   return postStripe(GET_BALANCE_PATH);
 }
 
@@ -135,7 +184,10 @@ export function getStripeConnectBalance() {
  * @returns {'active'|'pending'|'not_connected'}
  */
 export function resolveStripeStatus(userDoc = {}) {
+  // 1. Prefer stripeStatus; older docs used stripeConnectStatus.
   const rawStatus = userDoc.stripeStatus || userDoc.stripeConnectStatus || STATUS_NOT_CONNECTED;
+
+  // 2. Both pending spellings collapse to one word the screens can switch on.
   if (isPendingStripeStatus(rawStatus)) return STATUS_PENDING;
   if (rawStatus === STATUS_ACTIVE) return STATUS_ACTIVE;
   return STATUS_NOT_CONNECTED;
@@ -147,6 +199,7 @@ export function resolveStripeStatus(userDoc = {}) {
  * @returns {string}
  */
 export function stripeStatusLabel(status) {
+  // 1. Short label for the resolved status word the screens already switch on.
   switch (status) {
     case STATUS_ACTIVE:
       return LABEL_ACTIVE;

@@ -39,11 +39,33 @@ function trimmedUid(uid) {
 }
 
 /**
+ * @param {string} signedInUid
+ * @param {string} personToBlock
+ * @returns {boolean}
+ */
+function blockRequestIsValid(signedInUid, personToBlock) {
+  if (!signedInUid) return false;
+  if (!personToBlock) return false;
+  if (signedInUid === personToBlock) return false;
+  return true;
+}
+
+/**
  * @param {import('firebase/firestore').QueryDocumentSnapshot} blockDoc
  * @returns {object}
  */
 function blockRecord(blockDoc) {
-  return { id: blockDoc.id, ...(blockDoc.data() || {}) };
+  const storedFields = blockDoc.data() || {};
+  return { id: blockDoc.id, ...storedFields };
+}
+
+/**
+ * @param {{ displayName?: string }} meta
+ * @returns {string|null}
+ */
+function displayNameForBlockDoc(meta) {
+  if (!meta.displayName) return null;
+  return String(meta.displayName).slice(0, MAX_DISPLAY_NAME_LENGTH);
 }
 
 // ===== MAIN FUNCTION =====
@@ -57,13 +79,11 @@ function blockRecord(blockDoc) {
 export async function blockUser(uid, blockedUid, meta = {}) {
   const signedInUid = trimmedUid(uid);
   const personToBlock = trimmedUid(blockedUid);
-  if (!signedInUid || !personToBlock || signedInUid === personToBlock) {
+  if (!blockRequestIsValid(signedInUid, personToBlock)) {
     throw new Error(INVALID_BLOCK_MESSAGE);
   }
   // vocab: blockedUsers is a subcollection only the owner can read. See firestore.rules.
-  const displayName = meta.displayName
-    ? String(meta.displayName).slice(0, MAX_DISPLAY_NAME_LENGTH)
-    : null;
+  const displayName = displayNameForBlockDoc(meta);
   await setDoc(
     doc(db, USERS_COLLECTION, signedInUid, BLOCKED_USERS_COLLECTION, personToBlock),
     {
@@ -95,7 +115,11 @@ export async function listMyBlocks(uid) {
   const signedInUid = trimmedUid(uid);
   if (!signedInUid) return [];
   const snapshot = await getDocs(blockedUsersCollection(signedInUid));
-  return snapshot.docs.map(blockRecord);
+  const rows = [];
+  for (let index = 0; index < snapshot.docs.length; index += 1) {
+    rows.push(blockRecord(snapshot.docs[index]));
+  }
+  return rows;
 }
 
 /**

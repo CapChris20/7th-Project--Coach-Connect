@@ -27,7 +27,11 @@ const USER_ROLE = 'user';
 
 // ===== HELPER FUNCTIONS =====
 
-function replyPalette(isDark) {
+/**
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function coachReplyColorPalette(isDark) {
   if (isDark) {
     return {
       text: 'rgba(255,255,255,0.92)',
@@ -48,8 +52,42 @@ function replyPalette(isDark) {
   };
 }
 
+/**
+ * @param {object} palette
+ * @returns {object}
+ */
+function paragraphStyleFromPalette(palette) {
+  return {
+    color: palette.muted,
+    fontSize: 15,
+    lineHeight: COACH_REPLY_LINE_HEIGHT,
+    marginTop: 0,
+    marginBottom: 10,
+  };
+}
+
+/**
+ * @param {object} palette
+ * @param {number} fontSize
+ * @param {number} marginTop
+ * @param {number} marginBottom
+ * @returns {object}
+ */
+function headingStyleFromPalette(palette, fontSize, marginTop, marginBottom) {
+  return {
+    color: palette.heading,
+    fontSize,
+    fontWeight: '700',
+    fontFamily: HEADING_FONT_FAMILY,
+    marginTop,
+    marginBottom,
+  };
+}
+
 function replyHasFormattedMarkup(replyText) {
-  return BOLD_MARKDOWN_PATTERN.test(replyText) || BULLET_LINE_PATTERN.test(replyText);
+  const hasBold = BOLD_MARKDOWN_PATTERN.test(replyText);
+  const hasBullets = BULLET_LINE_PATTERN.test(replyText);
+  return hasBold || hasBullets;
 }
 
 // ===== MAIN FUNCTION =====
@@ -62,51 +100,20 @@ export { preprocessWebSearchLayout };
  * @returns {object}
  */
 export function buildCoachMarkdownStyles(isDark) {
-  const palette = replyPalette(isDark);
+  const palette = coachReplyColorPalette(isDark);
+  const paragraphStyle = paragraphStyleFromPalette(palette);
 
   return {
     body: { color: palette.text, fontSize: 15, lineHeight: COACH_REPLY_LINE_HEIGHT },
-    paragraph: {
-      color: palette.muted,
-      fontSize: 15,
-      lineHeight: COACH_REPLY_LINE_HEIGHT,
-      marginTop: 0,
-      marginBottom: 10,
-    },
-    heading1: {
-      color: palette.heading,
-      fontSize: 18,
-      fontWeight: '700',
-      fontFamily: HEADING_FONT_FAMILY,
-      marginTop: 14,
-      marginBottom: 8,
-    },
-    heading2: {
-      color: palette.heading,
-      fontSize: 16,
-      fontWeight: '700',
-      fontFamily: HEADING_FONT_FAMILY,
-      marginTop: 16,
-      marginBottom: 8,
-    },
-    heading3: {
-      color: palette.heading,
-      fontSize: 15,
-      fontWeight: '700',
-      fontFamily: HEADING_FONT_FAMILY,
-      marginTop: 12,
-      marginBottom: 6,
-    },
+    paragraph: paragraphStyle,
+    heading1: headingStyleFromPalette(palette, 18, 14, 8),
+    heading2: headingStyleFromPalette(palette, 16, 16, 8),
+    heading3: headingStyleFromPalette(palette, 15, 12, 6),
     strong: { color: palette.heading, fontWeight: '700' },
     em: { color: palette.muted, fontStyle: 'italic' },
     bullet_list: { marginBottom: 10, marginTop: 4 },
     ordered_list: { marginBottom: 10, marginTop: 4 },
-    list_item: {
-      color: palette.muted,
-      fontSize: 15,
-      lineHeight: COACH_REPLY_LINE_HEIGHT,
-      marginBottom: 8,
-    },
+    list_item: paragraphStyle,
     bullet_list_icon: {
       color: palette.bullet,
       fontSize: 15,
@@ -132,7 +139,8 @@ export function buildCoachMarkdownStyles(isDark) {
  * @returns {string}
  */
 export function preprocessCoachCitations(markdown) {
-  return String(markdown || '').replace(CITATION_NAME_PATTERN, CITATION_LINK_REPLACEMENT);
+  const markdownString = String(markdown || '');
+  return markdownString.replace(CITATION_NAME_PATTERN, CITATION_LINK_REPLACEMENT);
 }
 
 /**

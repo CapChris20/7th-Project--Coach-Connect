@@ -18,8 +18,23 @@ import {
 
 // The mask color has to be opaque. MaskedView uses the drawn pixels as the shape, not this color as a tint.
 const MASK_COLOR = '#000';
+const DEFAULT_TAB_ICON_SIZE = 36;
 
 // ===== HELPER FUNCTIONS =====
+
+function tabSlotStyle(iconSize) {
+  return { width: iconSize, height: iconSize };
+}
+
+function workoutMaskStyle(iconSize) {
+  return {
+    width: iconSize,
+    height: iconSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  };
+}
 
 /**
  * Opaque ionicon centered in the tab slot. Returned as an element so the mask stays a View.
@@ -28,16 +43,9 @@ const MASK_COLOR = '#000';
  * @returns {JSX.Element}
  */
 function workoutIconMask(iconName, iconSize) {
+  const maskStyle = workoutMaskStyle(iconSize);
   return (
-    <View
-      style={{
-        width: iconSize,
-        height: iconSize,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'transparent',
-      }}
-    >
+    <View style={maskStyle}>
       <Ionicons name={iconName} size={iconSize} color={MASK_COLOR} />
     </View>
   );
@@ -58,26 +66,30 @@ function workoutIconMask(iconName, iconSize) {
  */
 export default function WorkoutTabIcon({
   name,
-  size = 36,
+  size = DEFAULT_TAB_ICON_SIZE,
   colors = BRAND_NAV_ICON_GRADIENT,
   locations = BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   start = BRAND_ICON_GRADIENT_START,
   end = BRAND_ICON_GRADIENT_END,
 }) {
+  const boxStyle = tabSlotStyle(size);
+  const iconMask = workoutIconMask(name, size);
+
+  // 1. Mask the brand gradient through the ionicon shape.
   return (
     // vocab: MaskedView = show the children only inside the shape of maskElement.
     // collapsable={false} keeps Android from flattening this view away, which would drop the mask.
     <MaskedView
-      style={{ width: size, height: size }}
+      style={boxStyle}
       collapsable={false}
-      maskElement={workoutIconMask(name, size)}
+      maskElement={iconMask}
     >
       <LinearGradient
         colors={colors}
         locations={locations}
         start={start}
         end={end}
-        style={{ width: size, height: size }}
+        style={boxStyle}
       />
     </MaskedView>
   );

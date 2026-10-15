@@ -26,14 +26,16 @@ const CLOSING_RULE_LENGTH = 40;
 function clipText(text, maxLength = DEFAULT_CLIP_LENGTH) {
   const textValue = String(text || '').trim();
   if (textValue.length <= maxLength) return textValue;
-  return `${textValue.slice(0, maxLength)}… (+${textValue.length - maxLength} chars)`;
+  const clippedChars = maxLength;
+  const remainingChars = textValue.length - maxLength;
+  return `${textValue.slice(0, clippedChars)}… (+${remainingChars} chars)`;
 }
 
 /**
  * @param {object} [meta]
- * @returns {string}
+ * @returns {string[]}
  */
-function metaLine(meta = {}) {
+function metaPartsFromTurn(meta = {}) {
   const parts = [];
   if (meta.sessionId) parts.push(`session=${meta.sessionId}`);
   if (meta.route) parts.push(`route=${meta.route}`);
@@ -45,7 +47,17 @@ function metaLine(meta = {}) {
   if (Array.isArray(meta.webSources) && meta.webSources.length) {
     parts.push(`sources=${meta.webSources.length}`);
   }
-  return parts.length ? parts.join(' | ') : '';
+  return parts;
+}
+
+/**
+ * @param {object} [meta]
+ * @returns {string}
+ */
+function metaLine(meta = {}) {
+  const parts = metaPartsFromTurn(meta);
+  if (!parts.length) return '';
+  return parts.join(' | ');
 }
 
 /**
@@ -53,11 +65,28 @@ function metaLine(meta = {}) {
  * @returns {void}
  */
 function logWebSources(webSources) {
-  webSources.slice(0, MAX_SOURCES_IN_REPLY_LOG).forEach((source, sourceIndex) => {
+  const sourcesToLog = webSources.slice(0, MAX_SOURCES_IN_REPLY_LOG);
+  for (let sourceIndex = 0; sourceIndex < sourcesToLog.length; sourceIndex += 1) {
+    const source = sourcesToLog[sourceIndex];
     const title = source?.title || source?.url || 'source';
     console.log(`${LOG_TAG}   source[${sourceIndex}]: ${clipText(title, SOURCE_TITLE_CLIP_LENGTH)}`);
     if (source?.url) console.log(`${LOG_TAG}            ${source.url}`);
-  });
+  }
+}
+
+/**
+ * @param {object} meta
+ * @returns {object}
+ */
+function bundleSourcesForPaste(meta) {
+  const webSources = meta.webSources || [];
+  const capped = webSources.slice(0, MAX_SOURCES_IN_BUNDLE);
+  const mapped = [];
+  for (let index = 0; index < capped.length; index += 1) {
+    const source = capped[index];
+    mapped.push({ title: source?.title, url: source?.url });
+  }
+  return mapped;
 }
 
 // ===== MAIN FUNCTION =====
@@ -114,10 +143,7 @@ export function logCoachTurnBundle({ userText, coachText, meta = {} }) {
       source: meta.source ?? null,
       success: meta.success ?? null,
       tool: meta.toolCall?.name ?? null,
-      sources: (meta.webSources || []).slice(0, MAX_SOURCES_IN_BUNDLE).map((source) => ({
-        title: source?.title,
-        url: source?.url,
-      })),
+      sources: bundleSourcesForPaste(meta),
       sessionId: meta.sessionId ?? null,
       error: meta.error ?? null,
     };

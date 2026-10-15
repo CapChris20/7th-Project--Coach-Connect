@@ -56,7 +56,11 @@ function rowMacros(food) {
  * @returns {boolean}
  */
 function hasAnyMacro(macros) {
-  return macros.calories > 0 || macros.protein > 0 || macros.carbs > 0 || macros.fat > 0;
+  if (macros.calories > 0) return true;
+  if (macros.protein > 0) return true;
+  if (macros.carbs > 0) return true;
+  if (macros.fat > 0) return true;
+  return false;
 }
 
 /**

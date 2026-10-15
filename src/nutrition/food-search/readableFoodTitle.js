@@ -25,10 +25,12 @@ const USDA_DESCRIPTION_CUT_LENGTH = 69;
 const USDA_TAIL_PART_LIMIT = 2;
 const FALLBACK_FOOD_NAME = 'Food';
 const USDA_SOURCES = new Set(['usda', 'usdafdc']);
+const IN_N_OUT_DISPLAY = 'IN-N-OUT';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Collapse odd unicode spaces into a single normal space.
  * @param {string} text
  * @returns {string}
  */
@@ -52,6 +54,23 @@ function partsOverlap(keptPart, nextPart) {
   return keptLower.startsWith(nextLower) || nextLower.startsWith(keptLower);
 }
 
+/**
+ * Keep the longer of two overlapping comma segments.
+ * @param {string[]} keptParts
+ * @param {string} nextPart
+ * @returns {void}
+ */
+function mergeOrPushPart(keptParts, nextPart) {
+  const overlapIndex = keptParts.findIndex((previousPart) => partsOverlap(previousPart, nextPart));
+  if (overlapIndex < 0) {
+    keptParts.push(nextPart);
+    return;
+  }
+  if (nextPart.length > keptParts[overlapIndex].length) {
+    keptParts[overlapIndex] = nextPart;
+  }
+}
+
 /** "Real Chocolate Chip Cookies, Real Chocolate Chip" → "Real Chocolate Chip Cookies" */
 function collapseRepeatedNameSegments(name) {
   const parts = String(name || '')
@@ -60,16 +79,11 @@ function collapseRepeatedNameSegments(name) {
     .filter(Boolean);
   if (parts.length < 2) return name;
 
-  const kept = [];
+  const keptParts = [];
   for (const part of parts) {
-    const overlapIndex = kept.findIndex((previousPart) => partsOverlap(previousPart, part));
-    if (overlapIndex < 0) {
-      kept.push(part);
-      continue;
-    }
-    if (part.length > kept[overlapIndex].length) kept[overlapIndex] = part;
+    mergeOrPushPart(keptParts, part);
   }
-  return kept.length ? kept.join(', ') : name;
+  return keptParts.length ? keptParts.join(', ') : name;
 }
 
 /**
@@ -89,7 +103,9 @@ function isMostlyUppercase(text) {
  * @returns {string}
  */
 function titleCasePossessive(word) {
-  return String(word || '').toLowerCase().replace(/(^|[\s-])\w/g, (match) => match.toUpperCase());
+  return String(word || '')
+    .toLowerCase()
+    .replace(/(^|[\s-])\w/g, (match) => match.toUpperCase());
 }
 
 /**
@@ -100,11 +116,25 @@ function titleCasePossessive(word) {
  */
 function knownUppercaseBrand(lowerWord, rawWord) {
   if (!KNOWN_UPPERCASE_BRANDS.has(lowerWord)) return null;
-  if (lowerWord === 'in-n-out') return 'IN-N-OUT';
+  if (lowerWord === 'in-n-out') return IN_N_OUT_DISPLAY;
   return rawWord.toUpperCase();
 }
 
 /**
+ * Short words that still need first-letter capital (inn / bbq / ii).
+ * @param {string} lowerWord
+ * @param {string} rawWord
+ * @returns {string|null}
+ */
+function specialShortTitleWord(lowerWord, rawWord) {
+  if (lowerWord === 'inn' || lowerWord === 'bbq' || lowerWord === 'ii') {
+    return rawWord.charAt(0).toUpperCase() + rawWord.slice(1).toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * Title-case one token, preserving short ALL-CAPS brands when not forcing full case.
  * @param {string} word
  * @param {{ forceFull?: boolean }} options
  * @returns {string}
@@ -116,13 +146,16 @@ function titleCaseToken(word, { forceFull = false } = {}) {
 
   const loudBrand = knownUppercaseBrand(lowerWord, rawWord);
   if (loudBrand) return loudBrand;
+
   if (POSSESSIVE_WORD_RE.test(rawWord) || POSSESSIVE_WORD_RE.test(lowerWord)) {
     return titleCasePossessive(rawWord);
   }
+
   if (!forceFull && /^[A-Z0-9&'-]{1,5}$/.test(rawWord)) return rawWord;
-  if (lowerWord === 'inn' || lowerWord === 'bbq' || lowerWord === 'ii') {
-    return rawWord.charAt(0).toUpperCase() + rawWord.slice(1).toLowerCase();
-  }
+
+  const special = specialShortTitleWord(lowerWord, rawWord);
+  if (special) return special;
+
   if (rawWord.includes('-')) {
     const loudHyphenBrand = knownUppercaseBrand(rawWord.toLowerCase(), rawWord);
     if (loudHyphenBrand) return loudHyphenBrand;
@@ -131,15 +164,22 @@ function titleCaseToken(word, { forceFull = false } = {}) {
       .map((segment) => titleCaseToken(segment, { forceFull }))
       .join('-');
   }
+
   if (rawWord.includes("'")) {
     return rawWord
       .split("'")
       .map((segment, index) => (index === 0 ? titleCaseToken(segment, { forceFull }) : segment.toLowerCase()))
       .join("'");
   }
+
   return rawWord.charAt(0).toUpperCase() + rawWord.slice(1).toLowerCase();
 }
 
+/**
+ * Title-case a full food name (force full when the source was ALL CAPS).
+ * @param {string} name
+ * @returns {string}
+ */
 function smartTitleCase(name) {
   const collapsed = collapseWhitespace(name);
   if (!collapsed) return collapsed;
@@ -159,6 +199,17 @@ function isUsdaFillerPart(part) {
   return /^(broiler or fryers?|fryers?|raw|fresh|frozen)$/i.test(part.trim());
 }
 
+/**
+ * Cut a long USDA description at a word boundary near the limit.
+ * @param {string} description
+ * @returns {string}
+ */
+function truncateUsdaDescription(description) {
+  if (description.length <= USDA_DESCRIPTION_MAX_LENGTH) return description;
+  const cutAtWord = description.slice(0, USDA_DESCRIPTION_CUT_LENGTH).replace(/\s+\S*$/, '');
+  return cutAtWord || description.slice(0, USDA_DESCRIPTION_CUT_LENGTH);
+}
+
 /** Shorten USDA FDC descriptions for cards while keeping the food type. */
 function shortenUsdaDescription(name) {
   let description = collapseWhitespace(name);
@@ -167,15 +218,32 @@ function shortenUsdaDescription(name) {
   const parts = description.split(/\s*,\s*/).filter(Boolean);
   if (parts.length >= 2) {
     const head = parts[0];
-    const tail = parts.slice(1).filter((part) => !isUsdaFillerPart(part)).slice(0, USDA_TAIL_PART_LIMIT);
+    const tail = parts
+      .slice(1)
+      .filter((part) => !isUsdaFillerPart(part))
+      .slice(0, USDA_TAIL_PART_LIMIT);
     description = [head, ...tail].join(', ');
   }
 
-  if (description.length > USDA_DESCRIPTION_MAX_LENGTH) {
-    const cutAtWord = description.slice(0, USDA_DESCRIPTION_CUT_LENGTH).replace(/\s+\S*$/, '');
-    description = cutAtWord || description.slice(0, USDA_DESCRIPTION_CUT_LENGTH);
-  }
+  description = truncateUsdaDescription(description);
   return smartTitleCase(description);
+}
+
+/**
+ * Strip brand when the title starts with that brand (space, comma, hyphen, or 's).
+ * @param {string} titleText
+ * @param {string} brandText
+ * @returns {string|null} stripped title, or null if no prefix matched
+ */
+function stripMatchingBrandPrefix(titleText, brandText) {
+  const brandLower = brandText.toLowerCase();
+  const titleLower = titleText.toLowerCase();
+  if (titleLower === brandLower) return titleText;
+  if (titleLower.startsWith(`${brandLower} `)) return titleText.slice(brandText.length).trim();
+  if (titleLower.startsWith(`${brandLower},`)) return titleText.slice(brandText.length + 1).trim();
+  if (titleLower.startsWith(`${brandLower}-`)) return titleText.slice(brandText.length + 1).trim();
+  if (titleLower.startsWith(`${brandLower}'s `)) return titleText.slice(brandText.length + 3).trim();
+  return null;
 }
 
 /**
@@ -188,17 +256,15 @@ function stripBrandPrefixFromTitle(title, brand) {
   const brandText = stripTrademarkSymbols(String(brand || '').trim());
   const titleText = stripTrademarkSymbols(String(title || '').trim());
   if (!brandText || !titleText) return titleText;
-
-  const brandLower = brandText.toLowerCase();
-  const titleLower = titleText.toLowerCase();
-  if (titleLower === brandLower) return titleText;
-  if (titleLower.startsWith(`${brandLower} `)) return titleText.slice(brandText.length).trim();
-  if (titleLower.startsWith(`${brandLower},`)) return titleText.slice(brandText.length + 1).trim();
-  if (titleLower.startsWith(`${brandLower}-`)) return titleText.slice(brandText.length + 1).trim();
-  if (titleLower.startsWith(`${brandLower}'s `)) return titleText.slice(brandText.length + 3).trim();
-  return titleText;
+  const stripped = stripMatchingBrandPrefix(titleText, brandText);
+  return stripped == null ? titleText : stripped;
 }
 
+/**
+ * Drop calorie / nutrition tails glued onto scraped titles.
+ * @param {string} name
+ * @returns {string}
+ */
 function stripCalorieSuffixes(name) {
   return String(name || '')
     .replace(/:\s*calories.*$/i, '')
@@ -220,9 +286,33 @@ function replacementForJunkTitle(userQuery, brand, rawName) {
   return formatUserQueryAsFoodName(userQuery) || FALLBACK_FOOD_NAME;
 }
 
+/**
+ * Strip retailer / trademark / calorie junk before title-casing.
+ * @param {string} name
+ * @returns {string}
+ */
+function cleanRawFoodName(name) {
+  let rawName = collapseWhitespace(name);
+  rawName = stripCalorieSuffixes(stripLegacyFoodTitleDecorations(stripRetailerSuffix(rawName)));
+  rawName = stripTrademarkSymbols(rawName);
+  return collapseRepeatedNameSegments(rawName);
+}
+
+/**
+ * Apply USDA shortening or smart title-case based on source.
+ * @param {string} rawName
+ * @param {string} sourceName
+ * @returns {string}
+ */
+function formatNameForSource(rawName, sourceName) {
+  if (USDA_SOURCES.has(sourceName)) return shortenUsdaDescription(rawName);
+  return smartTitleCase(rawName);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
+ * One clean display name + brand for a food card or log row.
  * @param {object} options
  * @param {string} options.name
  * @param {string} [options.brand]
@@ -239,31 +329,27 @@ function readableFoodTitle({
   const sourceName = String(source || '').toLowerCase();
   const explicitBrand = normalizeBrandLabel(brand);
 
-  let rawName = collapseWhitespace(name);
-  rawName = stripCalorieSuffixes(stripLegacyFoodTitleDecorations(stripRetailerSuffix(rawName)));
-  rawName = stripTrademarkSymbols(rawName);
-  rawName = collapseRepeatedNameSegments(rawName);
+  // 1. Strip retailer / trademark / calorie junk.
+  let rawName = cleanRawFoodName(name);
 
+  // 2. Replace junk titles with what the user typed.
   if (isJunkFoodTitle(rawName)) {
     rawName = replacementForJunkTitle(userQuery, brand, rawName);
   }
 
-  // Only strip the brand from the title when the caller already has a brand field (barcode / packaged).
+  // 3. Only strip the brand from the title when the caller already has a brand field.
   if (explicitBrand) {
     rawName = stripBrandPrefixFromTitle(rawName, explicitBrand);
   }
 
-  if (USDA_SOURCES.has(sourceName)) {
-    rawName = shortenUsdaDescription(rawName);
-  } else {
-    rawName = smartTitleCase(rawName);
-  }
-
+  // 4. Title-case (or shorten USDA descriptions).
+  rawName = formatNameForSource(rawName, sourceName);
   rawName = collapseWhitespace(rawName);
   if (!rawName) {
     rawName = formatUserQueryAsFoodName(userQuery) || FALLBACK_FOOD_NAME;
   }
 
+  // 5. Resolve brand if the caller did not pass one.
   const resolvedBrand = explicitBrand || resolveFoodBrandLabel(rawName, '');
   return {
     name: rawName,

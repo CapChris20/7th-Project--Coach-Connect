@@ -52,7 +52,7 @@ const DARK_CORNER_BLURS = [
 // ===== HELPER FUNCTIONS =====
 
 // vocab: RadialGradient = a circular fade. The same id is what the full-screen rects paint with url(#id).
-function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
+function CornerBlurDefinition({ gradientId, centerX, centerY, radius, color, stops }) {
   return (
     <RadialGradient id={gradientId} cx={centerX} cy={centerY} r={radius}>
       {stops.map((stop) => (
@@ -67,6 +67,66 @@ function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
   );
 }
 
+function FullScreenWashRect({ gradientId }) {
+  return (
+    <Rect
+      x="0"
+      y="0"
+      width="100%"
+      height="100%"
+      fill={`url(#${gradientId})`}
+    />
+  );
+}
+
+function DarkMeshSvg() {
+  return (
+    <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
+      <Defs>
+        {DARK_CORNER_BLURS.map((blur) => (
+          <CornerBlurDefinition key={blur.gradientId} {...blur} />
+        ))}
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={Liquid.colors.obsidian} />
+      {DARK_CORNER_BLURS.map((blur) => (
+        <FullScreenWashRect key={blur.gradientId} gradientId={blur.gradientId} />
+      ))}
+    </Svg>
+  );
+}
+
+
+/**
+ * One full-bleed rect painted with a named radial gradient id.
+ * @param {string} gradientId
+ * @returns {import('react').ReactElement}
+ */
+function GradientWashRect({ gradientId }) {
+  return (
+    <Rect
+      x="0"
+      y="0"
+      width="100%"
+      height="100%"
+      fill={`url(#${gradientId})`}
+    />
+  );
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+function ObsidianBaseRect() {
+  return <Rect x="0" y="0" width="100%" height="100%" fill={Liquid.colors.obsidian} />;
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Liquid.colors.obsidian,
+  },
+});
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -77,34 +137,9 @@ function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
 export default function GlassBackgroundDark({ children }) {
   return (
     <View style={styles.root}>
-      <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
-        <Defs>
-          {DARK_CORNER_BLURS.map((blur) => (
-            <CornerBlur key={blur.gradientId} {...blur} />
-          ))}
-        </Defs>
-
-        <Rect x="0" y="0" width="100%" height="100%" fill={Liquid.colors.obsidian} />
-        {DARK_CORNER_BLURS.map((blur) => (
-          <Rect
-            key={blur.gradientId}
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            fill={`url(#${blur.gradientId})`}
-          />
-        ))}
-      </Svg>
-
+      <DarkMeshSvg />
       {children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Liquid.colors.obsidian,
-  },
-});

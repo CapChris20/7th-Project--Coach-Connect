@@ -1,3 +1,7 @@
+// Expanded nutrition breakdown under a food card: calorie split bar + micronutrient tiles.
+// Flow: build palette → show macro composition → list legend chips → paint micronutrient tiles (or empty state).
+// Used by: FoodCard when the row is expanded.
+
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +16,28 @@ import {
   getNutritionPanelPalette,
 } from './foodCardColors';
 
+// ===== NAMED CONSTANTS =====
+
+const GRADIENT_LEFT_TO_RIGHT = { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } };
+const GRADIENT_DIAGONAL = { start: { x: 0, y: 0 }, end: { x: 1, y: 1 } };
+const ICON_COLOR_ON_GRADIENT = '#FFFFFF';
+const ICON_SIZE = 14;
+const ICON_STROKE = 2.2;
+const MIN_SEGMENT_FLEX = 0.001;
+const MAX_DV_DISPLAY_PCT = 999;
+const MAX_BAR_PCT = 100;
+const MIN_BAR_WIDTH_PCT = 8;
+const FALLBACK_MACRO_TOTAL = 1;
+const DEFAULT_MICRO_UNIT = 'g';
+
+// Manipulate here: FDA-style daily values used for the % DV badges on micro tiles.
+const DAILY_VALUE_FIBER_G = 28;
+const DAILY_VALUE_SAT_FAT_G = 20;
+const DAILY_VALUE_CHOLESTEROL_MG = 300;
+const DAILY_VALUE_SUGAR_G = 50;
+const DAILY_VALUE_SODIUM_MG = 2300;
+const DAILY_VALUE_POTASSIUM_MG = 4700;
+
 const MICRO_GRADIENT_MAP = {
   fiber: brandColors.goldPink,
   saturatedFat: brandColors.orangePink,
@@ -21,17 +47,13 @@ const MICRO_GRADIENT_MAP = {
   potassium: brandColors.cyanPurple,
 };
 
-function microGradientForKey(key) {
-  return MICRO_GRADIENT_MAP[key] || brandColors.orangePink;
-}
-
 const MICRO_CONFIG = [
-  { key: 'fiber', label: 'Fiber', icon: Leaf, dailyValue: 28 },
-  { key: 'saturatedFat', label: 'Sat. fat', icon: Droplets, dailyValue: 20 },
-  { key: 'cholesterol', label: 'Cholesterol', icon: Heart, dailyValue: 300 },
-  { key: 'sugar', label: 'Sugar', icon: Sparkles, dailyValue: 50 },
-  { key: 'sodium', label: 'Sodium', icon: Waves, dailyValue: 2300 },
-  { key: 'potassium', label: 'Potassium', icon: Zap, dailyValue: 4700 },
+  { key: 'fiber', label: 'Fiber', icon: Leaf, dailyValue: DAILY_VALUE_FIBER_G },
+  { key: 'saturatedFat', label: 'Sat. fat', icon: Droplets, dailyValue: DAILY_VALUE_SAT_FAT_G },
+  { key: 'cholesterol', label: 'Cholesterol', icon: Heart, dailyValue: DAILY_VALUE_CHOLESTEROL_MG },
+  { key: 'sugar', label: 'Sugar', icon: Sparkles, dailyValue: DAILY_VALUE_SUGAR_G },
+  { key: 'sodium', label: 'Sodium', icon: Waves, dailyValue: DAILY_VALUE_SODIUM_MG },
+  { key: 'potassium', label: 'Potassium', icon: Zap, dailyValue: DAILY_VALUE_POTASSIUM_MG },
 ];
 
 const MACRO_LEGEND = [
@@ -40,38 +62,135 @@ const MACRO_LEGEND = [
   { key: 'fat', label: 'Fat', gradient: gradients.fat },
 ];
 
-function MacroLegendChip({ label, grams, pct, gradientStops, np }) {
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Gradient stops for one micronutrient key. Unknown keys fall back to orange→pink.
+ * @param {string} nutrientKey
+ * @returns {string[]}
+ */
+function microGradientForKey(nutrientKey) {
+  return MICRO_GRADIENT_MAP[nutrientKey] || brandColors.orangePink;
+}
+
+/**
+ * True when a micronutrient entry has a positive numeric value.
+ * @param {object|undefined} microEntry
+ * @returns {boolean}
+ */
+function hasPositiveMicroValue(microEntry) {
+  const numericValue = Number(microEntry?.value);
+  return Number.isFinite(numericValue) && numericValue > 0;
+}
+
+/**
+ * Which micronutrient rows to show for this food (only ones with data).
+ * @param {object} micronutrients
+ * @returns {object[]}
+ */
+function visibleMicroConfigs(micronutrients) {
+  return MICRO_CONFIG.filter((config) => hasPositiveMicroValue(micronutrients?.[config.key]));
+}
+
+/**
+ * Grams for a legend key from the three macro props.
+ * @param {string} macroKey
+ * @param {number} carbs
+ * @param {number} protein
+ * @param {number} fat
+ * @returns {number}
+ */
+function gramsForMacroKey(macroKey, carbs, protein, fat) {
+  if (macroKey === 'carbs') return carbs;
+  if (macroKey === 'protein') return protein;
+  return fat;
+}
+
+/**
+ * Build composition-bar segments from calorie percents. Tiny slices are dropped.
+ * @param {object} percents
+ * @returns {Array<{ flex: number, colors: string[] }>}
+ */
+function compositionSegmentsFromPercents(percents) {
+  const carbsPct = percents?.carbs || 0;
+  const proteinPct = percents?.protein || 0;
+  const fatPct = percents?.fat || 0;
+  const total = carbsPct + proteinPct + fatPct || FALLBACK_MACRO_TOTAL;
+  const rawSegments = [
+    { flex: carbsPct / total, colors: gradients.carbs },
+    { flex: proteinPct / total, colors: gradients.protein },
+    { flex: fatPct / total, colors: gradients.fat },
+  ];
+  return rawSegments.filter((segment) => segment.flex > MIN_SEGMENT_FLEX);
+}
+
+/**
+ * % DV for a micro value, capped so a bad number cannot blow the badge.
+ * @param {number} rawValue
+ * @param {number|undefined} dailyValue
+ * @returns {number|null}
+ */
+function dailyValuePercent(rawValue, dailyValue) {
+  if (!dailyValue) return null;
+  return Math.min(MAX_DV_DISPLAY_PCT, Math.round((rawValue / dailyValue) * MAX_BAR_PCT));
+}
+
+/**
+ * Bar fill width as a percent string, with a minimum so tiny DVs still show a nub.
+ * @param {number|null} dvPct
+ * @returns {string}
+ */
+function microBarWidthPercent(dvPct) {
+  const barPct = dvPct != null ? Math.min(MAX_BAR_PCT, dvPct) : 0;
+  return `${Math.max(barPct, MIN_BAR_WIDTH_PCT)}%`;
+}
+
+/**
+ * One legend chip under the composition bar (label + grams + % of cals).
+ */
+function MacroLegendChip({ label, grams, pct, gradientStops, panelPalette }) {
   return (
-    <View style={[styles.legendChip, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
+    <View
+      style={[
+        styles.legendChip,
+        { borderColor: panelPalette.tileBorder, backgroundColor: panelPalette.tileBg },
+      ]}
+    >
       <View style={styles.legendChipRow}>
-        <LinearGradient colors={gradientStops} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.legendDot} />
-        <Text style={[styles.legendLabel, { color: np.textMuted }]}>{label}</Text>
+        <LinearGradient
+          colors={gradientStops}
+          start={GRADIENT_LEFT_TO_RIGHT.start}
+          end={GRADIENT_LEFT_TO_RIGHT.end}
+          style={styles.legendDot}
+        />
+        <Text style={[styles.legendLabel, { color: panelPalette.textMuted }]}>{label}</Text>
       </View>
-      <Text style={[styles.legendGrams, { color: np.text }]}>{Math.round(Number(grams) || 0)}g</Text>
-      <Text style={[styles.legendPct, { color: np.textSubtle }]}>{Math.round(Number(pct) || 0)}% of cals</Text>
+      <Text style={[styles.legendGrams, { color: panelPalette.text }]}>
+        {Math.round(Number(grams) || 0)}g
+      </Text>
+      <Text style={[styles.legendPct, { color: panelPalette.textSubtle }]}>
+        {Math.round(Number(pct) || 0)}% of cals
+      </Text>
     </View>
   );
 }
 
-function CompositionBar({ percents, np }) {
-  const { carbs = 0, protein = 0, fat = 0 } = percents || {};
-  const total = carbs + protein + fat || 1;
-  const segments = [
-    { flex: carbs / total, colors: gradients.carbs },
-    { flex: protein / total, colors: gradients.protein },
-    { flex: fat / total, colors: gradients.fat },
-  ].filter((s) => s.flex > 0.001);
+/**
+ * Horizontal calorie-split bar (carbs / protein / fat).
+ */
+function CompositionBar({ percents, panelPalette }) {
+  const segments = compositionSegmentsFromPercents(percents);
 
   return (
-    <View style={[styles.compositionWrap, { backgroundColor: np.trackBg }]}>
+    <View style={[styles.compositionWrap, { backgroundColor: panelPalette.trackBg }]}>
       <View style={styles.compositionTrack}>
-        {segments.map((seg, i) => (
+        {segments.map((segment, segmentIndex) => (
           <LinearGradient
-            key={`macro-seg-${i}`}
-            colors={seg.colors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.compositionSegment, { flex: seg.flex }]}
+            key={`macro-seg-${segmentIndex}`}
+            colors={segment.colors}
+            start={GRADIENT_LEFT_TO_RIGHT.start}
+            end={GRADIENT_LEFT_TO_RIGHT.end}
+            style={[styles.compositionSegment, { flex: segment.flex }]}
           />
         ))}
       </View>
@@ -79,40 +198,49 @@ function CompositionBar({ percents, np }) {
   );
 }
 
-function MicroStatTile({ config, data, np }) {
+/**
+ * One micronutrient tile with icon, value, optional % DV badge, and progress bar.
+ * Returns null when the value is missing or zero.
+ */
+function MicroStatTile({ config, data, panelPalette }) {
   const Icon = config.icon;
-  const raw = Number(data?.value);
-  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const rawValue = Number(data?.value);
+  if (!Number.isFinite(rawValue) || rawValue <= 0) return null;
 
   const gradient = microGradientForKey(config.key);
-  const unit = data?.unit || 'g';
-  const dvPct = config.dailyValue
-    ? Math.min(999, Math.round((raw / config.dailyValue) * 100))
-    : null;
-  const barPct = dvPct != null ? Math.min(100, dvPct) : 0;
+  const unit = data?.unit || DEFAULT_MICRO_UNIT;
+  const dvPct = dailyValuePercent(rawValue, config.dailyValue);
+  const barWidth = microBarWidthPercent(dvPct);
 
   return (
-    <View style={[styles.microTile, { borderColor: np.tileBorder, backgroundColor: np.tileBg }]}>
+    <View
+      style={[
+        styles.microTile,
+        { borderColor: panelPalette.tileBorder, backgroundColor: panelPalette.tileBg },
+      ]}
+    >
       <LinearGradient
         colors={gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={GRADIENT_DIAGONAL.start}
+        end={GRADIENT_DIAGONAL.end}
         style={styles.microIconRing}
       >
-        <Icon size={14} color="#FFFFFF" strokeWidth={2.2} />
+        <Icon size={ICON_SIZE} color={ICON_COLOR_ON_GRADIENT} strokeWidth={ICON_STROKE} />
       </LinearGradient>
 
       <View style={styles.microTileBody}>
-        <Text style={[styles.microTileLabel, { color: np.textMuted }]}>{config.label}</Text>
+        <Text style={[styles.microTileLabel, { color: panelPalette.textMuted }]}>
+          {config.label}
+        </Text>
         <View style={styles.microValueRow}>
-          <Text style={[styles.microTileValue, { color: np.text }]}>{data.value}</Text>
-          <Text style={[styles.microTileUnit, { color: np.textMuted }]}>{unit}</Text>
+          <Text style={[styles.microTileValue, { color: panelPalette.text }]}>{data.value}</Text>
+          <Text style={[styles.microTileUnit, { color: panelPalette.textMuted }]}>{unit}</Text>
         </View>
         {dvPct != null ? (
           <LinearGradient
             colors={pillBackgroundGradient(gradient, { strong: true })}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            start={GRADIENT_LEFT_TO_RIGHT.start}
+            end={GRADIENT_LEFT_TO_RIGHT.end}
             style={styles.dvBadge}
           >
             <ColorText colors={gradient} style={styles.dvBadgeText}>
@@ -120,12 +248,12 @@ function MicroStatTile({ config, data, np }) {
             </ColorText>
           </LinearGradient>
         ) : null}
-        <View style={[styles.microBarTrack, { backgroundColor: np.trackBg }]}>
+        <View style={[styles.microBarTrack, { backgroundColor: panelPalette.trackBg }]}>
           <LinearGradient
             colors={gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.microBarFill, { width: `${Math.max(barPct, 8)}%` }]}
+            start={GRADIENT_LEFT_TO_RIGHT.start}
+            end={GRADIENT_LEFT_TO_RIGHT.end}
+            style={[styles.microBarFill, { width: barWidth }]}
           />
         </View>
       </View>
@@ -134,7 +262,23 @@ function MicroStatTile({ config, data, np }) {
 }
 
 /**
+ * Empty state when no micronutrients are present for this entry.
+ */
+function EmptyMicrosMessage({ panelPalette }) {
+  return (
+    <View style={[styles.emptyMicros, { borderColor: panelPalette.tileBorder }]}>
+      <Text style={[styles.emptyMicrosText, { color: panelPalette.textMuted }]}>
+        No detailed micronutrients for this entry — macros above are still logged.
+      </Text>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
  * Premium expanded nutrition breakdown — macro split + stylized facts panel.
+ * @param {{ carbs?: number, protein?: number, fat?: number, macroPercents?: object, micronutrients?: object, serving?: string, isDark?: boolean, embedded?: boolean }} props
  */
 export default function NutritionFactsPanel({
   carbs = 0,
@@ -146,85 +290,103 @@ export default function NutritionFactsPanel({
   isDark = true,
   embedded = false,
 }) {
-  const np = useMemo(() => getNutritionPanelPalette(isDark, { embedded }), [isDark, embedded]);
+  // 1. Palette for dark / light and embedded vs standalone.
+  const panelPalette = useMemo(
+    () => getNutritionPanelPalette(isDark, { embedded }),
+    [isDark, embedded],
+  );
 
+  // 2. Only show micro tiles that have real numbers.
   const visibleMicros = useMemo(
-    () =>
-      MICRO_CONFIG.filter((cfg) => {
-        const v = Number(micronutrients?.[cfg.key]?.value);
-        return Number.isFinite(v) && v > 0;
-      }),
+    () => visibleMicroConfigs(micronutrients),
     [micronutrients],
   );
+
+  const trackedCountLabel = `${visibleMicros.length} tracked`;
+  const hasVisibleMicros = visibleMicros.length > 0;
 
   return (
     <View style={styles.root}>
       <View style={styles.breakdownHeader}>
-        <Text style={[styles.breakdownTitle, { color: np.text }]}>Calorie breakdown</Text>
+        <Text style={[styles.breakdownTitle, { color: panelPalette.text }]}>
+          Calorie breakdown
+        </Text>
         {serving ? (
-          <Text style={[styles.breakdownServing, { color: np.textSubtle }]} numberOfLines={1}>
+          <Text
+            style={[styles.breakdownServing, { color: panelPalette.textSubtle }]}
+            numberOfLines={1}
+          >
             {serving}
           </Text>
         ) : null}
       </View>
 
-      <CompositionBar percents={macroPercents} np={np} />
+      <CompositionBar percents={macroPercents} panelPalette={panelPalette} />
 
       <View style={styles.legendRow}>
-        {MACRO_LEGEND.map(({ key, label, gradient }) => (
+        {MACRO_LEGEND.map(({ key: macroKey, label, gradient }) => (
           <MacroLegendChip
-            key={key}
+            key={macroKey}
             label={label}
-            grams={key === 'carbs' ? carbs : key === 'protein' ? protein : fat}
-            pct={macroPercents[key]}
+            grams={gramsForMacroKey(macroKey, carbs, protein, fat)}
+            pct={macroPercents[macroKey]}
             gradientStops={gradient}
-            np={np}
+            panelPalette={panelPalette}
           />
         ))}
       </View>
 
-      <View style={[styles.panelShell, { borderColor: np.panelBorder, backgroundColor: np.panelBg }]}>
+      <View
+        style={[
+          styles.panelShell,
+          { borderColor: panelPalette.panelBorder, backgroundColor: panelPalette.panelBg },
+        ]}
+      >
         <View style={styles.panelInner}>
           <View style={styles.panelHeader}>
             <View style={styles.panelHeaderText}>
-              <ColorText colors={np.titleGradient} style={styles.panelTitle}>
+              <ColorText colors={panelPalette.titleGradient} style={styles.panelTitle}>
                 Nutrition Facts
               </ColorText>
-              <Text style={[styles.panelSubtitle, { color: np.textMuted }]}>
+              <Text style={[styles.panelSubtitle, { color: panelPalette.textMuted }]}>
                 Per logged serving
               </Text>
             </View>
-            <View style={[styles.panelBadge, { backgroundColor: np.badgeBg, borderColor: np.badgeBorder }]}>
-              <Text style={[styles.panelBadgeText, { color: np.textMuted }]}>
-                {visibleMicros.length} tracked
+            <View
+              style={[
+                styles.panelBadge,
+                {
+                  backgroundColor: panelPalette.badgeBg,
+                  borderColor: panelPalette.badgeBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.panelBadgeText, { color: panelPalette.textMuted }]}>
+                {trackedCountLabel}
               </Text>
             </View>
           </View>
 
           <LinearGradient
             colors={brandColors.orangePurple}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            start={GRADIENT_LEFT_TO_RIGHT.start}
+            end={GRADIENT_LEFT_TO_RIGHT.end}
             style={styles.panelRule}
           />
 
-          {visibleMicros.length > 0 ? (
+          {hasVisibleMicros ? (
             <View style={styles.microGrid}>
-              {MICRO_CONFIG.map((cfg) => (
+              {MICRO_CONFIG.map((config) => (
                 <MicroStatTile
-                  key={cfg.key}
-                  config={cfg}
-                  data={micronutrients[cfg.key]}
-                  np={np}
+                  key={config.key}
+                  config={config}
+                  data={micronutrients[config.key]}
+                  panelPalette={panelPalette}
                 />
               ))}
             </View>
           ) : (
-            <View style={[styles.emptyMicros, { borderColor: np.tileBorder }]}>
-              <Text style={[styles.emptyMicrosText, { color: np.textMuted }]}>
-                No detailed micronutrients for this entry — macros above are still logged.
-              </Text>
-            </View>
+            <EmptyMicrosMessage panelPalette={panelPalette} />
           )}
         </View>
       </View>

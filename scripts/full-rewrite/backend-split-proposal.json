@@ -1,0 +1,2177 @@
+{
+  "FRONTEND": [
+    {
+      "relPath": "src/ai-coach/CoachSelfTest.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/BookSessionPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/ChangeFoodTargetsPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/ConfirmDeletePopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/EditWorkoutPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/LogMealPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/LogMoodPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/LogSleepPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/LogStepsPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/LogWaterPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/MarkRestDayPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/MessageTrainerPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/OpenWorkoutPlanPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/RateEnergyPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/RateWorkoutPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/UpdateGoalPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/confirm-popups/sharedPopupParts.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/CoachConversationScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/ConfirmActionPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/PasteTextPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/SourceLinkCards.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/_voiceStub.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/keyboardBehavior.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/openPhotoMenu.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/home-screen/CoachHomeScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/PastChatsPanel.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/CoachGlassCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/CoachReplyText.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/InternetAnswerReply.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/SuggestedQuestionChips.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/app-start/ClientAppStart.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/app-start/LoginGate.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/app-start/TrainerAppStart.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/assets/logo/brandLogo.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/block-and-report/BlockedUsersScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/block-and-report/reportReasons.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/FileCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/FilesScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/MyFilesSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/NotesFromTrainerSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/SharedByTrainerSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/files-and-notes/TrainerSharedFilesPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/BrowseTrainersScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/ConfirmRequestPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/FilterPopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/FindTrainerPieces.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/FrostedPanel.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/RequestIntroPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/SearchTrainersScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/TrainerCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/TrainerProfilePopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/MyTrainerCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/TodayStatsCards.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/TopBannerCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/TrainingHomeScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/WriteTrainerReviewPopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/home/homeLooks.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/client-app/home/homeScreenPieces.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/meals/LogTodaysMealsScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/ClientBottomMenu.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/ClientMainScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/ClientOpenScreenTracker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/ClientScreenList.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/clientExtraScreens.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/navigation/goToClientScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/client-app/profile/MyProfileScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/client-app/workout-plans/MyWorkoutPlanScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/crash-reports/CrashCatcher.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/app-wide-settings/AIPermission.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/AddFilePopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/DocumentViewer.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/FileGrid.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/FilesSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/PdfViewer.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/PhotoVideoViewer.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/SpreadsheetViewer.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/viewers/WebPageViewer.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/CardGlow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/DailyQuoteCard.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/FilesHeaderCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/FindTrainerBanner.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/HomeTopBanner.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/QuickActionCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/SectionTitle.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/home-cards/UpcomingSessionCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/AICoachTabIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/AppLogo.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/CalendarIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/ChatIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/ColorfulIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/OutlinedColorText.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/ProfileIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/WorkoutTabIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/icons/iconShapes.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/loading-and-header/AppLoadingScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/loading-and-header/BouncingDots.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/loading-and-header/LoadingBarAnimation.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/loading-and-header/StartupLoadingCover.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/loading-and-header/TopHeader.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/payments/CardPaymentWrapper.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/payments/HowPaymentsWorkSections.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/payments/PayTrainerPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/payments/PayoutSetupReminderPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/payments/TrainerPayoutSetupPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/photo-gallery/MyProgressPhotosScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/popups/ErrorPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/popups/HoldToConfirmPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/popups/RemoveTrainerPopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/profileCardIconSizes.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/screenReaderLabels.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/setup-icons/onboardingIconRegistry.generated.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/setup-steps/AIPermissionStep.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/setup-steps/TrainerProOfferStep.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/setup-steps/setupStepPieces.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/ColorBorder.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/ColorButton.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/DayCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/NoReportYet.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/ReportOptionsPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/StatCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/StatIcon.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/TipRow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/TrainerTipsForWeek.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/WeekPicker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/WeeklyChart.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/WeeklyReportBody.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/WeeklyReportScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/WinsAndWorkOnsSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/reportColorSettings.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/for-both/workout-plans/SavedWorkoutsScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/ForgotPasswordFlow.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/LoginScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/NewUserSetupScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/SetupPreviewScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/SetupScreenshotTool.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/login-and-signup/TrainerPayoutSetupStep.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/BlurredBackground.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/ColorText.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/GlassBackgroundDark.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/GlassBackgroundLight.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/GlassButton.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/GlassCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/GlassPanel.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/LabeledRow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/TwoColumnGrid.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/colorPalette.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/look-and-feel/glassSettings.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/look-and-feel/homeStatColors.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/look-and-feel/lightDarkMode.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/messaging/ChatScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/messaging/InboxScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/navigation/BottomMenuBar.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/navigation/bottomMenuSpacing.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/navigation/goToScreenByKeyword.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/navigation/openScreenFromAnywhere.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/navigation/screenNames.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/navigation/webLinks.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/navigation/whichScreenIsOpen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/barcode/BarcodeScannerScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/DailyFoodLogScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/DailyLogContent.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/DayPicker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/MacroBar.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/MealCard.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/ColorFieldFrame.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/ColorText.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/FoodCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/FoodListScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/LoggedFoodRow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/NutritionFactsPanel.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-details/EditServingPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-details/FoodItem.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-details/NutritionFactsScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-search/ConfirmFoodPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-search/FoodSearchScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/food-search/SearchDisclaimerCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/quick-add/QuickAddNutrition.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/targets/NutritionSettingsScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/nutrition/targets/NutritionSetupScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/BugReportScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/ContactSupportScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/HelpFAQScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/PrivacyPolicyScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/SettingsScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/TermsOfServiceScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/settings/emailSupport.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/settings/supportContact.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/documents/DocumentEditor.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/EditorTopButtons.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/SaveStatusLabel.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/ShareDocumentPopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/SpreadsheetEditor.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/editorAccent.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/pageStylePresets.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/FormulaBar.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/SlideUpMenu.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/SpreadsheetGrid.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/SpreadsheetGridRow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/earnings/EarningsScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/home/TrainerHomeContent.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/home/TrainerListingPopup.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/home/trainerHomePieces.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/my-trainees/MyTraineesScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/navigation/TrainerMainScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/navigation/TrainerOpenScreenTracker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/navigation/TrainerScreenList.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/navigation/goToTrainerScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/navigation/trainerExtraScreens.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/nutrition-tab/TrainerNutritionTab.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/progress-tab/ProgressTopCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/progress-tab/TrainerProgressTab.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/BookSessionScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/CalendarTab.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/MonthCalendar.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/ScheduleSessionScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/SessionCard.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/SessionTimePicker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/SharedSessionList.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/WheelPicker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/trainee-detail/ManageTraineeScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/weekly-report/TrainerWeeklyReportSection.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/weekly-report/WeeklyReportBanner.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/weekly-report/WeeklyReportBars.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/FreeTrialBanner.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProAccessCheck.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProExpiredScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProLegalFooter.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProPlanPurchases.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProPlanSetup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProUpgradeOffer.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/ProUpgradeScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/proPlanStatus.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/proPlanSwitches.js",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/workouts/create-plan/CreateWorkoutPlanScreen.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/create-plan/EditWorkoutPopup.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/create-plan/GenerateMyWorkoutPlanScreen.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/create-plan/WorkoutProfileTags.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/create-plan/editPlanFieldForms.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/create-plan/readPlanText.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-rows/ExerciseRow.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-rows/ExerciseSection.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/DislikedExercisesPicker.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/ExerciseCard.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/ExerciseVideosTab.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/ShortVideoCard.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/VideoPlayer.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/view-plan/PlanPdfViewer.js",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/view-plan/WorkoutPlanView.jsx",
+      "bucket": "FRONTEND",
+      "reason": "renders JSX"
+    },
+    {
+      "relPath": "src/workouts/view-plan/planViewPieces.jsx",
+      "bucket": "FRONTEND",
+      "reason": "manually read and classified"
+    }
+  ],
+  "BACKEND": [
+    {
+      "relPath": "src/ai-coach/coach-actions/alertTrainer.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/carryOutAction.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/cleanUpActionDetails.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/findActionsInReply.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/popupOrAutoRun.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/readActionsFromReply.js",
+      "bucket": "BACKEND",
+      "reason": "matched /JSON\\.parse\\(/"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/shouldAskFirst.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/coach-actions/spotDeleteRequests.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/coach-knowledge/decideWhatCoachShouldKnow.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/coach-knowledge/loadWeeklyNumbers.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/coach-knowledge/loadYourWeekForCoach.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/choosePhoto.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/copyReplyText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/photoPermissions.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/preparePhotosToSend.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/sendMessageToCoach.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/sourceLinkPreview.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/suggestedQuestions.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/conversation/typingBox.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/internet-lookup/internetLookupRules.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/internet-lookup/shouldLookUpOnInternet.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/chatHistoryList.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/chatTitles.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/fixOldChatTitles.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/loadOlderChats.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/makeChatTitle.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/saveAndLoadChats.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/ai-coach/past-chats/savedChatShape.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/copyableReplyText.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/developerChatLog.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/splitInternetAnswer.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/suggestedQuestionMaker.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (8 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/app-start/cloudConnection.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/block-and-report/ReportOrBlockPopup.jsx",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/block-and-report/blockUser.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/block-and-report/blockedList.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/block-and-report/reportContent.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/sendConnectionRequest.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/client-app/find-a-trainer/trainerFilters.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (8 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/client-app/home/keepDailyStatsFresh.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/client-app/home/loadHomeScreenData.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/client-app/home/workoutDiary.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/crash-reports/recordError.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/crash-reports/reportCrashAutomatically.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/crash-reports/sendSavedErrors.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/daily-stats/latestWeight.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/daily-stats/readDailyStats.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/daily-stats/saveDailyStats.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/daily-stats/saveYesterdaysStats.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/daily-stats/todaysDate.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/calorieAndMacroMath.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/cloud-database/handleLiveUpdateErrors.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/cloud-database/loadInPages.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/cloud-database/loadMyProfile.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/cloud-database/traineeProfileLocations.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/cloud-database/uploadAndDownloadFiles.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/packSpreadsheetRows.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/files-and-notes/saveNotesAndFiles.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/attachLoginProof.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/online-connection/checkConnectionHealth.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/online-connection/checkTrainerCertificate.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/linkTrainerAndTrainee.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/loadHomeAlerts.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/sendCrashReport.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/for-both/online-connection/sendOnlineRequest.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/sendPhoneAlert.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/uploadSetupAnswers.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/online-connection/whereToConnect.js",
+      "bucket": "BACKEND",
+      "reason": "matched /apiBase|API_BASE|getApiBase/"
+    },
+    {
+      "relPath": "src/for-both/payments/canThisPhoneTakeCards.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/payments/chargeCard.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/payments/howPaymentsWorkText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/payments/traineePaymentHistory.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/payments/trainerPaymentHistory.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/payments/trainerPayoutSetup.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/for-both/payments/trainerPayoutSetupFlow.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/payments/whenToAskForPayoutSetup.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/setup-icons/onboardingIconRegistry.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/trainer-listing/keepTrainerListingUpdated.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/trainerCity.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/loadWeekDailyEntries.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/loadWeekFoodTotals.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/pickBestTips.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/prepareReportForScreen.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (9 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/writeTrainerTips.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/for-both/whichProfileCardsToShow.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/cleanDataBeforeSaving.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/combineTraineeProfile.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/convertHeight.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/dateStrings.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/fileSizeAndDateText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/fillTraineeProfile.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/helpers/getLocalDay.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/helpers/sessionTimeText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/showSetupAnswers.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/trainerProfilePhoto.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/helpers/whichViewerForFile.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/helpers/workoutDayNames.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/login-and-signup/checkTrainerCode.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/login-and-signup/cleanUpRoleName.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/login-and-signup/decideTraineeOrTrainer.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/login-and-signup/finishSetup.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bdoc\\(/"
+    },
+    {
+      "relPath": "src/login-and-signup/resetPasswordByEmail.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/login-and-signup/signOutCleanupSteps.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/logout-cleanup/clearDataOnLogout.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/messaging/markMessagesRead.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/messaging/unreadMessageCounts.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/notifications/manageAlerts.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/notifications/removeEmojiFromAlerts.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/notifications/unreadAlertCount.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/notifications/writeAlertText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/barcode/fixBarcodeDigits.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/barcode/rejectBadBarcodeResults.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/nutrition/barcode/scannedProductSummary.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/nutrition/daily-log/saveLoggedFood.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/foodCardText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-details/fixPackageAmounts.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-details/nutritionFactsData.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-details/servingSizeMath.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-details/tidyBrandName.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/cleanSearchText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/combineFoodSources.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (6 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/guessServingLabel.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/knownRestaurantFoods.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/rankFoodResults.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (9 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/readableFoodTitle.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (6 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/restaurantMenuSearch.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (6 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/searchFoods.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/nutrition/food-search/tidyFoodTitles.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (8 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/food-search/trustRestaurantResult.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/nutrition/targets/recalculateFoodTargets.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/spreadsheet-support/spreadsheetReader.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/spreadsheet-support/spreadsheetReader.native.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/spreadsheet-support/spreadsheetReader.web.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/documents/documentEditorTools.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/exportDocument.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/readingLevel.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (9 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/smartPaste.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/cellFormatting.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/columnWidths.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/formulaCalculator.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (7 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/prepareCellText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (2 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/saveAndLoadSheet.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/my-trainees/pagedTraineeList.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/my-trainees/traineeList.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/new-requests/loadPendingTraineeRequests.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/new-requests/pendingRequestCount.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/progress-tab/pickWeightToShow.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/alertTraineeOfSession.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/mySessions.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/trainee-records/calmDatabaseErrors.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-app/trainee-records/getTraineeDisplayName.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/trainee-records/loadMyLinkedTrainees.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/trainee-records/traineeDatabaseLocations.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-app/workout-plans/builtInExerciseList.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/trainer-app/workout-plans/manualPlanToWorkoutPlan.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/proAccessRules.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/trainer-pro-plan/verifyProPurchase.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/workouts/create-plan/askForWorkoutPlan.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/workouts/create-plan/countPlansCreated.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/workouts/create-plan/keepPlanBuildingInBackground.js",
+      "bucket": "BACKEND",
+      "reason": "matched /AsyncStorage/"
+    },
+    {
+      "relPath": "src/workouts/create-plan/nameWorkoutPlan.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (3 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/workouts/create-plan/planQuestionLabels.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/workouts/create-plan/planRequestAnswers.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/workouts/create-plan/saveAndLoadWorkoutPlan.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/workouts/create-plan/workoutPlanCreation.js",
+      "bucket": "BACKEND",
+      "reason": "manually read and classified"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/dislikableExercises.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (4 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/dislikedExercisesText.js",
+      "bucket": "BACKEND",
+      "reason": "pure logic/calculation (5 control/transform signs, no UI)"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/findExerciseVideos.js",
+      "bucket": "BACKEND",
+      "reason": "matched /\\bfetch\\(/"
+    },
+    {
+      "relPath": "src/workouts/exercise-videos/loadSavedWorkoutPlans.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    },
+    {
+      "relPath": "src/workouts/view-plan/makePlanPdf.js",
+      "bucket": "BACKEND",
+      "reason": "matched /firebase\\/(firestore|auth|storage|functions)/"
+    }
+  ],
+  "UI-SUPPORT": [
+    {
+      "relPath": "src/ai-coach/coachColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/ai-coach/reply-display/replyTextStyles.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/assets/icons/frequency2SvgXml.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "raw SVG/icon markup, not logic"
+    },
+    {
+      "relPath": "src/for-both/setup-steps/setupColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/for-both/weekly-report/reportColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/look-and-feel/brandColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/nutrition/food-cards/foodCardColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/nutrition/nutritionColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/trainer-app/documents/editorColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/trainer-app/documents/spreadsheet-grid/spreadsheetConstants.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    },
+    {
+      "relPath": "src/trainer-app/scheduling/schedulingColors.js",
+      "bucket": "UI-SUPPORT",
+      "reason": "no JSX, no data signal, name looks like style/constants"
+    }
+  ],
+  "BARREL": [
+    {
+      "relPath": "src/block-and-report/index.js",
+      "bucket": "BARREL",
+      "reason": "manually read and classified"
+    }
+  ],
+  "AMBIGUOUS": [],
+  "PARSE-ERROR": []
+}

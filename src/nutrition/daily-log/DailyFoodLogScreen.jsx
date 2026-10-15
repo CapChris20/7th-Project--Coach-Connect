@@ -1,14 +1,8 @@
-/**
- * Nutrition Screen
- *
- * Purpose: UI screen or component: Nutrition Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: DailyFoodLogScreen
- *
- * @file-header
- */
-import React, { useState, useMemo } from 'react';
+// Nutrition Today: calorie ring, macros, meal cards, and weekly sparkline.
+// Flow: pick a day → read consumed/macros/meals from props → scan/search/quick-add per meal.
+// Rendered by DailyLogContent after goals exist; does not talk to Firestore itself.
+
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
@@ -20,6 +14,8 @@ import { useShellBottomNavInset, FORM_SCROLL_PROPS } from '../../navigation/bott
 import DayPicker from './DayPicker';
 import LoggedFoodRow from '../food-cards/LoggedFoodRow';
 import { NUT_CALORIES_GRADIENT as THEME_CAL_GRAD, NUT_MACRO_GRADIENTS } from '../nutritionColors';
+
+// ===== NAMED CONSTANTS =====
 
 // Nutrition Today gradients (macro donuts + calorie ring when logging)
 const NUT_CALORIES_GRADIENT = THEME_CAL_GRAD;
@@ -36,6 +32,9 @@ const NUT_NEUTRAL_TRACK = {
 
 const G_TO_OZ = 1 / 28.3495;
 const ML_TO_FL_OZ = 1 / 29.5735;
+const DAYS_PER_WEEK = 7;
+const DEFAULT_CALORIE_GOAL = 2200;
+const SHELL_BOTTOM_INSET_EXTRA = 24;
 
 const ACCENT = {
   hotPink: '#FF6B9D',
@@ -45,7 +44,13 @@ const ACCENT = {
   green: '#22C55E',
 };
 
-/** Meal card actions — brand gradients (dark orange → pink / purple / gold). */
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Meal card action button gradients (scan / search / quick-add).
+ * @param {boolean} isDark
+ * @returns {{ scanGradient: string[], searchGradient: string[], quickGradient: string[], label: string }}
+ */
 function getMealActionColors(isDark) {
   return {
     scanGradient: ['#C2410C', '#FF6B9D'],
@@ -104,7 +109,7 @@ function getColors(isDark) {
       };
 }
 
-const C = getColors(true);
+const FALLBACK_DARK_COLORS = getColors(true);
 
 function cardShadowStyle(isDark) {
   if (isDark) return {};
@@ -194,10 +199,10 @@ const ArcProgress = ({
 }) => {
   const cx = size / 2;
   const cy = size / 2;
-  const r = (size - stroke) / 2;
-  const circumference = Math.PI * 2 * r;
+  const ringRadius = (size - stroke) / 2;
+  const circumference = Math.PI * 2 * ringRadius;
   const offset = circumference - (Math.min(Math.max(progress, 0), 100) / 100) * circumference;
-  const innerDiscR = Math.max(r - stroke / 2 - 8, size * 0.2);
+  const innerDiscR = Math.max(ringRadius - stroke / 2 - 8, size * 0.2);
   const innerDiscFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)';
   const innerDiscStroke = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
   const gradId = `macroGrad-${size}-${gradientColors.join('-')}`;
@@ -206,7 +211,7 @@ const ArcProgress = ({
     return (
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
-        <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
+        <Circle cx={cx} cy={cy} r={ringRadius} stroke={trackColor} strokeWidth={stroke} fill="none" />
       </Svg>
     );
   }
@@ -220,12 +225,12 @@ const ArcProgress = ({
         </SvgGradient>
       </Defs>
       <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
-      <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={stroke} fill="none" />
+      <Circle cx={cx} cy={cy} r={ringRadius} stroke={trackColor} strokeWidth={stroke} fill="none" />
       {progress > 0 ? (
         <Circle
           cx={cx}
           cy={cy}
-          r={r}
+          r={ringRadius}
           stroke={`url(#${gradId})`}
           strokeWidth={stroke}
           fill="none"
@@ -244,10 +249,10 @@ const MacroPercentText = ({ children, style, color }) => (
 );
 
 const getMealAccentColor = (mealName) => {
-  const n = (mealName || '').toLowerCase();
-  if (n.includes('breakfast')) return '#F97316';
-  if (n.includes('lunch')) return '#06B6D4';
-  if (n.includes('dinner')) return '#7C3AED';
+  const mealNameKey = (mealName || '').toLowerCase();
+  if (mealNameKey.includes('breakfast')) return '#F97316';
+  if (mealNameKey.includes('lunch')) return '#06B6D4';
+  if (mealNameKey.includes('dinner')) return '#7C3AED';
   return '#EC4899';
 };
 
@@ -281,7 +286,7 @@ const WaterCupCircle = ({ filled, index, isDark }) => {
   );
 };
 
-const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = C, isDark }) => {
+const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEditLog, colors = FALLBACK_DARK_COLORS, isDark }) => {
   const mealS = useMemo(() => createMealS(colors), [colors]);
   const emptyStyles = useMemo(() => createEmptyStyles(colors), [colors]);
   const actionColors = useMemo(() => getMealActionColors(isDark), [isDark]);
@@ -294,8 +299,8 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
   const mealTitleColor = isDark ? '#FFFFFF' : colors.text;
   const mealCalsColor = isDark ? 'rgba(255,255,255,0.65)' : colors.textMuted;
   const toDisplayAmount = (gramsOrMl, isMl) => {
-    const n = Number(gramsOrMl) || 0;
-    return (n * (isMl ? ML_TO_FL_OZ : G_TO_OZ)).toFixed(1) + ' oz';
+    const amountNumber = Number(gramsOrMl) || 0;
+    return (amountNumber * (isMl ? ML_TO_FL_OZ : G_TO_OZ)).toFixed(1) + ' oz';
   };
   const safeGoal = Number(goal) || 0;
   const mealCals = Number(meal?.cals) || 0;
@@ -596,20 +601,20 @@ const createEmptyStyles = (colors) =>
     },
   });
 
-const WeeklyChart = ({ weekData, colors = C, isDark }) => {
+const WeeklyChart = ({ weekData, colors = FALLBACK_DARK_COLORS, isDark }) => {
   const days = weekData?.length ? weekData : DEFAULT_WEEK;
   const hasData = days.some((d) => Number(d?.cals) > 0);
-  const weekAvg = days.reduce((s, d) => s + (Number(d?.cals) || 0), 0) / 7;
+  const weekAvg = days.reduce((sum, day) => sum + (Number(day?.cals) || 0), 0) / DAYS_PER_WEEK;
   const weekMax = hasData ? Math.max(...days.map((d) => Number(d?.cals) || 0), 1) : 1;
   const todayIndex = new Date().getDay();
   const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const chartW = 320;
   const chartH = 56;
   const pad = 8;
-  const pts = days.map((d, i) => {
-    const cals = Number(d?.cals) || 0;
-    const t = i / Math.max(days.length - 1, 1);
-    const x = pad + t * (chartW - pad * 2);
+  const pts = days.map((dayPoint, dayIndex) => {
+    const cals = Number(dayPoint?.cals) || 0;
+    const progressAlong = dayIndex / Math.max(days.length - 1, 1);
+    const x = pad + progressAlong * (chartW - pad * 2);
     const y = chartH - pad - (hasData ? (cals / weekMax) * (chartH - pad * 2) : chartH / 2 - pad);
     return `${x},${y}`;
   });
@@ -726,9 +731,113 @@ const DEFAULT_MACROS = [
   { label: 'Fat',     val: 0, goal: 70,  color: '#06B6D4', pct: 0 },
 ];
 
+const screen = StyleSheet.create({
+  scroll: { paddingHorizontal: 16, paddingTop: 12 },
+  dailyFactsBtn: {
+    marginTop: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'transparent',
+  },
+  dailyFactsBtnText: { fontWeight: '800', fontSize: 14, flex: 1 },
+  searchBlock: { marginBottom: 14 },
+  searchTopRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  searchCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 12,
+  },
+  filterIconBtn: {
+    width: 48,
+    alignSelf: 'stretch',
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 10,
+  },
+  smallIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  searchPlaceholder: { flex: 1, fontSize: 13 },
+  suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
+  suggChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
+  suggText: { fontSize: 11, fontWeight: '600' },
+  ringCardOuter: {
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  ringCard: {
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringCenter: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  ringTextOverlay: { position: 'absolute', alignItems: 'center', justifyContent: 'center', maxWidth: 168 },
+  ringSmallLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '700' },
+  ringBigNumber: { fontSize: 38, fontWeight: '900', lineHeight: 44 },
+  ringSubLabel: { fontSize: 11, marginTop: 2, fontWeight: '600' },
+  macroRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  macroCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 6,
+  },
+  macroPct: { fontSize: 17, fontWeight: '800' },
+  macroRemaining: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  macroLabel: { fontSize: 11, fontWeight: '700' },
+  macroGoal: { fontSize: 11, fontWeight: '600' },
+  macroBarTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: 99,
+    marginTop: 2,
+    overflow: 'hidden',
+  },
+  macroBarFill: { height: '100%', borderRadius: 99, overflow: 'hidden' },
+});
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Presentational nutrition day view. Parent wires Firestore totals into these props.
+ * @param {object} props
+ */
 export const DailyFoodLogScreen = ({
   consumed   = 0,
-  goal       = 2200,
+  goal       = DEFAULT_CALORIE_GOAL,
   burned: _burned = 0,
   macros     = DEFAULT_MACROS,
   meals      = DEFAULT_MEALS,
@@ -751,7 +860,7 @@ export const DailyFoodLogScreen = ({
 }) => {
   const { isDark } = useTheme();
   const colors = useMemo(() => getColors(isDark), [isDark]);
-  const shellBottomPad = useShellBottomNavInset(24);
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
   const scrollBottomPad = shellBottomPad;
   const handleOpenQuickAdd = (mealType) => onQuickAdd?.(mealType ?? 'snacks');
   const ringShadow = cardShadowStyle(isDark);
@@ -931,109 +1040,11 @@ export const DailyFoodLogScreen = ({
           />
         ))}
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: SHELL_BOTTOM_INSET_EXTRA }} />
       </ScrollView>
     </View>
   );
 };
-
-const screen = StyleSheet.create({
-  scroll: { paddingHorizontal: 16, paddingTop: 12 },
-  dailyFactsBtn: {
-    marginTop: 20,
-    marginBottom: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'transparent',
-  },
-  dailyFactsBtnText: { fontWeight: '800', fontSize: 14, flex: 1 },
-  searchBlock: { marginBottom: 14 },
-  searchTopRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
-  searchCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 12,
-  },
-  filterIconBtn: {
-    width: 48,
-    alignSelf: 'stretch',
-    minHeight: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolbarRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 10,
-  },
-  smallIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  searchPlaceholder: { flex: 1, fontSize: 13 },
-  suggRow: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' },
-  suggChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
-  suggText: { fontSize: 11, fontWeight: '600' },
-  ringCardOuter: {
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  ringCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringCenter: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  ringTextOverlay: { position: 'absolute', alignItems: 'center', justifyContent: 'center', maxWidth: 168 },
-  ringSmallLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '700' },
-  ringBigNumber: { fontSize: 38, fontWeight: '900', lineHeight: 44 },
-  ringSubLabel: { fontSize: 11, marginTop: 2, fontWeight: '600' },
-  macroRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  macroCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    gap: 6,
-  },
-  macroPct: { fontSize: 17, fontWeight: '800' },
-  macroRemaining: { fontSize: 11, fontWeight: '700', marginTop: 2 },
-  macroLabel: { fontSize: 11, fontWeight: '700' },
-  macroGoal: { fontSize: 11, fontWeight: '600' },
-  macroBarTrack: {
-    width: '100%',
-    height: 4,
-    borderRadius: 99,
-    marginTop: 2,
-    overflow: 'hidden',
-  },
-  macroBarFill: { height: '100%', borderRadius: 99, overflow: 'hidden' },
-});
 
 export default DailyFoodLogScreen;
 

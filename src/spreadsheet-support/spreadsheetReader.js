@@ -6,24 +6,49 @@
 
 // ===== NAMED CONSTANTS =====
 
-const EMPTY_WORKBOOK = { SheetNames: [], Sheets: {} };
+const EMPTY_SHEET_NAMES = [];
+const EMPTY_SHEETS_MAP = {};
 const EMPTY_ROWS = [];
 
 // ===== HELPER FUNCTIONS =====
 
-function readEmptyWorkbook() {
-  return EMPTY_WORKBOOK;
+/**
+ * Stub workbook with no sheet names and no sheet data.
+ * @returns {{ SheetNames: string[], Sheets: object }}
+ */
+function makeEmptyWorkbook() {
+  return {
+    SheetNames: EMPTY_SHEET_NAMES,
+    Sheets: EMPTY_SHEETS_MAP,
+  };
 }
 
+/**
+ * Stub sheet_to_json — always returns an empty row list.
+ * @returns {Array}
+ */
 function sheetToEmptyRows() {
   return EMPTY_ROWS;
 }
 
+/**
+ * Shape the spreadsheet viewer expects from the xlsx package.
+ * @returns {{ read: Function, utils: { sheet_to_json: Function } }}
+ */
+function buildEmptySpreadsheetApi() {
+  return {
+    read: makeEmptyWorkbook,
+    utils: {
+      sheet_to_json: sheetToEmptyRows,
+    },
+  };
+}
+
 // ===== MAIN FUNCTION =====
 
-export default {
-  read: readEmptyWorkbook,
-  utils: {
-    sheet_to_json: sheetToEmptyRows,
-  },
-};
+/**
+ * Empty SheetJS stand-in for non-web / non-native Metro targets.
+ */
+const emptySpreadsheetApi = buildEmptySpreadsheetApi();
+
+export default emptySpreadsheetApi;

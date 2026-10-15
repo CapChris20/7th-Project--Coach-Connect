@@ -1,44 +1,16 @@
-// The text box at the bottom of the coach chat.
-// Flow: hold the draft → paste or speech can add to it → a sheet opens when the clipboard is empty.
-// Used by: the coach conversation composer.
+// Draft state for the coach chat composer (text, paste sheet, speech fill-in).
+// Flow: useState draft → clipboard paste merges in → empty clipboard opens paste sheet.
+// Used by the coach conversation screen composer.
 
 import { useCallback, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 
 // ===== NAMED CONSTANTS =====
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * True when the clipboard has something worth pasting. A read error counts as empty.
- * @returns {Promise<boolean>}
- */
-export async function pasteHintForEmptyClipboard() {
-  try {
-    const clipboardText = await Clipboard.getStringAsync();
-    return Boolean(String(clipboardText || '').trim());
-  } catch (_) {
-    return false;
-  }
-}
-
-/**
- * Join pasted words onto the draft, with one space when the draft does not already end in whitespace.
- * @param {string} currentDraft
- * @param {string} addedText
- * @returns {string}
- */
-function joinDraftAndPaste(currentDraft, addedText) {
-  if (!currentDraft) return addedText;
-  const needsSpace = !/\s$/.test(currentDraft) && !/^\s/.test(addedText);
-  if (needsSpace) return `${currentDraft} ${addedText}`;
-  return `${currentDraft}${addedText}`;
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Hooks stay in this order: draft, paste sheet, input ref, then the callbacks.
+ * Composer hook — hook call order must stay: value, paste sheet, ref, then callbacks.
  * @param {string} [initial]
  * @returns {object}
  */
@@ -49,10 +21,11 @@ export function typingBox(initial = '') {
 
   const onChangeText = useCallback((text) => setValue(text), []);
   const clear = useCallback(() => setValue(''), []);
+
   const commitText = useCallback((text) => {
-    const addedText = String(text || '').trim();
-    if (!addedText) return;
-    setValue((currentDraft) => joinDraftAndPaste(String(currentDraft || ''), addedText));
+    const trimmedAddition = String(text || '').trim();
+    if (!trimmedAddition) return;
+    setValue((previousDraft) => mergedDraftText(previousDraft, trimmedAddition));
     setPasteSheetVisible(false);
   }, []);
 
@@ -65,13 +38,13 @@ export function typingBox(initial = '') {
 
   const pasteFromClipboard = useCallback(async () => {
     try {
-      const clipboardText = await Clipboard.getStringAsync();
-      const pastedText = String(clipboardText || '');
-      if (!pastedText.trim()) {
+      const rawClipboard = await Clipboard.getStringAsync();
+      const clipboardText = String(rawClipboard || '');
+      if (!clipboardText.trim()) {
         setPasteSheetVisible(true);
         return false;
       }
-      commitText(pastedText);
+      commitText(clipboardText);
       return true;
     } catch (_) {
       setPasteSheetVisible(true);
@@ -92,4 +65,33 @@ export function typingBox(initial = '') {
     pasteSheetVisible,
     inputRef,
   };
+}
+
+/**
+ * True when the clipboard has pasteable text (for empty-draft UX hints).
+ * @returns {Promise<boolean>}
+ */
+export async function pasteHintForEmptyClipboard() {
+  return clipboardHasNonEmptyText();
+}
+
+// ===== HELPER FUNCTIONS =====
+
+function mergedDraftText(draftBeforePaste, pastedChunk) {
+  const draft = String(draftBeforePaste || '');
+  const chunk = String(pastedChunk || '');
+  if (!draft) return chunk;
+  const draftEndsWithSpace = /\s$/.test(draft);
+  const chunkStartsWithSpace = /^\s/.test(chunk);
+  if (draftEndsWithSpace || chunkStartsWithSpace) return `${draft}${chunk}`;
+  return `${draft} ${chunk}`;
+}
+
+async function clipboardHasNonEmptyText() {
+  try {
+    const rawClipboard = await Clipboard.getStringAsync();
+    return Boolean(String(rawClipboard || '').trim());
+  } catch (_) {
+    return false;
+  }
 }

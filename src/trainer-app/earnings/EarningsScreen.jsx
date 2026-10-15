@@ -1,13 +1,7 @@
-/**
- * Payments Screen
- *
- * Purpose: UI screen or component: Payments Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: EarningsScreen
- *
- * @file-header
- */
+// Trainer earnings and client billing rates (Stripe connect + per-client monthly rates).
+// Flow: load Stripe status/balance → list clients with rates → edit rate / toggle billing → payout setup.
+// Used by the trainer payments tab. Stripe helpers live under for-both/payments.
+
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
@@ -45,23 +39,30 @@ import { postSetClientRate } from '../../for-both/online-connection/linkTrainerA
 import { trainerClientDocRef } from '../trainee-records/traineeDatabaseLocations';
 import { auth } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
 const ACCENT_PINK = '#BE185D';
 const ACCENT_ORANGE = '#C2410C';
 const PLATFORM_FEE_RATE = 0.1;
+const CENTS_PER_DOLLAR = 100;
+const MIN_CENTS_AS_STORED_RATE = 100;
+const SHELL_BOTTOM_INSET_EXTRA = 24;
+
+// ===== HELPER FUNCTIONS =====
 
 function formatUsdFromCents(cents) {
-  const n = Number(cents);
-  if (!Number.isFinite(n)) return '$0.00';
-  return `$${(n / 100).toFixed(2)}`;
+  const amount = Number(cents);
+  if (!Number.isFinite(amount)) return '$0.00';
+  return `$${(amount / CENTS_PER_DOLLAR).toFixed(2)}`;
 }
 
 /** Stored rates are cents (>= 100 for $1+). Tiny legacy dollar values still supported. */
 function monthlyRateToCents(rate) {
   if (rate == null || rate === '') return 0;
-  const n = Number(rate);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  if (n >= 100) return Math.round(n);
-  return Math.round(n * 100);
+  const amount = Number(rate);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (amount >= MIN_CENTS_AS_STORED_RATE) return Math.round(amount);
+  return Math.round(amount * CENTS_PER_DOLLAR);
 }
 
 function formatMonthlyRate(rate) {
@@ -72,8 +73,8 @@ function formatMonthlyRate(rate) {
 
 function isBillingEnabled(paymentStatus, rateCents) {
   if (!rateCents) return false;
-  const s = String(paymentStatus || '').trim();
-  if (!s || s === 'inactive' || s === 'not_set' || s === 'none') return false;
+  const statusKey = String(paymentStatus || '').trim();
+  if (!statusKey || statusKey === 'inactive' || statusKey === 'not_set' || statusKey === 'none') return false;
   return true;
 }
 
@@ -107,7 +108,7 @@ function StatusChip({ label, tone, colors, isDark }) {
         : tone === 'error'
           ? colors.error
           : colors.textSecondary;
-  const bg =
+  const chipBackground =
     tone === 'success'
       ? isDark
         ? 'rgba(48,209,88,0.15)'
@@ -125,7 +126,7 @@ function StatusChip({ label, tone, colors, isDark }) {
             : 'rgba(0,0,0,0.06)';
 
   return (
-    <View style={[chipStyles.wrap, { backgroundColor: bg, borderColor: `${toneColor}44` }]}>
+    <View style={[chipStyles.wrap, { backgroundColor: chipBackground, borderColor: `${toneColor}44` }]}>
       <Text style={[chipStyles.text, { color: toneColor }]}>{label}</Text>
     </View>
   );
@@ -167,10 +168,15 @@ const cardStyles = StyleSheet.create({
   },
 });
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer payments / earnings screen.
+ */
 export default function EarningsScreen() {
   const shell = useTrainerAppStartShell();
   const { colors, isDark } = useTheme();
-  const shellNavInset = useShellBottomNavInset(24);
+  const shellNavInset = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
   const clients = shell.clients || [];
   const profile = shell.trainerProfileDoc || {};
 

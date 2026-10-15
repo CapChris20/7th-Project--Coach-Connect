@@ -1,13 +1,7 @@
-/**
- * Media Viewer Modal
- *
- * Purpose: UI screen or component: Media Viewer Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: PhotoVideoViewer
- *
- * @file-header
- */
+// Full-screen photo or video viewer opened from files, notes, and trainer home.
+// Flow: if hidden or missing a url, render nothing → header with title → video player or zoomable image.
+// Used by: FilesScreen, ClientAppStart, TrainerAppStart, trainer home pieces.
+
 import React, { useMemo } from 'react';
 import {
   Modal,
@@ -25,44 +19,99 @@ import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-const { height: WIN_H } = Dimensions.get('window');
+// ===== NAMED CONSTANTS =====
 
+const { height: WINDOW_HEIGHT } = Dimensions.get('window');
+const KIND_VIDEO = 'video';
+const DEFAULT_VIDEO_TITLE = 'Video';
+const DEFAULT_PHOTO_TITLE = 'Photo';
+const TITLE_MAX_LENGTH = 40;
+const TITLE_TRIMMED_LENGTH = 37;
+const ELLIPSIS = '…';
+const KIND_LABEL_VIDEO = 'Video';
+const KIND_LABEL_PHOTO = 'Photo';
+const PLATFORM_ANDROID = 'android';
+const DARK_BACKGROUND = '#020617';
+const LIGHT_BACKGROUND = '#F8FAFC';
+const DARK_TEXT = '#F8FAFC';
+const LIGHT_TEXT = '#0F172A';
+const DARK_MUTED = 'rgba(226,232,240,0.72)';
+const LIGHT_MUTED = 'rgba(51,65,85,0.72)';
+const HEADER_GRADIENT_DARK = ['rgba(2,6,23,0.96)', 'rgba(2,6,23,0.70)'];
+const HEADER_GRADIENT_LIGHT = ['rgba(248,250,252,0.98)', 'rgba(248,250,252,0.75)'];
+const GRADIENT_START = { x: 0, y: 0 };
+const GRADIENT_END = { x: 0, y: 1 };
+const IMAGE_MAX_ZOOM = 3;
+const IMAGE_MIN_ZOOM = 1;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Truncate a long file name so the header stays one line.
+ * @param {string} rawTitle
+ * @returns {string}
+ */
+function clippedTitle(rawTitle) {
+  const titleText = String(rawTitle);
+  if (titleText.length > TITLE_MAX_LENGTH) {
+    return `${titleText.slice(0, TITLE_TRIMMED_LENGTH)}${ELLIPSIS}`;
+  }
+  return titleText;
+}
+
+/**
+ * @param {boolean} isDark
+ * @returns {{ background: string, textColor: string, muted: string, headerGradient: string[] }}
+ */
+function viewerColors(isDark) {
+  return {
+    background: isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND,
+    textColor: isDark ? DARK_TEXT : LIGHT_TEXT,
+    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
+    headerGradient: isDark ? HEADER_GRADIENT_DARK : HEADER_GRADIENT_LIGHT,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full-screen modal: native video controls, or a pinch-zoom photo.
+ * @param {{ visible: boolean, url?: string, kind?: string, name?: string, isDark?: boolean, onClose: Function }} props
+ */
 export default function PhotoVideoViewer({ visible, url, kind, name, isDark = true, onClose }) {
   if (!visible || !url) return null;
-  const bg = isDark ? '#020617' : '#F8FAFC';
-  const textColor = isDark ? '#F8FAFC' : '#0F172A';
-  const muted = isDark ? 'rgba(226,232,240,0.72)' : 'rgba(51,65,85,0.72)';
+  const colors = viewerColors(isDark);
+  const isVideo = kind === KIND_VIDEO;
 
   const title = useMemo(() => {
-    const raw = name || (kind === 'video' ? 'Video' : 'Photo');
-    const s = String(raw);
-    return s.length > 40 ? `${s.slice(0, 37)}…` : s;
+    const rawTitle = name || (kind === KIND_VIDEO ? DEFAULT_VIDEO_TITLE : DEFAULT_PHOTO_TITLE);
+    return clippedTitle(rawTitle);
   }, [name, kind]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <LinearGradient
-          colors={isDark ? ['rgba(2,6,23,0.96)', 'rgba(2,6,23,0.70)'] : ['rgba(248,250,252,0.98)', 'rgba(248,250,252,0.75)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
+          colors={colors.headerGradient}
+          start={GRADIENT_START}
+          end={GRADIENT_END}
           style={styles.header}
         >
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }} style={styles.headerBtn}>
-            <Ionicons name="close" size={22} color={textColor} />
+            <Ionicons name="close" size={22} color={colors.textColor} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+            <Text style={[styles.title, { color: colors.textColor }]} numberOfLines={1}>
               {title}
             </Text>
-            <Text style={[styles.subtitle, { color: muted }]} numberOfLines={1}>
-              {kind === 'video' ? 'Video' : 'Photo'}
+            <Text style={[styles.subtitle, { color: colors.muted }]} numberOfLines={1}>
+              {isVideo ? KIND_LABEL_VIDEO : KIND_LABEL_PHOTO}
             </Text>
           </View>
           <View style={styles.headerBtn} />
         </LinearGradient>
         <View style={styles.body}>
-          {kind === 'video' ? (
+          {isVideo ? (
             <Video
               source={{ uri: url }}
               style={styles.video}
@@ -75,8 +124,8 @@ export default function PhotoVideoViewer({ visible, url, kind, name, isDark = tr
             <ScrollView
               style={styles.imageScroll}
               contentContainerStyle={styles.imageScrollContent}
-              maximumZoomScale={3}
-              minimumZoomScale={1}
+              maximumZoomScale={IMAGE_MAX_ZOOM}
+              minimumZoomScale={IMAGE_MIN_ZOOM}
               showsHorizontalScrollIndicator={false}
               showsVerticalScrollIndicator={false}
               bouncesZoom
@@ -96,7 +145,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: Platform.OS === 'android' ? 10 : 6,
+    paddingTop: Platform.OS === PLATFORM_ANDROID ? 10 : 6,
     paddingBottom: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
@@ -132,7 +181,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     justifyContent: 'center',
-    minHeight: WIN_H * 0.65,
+    minHeight: WINDOW_HEIGHT * 0.65,
   },
   imageScroll: {
     flex: 1,

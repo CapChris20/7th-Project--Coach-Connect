@@ -26,25 +26,30 @@ function spokenLabel(label, fallbackLabel) {
 // ===== MAIN FUNCTION =====
 
 /**
+ * VoiceOver / TalkBack props for a button.
  * @param {string} label
  * @param {string} [hint]
  * @returns {object}
  */
 export function a11yButton(label, hint) {
+  // 1. VoiceOver / TalkBack should hear a real name, not "Button".
+  const spokenName = spokenLabel(label, DEFAULT_BUTTON_LABEL);
   const props = {
     accessibilityRole: BUTTON_ROLE,
-    accessibilityLabel: spokenLabel(label, DEFAULT_BUTTON_LABEL),
+    accessibilityLabel: spokenName,
   };
   if (hint) props.accessibilityHint = String(hint);
   return props;
 }
 
 /**
+ * VoiceOver / TalkBack props for a text field.
  * @param {string} label
  * @param {string} [hint]
  * @returns {object}
  */
 export function a11yTextField(label, hint) {
+  // 1. Name the field. Hint is optional ("what this box is for").
   const props = {
     accessibilityLabel: spokenLabel(label, DEFAULT_TEXT_FIELD_LABEL),
   };
@@ -53,10 +58,12 @@ export function a11yTextField(label, hint) {
 }
 
 /**
+ * VoiceOver / TalkBack props for a screen or section header.
  * @param {string} label
  * @returns {object}
  */
 export function a11yHeader(label) {
+  // 1. Mark this text as a header so the rotor can jump to it.
   return {
     accessibilityRole: HEADER_ROLE,
     accessibilityLabel: String(label || '').trim(),

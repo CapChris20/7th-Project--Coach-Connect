@@ -1,16 +1,12 @@
-/**
- * trainer Messaging
- *
- * Purpose: Data/service layer: trainer Messaging. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/ai
- * Key exports: clientRequestTypeLabel, isPendingClientRequestMessage, filterChatMessages, getOrCreateConversation, sendMessage, sendAttachmentMessage, sendClientRequest, updateMessageStatus
- *
- * @file-header
- */
-// Trainer Messaging Service
-// Handles real-time messaging between clients and trainers
+// Client ↔ trainer chat: conversations, text/file messages, pending requests, typing dots.
+// Flow: find or create the pair's conversation → write the message → bump lastMessage → notify the other person.
+// Used by the inbox, chat screen, client-request cards, and the home-screen "message trainer" buttons.
+
 import { db } from '../../app-start/cloudConnection';
+// vocab: collection/doc = Firestore paths. query+where+orderBy+limit = one page.
+//        runTransaction = read then write as one unit so two phones cannot clobber lastMessage.
+//        onSnapshot = live listener. serverTimestamp = the server's clock, not the phone's.
+//        deleteField = remove a key (used to clear "is typing").
 import {
   collection,
   doc,
@@ -37,105 +33,115 @@ import { postRemotePushNotify } from '../../for-both/online-connection/sendPhone
 import { markConversationMessagesReadPaginated } from '../../messaging/markMessagesRead';
 import { randomClientRequestTitle } from '../../notifications/writeAlertText';
 
+// ===== NAMED CONSTANTS =====
+
+const CONVERSATIONS_COLLECTION = 'conversations';
+const MESSAGES_COLLECTION = 'messages';
+const USERS_COLLECTION = 'users';
+const TRAINERS_COLLECTION = 'trainers';
+
+const CONVERSATION_TYPE_CLIENT_TRAINER = 'client-trainer';
+const MESSAGE_STATUS_PENDING = 'pending';
+const NOTIFICATION_TYPE_MESSAGE = 'message';
+const NOTIFICATION_TYPE_CLIENT_REQUEST = 'client_request';
+const FIRESTORE_PERMISSION_DENIED = 'permission-denied';
+
+const DEFAULT_CLIENT_NAME = 'Client';
+const DEFAULT_SENDER_NAME = 'Someone';
+const DEFAULT_CLIENT_GOALS = 'Not specified';
+const DEFAULT_EXPERIENCE_LEVEL = 'Beginner';
+const DEFAULT_EQUIPMENT = 'None';
+const DEFAULT_LIMITATIONS = 'None';
+const DEFAULT_CONNECTION_INTRO = "Hi! I'd like to work with you as my trainer.";
+const CONNECTION_REQUEST_PREVIEW = 'Connection request';
+const PHOTO_PREVIEW = '[Photo]';
+const FILE_PREVIEW = '[File]';
+const IMAGE_ATTACHMENT_TYPE = 'image';
+const DEFAULT_ATTACHMENT_TYPE = 'file';
+
+const REQUEST_LABEL_WORKOUT_PLAN = 'Workout plan request';
+const REQUEST_LABEL_GENERAL = 'Client request';
+const REQUEST_LABEL_CONNECTION = 'Connection request';
+
+// Manipulate here: how many messages one page / live window loads. Raising it costs more reads.
 export const MESSAGES_PAGE_SIZE = 80;
 
-function messageMillis(m) {
-  const t = m?.timestamp;
-  if (t?.toMillis) return t.toMillis();
-  if (typeof t === 'number') return t;
-  return 0;
-}
+// Manipulate here: hide "typing…" this many ms after the last pulse with no new pulse.
+export const TYPING_UI_STALE_MS = 4500;
 
-function sortMessagesAsc(messages) {
-  return [...messages].sort((a, b) => messageMillis(a) - messageMillis(b));
-}
+// Manipulate here: how much of the message lands in the push banner.
+const PUSH_TEXT_PREVIEW_MAX = 100;
+const CLIENT_REQUEST_PUSH_BODY_MAX = 120;
 
-function mapMessageDoc(docSnap) {
-  return { id: docSnap.id, ...docSnap.data() };
-}
+const MESSAGE_ID_RANDOM_RADIX = 36;
+const MESSAGE_ID_RANDOM_SKIP = 2;
+const MESSAGE_ID_RANDOM_LENGTH = 9;
 
-/** Client → trainer requests (not normal chat). */
 export const CLIENT_REQUEST_TYPES = {
   CONNECTION: 'connection',
   WORKOUT_PLAN: 'workout_plan',
   GENERAL: 'general',
 };
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Short label for a pending client-request card.
+ * @param {string} type
+ * @returns {string}
+ */
 export function clientRequestTypeLabel(type) {
-  if (type === CLIENT_REQUEST_TYPES.WORKOUT_PLAN) return 'Workout plan request';
-  if (type === CLIENT_REQUEST_TYPES.GENERAL) return 'Client request';
-  return 'Connection request';
-}
-
-export function isPendingClientRequestMessage(message) {
-  return String(message?.status || '') === 'pending';
-}
-
-/** Hide pending client requests from message threads — they live in Client Requests. */
-export function filterChatMessages(messages) {
-  return (messages || []).filter((m) => !isPendingClientRequestMessage(m));
-}
-
-async function notifyRecipientMessagePush({
-  recipientId,
-  senderId,
-  senderName,
-  conversationId,
-  messageId,
-  messageText,
-}) {
-  const r = await postRemotePushNotify({
-    recipientId,
-    senderName,
-    senderId,
-    conversationId,
-    messageId,
-    messageText: (messageText || '').substring(0, 100),
-    notificationType: 'message',
-  });
-  if (!r.ok && r.reason) {
-    console.warn('⚠️ Push notification:', r.reason);
-  }
+  if (type === CLIENT_REQUEST_TYPES.WORKOUT_PLAN) return REQUEST_LABEL_WORKOUT_PLAN;
+  if (type === CLIENT_REQUEST_TYPES.GENERAL) return REQUEST_LABEL_GENERAL;
+  return REQUEST_LABEL_CONNECTION;
 }
 
 /**
- * Get or create a conversation between a client and trainer
- * @param {string} clientId - The client's user ID
- * @param {string} trainerId - The trainer's user ID
+ * True when this row is a pending client request, not a normal chat bubble.
+ * @param {object} message
+ * @returns {boolean}
+ */
+export function isPendingClientRequestMessage(message) {
+  return String(message?.status || '') === MESSAGE_STATUS_PENDING;
+}
+
+/**
+ * Hide pending client requests from the thread — they live on the Client Requests screen.
+ * @param {Array|null|undefined} messages
+ * @returns {Array}
+ */
+export function filterChatMessages(messages) {
+  const chatMessages = [];
+  for (const message of messages || []) {
+    if (!isPendingClientRequestMessage(message)) chatMessages.push(message);
+  }
+  return chatMessages;
+}
+
+/**
+ * Find or create the one conversation for this client–trainer pair.
+ * Flow: 1. stable id  2. return it if it exists  3. otherwise create it
+ * @param {string} clientId
+ * @param {string} trainerId
  * @returns {Promise<string>} Conversation ID
  */
 export async function getOrCreateConversation(clientId, trainerId) {
   try {
     console.log('🔍 getOrCreateConversation:', { clientId, trainerId });
-    
-    // Generate a consistent conversation ID (same for same client-trainer pair)
-    const conversationId = `conv_${clientId}_${trainerId}`;
-    
-    // Use transaction to prevent race conditions
-    const conversationRef = doc(db, 'conversations', conversationId);
-    
+
+    // 1. Same pair always shares this id.
+    const conversationId = conversationIdForPair(clientId, trainerId);
+    const conversationRef = doc(db, CONVERSATIONS_COLLECTION, conversationId);
+
+    // 2. Transaction so two phones opening chat at once cannot create two docs.
     const result = await runTransaction(db, async (transaction) => {
       const conversationDoc = await transaction.get(conversationRef);
-      
       if (conversationDoc.exists()) {
         console.log('✅ Found existing conversation:', conversationId);
         return conversationId;
       }
 
-      // Create new conversation within transaction
-      const conversationData = {
-        id: conversationId,
-        participants: [clientId, trainerId],
-        clientId,
-        trainerId,
-        type: 'client-trainer',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastMessage: null,
-        lastMessageTime: null,
-      };
-
-      transaction.set(conversationRef, conversationData);
+      transaction.set(conversationRef, newConversationFields(conversationId, clientId, trainerId));
       console.log('✅ Conversation created successfully:', conversationId);
       return conversationId;
     });
@@ -148,10 +154,11 @@ export async function getOrCreateConversation(clientId, trainerId) {
 }
 
 /**
- * Send a message in a conversation
- * @param {string} conversationId - The conversation ID
- * @param {string} senderId - The sender's user ID
- * @param {string} messageText - The message content
+ * Send a text message in a conversation.
+ * Flow: 1. refuse empty input  2. read the conversation  3. write message + lastMessage  4. notify
+ * @param {string} conversationId
+ * @param {string} senderId
+ * @param {string} messageText
  * @returns {Promise<string>} Message ID
  */
 export async function sendMessage(conversationId, senderId, messageText) {
@@ -159,16 +166,17 @@ export async function sendMessage(conversationId, senderId, messageText) {
     const text = String(messageText || '').trim();
     console.log('📤 sendMessage called:', { conversationId, senderId, messageLength: text.length });
 
+    // 1. Fail first: we cannot write a blank or ownerless message.
     if (!conversationId || !senderId || !text) {
       throw new Error('Missing required parameters: conversationId, senderId, or messageText');
     }
 
-    // Read conversation data BEFORE transaction (Firestore requires all reads before writes)
-    const conversationRef = doc(db, 'conversations', conversationId);
-    const convSnap = await getDoc(conversationRef);
-    const conversationData = convSnap.exists() ? convSnap.data() : null;
+    // 2. Read BEFORE the transaction. Firestore forbids a read after a write in the same transaction.
+    const conversationRef = doc(db, CONVERSATIONS_COLLECTION, conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+    const conversationData = conversationSnap.exists() ? conversationSnap.data() : null;
 
-    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const messageId = makeMessageId();
     const messageData = {
       id: messageId,
       conversationId,
@@ -178,43 +186,12 @@ export async function sendMessage(conversationId, senderId, messageText) {
       read: false,
     };
 
-    // Use transaction to ensure atomic message creation and conversation update
-    await runTransaction(db, async (transaction) => {
-      // Create message
-      const messageRef = doc(db, 'messages', messageId);
-      transaction.set(messageRef, messageData);
-      
-      // Update conversation with last message atomically
-      transaction.update(conversationRef, {
-        lastMessage: text,
-        lastMessageTime: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    });
-
+    // 3. Message row + conversation preview in one write.
+    await writeMessageAndBumpConversation(conversationRef, messageId, messageData, text);
     console.log('✅ Message and conversation updated atomically');
 
-    // Trigger push notification to recipient
-    try {
-      const recipientId = conversationData?.participants?.find((id) => id !== senderId);
-
-      if (recipientId) {
-        await incrementUnreadForRecipient(recipientId, conversationId);
-        const senderData = await getUserData(senderId);
-        const senderName = senderData?.name || senderData?.firstName || 'Someone';
-
-        await notifyRecipientMessagePush({
-          recipientId,
-          senderName,
-          senderId,
-          conversationId,
-          messageId,
-          messageText: text,
-        });
-      }
-    } catch (notifError) {
-      console.warn('⚠️ Failed to send push notification:', notifError);
-    }
+    // 4. Unread + push. A notify miss still returns the saved message id.
+    await tryNotifyAfterTextMessage(conversationData, senderId, conversationId, messageId, text);
 
     return messageId;
   } catch (error) {
@@ -224,8 +201,8 @@ export async function sendMessage(conversationId, senderId, messageText) {
 }
 
 /**
- * Send an attachment message (image or file). Additive only — does not change existing text flow.
- * Writes to the same top-level messages collection with type, fileUrl, fileName, etc.
+ * Send an image or file message. Same messages collection; extra type / fileUrl fields.
+ * Flow: 1. refuse missing file  2. read conversation  3. write  4. push (no unread bump)
  * @param {string} conversationId
  * @param {string} senderId
  * @param {{ type: 'image'|'file', fileUrl: string, fileName: string, fileSize?: number }} payload
@@ -233,21 +210,22 @@ export async function sendMessage(conversationId, senderId, messageText) {
  */
 export async function sendAttachmentMessage(conversationId, senderId, payload) {
   try {
-    if (!conversationId || !senderId || !payload?.fileUrl) {
+    const hasFileUrl = Boolean(payload && payload.fileUrl);
+    if (!conversationId || !senderId || !hasFileUrl) {
       throw new Error('Missing required parameters for attachment message');
     }
 
-    const conversationRef = doc(db, 'conversations', conversationId);
-    const convSnap = await getDoc(conversationRef);
-    const conversationData = convSnap.exists() ? convSnap.data() : null;
+    const conversationRef = doc(db, CONVERSATIONS_COLLECTION, conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+    const conversationData = conversationSnap.exists() ? conversationSnap.data() : null;
 
-    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const lastMessagePreview = payload.type === 'image' ? '[Photo]' : (payload.fileName || '[File]');
+    const messageId = makeMessageId();
+    const lastMessagePreview = attachmentLastMessagePreview(payload);
     const messageData = {
       id: messageId,
       conversationId,
       senderId,
-      type: payload.type || 'file',
+      type: payload.type || DEFAULT_ATTACHMENT_TYPE,
       fileUrl: payload.fileUrl,
       fileName: payload.fileName || null,
       fileSize: payload.fileSize ?? null,
@@ -256,36 +234,16 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
       sent: true,
     };
 
-    const result = await runTransaction(db, async (transaction) => {
-      const messageRef = doc(db, 'messages', messageId);
-      transaction.set(messageRef, messageData);
-      transaction.update(conversationRef, {
-        lastMessage: lastMessagePreview,
-        lastMessageTime: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      return messageId;
-    });
+    await writeMessageAndBumpConversation(conversationRef, messageId, messageData, lastMessagePreview);
+    await tryNotifyAfterAttachment(
+      conversationData,
+      senderId,
+      conversationId,
+      messageId,
+      lastMessagePreview,
+    );
 
-    try {
-      const recipientId = conversationData?.participants?.find((id) => id !== senderId);
-      if (recipientId) {
-        const senderData = await getUserData(senderId);
-        const senderName = senderData?.name || senderData?.firstName || 'Someone';
-        await notifyRecipientMessagePush({
-          recipientId,
-          senderName,
-          senderId,
-          conversationId,
-          messageId,
-          messageText: lastMessagePreview,
-        });
-      }
-    } catch (notifError) {
-      console.warn('⚠️ Failed to send push notification (attachment):', notifError);
-    }
-
-    return result;
+    return messageId;
   } catch (error) {
     console.error('❌ Error sending attachment message:', error);
     throw error;
@@ -293,99 +251,57 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
 }
 
 /**
- * Send a client request message (with status: pending and client metadata)
- * @param {string} conversationId - The conversation ID
- * @param {string} senderId - The client's user ID
- * @param {string} messageText - The message content
- * @param {Object} metadata - Optional: clientName, clientGoals, clientExperienceLevel, clientEquipment, clientLimitations
+ * Send a pending client request (not a normal chat bubble).
+ * Flow: 1. refuse missing ids  2. build the pending row  3. write  4. push the trainer
+ * @param {string} conversationId
+ * @param {string} senderId
+ * @param {string} messageText
+ * @param {Object} metadata
  * @returns {Promise<string>} Message ID
  */
 export async function sendClientRequest(conversationId, senderId, messageText, metadata = {}) {
   try {
+    // 1. Fail first.
     if (!conversationId || !senderId) {
       throw new Error('Missing required parameters: conversationId or senderId');
     }
 
+    // 2. Title, body, and inbox preview. Connection requests may fill in a default hello.
     const requestType = metadata.requestType || CLIENT_REQUEST_TYPES.CONNECTION;
     const requestTitle = metadata.requestTitle || clientRequestTypeLabel(requestType);
-    const trimmed = messageText != null ? String(messageText).trim() : '';
-    const allowDefaultIntro = metadata.allowDefaultIntro !== false;
-    const text =
-      trimmed ||
-      (allowDefaultIntro && requestType === CLIENT_REQUEST_TYPES.CONNECTION
-        ? "Hi! I'd like to work with you as my trainer."
-        : '');
-    const lastMessagePreview =
-      requestType === CLIENT_REQUEST_TYPES.CONNECTION
-        ? text || 'Connection request'
-        : requestTitle;
-
-    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const messageData = {
-      id: messageId,
+    const text = clientRequestMessageText(messageText, metadata, requestType);
+    const lastMessagePreview = clientRequestLastMessagePreview(requestType, text, requestTitle);
+    const messageId = makeMessageId();
+    const messageData = buildClientRequestMessageData({
+      messageId,
       conversationId,
       senderId,
       text,
-      timestamp: serverTimestamp(),
-      read: false,
-      status: 'pending',
       requestType,
       requestTitle,
-      clientName: metadata.clientName || 'Client',
-      clientGoals: metadata.clientGoals || 'Not specified',
-      clientExperienceLevel: metadata.clientExperienceLevel || 'Beginner',
-      clientEquipment: metadata.clientEquipment || 'None',
-      clientLimitations: metadata.clientLimitations || 'None',
-    };
-
-    const result = await runTransaction(db, async (transaction) => {
-      const messageRef = doc(db, 'messages', messageId);
-      transaction.set(messageRef, messageData);
-
-      const conversationRef = doc(db, 'conversations', conversationId);
-      transaction.update(conversationRef, {
-        lastMessage: lastMessagePreview,
-        lastMessageTime: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      return messageId;
+      metadata,
     });
 
-    try {
-      const convSnap = await getDoc(doc(db, 'conversations', conversationId));
-      const trainerId = convSnap.exists() ? convSnap.data()?.trainerId : null;
-      if (trainerId && trainerId !== senderId) {
-        const cname = metadata.clientName || metadata.name || 'Client';
-        const pushTitle =
-          requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN
-            ? `Workout plan request from ${cname}`
-            : requestType === CLIENT_REQUEST_TYPES.GENERAL
-              ? `New request from ${cname}`
-              : randomClientRequestTitle(cname);
-        const pushBody =
-          requestType === CLIENT_REQUEST_TYPES.CONNECTION
-            ? text
-              ? `${cname}: ${text.substring(0, 120)}`
-              : `${cname} sent a connection request`
-            : text
-              ? `${requestTitle}: ${text.substring(0, 120)}`
-              : requestTitle;
-        void postRemotePushNotify({
-          recipientId: trainerId,
-          senderName: pushTitle,
-          messageText: pushBody,
-          senderId,
-          conversationId,
-          messageId: result,
-          notificationType: 'client_request',
-        });
-      }
-    } catch (e) {
-      console.warn('Client request push skipped:', e?.message || e);
-    }
+    // 3. Pending row + conversation preview together.
+    await writeMessageAndBumpConversation(
+      doc(db, CONVERSATIONS_COLLECTION, conversationId),
+      messageId,
+      messageData,
+      lastMessagePreview,
+    );
 
-    return result;
+    // 4. Trainer push. Not awaited by the server helper — a miss must not fail the request.
+    await tryNotifyTrainerOfClientRequest({
+      conversationId,
+      senderId,
+      messageId,
+      requestType,
+      text,
+      requestTitle,
+      metadata,
+    });
+
+    return messageId;
   } catch (error) {
     console.error('Error sending client request:', error);
     throw error;
@@ -393,13 +309,14 @@ export async function sendClientRequest(conversationId, senderId, messageText, m
 }
 
 /**
- * Update a message's status (for accept/reject flow)
- * @param {string} messageId - The message document ID
- * @param {Object} updates - { status, responseTimestamp }
+ * Accept/reject a pending request by writing status fields on that message.
+ * @param {string} messageId
+ * @param {Object} updates
+ * @returns {Promise<void>}
  */
 export async function updateMessageStatus(messageId, updates) {
   try {
-    const messageRef = doc(db, 'messages', messageId);
+    const messageRef = doc(db, MESSAGES_COLLECTION, messageId);
     await updateDoc(messageRef, updates);
   } catch (error) {
     console.error('Error updating message status:', error);
@@ -408,12 +325,14 @@ export async function updateMessageStatus(messageId, updates) {
 }
 
 /**
- * Fetch one page of messages (newest first in query, returned ascending).
+ * One page of chat messages, oldest first, with pending requests stripped.
+ * @param {string} conversationId
+ * @returns {Promise<Array>}
  */
 export async function getMessages(conversationId) {
   if (!conversationId) return [];
   try {
-    const messagesRef = collection(db, 'messages');
+    const messagesRef = collection(db, MESSAGES_COLLECTION);
     const primary = query(
       messagesRef,
       where('conversationId', '==', conversationId),
@@ -424,7 +343,7 @@ export async function getMessages(conversationId) {
       query(messagesRef, where('conversationId', '==', conversationId), limit(MESSAGES_PAGE_SIZE));
 
     const snap = await getDocsWithIndexFallback(primary, fallback, 'getMessages');
-    return filterChatMessages(sortMessagesAsc(snap.docs.map(mapMessageDoc)));
+    return messagesFromDocs(snap.docs);
   } catch (error) {
     console.error('Error getting messages:', error);
     throw error;
@@ -432,14 +351,17 @@ export async function getMessages(conversationId) {
 }
 
 /**
- * Load older messages before `beforeTimestamp` (for Load earlier UI).
+ * Older messages before `beforeTimestamp` (Load earlier).
+ * @param {string} conversationId
+ * @param {*} beforeTimestamp
+ * @returns {Promise<{ messages: Array, hasMore: boolean }>}
  */
 export async function loadEarlierMessages(conversationId, beforeTimestamp) {
   if (!conversationId || !beforeTimestamp) {
     return { messages: [], hasMore: false };
   }
   try {
-    const messagesRef = collection(db, 'messages');
+    const messagesRef = collection(db, MESSAGES_COLLECTION);
     const primary = query(
       messagesRef,
       where('conversationId', '==', conversationId),
@@ -451,7 +373,7 @@ export async function loadEarlierMessages(conversationId, beforeTimestamp) {
       query(messagesRef, where('conversationId', '==', conversationId), limit(MESSAGES_PAGE_SIZE));
 
     const snap = await getDocsWithIndexFallback(primary, fallback, 'loadEarlierMessages');
-    const messages = filterChatMessages(sortMessagesAsc(snap.docs.map(mapMessageDoc)));
+    const messages = messagesFromDocs(snap.docs);
     const hasMore = snap.docs.length >= MESSAGES_PAGE_SIZE;
     return { messages, hasMore };
   } catch (error) {
@@ -461,15 +383,16 @@ export async function loadEarlierMessages(conversationId, beforeTimestamp) {
 }
 
 /**
- * Subscribe to real-time messages for a conversation
- * @param {string} conversationId - The conversation ID
- * @param {Function} callback - Callback function to receive messages
- * @returns {Function} Unsubscribe function
+ * Live message window for one conversation. Cleanup closes the listener.
+ * Flow: 1. refuse missing args  2. try the indexed query  3. fall back if the index is missing
+ * @param {string} conversationId
+ * @param {Function} callback
+ * @returns {Function} Unsubscribe
  */
 export function subscribeToMessages(conversationId, callback) {
   if (!conversationId || !callback) return () => {};
 
-  const messagesRef = collection(db, 'messages');
+  const messagesRef = collection(db, MESSAGES_COLLECTION);
   const pageSize = MESSAGES_PAGE_SIZE;
   const primary = query(
     messagesRef,
@@ -487,7 +410,7 @@ export function subscribeToMessages(conversationId, callback) {
     unsubscribe = onSnapshot(
       activeQuery,
       (querySnapshot) => {
-        const messages = filterChatMessages(sortMessagesAsc(querySnapshot.docs.map(mapMessageDoc)));
+        const messages = messagesFromDocs(querySnapshot.docs);
         const hasMore = querySnapshot.docs.length >= pageSize;
         const oldestTimestamp = messages.length ? messages[0].timestamp : null;
         callback(messages, { hasMore, oldestTimestamp });
@@ -519,36 +442,29 @@ export function subscribeToMessages(conversationId, callback) {
 }
 
 /**
- * Get all conversations for a user
- * @param {string} userId - The user's ID
- * @returns {Promise<Array>} Array of conversations
+ * Every conversation this person is in, newest updatedAt first.
+ * @param {string} userId
+ * @returns {Promise<Array>}
  */
 export async function getUserConversations(userId) {
   try {
-    const conversationsRef = collection(db, 'conversations');
-    const q = query(
+    const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
+    // vocab: 'array-contains' means this array field includes this value.
+    const conversationQuery = query(
       conversationsRef,
-      where('participants', 'array-contains', userId)
-      // Removed orderBy to avoid requiring composite index - we'll sort in JavaScript
+      where('participants', 'array-contains', userId),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await getDocs(conversationQuery);
     const conversations = [];
-
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((conversationDoc) => {
       conversations.push({
-        id: doc.id,
-        ...doc.data(),
+        id: conversationDoc.id,
+        ...conversationDoc.data(),
       });
     });
 
-    // Sort by updatedAt in JavaScript
-    conversations.sort((a, b) => {
-      const timeA = a.updatedAt?.toMillis?.() || a.updatedAt || 0;
-      const timeB = b.updatedAt?.toMillis?.() || b.updatedAt || 0;
-      return timeB - timeA; // Descending order (newest first)
-    });
-
+    sortConversationsNewestFirst(conversations);
     return conversations;
   } catch (error) {
     console.error('Error getting user conversations:', error);
@@ -557,93 +473,66 @@ export async function getUserConversations(userId) {
 }
 
 /**
- * Mark messages as read
- * @param {string} conversationId - The conversation ID
- * @param {string} userId - The user ID marking messages as read
+ * Mark the other person's messages in this thread as read.
+ * @param {string} conversationId
+ * @param {string} userId
+ * @returns {Promise<void>}
  */
 export async function markMessagesAsRead(conversationId, userId) {
   try {
     await markConversationMessagesReadPaginated(conversationId, userId);
   } catch (error) {
     if (__DEV__) console.error('Error marking messages as read:', error);
-    // Don't throw - this is not critical
   }
 }
 
 /**
- * Get user data by ID. Tries `users` first; on missing doc or permission-denied (e.g. client
- * reading a trainer's private user doc), falls back to `trainers/{id}` — readable by any
- * signed-in user for marketplace profiles.
- * @param {string} userId - The user's ID
- * @returns {Promise<Object|null>} User data or null
+ * Load a user card. Tries `users` first; on missing doc or permission-denied, tries `trainers`.
+ * Flow: 1. refuse a blank id  2. users doc  3. trainers fallback  4. null
+ * @param {string} userId
+ * @returns {Promise<Object|null>}
  */
 export async function getUserData(userId) {
   const id = typeof userId === 'string' ? userId.trim() : '';
   if (!id) return null;
 
   try {
-    const userDoc = await getDoc(doc(db, 'users', id));
+    const userDoc = await getDoc(doc(db, USERS_COLLECTION, id));
     if (userDoc.exists()) {
       return { id: userDoc.id, ...userDoc.data() };
     }
   } catch (error) {
-    const code = error?.code || '';
-    const msg = String(error?.message || '').toLowerCase();
-    const isDenied = code === 'permission-denied' || msg.includes('insufficient permissions');
-    if (!isDenied) {
+    if (!isPermissionDeniedError(error)) {
       console.error('Error getting user data:', error);
       return null;
     }
   }
 
   try {
-    const trainerSnap = await getDoc(doc(db, 'trainers', id));
+    const trainerSnap = await getDoc(doc(db, TRAINERS_COLLECTION, id));
     if (trainerSnap.exists()) {
-      const d = trainerSnap.data();
-      return {
-        id: trainerSnap.id,
-        ...d,
-        displayName: d.displayName || d.name,
-        name: d.name || d.displayName,
-      };
+      return userDataFromTrainerSnap(trainerSnap);
     }
-  } catch (e2) {
-    console.warn('getUserData: trainers fallback failed', id, e2?.message || e2);
+  } catch (trainerError) {
+    console.warn('getUserData: trainers fallback failed', id, trainerError?.message || trainerError);
   }
 
   return null;
 }
+
 /**
- * Get total unread message count for a user across all conversations
- * @param {string} userId - The user's ID
- * @returns {Promise<number>} Total unread message count
+ * Total unread messages across every conversation this person is in.
+ * @param {string} userId
+ * @returns {Promise<number>}
  */
 export async function getUnreadMessageCount(userId) {
   try {
-    // Get all conversations for the user
     const conversations = await getUserConversations(userId);
-    
-    // Count unread messages in all conversations
     let totalUnread = 0;
-    
-    for (const conv of conversations) {
-      const messagesRef = collection(db, 'messages');
-      // Only query by conversationId to avoid index requirement
-      const q = query(
-        messagesRef,
-        where('conversationId', '==', conv.id)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      // Filter in JavaScript
-      querySnapshot.forEach((doc) => {
-        const messageData = doc.data();
-        if (messageData.senderId !== userId && messageData.read === false) {
-          totalUnread++;
-        }
-      });
+    for (const conversation of conversations) {
+      const unreadHere = await unreadCountInConversation(conversation.id, userId);
+      totalUnread += unreadHere;
     }
-    
     return totalUnread;
   } catch (error) {
     console.error('Error getting unread message count:', error);
@@ -656,60 +545,486 @@ export async function getUnreadMessageCount(userId) {
  */
 export { subscribeToUnreadCount } from '../../messaging/unreadMessageCounts';
 
-/** How long after `typingAt` we hide the “typing…” UI without a new pulse. */
-export const TYPING_UI_STALE_MS = 4500;
-
 /**
- * Live typing hints on `conversations/{conversationId}` (participants may update per rules).
+ * Live typing hints on `conversations/{conversationId}`.
+ * @param {string} conversationId
  * @param {(meta: { typingUserId: string|null, typingAt: object|null }) => void} listener
+ * @returns {Function} Unsubscribe
  */
 export function subscribeConversationTyping(conversationId, listener) {
   if (!db || !conversationId || typeof listener !== 'function') return () => {};
-  const ref = doc(db, 'conversations', conversationId);
+  const conversationRef = doc(db, CONVERSATIONS_COLLECTION, conversationId);
   return onSnapshot(
-    ref,
+    conversationRef,
     (snap) => {
-      if (!snap.exists()) {
-        listener({ typingUserId: null, typingAt: null });
-        return;
-      }
-      const d = snap.data() || {};
-      listener({
-        typingUserId: d.typingUserId ?? null,
-        typingAt: d.typingAt ?? null,
-      });
+      listener(typingMetaFromSnapshot(snap));
     },
     () => listener({ typingUserId: null, typingAt: null }),
   );
 }
 
+/**
+ * Pulse "I am typing" on this conversation. Best-effort.
+ * @param {string} conversationId
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
 export async function pulseConversationTyping(conversationId, userId) {
   if (!db || !conversationId || !userId) return;
   try {
-    await updateDoc(doc(db, 'conversations', conversationId), {
+    await updateDoc(doc(db, CONVERSATIONS_COLLECTION, conversationId), {
       typingUserId: userId,
       typingAt: serverTimestamp(),
     });
-  } catch (e) {
-    if (__DEV__) console.warn('pulseConversationTyping:', e?.message || e);
+  } catch (error) {
+    if (__DEV__) console.warn('pulseConversationTyping:', error?.message || error);
   }
 }
 
+/**
+ * Clear the typing hint only when it is still this person (do not erase the other side).
+ * @param {string} conversationId
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
 export async function clearMyConversationTyping(conversationId, userId) {
   if (!db || !conversationId || !userId) return;
   try {
-    const ref = doc(db, 'conversations', conversationId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
-    const cur = snap.data()?.typingUserId;
-    if (cur === userId) {
-      await updateDoc(ref, {
+    const conversationRef = doc(db, CONVERSATIONS_COLLECTION, conversationId);
+    const snapshot = await getDoc(conversationRef);
+    if (!snapshot.exists()) return;
+    const conversationData = snapshot.data() || {};
+    const currentTypingUserId = conversationData.typingUserId;
+    if (currentTypingUserId === userId) {
+      await updateDoc(conversationRef, {
         typingUserId: deleteField(),
         typingAt: deleteField(),
       });
     }
-  } catch (e) {
-    if (__DEV__) console.warn('clearMyConversationTyping:', e?.message || e);
+  } catch (error) {
+    if (__DEV__) console.warn('clearMyConversationTyping:', error?.message || error);
   }
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+/**
+ * vocab: toMillis() turns a Firestore Timestamp into a number. A raw number is already millis.
+ * @param {object} message
+ * @returns {number}
+ */
+function messageTimeMillis(message) {
+  const timestamp = message && message.timestamp;
+  if (timestamp && timestamp.toMillis) return timestamp.toMillis();
+  if (typeof timestamp === 'number') return timestamp;
+  return 0;
+}
+
+/**
+ * Oldest first so the chat list reads top-to-bottom.
+ * @param {Array} messages
+ * @returns {Array}
+ */
+function sortMessagesOldestFirst(messages) {
+  return [...messages].sort((leftMessage, rightMessage) => {
+    return messageTimeMillis(leftMessage) - messageTimeMillis(rightMessage);
+  });
+}
+
+/**
+ * @param {object} messageDoc
+ * @returns {object}
+ */
+function messageFromDoc(messageDoc) {
+  return { id: messageDoc.id, ...messageDoc.data() };
+}
+
+/**
+ * @param {Array} messageDocs
+ * @returns {Array}
+ */
+function messagesFromDocs(messageDocs) {
+  const messages = [];
+  for (const messageDoc of messageDocs) {
+    messages.push(messageFromDoc(messageDoc));
+  }
+  return filterChatMessages(sortMessagesOldestFirst(messages));
+}
+
+/**
+ * The other person in a two-person conversation.
+ * @param {object|null} conversationData
+ * @param {string} senderId
+ * @returns {string|undefined}
+ */
+function findRecipientUid(conversationData, senderId) {
+  const participants = conversationData && conversationData.participants;
+  if (!participants) return undefined;
+  for (const participantId of participants) {
+    if (participantId !== senderId) return participantId;
+  }
+  return undefined;
+}
+
+/**
+ * @param {object|null} senderData
+ * @returns {string}
+ */
+function senderDisplayName(senderData) {
+  if (senderData && senderData.name) return senderData.name;
+  if (senderData && senderData.firstName) return senderData.firstName;
+  return DEFAULT_SENDER_NAME;
+}
+
+/**
+ * @returns {string}
+ */
+function makeMessageId() {
+  const randomTail = Math.random()
+    .toString(MESSAGE_ID_RANDOM_RADIX)
+    .substr(MESSAGE_ID_RANDOM_SKIP, MESSAGE_ID_RANDOM_LENGTH);
+  return `msg_${Date.now()}_${randomTail}`;
+}
+
+/**
+ * Same pair always gets the same conversation id, so we never open a second thread.
+ * @param {string} clientId
+ * @param {string} trainerId
+ * @returns {string}
+ */
+function conversationIdForPair(clientId, trainerId) {
+  return `conv_${clientId}_${trainerId}`;
+}
+
+/**
+ * @param {string} conversationId
+ * @param {string} clientId
+ * @param {string} trainerId
+ * @returns {object}
+ */
+function newConversationFields(conversationId, clientId, trainerId) {
+  return {
+    id: conversationId,
+    participants: [clientId, trainerId],
+    clientId,
+    trainerId,
+    type: CONVERSATION_TYPE_CLIENT_TRAINER,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMessage: null,
+    lastMessageTime: null,
+  };
+}
+
+/**
+ * Best-effort phone alert. A failed push must not roll back the saved message.
+ * @param {object} pushFields
+ * @returns {Promise<void>}
+ */
+async function notifyRecipientMessagePush({
+  recipientId,
+  senderId,
+  senderName,
+  conversationId,
+  messageId,
+  messageText,
+}) {
+  const pushResult = await postRemotePushNotify({
+    recipientId,
+    senderName,
+    senderId,
+    conversationId,
+    messageId,
+    messageText: (messageText || '').substring(0, PUSH_TEXT_PREVIEW_MAX),
+    notificationType: NOTIFICATION_TYPE_MESSAGE,
+  });
+  if (!pushResult.ok && pushResult.reason) {
+    console.warn('⚠️ Push notification:', pushResult.reason);
+  }
+}
+
+/**
+ * Unread badge + push after a text message. Missing recipient is a no-op.
+ * @returns {Promise<void>}
+ */
+async function tryNotifyAfterTextMessage(conversationData, senderId, conversationId, messageId, text) {
+  try {
+    const recipientId = findRecipientUid(conversationData, senderId);
+    if (!recipientId) return;
+    await incrementUnreadForRecipient(recipientId, conversationId);
+    const senderData = await getUserData(senderId);
+    await notifyRecipientMessagePush({
+      recipientId,
+      senderName: senderDisplayName(senderData),
+      senderId,
+      conversationId,
+      messageId,
+      messageText: text,
+    });
+  } catch (notifError) {
+    console.warn('⚠️ Failed to send push notification:', notifError);
+  }
+}
+
+/**
+ * Attachment path does not bump unread — only the text path does that.
+ * @returns {Promise<void>}
+ */
+async function tryNotifyAfterAttachment(
+  conversationData,
+  senderId,
+  conversationId,
+  messageId,
+  lastMessagePreview,
+) {
+  try {
+    const recipientId = findRecipientUid(conversationData, senderId);
+    if (!recipientId) return;
+    const senderData = await getUserData(senderId);
+    await notifyRecipientMessagePush({
+      recipientId,
+      senderName: senderDisplayName(senderData),
+      senderId,
+      conversationId,
+      messageId,
+      messageText: lastMessagePreview,
+    });
+  } catch (notifError) {
+    console.warn('⚠️ Failed to send push notification (attachment):', notifError);
+  }
+}
+
+/**
+ * @param {object} conversationRef
+ * @param {string} messageId
+ * @param {object} messageData
+ * @param {string} lastMessagePreview
+ * @returns {Promise<void>}
+ */
+async function writeMessageAndBumpConversation(conversationRef, messageId, messageData, lastMessagePreview) {
+  await runTransaction(db, async (transaction) => {
+    const messageRef = doc(db, MESSAGES_COLLECTION, messageId);
+    transaction.set(messageRef, messageData);
+    transaction.update(conversationRef, {
+      lastMessage: lastMessagePreview,
+      lastMessageTime: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+/**
+ * @param {string} messageText
+ * @param {object} metadata
+ * @param {string} requestType
+ * @returns {string}
+ */
+function clientRequestMessageText(messageText, metadata, requestType) {
+  const trimmed = messageText != null ? String(messageText).trim() : '';
+  const allowDefaultIntro = metadata.allowDefaultIntro !== false;
+  if (trimmed) return trimmed;
+  if (allowDefaultIntro && requestType === CLIENT_REQUEST_TYPES.CONNECTION) {
+    return DEFAULT_CONNECTION_INTRO;
+  }
+  return '';
+}
+
+/**
+ * @param {string} requestType
+ * @param {string} text
+ * @param {string} requestTitle
+ * @returns {string}
+ */
+function clientRequestLastMessagePreview(requestType, text, requestTitle) {
+  if (requestType === CLIENT_REQUEST_TYPES.CONNECTION) {
+    return text || CONNECTION_REQUEST_PREVIEW;
+  }
+  return requestTitle;
+}
+
+/**
+ * @param {object} fields
+ * @returns {object}
+ */
+function buildClientRequestMessageData({
+  messageId,
+  conversationId,
+  senderId,
+  text,
+  requestType,
+  requestTitle,
+  metadata,
+}) {
+  return {
+    id: messageId,
+    conversationId,
+    senderId,
+    text,
+    timestamp: serverTimestamp(),
+    read: false,
+    status: MESSAGE_STATUS_PENDING,
+    requestType,
+    requestTitle,
+    clientName: metadata.clientName || DEFAULT_CLIENT_NAME,
+    clientGoals: metadata.clientGoals || DEFAULT_CLIENT_GOALS,
+    clientExperienceLevel: metadata.clientExperienceLevel || DEFAULT_EXPERIENCE_LEVEL,
+    clientEquipment: metadata.clientEquipment || DEFAULT_EQUIPMENT,
+    clientLimitations: metadata.clientLimitations || DEFAULT_LIMITATIONS,
+  };
+}
+
+/**
+ * @param {string} requestType
+ * @param {string} clientName
+ * @returns {string}
+ */
+function clientRequestPushTitle(requestType, clientName) {
+  if (requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN) {
+    return `Workout plan request from ${clientName}`;
+  }
+  if (requestType === CLIENT_REQUEST_TYPES.GENERAL) {
+    return `New request from ${clientName}`;
+  }
+  return randomClientRequestTitle(clientName);
+}
+
+/**
+ * @param {string} requestType
+ * @param {string} clientName
+ * @param {string} text
+ * @param {string} requestTitle
+ * @returns {string}
+ */
+function clientRequestPushBody(requestType, clientName, text, requestTitle) {
+  if (requestType === CLIENT_REQUEST_TYPES.CONNECTION) {
+    if (text) return `${clientName}: ${text.substring(0, CLIENT_REQUEST_PUSH_BODY_MAX)}`;
+    return `${clientName} sent a connection request`;
+  }
+  if (text) return `${requestTitle}: ${text.substring(0, CLIENT_REQUEST_PUSH_BODY_MAX)}`;
+  return requestTitle;
+}
+
+/**
+ * Fire-and-forget: the request row is already saved. A push miss must not fail the send.
+ * @returns {Promise<void>}
+ */
+async function tryNotifyTrainerOfClientRequest({
+  conversationId,
+  senderId,
+  messageId,
+  requestType,
+  text,
+  requestTitle,
+  metadata,
+}) {
+  try {
+    const conversationSnap = await getDoc(doc(db, CONVERSATIONS_COLLECTION, conversationId));
+    const trainerId = conversationSnap.exists() ? conversationSnap.data()?.trainerId : null;
+    if (!trainerId || trainerId === senderId) return;
+    const clientName = metadata.clientName || metadata.name || DEFAULT_CLIENT_NAME;
+    void postRemotePushNotify({
+      recipientId: trainerId,
+      senderName: clientRequestPushTitle(requestType, clientName),
+      messageText: clientRequestPushBody(requestType, clientName, text, requestTitle),
+      senderId,
+      conversationId,
+      messageId,
+      notificationType: NOTIFICATION_TYPE_CLIENT_REQUEST,
+    });
+  } catch (notifyError) {
+    console.warn('Client request push skipped:', notifyError?.message || notifyError);
+  }
+}
+
+/**
+ * @param {Error} error
+ * @returns {boolean}
+ */
+function isPermissionDeniedError(error) {
+  const errorCode = error?.code || '';
+  const errorMessage = String(error?.message || '').toLowerCase();
+  return errorCode === FIRESTORE_PERMISSION_DENIED || errorMessage.includes('insufficient permissions');
+}
+
+/**
+ * Marketplace trainer docs use displayName; user docs use name. Expose both spellings.
+ * @param {object} trainerSnap
+ * @returns {object}
+ */
+function userDataFromTrainerSnap(trainerSnap) {
+  const trainerData = trainerSnap.data();
+  return {
+    id: trainerSnap.id,
+    ...trainerData,
+    displayName: trainerData.displayName || trainerData.name,
+    name: trainerData.name || trainerData.displayName,
+  };
+}
+
+/**
+ * @param {object} conversation
+ * @returns {number}
+ */
+function conversationUpdatedMillis(conversation) {
+  const updatedAt = conversation.updatedAt;
+  if (updatedAt && typeof updatedAt.toMillis === 'function') {
+    return updatedAt.toMillis() || updatedAt || 0;
+  }
+  return updatedAt || 0;
+}
+
+/**
+ * Newest conversation first. Sorted in memory so the query needs no composite index.
+ * @param {Array} conversations
+ */
+function sortConversationsNewestFirst(conversations) {
+  conversations.sort((leftConversation, rightConversation) => {
+    return conversationUpdatedMillis(rightConversation) - conversationUpdatedMillis(leftConversation);
+  });
+}
+
+/**
+ * Count unread rows the other person sent. `read === false` on purpose — a missing `read` does not count.
+ * @param {string} conversationId
+ * @param {string} userId
+ * @returns {Promise<number>}
+ */
+async function unreadCountInConversation(conversationId, userId) {
+  const messagesRef = collection(db, MESSAGES_COLLECTION);
+  const conversationQuery = query(messagesRef, where('conversationId', '==', conversationId));
+  const querySnapshot = await getDocs(conversationQuery);
+  let unreadCount = 0;
+  querySnapshot.forEach((messageDoc) => {
+    const messageData = messageDoc.data();
+    if (messageData.senderId !== userId && messageData.read === false) {
+      unreadCount += 1;
+    }
+  });
+  return unreadCount;
+}
+
+/**
+ * @param {object} snapshot
+ * @returns {{ typingUserId: string|null, typingAt: object|null }}
+ */
+function typingMetaFromSnapshot(snapshot) {
+  if (!snapshot.exists()) {
+    return { typingUserId: null, typingAt: null };
+  }
+  const conversationData = snapshot.data() || {};
+  return {
+    typingUserId: conversationData.typingUserId ?? null,
+    typingAt: conversationData.typingAt ?? null,
+  };
+}
+
+/**
+ * @param {object} payload
+ * @returns {string}
+ */
+function attachmentLastMessagePreview(payload) {
+  if (payload.type === IMAGE_ATTACHMENT_TYPE) return PHOTO_PREVIEW;
+  return payload.fileName || FILE_PREVIEW;
 }
 

@@ -1,12 +1,66 @@
 // One stat tile on the trainer's Progress tab (big number + label + optional footer row).
-// Flow: parent passes icon/metric/label → we resolve theme colors → render a bordered card with
-// the icon pinned in the corner and the number bottom-aligned.
+// Flow: parent passes icon/metric/label → we resolve theme colors → render a bordered card.
 // Used in the grid of metric cards at the top of the trainer Progress tab.
+
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 // vocab: Ionicons = icon font from Expo's vector-icons; `name` selects a glyph by string id
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
+const DARK_TEXT = '#FFFFFF';
+const LIGHT_TEXT = '#0A0A0F';
+const DARK_MUTED = 'rgba(255,255,255,0.55)';
+const LIGHT_MUTED = 'rgba(10,10,15,0.55)';
+const DARK_BACKGROUND = '#14141C';
+const LIGHT_BACKGROUND = '#FFFFFF';
+const DARK_BORDER = 'rgba(255,255,255,0.10)';
+const LIGHT_BORDER = 'rgba(10,10,15,0.08)';
+const SHADOW_COLOR = '#000';
+const DARK_SHADOW_OPACITY = 0.25;
+const LIGHT_SHADOW_OPACITY = 0.08;
+const ICON_COLOR = '#FDBA74';
+const ICON_SIZE = 20;
+const METRIC_MIN_FONT_SCALE = 0.7;
+
+// ===== HELPER FUNCTIONS =====
+
+function progressCardColors(isDark) {
+  // Theme colors are computed per render rather than pulled from a stylesheet because they flip
+  // with light/dark mode. Manipulate here: muted uses low-alpha black/white instead of a solid
+  // grey so it blends with whatever card background sits behind it.
+  return {
+    text: isDark ? DARK_TEXT : LIGHT_TEXT,
+    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
+    background: isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND,
+    border: isDark ? DARK_BORDER : LIGHT_BORDER,
+  };
+}
+
+function cardShadow(isDark) {
+  // iOS and Android have completely different shadow systems, so there's no single set of
+  // props that works on both — Platform.select picks the right one at runtime.
+  // vocab: Platform.select = return the value for the current OS
+  // Manipulate here: shadowOpacity is higher in dark mode because a soft shadow is nearly
+  // invisible against a dark background; `elevation` is Android's single shadow dial.
+  return Platform.select({
+    ios: {
+      shadowColor: SHADOW_COLOR,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? DARK_SHADOW_OPACITY : LIGHT_SHADOW_OPACITY,
+      shadowRadius: 8,
+    },
+    android: { elevation: 2 },
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{ isDark: boolean, icon: string, metric: string|number, label: string, footer?: import('react').ReactNode, style?: object }} props
+ * @returns {import('react').ReactElement}
+ */
 export default function ProgressTopCard({
   isDark,
   icon,
@@ -18,35 +72,16 @@ export default function ProgressTopCard({
   // `style` lets the parent grid own the layout (widths, gaps) while we own the card's look.
   style,
 }) {
-  // Theme colors are computed per render rather than pulled from a stylesheet because they flip
-  // with light/dark mode. Manipulate here: `muted` uses low-alpha black/white instead of a solid
-  // grey so it blends with whatever card background sits behind it.
-  const text = isDark ? '#FFFFFF' : '#0A0A0F';
-  const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
-  const bg = isDark ? '#14141C' : '#FFFFFF';
-  const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)';
+  const colors = progressCardColors(isDark);
 
   return (
     <View
       style={[
         styles.card,
         {
-          backgroundColor: bg,
-          borderColor: border,
-          // iOS and Android have completely different shadow systems, so there's no single set of
-          // props that works on both — Platform.select picks the right one at runtime.
-          // vocab: Platform.select = return the value for the current OS
-          // Manipulate here: shadowOpacity is higher in dark mode because a soft shadow is nearly
-          // invisible against a dark background; `elevation` is Android's single shadow dial.
-          ...Platform.select({
-            ios: {
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: isDark ? 0.25 : 0.08,
-              shadowRadius: 8,
-            },
-            android: { elevation: 2 },
-          }),
+          backgroundColor: colors.background,
+          borderColor: colors.border,
+          ...cardShadow(isDark),
         },
         // Caller style goes LAST so the parent can override anything above it.
         style,
@@ -55,16 +90,21 @@ export default function ProgressTopCard({
       <View style={styles.body}>
         {/* Icon is absolutely positioned (see styles.cornerIcon) so it floats in the top-right
             and doesn't participate in the bottom-aligned text stack below it.
-            Manipulate here: '#FDBA74' is the shared amber accent for every progress metric. */}
-        <Ionicons name={icon} size={20} color="#FDBA74" style={styles.cornerIcon} />
+            Manipulate here: ICON_COLOR is the shared amber accent for every progress metric. */}
+        <Ionicons name={icon} size={ICON_SIZE} color={ICON_COLOR} style={styles.cornerIcon} />
         {/* The headline number. numberOfLines={1} + adjustsFontSizeToFit is the pairing that
             makes a long value ("184.5 lbs") shrink to fit instead of wrapping or being cut off.
-            Manipulate here: minimumFontScale 0.7 is the shrink floor — below that the number
+            Manipulate here: METRIC_MIN_FONT_SCALE is the shrink floor — below that the number
             gets too small to read at a glance. */}
-        <Text style={[styles.metric, { color: text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        <Text
+          style={[styles.metric, { color: colors.text }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={METRIC_MIN_FONT_SCALE}
+        >
           {metric}
         </Text>
-        <Text style={[styles.label, { color: muted }]} numberOfLines={1}>
+        <Text style={[styles.label, { color: colors.muted }]} numberOfLines={1}>
           {label}
         </Text>
         {/* Render the footer row only when one was passed. Returning null (not undefined or false)

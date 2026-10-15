@@ -53,7 +53,10 @@ const RATIO_PATTERN = /\d+\s*\/\s*\d+/;
 // ===== HELPER FUNCTIONS =====
 
 function matchesBoringPattern(tipText) {
-  return BORING_PATTERNS.some((pattern) => pattern.test(tipText));
+  for (const pattern of BORING_PATTERNS) {
+    if (pattern.test(tipText)) return true;
+  }
+  return false;
 }
 
 function digitScore(tipText) {
@@ -91,13 +94,13 @@ function scorePoint(text) {
   if (!tipText) return REJECT_SCORE;
   if (matchesBoringPattern(tipText)) return REJECT_SCORE;
 
-  let score = 0;
-  score += digitScore(tipText);
-  score += ratioScore(tipText);
-  score += metricWordScore(tipText);
-  score += unitWordScore(tipText);
-  score += lengthScore(tipText);
-  return score;
+  return (
+    digitScore(tipText)
+    + ratioScore(tipText)
+    + metricWordScore(tipText)
+    + unitWordScore(tipText)
+    + lengthScore(tipText)
+  );
 }
 
 // seenLines is updated before the score check so a repeat of a rejected line is still a duplicate.
@@ -112,6 +115,10 @@ function rememberUniqueTip(rawLine, seenLines, rankedTips) {
   const score = scorePoint(tipText);
   if (score < 0) return;
   rankedTips.push({ text: tipText, score });
+}
+
+function sortTipsHighestFirst(rankedTips) {
+  return rankedTips.slice().sort((leftTip, rightTip) => rightTip.score - leftTip.score);
 }
 
 // ===== MAIN FUNCTION =====
@@ -130,10 +137,9 @@ export function pickBestTips(items = [], maxTips = DEFAULT_TIP_LIMIT) {
     rememberUniqueTip(rawLine, seenLines, rankedTips);
   }
 
-  return rankedTips
-    .sort((leftTip, rightTip) => rightTip.score - leftTip.score)
-    .slice(0, maxTips)
-    .map((rankedTip) => rankedTip.text);
+  const sortedTips = sortTipsHighestFirst(rankedTips);
+  const topTips = sortedTips.slice(0, maxTips);
+  return topTips.map((rankedTip) => rankedTip.text);
 }
 
 /**

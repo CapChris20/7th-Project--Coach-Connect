@@ -48,16 +48,38 @@ function fallbackGlyphSize(iconSize) {
  * @param {number} iconSize
  * @returns {JSX.Element}
  */
+function profilePhotoStyle(iconSize) {
+  return { width: iconSize, height: iconSize };
+}
+
 function profilePhotoIcon(iconSource, iconSize) {
+  const photoStyle = profilePhotoStyle(iconSize);
   return (
     <Image
       source={iconSource}
-      style={{ width: iconSize, height: iconSize }}
+      style={photoStyle}
       // vocab: contentFit = how the PNG sits in the box. contain scales it down without cropping.
       contentFit={IMAGE_CONTENT_FIT}
       // vocab: cachePolicy memory-disk = keep the PNG in memory and on disk so scrolling does not fetch it again.
       cachePolicy={IMAGE_CACHE_POLICY}
       transition={IMAGE_TRANSITION_MS}
+    />
+  );
+}
+
+function frequencyCalendarIcon(iconSize) {
+  return <CalendarIcon size={iconSize} />;
+}
+
+function fallbackProfileGlyph(fallbackIcon, iconSize) {
+  const glyphName = fallbackIcon;
+  const glyphSize = fallbackGlyphSize(iconSize);
+  const glyphColor = FALLBACK_ICON_COLOR;
+  return (
+    <Ionicons
+      name={glyphName}
+      size={glyphSize}
+      color={glyphColor}
     />
   );
 }
@@ -79,20 +101,18 @@ export default function ProfileIcon({
   size = PROFILE_CARD_ICON_SIZE,
   fallbackIcon = FALLBACK_ICON_NAME,
 }) {
+  // 1. Frequency (the schedule row) uses the shared calendar glyph, not a body PNG.
   if (isFrequencyProfileItem(itemId)) {
-    return <CalendarIcon size={size} />;
+    return frequencyCalendarIcon(size);
   }
 
+  // 2. A profile PNG when we have one for this row.
   const iconSource = resolveProfileIconSource(itemId, onboardingData);
-  if (iconSource) {
+  const hasProfilePhoto = Boolean(iconSource);
+  if (hasProfilePhoto) {
     return profilePhotoIcon(iconSource, size);
   }
 
-  return (
-    <Ionicons
-      name={fallbackIcon}
-      size={fallbackGlyphSize(size)}
-      color={FALLBACK_ICON_COLOR}
-    />
-  );
+  // 3. Otherwise the generic fallback ionicon, sized a bit inside the card.
+  return fallbackProfileGlyph(fallbackIcon, size);
 }

@@ -1,6 +1,7 @@
-/**
- * Schedule Training Session — inline tab form, wheel pickers, theme-responsive.
- */
+// Schedule / edit a training session: date wheels, duration chips, notes, Zoom link.
+// Flow: load editing session if any → pick date/time/duration → create or update via mySessions hooks.
+// Used from the trainer calendar tab and client scheduling entry points.
+
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -31,25 +32,37 @@ import {
 } from '../scheduling/schedulingColors';
 import SessionTimePicker from './SessionTimePicker';
 
+// ===== NAMED CONSTANTS =====
+
+const NOON_HOUR_FOR_DATE_PARSE = 12;
+const MINUTE_SNAP = 5;
+const DEFAULT_DURATION_MIN = 60;
+const YEAR_RANGE_BACK = 1;
+const YEAR_RANGE_FORWARD = 3;
+const SCROLL_BOTTOM_PAD = 48;
+const HOURS_ON_12H_CLOCK = 12;
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const DURATIONS = [
   { label: '15m', min: 15 },
   { label: '30m', min: 30 },
   { label: '45m', min: 45 },
-  { label: '1h', min: 60 },
+  { label: '1h', min: DEFAULT_DURATION_MIN },
   { label: '1h 15m', min: 75 },
   { label: '1h 30m', min: 90 },
   { label: '2h', min: 120 },
 ];
 
+// ===== HELPER FUNCTIONS =====
+
 function parseTimeTo12(timeStr) {
   if (!timeStr) return { hour: 9, minute: 0, period: 'AM' };
   const [hStr, mStr] = String(timeStr).split(':');
   const h24 = parseInt(hStr, 10);
-  const minute = Math.round(parseInt(mStr || '0', 10) / 5) * 5;
-  const period = h24 >= 12 ? 'PM' : 'AM';
-  const hour = ((h24 + 11) % 12) + 1;
+  const minute = Math.round(parseInt(mStr || '0', 10) / MINUTE_SNAP) * MINUTE_SNAP;
+  const period = h24 >= NOON_HOUR_FOR_DATE_PARSE ? 'PM' : 'AM';
+  const hour = ((h24 + 11) % HOURS_ON_12H_CLOCK) + 1;
   return { hour, minute, period };
 }
 
@@ -65,6 +78,12 @@ function buildInitialDate(editing, initialDate, today) {
   return new Date(today.getFullYear(), today.getMonth(), today.getDate());
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Inline schedule / edit session form for the trainer calendar.
+ * @param {object} [props]
+ */
 export function ScheduleSessionScreen(props = {}) {
   const route = useContext(NavigationRouteContext);
   const navigation = useContext(NavigationContext);
@@ -80,7 +99,7 @@ export function ScheduleSessionScreen(props = {}) {
 
   const { isDark } = useTheme();
   const colors = getSessionSchedulingColors(isDark);
-  const scrollBottomPad = useModalScrollBottomPad(48);
+  const scrollBottomPad = useModalScrollBottomPad(SCROLL_BOTTOM_PAD);
 
   const createSession = useCreateTrainingSession();
   const updateSession = useUpdateTrainingSession();
@@ -104,7 +123,7 @@ export function ScheduleSessionScreen(props = {}) {
   const [hour, setHour] = useState(initTime.hour);
   const [minute, setMinute] = useState(initTime.minute);
   const [period, setPeriod] = useState(initTime.period);
-  const [duration, setDuration] = useState(editing?.durationMin ?? editing?.duration ?? 60);
+  const [duration, setDuration] = useState(editing?.durationMin ?? editing?.duration ?? DEFAULT_DURATION_MIN);
   const [notes, setNotes] = useState(editing?.notes ?? '');
   const [videoLink, setVideoLink] = useState(editing?.zoomLink ?? '');
   const [submitting, setSubmitting] = useState(false);
@@ -115,22 +134,22 @@ export function ScheduleSessionScreen(props = {}) {
 
   useEffect(() => {
     if (!editing) return;
-    const d = buildInitialDate(editing, null, today);
-    setMonth(d.getMonth());
-    setDay(d.getDate());
-    setYear(d.getFullYear());
-    const t = parseTimeTo12(editing.time);
-    setHour(t.hour);
-    setMinute(t.minute);
-    setPeriod(t.period);
-    setDuration(editing.durationMin ?? editing.duration ?? 60);
+    const initial = buildInitialDate(editing, null, today);
+    setMonth(initial.getMonth());
+    setDay(initial.getDate());
+    setYear(initial.getFullYear());
+    const parsedTime = parseTimeTo12(editing.time);
+    setHour(parsedTime.hour);
+    setMinute(parsedTime.minute);
+    setPeriod(parsedTime.period);
+    setDuration(editing.durationMin ?? editing.duration ?? DEFAULT_DURATION_MIN);
     setNotes(editing.notes ?? '');
     setVideoLink(editing.zoomLink ?? '');
   }, [editing?.id, today]);
 
   const years = useMemo(() => {
-    const start = today.getFullYear() - 1;
-    const end = today.getFullYear() + 3;
+    const start = today.getFullYear() - YEAR_RANGE_BACK;
+    const end = today.getFullYear() + YEAR_RANGE_FORWARD;
     return Array.from({ length: end - start + 1 }, (_, i) => start + i);
   }, [today]);
 
@@ -147,7 +166,7 @@ export function ScheduleSessionScreen(props = {}) {
   );
   const yearItems = useMemo(() => years.map((y) => ({ value: y, label: String(y) })), [years]);
   const hourItems = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
+    () => Array.from({ length: HOURS_ON_12H_CLOCK }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
     [],
   );
   const minuteItems = useMemo(

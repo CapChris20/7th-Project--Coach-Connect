@@ -77,4 +77,14 @@ const BRAND_GRADIENT_ICON_PATHS = {
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Look up the stored 24×24 paths for one brand icon name.
+ * @param {string} iconName
+ * @returns {{ style: string, paths: string[] }|undefined}
+ */
+export function iconShapeForName(iconName) {
+  // 1. Unknown name → no paths. ColorfulIcon then draws nothing.
+  return BRAND_GRADIENT_ICON_PATHS[iconName];
+}
+
 export { BRAND_GRADIENT_ICON_PATHS };

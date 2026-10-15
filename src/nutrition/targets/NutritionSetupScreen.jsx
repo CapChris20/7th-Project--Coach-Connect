@@ -1,54 +1,6 @@
-/**
- * Nutrition Onboarding Screen
- *
- * Purpose: UI screen or component: Nutrition Onboarding Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE, NutritionNewUserSetupScreen
- *
- * @file-header
- */
-/**
- * ANATROX — Nutrition Onboarding Screen
- * Converted from Lovable web export (Nutrition_Onboarding.zip) to React Native / Expo
- * Single file — all components inlined, no navbar, no CoachConnect header
- *
- * WHAT WAS IN THE ZIP:
- *   src/pages/Index.tsx                        → NutritionNewUserSetupScreen (orchestrator)
- *   src/components/CalorieGoalStep.tsx         → CalorieGoalStep (inlined)
- *   src/components/MacrosStep.tsx              → MacrosStep (inlined)
- *   src/components/FavoriteFoodsStep.tsx       → FavoriteFoodsStep (inlined)
- *   src/components/ProgressBar.tsx             → ProgressBar (inlined)
- *
- * REMOVED (web-only, not needed):
- *   - All shadcn/ui components
- *   - react-router-dom
- *   - Tailwind classes → StyleSheet
- *   - lucide-react → Ionicons
- *   - sonner toast → Alert
- *   - CSS pseudo-elements (::before for active border) → LinearGradient wrapper trick
- *   - framer-motion → not used in this file
- *
- * DEPENDENCIES — install if not already present:
- *   npx expo install expo-linear-gradient @expo/vector-icons
- *
- * Firebase is wired and configured in src/app-start/config.js
- *   On handleFinish, write to Firestore:
- *   setDoc(doc(db, 'nutrition_goals', currentUser.uid), {
- *     user_id: currentUser.uid,
- *     calorie_target: calories,
- *     protein_target: macros.protein,
- *     carbs_target: macros.carbs,
- *     fat_target: macros.fat,
- *     macro_split: { protein: macros.protein, carbs: macros.carbs, fat: macros.fat },
- *     updated_at: serverTimestamp(),
- *   });
- *   Then navigate to main DailyFoodLogScreen.
- *
- * USAGE:
- *   Show this screen only when getDailyGoals(uid) returns null (no goals set yet).
- *   <Stack.Screen name="NutritionOnboarding" component={NutritionNewUserSetupScreen} />
- */
+// First-time nutrition onboarding: calories → macros → favorite / least-favorite foods.
+// Flow: step 1 set calories → step 2 tweak macros → step 3 pick food prefs → save to users/{uid}.
+// Used when getDailyGoals returns null. Firestore field letters stay frozen.
 
 import React, { useState } from 'react';
 import {
@@ -66,11 +18,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// ─────────────────────────────────────────────────────────────
-// DESIGN TOKENS
-// ─────────────────────────────────────────────────────────────
+// ===== NAMED CONSTANTS =====
 
-const T = {
+const ONBOARDING_THEME = {
   bg: ['#0a0a1a', '#1a0a2e', '#0d1117'],
   solidBg: '#0d0d1f',
   cardBg: 'rgba(255,255,255,0.05)',
@@ -86,263 +36,32 @@ const T = {
   progressEmpty: 'rgba(255,255,255,0.1)',
 };
 
-// ─────────────────────────────────────────────────────────────
-// PROGRESS BAR  (was: src/components/ProgressBar.tsx)
-// ─────────────────────────────────────────────────────────────
-
-const ProgressBar = ({ currentStep, totalSteps }) => (
-  <View style={pb.row}>
-    {Array.from({ length: totalSteps }).map((_, i) => (
-      <View key={i} style={pb.track}>
-        {i < currentStep && (
-          <LinearGradient
-            colors={T.progressFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-        )}
-      </View>
-    ))}
-  </View>
-);
-
-const pb = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, width: 200, alignSelf: 'center' },
-  track: { flex: 1, height: 4, borderRadius: 99, backgroundColor: T.progressEmpty, overflow: 'hidden' },
-});
-
-// ─────────────────────────────────────────────────────────────
-// GLASS CARD ACTIVE (gradient border wrapper)
-// Replaces CSS ::before pseudo-element gradient border trick
-// ─────────────────────────────────────────────────────────────
-
-const GlassCardActive = ({ children, style }) => (
-  <View
-    style={[
-      {
-        borderRadius: 20,
-        backgroundColor: T.solidBg,
-        borderWidth: 1,
-        borderColor: 'rgba(190,24,93,0.45)',
-        padding: 16,
-      },
-      style,
-    ]}
-  >
-    {children}
-  </View>
-);
-
-// ─────────────────────────────────────────────────────────────
-// CALORIE GOAL STEP  (was: src/components/CalorieGoalStep.tsx)
-// ─────────────────────────────────────────────────────────────
-
-const clampCalories = (n) => Math.min(5000, Math.max(500, Math.round(Number(n) || 0)));
-
-const CalorieGoalStep = ({ onNext, calories, setCalories, footerPadBottom }) => {
-  const decrement = () => setCalories(clampCalories(calories - 50));
-  const increment = () => setCalories(clampCalories(calories + 50));
-  const cal = clampCalories(calories);
-  const estProtein = Math.round(cal * 0.3 / 4);
-  const estCarbs = Math.round(cal * 0.4 / 4);
-  const estFat = Math.round(cal * 0.3 / 9);
-
-  const onCalorieTextChange = (text) => {
-    const digits = String(text || '').replace(/\D/g, '');
-    if (!digits) {
-      setCalories(500);
-      return;
-    }
-    setCalories(clampCalories(parseInt(digits, 10)));
-  };
-
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <View style={[step.container, { paddingBottom: footerPadBottom }]}>
-        <ProgressBar currentStep={1} totalSteps={3} />
-        <Text style={step.title}>Set Your Calorie Goal</Text>
-
-        <View style={[step.heroCard, step.heroCardFlat]}>
-          <Text style={step.heroKicker}>DAILY CALORIE TARGET</Text>
-
-          <View style={step.counterRow}>
-              <TouchableOpacity onPress={decrement} activeOpacity={0.8} style={step.counterBtn}>
-                <Text style={step.counterBtnText}>−</Text>
-              </TouchableOpacity>
-
-              <View style={step.numberBlock}>
-                <TextInput
-                  style={step.bigNumberInput}
-                  value={String(cal)}
-                  onChangeText={onCalorieTextChange}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  selectTextOnFocus
-                  accessibilityLabel="Daily calorie target"
-                />
-                <Text style={step.kcalLabel}>kcal / day</Text>
-              </View>
-
-              <TouchableOpacity onPress={increment} activeOpacity={0.8} style={step.counterBtn}>
-                <Text style={step.counterBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => Alert.alert('Coming soon', 'Use +/− or tap the number to set your goal for now.')}
-              activeOpacity={0.7}
-              style={step.calculateLinkWrap}
-            >
-              <Text style={step.linkText}>Calculate for me</Text>
-            </TouchableOpacity>
-        </View>
-
-        <View style={step.macroPreviewCard}>
-          <Text style={step.estimatedMacrosLabel}>Estimated macros at this calorie target</Text>
-          <View style={step.macroPillRow}>
-            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-              <Text style={[step.macroPillText, { color: T.text }]}>P {estProtein}g</Text>
-            </View>
-            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-              <Text style={[step.macroPillText, { color: T.text }]}>C {estCarbs}g</Text>
-            </View>
-            <View style={[step.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
-              <Text style={[step.macroPillText, { color: T.text }]}>F {estFat}g</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={{ flex: 1, minHeight: 12 }} />
-
-        <TouchableOpacity onPress={onNext} activeOpacity={0.85}>
-          <LinearGradient
-            colors={T.brandCta}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={step.gradBtn}
-          >
-            <Text style={step.gradBtnText}>Next</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────
-// MACROS STEP  (was: src/components/MacrosStep.tsx)
-// ─────────────────────────────────────────────────────────────
-
-const MacrosStep = ({ onNext, onBack, macros, setMacros, footerPadBottom }) => {
-  const [activeField, setActiveField] = useState(null);
-
-  const fields = [
-    { key: 'protein', label: 'Protein' },
-    { key: 'carbs', label: 'Carbohydrates' },
-    { key: 'fat', label: 'Fat' },
-  ];
-
-  const displayGrams = (g) => {
-    const val = Number(g) || 0;
-    return val ? String(val) : '';
-  };
-
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <View style={[step.container, { paddingBottom: footerPadBottom }]}>
-        <View style={{ position: 'relative', marginBottom: 32 }}>
-          <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
-            <Text style={step.linkText}>← Back</Text>
-          </TouchableOpacity>
-          <ProgressBar currentStep={2} totalSteps={3} />
-        </View>
-
-        <Text style={step.title}>Set Your Macros</Text>
-
-        <View style={{ gap: 12, flex: 1 }}>
-          {fields.map(({ key, label }) => {
-            const isActive = activeField === key;
-            const inner = (
-              <View style={macroS.row}>
-                <Text style={macroS.label}>{label}</Text>
-                <View style={macroS.inputRow}>
-                  <TextInput
-                    style={macroS.input}
-                    value={displayGrams(macros[key])}
-                    onChangeText={(v) => {
-                      const cleaned = v.replace(/[^0-9.]/g, '');
-                      const num = cleaned ? parseFloat(cleaned) : 0;
-                      setMacros({ ...macros, [key]: num || 0 });
-                    }}
-                    onFocus={() => setActiveField(key)}
-                    onBlur={() => setActiveField(null)}
-                    keyboardType="decimal-pad"
-                    selectTextOnFocus
-                  />
-                  <Text style={macroS.unit}>g</Text>
-                </View>
-              </View>
-            );
-
-            return isActive ? (
-              <GlassCardActive key={key}>{inner}</GlassCardActive>
-            ) : (
-              <View key={key} style={macroS.card}>{inner}</View>
-            );
-          })}
-
-          <Text style={[step.kcalLabel, { textAlign: 'center', marginTop: 16 }]}>
-            Editable anytime
-          </Text>
-        </View>
-
-        <TouchableOpacity onPress={onNext} activeOpacity={0.85} style={{ marginTop: 'auto' }}>
-          <LinearGradient
-            colors={T.brandCta}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={step.gradBtn}
-          >
-            <Text style={step.gradBtnText}>Next</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
-};
-
-const macroS = StyleSheet.create({
-  card: {
-    backgroundColor: T.cardBg,
-    borderWidth: 1,
-    borderColor: T.cardBorder,
-    borderRadius: 20,
-    padding: 16,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  label: { color: T.text, fontWeight: '600', fontSize: 15 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  input: {
-    width: 64,
-    textAlign: 'right',
-    backgroundColor: 'transparent',
-    color: T.text,
-    fontWeight: '700',
-    fontSize: 18,
-  },
-  unit: { color: T.textMuted, fontSize: 14 },
-});
-
-// ─────────────────────────────────────────────────────────────
-// FAVORITE FOODS STEP  (was: src/components/FavoriteFoodsStep.tsx)
-// ─────────────────────────────────────────────────────────────
+const MIN_DAILY_CALORIES = 500;
+const MAX_DAILY_CALORIES = 5000;
+const DEFAULT_CALORIES = 2000;
+const DEFAULT_PROTEIN_GRAMS = 150;
+const DEFAULT_CARBS_GRAMS = 200;
+const DEFAULT_FAT_GRAMS = 65;
+const CALORIE_STEP = 50;
+const PROTEIN_SPLIT_FRACTION = 0.3;
+const CARBS_SPLIT_FRACTION = 0.4;
+const FAT_SPLIT_FRACTION = 0.3;
+const KCAL_PER_GRAM_PROTEIN_OR_CARB = 4;
+const KCAL_PER_GRAM_FAT = 9;
+const TOTAL_ONBOARDING_STEPS = 3;
+const STEP_CALORIES = 1;
+const STEP_MACROS = 2;
+const STEP_FOODS = 3;
+const MIN_SAFE_BOTTOM_PAD = 20;
+const EXTRA_FOOTER_PAD = 28;
+const FAVORITE_FOOTER_EXTRA = 24;
+const KEYBOARD_OFFSET_IOS = 12;
+/** Matches BottomMenuBar minHeight when tab bar overlays this screen. */
+const TAB_BAR_CLEARANCE = 88;
+const USERS_COLLECTION = 'users';
+const ADD_MODE_FAVORITE = 'favorite';
+const ADD_MODE_LEAST = 'least';
+const PLATFORM_IOS = 'ios';
 
 const FAVORITE_PRESETS = [
   'Chicken Breast',
@@ -368,25 +87,381 @@ const LEAST_FAVORITE_PRESETS = [
   'Plain Egg Whites',
 ];
 
-const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
+const MACRO_FIELDS = [
+  { key: 'protein', label: 'Protein' },
+  { key: 'carbs', label: 'Carbohydrates' },
+  { key: 'fat', label: 'Fat' },
+];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Keep daily calories inside the onboarding range.
+ * @param {number|string} rawCalories
+ * @returns {number}
+ */
+function clampCalories(rawCalories) {
+  return Math.min(MAX_DAILY_CALORIES, Math.max(MIN_DAILY_CALORIES, Math.round(Number(rawCalories) || 0)));
+}
+
+/**
+ * Suggest macros from a calorie target using a 30/40/30 split.
+ * @param {number} calorieTarget
+ * @returns {{ protein: number, carbs: number, fat: number }}
+ */
+function macrosFromCalorieTarget(calorieTarget) {
+  const calories = clampCalories(calorieTarget);
+  return {
+    protein: Math.round((calories * PROTEIN_SPLIT_FRACTION) / KCAL_PER_GRAM_PROTEIN_OR_CARB),
+    carbs: Math.round((calories * CARBS_SPLIT_FRACTION) / KCAL_PER_GRAM_PROTEIN_OR_CARB),
+    fat: Math.round((calories * FAT_SPLIT_FRACTION) / KCAL_PER_GRAM_FAT),
+  };
+}
+
+/**
+ * Show empty string when grams are 0 so the input looks blank until typed.
+ * @param {number} grams
+ * @returns {string}
+ */
+function displayGrams(grams) {
+  const value = Number(grams) || 0;
+  return value ? String(value) : '';
+}
+
+/**
+ * Parse a macro text field into a non-negative number.
+ * @param {string} text
+ * @returns {number}
+ */
+function parseMacroGramsText(text) {
+  const cleaned = String(text || '').replace(/[^0-9.]/g, '');
+  if (!cleaned) return 0;
+  return parseFloat(cleaned) || 0;
+}
+
+/**
+ * Toggle a food name in a list (add if missing, remove if present).
+ * @param {string[]} previousList
+ * @param {string} name
+ * @returns {string[]}
+ */
+function toggleNameInList(previousList, name) {
+  if (previousList.includes(name)) return previousList.filter((item) => item !== name);
+  return [...previousList, name];
+}
+
+/**
+ * Append a custom food name if it is not already in the list.
+ * @param {string[]} previousList
+ * @param {string} name
+ * @returns {string[]}
+ */
+function appendUniqueName(previousList, name) {
+  if (previousList.includes(name)) return previousList;
+  return [...previousList, name];
+}
+
+/**
+ * Footer padding under the last CTA so the home indicator / tab bar never cover it.
+ * @param {number} safeBottom
+ * @param {number} reservedBottomInset
+ * @returns {number}
+ */
+function footerPadFromInsets(safeBottom, reservedBottomInset) {
+  return Math.max(safeBottom, MIN_SAFE_BOTTOM_PAD) + Math.max(reservedBottomInset, 0) + EXTRA_FOOTER_PAD;
+}
+
+/**
+ * Three-segment progress bar for the onboarding steps.
+ * @param {{ currentStep: number, totalSteps: number }} props
+ */
+function ProgressBar({ currentStep, totalSteps }) {
+  return (
+    <View style={progressStyles.row}>
+      {Array.from({ length: totalSteps }).map((_, index) => (
+        <View key={index} style={progressStyles.track}>
+          {index < currentStep ? (
+            <LinearGradient
+              colors={ONBOARDING_THEME.progressFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Active macro card with a pink rim (replaces the old CSS ::before border trick).
+ * @param {{ children: *, style?: object }} props
+ */
+function GlassCardActive({ children, style }) {
+  return (
+    <View
+      style={[
+        {
+          borderRadius: 20,
+          backgroundColor: ONBOARDING_THEME.solidBg,
+          borderWidth: 1,
+          borderColor: 'rgba(190,24,93,0.45)',
+          padding: 16,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Step 1 — pick a daily calorie target.
+ * @param {{ onNext: Function, calories: number, setCalories: Function, footerPadBottom: number }} props
+ */
+function CalorieGoalStep({ onNext, calories, setCalories, footerPadBottom }) {
+  const decrement = () => setCalories(clampCalories(calories - CALORIE_STEP));
+  const increment = () => setCalories(clampCalories(calories + CALORIE_STEP));
+  const clampedCalories = clampCalories(calories);
+  const estMacros = macrosFromCalorieTarget(clampedCalories);
+
+  const onCalorieTextChange = (text) => {
+    const digits = String(text || '').replace(/\D/g, '');
+    if (!digits) {
+      setCalories(MIN_DAILY_CALORIES);
+      return;
+    }
+    setCalories(clampCalories(parseInt(digits, 10)));
+  };
+
+  const keyboardBehavior = Platform.OS === PLATFORM_IOS ? 'padding' : undefined;
+
+  return (
+    <KeyboardAvoidingView behavior={keyboardBehavior} style={{ flex: 1 }}>
+      <View style={[stepStyles.container, { paddingBottom: footerPadBottom }]}>
+        <ProgressBar currentStep={STEP_CALORIES} totalSteps={TOTAL_ONBOARDING_STEPS} />
+        <Text style={stepStyles.title}>Set Your Calorie Goal</Text>
+
+        <View style={[stepStyles.heroCard, stepStyles.heroCardFlat]}>
+          <Text style={stepStyles.heroKicker}>DAILY CALORIE TARGET</Text>
+
+          <View style={stepStyles.counterRow}>
+            <TouchableOpacity onPress={decrement} activeOpacity={0.8} style={stepStyles.counterBtn}>
+              <Text style={stepStyles.counterBtnText}>−</Text>
+            </TouchableOpacity>
+
+            <View style={stepStyles.numberBlock}>
+              <TextInput
+                style={stepStyles.bigNumberInput}
+                value={String(clampedCalories)}
+                onChangeText={onCalorieTextChange}
+                keyboardType="number-pad"
+                maxLength={4}
+                selectTextOnFocus
+                accessibilityLabel="Daily calorie target"
+              />
+              <Text style={stepStyles.kcalLabel}>kcal / day</Text>
+            </View>
+
+            <TouchableOpacity onPress={increment} activeOpacity={0.8} style={stepStyles.counterBtn}>
+              <Text style={stepStyles.counterBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => Alert.alert('Coming soon', 'Use +/− or tap the number to set your goal for now.')}
+            activeOpacity={0.7}
+            style={stepStyles.calculateLinkWrap}
+          >
+            <Text style={stepStyles.linkText}>Calculate for me</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={stepStyles.macroPreviewCard}>
+          <Text style={stepStyles.estimatedMacrosLabel}>Estimated macros at this calorie target</Text>
+          <View style={stepStyles.macroPillRow}>
+            <View style={[stepStyles.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[stepStyles.macroPillText, { color: ONBOARDING_THEME.text }]}>
+                P {estMacros.protein}g
+              </Text>
+            </View>
+            <View style={[stepStyles.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[stepStyles.macroPillText, { color: ONBOARDING_THEME.text }]}>
+                C {estMacros.carbs}g
+              </Text>
+            </View>
+            <View style={[stepStyles.macroPill, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+              <Text style={[stepStyles.macroPillText, { color: ONBOARDING_THEME.text }]}>
+                F {estMacros.fat}g
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={{ flex: 1, minHeight: 12 }} />
+
+        <TouchableOpacity onPress={onNext} activeOpacity={0.85}>
+          <LinearGradient
+            colors={ONBOARDING_THEME.brandCta}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={stepStyles.gradBtn}
+          >
+            <Text style={stepStyles.gradBtnText}>Next</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * One macro row — pink rim while the field is focused.
+ * @param {object} props
+ */
+function MacroFieldRow({ fieldKey, label, macros, setMacros, activeField, setActiveField }) {
+  const isActive = activeField === fieldKey;
+  const inner = (
+    <View style={macroStyles.row}>
+      <Text style={macroStyles.label}>{label}</Text>
+      <View style={macroStyles.inputRow}>
+        <TextInput
+          style={macroStyles.input}
+          value={displayGrams(macros[fieldKey])}
+          onChangeText={(text) => {
+            setMacros({ ...macros, [fieldKey]: parseMacroGramsText(text) });
+          }}
+          onFocus={() => setActiveField(fieldKey)}
+          onBlur={() => setActiveField(null)}
+          keyboardType="decimal-pad"
+          selectTextOnFocus
+        />
+        <Text style={macroStyles.unit}>g</Text>
+      </View>
+    </View>
+  );
+
+  if (isActive) return <GlassCardActive key={fieldKey}>{inner}</GlassCardActive>;
+  return (
+    <View key={fieldKey} style={macroStyles.card}>
+      {inner}
+    </View>
+  );
+}
+
+/**
+ * Step 2 — edit protein / carbs / fat grams.
+ * @param {{ onNext: Function, onBack: Function, macros: object, setMacros: Function, footerPadBottom: number }} props
+ */
+function MacrosStep({ onNext, onBack, macros, setMacros, footerPadBottom }) {
+  const [activeField, setActiveField] = useState(null);
+  const keyboardBehavior = Platform.OS === PLATFORM_IOS ? 'padding' : undefined;
+
+  return (
+    <KeyboardAvoidingView behavior={keyboardBehavior} style={{ flex: 1 }}>
+      <View style={[stepStyles.container, { paddingBottom: footerPadBottom }]}>
+        <View style={{ position: 'relative', marginBottom: 32 }}>
+          <TouchableOpacity onPress={onBack} style={stepStyles.backBtn} activeOpacity={0.7}>
+            <Text style={stepStyles.linkText}>← Back</Text>
+          </TouchableOpacity>
+          <ProgressBar currentStep={STEP_MACROS} totalSteps={TOTAL_ONBOARDING_STEPS} />
+        </View>
+
+        <Text style={stepStyles.title}>Set Your Macros</Text>
+
+        <View style={{ gap: 12, flex: 1 }}>
+          {MACRO_FIELDS.map(({ key, label }) => (
+            <MacroFieldRow
+              key={key}
+              fieldKey={key}
+              label={label}
+              macros={macros}
+              setMacros={setMacros}
+              activeField={activeField}
+              setActiveField={setActiveField}
+            />
+          ))}
+
+          <Text style={[stepStyles.kcalLabel, { textAlign: 'center', marginTop: 16 }]}>
+            Editable anytime
+          </Text>
+        </View>
+
+        <TouchableOpacity onPress={onNext} activeOpacity={0.85} style={{ marginTop: 'auto' }}>
+          <LinearGradient
+            colors={ONBOARDING_THEME.brandCta}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={stepStyles.gradBtn}
+          >
+            <Text style={stepStyles.gradBtnText}>Next</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Chip list for favorite or least-favorite presets.
+ * @param {object} props
+ */
+function FoodPresetChips({ presets, selectedNames, onToggle, selectedStyle, filledIcon, outlineIcon }) {
+  return (
+    <View style={favoriteStyles.chipsWrap}>
+      {presets.map((name) => {
+        const selected = selectedNames.includes(name);
+        return (
+          <TouchableOpacity
+            key={name}
+            onPress={() => onToggle(name)}
+            activeOpacity={0.85}
+            style={[favoriteStyles.pill, selected && selectedStyle]}
+          >
+            <Ionicons
+              name={selected ? filledIcon : outlineIcon}
+              size={14}
+              color={selected ? '#fff' : ONBOARDING_THEME.text}
+            />
+            <Text style={[favoriteStyles.pillText, selected && { color: '#fff' }]}>{name}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Step 3 — pick foods you love and foods to skip.
+ * @param {{ onBack: Function, onFinish: Function, footerPadBottom: number }} props
+ */
+function FavoriteFoodsStep({ onBack, onFinish, footerPadBottom }) {
   const insets = useSafeAreaInsets();
   const [favorites, setFavorites] = useState([]);
   const [leastFavorites, setLeastFavorites] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  const [addMode, setAddMode] = useState('favorite'); // favorite | least
-  const bottomPad = Math.max(footerPadBottom || 0, Math.max(insets.bottom, 20) + 24);
-
-  const togglePreset = (name, list, setList) => {
-    setList((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
-  };
+  const [addMode, setAddMode] = useState(ADD_MODE_FAVORITE);
+  const bottomPad = Math.max(
+    footerPadBottom || 0,
+    Math.max(insets.bottom, MIN_SAFE_BOTTOM_PAD) + FAVORITE_FOOTER_EXTRA,
+  );
+  const keyboardBehavior = Platform.OS === PLATFORM_IOS ? 'padding' : undefined;
+  const keyboardOffset = Platform.OS === PLATFORM_IOS ? KEYBOARD_OFFSET_IOS : 0;
+  const hasAnySelection = favorites.length > 0 || leastFavorites.length > 0;
+  const favoriteHeartColor = addMode === ADD_MODE_FAVORITE ? '#BE185D' : ONBOARDING_THEME.textMuted;
+  const leastIconColor = addMode === ADD_MODE_LEAST ? '#ef4444' : ONBOARDING_THEME.textMuted;
+  const customPlaceholder =
+    addMode === ADD_MODE_FAVORITE ? 'Add a favorite…' : 'Add a least favorite…';
 
   const addCustom = () => {
     const name = inputValue.trim();
     if (!name) return;
-    if (addMode === 'favorite') {
-      setFavorites((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    if (addMode === ADD_MODE_FAVORITE) {
+      setFavorites((previous) => appendUniqueName(previous, name));
     } else {
-      setLeastFavorites((prev) => (prev.includes(name) ? prev : [...prev, name]));
+      setLeastFavorites((previous) => appendUniqueName(previous, name));
     }
     setInputValue('');
   };
@@ -394,15 +469,15 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardOffset}
     >
-      <View style={[step.container, { flex: 1, paddingBottom: 0 }]}>
+      <View style={[stepStyles.container, { flex: 1, paddingBottom: 0 }]}>
         <View style={{ position: 'relative', marginBottom: 16 }}>
-          <TouchableOpacity onPress={onBack} style={step.backBtn} activeOpacity={0.7}>
-            <Text style={step.linkText}>← Back</Text>
+          <TouchableOpacity onPress={onBack} style={stepStyles.backBtn} activeOpacity={0.7}>
+            <Text style={stepStyles.linkText}>← Back</Text>
           </TouchableOpacity>
-          <ProgressBar currentStep={3} totalSteps={3} />
+          <ProgressBar currentStep={STEP_FOODS} totalSteps={TOTAL_ONBOARDING_STEPS} />
         </View>
 
         <ScrollView
@@ -412,65 +487,67 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
         >
-          <Text style={step.title}>Foods you love & skip</Text>
-          <Text style={{ color: T.textMuted, fontSize: 14, marginBottom: 16, lineHeight: 20 }}>
+          <Text style={stepStyles.title}>Foods you love & skip</Text>
+          <Text
+            style={{
+              color: ONBOARDING_THEME.textMuted,
+              fontSize: 14,
+              marginBottom: 16,
+              lineHeight: 20,
+            }}
+          >
             Tap pills for favorites and least favorites — just like exercise prefs in client onboarding.
           </Text>
 
-          <Text style={{ color: T.text, fontWeight: '700', marginBottom: 10 }}>Favorites</Text>
-          <View style={favS.chipsWrap}>
-            {FAVORITE_PRESETS.map((name) => {
-              const selected = favorites.includes(name);
-              return (
-                <TouchableOpacity
-                  key={`fav-${name}`}
-                  onPress={() => togglePreset(name, favorites, setFavorites)}
-                  activeOpacity={0.85}
-                  style={[favS.pill, selected && favS.pillSelectedGood]}
-                >
-                  <Ionicons name={selected ? 'heart' : 'heart-outline'} size={14} color={selected ? '#fff' : T.text} />
-                  <Text style={[favS.pillText, selected && { color: '#fff' }]}>{name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Text style={{ color: ONBOARDING_THEME.text, fontWeight: '700', marginBottom: 10 }}>
+            Favorites
+          </Text>
+          <FoodPresetChips
+            presets={FAVORITE_PRESETS}
+            selectedNames={favorites}
+            onToggle={(name) => setFavorites((previous) => toggleNameInList(previous, name))}
+            selectedStyle={favoriteStyles.pillSelectedGood}
+            filledIcon="heart"
+            outlineIcon="heart-outline"
+          />
 
-          <Text style={{ color: T.text, fontWeight: '700', marginTop: 22, marginBottom: 10 }}>Least favorites</Text>
-          <View style={favS.chipsWrap}>
-            {LEAST_FAVORITE_PRESETS.map((name) => {
-              const selected = leastFavorites.includes(name);
-              return (
-                <TouchableOpacity
-                  key={`least-${name}`}
-                  onPress={() => togglePreset(name, leastFavorites, setLeastFavorites)}
-                  activeOpacity={0.85}
-                  style={[favS.pill, selected && favS.pillSelectedBad]}
-                >
-                  <Ionicons name={selected ? 'close-circle' : 'close-circle-outline'} size={14} color={selected ? '#fff' : T.text} />
-                  <Text style={[favS.pillText, selected && { color: '#fff' }]}>{name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Text
+            style={{
+              color: ONBOARDING_THEME.text,
+              fontWeight: '700',
+              marginTop: 22,
+              marginBottom: 10,
+            }}
+          >
+            Least favorites
+          </Text>
+          <FoodPresetChips
+            presets={LEAST_FAVORITE_PRESETS}
+            selectedNames={leastFavorites}
+            onToggle={(name) => setLeastFavorites((previous) => toggleNameInList(previous, name))}
+            selectedStyle={favoriteStyles.pillSelectedBad}
+            filledIcon="close-circle"
+            outlineIcon="close-circle-outline"
+          />
 
-          <View style={[favS.inputCard, { marginTop: 20 }]}>
-            <TouchableOpacity onPress={() => setAddMode('favorite')} style={{ padding: 6 }}>
-              <Ionicons name="heart" size={18} color={addMode === 'favorite' ? '#BE185D' : T.textMuted} />
+          <View style={[favoriteStyles.inputCard, { marginTop: 20 }]}>
+            <TouchableOpacity onPress={() => setAddMode(ADD_MODE_FAVORITE)} style={{ padding: 6 }}>
+              <Ionicons name="heart" size={18} color={favoriteHeartColor} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setAddMode('least')} style={{ padding: 6 }}>
-              <Ionicons name="close-circle" size={18} color={addMode === 'least' ? '#ef4444' : T.textMuted} />
+            <TouchableOpacity onPress={() => setAddMode(ADD_MODE_LEAST)} style={{ padding: 6 }}>
+              <Ionicons name="close-circle" size={18} color={leastIconColor} />
             </TouchableOpacity>
             <TextInput
-              style={favS.input}
-              placeholder={addMode === 'favorite' ? 'Add a favorite…' : 'Add a least favorite…'}
-              placeholderTextColor={T.textMuted}
+              style={favoriteStyles.input}
+              placeholder={customPlaceholder}
+              placeholderTextColor={ONBOARDING_THEME.textMuted}
               value={inputValue}
               onChangeText={setInputValue}
               onSubmitEditing={addCustom}
               returnKeyType="done"
             />
             <TouchableOpacity onPress={addCustom} activeOpacity={0.85}>
-              <LinearGradient colors={T.brandCta} style={favS.addBtn}>
+              <LinearGradient colors={ONBOARDING_THEME.brandCta} style={favoriteStyles.addBtn}>
                 <Ionicons name="add" size={18} color="white" />
               </LinearGradient>
             </TouchableOpacity>
@@ -478,8 +555,15 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
         </ScrollView>
 
         <View style={{ paddingTop: 8, paddingBottom: bottomPad }}>
-          {(favorites.length > 0 || leastFavorites.length > 0) ? (
-            <Text style={{ color: T.textMuted, fontSize: 12, marginBottom: 8, textAlign: 'center' }}>
+          {hasAnySelection ? (
+            <Text
+              style={{
+                color: ONBOARDING_THEME.textMuted,
+                fontSize: 12,
+                marginBottom: 8,
+                textAlign: 'center',
+              }}
+            >
               Selected: {favorites.length} favorites · {leastFavorites.length} least favorites
             </Text>
           ) : null}
@@ -489,34 +573,171 @@ const FavoriteFoodsStep = ({ onBack, onFinish, footerPadBottom }) => {
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={T.brandCta}
+              colors={ONBOARDING_THEME.brandCta}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={step.gradBtn}
+              style={stepStyles.gradBtn}
             >
-              <Text style={step.gradBtnText}>Finish Setup</Text>
+              <Text style={stepStyles.gradBtnText}>Finish Setup</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
+}
+
+/**
+ * Persist food prefs + targets onto the signed-in user doc (merge).
+ * Firestore path letters stay: users/{uid} fields listed below.
+ * @param {string} userId
+ * @param {*} firestoreDb
+ * @param {object} payload
+ * @returns {Promise<void>}
+ */
+async function saveOnboardingToUserDoc(userId, firestoreDb, payload) {
+  const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+  await setDoc(
+    doc(firestoreDb, USERS_COLLECTION, userId),
+    {
+      nutritionFavoriteFoods: payload.favorites,
+      nutritionLeastFavoriteFoods: payload.leastFavorites,
+      calorieTarget: payload.calories,
+      macroTargets: payload.macros,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Clearance under the onboarding footer when the shell tab bar is visible.
+ * Manipulate here: raise if the Finish button sits under the tab bar.
+ */
+export const NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE = TAB_BAR_CLEARANCE;
+
+/**
+ * Three-step nutrition onboarding for users with no daily goals yet.
+ * @param {{ onComplete?: Function, reservedBottomInset?: number }} props
+ */
+export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 0 }) => {
+  const insets = useSafeAreaInsets();
+  // Shell edges omit bottom inset (tab bar owns it). When the tab bar is hidden during
+  // onboarding, reserve the home-indicator + breathing room ourselves.
+  const footerPadBottom = footerPadFromInsets(insets.bottom, reservedBottomInset);
+  const [currentStep, setStep] = useState(STEP_CALORIES);
+  const [calories, setCalories] = useState(DEFAULT_CALORIES);
+  const [macros, setMacros] = useState({
+    protein: DEFAULT_PROTEIN_GRAMS,
+    carbs: DEFAULT_CARBS_GRAMS,
+    fat: DEFAULT_FAT_GRAMS,
+  });
+
+  // 1. Write prefs to Firestore (best effort), then hand results to the parent.
+  const handleFinish = async (foodPrefs = {}) => {
+    const favorites = Array.isArray(foodPrefs.favorites) ? foodPrefs.favorites : [];
+    const leastFavorites = Array.isArray(foodPrefs.leastFavorites) ? foodPrefs.leastFavorites : [];
+    try {
+      const { auth, db } = require('../../app-start/cloudConnection');
+      const userId = auth?.currentUser?.uid;
+      if (userId && db) {
+        await saveOnboardingToUserDoc(userId, db, { favorites, leastFavorites, calories, macros });
+      }
+    } catch (error) {
+      console.warn('nutrition onboarding save:', error?.message || error);
+    }
+    if (onComplete) onComplete({ calories, macros, favorites, leastFavorites });
+  };
+
+  // 2. Leaving step 1 locks calories and seeds macros from the split.
+  const goFromCaloriesToMacros = () => {
+    const lockedCalories = clampCalories(calories);
+    setCalories(lockedCalories);
+    setMacros(macrosFromCalorieTarget(lockedCalories));
+    setStep(STEP_MACROS);
+  };
+
+  return (
+    <LinearGradient colors={ONBOARDING_THEME.bg} style={{ flex: 1 }}>
+      {currentStep === STEP_CALORIES ? (
+        <CalorieGoalStep
+          onNext={goFromCaloriesToMacros}
+          calories={calories}
+          setCalories={setCalories}
+          footerPadBottom={footerPadBottom}
+        />
+      ) : null}
+      {currentStep === STEP_MACROS ? (
+        <MacrosStep
+          onNext={() => setStep(STEP_FOODS)}
+          onBack={() => setStep(STEP_CALORIES)}
+          macros={macros}
+          setMacros={setMacros}
+          footerPadBottom={footerPadBottom}
+        />
+      ) : null}
+      {currentStep === STEP_FOODS ? (
+        <FavoriteFoodsStep
+          onBack={() => setStep(STEP_MACROS)}
+          onFinish={handleFinish}
+          footerPadBottom={footerPadBottom}
+        />
+      ) : null}
+    </LinearGradient>
+  );
 };
 
-const favS = StyleSheet.create({
+export default NutritionNewUserSetupScreen;
+
+const progressStyles = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 8, width: 200, alignSelf: 'center' },
+  track: {
+    flex: 1,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: ONBOARDING_THEME.progressEmpty,
+    overflow: 'hidden',
+  },
+});
+
+const macroStyles = StyleSheet.create({
+  card: {
+    backgroundColor: ONBOARDING_THEME.cardBg,
+    borderWidth: 1,
+    borderColor: ONBOARDING_THEME.cardBorder,
+    borderRadius: 20,
+    padding: 16,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  label: { color: ONBOARDING_THEME.text, fontWeight: '600', fontSize: 15 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  input: {
+    width: 64,
+    textAlign: 'right',
+    backgroundColor: 'transparent',
+    color: ONBOARDING_THEME.text,
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  unit: { color: ONBOARDING_THEME.textMuted, fontSize: 14 },
+});
+
+const favoriteStyles = StyleSheet.create({
   inputCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: T.cardBg,
+    backgroundColor: ONBOARDING_THEME.cardBg,
     borderWidth: 1,
-    borderColor: T.cardBorder,
+    borderColor: ONBOARDING_THEME.cardBorder,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
   },
-  input: { flex: 1, color: T.text, fontSize: 14 },
+  input: { flex: 1, color: ONBOARDING_THEME.text, fontSize: 14 },
   addBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   pill: {
@@ -527,8 +748,8 @@ const favS = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: T.cardBorder,
-    backgroundColor: T.cardBg,
+    borderColor: ONBOARDING_THEME.cardBorder,
+    backgroundColor: ONBOARDING_THEME.cardBg,
   },
   pillSelectedGood: {
     backgroundColor: '#BE185D',
@@ -538,19 +759,17 @@ const favS = StyleSheet.create({
     backgroundColor: '#B91C1C',
     borderColor: '#B91C1C',
   },
-  pillText: { color: T.text, fontSize: 13, fontWeight: '600' },
+  pillText: { color: ONBOARDING_THEME.text, fontSize: 13, fontWeight: '600' },
 });
 
-const OZ_TO_G = 28.3495;
-
-const step = StyleSheet.create({
+const stepStyles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 24,
   },
   title: {
-    color: T.text,
+    color: ONBOARDING_THEME.text,
     fontSize: 24,
     fontWeight: '800',
     textAlign: 'center',
@@ -564,21 +783,21 @@ const step = StyleSheet.create({
   },
   heroCard: {
     borderRadius: 21,
-    backgroundColor: T.solidBg,
+    backgroundColor: ONBOARDING_THEME.solidBg,
     paddingHorizontal: 16,
     paddingVertical: 20,
     alignItems: 'center',
   },
   heroCardFlat: {
     borderWidth: 1,
-    borderColor: T.cardBorder,
+    borderColor: ONBOARDING_THEME.cardBorder,
     marginBottom: 16,
   },
   heroKicker: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
-    color: T.textMuted,
+    color: ONBOARDING_THEME.textMuted,
     marginBottom: 16,
   },
   counterRow: {
@@ -592,16 +811,16 @@ const step = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: T.cardBg,
+    backgroundColor: ONBOARDING_THEME.cardBg,
     borderWidth: 1,
-    borderColor: T.cardBorder,
+    borderColor: ONBOARDING_THEME.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  counterBtnText: { color: T.text, fontSize: 24, fontWeight: '700', lineHeight: 28 },
+  counterBtnText: { color: ONBOARDING_THEME.text, fontSize: 24, fontWeight: '700', lineHeight: 28 },
   numberBlock: { flex: 1, alignItems: 'center', minWidth: 0 },
   bigNumberInput: {
-    color: T.text,
+    color: ONBOARDING_THEME.text,
     fontSize: 56,
     fontWeight: '800',
     lineHeight: 62,
@@ -609,20 +828,25 @@ const step = StyleSheet.create({
     minWidth: 120,
     paddingVertical: 0,
   },
-  kcalLabel: { color: T.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' },
+  kcalLabel: { color: ONBOARDING_THEME.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' },
   calculateLinkWrap: { marginTop: 16 },
-  linkText: { color: T.hotPink, fontSize: 14, fontWeight: '500', textDecorationLine: 'underline' },
+  linkText: {
+    color: ONBOARDING_THEME.hotPink,
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
   macroPreviewCard: {
-    backgroundColor: T.cardBg,
+    backgroundColor: ONBOARDING_THEME.cardBg,
     borderWidth: 1,
-    borderColor: T.cardBorder,
+    borderColor: ONBOARDING_THEME.cardBorder,
     borderRadius: 16,
     padding: 14,
     marginBottom: 8,
   },
   estimatedMacrosLabel: {
     fontSize: 12,
-    color: T.textVeryMuted,
+    color: ONBOARDING_THEME.textVeryMuted,
     marginBottom: 10,
     textAlign: 'center',
   },
@@ -646,88 +870,3 @@ const step = StyleSheet.create({
   },
   gradBtnText: { color: 'white', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
 });
-
-// ─────────────────────────────────────────────────────────────
-// NUTRITION ONBOARDING SCREEN
-// ─────────────────────────────────────────────────────────────
-
-/** Matches BottomMenuBar minHeight when tab bar overlays this screen. */
-export const NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE = 88;
-
-export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 0 }) => {
-  const insets = useSafeAreaInsets();
-  // Shell edges omit bottom inset (tab bar owns it). When the tab bar is hidden during
-  // onboarding, reserve the home-indicator + breathing room ourselves.
-  const footerPadBottom =
-    Math.max(insets.bottom, 20) + Math.max(reservedBottomInset, 0) + 28;
-  const [currentStep, setStep] = useState(1);
-  const [calories, setCalories] = useState(2000);
-  const [macros, setMacros] = useState({ protein: 150, carbs: 200, fat: 65 });
-
-  const handleFinish = async (foodPrefs = {}) => {
-    const favorites = Array.isArray(foodPrefs.favorites) ? foodPrefs.favorites : [];
-    const leastFavorites = Array.isArray(foodPrefs.leastFavorites) ? foodPrefs.leastFavorites : [];
-    try {
-      const { auth, db } = require('../../app-start/cloudConnection');
-      const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
-      const uid = auth?.currentUser?.uid;
-      if (uid && db) {
-        await setDoc(
-          doc(db, 'users', uid),
-          {
-            nutritionFavoriteFoods: favorites,
-            nutritionLeastFavoriteFoods: leastFavorites,
-            calorieTarget: calories,
-            macroTargets: macros,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-      }
-    } catch (e) {
-      console.warn('nutrition onboarding save:', e?.message || e);
-    }
-    if (onComplete) onComplete({ calories, macros, favorites, leastFavorites });
-  };
-
-  return (
-    <LinearGradient colors={T.bg} style={{ flex: 1 }}>
-      {currentStep === 1 && (
-        <CalorieGoalStep
-          onNext={() => {
-            const cal = clampCalories(calories);
-            setCalories(cal);
-            setMacros({
-              protein: Math.round(cal * 0.3 / 4),
-              carbs: Math.round(cal * 0.4 / 4),
-              fat: Math.round(cal * 0.3 / 9),
-            });
-            setStep(2);
-          }}
-          calories={calories}
-          setCalories={setCalories}
-          footerPadBottom={footerPadBottom}
-        />
-      )}
-      {currentStep === 2 && (
-        <MacrosStep
-          onNext={() => setStep(3)}
-          onBack={() => setStep(1)}
-          macros={macros}
-          setMacros={setMacros}
-          footerPadBottom={footerPadBottom}
-        />
-      )}
-      {currentStep === 3 && (
-        <FavoriteFoodsStep
-          onBack={() => setStep(2)}
-          onFinish={handleFinish}
-          footerPadBottom={footerPadBottom}
-        />
-      )}
-    </LinearGradient>
-  );
-};
-
-export default NutritionNewUserSetupScreen;
-

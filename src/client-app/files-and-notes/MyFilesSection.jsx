@@ -1,13 +1,7 @@
-/**
- * My Files Section
- *
- * Purpose: UI screen or component: My Files Section. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: MyFilesSection
- *
- * @file-header
- */
+// The client's own uploads: search, type tabs, file cards, and the upload sheet.
+// Flow: keep client-owned files → filter by typed text and tab → upload photo / document / spreadsheet.
+// Used by the client files screen. Trainer-authored stubs stay out so this list is only "mine".
+
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,11 +12,24 @@ import { FileCard } from './FileCard';
 import { addFile, addSpreadsheetFile } from '../../for-both/files-and-notes/saveNotesAndFiles';
 import { getFileTypeFromItem } from '../../helpers/fileSizeAndDateText';
 
+// ===== NAMED CONSTANTS =====
+
+const TAB_ALL = 'all';
+const TAB_IMAGES = 'images';
+const TAB_DOCUMENTS = 'documents';
+const TAB_SPREADSHEETS = 'spreadsheets';
+const ADDED_BY_CLIENT = 'client';
+const NOTE_TYPE = 'note';
+const DOCUMENT_TYPE = 'document';
+const PHOTO_UPLOAD_QUALITY = 0.85;
+const DEFAULT_PHOTO_MIME = 'image/jpeg';
+const DEFAULT_DOCUMENT_MIME = 'application/octet-stream';
+
 const TABS = [
-  { id: 'all', label: 'All Files', icon: 'list' },
-  { id: 'images', label: 'Progress Photos', icon: 'image' },
-  { id: 'documents', label: 'Documents', icon: 'file-text' },
-  { id: 'spreadsheets', label: 'Spreadsheets', icon: 'grid' },
+  { id: TAB_ALL, label: 'All Files', icon: 'list' },
+  { id: TAB_IMAGES, label: 'Progress Photos', icon: 'image' },
+  { id: TAB_DOCUMENTS, label: 'Documents', icon: 'file-text' },
+  { id: TAB_SPREADSHEETS, label: 'Spreadsheets', icon: 'grid' },
 ];
 
 const GRADIENTS = {
@@ -31,165 +38,278 @@ const GRADIENTS = {
   notes: ['#C084FC', '#FF6B9D'],
 };
 
+const DOCUMENT_PICKER_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.*',
+  'text/plain',
+  '*/*',
+];
+
+const SPREADSHEET_PICKER_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+  '*/*',
+];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Dark vs light paint for the search box, tabs, and empty state.
+ * @param {boolean} isDark
+ */
 function themeFor(isDark) {
-  return isDark
-    ? {
-        bg: '#0A0A0F',
-        card: '#141419',
-        text: '#FFFFFF',
-        text60: 'rgba(255,255,255,0.6)',
-        text50: 'rgba(255,255,255,0.5)',
-        border: 'rgba(255,255,255,0.10)',
-        inputBg: 'rgba(255,255,255,0.08)',
-        btnBorder: 'rgba(255,255,255,0.20)',
-      }
-    : {
-        bg: '#FFFFFF',
-        card: '#F8F8FB',
-        text: '#0A0A0F',
-        text60: 'rgba(10,10,15,0.6)',
-        text50: 'rgba(10,10,15,0.5)',
-        border: 'rgba(10,10,15,0.10)',
-        inputBg: 'rgba(10,10,15,0.05)',
-        btnBorder: 'rgba(10,10,15,0.15)',
-      };
+  if (isDark) {
+    return {
+      bg: '#0A0A0F',
+      card: '#141419',
+      text: '#FFFFFF',
+      text60: 'rgba(255,255,255,0.6)',
+      text50: 'rgba(255,255,255,0.5)',
+      border: 'rgba(255,255,255,0.10)',
+      inputBg: 'rgba(255,255,255,0.08)',
+      btnBorder: 'rgba(255,255,255,0.20)',
+    };
+  }
+  return {
+    bg: '#FFFFFF',
+    card: '#F8F8FB',
+    text: '#0A0A0F',
+    text60: 'rgba(10,10,15,0.6)',
+    text50: 'rgba(10,10,15,0.5)',
+    border: 'rgba(10,10,15,0.10)',
+    inputBg: 'rgba(10,10,15,0.05)',
+    btnBorder: 'rgba(10,10,15,0.15)',
+  };
 }
 
-export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onDeleteItem, onShareItem, onDownloadItem }) {
-  const [tab, setTab] = useState('all');
-  const [q, setQ] = useState('');
+/**
+ * Trainer document stubs carry trainerId + documentId. Those belong in "shared", not here.
+ * @param {object} item
+ * @returns {boolean}
+ */
+function isClientOwnedLibraryFile(item) {
+  if (item?.type === NOTE_TYPE) return false;
+  const addedBy = item?.addedBy || ADDED_BY_CLIENT;
+  const isTrainerDocumentStub = item?.type === DOCUMENT_TYPE && item?.trainerId && item?.documentId;
+  return addedBy === ADDED_BY_CLIENT && !isTrainerDocumentStub;
+}
+
+/**
+ * @param {object} item
+ * @param {string} searchText
+ * @param {string} tab
+ * @returns {boolean}
+ */
+function fileMatchesTabAndSearch(item, searchText, tab) {
+  const fileName = String(item?.name || item?.title || '').toLowerCase();
+  if (searchText && !fileName.includes(searchText)) return false;
+  if (tab === TAB_ALL) return true;
+  const fileType = getFileTypeFromItem(item);
+  if (tab === TAB_IMAGES) return fileType === 'image';
+  if (tab === TAB_DOCUMENTS) return fileType === DOCUMENT_TYPE || fileType === 'pdf';
+  if (tab === TAB_SPREADSHEETS) return fileType === 'spreadsheet';
+  return true;
+}
+
+/**
+ * @param {string} clientId
+ * @returns {boolean}
+ */
+function ensureClientIsSignedIn(clientId) {
+  if (clientId) return true;
+  Alert.alert('Not signed in', 'Please sign in to upload files.');
+  return false;
+}
+
+/**
+ * Camera / gallery assets do not always send a file name. Fall back to the URI tail, then a timestamp.
+ * @param {object} asset
+ * @returns {string}
+ */
+function photoFileName(asset) {
+  return asset.fileName || asset.uri.split('/').pop() || `photo_${Date.now()}.jpg`;
+}
+
+/**
+ * PDFs stay typed as pdf so the card icon matches. Everything else is a generic doc.
+ * @param {object} file
+ * @returns {string}
+ */
+function inferredDocumentType(file) {
+  const isPdf = file.mimeType?.includes('pdf') || String(file.name || '').toLowerCase().endsWith('.pdf');
+  return isPdf ? 'pdf' : 'doc';
+}
+
+async function uploadPickedPhoto(clientId, asset, setUploading, setUploadOpen) {
+  setUploading(true);
+  try {
+    await addFile(
+      clientId,
+      {
+        localUri: asset.uri,
+        filename: photoFileName(asset),
+        mimeType: asset.mimeType || DEFAULT_PHOTO_MIME,
+        type: 'photo',
+        size: asset.fileSize,
+      },
+      ADDED_BY_CLIENT,
+    );
+    setUploadOpen(false);
+  } catch (error) {
+    Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
+  } finally {
+    setUploading(false);
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Client-owned files: search, type tabs, cards, and the upload sheet.
+ * vocab: useState holds the active tab, the search box, and whether the upload sheet is open.
+ * vocab: useMemo rebuilds the filtered list only when items / search / tab change.
+ * @param {{
+ *   clientId: string,
+ *   items: Array,
+ *   isDark?: boolean,
+ *   onOpenItem?: Function,
+ *   onDeleteItem?: Function,
+ *   onShareItem?: Function,
+ *   onDownloadItem?: Function,
+ * }} props
+ */
+export function MyFilesSection({
+  clientId,
+  items,
+  isDark = true,
+  onOpenItem,
+  onDeleteItem,
+  onShareItem,
+  onDownloadItem,
+}) {
+  const [tab, setTab] = useState(TAB_ALL);
+  const [searchText, setSearchText] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const theme = themeFor(isDark);
 
   const myFiles = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
-    return list.filter((x) => {
-      if (x?.type === 'note') return false;
-      const addedBy = x?.addedBy || 'client';
-      const isDocStub = x?.type === 'document' && x?.trainerId && x?.documentId;
-      return addedBy === 'client' && !isDocStub;
-    });
+    return list.filter(isClientOwnedLibraryFile);
   }, [items]);
 
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    return myFiles.filter((x) => {
-      const name = String(x?.name || x?.title || '').toLowerCase();
-      if (query && !name.includes(query)) return false;
-      if (tab === 'all') return true;
-      const t = getFileTypeFromItem(x);
-      if (tab === 'images') return t === 'image';
-      if (tab === 'documents') return t === 'document' || t === 'pdf';
-      if (tab === 'spreadsheets') return t === 'spreadsheet';
-      return true;
-    });
-  }, [myFiles, q, tab]);
+    const typedText = searchText.trim().toLowerCase();
+    return myFiles.filter((item) => fileMatchesTabAndSearch(item, typedText, tab));
+  }, [myFiles, searchText, tab]);
 
-  const requireUid = () => {
-    if (!clientId) {
-      Alert.alert('Not signed in', 'Please sign in to upload files.');
-      return false;
-    }
-    return true;
-  };
+  const takeProgressPhoto = async () => {
+    if (!ensureClientIsSignedIn(clientId)) return;
 
-  const handleTakePhoto = async () => {
-    if (!requireUid()) return;
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (perm.status !== 'granted') {
+    // 1. Camera permission has to come first — launchCameraAsync will not prompt again on iOS.
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.status !== 'granted') {
       Alert.alert('Permission needed', 'Allow camera access to take progress photos.');
       return;
     }
+
+    // 2. One still photo. Editing is off so the original framing is what gets stored.
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.85,
+      quality: PHOTO_UPLOAD_QUALITY,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
-    const asset = result.assets[0];
-    setUploading(true);
-    try {
-      const name = asset.fileName || asset.uri.split('/').pop() || `photo_${Date.now()}.jpg`;
-      await addFile(clientId, { localUri: asset.uri, filename: name, mimeType: asset.mimeType || 'image/jpeg', type: 'photo', size: asset.fileSize }, 'client');
-      setUploadOpen(false);
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not upload photo.');
-    } finally {
-      setUploading(false);
-    }
+
+    // 3. Write the file as a client-owned photo.
+    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen);
   };
 
-  const handleChooseFromGallery = async () => {
-    if (!requireUid()) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') {
+  const choosePhotoFromGallery = async () => {
+    if (!ensureClientIsSignedIn(clientId)) return;
+
+    // 1. Photo-library permission.
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== 'granted') {
       Alert.alert('Permission needed', 'Allow photo library access to upload progress photos.');
       return;
     }
+
+    // 2. One still photo from the library.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 0.85,
+      quality: PHOTO_UPLOAD_QUALITY,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
-    const asset = result.assets[0];
-    setUploading(true);
-    try {
-      const name = asset.fileName || asset.uri.split('/').pop() || `photo_${Date.now()}.jpg`;
-      await addFile(clientId, { localUri: asset.uri, filename: name, mimeType: asset.mimeType || 'image/jpeg', type: 'photo', size: asset.fileSize }, 'client');
-      setUploadOpen(false);
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not upload photo.');
-    } finally {
-      setUploading(false);
-    }
+
+    // 3. Same client-owned photo write as the camera path.
+    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen);
   };
 
-  const handleUploadDocument = async () => {
-    if (!requireUid()) return;
+  const uploadPickedDocument = async () => {
+    if (!ensureClientIsSignedIn(clientId)) return;
+
+    // 1. System document picker. copyToCacheDirectory lets us read the file after the picker closes.
     const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.*', 'text/plain', '*/*'],
+      type: DOCUMENT_PICKER_TYPES,
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
     const file = result.assets?.[0];
     if (!file?.uri) return;
+
+    // 2. Upload as pdf or doc so the card icon matches the file.
     setUploading(true);
     try {
-      const inferredType = file.mimeType?.includes('pdf') || String(file.name || '').toLowerCase().endsWith('.pdf') ? 'pdf' : 'doc';
       await addFile(
         clientId,
-        { localUri: file.uri, filename: file.name || 'document', mimeType: file.mimeType || 'application/octet-stream', type: inferredType, size: file.size },
-        'client',
+        {
+          localUri: file.uri,
+          filename: file.name || 'document',
+          mimeType: file.mimeType || DEFAULT_DOCUMENT_MIME,
+          type: inferredDocumentType(file),
+          size: file.size,
+        },
+        ADDED_BY_CLIENT,
       );
       setUploadOpen(false);
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not upload document.');
+    } catch (error) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload document.');
     } finally {
       setUploading(false);
     }
   };
 
-  const handleUploadSpreadsheet = async () => {
-    if (!requireUid()) return;
+  const uploadPickedSpreadsheet = async () => {
+    if (!ensureClientIsSignedIn(clientId)) return;
+
+    // 1. Spreadsheet / CSV picker.
     const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', '*/*'],
+      type: SPREADSHEET_PICKER_TYPES,
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
     const file = result.assets?.[0];
     if (!file?.uri) return;
+
+    // 2. addSpreadsheetFile stores it as a sheet, not a generic document.
     setUploading(true);
     try {
       await addSpreadsheetFile(
         clientId,
-        { localUri: file.uri, filename: file.name || 'spreadsheet', mimeType: file.mimeType || 'application/octet-stream', size: file.size },
-        'client',
+        {
+          localUri: file.uri,
+          filename: file.name || 'spreadsheet',
+          mimeType: file.mimeType || DEFAULT_DOCUMENT_MIME,
+          size: file.size,
+        },
+        ADDED_BY_CLIENT,
       );
       setUploadOpen(false);
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not upload spreadsheet.');
+    } catch (error) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload spreadsheet.');
     } finally {
       setUploading(false);
     }
@@ -228,26 +348,26 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
           <TextInput
             placeholder="Search your files…"
             placeholderTextColor={theme.text60}
-            value={q}
-            onChangeText={setQ}
+            value={searchText}
+            onChangeText={setSearchText}
             style={{ flex: 1, color: theme.text, fontSize: 14, fontWeight: '600' }}
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {q ? (
-            <TouchableOpacity onPress={() => setQ('')} hitSlop={10}>
+          {searchText ? (
+            <TouchableOpacity onPress={() => setSearchText('')} hitSlop={10}>
               <Feather name="x" size={18} color={theme.text60} />
             </TouchableOpacity>
           ) : null}
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {TABS.map((t) => {
-            const active = tab === t.id;
+          {TABS.map((tabOption) => {
+            const isActive = tab === tabOption.id;
             return (
               <TouchableOpacity
-                key={t.id}
-                onPress={() => setTab(t.id)}
+                key={tabOption.id}
+                onPress={() => setTab(tabOption.id)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -255,13 +375,13 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
                   paddingHorizontal: 12,
                   paddingVertical: 9,
                   borderRadius: 999,
-                  backgroundColor: active ? 'transparent' : theme.inputBg,
+                  backgroundColor: isActive ? 'transparent' : theme.inputBg,
                   borderWidth: 1,
-                  borderColor: active ? 'transparent' : theme.border,
+                  borderColor: isActive ? 'transparent' : theme.border,
                   overflow: 'hidden',
                 }}
               >
-                {active ? (
+                {isActive ? (
                   <LinearGradient
                     colors={GRADIENTS.myFiles}
                     start={{ x: 0, y: 0 }}
@@ -276,9 +396,9 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
                     }}
                   />
                 ) : null}
-                <Feather name={t.icon} size={14} color={active ? '#FF6B9D' : theme.text60} />
-                <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#FF6B9D' : theme.text60 }}>
-                  {t.label}
+                <Feather name={tabOption.icon} size={14} color={isActive ? '#FF6B9D' : theme.text60} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: isActive ? '#FF6B9D' : theme.text60 }}>
+                  {tabOption.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -367,7 +487,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
             ) : (
               <>
                 <TouchableOpacity
-                  onPress={handleTakePhoto}
+                  onPress={takeProgressPhoto}
                   style={{
                     height: 52,
                     borderRadius: 14,
@@ -385,7 +505,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={handleChooseFromGallery}
+                  onPress={choosePhotoFromGallery}
                   style={{
                     height: 52,
                     borderRadius: 14,
@@ -403,7 +523,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={handleUploadDocument}
+                  onPress={uploadPickedDocument}
                   style={{
                     height: 52,
                     borderRadius: 14,
@@ -421,7 +541,7 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={handleUploadSpreadsheet}
+                  onPress={uploadPickedSpreadsheet}
                   style={{
                     height: 52,
                     borderRadius: 14,
@@ -449,4 +569,3 @@ export function MyFilesSection({ clientId, items, isDark = true, onOpenItem, onD
     </View>
   );
 }
-

@@ -7,17 +7,45 @@ import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
+const POPUP_TITLE = 'Swap exercise?';
+const REMOVE_ROW_LABEL = 'Remove';
+const ADD_ROW_LABEL = 'Add';
+const REASON_ROW_LABEL = 'Reason';
 const CURRENT_EXERCISE_LABEL = 'Current exercise';
 const MISSING_VALUE = '—';
+const PARAM_KEYS_FOR_REMOVED = ['exerciseId', 'oldExercise', 'exerciseName'];
 
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * Walk known param keys until one holds a non-empty string.
+ * @param {object|undefined} params
+ * @param {string[]} keyNames
+ * @param {string} fallbackLabel
+ * @returns {string}
+ */
+function readFirstStringParam(params, keyNames, fallbackLabel) {
+  if (!params) return fallbackLabel;
+  for (let index = 0; index < keyNames.length; index += 1) {
+    const keyName = keyNames[index];
+    const candidate = params[keyName];
+    if (candidate) return String(candidate);
+  }
+  return fallbackLabel;
+}
 
 /**
  * @param {object|undefined} params
  * @returns {string}
  */
 function readRemovedExercise(params) {
-  return params?.exerciseId || params?.oldExercise || params?.exerciseName || CURRENT_EXERCISE_LABEL;
+  return readFirstStringParam(params, PARAM_KEYS_FOR_REMOVED, CURRENT_EXERCISE_LABEL);
+}
+
+function nameFromExerciseObject(newExercise) {
+  if (typeof newExercise !== 'object' || newExercise === null) return '';
+  if (!newExercise.name) return '';
+  return String(newExercise.name);
 }
 
 /**
@@ -26,27 +54,43 @@ function readRemovedExercise(params) {
  * @returns {string}
  */
 function readAddedExercise(params) {
-  if (typeof params?.newExercise === 'object') {
-    return params.newExercise?.name;
-  }
-  return params?.newExercise || params?.exerciseName || MISSING_VALUE;
+  if (!params) return MISSING_VALUE;
+  const newExercise = params.newExercise;
+  const nameFromObject = nameFromExerciseObject(newExercise);
+  if (nameFromObject) return nameFromObject;
+  if (typeof newExercise === 'string' && newExercise) return newExercise;
+  if (params.exerciseName) return String(params.exerciseName);
+  return MISSING_VALUE;
+}
+
+function readSwapReason(params) {
+  if (!params) return undefined;
+  return params.reason;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Confirm swapping one workout exercise for another after the coach proposes a change.
  * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
  */
 export default function EditWorkoutPopup({ params, reasoning, onConfirm, onCancel, loading }) {
+  // 1. Read the exercise to remove and the one to add.
   const removedExercise = readRemovedExercise(params);
   const addedExercise = readAddedExercise(params);
+  const swapReason = readSwapReason(params);
+
+  // 2. Confirm swaps them. onConfirm still gets the original params.
+  function handleConfirmSwap() {
+    onConfirm(params);
+  }
 
   return (
-    <ToolModalBody title="Swap exercise?" reasoning={reasoning}>
-      <DetailRow label="Remove" value={removedExercise} />
-      <DetailRow label="Add" value={addedExercise} />
-      <DetailRow label="Reason" value={params?.reason} />
-      <ConfirmCancelRow onConfirm={() => onConfirm(params)} onCancel={onCancel} loading={loading} />
+    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
+      <DetailRow label={REMOVE_ROW_LABEL} value={removedExercise} />
+      <DetailRow label={ADD_ROW_LABEL} value={addedExercise} />
+      <DetailRow label={REASON_ROW_LABEL} value={swapReason} />
+      <ConfirmCancelRow onConfirm={handleConfirmSwap} onCancel={onCancel} loading={loading} />
     </ToolModalBody>
   );
 }

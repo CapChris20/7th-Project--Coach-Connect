@@ -1,13 +1,7 @@
-/**
- * Workout Plan Generator Screen UI
- *
- * Purpose: UI screen or component: Workout Plan Generator Screen UI. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: GenerateMyWorkoutPlanScreen
- *
- * @file-header
- */
+// Minimal wrapper for "generate my workout plan": load usage + saved plan, then one generate button.
+// Flow: load monthly usage → load onboarding + saved plan → show status → tap Generate → Claude call → alert.
+// Used by: client navigation when the dedicated generator screen is opened. The full plan viewer lives elsewhere.
+
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,9 +9,150 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from '../create-plan/CreateWorkoutPlanScreen';
 
+// ===== NAMED CONSTANTS =====
+
+const ACCENT_PINK = '#FF6B9D';
+const SCREEN_DARK = '#0A0A0F';
+const SCREEN_LIGHT = '#F5F5F5';
+const SURFACE_DARK = '#13131A';
+const SURFACE_LIGHT = '#FFFFFF';
+const TEXT_DARK = '#FFFFFF';
+const TEXT_LIGHT = '#0A0A0F';
+const MUTED_DARK = 'rgba(255,255,255,0.6)';
+const MUTED_LIGHT = 'rgba(0,0,0,0.55)';
+const BUTTON_LABEL_COLOR = '#fff';
+
+const MONTHLY_LIMIT_CODE = 'monthly_limit_reached';
+
+const MISSING_ONBOARDING_TITLE = 'Missing data';
+const MISSING_ONBOARDING_MESSAGE = 'Onboarding data is required to generate a plan.';
+const GENERATE_SUCCESS_TITLE = 'Success';
+const GENERATE_SUCCESS_MESSAGE = 'Plan generated and saved.';
+const GENERATE_FAIL_TITLE = 'Generation failed';
+const GENERATE_FAIL_FALLBACK = 'Failed to generate workout plan.';
+const MONTHLY_LIMIT_TITLE = 'Monthly limit reached';
+const LOAD_FAIL_FALLBACK = 'Failed to load data.';
+
+// ===== HELPER FUNCTIONS =====
+
+function screenPalette(isDark) {
+  return {
+    screenBackground: isDark ? SCREEN_DARK : SCREEN_LIGHT,
+    surface: isDark ? SURFACE_DARK : SURFACE_LIGHT,
+    textColor: isDark ? TEXT_DARK : TEXT_LIGHT,
+    muted: isDark ? MUTED_DARK : MUTED_LIGHT,
+  };
+}
+
+function usageFromLimitPayload(limitPayload) {
+  return {
+    generations_used: limitPayload.used,
+    generations_limit: limitPayload.limit,
+    resets_at: limitPayload.resets_at,
+  };
+}
+
+function applyGeneratedPlan(plan, setGenUsage, setGeneratedPlan) {
+  if (plan?.usage) setGenUsage(plan.usage);
+  setGeneratedPlan(plan);
+}
+
+function applyGenerationFailure(error, setGenUsage) {
+  if (error?.code === MONTHLY_LIMIT_CODE) {
+    if (error.limitPayload) setGenUsage(usageFromLimitPayload(error.limitPayload));
+    Alert.alert(MONTHLY_LIMIT_TITLE, error.message);
+    return;
+  }
+  Alert.alert(GENERATE_FAIL_TITLE, error?.message || GENERATE_FAIL_FALLBACK);
+}
+
+async function generatePlanForUser({ onboardingData, userId, setIsGenerating, setError, setGenUsage, setGeneratedPlan }) {
+  if (!onboardingData) {
+    Alert.alert(MISSING_ONBOARDING_TITLE, MISSING_ONBOARDING_MESSAGE);
+    return;
+  }
+  setIsGenerating(true);
+  setError(null);
+  try {
+    const plan = await generateWorkoutPlanWithClaude({ onboardingData, userId });
+    applyGeneratedPlan(plan, setGenUsage, setGeneratedPlan);
+    Alert.alert(GENERATE_SUCCESS_TITLE, GENERATE_SUCCESS_MESSAGE);
+  } catch (error) {
+    applyGenerationFailure(error, setGenUsage);
+  } finally {
+    setIsGenerating(false);
+  }
+}
+
+function savedPlanCaption(generatedPlan) {
+  if (!generatedPlan) return 'No plan saved yet.';
+  if (!generatedPlan?.generatedAt) return 'Plan saved .';
+  return `Plan saved (${new Date(generatedPlan.generatedAt).toLocaleDateString()}).`;
+}
+
+function LoadingBody({ screenBackground, textColor }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: screenBackground, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color={ACCENT_PINK} />
+      <Text style={{ color: textColor, marginTop: 10 }}>Loading…</Text>
+    </View>
+  );
+}
+
+function ErrorBody({ screenBackground, surface, textColor, muted, error, onBack }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: screenBackground, padding: 16 }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, justifyContent: 'center' }}>
+          <Ionicons name="chevron-back" size={24} color={textColor} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, backgroundColor: surface, borderRadius: 16, padding: 16, justifyContent: 'center' }}>
+          <Text style={{ color: textColor, fontWeight: '800', fontSize: 18 }}>Error</Text>
+          <Text style={{ color: muted, marginTop: 8 }}>{error}</Text>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function UsageLine({ genUsage, muted }) {
+  if (!genUsage) return null;
+  return (
+    <Text style={{ color: muted, marginTop: 14, fontSize: 13, fontWeight: '600' }}>
+      {genUsage.generations_used} of {genUsage.generations_limit} plans used this month
+    </Text>
+  );
+}
+
+function GeneratePlanButton({ isGenerating, onPress }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={isGenerating}
+      style={{
+        marginTop: 18,
+        height: 48,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: ACCENT_PINK,
+        opacity: isGenerating ? 0.7 : 1,
+      }}
+    >
+      {isGenerating ? (
+        <ActivityIndicator color={BUTTON_LABEL_COLOR} />
+      ) : (
+        <Text style={{ color: BUTTON_LABEL_COLOR, fontWeight: '800' }}>Generate New Plan</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * UI wrapper for workout plan generation.
- * Rendering of plans is intentionally NOT handled here.
+ * UI wrapper for workout plan generation. Rendering of plans is intentionally NOT handled here.
+ * @param {object} props
  */
 export default function GenerateMyWorkoutPlanScreen({
   userId,
@@ -61,9 +196,9 @@ export default function GenerateMyWorkoutPlanScreen({
         if (!mounted) return;
         setOnboardingData(data || null);
         setGeneratedPlan(plan || propPlan || null);
-      } catch (e) {
+      } catch (loadError) {
         if (!mounted) return;
-        setError(e?.message || 'Failed to load data.');
+        setError(loadError?.message || LOAD_FAIL_FALLBACK);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -73,115 +208,61 @@ export default function GenerateMyWorkoutPlanScreen({
     };
   }, [userId, propPlan]);
 
-  const bg = isDark ? '#0A0A0F' : '#F5F5F5';
-  const surface = isDark ? '#13131A' : '#FFFFFF';
-  const text = isDark ? '#FFFFFF' : '#0A0A0F';
-  const muted = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)';
+  const palette = screenPalette(isDark);
+  const { screenBackground, surface, textColor, muted } = palette;
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#FF6B9D" />
-        <Text style={{ color: text, marginTop: 10 }}>Loading…</Text>
-      </View>
-    );
+    return <LoadingBody screenBackground={screenBackground} textColor={textColor} />;
   }
 
   if (error) {
     return (
-      <View style={{ flex: 1, backgroundColor: bg, padding: 16 }}>
-        <SafeAreaView style={{ flex: 1 }}>
-          <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, justifyContent: 'center' }}>
-            <Ionicons name="chevron-back" size={24} color={text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, backgroundColor: surface, borderRadius: 16, padding: 16, justifyContent: 'center' }}>
-            <Text style={{ color: text, fontWeight: '800', fontSize: 18 }}>Error</Text>
-            <Text style={{ color: muted, marginTop: 8 }}>{error}</Text>
-          </View>
-        </SafeAreaView>
-      </View>
+      <ErrorBody
+        screenBackground={screenBackground}
+        surface={surface}
+        textColor={textColor}
+        muted={muted}
+        error={error}
+        onBack={onBack}
+      />
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: bg, padding: 16 }}>
+    <View style={{ flex: 1, backgroundColor: screenBackground, padding: 16 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, justifyContent: 'center' }}>
-            <Ionicons name="chevron-back" size={24} color={text} />
+            <Ionicons name="chevron-back" size={24} color={textColor} />
           </TouchableOpacity>
-          <Text style={{ color: text, fontWeight: '800', fontSize: 16 }}>Workout Plan</Text>
+          <Text style={{ color: textColor, fontWeight: '800', fontSize: 16 }}>Workout Plan</Text>
           <View style={{ width: 44 }} />
         </View>
 
         <View style={{ flex: 1, backgroundColor: surface, borderRadius: 16, padding: 16, marginTop: 12 }}>
-          <Text style={{ color: text, fontWeight: '800', fontSize: 18 }}>Generation</Text>
+          <Text style={{ color: textColor, fontWeight: '800', fontSize: 18 }}>Generation</Text>
           <Text style={{ color: muted, marginTop: 8, lineHeight: 18 }}>
             This screen is a minimal wrapper. Your plan viewer UI is being rebuilt separately.
           </Text>
 
-          {generatedPlan ? (
-            <Text style={{ color: muted, marginTop: 12 }}>
-              Plan saved {generatedPlan?.generatedAt ? `(${new Date(generatedPlan.generatedAt).toLocaleDateString()})` : ''}.
-            </Text>
-          ) : (
-            <Text style={{ color: muted, marginTop: 12 }}>No plan saved yet.</Text>
-          )}
+          <Text style={{ color: muted, marginTop: 12 }}>
+            {savedPlanCaption(generatedPlan)}
+          </Text>
 
           {!readOnly ? (
             <>
-              {genUsage ? (
-                <Text style={{ color: muted, marginTop: 14, fontSize: 13, fontWeight: '600' }}>
-                  {genUsage.generations_used} of {genUsage.generations_limit} plans used this month
-                </Text>
-              ) : null}
-            <TouchableOpacity
-              onPress={async () => {
-                if (!onboardingData) {
-                  Alert.alert('Missing data', 'Onboarding data is required to generate a plan.');
-                  return;
-                }
-                setIsGenerating(true);
-                setError(null);
-                try {
-                  const plan = await generateWorkoutPlanWithClaude({ onboardingData, userId });
-                  if (plan?.usage) setGenUsage(plan.usage);
-                  setGeneratedPlan(plan);
-                  Alert.alert('Success', 'Plan generated and saved.');
-                } catch (e) {
-                  if (e?.code === 'monthly_limit_reached') {
-                    if (e.limitPayload) {
-                      setGenUsage({
-                        generations_used: e.limitPayload.used,
-                        generations_limit: e.limitPayload.limit,
-                        resets_at: e.limitPayload.resets_at,
-                      });
-                    }
-                    Alert.alert('Monthly limit reached', e.message);
-                  } else {
-                    Alert.alert('Generation failed', e?.message || 'Failed to generate workout plan.');
-                  }
-                } finally {
-                  setIsGenerating(false);
-                }
-              }}
-              disabled={isGenerating}
-              style={{
-                marginTop: 18,
-                height: 48,
-                borderRadius: 14,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#FF6B9D',
-                opacity: isGenerating ? 0.7 : 1,
-              }}
-            >
-              {isGenerating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Generate New Plan</Text>
-              )}
-            </TouchableOpacity>
+              <UsageLine genUsage={genUsage} muted={muted} />
+              <GeneratePlanButton
+                isGenerating={isGenerating}
+                onPress={() => generatePlanForUser({
+                  onboardingData,
+                  userId,
+                  setIsGenerating,
+                  setError,
+                  setGenUsage,
+                  setGeneratedPlan,
+                })}
+              />
             </>
           ) : null}
         </View>
@@ -189,4 +270,3 @@ export default function GenerateMyWorkoutPlanScreen({
     </View>
   );
 }
-

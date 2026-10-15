@@ -23,12 +23,16 @@ const HIGHLIGHT_END = 0.2;
 
 // ===== HELPER FUNCTIONS =====
 
+function clampBetween(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function glassOpacityFromTransmission(transmission) {
-  return Math.max(GLASS_OPACITY_MIN, Math.min(GLASS_OPACITY_MAX, transmission * TRANSMISSION_TO_OPACITY));
+  return clampBetween(transmission * TRANSMISSION_TO_OPACITY, GLASS_OPACITY_MIN, GLASS_OPACITY_MAX);
 }
 
 function borderOpacityFromRoughness(roughness) {
-  return Math.max(BORDER_OPACITY_MIN, Math.min(BORDER_OPACITY_MAX, roughness * ROUGHNESS_TO_BORDER));
+  return clampBetween(roughness * ROUGHNESS_TO_BORDER, BORDER_OPACITY_MIN, BORDER_OPACITY_MAX);
 }
 
 function tintColorFromHex(tint, glassOpacity) {
@@ -60,6 +64,56 @@ function borderRadiusFromStyle(style) {
   return DEFAULT_CORNER_RADIUS;
 }
 
+
+/**
+ * Derive opacities, tint, and corner radius from the glass props in one place.
+ * @param {{ transmission: number, roughness: number, tint: string, style: * }} input
+ */
+function computeGlassLook({ transmission, roughness, tint, style }) {
+  const glassOpacity = glassOpacityFromTransmission(transmission);
+  const borderOpacity = borderOpacityFromRoughness(roughness);
+  const tintColor = tintColorFromHex(tint, glassOpacity);
+  const gradientColors = glassGradientColors(glassOpacity);
+  const borderRadius = borderRadiusFromStyle(style);
+  return { glassOpacity, borderOpacity, tintColor, gradientColors, borderRadius };
+}
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  glassLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  tintLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  highlightLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.6,
+  },
+  borderGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+});
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -79,29 +133,9 @@ const GlassPanel = memo(function GlassPanel({
   style,
   ...props
 }) {
-  const glassOpacity = useMemo(
-    () => glassOpacityFromTransmission(transmission),
-    [transmission],
-  );
-
-  const borderOpacity = useMemo(
-    () => borderOpacityFromRoughness(roughness),
-    [roughness],
-  );
-
-  const tintColor = useMemo(
-    () => tintColorFromHex(tint, glassOpacity),
-    [tint, glassOpacity],
-  );
-
-  const gradientColors = useMemo(
-    () => glassGradientColors(glassOpacity),
-    [glassOpacity],
-  );
-
-  const borderRadius = useMemo(
-    () => borderRadiusFromStyle(style),
-    [style],
+  const { borderOpacity, tintColor, gradientColors, borderRadius } = useMemo(
+    () => computeGlassLook({ transmission, roughness, tint, style }),
+    [transmission, roughness, tint, style],
   );
 
   const containerStyle = useMemo(
@@ -141,32 +175,29 @@ const GlassPanel = memo(function GlassPanel({
     [borderRadius, borderOpacity, thickness],
   );
 
+  const highlightShineColors = ['rgba(255, 255, 255, 0.4)', 'rgba(255, 255, 255, 0.1)', 'transparent'];
+  const shineGradientStart = { x: 0, y: 0 };
+  const shineGradientEnd = { x: 1, y: 1 };
+
   return (
     <View style={containerStyle} {...props}>
       <LinearGradient
         colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={shineGradientStart}
+        end={shineGradientEnd}
         style={layerStyle}
         pointerEvents="none"
       />
 
       <View
-        style={[
-          tintLayerStyle,
-          { backgroundColor: tintColor },
-        ]}
+        style={[tintLayerStyle, { backgroundColor: tintColor }]}
         pointerEvents="none"
       />
 
       <LinearGradient
-        colors={[
-          'rgba(255, 255, 255, 0.4)',
-          'rgba(255, 255, 255, 0.1)',
-          'transparent',
-        ]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        colors={highlightShineColors}
+        start={shineGradientStart}
+        end={shineGradientEnd}
         style={highlightLayerStyle}
         pointerEvents="none"
       />
@@ -177,53 +208,17 @@ const GlassPanel = memo(function GlassPanel({
     </View>
   );
 }, (previousProps, nextProps) => {
-  return (
-    previousProps.width === nextProps.width &&
-    previousProps.height === nextProps.height &&
+  const sameSize =
+    previousProps.width === nextProps.width && previousProps.height === nextProps.height;
+  const sameGlass =
     previousProps.transmission === nextProps.transmission &&
     previousProps.roughness === nextProps.roughness &&
     previousProps.thickness === nextProps.thickness &&
-    previousProps.tint === nextProps.tint &&
-    previousProps.children === nextProps.children
-  );
+    previousProps.tint === nextProps.tint;
+  return sameSize && sameGlass && previousProps.children === nextProps.children;
 });
 
 GlassPanel.displayName = 'GlassPanel';
 
 export default GlassPanel;
 
-const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
-    backgroundColor: 'transparent',
-  },
-  glassLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  tintLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  highlightLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.6,
-  },
-  borderGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-});

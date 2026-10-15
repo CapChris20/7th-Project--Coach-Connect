@@ -1,0 +1,90 @@
+Per-folder breakdown (FRONTEND stays, BACKEND moves to <folder>/backend/, UI-SUPPORT stays, AMBIGUOUS needs a human look)
+====================================================================================================
+src/ai-coach/coach-actions  (8 files)
+  frontend=0  backend=8  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/ai-coach/coach-knowledge  (3 files)
+  frontend=0  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/ai-coach/conversation  (15 files)
+  frontend=7  backend=8  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/ai-coach/internet-lookup  (2 files)
+  frontend=0  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/ai-coach/past-chats  (8 files)
+  frontend=1  backend=7  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/ai-coach/reply-display  (9 files)
+  frontend=4  backend=4  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/app-start  (4 files)
+  frontend=3  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/block-and-report  (7 files)
+  frontend=2  backend=4  ui-support=0  barrel=1  ambiguous=0  parse-error=0
+src/client-app/find-a-trainer  (11 files)
+  frontend=9  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/client-app/home  (10 files)
+  frontend=7  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/crash-reports  (4 files)
+  frontend=1  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/daily-stats  (5 files)
+  frontend=0  backend=5  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both  (5 files)
+  frontend=2  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/cloud-database  (5 files)
+  frontend=0  backend=5  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/files-and-notes  (2 files)
+  frontend=0  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/online-connection  (10 files)
+  frontend=0  backend=10  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/payments  (13 files)
+  frontend=5  backend=8  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/setup-icons  (2 files)
+  frontend=1  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/trainer-listing  (1 files)
+  frontend=0  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/for-both/weekly-report  (21 files)
+  frontend=15  backend=5  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/helpers  (12 files)
+  frontend=0  backend=12  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/login-and-signup  (12 files)
+  frontend=6  backend=6  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/logout-cleanup  (1 files)
+  frontend=0  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/messaging  (4 files)
+  frontend=2  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/notifications  (4 files)
+  frontend=0  backend=4  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/barcode  (4 files)
+  frontend=1  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/daily-log  (6 files)
+  frontend=5  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/food-cards  (8 files)
+  frontend=6  backend=1  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/food-details  (7 files)
+  frontend=3  backend=4  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/food-search  (13 files)
+  frontend=3  backend=10  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/nutrition/targets  (3 files)
+  frontend=2  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/spreadsheet-support  (3 files)
+  frontend=0  backend=3  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/documents  (12 files)
+  frontend=7  backend=4  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/documents/spreadsheet-grid  (10 files)
+  frontend=4  backend=5  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/my-trainees  (3 files)
+  frontend=1  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/new-requests  (3 files)
+  frontend=1  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/progress-tab  (3 files)
+  frontend=2  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/scheduling  (11 files)
+  frontend=8  backend=2  ui-support=1  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/trainee-records  (4 files)
+  frontend=0  backend=4  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-app/workout-plans  (3 files)
+  frontend=1  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/trainer-pro-plan  (12 files)
+  frontend=10  backend=2  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/workouts/create-plan  (14 files)
+  frontend=6  backend=8  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/workouts/exercise-videos  (9 files)
+  frontend=5  backend=4  ui-support=0  barrel=0  ambiguous=0  parse-error=0
+src/workouts/view-plan  (4 files)
+  frontend=3  backend=1  ui-support=0  barrel=0  ambiguous=0  parse-error=0

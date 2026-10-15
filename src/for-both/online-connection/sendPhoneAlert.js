@@ -1,7 +1,6 @@
 // Sends a phone push by POSTing /api/notifications/send. The server talks to Expo.
 // Flow: require recipient and sender → strip emoji → fill an empty body → try each API base.
-// Used by chat, session changes, notes, and the AI coach. Returns { ok: false } instead of throwing.
-// A 500 tries the next base. Any other HTTP error stops immediately.
+// Used by: chat, session changes, notes, and the AI coach. Returns { ok: false } instead of throwing.
 
 import { getApiBaseCandidates } from './whereToConnect';
 import { getApiAuthHeaders } from './attachLoginProof';
@@ -27,14 +26,25 @@ const REASON_UNREACHABLE = 'unreachable';
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * Lock-screen copy when the caller sent an empty body.
+ * @param {string} notificationType
+ * @returns {string}
+ */
 function fallbackAlertText(notificationType) {
   const isChatMessage = String(notificationType || DEFAULT_NOTIFICATION_TYPE) === DEFAULT_NOTIFICATION_TYPE;
   if (isChatMessage) return CHAT_MESSAGE_FALLBACK;
   return OTHER_ALERT_FALLBACK;
 }
 
-// Emoji in a push title gets dropped by some Android builds, so both fields are cleaned first.
-// An empty body still needs words, or the lock screen shows a blank banner.
+/**
+ * Emoji in a push title gets dropped by some Android builds, so both fields are cleaned first.
+ * An empty body still needs words, or the lock screen shows a blank banner.
+ * @param {string} senderName
+ * @param {string} messageText
+ * @param {string} notificationType
+ * @returns {{ cleanSenderName: string, cleanMessageText: string }}
+ */
 function cleanedAlertFields(senderName, messageText, notificationType) {
   const cleanSenderName = removeEmojiFromAlerts(senderName) || DEFAULT_SENDER_NAME;
   let cleanMessageText = removeEmojiFromAlerts(String(messageText || ''));
@@ -45,30 +55,43 @@ function cleanedAlertFields(senderName, messageText, notificationType) {
   return { cleanSenderName, cleanMessageText };
 }
 
+/**
+ * @returns {Promise<object|null>}
+ */
 async function signedInJsonHeaders() {
   try {
     const authHeaders = await getApiAuthHeaders({ 'Content-Type': JSON_CONTENT_TYPE });
     const isSignedIn = Boolean(authHeaders.Authorization);
     if (!isSignedIn) return null;
     return authHeaders;
-  } catch (_) {
+  } catch (error) {
     return null;
   }
 }
 
-// res.json() throws on an empty body. Read text first so a bare 200 still counts as success.
+/**
+ * res.json() throws on an empty body. Read text first so a bare 200 still counts as success.
+ * @param {Response} response
+ * @returns {Promise<object>}
+ */
 async function readJsonBody(response) {
   let responseJson = {};
   try {
     const responseText = await response.text();
     if (responseText) responseJson = JSON.parse(responseText);
-  } catch (_) {
+  } catch (error) {
     responseJson = {};
   }
   return responseJson;
 }
 
-// shouldTryNextBase is only for 5xx. A 4xx, or success: false, is final.
+/**
+ * shouldTryNextBase is only for 5xx. A 4xx, or success: false, is final.
+ * Only an explicit false is a rejection. A body with no `success` field is still a win.
+ * @param {Response} response
+ * @param {object} responseJson
+ * @returns {{ ok?: boolean, reason?: string, shouldTryNextBase?: boolean }}
+ */
 function pushResultFromResponse(response, responseJson) {
   if (!response.ok) {
     const reason = `HTTP ${response.status}`;
@@ -78,7 +101,6 @@ function pushResultFromResponse(response, responseJson) {
     return { ok: false, reason };
   }
 
-  // Only an explicit false is a rejection. A body with no `success` field is still a win.
   if (responseJson.success === false) {
     return {
       ok: false,
@@ -89,10 +111,35 @@ function pushResultFromResponse(response, responseJson) {
   return { ok: true };
 }
 
+/**
+ * @param {string} apiBase
+ * @param {object} authHeaders
+ * @param {string} requestBody
+ * @returns {Promise<{ shouldTryNextBase?: boolean, reason?: string, result?: object }>}
+ */
+async function postPushToOneBase(apiBase, authHeaders, requestBody) {
+  try {
+    const response = await fetch(`${apiBase}${SEND_NOTIFICATION_PATH}`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: requestBody,
+    });
+    const responseJson = await readJsonBody(response);
+    const result = pushResultFromResponse(response, responseJson);
+    if (result.shouldTryNextBase) {
+      return { shouldTryNextBase: true, reason: result.reason };
+    }
+    return { result };
+  } catch (error) {
+    return { shouldTryNextBase: true, reason: error?.message || String(error) };
+  }
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
  * Send a remote push notification.
+ * A 500 tries the next base. Any other HTTP error stops immediately.
  * @param {object} pushRequest
  * @param {string} pushRequest.recipientId Firebase uid that should receive the push
  * @param {string} pushRequest.senderName Shown as the notification title
@@ -140,25 +187,15 @@ export async function postRemotePushNotify(pushRequest) {
     return { ok: false, reason: REASON_NOT_SIGNED_IN };
   }
 
-  let lastFailure = '';
+  let lastFailureReason = '';
   for (const apiBase of apiBases) {
-    try {
-      const response = await fetch(`${apiBase}${SEND_NOTIFICATION_PATH}`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: requestBody,
-      });
-      const responseJson = await readJsonBody(response);
-      const result = pushResultFromResponse(response, responseJson);
-      if (result.shouldTryNextBase) {
-        lastFailure = result.reason;
-        continue;
-      }
-      return result;
-    } catch (error) {
-      lastFailure = error?.message || String(error);
+    const attempt = await postPushToOneBase(apiBase, authHeaders, requestBody);
+    if (attempt.shouldTryNextBase) {
+      lastFailureReason = attempt.reason;
+      continue;
     }
+    return attempt.result;
   }
 
-  return { ok: false, reason: lastFailure || REASON_UNREACHABLE };
+  return { ok: false, reason: lastFailureReason || REASON_UNREACHABLE };
 }

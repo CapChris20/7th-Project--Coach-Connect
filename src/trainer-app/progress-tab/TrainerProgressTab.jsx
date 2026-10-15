@@ -1,14 +1,7 @@
-/**
- * Trainer Progress Tab
- *
- * Purpose: UI screen or component: Trainer Progress Tab. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: (see file)
- *
- * @file-header
- */
-/** Trainer dashboard — Progress tab */
+// Trainer Progress tab: weight, wellness metrics, and daily scorecards for the selected client.
+// Flow: read client log props → layout metric cards → show empty Lotties when values are missing.
+// Used by the trainer client dashboard. Shared Lotties/colors come from trainerHomePieces.
+
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -56,6 +49,11 @@ import {
 } from './pickWeightToShow';
 
 
+// ===== NAMED CONSTANTS =====
+const STEPS_METRIC_SCALE = 15000;
+
+// ===== HELPER FUNCTIONS =====
+
 const metricValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
 
 const metricValueStyle = (fontSize) => ({
@@ -66,6 +64,12 @@ const metricValueStyle = (fontSize) => ({
   textAlign: 'center',
 });
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Progress tab body for one trainee.
+ * @param {object} props
+ */
 const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = null }) => {
   const textColor = isDark ? '#FFFFFF' : '#020617';
   const mutedColor = isDark ? 'rgba(255,255,255,0.56)' : 'rgba(15,23,42,0.72)';
@@ -152,12 +156,12 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
   const cols = isTablet ? 3 : 2;
   const cardWidth = (metricsGridWidth - gridGap * (cols - 1)) / cols;
 
-  const clampPct = (n) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
+  const clampPct = (ratio) => Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
   const MetricMini = ({ label, value, scale, valueGradient, emptyType, style }) => {
     const hasVal = value != null && value !== '' && Number.isFinite(Number(value));
-    const n = hasVal ? Number(value) : null;
-    const pct = hasVal ? clampPct(n / scale) : 0;
+    const numericValue = hasVal ? Number(value) : null;
+    const pct = hasVal ? clampPct(numericValue / scale) : 0;
     const valueColors =
       Array.isArray(valueGradient) && valueGradient.length >= 2 ? valueGradient : HOME_STAT_WORKOUT_GRADIENT;
     const valueFontSize = hasVal && String(value).length >= 5 ? 36 : 44;
@@ -495,9 +499,9 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
         <Text style={sectionHeaderStyle}>Daily Metrics</Text>
         <View
           style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap' }}
-          onLayout={(e) => {
-            const w = e?.nativeEvent?.layout?.width;
-            if (typeof w === 'number' && w > 0) setMetricsGridWidth(w);
+          onLayout={(event) => {
+            const layoutWidth = event?.nativeEvent?.layout?.width;
+            if (typeof layoutWidth === 'number' && layoutWidth > 0) setMetricsGridWidth(layoutWidth);
           }}
         >
           {[
@@ -505,7 +509,7 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
             { key: 'stress', label: 'STRESS / 8', value: log.dashboard_stress, scale: 8, valueGradient: HOME_STAT_STRESS_GRADIENT, emptyType: 'stress' },
             { key: 'mood', label: 'MOOD / 4', value: log.dashboard_mood, scale: 4, valueGradient: HOME_STAT_MOOD_GRADIENT, emptyType: 'mood' },
             { key: 'soreness', label: 'SORENESS / 8', value: log.dashboard_soreness, scale: 8, valueGradient: HOME_STAT_SORENESS_GRADIENT, emptyType: 'soreness' },
-            { key: 'steps', label: 'STEPS', value: log.dashboard_steps, scale: 15000, valueGradient: HOME_STAT_SORENESS_GRADIENT, emptyType: 'steps' },
+            { key: 'steps', label: 'STEPS', value: log.dashboard_steps, scale: STEPS_METRIC_SCALE, valueGradient: HOME_STAT_SORENESS_GRADIENT, emptyType: 'steps' },
           ].map((m, idx, arr) => {
             const isEndOfRow = (idx + 1) % cols === 0;
             const isLast = idx === arr.length - 1;

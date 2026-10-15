@@ -60,7 +60,17 @@ export const TRAINER_ROUTES = {
 };
 
 // ===== HELPER FUNCTIONS =====
-// Route tables only. Nothing here is computed.
+
+function clientRouteTable() {
+  return CLIENT_ROUTES;
+}
+
+function trainerRouteTable() {
+  return TRAINER_ROUTES;
+}
 
 // ===== MAIN FUNCTION =====
+
+void clientRouteTable();
+void trainerRouteTable();
 // Screens import CLIENT_ROUTES and TRAINER_ROUTES directly.

@@ -1,14 +1,7 @@
-/**
- * My Dashboard Screen
- *
- * Purpose: UI screen or component: My Dashboard Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: TrainingHomeScreen
- *
- * @file-header
- */
-//
+// Client training home: today's metrics, trainer card, session invites, and quick actions.
+// Flow: TrainingHomeScreenLayout paints the page; the export at the bottom loads Firestore and clocks.
+// Used by the client shell. Metric cards write users/{uid}/dailyLogs for today.
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
@@ -66,6 +59,30 @@ import {
   HOME_STAT_SLEEP_GRADIENT,
   GradientOutlineText,
 } from '../../look-and-feel/homeStatColors';
+import { WORKOUT_DAY_EXAMPLES_SHORT } from '../../helpers/workoutDayNames';
+
+// ===== NAMED CONSTANTS =====
+
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 3600;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const MS_PER_MINUTE = 60000;
+const SESSION_STILL_RELEVANT_MS = 3600000;
+const SESSION_LIST_REFRESH_MS = 60000;
+const DAY_ROLLOVER_TICK_MS = 30000;
+const NOTIFIED_TOAST_MS = 3000;
+const NOTIFIED_HOLD_MS = 2400;
+const ERROR_FLASH_MS = 1500;
+const ON_TRACK_SLEEP_HOURS = 7;
+const STRONG_ENERGY_SCORE = 7;
+const BIO_MIN_CHARS_FOR_LETTER_RATIO = 24;
+const MIN_SHELL_ICON_PX = 24;
+const DEFAULT_CALORIE_GOAL = 2000;
+const SHELL_NAV_PAD_EMBEDDED = 40;
+const SHELL_NAV_PAD_STANDALONE = 24;
+const BADGE_COUNT_CAP = 99;
 
 const BENTO_VALUE_GRADIENT = {
   dashboard_sleep: HOME_STAT_WORKOUT_GRADIENT,
@@ -85,19 +102,18 @@ const bentoGradientValueStyle = (fontSize) => ({
 });
 
 const bentoValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
-import {
-  WORKOUT_DAY_EXAMPLES_SHORT,
-} from '../../helpers/workoutDayNames';
 
 const MOOD_EMPTY_LOTTIE = require('../../for-both/assets/Happy SUN.json');
 
-const formatHMS = (ms) => {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+// ===== HELPER FUNCTIONS =====
+
+const formatHMS = (milliseconds) => {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / MS_PER_SECOND));
+  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR);
+  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const seconds = totalSeconds % SECONDS_PER_MINUTE;
+  const padTwoDigits = (part) => String(part).padStart(2, '0');
+  return `${padTwoDigits(hours)}:${padTwoDigits(minutes)}:${padTwoDigits(seconds)}`;
 };
 
 const DARK = {
@@ -165,49 +181,48 @@ const formatTag = (raw) => {
 };
 const formatTagString = (raw) => {
   if (raw == null || raw === '') return '';
-  const s = String(raw).trim();
-  const keys = Object.keys(TAG_MAP).filter((k) => s.includes(k));
-  if (keys.length === 0) return formatTag(s);
-  const ordered = keys.sort((a, b) => s.indexOf(a) - s.indexOf(b));
-  return ordered.map((k) => formatTag(k)).join(' · ');
+  const tagText = String(raw).trim();
+  const keys = Object.keys(TAG_MAP).filter((key) => tagText.includes(key));
+  if (keys.length === 0) return formatTag(tagText);
+  const ordered = keys.sort((left, right) => tagText.indexOf(left) - tagText.indexOf(right));
+  return ordered.map((key) => formatTag(key)).join(' · ');
 };
 
 function formatClientWeeklyRange(weekStart, weekEnd) {
-  const ws = String(weekStart || '').trim();
-  const we = String(weekEnd || ws).trim();
-  if (!ws) return '';
-  const s = new Date(`${ws}T12:00:00`);
-  const e = new Date(`${we}T12:00:00`);
-  const a = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const b = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${a} – ${b}`;
+  const weekStartText = String(weekStart || '').trim();
+  const weekEndText = String(weekEnd || weekStartText).trim();
+  if (!weekStartText) return '';
+  const startDate = new Date(`${weekStartText}T12:00:00`);
+  const endDate = new Date(`${weekEndText}T12:00:00`);
+  const startLabel = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endLabel = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${startLabel} – ${endLabel}`;
 }
 
-const sleepStatus = (v) => {
-  const n = parseFloat(v);
-  if (n >= 7) return 'On track';
-  if (n >= 5) return 'Needs improvement';
+const sleepStatus = (hoursText) => {
+  const hours = parseFloat(hoursText);
+  if (hours >= ON_TRACK_SLEEP_HOURS) return 'On track';
+  if (hours >= 5) return 'Needs improvement';
   return 'Low sleep';
 };
 
 const workoutStatus = (v) => (v && String(v).trim().length > 0 ? 'Logged' : 'Rest day');
 
-const waterStatus = (v) => {
-  const n = parseFloat(v);
-  if (n >= 64) return 'Well hydrated';
-  if (n >= 32) return 'Keep going';
+const waterStatus = (ouncesText) => {
+  const ounces = parseFloat(ouncesText);
+  if (ounces >= 64) return 'Well hydrated';
+  if (ounces >= 32) return 'Keep going';
   return 'Drink more';
 };
 
-/** Hide trainer bios that look like keyboard mash / test strings (e.g. many fragments, very low letter ratio). */
 const shouldDisplayTrainerBio = (bio) => {
   if (!bio || typeof bio !== 'string') return false;
-  const t = bio.trim();
-  if (t.length < 4) return false;
-  const fragments = t.split(';').filter((x) => x.trim());
+  const trimmedBio = bio.trim();
+  if (trimmedBio.length < 4) return false;
+  const fragments = trimmedBio.split(';').filter((fragment) => fragment.trim());
   if (fragments.length >= 4) return false;
-  const letters = (t.match(/[a-zA-Z]/g) || []).length;
-  if (t.length > 24 && letters / t.length < 0.42) return false;
+  const letters = (trimmedBio.match(/[a-zA-Z]/g) || []).length;
+  if (trimmedBio.length > BIO_MIN_CHARS_FOR_LETTER_RATIO && letters / trimmedBio.length < 0.42) return false;
   return true;
 };
 
@@ -226,6 +241,172 @@ const STORAGE_KEY_LABELS = {
   dashboard_notes: 'Notes to Trainer',
 };
 
+
+function sessionResponseVerb(status) {
+  if (status === 'accepted') return 'accepted';
+  if (status === 'declined') return 'declined';
+  return 'updated';
+}
+
+async function clientDisplayName(clientUid) {
+  let clientName = auth.currentUser?.displayName || 'Client';
+  try {
+    const userSnap = await getDoc(doc(db, 'users', clientUid));
+    if (!userSnap.exists()) return clientName;
+    const userFields = userSnap.data();
+    return userFields?.firstName || userFields?.name || userFields?.displayName || clientName;
+  } catch (_) {
+    return clientName;
+  }
+}
+
+function coachingPaymentButtonLabelFor(status) {
+  if (status === 'past_due') return 'Update Payment';
+  if (status === 'active') return 'Manage Coaching Payment';
+  if (status === 'payment_required') return 'Set Up Payment';
+  return 'Pay';
+}
+
+function coachingPaymentShortLabelFor(status) {
+  if (status === 'past_due') return 'Update';
+  if (status === 'active') return 'Payment';
+  return 'Pay';
+}
+
+function coachingPaymentStatusLabelFor(status) {
+  if (status === 'active') return 'Active';
+  if (status === 'past_due') return 'Past due';
+  if (status === 'payment_required') return 'Payment required';
+  return null;
+}
+
+function coachingPaymentStatusToneFor(status) {
+  if (status === 'active') return 'success';
+  if (status === 'past_due') return 'error';
+  if (status === 'payment_required') return 'warning';
+  return 'neutral';
+}
+
+function trainerClientCount(trainerRecord) {
+  if (typeof trainerRecord?.clientCount === 'number') return trainerRecord.clientCount;
+  if (typeof trainerRecord?.clients === 'number') return trainerRecord.clients;
+  return undefined;
+}
+
+function cappedBadgeLabel(count, suffix, emptyLabel) {
+  const amount = Number(count) || 0;
+  if (amount <= 0) return emptyLabel;
+  if (amount > BADGE_COUNT_CAP) return `99+ ${suffix}`;
+  return `${count} ${suffix}`;
+}
+
+function bentoValueFontSize(isStepsCard, numericLength, isTall) {
+  if (isStepsCard && numericLength >= 5) {
+    if (isTall) return 30;
+    return 26;
+  }
+  if (isTall) return 36;
+  return 32;
+}
+
+function moodEmojiBackground(isActive, isDark) {
+  if (!isActive) return 'transparent';
+  if (isDark) return 'rgba(255,107,157,0.2)';
+  return 'rgba(255,107,157,0.12)';
+}
+
+function dashboardBannerColors(bannerType, isDark) {
+  if (bannerType === 'error') {
+    return {
+      borderColor: 'rgba(239,68,68,0.35)',
+      backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.10)',
+    };
+  }
+  if (bannerType === 'warn') {
+    return {
+      borderColor: 'rgba(245,158,11,0.35)',
+      backgroundColor: isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.10)',
+    };
+  }
+  if (isDark) {
+    return {
+      borderColor: 'rgba(255,255,255,0.10)',
+      backgroundColor: 'rgba(255,255,255,0.04)',
+    };
+  }
+  return {
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.65)',
+  };
+}
+
+function DashboardStatusBanner({ displayBanner, pendingReset, isDark, textColor, mutedColor }) {
+  if (!displayBanner?.text) return null;
+  const bannerColors = dashboardBannerColors(displayBanner.type, isDark);
+  return (
+    <View
+      style={{
+        marginTop: 4,
+        marginBottom: 10,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: bannerColors.borderColor,
+        backgroundColor: bannerColors.backgroundColor,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+      }}
+    >
+      <Text style={{ color: textColor, fontSize: 13, fontWeight: '700' }}>{displayBanner.text}</Text>
+      {pendingReset ? (
+        <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4 }}>
+          Retrying every 30 seconds…
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+async function showCachedMetricIfStillToday(storageKey, todayKey, setSavedValue, setSavedAt) {
+  const stored = await AsyncStorage.getItem(storageKey);
+  const storedTime = await AsyncStorage.getItem(`${storageKey}_time`);
+  if (stored == null || stored === '' || !storedTime) return;
+
+  const parsedTime = new Date(storedTime);
+  const cacheIsToday = !Number.isNaN(parsedTime.getTime()) && getLocalDateKey(parsedTime) === todayKey;
+  if (cacheIsToday) {
+    setSavedValue(stored);
+    setSavedAt(storedTime);
+  }
+
+  const storedDayKey = getLocalDateKey(new Date(storedTime));
+  if (storedDayKey !== todayKey) {
+    await AsyncStorage.removeItem(storageKey);
+    await AsyncStorage.removeItem(`${storageKey}_time`);
+  }
+}
+
+async function saveMetricAndNotifyTrainer(currentUser, storageKey, value, dateKey) {
+  await saveDashboardMetricField(currentUser.uid, storageKey, value, dateKey);
+
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const userData = userSnap.exists() ? userSnap.data() : {};
+  const trainerId = userData.trainerId || userData.trainer_id || null;
+  if (!trainerId) return;
+
+  const notifyResult = await postDashboardNotification({
+    recipientId: trainerId,
+    clientId: currentUser.uid,
+    type: 'dashboard_update',
+    payload: {
+      type: storageKey,
+      label: STORAGE_KEY_LABELS[storageKey] || storageKey,
+      value,
+    },
+  });
+  if (notifyResult.ok) return;
+  throw new Error(notifyResult.reason || 'notification_failed');
+}
+
 const useCardState = (storageKey, onAfterSave) => {
   const [savedValue, setSavedValue] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
@@ -240,41 +421,22 @@ const useCardState = (storageKey, onAfterSave) => {
 
       const applyLoadedValue = async (valueStr, atIso) => {
         if (valueStr === undefined || valueStr === null || valueStr === '') return false;
-        const str = typeof valueStr === 'string' ? valueStr : String(valueStr);
-        setSavedValue(str);
+        const savedText = typeof valueStr === 'string' ? valueStr : String(valueStr);
+        setSavedValue(savedText);
         setSavedAt(atIso || new Date().toISOString());
         try {
-          await AsyncStorage.setItem(storageKey, str);
+          await AsyncStorage.setItem(storageKey, savedText);
           await AsyncStorage.setItem(`${storageKey}_time`, atIso || new Date().toISOString());
-        } catch (e) {
-          console.warn('useCardState cache write error:', e);
+        } catch (cacheError) {
+          console.warn('useCardState cache write error:', cacheError);
         }
         return true;
       };
 
       try {
-        // 1) Load from AsyncStorage — same calendar day as local midnight
-        const stored = await AsyncStorage.getItem(storageKey);
-        const storedTime = await AsyncStorage.getItem(`${storageKey}_time`);
-        if (stored != null && stored !== '' && storedTime) {
-          const parsed = new Date(storedTime);
-          if (!Number.isNaN(parsed.getTime())) {
-            const storedDateKey = getLocalDateKey(parsed);
-            if (storedDateKey === todayKey) {
-              setSavedValue(stored);
-              setSavedAt(storedTime);
-            }
-          }
-          // If cached value is from a previous day, clear it so we never show stale "today" values.
-          if (getLocalDateKey(new Date(storedTime)) !== todayKey) {
-            await AsyncStorage.removeItem(storageKey);
-            await AsyncStorage.removeItem(`${storageKey}_time`);
-          }
-        }
-
+        await showCachedMetricIfStillToday(storageKey, todayKey, setSavedValue, setSavedAt);
         if (!uid || !db) return;
 
-        // 2) dailyLogs (canonical for dashboard fields) — real-time listener
         const logsRef = doc(db, 'users', uid, 'dailyLogs', todayKey);
         unsubLogs = onSnapshot(
           logsRef,
@@ -294,10 +456,10 @@ const useCardState = (storageKey, onAfterSave) => {
             }
             applyLoadedValue(raw, data.updatedAt?.toDate?.()?.toISOString?.());
           },
-          (e) => console.warn('dailyLogs listener error:', e?.code || e?.message || e),
+          (listenerError) => console.warn('dailyLogs listener error:', listenerError?.code || listenerError?.message || listenerError),
         );
-      } catch (e) {
-        console.warn('useCardState load error:', e);
+      } catch (loadError) {
+        console.warn('useCardState load error:', loadError);
       }
     };
     load();
@@ -311,8 +473,8 @@ const useCardState = (storageKey, onAfterSave) => {
     try {
       await AsyncStorage.setItem(storageKey, value);
       await AsyncStorage.setItem(`${storageKey}_time`, now);
-    } catch (e) {
-      console.warn('useCardState save error:', e);
+    } catch (saveError) {
+      console.warn('useCardState save error:', saveError);
     }
     setSavedValue(value);
     setSavedAt(now);
@@ -321,52 +483,33 @@ const useCardState = (storageKey, onAfterSave) => {
     const currentUser = auth?.currentUser;
     if (db && currentUser) {
       try {
-        await saveDashboardMetricField(currentUser.uid, storageKey, value, dateKey);
-
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-        const userData = userSnap.exists() ? userSnap.data() : {};
-        const trainerId = userData.trainerId || userData.trainer_id || null;
-        if (trainerId) {
-          const notifyResult = await postDashboardNotification({
-            recipientId: trainerId,
-            clientId: currentUser.uid,
-            type: 'dashboard_update',
-            payload: {
-              type: storageKey,
-              label: STORAGE_KEY_LABELS[storageKey] || storageKey,
-              value,
-            },
-          });
-          if (!notifyResult.ok) {
-            throw new Error(notifyResult.reason || 'notification_failed');
-          }
-        }
-      } catch (e) {
-        console.warn('Firebase save error:', e);
+        await saveMetricAndNotifyTrainer(currentUser, storageKey, value, dateKey);
+      } catch (saveError) {
+        console.warn('Firebase save error:', saveError);
       }
     }
     if (onAfterSave) {
       onAfterSave(value);
     }
-    setTimeout(() => setShowNotified(false), 3000);
+    setTimeout(() => setShowNotified(false), NOTIFIED_TOAST_MS);
   };
 
   const getTimeSince = () => {
     if (!savedAt) return '';
     const diff = Date.now() - new Date(savedAt).getTime();
-    const mins = Math.floor(diff / 60000);
+    const mins = Math.floor(diff / MS_PER_MINUTE);
     if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
+    if (mins < MINUTES_PER_HOUR) return `${mins}m ago`;
+    const hrs = Math.floor(mins / MINUTES_PER_HOUR);
+    if (hrs < HOURS_PER_DAY) return `${hrs}h ago`;
+    return `${Math.floor(hrs / HOURS_PER_DAY)}d ago`;
   };
 
   return { savedValue, savedAt, showNotified, save, getTimeSince };
 };
 
 const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, state }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const logState = state || workoutDiary(onAfterSave);
   const {
     workoutName,
@@ -408,13 +551,13 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
       {showForm ? (
         <View style={{ marginTop: 6, gap: 10 }}>
           <TextInput
-            style={[data.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+            style={[data.input, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, color: themeColors.text }]}
             placeholder={`Workout day — ${WORKOUT_DAY_EXAMPLES_SHORT}`}
-            placeholderTextColor={t.textMuted}
+            placeholderTextColor={themeColors.textMuted}
             value={workoutName}
             onChangeText={setWorkoutName}
           />
-          <Text style={[workoutLog.label, { color: t.textMuted }]}>Exercises</Text>
+          <Text style={[workoutLog.label, { color: themeColors.textMuted }]}>Exercises</Text>
           {workoutExercises.map((ex) => (
             <View key={ex.id} style={{ marginBottom: 10 }}>
               <TextInput
@@ -424,12 +567,12 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                   borderWidth: 1,
                   paddingHorizontal: 12,
                   fontSize: 14,
-                  backgroundColor: t.inputBg,
-                  borderColor: t.inputBorder,
-                  color: t.text,
+                  backgroundColor: themeColors.inputBg,
+                  borderColor: themeColors.inputBorder,
+                  color: themeColors.text,
                 }}
                 placeholder="Exercise name (e.g. Bench Press)"
-                placeholderTextColor={t.textMuted}
+                placeholderTextColor={themeColors.textMuted}
                 value={ex.name}
                 onChangeText={(v) => updateExerciseName(ex.id, v)}
               />
@@ -438,7 +581,7 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                   key={set.id}
                   style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}
                 >
-                  <Text style={{ width: 40, fontSize: 12, color: t.textDimmed }}>
+                  <Text style={{ width: 40, fontSize: 12, color: themeColors.textDimmed }}>
                     Set {ex.sets.indexOf(set) + 1}
                   </Text>
                   <TextInput
@@ -449,17 +592,17 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                       borderWidth: 1,
                       paddingHorizontal: 10,
                       fontSize: 13,
-                      backgroundColor: t.inputBg,
-                      borderColor: t.inputBorder,
-                      color: t.text,
+                      backgroundColor: themeColors.inputBg,
+                      borderColor: themeColors.inputBorder,
+                      color: themeColors.text,
                     }}
                     placeholder="Reps"
-                    placeholderTextColor={t.textMuted}
+                    placeholderTextColor={themeColors.textMuted}
                     keyboardType="numeric"
                     value={set.reps}
                     onChangeText={(v) => updateSetField(ex.id, set.id, 'reps', v)}
                   />
-                  <Text style={{ marginHorizontal: 16, fontSize: 12, color: t.textDimmed }}>×</Text>
+                  <Text style={{ marginHorizontal: 16, fontSize: 12, color: themeColors.textDimmed }}>×</Text>
                   <TextInput
                     style={{
                       width: 80,
@@ -468,12 +611,12 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                       borderWidth: 1,
                       paddingHorizontal: 10,
                       fontSize: 13,
-                      backgroundColor: t.inputBg,
-                      borderColor: t.inputBorder,
-                      color: t.text,
+                      backgroundColor: themeColors.inputBg,
+                      borderColor: themeColors.inputBorder,
+                      color: themeColors.text,
                     }}
                     placeholder="lbs"
-                    placeholderTextColor={t.textMuted}
+                    placeholderTextColor={themeColors.textMuted}
                     keyboardType="numeric"
                     value={set.weight}
                     onChangeText={(v) => updateSetField(ex.id, set.id, 'weight', v)}
@@ -483,7 +626,7 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                     style={{ padding: 6, marginLeft: 4 }}
                     hitSlop={8}
                   >
-                    <Ionicons name="trash-outline" size={16} color={t.textDimmed} />
+                    <Ionicons name="trash-outline" size={16} color={themeColors.textDimmed} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -495,23 +638,23 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
                   paddingVertical: 8,
                   paddingHorizontal: 12,
                   borderRadius: 999,
-                  backgroundColor: t.pillBg,
+                  backgroundColor: themeColors.pillBg,
                   borderWidth: 1,
-                  borderColor: t.pillBorder,
+                  borderColor: themeColors.pillBorder,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
                 }}
               >
-                <Ionicons name="add-circle-outline" size={18} color={t.pillText} />
-                <Text style={{ fontSize: 13, color: t.pillText, textAlign: 'center' }}>Add Set</Text>
+                <Ionicons name="add-circle-outline" size={18} color={themeColors.pillText} />
+                <Text style={{ fontSize: 13, color: themeColors.pillText, textAlign: 'center' }}>Add Set</Text>
               </TouchableOpacity>
               <View
                 style={{
                   height: 1,
                   marginTop: 10,
-                  backgroundColor: t.cardBorder,
+                  backgroundColor: themeColors.cardBorder,
                 }}
               />
             </View>
@@ -523,16 +666,16 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
               height: 44,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: t.pillBorder,
-              backgroundColor: t.pillBg,
+              borderColor: themeColors.pillBorder,
+              backgroundColor: themeColors.pillBg,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
             }}
           >
-            <Ionicons name="add-outline" size={16} color={t.pillText} />
-            <Text style={{ fontSize: 14, color: t.pillText }}>Add Exercise</Text>
+            <Ionicons name="add-outline" size={16} color={themeColors.pillText} />
+            <Text style={{ fontSize: 14, color: themeColors.pillText }}>Add Exercise</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={save} activeOpacity={0.85}>
             <LinearGradient
@@ -546,22 +689,22 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
       ) : (
         <View style={{ gap: 12 }}>
           <Text style={[logCompleted.loggedTag, { color: '#10B981' }]}>WORKOUT LOGGED ✓</Text>
-          <Text style={[logCompleted.todayLine, { color: t.textMuted }]}>
-            Today — <Text style={{ color: t.text, fontWeight: '800' }}>{workoutName || 'Workout'}</Text>
+          <Text style={[logCompleted.todayLine, { color: themeColors.textMuted }]}>
+            Today — <Text style={{ color: themeColors.text, fontWeight: '800' }}>{workoutName || 'Workout'}</Text>
           </Text>
-          <Text style={[logCompleted.sectionLabel, { color: t.textMuted }]}>EXERCISES COMPLETED</Text>
-          <View style={[logCompleted.summaryBox, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+          <Text style={[logCompleted.sectionLabel, { color: themeColors.textMuted }]}>EXERCISES COMPLETED</Text>
+          <View style={[logCompleted.summaryBox, { borderColor: themeColors.inputBorder, backgroundColor: themeColors.inputBg }]}>
             {workoutExercises
               .filter((ex) => ex.name.trim())
               .map((ex) => (
                 <View key={ex.id} style={{ marginBottom: 12 }}>
-                  <Text style={[logCompleted.exerciseName, { color: t.text }]}>{ex.name.trim()}</Text>
-                  {ex.sets.map((set, si) => {
-                    const r = String(set.reps || '').trim() || '—';
-                    const w = String(set.weight || '').trim() || '—';
+                  <Text style={[logCompleted.exerciseName, { color: themeColors.text }]}>{ex.name.trim()}</Text>
+                  {ex.sets.map((set, setIndex) => {
+                    const repsLabel = String(set.reps || '').trim() || '—';
+                    const weightLabel = String(set.weight || '').trim() || '—';
                     return (
-                      <Text key={set.id} style={[logCompleted.setLine, { color: t.textMuted }]}>
-                        Set {si + 1}: {r} reps × {w} lbs
+                      <Text key={set.id} style={[logCompleted.setLine, { color: themeColors.textMuted }]}>
+                        Set {setIndex + 1}: {repsLabel} reps × {weightLabel} lbs
                       </Text>
                     );
                   })}
@@ -583,23 +726,23 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
 };
 
 const QuickStatsRow = ({ isDark, todayCalories, sleepHoursValue, waterOz }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   return (
     <View style={{ marginTop: 12 }}>
-      <View style={[quickStatsStyles.row, { backgroundColor: t.cardBg, borderColor: t.border }]}>
+      <View style={[quickStatsStyles.row, { backgroundColor: themeColors.cardBg, borderColor: themeColors.border }]}>
         <View style={quickStatsStyles.item}>
           <Text style={[quickStatsStyles.valueSolid, { color: '#E879F9' }]}>{`${todayCalories || 0}`}</Text>
-          <Text style={[quickStatsStyles.label, { color: t.textMuted }]}>Calories</Text>
+          <Text style={[quickStatsStyles.label, { color: themeColors.textMuted }]}>Calories</Text>
         </View>
-        <View style={[quickStatsStyles.divider, { backgroundColor: t.border }]} />
+        <View style={[quickStatsStyles.divider, { backgroundColor: themeColors.border }]} />
         <View style={quickStatsStyles.item}>
-          <Text style={[quickStatsStyles.value, { color: t.text }]}>{typeof sleepHoursValue === 'number' ? sleepHoursValue : 0}</Text>
-          <Text style={[quickStatsStyles.label, { color: t.textMuted }]}>Sleep (hrs)</Text>
+          <Text style={[quickStatsStyles.value, { color: themeColors.text }]}>{typeof sleepHoursValue === 'number' ? sleepHoursValue : 0}</Text>
+          <Text style={[quickStatsStyles.label, { color: themeColors.textMuted }]}>Sleep (hrs)</Text>
         </View>
-        <View style={[quickStatsStyles.divider, { backgroundColor: t.border }]} />
+        <View style={[quickStatsStyles.divider, { backgroundColor: themeColors.border }]} />
         <View style={quickStatsStyles.item}>
-          <Text style={[quickStatsStyles.value, { color: t.text }]}>{waterOz || 0}oz</Text>
-          <Text style={[quickStatsStyles.label, { color: t.textMuted }]}>Water</Text>
+          <Text style={[quickStatsStyles.value, { color: themeColors.text }]}>{waterOz || 0}oz</Text>
+          <Text style={[quickStatsStyles.label, { color: themeColors.textMuted }]}>Water</Text>
         </View>
       </View>
     </View>
@@ -664,7 +807,7 @@ const shellIconRender = (icon, isDark, accent) =>
   React.isValidElement(icon)
     ? React.cloneElement(icon, {
         color: isDark ? 'rgba(255,255,255,0.95)' : (accent || 'rgba(30,16,64,0.85)'),
-        size: Math.max(Number(icon.props?.size) || 0, 24),
+        size: Math.max(Number(icon.props?.size) || 0, MIN_SHELL_ICON_PX),
       })
     : icon;
 
@@ -683,7 +826,7 @@ const CardShell = ({
   accentColor,
   rightAction,
 }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const notifiedOpacity = useRef(new Animated.Value(0)).current;
   const accent = accentColor != null ? accentColor : gradientFrom;
   const topColors = topBorderColors || [gradientFrom, gradientTo, gradientFrom];
@@ -692,7 +835,7 @@ const CardShell = ({
     if (showNotified) {
       Animated.sequence([
         Animated.timing(notifiedOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.delay(2400),
+        Animated.delay(NOTIFIED_HOLD_MS),
         Animated.timing(notifiedOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
     }
@@ -727,9 +870,9 @@ const CardShell = ({
           />
           {rightAction ? <View style={shell.rightAction}>{rightAction}</View> : null}
           {statusBadge ? (
-            <View style={[shell.badge, { backgroundColor: t.pillBg, borderColor: t.pillBorder }]}>
+            <View style={[shell.badge, { backgroundColor: themeColors.pillBg, borderColor: themeColors.pillBorder }]}>
               <Ionicons name="checkmark-circle" size={14} color="#10B981" style={shell.badgeIcon} />
-              <Text style={[shell.badgeText, { color: t.pillText }]}>{statusBadge}</Text>
+              <Text style={[shell.badgeText, { color: themeColors.pillText }]}>{statusBadge}</Text>
             </View>
           ) : null}
 
@@ -746,9 +889,9 @@ const CardShell = ({
               {shellIconRender(icon, isDark, accent)}
             </View>
             <View style={shell.headerTextCol}>
-              <Text style={[shell.title, { color: t.text }]}>{title}</Text>
+              <Text style={[shell.title, { color: themeColors.text }]}>{title}</Text>
               {headerSubtitle ? (
-                <Text style={[shell.headerSubtitle, { color: t.textMuted }]}>{headerSubtitle}</Text>
+                <Text style={[shell.headerSubtitle, { color: themeColors.textMuted }]}>{headerSubtitle}</Text>
               ) : null}
             </View>
           </View>
@@ -761,7 +904,7 @@ const CardShell = ({
               <Text style={shell.notifiedText}>Trainer notified</Text>
             </Animated.View>
           ) : !hasSavedValue ? (
-            <Text style={[shell.subtleNote, { color: t.textSubtle }]}>✓ Trainer notified when entered</Text>
+            <Text style={[shell.subtleNote, { color: themeColors.textSubtle }]}>✓ Trainer notified when entered</Text>
           ) : null}
         </View>
       </View>
@@ -846,7 +989,7 @@ const DataCard = ({
   bentoHeight = 100,
   bentoLabel,
 }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save, getTimeSince } = useCardState(storageKey, onAfterSave);
   const [value, setValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -855,8 +998,8 @@ const DataCard = ({
   const handleSave = () => {
     if (!textMode) {
       const num = parseFloat(value);
-      if (isNaN(num) || num < min || num > max) { setError(true); setTimeout(() => setError(false), 1500); return; }
-    } else if (!value.trim()) { setError(true); setTimeout(() => setError(false), 1500); return; }
+      if (isNaN(num) || num < min || num > max) { setError(true); setTimeout(() => setError(false), ERROR_FLASH_MS); return; }
+    } else if (!value.trim()) { setError(true); setTimeout(() => setError(false), ERROR_FLASH_MS); return; }
     save(value);
     setIsEditing(false);
   };
@@ -868,18 +1011,18 @@ const DataCard = ({
 
     // For dashboard bento metrics, show the value's meaning under the number (e.g., "8 hours", "90 oz").
     if (variant === 'bentoMetric' && unit && String(unit).trim()) {
-      const u = String(unit).trim();
+      const unitLabel = String(unit).trim();
       const hasSaved = savedValue !== null && savedValue !== undefined && String(savedValue).trim() !== '';
-      if (!hasSaved) return u;
+      if (!hasSaved) return unitLabel;
 
-      const sv = String(savedValue);
-      if (u === 'hrs/day') return `${sv} hours`;
-      if (u === 'oz') return `${sv} oz`;
-      if (u === 'lbs') return `${sv} lbs`;
-      if (u === '%') return `${sv}%`;
-      if (u === 'steps') return `${sv} steps`;
-      if (u.endsWith('/day')) return `${sv} ${u.replace('/day', '').trim()}`;
-      return `${sv} ${u}`;
+      const savedText = String(savedValue);
+      if (unitLabel === 'hrs/day') return `${savedText} hours`;
+      if (unitLabel === 'oz') return `${savedText} oz`;
+      if (unitLabel === 'lbs') return `${savedText} lbs`;
+      if (unitLabel === '%') return `${savedText}%`;
+      if (unitLabel === 'steps') return `${savedText} steps`;
+      if (unitLabel.endsWith('/day')) return `${savedText} ${unitLabel.replace('/day', '').trim()}`;
+      return `${savedText} ${unitLabel}`;
     }
 
     if (unit && String(unit).trim()) return unit;
@@ -890,8 +1033,7 @@ const DataCard = ({
     const isTall = bentoHeight >= 120;
     const isStepsCard = String(storageKey || '').trim() === 'dashboard_steps';
     const numericLen = String(savedValue ?? '0').replace(/\D/g, '').length;
-    const valueFontSize =
-      isStepsCard && numericLen >= 5 ? (isTall ? 30 : 26) : isTall ? 36 : 32;
+    const valueFontSize = bentoValueFontSize(isStepsCard, numericLen, isTall);
     const valueGradient = BENTO_VALUE_GRADIENT[storageKey];
     const valueFill = bentoValueFillColor(isDark);
     const valueStyle = bentoGradientValueStyle(valueFontSize);
@@ -919,7 +1061,7 @@ const DataCard = ({
               },
             ]}
           >
-            <Text style={[bentoMetric.label, { color: t.textMuted }]}>{(bentoLabel || title || '').toUpperCase()}</Text>
+            <Text style={[bentoMetric.label, { color: themeColors.textMuted }]}>{(bentoLabel || title || '').toUpperCase()}</Text>
 
             {showInput ? (
               <View style={bentoMetric.inputArea}>
@@ -927,9 +1069,9 @@ const DataCard = ({
                   style={[
                     bentoMetric.input,
                     {
-                      backgroundColor: t.inputBg,
-                      borderColor: error ? 'rgba(239,68,68,0.6)' : t.inputBorder,
-                      color: t.text,
+                      backgroundColor: themeColors.inputBg,
+                      borderColor: error ? 'rgba(239,68,68,0.6)' : themeColors.inputBorder,
+                      color: themeColors.text,
                     },
                   ]}
                   value={value}
@@ -938,7 +1080,7 @@ const DataCard = ({
                     setError(false);
                   }}
                   placeholder={placeholder}
-                  placeholderTextColor={t.textMuted}
+                  placeholderTextColor={themeColors.textMuted}
                   keyboardType={textMode ? 'default' : 'numeric'}
                   returnKeyType="done"
                   onSubmitEditing={handleSave}
@@ -973,7 +1115,7 @@ const DataCard = ({
                       {`${savedValue ?? 0}`}
                     </Text>
                   )}
-                  <Text style={[bentoMetric.subtitle, { color: t.textMuted }]}>{subtitleText}</Text>
+                  <Text style={[bentoMetric.subtitle, { color: themeColors.textMuted }]}>{subtitleText}</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -994,14 +1136,14 @@ const DataCard = ({
       statusBadge={statusBadge} showNotified={showNotified} hasSavedValue={!!savedValue} isDark={isDark}
       accentColor={CARD_ACCENT[storageKey]}>
       {!savedValue && !isEditing && (
-        <Text style={[data.example, { color: t.textMuted }]}>{defaultExample}</Text>
+        <Text style={[data.example, { color: themeColors.textMuted }]}>{defaultExample}</Text>
       )}
       {showInput ? (
         <View style={data.inputRow}>
           <TextInput
-            style={[data.input, { backgroundColor: t.inputBg, borderColor: error ? 'rgba(239,68,68,0.6)' : t.inputBorder, color: t.text }]}
+            style={[data.input, { backgroundColor: themeColors.inputBg, borderColor: error ? 'rgba(239,68,68,0.6)' : themeColors.inputBorder, color: themeColors.text }]}
             value={value} onChangeText={(v) => { setValue(v); setError(false); }}
-            placeholder={placeholder} placeholderTextColor={t.textMuted}
+            placeholder={placeholder} placeholderTextColor={themeColors.textMuted}
             keyboardType={textMode ? 'default' : 'numeric'} returnKeyType="done" onSubmitEditing={handleSave}
           />
           <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
@@ -1014,17 +1156,17 @@ const DataCard = ({
         <TouchableOpacity onPress={() => { setIsEditing(true); setValue(savedValue || ''); }} activeOpacity={0.8}>
           {textMode ? (
             <View>
-              <View style={[data.savedText, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}>
-                <Text style={{ fontSize: 13, lineHeight: 20, color: t.text }}>{savedValue}</Text>
+              <View style={[data.savedText, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder }]}>
+                <Text style={{ fontSize: 13, lineHeight: 20, color: themeColors.text }}>{savedValue}</Text>
               </View>
-              <Text style={[data.tapEdit, { color: t.textDimmed }]}>tap to edit</Text>
+              <Text style={[data.tapEdit, { color: themeColors.textDimmed }]}>tap to edit</Text>
             </View>
           ) : (
             <View>
               <Text style={[data.savedNumber, { color: gradientFrom }]}>
-                {savedValue} <Text style={[data.unit, { color: t.textMuted }]}>{unit}</Text>
+                {savedValue} <Text style={[data.unit, { color: themeColors.textMuted }]}>{unit}</Text>
               </Text>
-              <Text style={[data.timeSince, { color: t.textDimmed }]}>Updated {getTimeSince()}</Text>
+              <Text style={[data.timeSince, { color: themeColors.textDimmed }]}>Updated {getTimeSince()}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -1147,7 +1289,7 @@ const energyInterpret = (n) => {
   if (n <= 2) return 'Low energy — focus on sleep, fuel, and lighter stimulus.';
   if (n <= 4) return 'Below average — consider active recovery or easier volume.';
   if (n <= 6) return 'Steady energy — you can train; stay aware of effort.';
-  if (n <= 7) return 'Strong energy — a good day to progress.';
+  if (n <= STRONG_ENERGY_SCORE) return 'Strong energy — a good day to progress.';
   return 'High energy — great day to push quality reps.';
 };
 const stressInterpret = (n) => {
@@ -1156,12 +1298,12 @@ const stressInterpret = (n) => {
   if (n <= 6) return 'Moderate stress — protect recovery and sleep.';
   return 'High stress — simplify training and create breathing room.';
 };
-const workoutRatingInterpret = (n, max) => {
-  const p = n / max;
-  if (p <= 0.35) return 'Light session — it still counts toward consistency.';
-  if (p <= 0.55) return 'Solid effort — room to keep building.';
-  if (p <= 0.75) return 'Strong session — nice work staying engaged.';
-  if (p <= 0.9) return 'Great session — you pushed with intent.';
+const workoutRatingInterpret = (score, maxScore) => {
+  const ratingRatio = score / maxScore;
+  if (ratingRatio <= 0.35) return 'Light session — it still counts toward consistency.';
+  if (ratingRatio <= 0.55) return 'Solid effort — room to keep building.';
+  if (ratingRatio <= 0.75) return 'Strong session — nice work staying engaged.';
+  if (ratingRatio <= 0.9) return 'Great session — you pushed with intent.';
   return 'Outstanding effort — be proud of this one.';
 };
 
@@ -1178,7 +1320,7 @@ const RatingCard = ({
   topBorderColors,
   interpretFn,
 }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save } = useCardState(storageKey, onAfterSave);
   const [editing, setEditing] = useState(false);
   const nums = Array.from({ length: maxRating }, (_, i) => i + 1);
@@ -1208,11 +1350,11 @@ const RatingCard = ({
       {!showPicker ? (
         <View style={{ gap: 10 }}>
           <Text style={[rating.loggedTag, { color: '#10B981' }]}>RATING LOGGED ✓</Text>
-          <Text style={[rating.summaryBig, { color: t.text }]}>
+          <Text style={[rating.summaryBig, { color: themeColors.text }]}>
             You rated:{' '}
             <Text style={{ color: '#FF6B9D' }}>{savedValue}</Text> out of {maxRating}
           </Text>
-          <Text style={[rating.interpret, { color: t.textMuted }]}>{line}</Text>
+          <Text style={[rating.interpret, { color: themeColors.textMuted }]}>{line}</Text>
           <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
             <Text style={{ color: '#64D2FF', fontWeight: '800', fontSize: 14 }}>Edit rating</Text>
           </TouchableOpacity>
@@ -1229,8 +1371,8 @@ const RatingCard = ({
                       <Text style={[rating.pillTextActive]}>{n}</Text>
                     </LinearGradient>
                   ) : (
-                    <View style={[rating.pillIdle, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}>
-                      <Text style={[rating.pillTextIdle, { color: t.textMuted }]}>{n}</Text>
+                    <View style={[rating.pillIdle, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder }]}>
+                      <Text style={[rating.pillTextIdle, { color: themeColors.textMuted }]}>{n}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1288,7 +1430,7 @@ const MOOD_EMOJIS = ['😞', '😕', '😐', '🙂', '😄'];
 const MOOD_LABELS = ['Very low', 'Low', 'Okay', 'Good', 'Great'];
 
 const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save } = useCardState(storageKey);
   const [editing, setEditing] = useState(false);
   const idx = savedValue != null && savedValue !== '' ? parseInt(String(savedValue), 10) : NaN;
@@ -1313,17 +1455,17 @@ const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo,
         <View style={{ gap: 10 }}>
           <Text style={[rating.loggedTag, { color: '#10B981' }]}>MOOD LOGGED ✓</Text>
           <Text style={{ fontSize: 40, textAlign: 'left' }}>{emoji}</Text>
-          <Text style={[rating.summaryBig, { color: t.text }]}>
+          <Text style={[rating.summaryBig, { color: themeColors.text }]}>
             You're feeling:{' '}
             <Text style={{ color: '#64D2FF' }}>{label}</Text>
           </Text>
-          <Text style={[rating.interpret, { color: t.textMuted }]}>Nice! Keep checking in — it helps your coach support you.</Text>
+          <Text style={[rating.interpret, { color: themeColors.textMuted }]}>Nice! Keep checking in — it helps your coach support you.</Text>
           <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8}>
             <Text style={{ color: '#FF6B9D', fontWeight: '800', fontSize: 14 }}>Edit mood</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={[mood.emojiCard, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+        <View style={[mood.emojiCard, { borderColor: themeColors.inputBorder, backgroundColor: themeColors.inputBg }]}>
           <View style={mood.moodLottieWrap}>
             <LottieView source={MOOD_EMPTY_LOTTIE} autoPlay loop style={mood.moodLottie} />
           </View>
@@ -1343,7 +1485,7 @@ const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo,
                     isActive && mood.emojiBtnActive,
                     {
                       borderColor: isActive ? '#FF6B9D' : 'transparent',
-                      backgroundColor: isActive ? (isDark ? 'rgba(255,107,157,0.2)' : 'rgba(255,107,157,0.12)') : 'transparent',
+                      backgroundColor: moodEmojiBackground(isActive, isDark),
                     },
                   ]}
                 >
@@ -1391,7 +1533,7 @@ const mood = StyleSheet.create({
 });
 
 const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo, questions, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save } = useCardState(storageKey);
   const values = savedValue ? (() => { try { return JSON.parse(savedValue); } catch { return {}; } })() : {};
   const hasAnyValue = Object.keys(values).length > 0;
@@ -1411,7 +1553,7 @@ const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientT
       <View style={{ gap: 8, marginTop: 2 }}>
         {questions.map((q) => (
           <View key={q.key} style={toggle.row}>
-            <Text style={[toggle.label, { color: t.textMuted }]}>{q.label}</Text>
+            <Text style={[toggle.label, { color: themeColors.textMuted }]}>{q.label}</Text>
             <View style={toggle.btnRow}>
               {['Yes', 'No'].map((opt) => {
                 const isActive = values[q.key] === opt;
@@ -1422,8 +1564,8 @@ const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientT
                         <Text style={[toggle.btnText, { color: 'white' }]}>{opt}</Text>
                       </LinearGradient>
                     ) : (
-                      <View style={[toggle.btn, { backgroundColor: t.pillBg, borderWidth: 1, borderColor: t.pillBorder }]}>
-                        <Text style={[toggle.btnText, { color: t.pillText }]}>{opt}</Text>
+                      <View style={[toggle.btn, { backgroundColor: themeColors.pillBg, borderWidth: 1, borderColor: themeColors.pillBorder }]}>
+                        <Text style={[toggle.btnText, { color: themeColors.pillText }]}>{opt}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1446,7 +1588,7 @@ const toggle = StyleSheet.create({
 });
 
 const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradientTo, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
+  const themeColors = isDark ? DARK : LIGHT;
   const { savedValue, showNotified, save, getTimeSince } = useCardState(storageKey);
   const [value, setValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -1487,9 +1629,9 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
       {showInput ? (
         <View style={{ marginTop: 6 }}>
           <TextInput
-            style={[notes.textarea, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+            style={[notes.textarea, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, color: themeColors.text }]}
             value={value} onChangeText={setValue} placeholder={placeholder}
-            placeholderTextColor={t.textMuted} multiline numberOfLines={4} textAlignVertical="top"
+            placeholderTextColor={themeColors.textMuted} multiline numberOfLines={4} textAlignVertical="top"
           />
           <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
             <LinearGradient colors={[gradientFrom, gradientTo]}
@@ -1505,8 +1647,8 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
               <Text style={{ color: '#10B981', fontWeight: '900', fontSize: 12, letterSpacing: 0.4, marginBottom: 8 }}>
                 NOTE SAVED ✓
               </Text>
-              <Text style={[notes.savedNoteText, { color: t.text }]}>{savedValue}</Text>
-              <Text style={[data.timeSince, { color: t.textDimmed }]}>Updated {getTimeSince()}</Text>
+              <Text style={[notes.savedNoteText, { color: themeColors.text }]}>{savedValue}</Text>
+              <Text style={[data.timeSince, { color: themeColors.textDimmed }]}>Updated {getTimeSince()}</Text>
               <Text style={{ color: '#64D2FF', fontWeight: '800', fontSize: 13, marginTop: 10 }}>Tap to edit</Text>
             </>
           ) : (
@@ -1534,440 +1676,52 @@ const notes = StyleSheet.create({
   noNoteText: { fontSize: 13, fontStyle: 'italic', marginTop: 2, color: 'rgba(255,255,255,0.45)', lineHeight: 18 },
 });
 
-export const TrainingHomeScreen = ({
-  trainer,
-  userData,
-  onOpenCoachingPayment,
-  embedInLayout = false,
-  onMetricsChange,
-  onPressMessage,
-  /** When user has no trainer: empty-state card should open marketplace, not messaging. */
-  onPressFindTrainer,
-  onPressViewProfile,
-  onOpenRemoveTrainer,
-  onOpenPhotoGallery,
-  onOpenAIWorkouts,
-  /** Opens full-screen weekly report for the signed-in client (`users/{uid}/weeklySummaries`). */
+function TrainingHomeScreenLayout({
+  scrollRef,
+  embedInLayout,
+  shellBottomPad,
+  isDark,
+  displayBanner,
+  pendingReset,
+  currentUser,
   onOpenWeeklyReport,
-  /** Opens Nutrition from the calories card (optional). */
-  onPressCalories,
+  weeklyReportCard,
+  weeklyReportCardLoading,
+  untilResetMs,
+  dashboardPendingSessions,
+  dashboardReminderSessions,
+  trainerName,
+  respondToDashboardSession,
+  trainer,
+  trainerTitle,
+  trainerSpecialties,
+  trainerLocation,
+  onPressMessage,
+  handleViewProfile,
+  showCoachingPaymentOnCard,
+  handleOpenPayment,
+  coachingPaymentButtonLabel,
+  coachingPaymentShortLabel,
+  coachingRateLabel,
+  trainerPricingLine,
+  coachingPaymentStatusLabel,
+  coachingPaymentStatusTone,
+  onPressFindTrainer,
+  unreadMessageCount,
+  onOpenPhotoGallery,
   trainerClientId,
   trainerClientName,
-  photoGalleryBadgeCount = 0,
-  aiWorkoutsBadgeCount = 0,
-  unreadMessageCount = 0,
-  todayCalories = 0,
-  calorieGoal = 2000,
-  waterOz = 0,
-  sleepHoursValue = null,
-}) => {
-  const { isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  // Floating shell BottomMenuBar overlays this screen — always reserve it.
-  const shellBottomPad = useShellBottomNavInset(embedInLayout ? 40 : 24);
-  const t = isDark ? DARK : LIGHT;
-  const icon = (name) => <Ionicons name={name} size={18} color={t.iconColor} />;
-  const handleViewProfile = typeof onPressViewProfile === 'function' ? onPressViewProfile : onPressMessage;
-  const currentUser = auth?.currentUser;
-  const scrollRef = useRef(null);
-  const [untilResetMs, setUntilResetMs] = useState(msUntilLocalMidnight());
-  const [localClock, setLocalClock] = useState(() => new Date());
-  const [banner, setBanner] = useState(null); // { type: 'info'|'warn'|'error', text }
-  const [pendingReset, setPendingReset] = useState(false);
-
-  const coachingMonthlyRate = userData?.monthlyRate ?? null;
-  const coachingPaymentStatus = userData?.paymentStatus || 'inactive';
-
-  useEffect(() => {
-    const id = setInterval(() => setUntilResetMs(msUntilLocalMidnight()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  /** Live local clock for the dashboard time card (updates every second). */
-  useEffect(() => {
-    const id = setInterval(() => setLocalClock(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Real-time workouts history (dashboard updates without refresh)
-  const [recentWorkouts, setRecentWorkouts] = useState([]);
-  const [dashboardPendingSessions, setDashboardPendingSessions] = useState([]);
-  const [dashboardReminderSessions, setDashboardReminderSessions] = useState([]);
-  const [weeklyReportCardLoading, setWeeklyReportCardLoading] = useState(false);
-  const [weeklyReportCard, setWeeklyReportCard] = useState({ hasReport: false, weekRangeLabel: '' });
-
-  useEffect(() => {
-    if (typeof onOpenWeeklyReport !== 'function') return undefined;
-    let cancelled = false;
-    const uid = currentUser?.uid;
-    if (!uid || !db) {
-      setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
-      return undefined;
-    }
-    (async () => {
-      setWeeklyReportCardLoading(true);
-      try {
-        const snap = await getDocs(collection(db, 'users', uid, 'weeklySummaries'));
-        const rows = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((r) => r.weekStart || r.weekId)
-          .sort((a, b) =>
-            String(b.weekStart || b.weekId || '').localeCompare(String(a.weekStart || a.weekId || '')),
-          );
-        if (cancelled) return;
-        const latest = rows[0];
-        const ws = latest?.weekStart || latest?.weekId;
-        const we = latest?.weekEnd || ws;
-        setWeeklyReportCard({
-          hasReport: rows.length > 0,
-          weekRangeLabel: rows.length > 0 ? formatClientWeeklyRange(ws, we) : '',
-        });
-      } catch (e) {
-        if (!cancelled) {
-          console.warn('[TrainingHomeScreen] weeklySummaries load failed', e?.message || e);
-          setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
-        }
-      } finally {
-        if (!cancelled) setWeeklyReportCardLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser?.uid, onOpenWeeklyReport]);
-
-  const [sessionFilterTick, setSessionFilterTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setSessionFilterTick((n) => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const allSessionsRef = useRef([]);
-
-  useEffect(() => {
-    if (!db || !currentUser?.uid) {
-      setDashboardPendingSessions([]);
-      setDashboardReminderSessions([]);
-      return;
-    }
-    const trainerUid = trainer?.id || trainer?.uid || null;
-    if (!trainerUid) {
-      setDashboardPendingSessions([]);
-      setDashboardReminderSessions([]);
-      return;
-    }
-    const sessionsRef = collection(db, `trainer_clients/${trainerUid}/sessions`);
-    const q = query(sessionsRef, where('clientId', '==', currentUser.uid), limit(25));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const all = [];
-        snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
-        allSessionsRef.current = all;
-        setSessionFilterTick((n) => n + 1);
-      },
-      (e) => {
-        console.warn('Dashboard sessions listener:', e?.code || e?.message || e);
-        allSessionsRef.current = [];
-        setDashboardPendingSessions([]);
-        setDashboardReminderSessions([]);
-      },
-    );
-    return () => {
-      try {
-        unsub?.();
-      } catch (_) {}
-    };
-  }, [currentUser?.uid, trainer?.id, trainer?.uid]);
-
-  useEffect(() => {
-    const all = allSessionsRef.current;
-    const todayKey = getLocalDateKey();
-    const now = Date.now();
-    const EXPIRY_MS = 60 * 60 * 1000;
-    const isStillRelevant = (s) => {
-      const dateStr = String(s.date || '');
-      if (dateStr > todayKey) return true;
-      if (dateStr < todayKey) return false;
-      const timeStr = String(s.time || '');
-      const [hStr, mStr] = timeStr.split(':');
-      const h = parseInt(hStr, 10);
-      const m = parseInt(mStr || '0', 10);
-      if (Number.isNaN(h)) return true;
-      const sessionStart = new Date();
-      sessionStart.setHours(h, Number.isNaN(m) ? 0 : m, 0, 0);
-      return now < sessionStart.getTime() + EXPIRY_MS;
-    };
-
-    const pending = all
-      .filter((s) => (s.status || 'pending') === 'pending' && String(s.date || '') >= todayKey && isStillRelevant(s))
-      .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
-      .slice(0, 5);
-    const reminders = all
-      .filter((s) => String(s.status || '') === 'accepted' && String(s.date || '') >= todayKey && isStillRelevant(s))
-      .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
-      .slice(0, 3);
-    setDashboardPendingSessions(pending);
-    setDashboardReminderSessions(reminders);
-  }, [sessionFilterTick]);
-
-  useEffect(() => {
-    if (!db || !currentUser?.uid) return;
-    const uid = currentUser.uid;
-    const workoutsRef = collection(db, 'completedWorkouts');
-    const q = query(workoutsRef, where('userId', '==', uid));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-        list.sort((a, b) => {
-          const aTime = a.completedAt?.toDate?.() || new Date(a.completedAt || 0);
-          const bTime = b.completedAt?.toDate?.() || new Date(b.completedAt || 0);
-          return bTime.getTime() - aTime.getTime();
-        });
-        setRecentWorkouts(list.slice(0, 20));
-      },
-      (e) => {
-        console.warn('completedWorkouts listener error:', e?.code || e?.message || e);
-        setBanner({ type: 'warn', text: "You're offline or connection is unstable. Cached data shown where available." });
-      },
-    );
-    return () => {
-      try { unsub?.(); } catch (_) {}
-    };
-  }, [currentUser?.uid]);
-
-  // Archive yesterday + reset at local midnight (also runs on home when app stays open)
-  useEffect(() => {
-    const uid = currentUser?.uid;
-    if (!uid || !db) return;
-
-    const tick = async () => {
-      try {
-        const rolled = await tickDailyDashboardDayRollover(uid);
-        if (rolled) {
-          setPendingReset(false);
-          setBanner({ type: 'info', text: 'Yesterday archived. Dashboard reset for the new day.' });
-        }
-        await retryPendingDailyDashboardArchive(uid);
-      } catch (_) {
-        setPendingReset(true);
-        setBanner({ type: 'error', text: 'Pending reset… will retry automatically.' });
-      }
-    };
-
-    tick();
-    const id = setInterval(tick, 30000);
-    return () => clearInterval(id);
-  }, [currentUser?.uid]);
-
-  const handleWorkoutAfterSave = useCallback(
-    (combined, workoutName, workoutExercises) => {
-      if (onMetricsChange) {
-        onMetricsChange({
-          workoutSummary: combined || null,
-          workoutName: workoutName || null,
-          workoutExercises: workoutExercises || [],
-        });
-      }
-    },
-    [onMetricsChange],
-  );
-
-  const workoutLogState = workoutDiary(handleWorkoutAfterSave);
-
-  const respondToDashboardSession = useCallback(
-    async ({ sessionId, status }) => {
-      const trainerUid = trainer?.id || trainer?.uid || null;
-      if (!trainerUid || !sessionId || !db) return;
-      try {
-        await updateDoc(doc(db, `trainer_clients/${trainerUid}/sessions/${sessionId}`), {
-          status,
-          respondedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        const clientUid = auth?.currentUser?.uid;
-        if (clientUid) {
-          let clientName = auth.currentUser?.displayName || 'Client';
-          try {
-            const us = await getDoc(doc(db, 'users', clientUid));
-            if (us.exists()) {
-              const d = us.data();
-              clientName = d?.firstName || d?.name || d?.displayName || clientName;
-            }
-          } catch (_) {}
-          const verb =
-            status === 'accepted' ? 'accepted' : status === 'declined' ? 'declined' : 'updated';
-          void postRemotePushNotify({
-            recipientId: trainerUid,
-            senderName: clientName,
-            messageText: `${clientName} ${verb} a session.`,
-            senderId: clientUid,
-            messageId: sessionId,
-            notificationType: 'session_response',
-          });
-        }
-      } catch (e) {
-        console.error('Dashboard respond to session failed:', e);
-        Alert.alert('Could not update', e?.message || 'Please try again.');
-      }
-    },
-    [trainer?.id, trainer?.uid],
-  );
-
-  const trainerName = (() => {
-    const first = trainer?.firstName || trainer?.givenName;
-    const last = trainer?.lastName || trainer?.familyName;
-    if (first || last) return `${first ?? ''} ${last ?? ''}`.trim();
-    return trainer?.displayName || trainer?.name || 'Your trainer';
-  })();
-
-  const trainerTitle = (() => {
-    const raw = trainer?.headline || trainer?.title || null;
-    if (raw) return String(raw);
-    if (Array.isArray(trainer?.certifications) && trainer.certifications.length) {
-      return trainer.certifications.join(' · ');
-    }
-    if (typeof trainer?.certifications === 'string' && trainer.certifications.trim()) {
-      return trainer.certifications.trim();
-    }
-    return null;
-  })();
-  const trainerGoal =
-    trainer?.primaryGoal ||
-    trainer?.specialty ||
-    trainer?.specialties ||
-    null;
-
-  const trainerExperienceLabel =
-    typeof trainer?.experienceYears === 'number' ? `${trainer.experienceYears}+ yrs experience` : null;
-
-  const trainerLocation = trainer?.location ? String(trainer.location) : null;
-  const trainerBio = trainer?.bio ? String(trainer.bio) : null;
-  const trainerPricingLine = (() => {
-    const p = trainer?.pricing;
-    if (!p) return null;
-    const parts = [];
-    if (p.perSession != null && p.perSession !== '') parts.push(`$${p.perSession}/session`);
-    if (p.perMonth != null && p.perMonth !== '') parts.push(`$${p.perMonth}/month`);
-    return parts.length ? parts.join(' · ') : null;
-  })();
-
-  const coachingRateLabel = useMemo(() => {
-    if (coachingMonthlyRate != null && coachingMonthlyRate !== '') {
-      const n = Number(coachingMonthlyRate);
-      if (Number.isFinite(n) && n > 0) {
-        const dollars = n >= 100 ? n / 100 : n;
-        return `$${dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2)}`;
-      }
-    }
-    if (trainerPricingLine) {
-      const monthlyPart = trainerPricingLine.split(' · ').find((part) => part.includes('/month'));
-      if (monthlyPart) return monthlyPart.replace('/month', '').trim();
-    }
-    return null;
-  }, [coachingMonthlyRate, trainerPricingLine]);
-
-  const paymentBanner = useMemo(() => {
-    if (coachingPaymentStatus === 'past_due') {
-      return { type: 'error', text: 'Coaching payment past due — update billing' };
-    }
-    if (coachingPaymentStatus === 'payment_required' && coachingRateLabel) {
-      return {
-        type: 'warn',
-        text: `${trainerName} set your rate to ${coachingRateLabel}/mo — add a payment method to get started`,
-      };
-    }
-    return null;
-  }, [coachingPaymentStatus, coachingRateLabel, trainerName]);
-
-  const displayBanner = paymentBanner || banner;
-
-  const showCoachingPaymentOnCard = !!trainer;
-
-  const coachingPaymentButtonLabel =
-    coachingPaymentStatus === 'past_due'
-      ? 'Update Payment'
-      : coachingPaymentStatus === 'active'
-        ? 'Manage Coaching Payment'
-        : coachingPaymentStatus === 'payment_required'
-          ? 'Set Up Payment'
-          : 'Pay';
-
-  const coachingPaymentShortLabel =
-    coachingPaymentStatus === 'past_due'
-      ? 'Update'
-      : coachingPaymentStatus === 'active'
-        ? 'Payment'
-        : 'Pay';
-
-  const coachingPaymentStatusLabel =
-    coachingPaymentStatus === 'active'
-      ? 'Active'
-      : coachingPaymentStatus === 'past_due'
-        ? 'Past due'
-        : coachingPaymentStatus === 'payment_required'
-          ? 'Payment required'
-          : null;
-
-  const coachingPaymentStatusTone =
-    coachingPaymentStatus === 'active'
-      ? 'success'
-      : coachingPaymentStatus === 'past_due'
-        ? 'error'
-        : coachingPaymentStatus === 'payment_required'
-          ? 'warning'
-          : 'neutral';
-
-  const handleOpenPayment = useCallback(() => {
-    if (typeof onOpenCoachingPayment === 'function') {
-      onOpenCoachingPayment();
-    }
-  }, [onOpenCoachingPayment]);
-
-  const trainerInitials = (() => {
-    const baseName = trainerName || 'Your trainer';
-    return baseName
-      .split(' ')
-      .filter(Boolean)
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  })();
-
-  const trainerCertifications = (() => {
-    if (Array.isArray(trainer?.certifications)) return trainer.certifications;
-    if (typeof trainer?.certifications === 'string') {
-      return trainer.certifications
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    return [];
-  })();
-
-  const trainerSpecialties = (() => {
-    if (Array.isArray(trainer?.specialties)) return trainer.specialties;
-    if (typeof trainer?.specialties === 'string') {
-      return trainer.specialties
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    if (trainerGoal) {
-      const asString = Array.isArray(trainerGoal) ? trainerGoal.join(',') : String(trainerGoal);
-      return asString
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    return [];
-  })();
-
+  photoGalleryBadgeCount,
+  onOpenAIWorkouts,
+  aiWorkoutsBadgeCount,
+  onMetricsChange,
+  handleWorkoutAfterSave,
+  workoutLogState,
+}) {
+  const themeColors = isDark ? DARK : LIGHT;
+  const icon = (name) => <Ionicons name={name} size={18} color={themeColors.iconColor} />;
   return (
-    <LinearGradient colors={t.bg} style={{ flex: 1 }}>
+    <LinearGradient colors={themeColors.bg} style={{ flex: 1 }}>
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
@@ -1977,39 +1731,13 @@ export const TrainingHomeScreen = ({
         ]}
         {...FORM_SCROLL_PROPS}
       >
-        {displayBanner?.text ? (
-          <View
-            style={{
-              marginTop: 4,
-              marginBottom: 10,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor:
-                displayBanner.type === 'error'
-                  ? 'rgba(239,68,68,0.35)'
-                  : displayBanner.type === 'warn'
-                    ? 'rgba(245,158,11,0.35)'
-                    : isDark
-                      ? 'rgba(255,255,255,0.10)'
-                      : 'rgba(0,0,0,0.08)',
-              backgroundColor:
-                displayBanner.type === 'error'
-                  ? (isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.10)')
-                  : displayBanner.type === 'warn'
-                    ? (isDark ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.10)')
-                    : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)'),
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-            }}
-          >
-            <Text style={{ color: t.text, fontSize: 13, fontWeight: '700' }}>{displayBanner.text}</Text>
-            {pendingReset ? (
-              <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>
-                Retrying every 30 seconds…
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
+        <DashboardStatusBanner
+          displayBanner={displayBanner}
+          pendingReset={pendingReset}
+          isDark={isDark}
+          textColor={themeColors.text}
+          mutedColor={themeColors.textMuted}
+        />
 
 
         <View style={{ marginTop: 4, marginBottom: 20 }}>
@@ -2240,12 +1968,7 @@ export const TrainingHomeScreen = ({
                       location: trainerLocation || 'Remote',
                       avatarUrl: trainer?.photoURL || trainer?.avatarUrl,
                       rating: typeof trainer?.rating === 'number' ? trainer.rating : undefined,
-                      clients:
-                        typeof trainer?.clientCount === 'number'
-                          ? trainer.clientCount
-                          : typeof trainer?.clients === 'number'
-                            ? trainer.clients
-                            : undefined,
+                      clients: trainerClientCount(trainer),
                       experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
                     }}
                     onPressCard={onPressMessage}
@@ -2285,8 +2008,8 @@ export const TrainingHomeScreen = ({
                     <Ionicons name="person-add-outline" size={24} color="#FF6B9D" />
                   </View>
                   <View style={emptyTrainerStyles.textCol}>
-                    <Text style={[emptyTrainerStyles.title, { color: t.text }]}>No trainer yet</Text>
-                    <Text style={[emptyTrainerStyles.subtitle, { color: t.textMuted }]}>
+                    <Text style={[emptyTrainerStyles.title, { color: themeColors.text }]}>No trainer yet</Text>
+                    <Text style={[emptyTrainerStyles.subtitle, { color: themeColors.textMuted }]}>
                       Find a certified coach to guide your journey
                     </Text>
                   </View>
@@ -2314,7 +2037,7 @@ export const TrainingHomeScreen = ({
               fontSize: 11,
               fontWeight: '700',
               letterSpacing: 2,
-              color: t.textMuted,
+              color: themeColors.textMuted,
               textTransform: 'uppercase',
               marginBottom: 10,
               paddingHorizontal: 2,
@@ -2333,29 +2056,20 @@ export const TrainingHomeScreen = ({
                 label: 'Messages',
                 onPress: onPressMessage,
                 icon: 'chatbubbles-outline',
-                subtitle:
-                  (Number(unreadMessageCount) || 0) > 0
-                    ? `${Number(unreadMessageCount) > 99 ? '99+' : unreadMessageCount} unread`
-                    : 'No unread',
+                subtitle: cappedBadgeLabel(unreadMessageCount, 'unread', 'No unread'),
                 badgeCount: Number(unreadMessageCount) || 0,
               },
               {
                 label: 'Photo Gallery',
                 onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
                 icon: 'images-outline',
-                subtitle:
-                  (Number(photoGalleryBadgeCount) || 0) > 0
-                    ? `${Number(photoGalleryBadgeCount) > 99 ? '99+' : photoGalleryBadgeCount} new`
-                    : 'Your photos',
+                subtitle: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Your photos'),
               },
               {
                 label: 'Workout Plans',
                 onPress: () => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName }),
                 icon: 'barbell-outline',
-                subtitle:
-                  (Number(aiWorkoutsBadgeCount) || 0) > 0
-                    ? `${Number(aiWorkoutsBadgeCount) > 99 ? '99+' : aiWorkoutsBadgeCount} new`
-                    : 'Plans & sessions',
+                subtitle: cappedBadgeLabel(aiWorkoutsBadgeCount, 'new', 'Plans & sessions'),
               },
             ].map((item) => (
               <QuickActionCard
@@ -2396,9 +2110,9 @@ export const TrainingHomeScreen = ({
                 isDark={isDark}
                 onAfterSave={(val) => {
                   if (!onMetricsChange) return;
-                  const n = parseFloat(val);
-                  if (!Number.isNaN(n)) {
-                    onMetricsChange({ sleepHours: n });
+                  const hours = parseFloat(val);
+                  if (!Number.isNaN(hours)) {
+                    onMetricsChange({ sleepHours: hours });
                   }
                 }}
               />
@@ -2422,9 +2136,9 @@ export const TrainingHomeScreen = ({
                 isDark={isDark}
                 onAfterSave={(val) => {
                   if (!onMetricsChange) return;
-                  const n = parseFloat(val);
-                  if (!Number.isNaN(n)) {
-                    onMetricsChange({ waterIntake: n });
+                  const ounces = parseFloat(val);
+                  if (!Number.isNaN(ounces)) {
+                    onMetricsChange({ waterIntake: ounces });
                   }
                 }}
               />
@@ -2549,6 +2263,447 @@ export const TrainingHomeScreen = ({
       </ScrollView>
     </LinearGradient>
   );
+}
+
+
+// ===== MAIN FUNCTION =====
+
+// Client dashboard. Loads sessions and today's metrics, then paints TrainingHomeScreenLayout.
+export const TrainingHomeScreen = ({
+  trainer,
+  userData,
+  onOpenCoachingPayment,
+  embedInLayout = false,
+  onMetricsChange,
+  onPressMessage,
+  /** When user has no trainer: empty-state card should open marketplace, not messaging. */
+  onPressFindTrainer,
+  onPressViewProfile,
+  onOpenRemoveTrainer,
+  onOpenPhotoGallery,
+  onOpenAIWorkouts,
+  /** Opens full-screen weekly report for the signed-in client (`users/{uid}/weeklySummaries`). */
+  onOpenWeeklyReport,
+  /** Opens Nutrition from the calories card (optional). */
+  onPressCalories,
+  trainerClientId,
+  trainerClientName,
+  photoGalleryBadgeCount = 0,
+  aiWorkoutsBadgeCount = 0,
+  unreadMessageCount = 0,
+  todayCalories = 0,
+  calorieGoal = DEFAULT_CALORIE_GOAL,
+  waterOz = 0,
+  sleepHoursValue = null,
+}) => {
+  const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Floating shell BottomMenuBar overlays this screen — always reserve it.
+  const shellBottomPad = useShellBottomNavInset(embedInLayout ? SHELL_NAV_PAD_EMBEDDED : SHELL_NAV_PAD_STANDALONE);
+  const handleViewProfile = typeof onPressViewProfile === 'function' ? onPressViewProfile : onPressMessage;
+  const currentUser = auth?.currentUser;
+  const scrollRef = useRef(null);
+  const [untilResetMs, setUntilResetMs] = useState(msUntilLocalMidnight());
+  const [localClock, setLocalClock] = useState(() => new Date());
+  const [banner, setBanner] = useState(null); // { type: 'info'|'warn'|'error', text }
+  const [pendingReset, setPendingReset] = useState(false);
+
+  const coachingMonthlyRate = userData?.monthlyRate ?? null;
+  const coachingPaymentStatus = userData?.paymentStatus || 'inactive';
+
+  useEffect(() => {
+    const id = setInterval(() => setUntilResetMs(msUntilLocalMidnight()), MS_PER_SECOND);
+    return () => clearInterval(id);
+  }, []);
+
+  /** Live local clock for the dashboard time card (updates every second). */
+  useEffect(() => {
+    const id = setInterval(() => setLocalClock(new Date()), MS_PER_SECOND);
+    return () => clearInterval(id);
+  }, []);
+
+  // Real-time workouts history (dashboard updates without refresh)
+  const [recentWorkouts, setRecentWorkouts] = useState([]);
+  const [dashboardPendingSessions, setDashboardPendingSessions] = useState([]);
+  const [dashboardReminderSessions, setDashboardReminderSessions] = useState([]);
+  const [weeklyReportCardLoading, setWeeklyReportCardLoading] = useState(false);
+  const [weeklyReportCard, setWeeklyReportCard] = useState({ hasReport: false, weekRangeLabel: '' });
+
+  useEffect(() => {
+    if (typeof onOpenWeeklyReport !== 'function') return undefined;
+    let cancelled = false;
+    const uid = currentUser?.uid;
+    if (!uid || !db) {
+      setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
+      return undefined;
+    }
+    (async () => {
+      setWeeklyReportCardLoading(true);
+      try {
+        const snap = await getDocs(collection(db, 'users', uid, 'weeklySummaries'));
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((r) => r.weekStart || r.weekId)
+          .sort((a, b) =>
+            String(b.weekStart || b.weekId || '').localeCompare(String(a.weekStart || a.weekId || '')),
+          );
+        if (cancelled) return;
+        const latest = rows[0];
+        const ws = latest?.weekStart || latest?.weekId;
+        const we = latest?.weekEnd || ws;
+        setWeeklyReportCard({
+          hasReport: rows.length > 0,
+          weekRangeLabel: rows.length > 0 ? formatClientWeeklyRange(ws, we) : '',
+        });
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('[TrainingHomeScreen] weeklySummaries load failed', e?.message || e);
+          setWeeklyReportCard({ hasReport: false, weekRangeLabel: '' });
+        }
+      } finally {
+        if (!cancelled) setWeeklyReportCardLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.uid, onOpenWeeklyReport]);
+
+  const [sessionFilterTick, setSessionFilterTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSessionFilterTick((tick) => tick + 1), SESSION_LIST_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const allSessionsRef = useRef([]);
+
+  useEffect(() => {
+    if (!db || !currentUser?.uid) {
+      setDashboardPendingSessions([]);
+      setDashboardReminderSessions([]);
+      return;
+    }
+    const trainerUid = trainer?.id || trainer?.uid || null;
+    if (!trainerUid) {
+      setDashboardPendingSessions([]);
+      setDashboardReminderSessions([]);
+      return;
+    }
+    const sessionsRef = collection(db, `trainer_clients/${trainerUid}/sessions`);
+    const sessionsQuery = query(sessionsRef, where('clientId', '==', currentUser.uid), limit(25));
+    const unsub = onSnapshot(
+      sessionsQuery,
+      (snap) => {
+        const all = [];
+        snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
+        allSessionsRef.current = all;
+        setSessionFilterTick((n) => n + 1);
+      },
+      (e) => {
+        console.warn('Dashboard sessions listener:', e?.code || e?.message || e);
+        allSessionsRef.current = [];
+        setDashboardPendingSessions([]);
+        setDashboardReminderSessions([]);
+      },
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch (_) {}
+    };
+  }, [currentUser?.uid, trainer?.id, trainer?.uid]);
+
+  useEffect(() => {
+    const all = allSessionsRef.current;
+    const todayKey = getLocalDateKey();
+    const now = Date.now();
+    const isStillRelevant = (session) => {
+      const dateStr = String(session.date || '');
+      if (dateStr > todayKey) return true;
+      if (dateStr < todayKey) return false;
+      const timeStr = String(session.time || '');
+      const [hourText, minuteText] = timeStr.split(':');
+      const hour = parseInt(hourText, 10);
+      const minute = parseInt(minuteText || '0', 10);
+      if (Number.isNaN(hour)) return true;
+      const sessionStart = new Date();
+      sessionStart.setHours(hour, Number.isNaN(minute) ? 0 : minute, 0, 0);
+      return now < sessionStart.getTime() + SESSION_STILL_RELEVANT_MS;
+    };
+
+    const pending = all
+      .filter((s) => (s.status || 'pending') === 'pending' && String(s.date || '') >= todayKey && isStillRelevant(s))
+      .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
+      .slice(0, 5);
+    const reminders = all
+      .filter((s) => String(s.status || '') === 'accepted' && String(s.date || '') >= todayKey && isStillRelevant(s))
+      .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
+      .slice(0, 3);
+    setDashboardPendingSessions(pending);
+    setDashboardReminderSessions(reminders);
+  }, [sessionFilterTick]);
+
+  useEffect(() => {
+    if (!db || !currentUser?.uid) return;
+    const uid = currentUser.uid;
+    const workoutsRef = collection(db, 'completedWorkouts');
+    const workoutsQuery = query(workoutsRef, where('userId', '==', uid));
+    const unsub = onSnapshot(
+      workoutsQuery,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        list.sort((a, b) => {
+          const aTime = a.completedAt?.toDate?.() || new Date(a.completedAt || 0);
+          const bTime = b.completedAt?.toDate?.() || new Date(b.completedAt || 0);
+          return bTime.getTime() - aTime.getTime();
+        });
+        setRecentWorkouts(list.slice(0, 20));
+      },
+      (e) => {
+        console.warn('completedWorkouts listener error:', e?.code || e?.message || e);
+        setBanner({ type: 'warn', text: "You're offline or connection is unstable. Cached data shown where available." });
+      },
+    );
+    return () => {
+      try { unsub?.(); } catch (_) {}
+    };
+  }, [currentUser?.uid]);
+
+  // Archive yesterday + reset at local midnight (also runs on home when app stays open)
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    if (!uid || !db) return;
+
+    const tick = async () => {
+      try {
+        const rolled = await tickDailyDashboardDayRollover(uid);
+        if (rolled) {
+          setPendingReset(false);
+          setBanner({ type: 'info', text: 'Yesterday archived. Dashboard reset for the new day.' });
+        }
+        await retryPendingDailyDashboardArchive(uid);
+      } catch (_) {
+        setPendingReset(true);
+        setBanner({ type: 'error', text: 'Pending reset… will retry automatically.' });
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, DAY_ROLLOVER_TICK_MS);
+    return () => clearInterval(id);
+  }, [currentUser?.uid]);
+
+  const handleWorkoutAfterSave = useCallback(
+    (combined, workoutName, workoutExercises) => {
+      if (onMetricsChange) {
+        onMetricsChange({
+          workoutSummary: combined || null,
+          workoutName: workoutName || null,
+          workoutExercises: workoutExercises || [],
+        });
+      }
+    },
+    [onMetricsChange],
+  );
+
+  const workoutLogState = workoutDiary(handleWorkoutAfterSave);
+
+  const respondToDashboardSession = useCallback(
+    async ({ sessionId, status }) => {
+      const trainerUid = trainer?.id || trainer?.uid || null;
+      if (!trainerUid || !sessionId || !db) return;
+      try {
+        await updateDoc(doc(db, `trainer_clients/${trainerUid}/sessions/${sessionId}`), {
+          status,
+          respondedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        const clientUid = auth?.currentUser?.uid;
+        if (clientUid) {
+          const clientName = await clientDisplayName(clientUid);
+          const verb = sessionResponseVerb(status);
+          void postRemotePushNotify({
+            recipientId: trainerUid,
+            senderName: clientName,
+            messageText: `${clientName} ${verb} a session.`,
+            senderId: clientUid,
+            messageId: sessionId,
+            notificationType: 'session_response',
+          });
+        }
+      } catch (e) {
+        console.error('Dashboard respond to session failed:', e);
+        Alert.alert('Could not update', e?.message || 'Please try again.');
+      }
+    },
+    [trainer?.id, trainer?.uid],
+  );
+
+  const trainerName = (() => {
+    const first = trainer?.firstName || trainer?.givenName;
+    const last = trainer?.lastName || trainer?.familyName;
+    if (first || last) return `${first ?? ''} ${last ?? ''}`.trim();
+    return trainer?.displayName || trainer?.name || 'Your trainer';
+  })();
+
+  const trainerTitle = (() => {
+    const raw = trainer?.headline || trainer?.title || null;
+    if (raw) return String(raw);
+    if (Array.isArray(trainer?.certifications) && trainer.certifications.length) {
+      return trainer.certifications.join(' · ');
+    }
+    if (typeof trainer?.certifications === 'string' && trainer.certifications.trim()) {
+      return trainer.certifications.trim();
+    }
+    return null;
+  })();
+  const trainerGoal =
+    trainer?.primaryGoal ||
+    trainer?.specialty ||
+    trainer?.specialties ||
+    null;
+
+  const trainerExperienceLabel =
+    typeof trainer?.experienceYears === 'number' ? `${trainer.experienceYears}+ yrs experience` : null;
+
+  const trainerLocation = trainer?.location ? String(trainer.location) : null;
+  const trainerBio = trainer?.bio ? String(trainer.bio) : null;
+  const trainerPricingLine = (() => {
+    const pricing = trainer?.pricing;
+    if (!pricing) return null;
+    const parts = [];
+    if (pricing.perSession != null && pricing.perSession !== '') parts.push(`$${pricing.perSession}/session`);
+    if (pricing.perMonth != null && pricing.perMonth !== '') parts.push(`$${pricing.perMonth}/month`);
+    return parts.length ? parts.join(' · ') : null;
+  })();
+
+  const coachingRateLabel = useMemo(() => {
+    if (coachingMonthlyRate != null && coachingMonthlyRate !== '') {
+      const monthlyRate = Number(coachingMonthlyRate);
+      if (Number.isFinite(monthlyRate) && monthlyRate > 0) {
+        const dollars = monthlyRate >= 100 ? monthlyRate / 100 : monthlyRate;
+        return `$${dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2)}`;
+      }
+    }
+    if (trainerPricingLine) {
+      const monthlyPart = trainerPricingLine.split(' · ').find((part) => part.includes('/month'));
+      if (monthlyPart) return monthlyPart.replace('/month', '').trim();
+    }
+    return null;
+  }, [coachingMonthlyRate, trainerPricingLine]);
+
+  const paymentBanner = useMemo(() => {
+    if (coachingPaymentStatus === 'past_due') {
+      return { type: 'error', text: 'Coaching payment past due — update billing' };
+    }
+    if (coachingPaymentStatus === 'payment_required' && coachingRateLabel) {
+      return {
+        type: 'warn',
+        text: `${trainerName} set your rate to ${coachingRateLabel}/mo — add a payment method to get started`,
+      };
+    }
+    return null;
+  }, [coachingPaymentStatus, coachingRateLabel, trainerName]);
+
+  const displayBanner = paymentBanner || banner;
+
+  const showCoachingPaymentOnCard = !!trainer;
+
+  const coachingPaymentButtonLabel = coachingPaymentButtonLabelFor(coachingPaymentStatus);
+  const coachingPaymentShortLabel = coachingPaymentShortLabelFor(coachingPaymentStatus);
+  const coachingPaymentStatusLabel = coachingPaymentStatusLabelFor(coachingPaymentStatus);
+  const coachingPaymentStatusTone = coachingPaymentStatusToneFor(coachingPaymentStatus);
+
+  const handleOpenPayment = useCallback(() => {
+    if (typeof onOpenCoachingPayment === 'function') {
+      onOpenCoachingPayment();
+    }
+  }, [onOpenCoachingPayment]);
+
+  const trainerInitials = (() => {
+    const baseName = trainerName || 'Your trainer';
+    return baseName
+      .split(' ')
+      .filter(Boolean)
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  })();
+
+  const trainerCertifications = (() => {
+    if (Array.isArray(trainer?.certifications)) return trainer.certifications;
+    if (typeof trainer?.certifications === 'string') {
+      return trainer.certifications
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [];
+  })();
+
+  const trainerSpecialties = (() => {
+    if (Array.isArray(trainer?.specialties)) return trainer.specialties;
+    if (typeof trainer?.specialties === 'string') {
+      return trainer.specialties
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    if (trainerGoal) {
+      const asString = Array.isArray(trainerGoal) ? trainerGoal.join(',') : String(trainerGoal);
+      return asString
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [];
+  })();
+
+  const screenLayout = {
+    scrollRef,
+    embedInLayout,
+    shellBottomPad,
+    isDark,
+    displayBanner,
+    pendingReset,
+    currentUser,
+    onOpenWeeklyReport,
+    weeklyReportCard,
+    weeklyReportCardLoading,
+    untilResetMs,
+    dashboardPendingSessions,
+    dashboardReminderSessions,
+    trainerName,
+    respondToDashboardSession,
+    trainer,
+    trainerTitle,
+    trainerSpecialties,
+    trainerLocation,
+    onPressMessage,
+    handleViewProfile,
+    showCoachingPaymentOnCard,
+    handleOpenPayment,
+    coachingPaymentButtonLabel,
+    coachingPaymentShortLabel,
+    coachingRateLabel,
+    trainerPricingLine,
+    coachingPaymentStatusLabel,
+    coachingPaymentStatusTone,
+    onPressFindTrainer,
+    unreadMessageCount,
+    onOpenPhotoGallery,
+    trainerClientId,
+    trainerClientName,
+    photoGalleryBadgeCount,
+    onOpenAIWorkouts,
+    aiWorkoutsBadgeCount,
+    onMetricsChange,
+    handleWorkoutAfterSave,
+    workoutLogState,
+  };
+  return <TrainingHomeScreenLayout {...screenLayout} />;
 };
 
 const screen = StyleSheet.create({

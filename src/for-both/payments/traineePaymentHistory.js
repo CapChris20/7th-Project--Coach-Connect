@@ -38,7 +38,8 @@ function createdAtMilliseconds(createdAt) {
 
 function statusLabel(rawStatus) {
   const statusText = String(rawStatus || '').toLowerCase();
-  if (statusText === 'succeeded' || statusText === 'completed') return COMPLETED_LABEL;
+  if (statusText === 'succeeded') return COMPLETED_LABEL;
+  if (statusText === 'completed') return COMPLETED_LABEL;
   if (statusText === 'pending') return PENDING_LABEL;
   if (statusText === 'failed') return FAILED_LABEL;
   if (rawStatus) return String(rawStatus);
@@ -85,12 +86,15 @@ export function traineePaymentHistory(clientId, trainerName = DEFAULT_TRAINER_NA
   // vocab: useEffect cleanup sets isCancelled so a slow read cannot setState after the client changes.
   useEffect(() => {
     let isCancelled = false;
+
+    // 1. No client or no Firestore → empty list, not a hang.
     if (!clientId || !db) {
       setRows([]);
       setLoading(false);
       return undefined;
     }
 
+    // 2. Load newest-first rows. Ignore the result if the client changed while we were reading.
     (async () => {
       setLoading(true);
       try {

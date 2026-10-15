@@ -1,13 +1,7 @@
-/**
- * Photo Gallery Screen
- *
- * Purpose: UI screen or component: Photo Gallery Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: MyProgressPhotosScreen
- *
- * @file-header
- */
+// Progress photo gallery for one client: grid, filters, fullscreen, upload.
+// Flow: listen to users/{clientId}/progressPhotos → filter/sort → tap to open → client can add a photo.
+// Used by the client gallery tab and the trainer viewing a client's photos.
+
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   ActionSheetIOS,
@@ -55,10 +49,16 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import TopHeader from '../loading-and-header/TopHeader';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 
+// ===== NAMED CONSTANTS =====
+
 const GRADIENT_PRIMARY = ['#C1265A', '#D84315'];
 const GRADIENT_CARD_BORDER = ['#C1265A', '#663399'];
 const TABLET_MIN_WIDTH = 768;
+const GRID_BOTTOM_EXTRA = 24;
+const USERS_COLLECTION = 'users';
+const PROGRESS_PHOTOS_COLLECTION = 'progressPhotos';
 
+// Manipulate here: body-part chips and sort rows on the gallery.
 const FILTER_OPTIONS = [
   { id: 'all', label: 'All' },
   { id: 'chest', label: 'Chest' },
@@ -74,18 +74,124 @@ const SORT_OPTIONS = [
   { id: 'name', label: 'By Name' },
 ];
 
-function parsePhotoDate(p) {
-  if (p.date?.toDate) return p.date.toDate();
-  if (p.date instanceof Date) return p.date;
+// ===== HELPER FUNCTIONS =====
+
+function parsePhotoDate(photo) {
+  // vocab: Firestore Timestamp has toDate(); a plain Date is already usable.
+  if (photo.date?.toDate) return photo.date.toDate();
+  if (photo.date instanceof Date) return photo.date;
   return new Date();
 }
 
-function photoBodyPart(p) {
-  const raw = (p.bodyPart || p.category || p.tag || '').toString().toLowerCase().replace(/\s+/g, '_');
+function isKnownFilterId(rawBodyPart) {
+  for (const option of FILTER_OPTIONS) {
+    if (option.id === rawBodyPart) return true;
+  }
+  return false;
+}
+
+function photoBodyPart(photo) {
+  const raw = (photo.bodyPart || photo.category || photo.tag || '').toString().toLowerCase().replace(/\s+/g, '_');
   if (!raw) return 'other';
-  if (FILTER_OPTIONS.some((f) => f.id === raw)) return raw;
+  if (isKnownFilterId(raw)) return raw;
   if (raw === 'fullbody' || raw === 'full-body') return 'full_body';
   return raw;
+}
+
+function photosFromSnapshot(snapshot) {
+  const list = [];
+  snapshot.forEach((photoDoc) => list.push({ id: photoDoc.id, ...photoDoc.data() }));
+  return list;
+}
+
+function decoratePhoto(photo) {
+  return {
+    ...photo,
+    _date: parsePhotoDate(photo),
+    _body: photoBodyPart(photo),
+    _name: (photo.storagePath || photo.url || photo.id || '').toString(),
+  };
+}
+
+function decoratePhotoList(photoList) {
+  const decorated = [];
+  for (const photo of photoList) {
+    decorated.push(decoratePhoto(photo));
+  }
+  return decorated;
+}
+
+function photosMatchingFilter(decoratedPhotos, filterId) {
+  if (filterId === 'all') return [...decoratedPhotos];
+  const matched = [];
+  for (const photo of decoratedPhotos) {
+    if (photo._body === filterId) matched.push(photo);
+  }
+  return matched;
+}
+
+function sortProgressPhotos(photoList, sortId) {
+  const sorted = [...photoList];
+  if (sortId === 'date_desc') {
+    sorted.sort((leftPhoto, rightPhoto) => rightPhoto._date - leftPhoto._date);
+    return sorted;
+  }
+  if (sortId === 'date_asc') {
+    sorted.sort((leftPhoto, rightPhoto) => leftPhoto._date - rightPhoto._date);
+    return sorted;
+  }
+  sorted.sort((leftPhoto, rightPhoto) => leftPhoto._name.localeCompare(rightPhoto._name));
+  return sorted;
+}
+
+function pickedImageUri(pickerResult) {
+  if (pickerResult.canceled) return null;
+  const firstAsset = pickerResult.assets && pickerResult.assets[0];
+  return firstAsset && firstAsset.uri ? firstAsset.uri : null;
+}
+
+async function uploadProgressPhoto({ clientId, localUri, uploadedByUid }) {
+  const filename = `${Date.now()}.jpg`;
+  const storageRef = ref(storage, `progressPhotos/${clientId}/${filename}`);
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+  await uploadBytes(storageRef, blob);
+  const downloadUrl = await getDownloadURL(storageRef);
+  const colRef = collection(db, USERS_COLLECTION, clientId, PROGRESS_PHOTOS_COLLECTION);
+  await addDoc(colRef, {
+    url: downloadUrl,
+    date: serverTimestamp(),
+    uploadedBy: uploadedByUid || null,
+    clientId,
+    storagePath: storageRef.fullPath,
+  });
+}
+
+async function deleteProgressPhoto({ photo, clientId }) {
+  if (photo.storagePath && storage) {
+    await deleteObject(ref(storage, photo.storagePath));
+  }
+  if (db && clientId && photo.id) {
+    await deleteDoc(doc(db, USERS_COLLECTION, clientId, PROGRESS_PHOTOS_COLLECTION, photo.id));
+  }
+}
+
+function formatPhotoDateLine(dateObj) {
+  return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function findSortLabel(sortId) {
+  for (const option of SORT_OPTIONS) {
+    if (option.id === sortId) return option.label.replace(/^By /, '');
+  }
+  return 'Date';
+}
+
+function findFilterLabel(filterId) {
+  for (const option of FILTER_OPTIONS) {
+    if (option.id === filterId) return option.label;
+  }
+  return 'All';
 }
 
 function getTheme(isDark) {
@@ -125,8 +231,8 @@ function ZoomablePhoto({ uri, width, height, onZoomChange }) {
   const savedScale = useSharedValue(1);
   const startScale = useSharedValue(1);
 
-  const notify = (z) => {
-    onZoomChange?.(z);
+  const notify = (isZoomed) => {
+    onZoomChange?.(isZoomed);
   };
 
   const pinch = Gesture.Pinch()
@@ -213,7 +319,7 @@ function DropdownChip({ label, valueLabel, isDark, theme, focused, onPress }) {
 function PhotoGridCard({ item, cellSize, theme, isDark, onOpen, onMenu }) {
   const scale = useRef(new Animated.Value(1)).current;
   const dateObj = parsePhotoDate(item);
-  const dateLine = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateLine = formatPhotoDateLine(dateObj);
 
   const pressIn = () => {
     Animated.timing(scale, { toValue: 1.02, duration: 100, useNativeDriver: true }).start();
@@ -267,6 +373,12 @@ function PhotoGridCard({ item, cellSize, theme, isDark, onOpen, onMenu }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Progress photo grid for one client. Listeners stay on users/{id}/progressPhotos.
+ * @param {object} props
+ */
 export default function MyProgressPhotosScreen({
   route,
   navigation,
@@ -309,18 +421,17 @@ export default function MyProgressPhotosScreen({
     if (!clientId || !db) return;
     setLoading(true);
     setError(null);
-    const colRef = collection(db, 'users', clientId, 'progressPhotos');
-    const q = query(colRef, orderBy('date', 'desc'));
+    const colRef = collection(db, USERS_COLLECTION, clientId, PROGRESS_PHOTOS_COLLECTION);
+    // vocab: onSnapshot = live Firestore listener. Cleanup must stay return () => unsub().
+    const photosQuery = query(colRef, orderBy('date', 'desc'));
     const unsub = onSnapshot(
-      q,
+      photosQuery,
       (snap) => {
-        const list = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-        setPhotos(list);
+        setPhotos(photosFromSnapshot(snap));
         setLoading(false);
       },
-      (e) => {
-        setError(e?.message || 'Failed to load photos');
+      (snapshotError) => {
+        setError(snapshotError?.message || 'Failed to load photos');
         setPhotos([]);
         setLoading(false);
       }
@@ -328,74 +439,62 @@ export default function MyProgressPhotosScreen({
     return () => unsub();
   }, [clientId, galleryReloadKey]);
 
-  const processed = useMemo(() => {
-    return photos.map((p) => ({
-      ...p,
-      _date: parsePhotoDate(p),
-      _body: photoBodyPart(p),
-      _name: (p.storagePath || p.url || p.id || '').toString(),
-    }));
-  }, [photos]);
+  const processed = useMemo(() => decoratePhotoList(photos), [photos]);
 
   const filteredSorted = useMemo(() => {
-    let list = processed.filter((p) => {
-      if (filterId === 'all') return true;
-      return p._body === filterId;
-    });
-    list = [...list];
-    if (sortId === 'date_desc') list.sort((a, b) => b._date - a._date);
-    else if (sortId === 'date_asc') list.sort((a, b) => a._date - b._date);
-    else list.sort((a, b) => a._name.localeCompare(b._name));
-    return list;
+    const matched = photosMatchingFilter(processed, filterId);
+    return sortProgressPhotos(matched, sortId);
   }, [processed, filterId, sortId]);
 
-  const sortLabel = SORT_OPTIONS.find((s) => s.id === sortId)?.label.replace(/^By /, '') || 'Date';
-  const filterLabel = FILTER_OPTIONS.find((f) => f.id === filterId)?.label || 'All';
+  const sortLabel = findSortLabel(sortId);
+  const filterLabel = findFilterLabel(filterId);
 
   const handleAddPhoto = useCallback(async () => {
+    // 1. Trainers in view-only mode cannot upload.
     if (!allowUpload) {
       Alert.alert('View only', 'Your trainer can add photos here when upload is enabled for this view.');
       return;
     }
+
+    // 2. Need a client id to know which profile folder to write.
     if (!clientId) {
       Alert.alert('Something went wrong', 'We could not tell which profile to save this photo to. Go back and open Progress Photos again.');
       return;
     }
+
+    // 3. Need Firestore and Storage. Offline / misconfigured installs stop here.
     if (!db || !storage) {
       Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is configured with Firebase Storage, then try again.');
       return;
     }
-    const user = auth?.currentUser;
+
+    // 4. Ask for the photo library. Denied → stop.
+    // vocab: ImagePicker = Expo photo library. status !== 'granted' means they tapped Don't Allow.
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow access to your photos to add progress pictures.');
       return;
     }
+
+    // 5. Pick a square image. Cancel or no uri → stop.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.85,
       allowsEditing: true,
       aspect: [1, 1],
     });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-    const uri = result.assets[0].uri;
+    const localUri = pickedImageUri(result);
+    if (!localUri) return;
+
+    // 6. Upload to Storage and write the Firestore row. The live listener adds the card.
     try {
-      const filename = `${Date.now()}.jpg`;
-      const storageRef = ref(storage, `progressPhotos/${clientId}/${filename}`);
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      await uploadBytes(storageRef, blob);
-      const downloadUrl = await getDownloadURL(storageRef);
-      const colRef = collection(db, 'users', clientId, 'progressPhotos');
-      await addDoc(colRef, {
-        url: downloadUrl,
-        date: serverTimestamp(),
-        uploadedBy: user?.uid || null,
+      await uploadProgressPhoto({
         clientId,
-        storagePath: storageRef.fullPath,
+        localUri,
+        uploadedByUid: auth?.currentUser?.uid,
       });
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not add photo.');
+    } catch (uploadError) {
+      Alert.alert('Upload failed', uploadError?.message || 'Could not add photo.');
     }
   }, [allowUpload, clientId, db, storage]);
 
@@ -412,14 +511,15 @@ export default function MyProgressPhotosScreen({
     return () => onRegisterAddHandler(null);
   }, [allowUpload, onRegisterAddHandler, handleAddPhoto]);
 
-  const openAtIndex = (idx) => {
+  const openAtIndex = (photoIndex) => {
+    // 1. Reset pinch-zoom, then show that photo full screen.
     setFullscreenZoomed(false);
-    setModalIndex(idx);
+    setModalIndex(photoIndex);
   };
 
   useEffect(() => {
     if (modalIndex == null || filteredSorted.length === 0) return;
-    const t = setTimeout(() => {
+    const scrollTimer = setTimeout(() => {
       try {
         listRef.current?.scrollToIndex({
           index: Math.min(modalIndex, filteredSorted.length - 1),
@@ -429,21 +529,26 @@ export default function MyProgressPhotosScreen({
         listRef.current?.scrollToOffset({ offset: winW * modalIndex, animated: false });
       }
     }, 48);
-    return () => clearTimeout(t);
+    return () => clearTimeout(scrollTimer);
   }, [modalIndex, filteredSorted.length, winW]);
 
   const openPhoto = (item) => {
-    const idx = filteredSorted.findIndex((p) => p.id === item.id);
-    if (idx >= 0) openAtIndex(idx);
+    // 1. Find this card in the filtered list, then open that index.
+    const photoIndex = filteredSorted.findIndex((photo) => photo.id === item.id);
+    if (photoIndex >= 0) openAtIndex(photoIndex);
   };
 
   const closeModal = () => {
+    // 1. Close fullscreen and unlock horizontal swipe.
     setModalIndex(null);
     setFullscreenZoomed(false);
   };
 
   const handleDeletePhoto = async (photo) => {
+    // 1. No photo → nothing to delete.
     if (!photo) return;
+
+    // 2. Confirm, then remove Storage + the Firestore row. The live listener drops the card.
     Alert.alert('Delete photo', 'Are you sure you want to delete this photo?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -451,15 +556,10 @@ export default function MyProgressPhotosScreen({
         style: 'destructive',
         onPress: async () => {
           try {
-            if (photo.storagePath && storage) {
-              await deleteObject(ref(storage, photo.storagePath));
-            }
-            if (db && clientId && photo.id) {
-              await deleteDoc(doc(db, 'users', clientId, 'progressPhotos', photo.id));
-            }
+            await deleteProgressPhoto({ photo, clientId });
             closeModal();
-          } catch (e) {
-            Alert.alert('Error', e?.message || 'Could not delete photo.');
+          } catch (deleteError) {
+            Alert.alert('Error', deleteError?.message || 'Could not delete photo.');
           }
         },
       },
@@ -467,6 +567,7 @@ export default function MyProgressPhotosScreen({
   };
 
   const handleShare = async (photoUrl) => {
+    // 1. No url → nothing to share. Share sheet cancel is ignored.
     if (!photoUrl) return;
     try {
       await Share.share({ message: 'Progress photo from CoachConnect', url: photoUrl });
@@ -474,6 +575,7 @@ export default function MyProgressPhotosScreen({
   };
 
   const showPhotoActions = (photo) => {
+    // 1. Share / Delete / Cancel. iOS uses the action sheet; Android uses Alert.
     const buttons = ['Share', 'Delete', 'Cancel'];
     const handlers = [
       () => handleShare(photo?.url),
@@ -483,7 +585,7 @@ export default function MyProgressPhotosScreen({
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         { options: buttons, cancelButtonIndex: 2, destructiveButtonIndex: 1 },
-        (i) => handlers[i]?.()
+        (buttonIndex) => handlers[buttonIndex]?.()
       );
     } else {
       Alert.alert('Photo', undefined, [
@@ -521,11 +623,13 @@ export default function MyProgressPhotosScreen({
 
   const headerIconColor = isDark ? '#FFFFFF' : theme.text;
   const handleBack = () => {
+    // 1. Shell header uses onBack. Standalone screen uses navigation.goBack.
     if (typeof onBack === 'function') onBack();
     else navigation?.goBack?.();
   };
-  const gridBottomPad = insets.bottom + 24 + (reserveNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
+  const gridBottomPad = insets.bottom + GRID_BOTTOM_EXTRA + (reserveNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
 
+  // 1. Header, sort/filter, then grid / empty / error. Fullscreen modal sits on top.
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       {useShellHeader ? (
@@ -564,7 +668,7 @@ export default function MyProgressPhotosScreen({
             focused={showSortMenu}
             onPress={() => {
               setShowFilterMenu(false);
-              setShowSortMenu((v) => !v);
+              setShowSortMenu((isSortOpen) => !isSortOpen);
             }}
           />
           <DropdownChip
@@ -575,7 +679,7 @@ export default function MyProgressPhotosScreen({
             focused={showFilterMenu}
             onPress={() => {
               setShowSortMenu(false);
-              setShowFilterMenu((v) => !v);
+              setShowFilterMenu((isFilterOpen) => !isFilterOpen);
             }}
           />
         </View>
@@ -583,31 +687,31 @@ export default function MyProgressPhotosScreen({
         {(showSortMenu || showFilterMenu) && (
           <View style={[styles.menuPanel, { marginHorizontal: gridPad, backgroundColor: theme.menuBg, borderColor: theme.chipBorder }]}>
             {showSortMenu &&
-              SORT_OPTIONS.map((o) => (
+              SORT_OPTIONS.map((option) => (
                 <TouchableOpacity
-                  key={o.id}
+                  key={option.id}
                   style={styles.menuRow}
                   onPress={() => {
-                    setSortId(o.id);
+                    setSortId(option.id);
                     setShowSortMenu(false);
                   }}
                 >
-                  <Text style={[styles.menuText, { color: theme.text }]}>{o.label}</Text>
-                  {sortId === o.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
+                  <Text style={[styles.menuText, { color: theme.text }]}>{option.label}</Text>
+                  {sortId === option.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
                 </TouchableOpacity>
               ))}
             {showFilterMenu &&
-              FILTER_OPTIONS.map((o) => (
+              FILTER_OPTIONS.map((option) => (
                 <TouchableOpacity
-                  key={o.id}
+                  key={option.id}
                   style={styles.menuRow}
                   onPress={() => {
-                    setFilterId(o.id);
+                    setFilterId(option.id);
                     setShowFilterMenu(false);
                   }}
                 >
-                  <Text style={[styles.menuText, { color: theme.text }]}>{o.label}</Text>
-                  {filterId === o.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
+                  <Text style={[styles.menuText, { color: theme.text }]}>{option.label}</Text>
+                  {filterId === option.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
                 </TouchableOpacity>
               ))}
           </View>
@@ -626,7 +730,7 @@ export default function MyProgressPhotosScreen({
           <TouchableOpacity
             onPress={() => {
               setError(null);
-              setGalleryReloadKey((k) => k + 1);
+              setGalleryReloadKey((reloadKey) => reloadKey + 1);
             }}
             style={styles.retryBtn}
           >

@@ -1,17 +1,8 @@
-/**
- * profile Card Visibility
- *
- * Purpose: UI screen or component: profile Card Visibility. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: hasOnboardingFieldData, resolveProfileCardFieldKey, filterProfileCardItems, filterProfileCardSections, getProfileCardSectionLabels, PROFILE_CARD_FIELD_KEY
- *
- * @file-header
- */
-/**
- * Profile card visibility — only show cards for onboarding fields the user actually answered.
- * Shared by ClientAppStart + TrainerAppStart (CreateWorkoutPlanScreen).
- */
+// Profile card visibility — only show cards for onboarding fields the user actually answered.
+// Flow: map card id → onboarding field → is that field filled? → drop empty items and empty sections.
+// Used by: ClientAppStart and TrainerAppStart (CreateWorkoutPlanScreen).
+
+// ===== NAMED CONSTANTS =====
 
 const PERSONAL_FIELDS = ['age', 'gender', 'height', 'weight'];
 
@@ -35,6 +26,12 @@ const RECOVERY_FIELDS = [
   'situationDescription',
 ];
 
+const SECTION_LABEL_PERSONAL = 'Personal';
+const SECTION_LABEL_TRAINING = 'Training';
+const SECTION_LABEL_RECOVERY = 'Recovery';
+const MIN_HEIGHT_INCHES = 36;
+const MAX_HEIGHT_INCHES = 96;
+
 /** Maps profile card `item.id` → onboarding field key. */
 export const PROFILE_CARD_FIELD_KEY = {
   age: 'age',
@@ -57,22 +54,45 @@ export const PROFILE_CARD_FIELD_KEY = {
   journey: 'situationDescription',
 };
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Height can be { feet, inches }, totalInches, cm, or a leftover number-in-a-string.
+ * @param {*} height
+ * @returns {boolean}
+ */
 function hasHeightValue(height) {
   if (height == null) return false;
   if (typeof height === 'object') {
-    const ft = height.feet;
+    const feet = height.feet;
     const inches = height.inches;
-    if (ft != null && ft !== '' && Number.isFinite(Number(ft))) return true;
+    if (feet != null && feet !== '' && Number.isFinite(Number(feet))) return true;
     if (inches != null && inches !== '' && Number.isFinite(Number(inches))) return true;
     if (height.totalInches != null && Number(height.totalInches) > 0) return true;
     if (height.cm != null && Number(height.cm) > 0) return true;
     return false;
   }
-  const n = Number(String(height).replace(/[^0-9.]/g, ''));
-  return Number.isFinite(n) && n >= 36 && n <= 96;
+  const numericHeight = Number(String(height).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(numericHeight) && numericHeight >= MIN_HEIGHT_INCHES && numericHeight <= MAX_HEIGHT_INCHES;
 }
 
-/** True when the user provided this field during onboarding (or saved it since). */
+/**
+ * @param {string[]} fieldKeys
+ * @param {object} onboardingData
+ * @returns {boolean}
+ */
+function hasAnyFieldData(fieldKeys, onboardingData) {
+  return fieldKeys.some((fieldKey) => hasOnboardingFieldData(fieldKey, onboardingData));
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * True when the user provided this field during onboarding (or saved it since).
+ * @param {string} fieldKey
+ * @param {object} onboardingData
+ * @returns {boolean}
+ */
 export function hasOnboardingFieldData(fieldKey, onboardingData) {
   if (!onboardingData || !fieldKey) return false;
 
@@ -122,35 +142,57 @@ export function hasOnboardingFieldData(fieldKey, onboardingData) {
   }
 }
 
+/**
+ * Resolve which onboarding field a profile card item represents.
+ * @param {object} item
+ * @returns {string|undefined}
+ */
 export function resolveProfileCardFieldKey(item) {
   return PROFILE_CARD_FIELD_KEY[item?.id] || item?.editKey || item?.id;
 }
 
+/**
+ * Drop card items the user never answered.
+ * @param {object[]} items
+ * @param {object} onboardingData
+ * @returns {object[]}
+ */
 export function filterProfileCardItems(items, onboardingData) {
   return (items || []).filter((item) =>
     hasOnboardingFieldData(resolveProfileCardFieldKey(item), onboardingData),
   );
 }
 
+/**
+ * Same filter, then drop sections that ended up with zero items.
+ * @param {object[]} sections
+ * @param {object} onboardingData
+ * @returns {object[]}
+ */
 export function filterProfileCardSections(sections, onboardingData) {
   return (sections || [])
-    .map((sec) => ({
-      ...sec,
-      items: filterProfileCardItems(sec.items, onboardingData),
+    .map((section) => ({
+      ...section,
+      items: filterProfileCardItems(section.items, onboardingData),
     }))
-    .filter((sec) => sec.items.length > 0);
+    .filter((section) => section.items.length > 0);
 }
 
+/**
+ * Section titles to show in the profile card chrome, in Personal → Training → Recovery order.
+ * @param {object} onboardingData
+ * @returns {string[]}
+ */
 export function getProfileCardSectionLabels(onboardingData) {
   const labels = [];
-  if (PERSONAL_FIELDS.some((key) => hasOnboardingFieldData(key, onboardingData))) {
-    labels.push('Personal');
+  if (hasAnyFieldData(PERSONAL_FIELDS, onboardingData)) {
+    labels.push(SECTION_LABEL_PERSONAL);
   }
-  if (TRAINING_FIELDS.some((key) => hasOnboardingFieldData(key, onboardingData))) {
-    labels.push('Training');
+  if (hasAnyFieldData(TRAINING_FIELDS, onboardingData)) {
+    labels.push(SECTION_LABEL_TRAINING);
   }
-  if (RECOVERY_FIELDS.some((key) => hasOnboardingFieldData(key, onboardingData))) {
-    labels.push('Recovery');
+  if (hasAnyFieldData(RECOVERY_FIELDS, onboardingData)) {
+    labels.push(SECTION_LABEL_RECOVERY);
   }
   return labels;
 }

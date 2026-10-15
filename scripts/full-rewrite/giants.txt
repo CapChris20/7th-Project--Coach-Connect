@@ -1,0 +1,8 @@
+src/ai-coach/conversation/CoachConversationScreen.jsx
+src/login-and-signup/NewUserSetupScreen.jsx
+src/client-app/navigation/ClientMainScreen.jsx
+src/trainer-app/navigation/TrainerMainScreen.jsx
+src/nutrition/food-cards/FoodListScreen.jsx
+src/messaging/ChatScreen.jsx
+src/for-both/weekly-report/WeeklyReportScreen.jsx
+src/client-app/find-a-trainer/BrowseTrainersScreen.jsx

@@ -1,13 +1,7 @@
-/**
- * Quick Add Nutrition
- *
- * Purpose: UI screen or component: Quick Add Nutrition. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: QuickAddNutrition
- *
- * @file-header
- */
+// Type calories and macros without searching a food card.
+// Flow: type a name → fill macros → log it onto today’s meal.
+// Used by the daily log “Quick add” path.
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +10,10 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { getRecentFoods } from '../daily-log/saveLoggedFood';
 import { readableFoodTitle } from '../food-search/readableFoodTitle';
+
+// ===== NAMED CONSTANTS =====
+
+const QUICK_ADD_BOTTOM_PAD = 24;
 
 const initialMacros = {
   protein: '',
@@ -33,35 +31,48 @@ const defaultSuggestions = [
   'Oatmeal', 'Brown rice', 'Avocado', 'Eggs',
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+function quickAddPalette(isDark) {
+  if (isDark) {
+    return {
+      cardBg: '#14121A',
+      cardBorder: 'rgba(255,255,255,0.10)',
+      text: '#FFFFFF',
+      textMuted: 'rgba(255,255,255,0.62)',
+      faint: 'rgba(255,255,255,0.28)',
+      inputBg: 'rgba(255,255,255,0.06)',
+      inputText: '#FFFFFF',
+      inputPlaceholder: 'rgba(255,255,255,0.38)',
+      inputBorder: 'rgba(255,255,255,0.12)',
+      chipBg: 'rgba(255,255,255,0.08)',
+    };
+  }
+  return {
+    cardBg: '#FFFFFF',
+    cardBorder: 'rgba(15,23,42,0.10)',
+    text: '#0F172A',
+    textMuted: 'rgba(15,23,42,0.55)',
+    faint: 'rgba(15,23,42,0.28)',
+    inputBg: 'rgba(15,23,42,0.04)',
+    inputText: '#0F172A',
+    inputPlaceholder: 'rgba(15,23,42,0.38)',
+    inputBorder: 'rgba(15,23,42,0.12)',
+    chipBg: 'rgba(15,23,42,0.06)',
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Quick-add a food by typing calories and macros.
+ * @param {{ onLogFood: Function, suggestions?: string[], userId?: string, reserveShellBottomNav?: boolean }} props
+ */
 export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions, userId, reserveShellBottomNav = false }) {
   const { isDark, colors } = useTheme();
   const shellBottomPad = useShellBottomNavInset(16);
   const screenBg = reserveShellBottomNav ? 'transparent' : isDark ? colors?.background ?? '#0A0A0F' : colors?.background ?? '#F2F2F7';
-  const t = isDark
-    ? {
-        cardBg: '#14121A',
-        cardBorder: 'rgba(255,255,255,0.10)',
-        text: '#FFFFFF',
-        textMuted: 'rgba(255,255,255,0.62)',
-        faint: 'rgba(255,255,255,0.28)',
-        inputBg: 'rgba(255,255,255,0.06)',
-        inputText: '#FFFFFF',
-        inputPlaceholder: 'rgba(255,255,255,0.38)',
-        inputBorder: 'rgba(255,255,255,0.12)',
-        chipBg: 'rgba(255,255,255,0.08)',
-      }
-    : {
-        cardBg: '#FFFFFF',
-        cardBorder: 'rgba(15,23,42,0.10)',
-        text: '#0F172A',
-        textMuted: 'rgba(15,23,42,0.55)',
-        faint: 'rgba(15,23,42,0.28)',
-        inputBg: 'rgba(15,23,42,0.04)',
-        inputText: '#0F172A',
-        inputPlaceholder: 'rgba(15,23,42,0.38)',
-        inputBorder: 'rgba(15,23,42,0.12)',
-        chipBg: 'rgba(15,23,42,0.06)',
-      };
+  const palette = quickAddPalette(isDark);
 
   const [foodName, setFoodName] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -131,11 +142,11 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: screenBg, flex: 1 }]}
-      contentContainerStyle={{ paddingBottom: reserveShellBottomNav ? shellBottomPad : 24 }}
+      contentContainerStyle={{ paddingBottom: reserveShellBottomNav ? shellBottomPad : QUICK_ADD_BOTTOM_PAD }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-        <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+        <View style={[styles.card, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }]}>
         <LinearGradient
           colors={['#BE185D', '#C2410C']}
           start={{ x: 0, y: 0 }}
@@ -154,15 +165,15 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
               <Ionicons name="flame" size={20} color="white" />
             </LinearGradient>
             <View>
-              <Text style={[styles.headerTitle, { color: t.text }]}>Quick Add</Text>
-              <Text style={[styles.headerSubtitle, { color: t.textMuted }]}>Log your nutrition</Text>
+              <Text style={[styles.headerTitle, { color: palette.text }]}>Quick Add</Text>
+              <Text style={[styles.headerSubtitle, { color: palette.textMuted }]}>Log your nutrition</Text>
             </View>
           </View>
         </View>
 
         {recentFoods.length > 0 ? (
           <View style={styles.recentSection}>
-            <Text style={[styles.label, { color: t.textMuted, marginBottom: 10 }]}>Your saved foods</Text>
+            <Text style={[styles.label, { color: palette.textMuted, marginBottom: 10 }]}>Your saved foods</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -177,12 +188,12 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
                     key={key}
                     activeOpacity={0.85}
                     onPress={() => applyRecentFood(item)}
-                    style={[styles.recentChip, { backgroundColor: t.chipBg, borderColor: t.inputBorder }]}
+                    style={[styles.recentChip, { backgroundColor: palette.chipBg, borderColor: palette.inputBorder }]}
                   >
-                    <Text style={[styles.recentChipName, { color: t.text }]} numberOfLines={2}>
+                    <Text style={[styles.recentChipName, { color: palette.text }]} numberOfLines={2}>
                       {label}
                     </Text>
-                    <Text style={[styles.recentChipMeta, { color: t.textMuted }]}>
+                    <Text style={[styles.recentChipMeta, { color: palette.textMuted }]}>
                       {cal > 0 ? `${cal} cal` : 'Tap to fill'}
                     </Text>
                   </TouchableOpacity>
@@ -194,7 +205,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
         {/* Food Name */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: t.textMuted }]}>FOOD NAME</Text>
+          <Text style={[styles.label, { color: palette.textMuted }]}>FOOD NAME</Text>
           <FieldInput
             placeholder="e.g. Almond milk"
             value={foodName}
@@ -205,33 +216,33 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
         {/* Quantity */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: t.textMuted }]}>QUANTITY (SERVINGS)</Text>
-          <View style={[styles.quantityContainer, { borderColor: t.inputBorder, backgroundColor: t.inputBg }]}>
+          <Text style={[styles.label, { color: palette.textMuted }]}>QUANTITY (SERVINGS)</Text>
+          <View style={[styles.quantityContainer, { borderColor: palette.inputBorder, backgroundColor: palette.inputBg }]}>
             <TouchableOpacity
-              style={[styles.quantityButton, { backgroundColor: t.chipBg }]}
+              style={[styles.quantityButton, { backgroundColor: palette.chipBg }]}
               onPress={() => updateQuantity(-0.5)}
             >
-              <Ionicons name="remove" size={18} color={t.textMuted} />
+              <Ionicons name="remove" size={18} color={palette.textMuted} />
             </TouchableOpacity>
             <TextInput
-              style={[styles.quantityInput, { color: t.inputText }]}
+              style={[styles.quantityInput, { color: palette.inputText }]}
               value={String(quantity)}
               onChangeText={(val) => setQuantity(parseFloat(val) || 0)}
               keyboardType="decimal-pad"
-              placeholderTextColor={t.inputPlaceholder}
+              placeholderTextColor={palette.inputPlaceholder}
             />
             <TouchableOpacity
-              style={[styles.quantityButton, { backgroundColor: t.chipBg }]}
+              style={[styles.quantityButton, { backgroundColor: palette.chipBg }]}
               onPress={() => updateQuantity(0.5)}
             >
-              <Ionicons name="add" size={18} color={t.textMuted} />
+              <Ionicons name="add" size={18} color={palette.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Calories */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: t.textMuted }]}>CALORIES</Text>
+          <Text style={[styles.label, { color: palette.textMuted }]}>CALORIES</Text>
           <FieldInput
             placeholder="e.g. 60"
             value={calories}
@@ -249,9 +260,9 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
           <Ionicons
             name={showMacros ? 'chevron-up' : 'chevron-down'}
             size={16}
-            color={t.textMuted}
+            color={palette.textMuted}
           />
-          <Text style={[styles.toggleText, { color: t.textMuted }]}>
+          <Text style={[styles.toggleText, { color: palette.textMuted }]}>
             {showMacros ? 'Hide macros' : 'Add macros'}
           </Text>
         </TouchableOpacity>
@@ -268,7 +279,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
             {/* Serving Size */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: t.textMuted }]}>SERVING SIZE (G/SERVING)</Text>
+              <Text style={[styles.label, { color: palette.textMuted }]}>SERVING SIZE (G/SERVING)</Text>
               <FieldInput
                 placeholder="0"
                 value={macros.servingSize}
@@ -280,7 +291,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
             {/* Serving Unit */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: t.textMuted }]}>SERVING UNIT</Text>
+              <Text style={[styles.label, { color: palette.textMuted }]}>SERVING UNIT</Text>
               <FieldInput
                 placeholder="g, ml, cup..."
                 value={macros.servingUnit}
@@ -321,13 +332,13 @@ function FieldInput({ t, style, ...rest }) {
       style={[
         styles.fieldInput,
         {
-          backgroundColor: t.inputBg,
-          color: t.inputText,
-          borderColor: t.inputBorder,
+          backgroundColor: palette.inputBg,
+          color: palette.inputText,
+          borderColor: palette.inputBorder,
         },
         style,
       ]}
-      placeholderTextColor={t.inputPlaceholder}
+      placeholderTextColor={palette.inputPlaceholder}
     />
   );
 }
@@ -335,7 +346,7 @@ function FieldInput({ t, style, ...rest }) {
 function MacroField({ label, value, onChange, t }) {
   return (
     <View style={styles.macroField}>
-      <Text style={[styles.macroLabelText, { color: t.textMuted }]}>{label}</Text>
+      <Text style={[styles.macroLabelText, { color: palette.textMuted }]}>{label}</Text>
       <FieldInput t={t} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
     </View>
   );

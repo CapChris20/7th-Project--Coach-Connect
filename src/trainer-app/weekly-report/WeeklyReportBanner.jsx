@@ -1,13 +1,7 @@
-/**
- * Weekly Report Hero Card
- *
- * Purpose: UI screen or component: Weekly Report Hero Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: WeeklyReportBanner
- *
- * @file-header
- */
+// Weekly report hero card on trainer and client dashboards.
+// Flow: pick client vs trainer copy → show ready/loading chip → tap opens the report.
+// Used by trainer home and client home.
+
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +17,8 @@ const PREMIUM_BG_DARK = ['#12081f', '#08050f'];
 const PREMIUM_BG_LIGHT = ['#F3F0FA', '#FFFFFF'];
 
 const ACCENT_BORDER_GRADIENT = WR_BRAND_GRADIENT;
+
+// ===== NAMED CONSTANTS =====
 
 const CHECK_COLORS = ['#67E8F9', '#F472B6', '#FB923C', '#C084FC'];
 
@@ -40,9 +36,11 @@ const BENEFITS_TRAINER = [
   'Populates after the scheduled weekly summary job runs',
 ];
 
+// ===== HELPER FUNCTIONS =====
+
 function firstNameFromDisplay(name) {
-  const s = String(name || '').trim();
-  return s.split(/\s+/)[0] || 'Client';
+  const displayName = String(name || '').trim();
+  return displayName.split(/\s+/)[0] || 'Client';
 }
 
 /**
@@ -54,12 +52,12 @@ function firstNameFromDisplay(name) {
 /** Small status chip — no nested gradient ring (design-system compact row). */
 function InlineStatusChip({ isDark, loading, ready }) {
   const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.1)';
-  const bg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.04)';
+  const chipBackground = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.04)';
   const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.5)';
   const readyColor = isDark ? '#A7F3D0' : '#047857';
 
   return (
-    <View style={[inlineStyles.statusChip, { borderColor: border, backgroundColor: bg }]}>
+    <View style={[inlineStyles.statusChip, { borderColor: border, backgroundColor: chipBackground }]}>
       {loading ? (
         <ActivityIndicator size="small" color={ACCENT_PURPLE} />
       ) : ready ? (
@@ -77,6 +75,11 @@ function InlineStatusChip({ isDark, loading, ready }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Weekly-report entry card. Tap opens the report when one is ready.
+ */
 export default function WeeklyReportBanner({
   onOpenReport,
   isDark = true,

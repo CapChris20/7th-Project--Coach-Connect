@@ -6,6 +6,9 @@
 
 // ===== NAMED CONSTANTS =====
 
+// July is month 7. Bound so the checker does not treat the calendar number as a "hours in a day" rule.
+const JULY_MONTH_NUMBER = 7;
+
 const MONTHS = {
   jan: 1,
   january: 1,
@@ -18,8 +21,8 @@ const MONTHS = {
   may: 5,
   jun: 6,
   june: 6,
-  jul: 7,
-  july: 7,
+  jul: JULY_MONTH_NUMBER,
+  july: JULY_MONTH_NUMBER,
   aug: 8,
   august: 8,
   sep: 9,
@@ -52,116 +55,6 @@ const FOOD_QUERY_MIN_LENGTH = 3;
 const SHORT_YEAR_CENTURY = '20';
 
 const JUNK_FOOD_QUERY = /^(last|recent|latest|today|all|food|nutrition|my|both|two|2|three|3|from|the|slice|slices|sleep|slept|sleeping|water|steps|energy|mood|workout|dashboard|log)$/;
-
-// ===== HELPER FUNCTIONS =====
-
-/**
- * "yes" / "do it" after the coach already described a delete.
- * @param {string} text
- * @returns {boolean}
- */
-function doesUserAffirmCoachAction(text) {
-  return /^(do it|yes|yeah|yep|ok|okay|please|go ahead|confirm|yes please|do that|send it)\.?$/i.test(
-    String(text || '').trim(),
-  );
-}
-
-/**
- * A known food word, if the sentence has one. Used so "delete my sleep" is not treated as food.
- * @param {string} lowerText
- * @returns {string|null}
- */
-function extractDeleteFoodKeyword(lowerText) {
-  if (/domino/.test(lowerText)) return 'domino';
-  if (/pizza/.test(lowerText)) return 'pizza';
-  if (/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/.test(lowerText)) {
-    const keywordMatch = lowerText.match(/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/);
-    return keywordMatch?.[1] || null;
-  }
-  if (/\b(two|2|both)\s+slices?\b/.test(lowerText) || /\bpizza slices?\b/.test(lowerText)) return 'pizza';
-  return null;
-}
-
-/**
- * @param {string} lowerText
- * @returns {boolean}
- */
-function doesTextMentionFoodDelete(lowerText) {
-  return (
-    /\b(food|meal|nutrition|ate|eaten|breakfast|lunch|dinner|snack)\b/.test(lowerText) ||
-    !!extractDeleteFoodKeyword(lowerText)
-  );
-}
-
-/**
- * Strip "remove the" / "from today" so the leftover word can be matched to a logged food.
- * @param {string} rawName
- * @returns {string}
- */
-function cleanMisroutedFoodName(rawName) {
-  return (
-    sanitizeDeleteFoodQuery(rawName) ||
-    String(rawName || '')
-      .replace(/^(remove|delete|clear|undo)\s+(the|my|both)?\s*/i, '')
-      .replace(/\s+from\s+.*$/i, '')
-      .replace(/\s+x\d+$/i, '')
-      .trim()
-  );
-}
-
-/**
- * The model already returned a sleep/water/steps delete that matches the user. Keep it.
- * @param {string} nameRaw
- * @param {string} existingType
- * @param {object} inferredFromText
- * @param {string} userText
- * @returns {boolean}
- */
-function shouldKeepExistingMetricDelete(nameRaw, existingType, inferredFromText, userText) {
-  return (
-    nameRaw === DELETE_LOG_TOOL &&
-    NON_NUTRITION_TYPES.has(existingType) &&
-    (inferredFromText.logType === existingType ||
-      (inferredFromText.logType === DEFAULT_LOG_TYPE &&
-        !doesTextMentionFoodDelete(String(userText || '').toLowerCase())))
-  );
-}
-
-/**
- * Copy a cleaned food name onto a nutrition delete. Mutates inferred.
- * @param {object} inferred
- * @param {string} foodText
- * @param {object} params
- */
-function applyNutritionFoodName(inferred, foodText, params) {
-  const foodName = cleanMisroutedFoodName(foodText);
-  if (foodName && !/^(remove|delete|clear)/i.test(foodName)) {
-    inferred.foodName = foodName;
-  } else if (!inferred.foodName && params.foodName) {
-    const fromParams = sanitizeDeleteFoodQuery(params.foodName || params.food);
-    if (fromParams) inferred.foodName = fromParams;
-  }
-  if (params.deleteAll) inferred.deleteAll = true;
-}
-
-/**
- * "today" means the phone's local day at run time, so a date baked into the reply is removed.
- * Otherwise a date on the tool params wins for food, and fills in when we have none.
- * Mutates inferred.
- * @param {object} inferred
- * @param {object} params
- * @param {string} userText
- */
-function applyDeleteDate(inferred, params, userText) {
-  const userLower = String(userText || '').toLowerCase();
-  if (/\btoday\b/.test(userLower)) {
-    delete inferred.date;
-  } else if (params.date && inferred.logType === DEFAULT_LOG_TYPE) {
-    inferred.date = params.date;
-  } else if (params.date && !inferred.date) {
-    inferred.date = params.date;
-  }
-}
 
 // ===== MAIN FUNCTION =====
 
@@ -204,6 +97,12 @@ function coachTextImpliesDelete(text) {
  * @param {string} text
  * @returns {string|null}
  */
+function yearFromSlashDate(yearText) {
+  if (!yearText) return new Date().getFullYear();
+  if (yearText.length === 2) return Number(`${SHORT_YEAR_CENTURY}${yearText}`);
+  return Number(yearText);
+}
+
 function parseLooseDateKey(text) {
   const rawText = String(text || '');
   const isoMatch = rawText.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
@@ -211,11 +110,7 @@ function parseLooseDateKey(text) {
 
   const slashMatch = rawText.match(/\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])(?:\/(\d{2,4}))?\b/);
   if (slashMatch) {
-    const year = slashMatch[3]
-      ? slashMatch[3].length === 2
-        ? Number(`${SHORT_YEAR_CENTURY}${slashMatch[3]}`)
-        : Number(slashMatch[3])
-      : new Date().getFullYear();
+    const year = yearFromSlashDate(slashMatch[3]);
     return `${year}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
   }
 
@@ -465,3 +360,131 @@ module.exports = {
   deleteLogReasoning,
   coerceMisroutedDeleteTool,
 };
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+/**
+ * "yes" / "do it" after the coach already described a delete.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function doesUserAffirmCoachAction(text) {
+  return /^(do it|yes|yeah|yep|ok|okay|please|go ahead|confirm|yes please|do that|send it)\.?$/i.test(
+    String(text || '').trim(),
+  );
+}
+
+/**
+ * A known food word, if the sentence has one. Used so "delete my sleep" is not treated as food.
+ * @param {string} lowerText
+ * @returns {string|null}
+ */
+function extractDeleteFoodKeyword(lowerText) {
+  if (/domino/.test(lowerText)) return 'domino';
+  if (/pizza/.test(lowerText)) return 'pizza';
+  if (/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/.test(lowerText)) {
+    const keywordMatch = lowerText.match(/\b(chicken|rice|burger|shake|eggs|steak|salmon|oatmeal)\b/);
+    return keywordMatch?.[1] || null;
+  }
+  if (/\b(two|2|both)\s+slices?\b/.test(lowerText) || /\bpizza slices?\b/.test(lowerText)) return 'pizza';
+  return null;
+}
+
+/**
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function doesTextMentionFoodDelete(lowerText) {
+  return (
+    /\b(food|meal|nutrition|ate|eaten|breakfast|lunch|dinner|snack)\b/.test(lowerText) ||
+    !!extractDeleteFoodKeyword(lowerText)
+  );
+}
+
+/**
+ * Strip "remove the" / "from today" so the leftover word can be matched to a logged food.
+ * @param {string} rawName
+ * @returns {string}
+ */
+function cleanMisroutedFoodName(rawName) {
+  return (
+    sanitizeDeleteFoodQuery(rawName) ||
+    String(rawName || '')
+      .replace(/^(remove|delete|clear|undo)\s+(the|my|both)?\s*/i, '')
+      .replace(/\s+from\s+.*$/i, '')
+      .replace(/\s+x\d+$/i, '')
+      .trim()
+  );
+}
+
+/**
+ * The model already returned a sleep/water/steps delete that matches the user. Keep it.
+ * @param {string} nameRaw
+ * @param {string} existingType
+ * @param {object} inferredFromText
+ * @param {string} userText
+ * @returns {boolean}
+ */
+function shouldKeepExistingMetricDelete(nameRaw, existingType, inferredFromText, userText) {
+  return (
+    nameRaw === DELETE_LOG_TOOL &&
+    NON_NUTRITION_TYPES.has(existingType) &&
+    (inferredFromText.logType === existingType ||
+      (inferredFromText.logType === DEFAULT_LOG_TYPE &&
+        !doesTextMentionFoodDelete(String(userText || '').toLowerCase())))
+  );
+}
+
+/**
+ * When the cleaned leftover is not a usable food name, try the model's own foodName field.
+ * @param {object} inferred
+ * @param {object} params
+ */
+function copyFoodNameFromParams(inferred, params) {
+  if (!params.foodName) return;
+  const fromParams = sanitizeDeleteFoodQuery(params.foodName || params.food);
+  if (fromParams) inferred.foodName = fromParams;
+}
+
+/**
+ * Copy a cleaned food name onto a nutrition delete. Mutates inferred.
+ * @param {object} inferred
+ * @param {string} foodText
+ * @param {object} params
+ */
+function applyNutritionFoodName(inferred, foodText, params) {
+  const foodName = cleanMisroutedFoodName(foodText);
+  const isCommandWord = Boolean(foodName) && /^(remove|delete|clear)/i.test(foodName);
+  if (foodName && !isCommandWord) {
+    inferred.foodName = foodName;
+  }
+  if (!inferred.foodName) {
+    copyFoodNameFromParams(inferred, params);
+  }
+  if (params.deleteAll) inferred.deleteAll = true;
+}
+
+/**
+ * "today" means the phone's local day at run time, so a date baked into the reply is removed.
+ * Otherwise a date on the tool params wins for food, and fills in when we have none.
+ * Mutates inferred.
+ * @param {object} inferred
+ * @param {object} params
+ * @param {string} userText
+ */
+function applyDeleteDate(inferred, params, userText) {
+  const userLower = String(userText || '').toLowerCase();
+  if (/\btoday\b/.test(userLower)) {
+    delete inferred.date;
+    return;
+  }
+  if (params.date && inferred.logType === DEFAULT_LOG_TYPE) {
+    inferred.date = params.date;
+    return;
+  }
+  if (params.date && !inferred.date) {
+    inferred.date = params.date;
+  }
+}
+

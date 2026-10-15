@@ -1,13 +1,7 @@
-/**
- * Workout Exercise Library Tab
- *
- * Purpose: Workout Exercise Library Tab — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: ExerciseVideosTab
- *
- * @file-header
- */
+// Exercise Library tab — search + recommended YouTube form videos for the Workout screen.
+// Flow: load saved likes → debounce search → fetch videos → filter pills → open detail player.
+// Used by: CreateWorkoutPlanScreen Library tab. Key export: ExerciseVideosTab.
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -27,7 +21,6 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../app-start/cloudConnection';
@@ -38,9 +31,12 @@ import ExerciseCard from './ExerciseCard';
 import ShortVideoCard from './ShortVideoCard';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 
+// ===== NAMED CONSTANTS =====
+
 const { width: SCREEN_W } = Dimensions.get('window');
 const GUTTER = 20;
 const SAVED_KEY = '@coachconnect_exercise_library_saved';
+
 /** Aurora rim — hot pink → dark orange (matches home hero + user prefs) */
 const LIBRARY_RIM = ['#FF6B9D', '#C2410C'];
 const SEARCH_FIELD_BORDER_GRADIENT = LIBRARY_RIM;
@@ -52,12 +48,150 @@ const SECTION_GRADIENT = {
   search: LIBRARY_RIM,
 };
 const FILTER_ACTIVE_GRADIENT = LIBRARY_RIM;
+
+// Manipulate here: press animation speed on legacy VideoTile
 const TRANS_MS = 260;
 const CARD_GAP = 12;
+const FALLBACK_SCREEN_WIDTH = 390;
+const MIN_USABLE_GRID_WIDTH = 280;
+
+// Manipulate here: bottom padding under the library list (above shell nav)
+const SHELL_NAV_INSET_EXTRA = 24;
+
+// Manipulate here: how long to wait after typing before searching YouTube
+const SEARCH_DEBOUNCE_MS = 320;
+
+const SECONDS_PER_MINUTE = 60;
+const MAX_DESCRIPTION_CHARS = 360;
+const MAX_MUSCLE_BADGES = 3;
+const MAX_LIKED_EXERCISES_STORED = 80;
+const RECOMMENDED_CAROUSEL_COUNT = 5;
+const GOALS_GRID_START = 5;
+const GOALS_GRID_END = 14;
+const FORM_GRID_START = 14;
+const FORM_GRID_END = 23;
+const FILTERED_FOR_YOU_END = 8;
+const BASED_ON_GOALS_START = 8;
+const BASED_ON_GOALS_END = 16;
+const FORM_FUNDAMENTALS_WANT = 8;
+const FORM_FUNDAMENTALS_MIN = 4;
+const FORM_FUNDAMENTALS_FALLBACK_START = 16;
+const FORM_FUNDAMENTALS_FALLBACK_END = 24;
+const DUR_5_15_MIN = 5;
+const DUR_5_15_MAX = 15;
+const DUR_15_30_MAX = 30;
+
+/** Goal pills shown only when onboarding text implies them. */
+const JOURNEY_GOAL_PILL_META = [
+  {
+    id: 'body_recomp',
+    label: 'Body Recomp',
+    type: 'kw',
+    includeIf: /\b(body\s*recomp|recomposition|recomp\b|maingain|lean\s*bulk|body\s*recomposition)\b/,
+    re: /\b(body\s*)?recomp(ositions?)?\b|\bmaingain\b|\brecomp\b/i,
+  },
+  {
+    id: 'skinny_fat',
+    label: 'Skinny-Fat',
+    type: 'kw',
+    includeIf: /\b(skinny[\s-]?fat|thin[\s-]?fat|skinnyfat)\b/,
+    re: /\bskinny[-\s]?fat\b|\bthin\s*fat\b/i,
+  },
+  {
+    id: 'bulking',
+    label: 'Bulking',
+    type: 'kw',
+    includeIf: /\b(bulk|bulking|mass\s*gain|caloric\s*surplus|surplus|weight\s*gain|gain\s*weight|size\b)\b/,
+    re: /\bbulk(?:ing)?\b|\bmass\s*gain\b/i,
+  },
+  {
+    id: 'cutting',
+    label: 'Cutting',
+    type: 'kw',
+    includeIf: /\b(cut\b|cutting|shred|shredded|caloric\s*deficit|deficit\b|lean\s*out|get\s*lean)\b/,
+    re: /\bcut(?:ting)?\b|\bshred\b/i,
+  },
+  {
+    id: 'fat_loss',
+    label: 'Fat Loss',
+    type: 'kw',
+    includeIf: /\b(fat\s*loss|lose\s*(weight|fat)|weight\s*loss|burn\s*fat|drop\s*(weight|lbs)|shed|slim)\b/,
+    re: /\bfat\s*loss\b|\bweight\s*loss\b|\bcutting\b/i,
+  },
+  {
+    id: 'muscle_gain',
+    label: 'Muscle Gain',
+    type: 'kw',
+    includeIf: /\b(muscle\s*gain|build(ing)?\s*muscle|hypertrophy|get\s*bigger|more\s*musc|gain\s*musc|strength\s*&\s*size)\b/,
+    re: /\bmuscle\b|\bhypertrophy\b|\bstrength\b/i,
+  },
+];
+
+/** Style / split pills shown only when onboarding text implies them. */
+const JOURNEY_STYLE_PILL_META = [
+  {
+    id: 'full_body',
+    label: 'Full Body',
+    type: 'kw',
+    includeIf: /\bfull\s*body\b/,
+    re: /\bfull\s*body\b/i,
+  },
+  {
+    id: 'upper_body',
+    label: 'Upper Body',
+    type: 'kw',
+    includeIf: /\bupper\s*body\b/,
+    re: /\bupper\s*body\b/i,
+  },
+  {
+    id: 'lower_body',
+    label: 'Lower Body',
+    type: 'kw',
+    includeIf: /\blower\s*body\b/,
+    re: /\blower\s*body\b/i,
+  },
+  {
+    id: 'ppl',
+    label: 'Push Pull Legs',
+    type: 'kw',
+    includeIf: /\b(ppl|push[\s-]?pull[\s-]?legs)\b/,
+    re: /\b(push\s*pull|ppl|legs\s*day)\b/i,
+  },
+  {
+    id: 'hiit',
+    label: 'HIIT',
+    type: 'kw',
+    includeIf: /\bhiit\b|\bhigh[\s-]?intensity\b|\binterval\s*training\b/,
+    re: /\bhiit\b|\binterval\b/i,
+  },
+  {
+    id: 'strength',
+    label: 'Strength',
+    type: 'kw',
+    includeIf: /\bstrength\b|\bpowerlifting\b|\b5x5\b|\b1rm\b|\bmax\s*strength\b/,
+    re: /\bstrength\b|\bpower\b/i,
+  },
+  {
+    id: 'cardio',
+    label: 'Cardio',
+    type: 'kw',
+    includeIf: /\bcardio\b|\bcycling\b|\brunning\b|\bconditioning\b|\bendurance\b|\bzone\s*2\b/,
+    re: /\bcardio\b|\bconditioning\b/i,
+  },
+  {
+    id: 'functional',
+    label: 'Functional',
+    type: 'kw',
+    includeIf: /\bfunctional\b|\bathletic\b|\bcrossfit\b|\bmovement\b/,
+    re: /\bfunctional\b/i,
+  },
+];
+
+// ===== HELPER FUNCTIONS =====
 
 function twoColCardWidth() {
-  const w = Dimensions.get('window')?.width || SCREEN_W || 390;
-  const usable = Math.max(280, w - GUTTER * 2);
+  const windowWidth = Dimensions.get('window')?.width || SCREEN_W || FALLBACK_SCREEN_WIDTH;
+  const usable = Math.max(MIN_USABLE_GRID_WIDTH, windowWidth - GUTTER * 2);
   return Math.floor((usable - CARD_GAP) / 2);
 }
 
@@ -117,199 +251,147 @@ const MUSCLE_KEYWORDS = [
   { label: 'Core', re: /\b(core|ab|plank|crunch)\b/i },
 ];
 
+/**
+ * Append one onboarding field (or array of fields) into the corpus parts list.
+ * @param {Array<string>} parts
+ * @param {*} value
+ */
+function appendCorpusValue(parts, value) {
+  if (value == null || value === '') return;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => appendCorpusValue(parts, entry));
+    return;
+  }
+  parts.push(String(value));
+}
+
 /** Lowercase blob from onboarding — drives which journey filter pills appear. */
 function extractOnboardingCorpus(onboardingData) {
   if (!onboardingData || typeof onboardingData !== 'object') return '';
+
   const parts = [];
-  const add = (v) => {
-    if (v == null || v === '') return;
-    if (Array.isArray(v)) {
-      v.forEach((x) => add(x));
-      return;
-    }
-    parts.push(String(v));
-  };
-  add(onboardingData.goal);
-  add(onboardingData.primaryGoal);
-  add(onboardingData.situationDescription);
-  add(onboardingData.fitnessLevel);
-  add(onboardingData.experience);
-  add(onboardingData.frequency);
-  add(onboardingData.daysPerWeek);
-  add(onboardingData.workoutsPerWeek);
-  add(onboardingData.trainingEnvironment);
-  add(onboardingData.equipmentAccess);
-  add(onboardingData.equipment);
-  add(onboardingData.availableEquipment);
-  add(onboardingData.limitations);
-  add(onboardingData.personalInfo);
-  add(onboardingData.exercisesDislike);
-  add(onboardingData.injuries);
-  add(onboardingData.goals);
+  appendCorpusValue(parts, onboardingData.goal);
+  appendCorpusValue(parts, onboardingData.primaryGoal);
+  appendCorpusValue(parts, onboardingData.situationDescription);
+  appendCorpusValue(parts, onboardingData.fitnessLevel);
+  appendCorpusValue(parts, onboardingData.experience);
+  appendCorpusValue(parts, onboardingData.frequency);
+  appendCorpusValue(parts, onboardingData.daysPerWeek);
+  appendCorpusValue(parts, onboardingData.workoutsPerWeek);
+  appendCorpusValue(parts, onboardingData.trainingEnvironment);
+  appendCorpusValue(parts, onboardingData.equipmentAccess);
+  appendCorpusValue(parts, onboardingData.equipment);
+  appendCorpusValue(parts, onboardingData.availableEquipment);
+  appendCorpusValue(parts, onboardingData.limitations);
+  appendCorpusValue(parts, onboardingData.personalInfo);
+  appendCorpusValue(parts, onboardingData.exercisesDislike);
+  appendCorpusValue(parts, onboardingData.injuries);
+  appendCorpusValue(parts, onboardingData.goals);
+
   return parts.join(' ').replace(/_/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Turn one pill meta row into a filter pill (drops includeIf).
+ * @param {object} row
+ * @returns {object}
+ */
+function pillFromMetaRow(row) {
+  const { includeIf, ...pill } = row;
+  void includeIf;
+  return pill;
+}
+
+/**
+ * Goal pills that match the corpus, skipping fat_loss/muscle_gain when cutting/bulking already present.
+ * @param {string} corpus
+ * @returns {Array}
+ */
+function collectMatchingGoalPills(corpus) {
+  const pills = [];
+
+  for (const row of JOURNEY_GOAL_PILL_META) {
+    if (!row.includeIf.test(corpus)) continue;
+    if (row.id === 'muscle_gain' && pills.some((pill) => pill.id === 'bulking')) continue;
+    if (row.id === 'fat_loss' && pills.some((pill) => pill.id === 'cutting')) continue;
+    pills.push(pillFromMetaRow(row));
+  }
+
+  return pills;
+}
+
+/**
+ * Style / split pills that match the corpus.
+ * @param {string} corpus
+ * @returns {Array}
+ */
+function collectMatchingStylePills(corpus) {
+  const pills = [];
+  for (const row of JOURNEY_STYLE_PILL_META) {
+    if (!row.includeIf.test(corpus)) continue;
+    pills.push(pillFromMetaRow(row));
+  }
+  return pills;
 }
 
 /**
  * Goal / split keyword pills only when onboarding copy implies them.
  * `re` filters video rows when a pill is selected (unchanged behavior).
+ * @param {string} corpusRaw
+ * @returns {Array}
  */
 function buildJourneyKeywordPillsFromCorpus(corpusRaw) {
-  const c = String(corpusRaw || '').trim();
-  if (!c) return [];
-
-  const GOAL_META = [
-    {
-      id: 'body_recomp',
-      label: 'Body Recomp',
-      type: 'kw',
-      includeIf: /\b(body\s*recomp|recomposition|recomp\b|maingain|lean\s*bulk|body\s*recomposition)\b/,
-      re: /\b(body\s*)?recomp(ositions?)?\b|\bmaingain\b|\brecomp\b/i,
-    },
-    {
-      id: 'skinny_fat',
-      label: 'Skinny-Fat',
-      type: 'kw',
-      includeIf: /\b(skinny[\s-]?fat|thin[\s-]?fat|skinnyfat)\b/,
-      re: /\bskinny[-\s]?fat\b|\bthin\s*fat\b/i,
-    },
-    {
-      id: 'bulking',
-      label: 'Bulking',
-      type: 'kw',
-      includeIf: /\b(bulk|bulking|mass\s*gain|caloric\s*surplus|surplus|weight\s*gain|gain\s*weight|size\b)\b/,
-      re: /\bbulk(?:ing)?\b|\bmass\s*gain\b/i,
-    },
-    {
-      id: 'cutting',
-      label: 'Cutting',
-      type: 'kw',
-      includeIf: /\b(cut\b|cutting|shred|shredded|caloric\s*deficit|deficit\b|lean\s*out|get\s*lean)\b/,
-      re: /\bcut(?:ting)?\b|\bshred\b/i,
-    },
-    {
-      id: 'fat_loss',
-      label: 'Fat Loss',
-      type: 'kw',
-      includeIf: /\b(fat\s*loss|lose\s*(weight|fat)|weight\s*loss|burn\s*fat|drop\s*(weight|lbs)|shed|slim)\b/,
-      re: /\bfat\s*loss\b|\bweight\s*loss\b|\bcutting\b/i,
-    },
-    {
-      id: 'muscle_gain',
-      label: 'Muscle Gain',
-      type: 'kw',
-      includeIf: /\b(muscle\s*gain|build(ing)?\s*muscle|hypertrophy|get\s*bigger|more\s*musc|gain\s*musc|strength\s*&\s*size)\b/,
-      re: /\bmuscle\b|\bhypertrophy\b|\bstrength\b/i,
-    },
-  ];
-
-  const STYLE_META = [
-    {
-      id: 'full_body',
-      label: 'Full Body',
-      type: 'kw',
-      includeIf: /\bfull\s*body\b/,
-      re: /\bfull\s*body\b/i,
-    },
-    {
-      id: 'upper_body',
-      label: 'Upper Body',
-      type: 'kw',
-      includeIf: /\bupper\s*body\b/,
-      re: /\bupper\s*body\b/i,
-    },
-    {
-      id: 'lower_body',
-      label: 'Lower Body',
-      type: 'kw',
-      includeIf: /\blower\s*body\b/,
-      re: /\blower\s*body\b/i,
-    },
-    {
-      id: 'ppl',
-      label: 'Push Pull Legs',
-      type: 'kw',
-      includeIf: /\b(ppl|push[\s-]?pull[\s-]?legs)\b/,
-      re: /\b(push\s*pull|ppl|legs\s*day)\b/i,
-    },
-    {
-      id: 'hiit',
-      label: 'HIIT',
-      type: 'kw',
-      includeIf: /\bhiit\b|\bhigh[\s-]?intensity\b|\binterval\s*training\b/,
-      re: /\bhiit\b|\binterval\b/i,
-    },
-    {
-      id: 'strength',
-      label: 'Strength',
-      type: 'kw',
-      includeIf: /\bstrength\b|\bpowerlifting\b|\b5x5\b|\b1rm\b|\bmax\s*strength\b/,
-      re: /\bstrength\b|\bpower\b/i,
-    },
-    {
-      id: 'cardio',
-      label: 'Cardio',
-      type: 'kw',
-      includeIf: /\bcardio\b|\bcycling\b|\brunning\b|\bconditioning\b|\bendurance\b|\bzone\s*2\b/,
-      re: /\bcardio\b|\bconditioning\b/i,
-    },
-    {
-      id: 'functional',
-      label: 'Functional',
-      type: 'kw',
-      includeIf: /\bfunctional\b|\bathletic\b|\bcrossfit\b|\bmovement\b/,
-      re: /\bfunctional\b/i,
-    },
-  ];
-
-  const out = [];
-  for (const row of GOAL_META) {
-    if (!row.includeIf.test(c)) continue;
-    if (row.id === 'muscle_gain' && out.some((p) => p.id === 'bulking')) continue;
-    if (row.id === 'fat_loss' && out.some((p) => p.id === 'cutting')) continue;
-    const { includeIf, ...pill } = row;
-    out.push(pill);
-  }
-  for (const row of STYLE_META) {
-    if (!row.includeIf.test(c)) continue;
-    const { includeIf, ...pill } = row;
-    out.push(pill);
-  }
-  return out;
+  const corpus = String(corpusRaw || '').trim();
+  if (!corpus) return [];
+  return [...collectMatchingGoalPills(corpus), ...collectMatchingStylePills(corpus)];
 }
 
 function buildUtilityKeywordPills() {
-  const add = (id, label, type, re) => ({ id, label, type, re });
+  const makePill = (id, label, type, re) => ({ id, label, type, re });
   return [
-    add('dur_5_15', '5-15 min', 'dur', null),
-    add('dur_15_30', '15-30 min', 'dur', null),
-    add('dur_30_plus', '30+ min', 'dur', null),
-    add('lvl_beginner', 'Beginner', 'lvl', null),
-    add('lvl_intermediate', 'Intermediate', 'lvl', null),
-    add('lvl_advanced', 'Advanced', 'lvl', null),
+    makePill('dur_5_15', '5-15 min', 'dur', null),
+    makePill('dur_15_30', '15-30 min', 'dur', null),
+    makePill('dur_30_plus', '30+ min', 'dur', null),
+    makePill('lvl_beginner', 'Beginner', 'lvl', null),
+    makePill('lvl_intermediate', 'Intermediate', 'lvl', null),
+    makePill('lvl_advanced', 'Advanced', 'lvl', null),
   ];
 }
 
 const BADGE_COLORS = ['pink', 'purple', 'cyan', 'orange'];
 
 function mapFitnessToDifficulty(level) {
-  const s = String(level || '').toLowerCase();
-  if (s.includes('begin')) return 'Beginner';
-  if (s.includes('adv')) return 'Advanced';
+  const lower = String(level || '').toLowerCase();
+  if (lower.includes('begin')) return 'Beginner';
+  if (lower.includes('adv')) return 'Advanced';
   return 'Intermediate';
+}
+
+/**
+ * Collect muscle badge labels that match the video title (capped).
+ * @param {string} titleText
+ * @returns {Array<{label: string, color: string}>}
+ */
+function collectMuscleBadgesFromTitle(titleText) {
+  const found = [];
+  for (const muscleRule of MUSCLE_KEYWORDS) {
+    if (!muscleRule.re.test(titleText)) continue;
+    found.push({
+      label: muscleRule.label,
+      color: BADGE_COLORS[found.length % BADGE_COLORS.length],
+    });
+    if (found.length >= MAX_MUSCLE_BADGES) break;
+  }
+  return found;
 }
 
 function inferMusclesFromText(title, forcedMuscle) {
   if (forcedMuscle) {
     return [{ label: forcedMuscle, color: BADGE_COLORS[0] }];
   }
-  const t = String(title || '');
-  const found = [];
-  for (const m of MUSCLE_KEYWORDS) {
-    if (m.re.test(t)) {
-      found.push({ label: m.label, color: BADGE_COLORS[found.length % BADGE_COLORS.length] });
-      if (found.length >= 3) break;
-    }
-  }
+
+  const titleText = String(title || '');
+  const found = collectMuscleBadgesFromTitle(titleText);
   if (found.length === 0) {
     return [{ label: 'Full body', color: 'purple' }];
   }
@@ -324,16 +406,32 @@ function defaultFormTips() {
   ];
 }
 
+function setsForDifficulty(difficulty) {
+  if (difficulty === 'Advanced') return 5;
+  if (difficulty === 'Beginner') return 3;
+  return 4;
+}
+
+function repsForDifficulty(difficulty) {
+  if (difficulty === 'Advanced') return '4–6';
+  if (difficulty === 'Beginner') return '10–15';
+  return '8–12';
+}
+
 function mapItemToExercise(item, idx, { defaultDifficulty, forcedMuscle }) {
   const difficulty = defaultDifficulty || 'Intermediate';
-  const sets = difficulty === 'Advanced' ? 5 : difficulty === 'Beginner' ? 3 : 4;
-  const reps = difficulty === 'Advanced' ? '4–6' : difficulty === 'Beginner' ? '10–15' : '8–12';
+  const sets = setsForDifficulty(difficulty);
+  const reps = repsForDifficulty(difficulty);
   const muscles = inferMusclesFromText(item.title, forcedMuscle);
   const desc =
-    item.description?.trim()?.slice(0, 360) ||
+    item.description?.trim()?.slice(0, MAX_DESCRIPTION_CHARS) ||
     'Form and technique demonstration from search results.';
-  const durationSeconds = typeof item?.durationSeconds === 'number' ? item.durationSeconds : undefined;
-  const durationMinutes = durationSeconds ? Math.max(1, Math.round(durationSeconds / 60)) : undefined;
+  const durationSeconds =
+    typeof item?.durationSeconds === 'number' ? item.durationSeconds : undefined;
+  const durationMinutes = durationSeconds
+    ? Math.max(1, Math.round(durationSeconds / SECONDS_PER_MINUTE))
+    : undefined;
+
   return {
     id: `yt_${item.videoId}_${idx}`,
     name: item.title.replace(/\s+/g, ' ').trim(),
@@ -352,21 +450,72 @@ function mapItemToExercise(item, idx, { defaultDifficulty, forcedMuscle }) {
 }
 
 function exercisesToGridVideos(exercises) {
-  return (exercises || []).map((e) => ({
-    id: e.videoId,
-    title: e.name,
-    channel: e.channel,
-    exercise: e.name,
-    exerciseRef: e,
+  return (exercises || []).map((exercise) => ({
+    id: exercise.videoId,
+    title: exercise.name,
+    channel: exercise.channel,
+    exercise: exercise.name,
+    exerciseRef: exercise,
   }));
 }
 
 /**
+ * True when an exercise passes one selected filter pill (level / duration / keyword regex).
+ * Soft rules: missing difficulty or duration does not drop the row.
+ * @param {object} exercise
+ * @param {object} pill
+ * @returns {boolean}
+ */
+function exercisePassesOneKeywordPill(exercise, pill) {
+  const haystack = `${exercise?.name || ''} ${exercise?.channel || ''}`.toLowerCase();
+
+  if (pill.type === 'lvl') {
+    const difficulty = String(exercise?.difficulty || '').toLowerCase();
+    if (difficulty && difficulty !== pill.label.toLowerCase()) return false;
+    return true;
+  }
+
+  if (pill.type === 'dur') {
+    const minutes = typeof exercise?.durationMinutes === 'number' ? exercise.durationMinutes : null;
+    if (!minutes) return true;
+    if (pill.id === 'dur_5_15' && !(minutes >= DUR_5_15_MIN && minutes <= DUR_5_15_MAX)) {
+      return false;
+    }
+    if (pill.id === 'dur_15_30' && !(minutes > DUR_5_15_MAX && minutes <= DUR_15_30_MAX)) {
+      return false;
+    }
+    if (pill.id === 'dur_30_plus' && !(minutes > DUR_15_30_MAX)) return false;
+    return true;
+  }
+
+  if (pill.re && !pill.re.test(haystack)) return false;
+  return true;
+}
+
+/**
+ * Keep exercises that pass every selected keyword / duration / level pill.
+ * @param {Array} list
+ * @param {Array} selectedPills
+ * @returns {Array}
+ */
+function filterExercisesByKeywordPills(list, selectedPills) {
+  if (!selectedPills.length) return list;
+  return (list || []).filter((exercise) => {
+    for (const pill of selectedPills) {
+      if (!exercisePassesOneKeywordPill(exercise, pill)) return false;
+    }
+    return true;
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
  * Exercise Library panel for the Workout screen Library tab.
- * Uses YouTube Data API (env key) for thumbnails/metadata; no hardcoded video IDs.
+ * Uses YouTube Data API (via server) for thumbnails/metadata; no hardcoded video IDs.
  */
 export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingData }) {
-  const shellNavInset = useShellBottomNavInset(24);
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_EXTRA);
   const COLORS = isDark ? COLORS_DARK : COLORS_LIGHT;
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -384,8 +533,9 @@ export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingDat
   }, [activeExercise?.id]);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), 320);
-    return () => clearTimeout(t);
+    // Manipulate here: SEARCH_DEBOUNCE_MS — lower = faster search, higher = fewer YouTube calls
+    const debounceTimer = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(debounceTimer);
   }, [query]);
 
   useEffect(() => {
@@ -425,7 +575,13 @@ export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingDat
       let next;
       if (isLiked) {
         const entry = { id, name, likedAt: new Date().toISOString() };
-        next = [entry, ...prev.filter((x) => String(x?.id || x?.name) !== id && String(x?.name) !== name)].slice(0, 80);
+        next = [
+          entry,
+          ...prev.filter(
+            (liked) =>
+              String(liked?.id || liked?.name) !== id && String(liked?.name) !== name,
+          ),
+        ].slice(0, MAX_LIKED_EXERCISES_STORED);
       } else {
         next = prev.filter((x) => String(x?.id || '') !== id && String(x?.name || '') !== name);
       }
@@ -580,30 +736,8 @@ export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingDat
 
   const applyKeywordFilters = useCallback(
     (list) => {
-      const sel = selectedKeywords;
-      if (!sel || sel.size === 0) return list;
-
-      const selected = keywordPills.filter((p) => sel.has(p.id));
-      return (list || []).filter((ex) => {
-        const t = `${ex?.name || ''} ${ex?.channel || ''}`.toLowerCase();
-        for (const p of selected) {
-          if (p.type === 'lvl') {
-            // Soft: if difficulty is missing/unreliable, don't nuke results.
-            const d = String(ex?.difficulty || '').toLowerCase();
-            if (d && d !== p.label.toLowerCase()) return false;
-          } else if (p.type === 'dur') {
-            const m = typeof ex?.durationMinutes === 'number' ? ex.durationMinutes : null;
-            // Soft: if duration missing, keep the result (YouTube doesn't always provide it).
-            if (!m) continue;
-            if (p.id === 'dur_5_15' && !(m >= 5 && m <= 15)) return false;
-            if (p.id === 'dur_15_30' && !(m > 15 && m <= 30)) return false;
-            if (p.id === 'dur_30_plus' && !(m > 30)) return false;
-          } else if (p.re) {
-            if (!p.re.test(t)) return false;
-          }
-        }
-        return true;
-      });
+      const selected = keywordPills.filter((pill) => selectedKeywords.has(pill.id));
+      return filterExercisesByKeywordPills(list, selected);
     },
     [keywordPills, selectedKeywords],
   );
@@ -611,23 +745,46 @@ export default function ExerciseVideosTab({ isDark, onThemeToggle, onboardingDat
   const filteredExercises = useMemo(() => applyKeywordFilters(exercises), [applyKeywordFilters, exercises]);
   const filteredShorts = useMemo(() => applyKeywordFilters(shortExercises), [applyKeywordFilters, shortExercises]);
 
-  const recommendedCarouselExercises = useMemo(() => exercises.slice(0, 5), [exercises]);
-  const goalsGridVideos = useMemo(() => exercisesToGridVideos(exercises.slice(5, 14)), [exercises]);
-  const formGridVideos = useMemo(() => exercisesToGridVideos(exercises.slice(14, 23)), [exercises]);
+  const recommendedCarouselExercises = useMemo(
+    () => exercises.slice(0, RECOMMENDED_CAROUSEL_COUNT),
+    [exercises],
+  );
+  const goalsGridVideos = useMemo(
+    () => exercisesToGridVideos(exercises.slice(GOALS_GRID_START, GOALS_GRID_END)),
+    [exercises],
+  );
+  const formGridVideos = useMemo(
+    () => exercisesToGridVideos(exercises.slice(FORM_GRID_START, FORM_GRID_END)),
+    [exercises],
+  );
   const searchGridVideos = useMemo(() => exercisesToGridVideos(exercises), [exercises]);
 
-  const journeyHint = useMemo(() => getExerciseLibraryJourneyHint(onboardingData), [onboardingData]);
+  const journeyHint = useMemo(
+    () => getExerciseLibraryJourneyHint(onboardingData),
+    [onboardingData],
+  );
 
   const cardW = useMemo(() => twoColCardWidth(), []);
   const listKey = useMemo(() => `twoCol_${cardW}`, [cardW]);
 
-  const recommendedForYou = useMemo(() => filteredExercises.slice(0, 8), [filteredExercises]);
-  const basedOnGoals = useMemo(() => filteredExercises.slice(8, 16), [filteredExercises]);
+  const recommendedForYou = useMemo(
+    () => filteredExercises.slice(0, FILTERED_FOR_YOU_END),
+    [filteredExercises],
+  );
+  const basedOnGoals = useMemo(
+    () => filteredExercises.slice(BASED_ON_GOALS_START, BASED_ON_GOALS_END),
+    [filteredExercises],
+  );
   const formFundamentals = useMemo(() => {
-    const want = (filteredExercises || []).filter((e) => /\b(form|technique|tutorial|cue|cues|how to)\b/i.test(String(e?.name || '')));
-    const picked = want.slice(0, 8);
-    if (picked.length >= 4) return picked;
-    return filteredExercises.slice(16, 24);
+    const formNamed = (filteredExercises || []).filter((exercise) =>
+      /\b(form|technique|tutorial|cue|cues|how to)\b/i.test(String(exercise?.name || '')),
+    );
+    const picked = formNamed.slice(0, FORM_FUNDAMENTALS_WANT);
+    if (picked.length >= FORM_FUNDAMENTALS_MIN) return picked;
+    return filteredExercises.slice(
+      FORM_FUNDAMENTALS_FALLBACK_START,
+      FORM_FUNDAMENTALS_FALLBACK_END,
+    );
   }, [filteredExercises]);
 
   return (

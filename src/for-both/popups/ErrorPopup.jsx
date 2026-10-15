@@ -1,13 +1,7 @@
-/**
- * Error Modal
- *
- * Purpose: UI screen or component: Error Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/components
- * Key exports: ErrorPopup
- *
- * @file-header
- */
+// App-styled error / alert modal: gradient rim, icon, title, message, Dismiss, optional Retry.
+// Flow: parent sets visible → user taps Dismiss (onDismiss) or Retry (onRetry).
+// Used by login and other screens that need a branded alert instead of a system Alert.
+
 import React from 'react';
 import {
   Modal,
@@ -20,6 +14,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+
+// ===== NAMED CONSTANTS =====
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -34,45 +30,61 @@ const COLORS = {
 };
 
 const CTA_GRADIENT = [COLORS.pink, COLORS.orange];
+const DEFAULT_TITLE = 'Error';
+const DEFAULT_MESSAGE = 'Something went wrong.';
+const DEFAULT_ICON = 'alert-circle';
+const DEFAULT_RETRY_TEXT = 'Retry';
+const MAX_CARD_WIDTH = 500;
+const CARD_WIDTH_RATIO = 0.9;
+const ICON_SIZE = 48;
+
+// ===== HELPER FUNCTIONS =====
+
+function noop() {}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * CoachConnect-styled error / alert modal (gradient rim, glass inner, optional retry).
  * Uses Ionicons names (default `alert-circle`).
+ * @param {{ visible?: boolean, title?: string, message?: string, icon?: string, onDismiss?: Function, onRetry?: Function, retryText?: string }} props
  */
 export function ErrorPopup({
   visible = false,
-  title = 'Error',
-  message = 'Something went wrong.',
-  icon = 'alert-circle',
+  title = DEFAULT_TITLE,
+  message = DEFAULT_MESSAGE,
+  icon = DEFAULT_ICON,
   onDismiss,
   onRetry,
-  retryText = 'Retry',
+  retryText = DEFAULT_RETRY_TEXT,
 }) {
   const { width } = useWindowDimensions();
-  const maxCard = Math.min(500, width * 0.9);
+  const maxCard = Math.min(MAX_CARD_WIDTH, width * CARD_WIDTH_RATIO);
+  const hasRetry = Boolean(onRetry);
 
+  // 1. Dismiss always. Retry only when the parent passed onRetry.
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss || (() => {})}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss || noop}>
       <View style={styles.overlay}>
         <View style={[styles.cardWrap, { width: maxCard }]}>
           <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.borderRing}>
             <View style={styles.card}>
-              <Ionicons name={icon} size={48} color={COLORS.pink} style={styles.icon} />
+              <Ionicons name={icon} size={ICON_SIZE} color={COLORS.pink} style={styles.icon} />
 
               <Text style={styles.title}>{title}</Text>
 
               <Text style={styles.message}>{message}</Text>
 
-              <View style={[styles.buttonRow, !onRetry && styles.buttonRowSingle]}>
+              <View style={[styles.buttonRow, !hasRetry && styles.buttonRowSingle]}>
                 <TouchableOpacity
-                  style={[styles.dismissButton, !onRetry && styles.dismissButtonFull]}
+                  style={[styles.dismissButton, !hasRetry && styles.dismissButtonFull]}
                   onPress={onDismiss}
                   activeOpacity={0.85}
                 >
                   <Text style={styles.dismissButtonText}>Dismiss</Text>
                 </TouchableOpacity>
 
-                {onRetry ? (
+                {hasRetry ? (
                   <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGradient}>
                     <TouchableOpacity style={styles.retryTouchable} onPress={onRetry} activeOpacity={0.88}>
                       <Text style={styles.retryButtonText}>{retryText}</Text>

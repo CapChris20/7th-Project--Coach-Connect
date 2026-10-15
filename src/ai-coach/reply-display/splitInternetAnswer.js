@@ -141,6 +141,56 @@ function answerWithNoSections(fullText) {
   };
 }
 
+/**
+ * One line of a section body: bullet, numbered, or leftover paragraph.
+ * Sequential returns (not else-if) so parseSectionBlocks stays at loop depth 1.
+ * @param {string} line
+ * @returns {{ kind: string, text: string }}
+ */
+function classifySectionLine(line) {
+  if (isBulletLine(line)) {
+    return { kind: SECTION_KIND_BULLETS, text: line.replace(BULLET_LINE_PATTERN, '').trim() };
+  }
+  if (isNumberedLine(line)) {
+    return { kind: 'numbered', text: line.replace(NUMBERED_LINE_PATTERN, '').trim() };
+  }
+  return { kind: 'paragraph', text: line };
+}
+
+/**
+ * @param {{ kind: string, text: string }} classified
+ * @param {{ bullets: string[], numbered: string[], paragraphs: string[] }} buckets
+ */
+function appendClassifiedLine(classified, buckets) {
+  if (classified.kind === SECTION_KIND_BULLETS) {
+    buckets.bullets.push(classified.text);
+    return;
+  }
+  if (classified.kind === 'numbered') {
+    buckets.numbered.push(classified.text);
+    return;
+  }
+  buckets.paragraphs.push(classified.text);
+}
+
+/**
+ * Pull the summary section out of the list. `summary` on the result is always null —
+ * callers read the body from summaryLead.
+ * @param {Array} sections
+ * @returns {{ summaryLead: string|null, bodySections: Array }}
+ */
+function takeSummaryLead(sections) {
+  const summaryIndex = sections.findIndex((section) => section.kind === SECTION_KIND_SUMMARY);
+  if (summaryIndex < 0) {
+    return { summaryLead: null, bodySections: sections };
+  }
+  const summarySection = sections[summaryIndex];
+  return {
+    summaryLead: summarySection.body || null,
+    bodySections: sections.filter((section, index) => index !== summaryIndex),
+  };
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -173,16 +223,7 @@ export function splitInternetAnswer(raw) {
   const sections = extractSections(text);
   if (!sections.length) return answerWithNoSections(text);
 
-  const summaryIndex = sections.findIndex((section) => section.kind === SECTION_KIND_SUMMARY);
-  let summaryLead = null;
-  let bodySections = sections;
-
-  if (summaryIndex >= 0) {
-    const summarySection = sections[summaryIndex];
-    summaryLead = summarySection.body || null;
-    bodySections = sections.filter((section, index) => index !== summaryIndex);
-  }
-
+  const { summaryLead, bodySections } = takeSummaryLead(sections);
   return {
     summary: null,
     summaryLead,
@@ -202,21 +243,17 @@ export function parseSectionBlocks(body) {
   if (!rawBody) return { paragraphs: [], bullets: [], numbered: [] };
 
   const lines = rawBody.split('\n').map((line) => line.trim()).filter(Boolean);
-  const bullets = [];
-  const numbered = [];
-  const paragraphs = [];
+  const buckets = { bullets: [], numbered: [], paragraphs: [] };
 
   for (const line of lines) {
-    if (isBulletLine(line)) {
-      bullets.push(line.replace(BULLET_LINE_PATTERN, '').trim());
-    } else if (isNumberedLine(line)) {
-      numbered.push(line.replace(NUMBERED_LINE_PATTERN, '').trim());
-    } else {
-      paragraphs.push(line);
-    }
+    appendClassifiedLine(classifySectionLine(line), buckets);
   }
 
-  return { paragraphs, bullets, numbered };
+  return {
+    paragraphs: buckets.paragraphs,
+    bullets: buckets.bullets,
+    numbered: buckets.numbered,
+  };
 }
 
 /**

@@ -1,0 +1,869 @@
+Backend-split import rewrite (DRY RUN — nothing moved yet)
+Files moving: 170   Files with import edits: 186   Total edits: 493
+====================================================================================================
+
+src/ai-coach/CoachSelfTest.jsx
+   '../ai-coach/coach-knowledge/loadYourWeekForCoach'  ->  './coach-knowledge/backend/loadYourWeekForCoach'
+   '../ai-coach/conversation/sendMessageToCoach'  ->  './conversation/backend/sendMessageToCoach'
+   './internet-lookup/internetLookupRules'  ->  './internet-lookup/backend/internetLookupRules'
+   '../ai-coach/coach-actions/carryOutAction'  ->  './coach-actions/backend/carryOutAction'
+
+src/ai-coach/coach-actions/alertTrainer.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../messaging/unreadMessageCounts'  ->  '../../../messaging/backend/unreadMessageCounts'
+   '../../for-both/cloud-database/loadInPages'  ->  '../../../for-both/cloud-database/backend/loadInPages'
+   '../../for-both/online-connection/sendPhoneAlert'  ->  '../../../for-both/online-connection/backend/sendPhoneAlert'
+   '../../messaging/markMessagesRead'  ->  '../../../messaging/backend/markMessagesRead'
+   '../../notifications/writeAlertText'  ->  '../../../notifications/backend/writeAlertText'
+   '../../messaging/unreadMessageCounts'  ->  '../../../messaging/backend/unreadMessageCounts'
+
+src/ai-coach/coach-actions/carryOutAction.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../helpers/dateStrings'  ->  '../../../helpers/backend/dateStrings'
+   '../../daily-stats/saveDailyStats'  ->  '../../../daily-stats/backend/saveDailyStats'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../../nutrition/daily-log/backend/saveLoggedFood'
+
+src/ai-coach/coach-actions/findActionsInReply.js
+   '../coach-actions/readActionsFromReply'  ->  './readActionsFromReply'
+   '../internet-lookup/shouldLookUpOnInternet'  ->  '../../internet-lookup/backend/shouldLookUpOnInternet'
+
+src/ai-coach/coach-knowledge/loadWeeklyNumbers.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/ai-coach/coach-knowledge/loadYourWeekForCoach.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../helpers/showSetupAnswers'  ->  '../../../helpers/backend/showSetupAnswers'
+   '../../nutrition/targets/recalculateFoodTargets'  ->  '../../../nutrition/targets/backend/recalculateFoodTargets'
+
+src/ai-coach/confirm-popups/ChangeFoodTargetsPopup.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/ai-coach/confirm-popups/UpdateGoalPopup.jsx
+   '../../helpers/showSetupAnswers'  ->  '../../helpers/backend/showSetupAnswers'
+
+src/ai-coach/conversation/CoachConversationScreen.jsx
+   './choosePhoto'  ->  './backend/choosePhoto'
+   '../../for-both/online-connection/sendCrashReport'  ->  '../../for-both/online-connection/backend/sendCrashReport'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../past-chats/saveAndLoadChats'  ->  '../past-chats/backend/saveAndLoadChats'
+   '../past-chats/makeChatTitle'  ->  '../past-chats/backend/makeChatTitle'
+   '../past-chats/chatTitles'  ->  '../past-chats/backend/chatTitles'
+   '../past-chats/chatHistoryList'  ->  '../past-chats/backend/chatHistoryList'
+   './typingBox'  ->  './backend/typingBox'
+   '../reply-display/copyableReplyText'  ->  '../reply-display/backend/copyableReplyText'
+   '../coach-knowledge/loadYourWeekForCoach'  ->  '../coach-knowledge/backend/loadYourWeekForCoach'
+   './sendMessageToCoach'  ->  './backend/sendMessageToCoach'
+   '../coach-actions/carryOutAction'  ->  '../coach-actions/backend/carryOutAction'
+   '../coach-actions/findActionsInReply'  ->  '../coach-actions/backend/findActionsInReply'
+   '../internet-lookup/shouldLookUpOnInternet'  ->  '../internet-lookup/backend/shouldLookUpOnInternet'
+   '../coach-actions/readActionsFromReply'  ->  '../coach-actions/backend/readActionsFromReply'
+   '../coach-actions/spotDeleteRequests'  ->  '../coach-actions/backend/spotDeleteRequests'
+   '../coach-actions/shouldAskFirst'  ->  '../coach-actions/backend/shouldAskFirst'
+   '../coach-actions/popupOrAutoRun'  ->  '../coach-actions/backend/popupOrAutoRun'
+   '../reply-display/suggestedQuestionMaker'  ->  '../reply-display/backend/suggestedQuestionMaker'
+   '../reply-display/developerChatLog'  ->  '../reply-display/backend/developerChatLog'
+   '../../helpers/cleanDataBeforeSaving'  ->  '../../helpers/backend/cleanDataBeforeSaving'
+
+src/ai-coach/conversation/ConfirmActionPopup.jsx
+   '../../ai-coach/coach-actions/carryOutAction'  ->  '../coach-actions/backend/carryOutAction'
+
+src/ai-coach/conversation/SourceLinkCards.jsx
+   './sourceLinkPreview'  ->  './backend/sourceLinkPreview'
+
+src/ai-coach/conversation/sendMessageToCoach.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../coach-knowledge/loadYourWeekForCoach'  ->  '../../coach-knowledge/backend/loadYourWeekForCoach'
+   '../coach-actions/carryOutAction'  ->  '../../coach-actions/backend/carryOutAction'
+   '../coach-actions/readActionsFromReply'  ->  '../../coach-actions/backend/readActionsFromReply'
+   '../coach-knowledge/decideWhatCoachShouldKnow'  ->  '../../coach-knowledge/backend/decideWhatCoachShouldKnow'
+   '../internet-lookup/shouldLookUpOnInternet'  ->  '../../internet-lookup/backend/shouldLookUpOnInternet'
+   '../coach-knowledge/loadYourWeekForCoach'  ->  '../../coach-knowledge/backend/loadYourWeekForCoach'
+
+src/ai-coach/home-screen/CoachHomeScreen.jsx
+   '../conversation/choosePhoto'  ->  '../conversation/backend/choosePhoto'
+   '../past-chats/saveAndLoadChats'  ->  '../past-chats/backend/saveAndLoadChats'
+   '../past-chats/chatHistoryList'  ->  '../past-chats/backend/chatHistoryList'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../conversation/suggestedQuestions'  ->  '../conversation/backend/suggestedQuestions'
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../nutrition/daily-log/backend/saveLoggedFood'
+   '../../daily-stats/readDailyStats'  ->  '../../daily-stats/backend/readDailyStats'
+
+src/ai-coach/internet-lookup/shouldLookUpOnInternet.js
+   '../coach-knowledge/decideWhatCoachShouldKnow'  ->  '../../coach-knowledge/backend/decideWhatCoachShouldKnow'
+
+src/ai-coach/past-chats/PastChatsPanel.jsx
+   './chatHistoryList'  ->  './backend/chatHistoryList'
+
+src/ai-coach/past-chats/chatHistoryList.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/ai-coach/past-chats/fixOldChatTitles.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/ai-coach/past-chats/loadOlderChats.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../coach-actions/alertTrainer'  ->  '../../coach-actions/backend/alertTrainer'
+   '../../for-both/cloud-database/loadInPages'  ->  '../../../for-both/cloud-database/backend/loadInPages'
+   '../../messaging/unreadMessageCounts'  ->  '../../../messaging/backend/unreadMessageCounts'
+
+src/ai-coach/past-chats/makeChatTitle.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+
+src/ai-coach/past-chats/saveAndLoadChats.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../helpers/cleanDataBeforeSaving'  ->  '../../../helpers/backend/cleanDataBeforeSaving'
+
+src/ai-coach/past-chats/savedChatShape.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/ai-coach/reply-display/CoachReplyText.jsx
+   '../coach-actions/readActionsFromReply'  ->  '../coach-actions/backend/readActionsFromReply'
+   '../reply-display/copyableReplyText'  ->  './backend/copyableReplyText'
+
+src/ai-coach/reply-display/InternetAnswerReply.jsx
+   '../coach-actions/readActionsFromReply'  ->  '../coach-actions/backend/readActionsFromReply'
+   '../reply-display/copyableReplyText'  ->  './backend/copyableReplyText'
+
+src/ai-coach/reply-display/copyableReplyText.js
+   '../conversation/copyReplyText'  ->  '../../conversation/backend/copyReplyText'
+
+src/ai-coach/reply-display/replyTextStyles.js
+   './splitInternetAnswer'  ->  './backend/splitInternetAnswer'
+
+src/app-start/ClientAppStart.js
+   './cloudConnection'  ->  './backend/cloudConnection'
+   '../for-both/calorieAndMacroMath'  ->  '../for-both/backend/calorieAndMacroMath'
+   '../helpers/dateStrings'  ->  '../helpers/backend/dateStrings'
+   '../helpers/getLocalDay'  ->  '../helpers/backend/getLocalDay'
+   '../daily-stats/saveDailyStats'  ->  '../daily-stats/backend/saveDailyStats'
+   '../client-app/home/keepDailyStatsFresh'  ->  '../client-app/home/backend/keepDailyStatsFresh'
+   '../client-app/home/loadHomeScreenData'  ->  '../client-app/home/backend/loadHomeScreenData'
+   '../ai-coach/past-chats/loadOlderChats'  ->  '../ai-coach/past-chats/backend/loadOlderChats'
+   '../ai-coach/coach-actions/alertTrainer'  ->  '../ai-coach/coach-actions/backend/alertTrainer'
+   '../nutrition/daily-log/saveLoggedFood'  ->  '../nutrition/daily-log/backend/saveLoggedFood'
+   '../notifications/manageAlerts'  ->  '../notifications/backend/manageAlerts'
+   '../for-both/online-connection/sendPhoneAlert'  ->  '../for-both/online-connection/backend/sendPhoneAlert'
+   '../for-both/files-and-notes/saveNotesAndFiles'  ->  '../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../helpers/trainerProfilePhoto'  ->  '../helpers/backend/trainerProfilePhoto'
+   '../helpers/whichViewerForFile'  ->  '../helpers/backend/whichViewerForFile'
+   '../workouts/create-plan/saveAndLoadWorkoutPlan'  ->  '../workouts/create-plan/backend/saveAndLoadWorkoutPlan'
+   '../logout-cleanup/clearDataOnLogout'  ->  '../logout-cleanup/backend/clearDataOnLogout'
+   '../for-both/cloud-database/handleLiveUpdateErrors'  ->  '../for-both/cloud-database/backend/handleLiveUpdateErrors'
+
+src/app-start/LoginGate.js
+   './cloudConnection'  ->  './backend/cloudConnection'
+   '../crash-reports/sendSavedErrors'  ->  '../crash-reports/backend/sendSavedErrors'
+   '../ai-coach/past-chats/savedChatShape'  ->  '../ai-coach/past-chats/backend/savedChatShape'
+   '../logout-cleanup/clearDataOnLogout'  ->  '../logout-cleanup/backend/clearDataOnLogout'
+   '../for-both/online-connection/uploadSetupAnswers'  ->  '../for-both/online-connection/backend/uploadSetupAnswers'
+   '../notifications/manageAlerts'  ->  '../notifications/backend/manageAlerts'
+   '../for-both/cloud-database/loadMyProfile'  ->  '../for-both/cloud-database/backend/loadMyProfile'
+   '../login-and-signup/decideTraineeOrTrainer'  ->  '../login-and-signup/backend/decideTraineeOrTrainer'
+   '../login-and-signup/signOutCleanupSteps'  ->  '../login-and-signup/backend/signOutCleanupSteps'
+   '../helpers/fillTraineeProfile'  ->  '../helpers/backend/fillTraineeProfile'
+   '../login-and-signup/signOutCleanupSteps'  ->  '../login-and-signup/backend/signOutCleanupSteps'
+
+src/app-start/TrainerAppStart.js
+   '../trainer-app/my-trainees/pagedTraineeList'  ->  '../trainer-app/my-trainees/backend/pagedTraineeList'
+   '../trainer-app/trainee-records/getTraineeDisplayName'  ->  '../trainer-app/trainee-records/backend/getTraineeDisplayName'
+   '../helpers/combineTraineeProfile'  ->  '../helpers/backend/combineTraineeProfile'
+   '../trainer-app/new-requests/pendingRequestCount'  ->  '../trainer-app/new-requests/backend/pendingRequestCount'
+   '../notifications/manageAlerts'  ->  '../notifications/backend/manageAlerts'
+   '../app-start/cloudConnection'  ->  './backend/cloudConnection'
+   '../daily-stats/latestWeight'  ->  '../daily-stats/backend/latestWeight'
+   '../crash-reports/reportCrashAutomatically'  ->  '../crash-reports/backend/reportCrashAutomatically'
+   '../ai-coach/coach-actions/alertTrainer'  ->  '../ai-coach/coach-actions/backend/alertTrainer'
+   '../helpers/dateStrings'  ->  '../helpers/backend/dateStrings'
+   '../helpers/getLocalDay'  ->  '../helpers/backend/getLocalDay'
+   '../notifications/unreadAlertCount'  ->  '../notifications/backend/unreadAlertCount'
+   '../for-both/files-and-notes/saveNotesAndFiles'  ->  '../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../logout-cleanup/clearDataOnLogout'  ->  '../logout-cleanup/backend/clearDataOnLogout'
+   '../helpers/whichViewerForFile'  ->  '../helpers/backend/whichViewerForFile'
+   '../nutrition/daily-log/saveLoggedFood'  ->  '../nutrition/daily-log/backend/saveLoggedFood'
+   '../trainer-app/trainee-records/calmDatabaseErrors'  ->  '../trainer-app/trainee-records/backend/calmDatabaseErrors'
+   '../trainer-app/trainee-records/traineeDatabaseLocations'  ->  '../trainer-app/trainee-records/backend/traineeDatabaseLocations'
+
+src/block-and-report/BlockedUsersScreen.jsx
+   './blockUser'  ->  './backend/blockUser'
+
+src/block-and-report/ReportOrBlockPopup.jsx
+   './reportReasons'  ->  '../reportReasons'
+
+src/block-and-report/blockUser.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/block-and-report/index.js
+   './blockedList'  ->  './backend/blockedList'
+   './blockUser'  ->  './backend/blockUser'
+   './ReportOrBlockPopup'  ->  './backend/ReportOrBlockPopup'
+   './reportContent'  ->  './backend/reportContent'
+
+src/block-and-report/reportContent.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../settings/emailSupport'  ->  '../../settings/emailSupport'
+   './reportReasons'  ->  '../reportReasons'
+
+src/client-app/files-and-notes/FileCard.jsx
+   '../../helpers/fileSizeAndDateText'  ->  '../../helpers/backend/fileSizeAndDateText'
+
+src/client-app/files-and-notes/FilesScreen.jsx
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../helpers/whichViewerForFile'  ->  '../../helpers/backend/whichViewerForFile'
+   '../../helpers/fileSizeAndDateText'  ->  '../../helpers/backend/fileSizeAndDateText'
+
+src/client-app/files-and-notes/MyFilesSection.jsx
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../helpers/fileSizeAndDateText'  ->  '../../helpers/backend/fileSizeAndDateText'
+
+src/client-app/files-and-notes/NotesFromTrainerSection.jsx
+   '../../helpers/fileSizeAndDateText'  ->  '../../helpers/backend/fileSizeAndDateText'
+
+src/client-app/files-and-notes/SharedByTrainerSection.jsx
+   '../../helpers/fileSizeAndDateText'  ->  '../../helpers/backend/fileSizeAndDateText'
+
+src/client-app/find-a-trainer/BrowseTrainersScreen.jsx
+   './trainerFilters'  ->  './backend/trainerFilters'
+
+src/client-app/find-a-trainer/ConfirmRequestPopup.jsx
+   '../../helpers/trainerProfilePhoto'  ->  '../../helpers/backend/trainerProfilePhoto'
+
+src/client-app/find-a-trainer/FilterPopup.js
+   './trainerFilters'  ->  './backend/trainerFilters'
+
+src/client-app/find-a-trainer/FindTrainerPieces.jsx
+   './trainerFilters'  ->  './backend/trainerFilters'
+
+src/client-app/find-a-trainer/FrostedPanel.jsx
+   './trainerFilters'  ->  './backend/trainerFilters'
+
+src/client-app/find-a-trainer/SearchTrainersScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/trainerProfilePhoto'  ->  '../../helpers/backend/trainerProfilePhoto'
+   './sendConnectionRequest'  ->  './backend/sendConnectionRequest'
+   './trainerFilters'  ->  './backend/trainerFilters'
+
+src/client-app/find-a-trainer/TrainerCard.jsx
+   './trainerFilters'  ->  './backend/trainerFilters'
+   '../../helpers/trainerProfilePhoto'  ->  '../../helpers/backend/trainerProfilePhoto'
+
+src/client-app/find-a-trainer/TrainerProfilePopup.jsx
+   './trainerFilters'  ->  './backend/trainerFilters'
+   '../../helpers/trainerProfilePhoto'  ->  '../../helpers/backend/trainerProfilePhoto'
+
+src/client-app/home/MyTrainerCard.jsx
+   '../../helpers/trainerProfilePhoto'  ->  '../../helpers/backend/trainerProfilePhoto'
+
+src/client-app/home/TrainingHomeScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/sendPhoneAlert'  ->  '../../for-both/online-connection/backend/sendPhoneAlert'
+   '../../for-both/online-connection/loadHomeAlerts'  ->  '../../for-both/online-connection/backend/loadHomeAlerts'
+   '../../helpers/getLocalDay'  ->  '../../helpers/backend/getLocalDay'
+   '../../daily-stats/todaysDate'  ->  '../../daily-stats/backend/todaysDate'
+   '../../daily-stats/saveYesterdaysStats'  ->  '../../daily-stats/backend/saveYesterdaysStats'
+   '../../daily-stats/saveDailyStats'  ->  '../../daily-stats/backend/saveDailyStats'
+   './workoutDiary'  ->  './backend/workoutDiary'
+   '../../helpers/workoutDayNames'  ->  '../../helpers/backend/workoutDayNames'
+
+src/client-app/home/WriteTrainerReviewPopup.js
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/client-app/home/homeScreenPieces.jsx
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../../for-both/calorieAndMacroMath'  ->  '../../for-both/backend/calorieAndMacroMath'
+
+src/client-app/home/keepDailyStatsFresh.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/cloud-database/handleLiveUpdateErrors'  ->  '../../../for-both/cloud-database/backend/handleLiveUpdateErrors'
+   '../../daily-stats/todaysDate'  ->  '../../../daily-stats/backend/todaysDate'
+   '../../daily-stats/saveYesterdaysStats'  ->  '../../../daily-stats/backend/saveYesterdaysStats'
+   '../../daily-stats/saveDailyStats'  ->  '../../../daily-stats/backend/saveDailyStats'
+
+src/client-app/home/loadHomeScreenData.js
+   '../../helpers/getLocalDay'  ->  '../../../helpers/backend/getLocalDay'
+   '../../helpers/fillTraineeProfile'  ->  '../../../helpers/backend/fillTraineeProfile'
+   '../../daily-stats/saveDailyStats'  ->  '../../../daily-stats/backend/saveDailyStats'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../../nutrition/daily-log/backend/saveLoggedFood'
+   '../../workouts/create-plan/saveAndLoadWorkoutPlan'  ->  '../../../workouts/create-plan/backend/saveAndLoadWorkoutPlan'
+   './homeScreenPieces'  ->  '../homeScreenPieces'
+
+src/client-app/home/workoutDiary.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/loadHomeAlerts'  ->  '../../../for-both/online-connection/backend/loadHomeAlerts'
+   '../../helpers/getLocalDay'  ->  '../../../helpers/backend/getLocalDay'
+   '../../daily-stats/todaysDate'  ->  '../../../daily-stats/backend/todaysDate'
+   '../../daily-stats/saveDailyStats'  ->  '../../../daily-stats/backend/saveDailyStats'
+   '../../helpers/workoutDayNames'  ->  '../../../helpers/backend/workoutDayNames'
+
+src/client-app/meals/LogTodaysMealsScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../nutrition/daily-log/backend/saveLoggedFood'
+   '../../crash-reports/reportCrashAutomatically'  ->  '../../crash-reports/backend/reportCrashAutomatically'
+
+src/client-app/navigation/ClientMainScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../../daily-stats/saveDailyStats'  ->  '../../daily-stats/backend/saveDailyStats'
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../workouts/create-plan/keepPlanBuildingInBackground'  ->  '../../workouts/create-plan/backend/keepPlanBuildingInBackground'
+
+src/client-app/navigation/clientExtraScreens.jsx
+   '../find-a-trainer/trainerFilters'  ->  '../find-a-trainer/backend/trainerFilters'
+   '../find-a-trainer/sendConnectionRequest'  ->  '../find-a-trainer/backend/sendConnectionRequest'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/fillTraineeProfile'  ->  '../../helpers/backend/fillTraineeProfile'
+
+src/client-app/profile/MyProfileScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../for-both/online-connection/checkTrainerCertificate'  ->  '../../for-both/online-connection/backend/checkTrainerCertificate'
+   '../../logout-cleanup/clearDataOnLogout'  ->  '../../logout-cleanup/backend/clearDataOnLogout'
+   '../../for-both/trainer-listing/keepTrainerListingUpdated'  ->  '../../for-both/trainer-listing/backend/keepTrainerListingUpdated'
+   '../../helpers/showSetupAnswers'  ->  '../../helpers/backend/showSetupAnswers'
+   '../../helpers/fillTraineeProfile'  ->  '../../helpers/backend/fillTraineeProfile'
+
+src/crash-reports/CrashCatcher.jsx
+   '../for-both/online-connection/sendCrashReport'  ->  '../for-both/online-connection/backend/sendCrashReport'
+
+src/crash-reports/recordError.js
+   '../for-both/online-connection/whereToConnect'  ->  '../../for-both/online-connection/backend/whereToConnect'
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../for-both/online-connection/attachLoginProof'  ->  '../../for-both/online-connection/backend/attachLoginProof'
+
+src/crash-reports/reportCrashAutomatically.js
+   '../for-both/online-connection/checkConnectionHealth'  ->  '../../for-both/online-connection/backend/checkConnectionHealth'
+
+src/daily-stats/latestWeight.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/daily-stats/saveDailyStats.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../helpers/getLocalDay'  ->  '../../helpers/backend/getLocalDay'
+
+src/daily-stats/saveYesterdaysStats.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../helpers/getLocalDay'  ->  '../../helpers/backend/getLocalDay'
+
+src/daily-stats/todaysDate.js
+   '../helpers/getLocalDay'  ->  '../../helpers/backend/getLocalDay'
+
+src/for-both/app-wide-settings/AIPermission.js
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/for-both/cloud-database/loadInPages.js
+   '../online-connection/sendCrashReport'  ->  '../../online-connection/backend/sendCrashReport'
+
+src/for-both/cloud-database/loadMyProfile.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/cloud-database/uploadAndDownloadFiles.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/files-and-notes/saveNotesAndFiles.js
+   '../../spreadsheet-support/spreadsheetReader'  ->  '../../../spreadsheet-support/backend/spreadsheetReader'
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../online-connection/sendPhoneAlert'  ->  '../../online-connection/backend/sendPhoneAlert'
+   '../../notifications/writeAlertText'  ->  '../../../notifications/backend/writeAlertText'
+
+src/for-both/files-and-notes/viewers/AddFilePopup.js
+   '../../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../files-and-notes/saveNotesAndFiles'  ->  '../backend/saveNotesAndFiles'
+   '../../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/files-and-notes/viewers/DocumentViewer.js
+   '../../files-and-notes/saveNotesAndFiles'  ->  '../backend/saveNotesAndFiles'
+
+src/for-both/files-and-notes/viewers/FileGrid.jsx
+   '../../../helpers/fileSizeAndDateText'  ->  '../../../helpers/backend/fileSizeAndDateText'
+
+src/for-both/files-and-notes/viewers/FilesSection.jsx
+   '../../../helpers/fileSizeAndDateText'  ->  '../../../helpers/backend/fileSizeAndDateText'
+
+src/for-both/files-and-notes/viewers/SpreadsheetViewer.js
+   '../../../spreadsheet-support/spreadsheetReader'  ->  '../../../spreadsheet-support/backend/spreadsheetReader'
+
+src/for-both/home-cards/UpcomingSessionCard.jsx
+   '../../helpers/sessionTimeText'  ->  '../../helpers/backend/sessionTimeText'
+
+src/for-both/online-connection/attachLoginProof.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/online-connection/checkTrainerCertificate.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/online-connection/sendOnlineRequest.js
+   '../online-connection/sendCrashReport'  ->  './sendCrashReport'
+
+src/for-both/online-connection/sendPhoneAlert.js
+   '../../notifications/removeEmojiFromAlerts'  ->  '../../../notifications/backend/removeEmojiFromAlerts'
+
+src/for-both/payments/CardPaymentWrapper.jsx
+   './canThisPhoneTakeCards'  ->  './backend/canThisPhoneTakeCards'
+
+src/for-both/payments/HowPaymentsWorkSections.jsx
+   './howPaymentsWorkText'  ->  './backend/howPaymentsWorkText'
+
+src/for-both/payments/PayTrainerPopup.jsx
+   './chargeCard'  ->  './backend/chargeCard'
+   './canThisPhoneTakeCards'  ->  './backend/canThisPhoneTakeCards'
+   './howPaymentsWorkText'  ->  './backend/howPaymentsWorkText'
+
+src/for-both/payments/PayoutSetupReminderPopup.jsx
+   './trainerPayoutSetupFlow'  ->  './backend/trainerPayoutSetupFlow'
+   './whenToAskForPayoutSetup'  ->  './backend/whenToAskForPayoutSetup'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/for-both/payments/chargeCard.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../online-connection/whereToConnect'  ->  '../../online-connection/backend/whereToConnect'
+
+src/for-both/payments/traineePaymentHistory.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/payments/trainerPaymentHistory.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/payments/trainerPayoutSetup.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../online-connection/whereToConnect'  ->  '../../online-connection/backend/whereToConnect'
+
+src/for-both/payments/trainerPayoutSetupFlow.js
+   '../payments/trainerPayoutSetup'  ->  './trainerPayoutSetup'
+
+src/for-both/payments/whenToAskForPayoutSetup.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/photo-gallery/MyProgressPhotosScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/for-both/popups/RemoveTrainerPopup.js
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/for-both/profileCardIconSizes.js
+   './setup-icons/onboardingIconRegistry'  ->  './setup-icons/backend/onboardingIconRegistry'
+
+src/for-both/setup-icons/onboardingIconRegistry.js
+   './onboardingIconRegistry.generated'  ->  '../onboardingIconRegistry.generated'
+
+src/for-both/weekly-report/WeeklyReportScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   './prepareReportForScreen'  ->  './backend/prepareReportForScreen'
+   './loadWeekFoodTotals'  ->  './backend/loadWeekFoodTotals'
+   './loadWeekDailyEntries'  ->  './backend/loadWeekDailyEntries'
+
+src/for-both/weekly-report/WinsAndWorkOnsSection.jsx
+   '../weekly-report/pickBestTips'  ->  './backend/pickBestTips'
+
+src/for-both/weekly-report/loadWeekDailyEntries.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../helpers/workoutDayNames'  ->  '../../../helpers/backend/workoutDayNames'
+
+src/for-both/weekly-report/loadWeekFoodTotals.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/for-both/workout-plans/SavedWorkoutsScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../workouts/exercise-videos/loadSavedWorkoutPlans'  ->  '../../workouts/exercise-videos/backend/loadSavedWorkoutPlans'
+
+src/login-and-signup/ForgotPasswordFlow.js
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+
+src/login-and-signup/LoginScreen.js
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../ai-coach/conversation/photoPermissions'  ->  '../ai-coach/conversation/backend/photoPermissions'
+   '../for-both/cloud-database/uploadAndDownloadFiles'  ->  '../for-both/cloud-database/backend/uploadAndDownloadFiles'
+   './decideTraineeOrTrainer'  ->  './backend/decideTraineeOrTrainer'
+
+src/login-and-signup/NewUserSetupScreen.jsx
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../for-both/files-and-notes/saveNotesAndFiles'  ->  '../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../for-both/online-connection/checkTrainerCertificate'  ->  '../for-both/online-connection/backend/checkTrainerCertificate'
+   './checkTrainerCode'  ->  './backend/checkTrainerCode'
+   './finishSetup'  ->  './backend/finishSetup'
+   '../for-both/online-connection/whereToConnect'  ->  '../for-both/online-connection/backend/whereToConnect'
+   '../for-both/online-connection/uploadSetupAnswers'  ->  '../for-both/online-connection/backend/uploadSetupAnswers'
+   '../for-both/setup-icons/onboardingIconRegistry'  ->  '../for-both/setup-icons/backend/onboardingIconRegistry'
+   '../helpers/convertHeight'  ->  '../helpers/backend/convertHeight'
+
+src/login-and-signup/TrainerPayoutSetupStep.jsx
+   '../for-both/payments/trainerPayoutSetupFlow'  ->  '../for-both/payments/backend/trainerPayoutSetupFlow'
+
+src/login-and-signup/resetPasswordByEmail.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../for-both/online-connection/whereToConnect'  ->  '../../for-both/online-connection/backend/whereToConnect'
+
+src/logout-cleanup/clearDataOnLogout.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../notifications/manageAlerts'  ->  '../../notifications/backend/manageAlerts'
+
+src/messaging/ChatScreen.jsx
+   '../ai-coach/coach-actions/alertTrainer'  ->  '../ai-coach/coach-actions/backend/alertTrainer'
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../trainer-app/my-trainees/traineeList'  ->  '../trainer-app/my-trainees/backend/traineeList'
+
+src/messaging/InboxScreen.jsx
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../ai-coach/past-chats/loadOlderChats'  ->  '../ai-coach/past-chats/backend/loadOlderChats'
+   '../trainer-app/my-trainees/traineeList'  ->  '../trainer-app/my-trainees/backend/traineeList'
+   '../ai-coach/coach-actions/alertTrainer'  ->  '../ai-coach/coach-actions/backend/alertTrainer'
+   '../block-and-report/blockedList'  ->  '../block-and-report/backend/blockedList'
+
+src/messaging/markMessagesRead.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/messaging/unreadMessageCounts.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/notifications/manageAlerts.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/notifications/unreadAlertCount.js
+   '../messaging/unreadMessageCounts'  ->  '../../messaging/backend/unreadMessageCounts'
+
+src/nutrition/barcode/BarcodeScannerScreen.js
+   '../food-search/searchFoods'  ->  '../food-search/backend/searchFoods'
+   '../barcode/fixBarcodeDigits'  ->  './backend/fixBarcodeDigits'
+   '../daily-log/saveLoggedFood'  ->  '../daily-log/backend/saveLoggedFood'
+
+src/nutrition/barcode/scannedProductSummary.js
+   '../food-details/servingSizeMath'  ->  '../../food-details/backend/servingSizeMath'
+
+src/nutrition/daily-log/DailyLogContent.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../daily-log/saveLoggedFood'  ->  './backend/saveLoggedFood'
+
+src/nutrition/daily-log/DayPicker.jsx
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+
+src/nutrition/daily-log/saveLoggedFood.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../food-search/searchFoods'  ->  '../../food-search/backend/searchFoods'
+   '../food-search/searchFoods'  ->  '../../food-search/backend/searchFoods'
+   '../../crash-reports/reportCrashAutomatically'  ->  '../../../crash-reports/backend/reportCrashAutomatically'
+   '../../helpers/cleanDataBeforeSaving'  ->  '../../../helpers/backend/cleanDataBeforeSaving'
+   '../food-search/cleanSearchText'  ->  '../../food-search/backend/cleanSearchText'
+   '../food-search/readableFoodTitle'  ->  '../../food-search/backend/readableFoodTitle'
+   '../food-details/servingSizeMath'  ->  '../../food-details/backend/servingSizeMath'
+   '../food-search/readableFoodTitle'  ->  '../../food-search/backend/readableFoodTitle'
+
+src/nutrition/food-cards/FoodListScreen.jsx
+   './foodCardText'  ->  './backend/foodCardText'
+
+src/nutrition/food-cards/LoggedFoodRow.jsx
+   './foodCardText'  ->  './backend/foodCardText'
+
+src/nutrition/food-cards/foodCardText.js
+   '../food-search/readableFoodTitle'  ->  '../../food-search/backend/readableFoodTitle'
+
+src/nutrition/food-details/NutritionFactsScreen.jsx
+   '../food-search/searchFoods'  ->  '../food-search/backend/searchFoods'
+   '../daily-log/saveLoggedFood'  ->  '../daily-log/backend/saveLoggedFood'
+   './nutritionFactsData'  ->  './backend/nutritionFactsData'
+
+src/nutrition/food-details/nutritionFactsData.js
+   '../nutritionColors'  ->  '../../nutritionColors'
+   '../food-search/readableFoodTitle'  ->  '../../food-search/backend/readableFoodTitle'
+
+src/nutrition/food-search/ConfirmFoodPopup.jsx
+   '../food-details/servingSizeMath'  ->  '../food-details/backend/servingSizeMath'
+   '../barcode/scannedProductSummary'  ->  '../barcode/backend/scannedProductSummary'
+   '../food-search/cleanSearchText'  ->  './backend/cleanSearchText'
+   '../food-search/readableFoodTitle'  ->  './backend/readableFoodTitle'
+
+src/nutrition/food-search/FoodSearchScreen.js
+   '../daily-log/saveLoggedFood'  ->  '../daily-log/backend/saveLoggedFood'
+   '../food-details/tidyBrandName'  ->  '../food-details/backend/tidyBrandName'
+   '../food-search/tidyFoodTitles'  ->  './backend/tidyFoodTitles'
+   '../food-search/guessServingLabel'  ->  './backend/guessServingLabel'
+   '../food-cards/foodCardText'  ->  '../food-cards/backend/foodCardText'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/nutrition/food-search/cleanSearchText.js
+   '../food-details/servingSizeMath'  ->  '../../food-details/backend/servingSizeMath'
+   '../food-search/tidyFoodTitles'  ->  './tidyFoodTitles'
+
+src/nutrition/food-search/combineFoodSources.js
+   '../food-search/restaurantMenuSearch'  ->  './restaurantMenuSearch'
+
+src/nutrition/food-search/rankFoodResults.js
+   '../food-details/tidyBrandName'  ->  '../../food-details/backend/tidyBrandName'
+   '../food-details/tidyBrandName'  ->  '../../food-details/backend/tidyBrandName'
+
+src/nutrition/food-search/readableFoodTitle.js
+   '../food-details/tidyBrandName'  ->  '../../food-details/backend/tidyBrandName'
+
+src/nutrition/food-search/restaurantMenuSearch.js
+   '../food-search/rankFoodResults'  ->  './rankFoodResults'
+   '../food-search/guessServingLabel'  ->  './guessServingLabel'
+
+src/nutrition/food-search/searchFoods.js
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../for-both/online-connection/attachLoginProof'  ->  '../../../for-both/online-connection/backend/attachLoginProof'
+   '../../for-both/online-connection/sendCrashReport'  ->  '../../../for-both/online-connection/backend/sendCrashReport'
+   '../food-search/rankFoodResults'  ->  './rankFoodResults'
+   '../food-details/tidyBrandName'  ->  '../../food-details/backend/tidyBrandName'
+   '../food-details/fixPackageAmounts'  ->  '../../food-details/backend/fixPackageAmounts'
+
+src/nutrition/food-search/tidyFoodTitles.js
+   '../food-search/rankFoodResults'  ->  './rankFoodResults'
+
+src/nutrition/food-search/trustRestaurantResult.js
+   '../food-search/rankFoodResults'  ->  './rankFoodResults'
+   '../food-search/guessServingLabel'  ->  './guessServingLabel'
+
+src/nutrition/quick-add/QuickAddNutrition.jsx
+   '../daily-log/saveLoggedFood'  ->  '../daily-log/backend/saveLoggedFood'
+   '../food-search/readableFoodTitle'  ->  '../food-search/backend/readableFoodTitle'
+
+src/nutrition/targets/NutritionSetupScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/nutrition/targets/recalculateFoodTargets.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../daily-log/saveLoggedFood'  ->  '../../daily-log/backend/saveLoggedFood'
+
+src/settings/BugReportScreen.jsx
+   '../for-both/online-connection/whereToConnect'  ->  '../for-both/online-connection/backend/whereToConnect'
+
+src/settings/ContactSupportScreen.jsx
+   '../for-both/online-connection/whereToConnect'  ->  '../for-both/online-connection/backend/whereToConnect'
+
+src/settings/SettingsScreen.js
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   '../for-both/payments/trainerPayoutSetup'  ->  '../for-both/payments/backend/trainerPayoutSetup'
+   '../for-both/payments/trainerPayoutSetupFlow'  ->  '../for-both/payments/backend/trainerPayoutSetupFlow'
+   '../for-both/payments/howPaymentsWorkText'  ->  '../for-both/payments/backend/howPaymentsWorkText'
+   '../for-both/payments/traineePaymentHistory'  ->  '../for-both/payments/backend/traineePaymentHistory'
+
+src/trainer-app/documents/DocumentEditor.js
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/trainer-app/documents/ShareDocumentPopup.js
+   '../my-trainees/traineeList'  ->  '../my-trainees/backend/traineeList'
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+
+src/trainer-app/documents/SpreadsheetEditor.js
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   './spreadsheet-grid/cellFormatting'  ->  './spreadsheet-grid/backend/cellFormatting'
+   './spreadsheet-grid/prepareCellText'  ->  './spreadsheet-grid/backend/prepareCellText'
+   './spreadsheet-grid/columnWidths'  ->  './spreadsheet-grid/backend/columnWidths'
+   './spreadsheet-grid/saveAndLoadSheet'  ->  './spreadsheet-grid/backend/saveAndLoadSheet'
+
+src/trainer-app/documents/spreadsheet-grid/SpreadsheetGridRow.jsx
+   './prepareCellText'  ->  './backend/prepareCellText'
+
+src/trainer-app/documents/spreadsheet-grid/columnWidths.js
+   './spreadsheetConstants'  ->  '../spreadsheetConstants'
+
+src/trainer-app/documents/spreadsheet-grid/formulaCalculator.js
+   './spreadsheetConstants'  ->  '../spreadsheetConstants'
+
+src/trainer-app/documents/spreadsheet-grid/prepareCellText.js
+   './spreadsheetConstants'  ->  '../spreadsheetConstants'
+
+src/trainer-app/documents/spreadsheet-grid/saveAndLoadSheet.js
+   './spreadsheetConstants'  ->  '../spreadsheetConstants'
+
+src/trainer-app/earnings/EarningsScreen.jsx
+   '../../for-both/payments/trainerPayoutSetup'  ->  '../../for-both/payments/backend/trainerPayoutSetup'
+   '../../for-both/payments/trainerPayoutSetupFlow'  ->  '../../for-both/payments/backend/trainerPayoutSetupFlow'
+   '../../for-both/payments/trainerPaymentHistory'  ->  '../../for-both/payments/backend/trainerPaymentHistory'
+   '../../for-both/online-connection/linkTrainerAndTrainee'  ->  '../../for-both/online-connection/backend/linkTrainerAndTrainee'
+   '../trainee-records/traineeDatabaseLocations'  ->  '../trainee-records/backend/traineeDatabaseLocations'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/trainer-app/home/TrainerHomeContent.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../../helpers/getLocalDay'  ->  '../../helpers/backend/getLocalDay'
+   '../../daily-stats/latestWeight'  ->  '../../daily-stats/backend/latestWeight'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../nutrition/daily-log/backend/saveLoggedFood'
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../helpers/fillTraineeProfile'  ->  '../../helpers/backend/fillTraineeProfile'
+   '../../helpers/combineTraineeProfile'  ->  '../../helpers/backend/combineTraineeProfile'
+   '../progress-tab/pickWeightToShow'  ->  '../progress-tab/backend/pickWeightToShow'
+   '../trainee-records/calmDatabaseErrors'  ->  '../trainee-records/backend/calmDatabaseErrors'
+   '../../for-both/payments/whenToAskForPayoutSetup'  ->  '../../for-both/payments/backend/whenToAskForPayoutSetup'
+
+src/trainer-app/home/TrainerListingPopup.js
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/linkTrainerAndTrainee'  ->  '../../for-both/online-connection/backend/linkTrainerAndTrainee'
+   '../my-trainees/traineeList'  ->  '../my-trainees/backend/traineeList'
+   '../../ai-coach/coach-actions/alertTrainer'  ->  '../../ai-coach/coach-actions/backend/alertTrainer'
+   '../../for-both/online-connection/sendPhoneAlert'  ->  '../../for-both/online-connection/backend/sendPhoneAlert'
+   '../../notifications/writeAlertText'  ->  '../../notifications/backend/writeAlertText'
+
+src/trainer-app/home/trainerHomePieces.jsx
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../helpers/whichViewerForFile'  ->  '../../helpers/backend/whichViewerForFile'
+
+src/trainer-app/my-trainees/MyTraineesScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/trainer-app/my-trainees/pagedTraineeList.js
+   '../trainee-records/traineeDatabaseLocations'  ->  '../../trainee-records/backend/traineeDatabaseLocations'
+   '../trainee-records/loadMyLinkedTrainees'  ->  '../../trainee-records/backend/loadMyLinkedTrainees'
+
+src/trainer-app/my-trainees/traineeList.js
+   '../../app-start/TrainerAppStart'  ->  '../../../app-start/TrainerAppStart'
+
+src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   './pendingRequestCount'  ->  './backend/pendingRequestCount'
+   '../../ai-coach/coach-actions/alertTrainer'  ->  '../../ai-coach/coach-actions/backend/alertTrainer'
+
+src/trainer-app/new-requests/loadPendingTraineeRequests.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../ai-coach/coach-actions/alertTrainer'  ->  '../../../ai-coach/coach-actions/backend/alertTrainer'
+
+src/trainer-app/new-requests/pendingRequestCount.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/trainer-app/progress-tab/TrainerProgressTab.jsx
+   './pickWeightToShow'  ->  './backend/pickWeightToShow'
+
+src/trainer-app/scheduling/BookSessionScreen.jsx
+   '../scheduling/mySessions'  ->  './backend/mySessions'
+   '../../helpers/sessionTimeText'  ->  '../../helpers/backend/sessionTimeText'
+
+src/trainer-app/scheduling/CalendarTab.jsx
+   '../scheduling/mySessions'  ->  './backend/mySessions'
+   '../../helpers/sessionTimeText'  ->  '../../helpers/backend/sessionTimeText'
+
+src/trainer-app/scheduling/ScheduleSessionScreen.jsx
+   '../scheduling/mySessions'  ->  './backend/mySessions'
+
+src/trainer-app/scheduling/SessionCard.jsx
+   '../../helpers/sessionTimeText'  ->  '../../helpers/backend/sessionTimeText'
+
+src/trainer-app/scheduling/SharedSessionList.jsx
+   '../scheduling/mySessions'  ->  './backend/mySessions'
+
+src/trainer-app/scheduling/alertTraineeOfSession.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../for-both/online-connection/attachLoginProof'  ->  '../../../for-both/online-connection/backend/attachLoginProof'
+   '../../notifications/writeAlertText'  ->  '../../../notifications/backend/writeAlertText'
+
+src/trainer-app/scheduling/mySessions.js
+   './SharedSessionList'  ->  '../SharedSessionList'
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../my-trainees/pagedTraineeList'  ->  '../../my-trainees/backend/pagedTraineeList'
+   '../scheduling/alertTraineeOfSession'  ->  './alertTraineeOfSession'
+   '../../for-both/online-connection/sendPhoneAlert'  ->  '../../../for-both/online-connection/backend/sendPhoneAlert'
+   '../../notifications/writeAlertText'  ->  '../../../notifications/backend/writeAlertText'
+   '../../helpers/cleanDataBeforeSaving'  ->  '../../../helpers/backend/cleanDataBeforeSaving'
+
+src/trainer-app/trainee-detail/ManageTraineeScreen.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../helpers/dateStrings'  ->  '../../helpers/backend/dateStrings'
+   '../../nutrition/daily-log/saveLoggedFood'  ->  '../../nutrition/daily-log/backend/saveLoggedFood'
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../trainee-records/calmDatabaseErrors'  ->  '../trainee-records/backend/calmDatabaseErrors'
+
+src/trainer-app/trainee-records/loadMyLinkedTrainees.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../trainee-records/getTraineeDisplayName'  ->  './getTraineeDisplayName'
+   '../../helpers/combineTraineeProfile'  ->  '../../../helpers/backend/combineTraineeProfile'
+
+src/trainer-app/trainee-records/traineeDatabaseLocations.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../../for-both/cloud-database/loadInPages'  ->  '../../../for-both/cloud-database/backend/loadInPages'
+
+src/trainer-app/weekly-report/TrainerWeeklyReportSection.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx
+   './manualPlanToWorkoutPlan'  ->  './backend/manualPlanToWorkoutPlan'
+
+src/trainer-app/workout-plans/manualPlanToWorkoutPlan.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/trainer-pro-plan/FreeTrialBanner.jsx
+   './proAccessRules'  ->  './backend/proAccessRules'
+
+src/trainer-pro-plan/ProPlanPurchases.jsx
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+   './proAccessRules'  ->  './backend/proAccessRules'
+   './verifyProPurchase'  ->  './backend/verifyProPurchase'
+
+src/trainer-pro-plan/ProPlanSetup.jsx
+   '../app-start/cloudConnection'  ->  '../app-start/backend/cloudConnection'
+
+src/trainer-pro-plan/verifyProPurchase.js
+   '../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../for-both/online-connection/whereToConnect'  ->  '../../for-both/online-connection/backend/whereToConnect'
+
+src/workouts/create-plan/CreateWorkoutPlanScreen.js
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   '../../for-both/whichProfileCardsToShow'  ->  '../../for-both/backend/whichProfileCardsToShow'
+   './saveAndLoadWorkoutPlan'  ->  './backend/saveAndLoadWorkoutPlan'
+   './nameWorkoutPlan'  ->  './backend/nameWorkoutPlan'
+   '../../ai-coach/coach-actions/alertTrainer'  ->  '../../ai-coach/coach-actions/backend/alertTrainer'
+   '../view-plan/makePlanPdf'  ->  '../view-plan/backend/makePlanPdf'
+   '../create-plan/countPlansCreated'  ->  './backend/countPlansCreated'
+   '../create-plan/askForWorkoutPlan'  ->  './backend/askForWorkoutPlan'
+   '../create-plan/keepPlanBuildingInBackground'  ->  './backend/keepPlanBuildingInBackground'
+   '../../helpers/fillTraineeProfile'  ->  '../../helpers/backend/fillTraineeProfile'
+   '../create-plan/countPlansCreated'  ->  './backend/countPlansCreated'
+   '../create-plan/askForWorkoutPlan'  ->  './backend/askForWorkoutPlan'
+
+src/workouts/create-plan/WorkoutProfileTags.jsx
+   '../../for-both/whichProfileCardsToShow'  ->  '../../for-both/backend/whichProfileCardsToShow'
+   '../create-plan/planQuestionLabels'  ->  './backend/planQuestionLabels'
+
+src/workouts/create-plan/askForWorkoutPlan.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../create-plan/saveAndLoadWorkoutPlan'  ->  './saveAndLoadWorkoutPlan'
+   '../../for-both/online-connection/attachLoginProof'  ->  '../../../for-both/online-connection/backend/attachLoginProof'
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../for-both/online-connection/sendOnlineRequest'  ->  '../../../for-both/online-connection/backend/sendOnlineRequest'
+   '../create-plan/countPlansCreated'  ->  './countPlansCreated'
+   '../../helpers/fillTraineeProfile'  ->  '../../../helpers/backend/fillTraineeProfile'
+
+src/workouts/create-plan/countPlansCreated.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/workouts/create-plan/planRequestAnswers.js
+   '../../helpers/fillTraineeProfile'  ->  '../../../helpers/backend/fillTraineeProfile'
+
+src/workouts/create-plan/saveAndLoadWorkoutPlan.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/workouts/create-plan/workoutPlanCreation.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+
+src/workouts/exercise-videos/DislikedExercisesPicker.jsx
+   './dislikableExercises'  ->  './backend/dislikableExercises'
+   './dislikedExercisesText'  ->  './backend/dislikedExercisesText'
+
+src/workouts/exercise-videos/ExerciseVideosTab.jsx
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+   './findExerciseVideos'  ->  './backend/findExerciseVideos'
+
+src/workouts/exercise-videos/dislikableExercises.js
+   '../../trainer-app/workout-plans/builtInExerciseList'  ->  '../../../trainer-app/workout-plans/backend/builtInExerciseList'
+
+src/workouts/exercise-videos/findExerciseVideos.js
+   '../../for-both/online-connection/whereToConnect'  ->  '../../../for-both/online-connection/backend/whereToConnect'
+   '../../for-both/online-connection/attachLoginProof'  ->  '../../../for-both/online-connection/backend/attachLoginProof'
+
+src/workouts/exercise-videos/loadSavedWorkoutPlans.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+   '../create-plan/saveAndLoadWorkoutPlan'  ->  '../../create-plan/backend/saveAndLoadWorkoutPlan'
+
+src/workouts/view-plan/PlanPdfViewer.js
+   '../../for-both/files-and-notes/saveNotesAndFiles'  ->  '../../for-both/files-and-notes/backend/saveNotesAndFiles'
+   '../../app-start/cloudConnection'  ->  '../../app-start/backend/cloudConnection'
+
+src/workouts/view-plan/makePlanPdf.js
+   '../../app-start/cloudConnection'  ->  '../../../app-start/backend/cloudConnection'
+

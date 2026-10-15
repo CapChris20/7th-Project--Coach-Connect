@@ -1,13 +1,7 @@
-/**
- * Hold To Confirm Modal
- *
- * Purpose: UI screen or component: Hold To Confirm Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: HoldToConfirmPopup
- *
- * @file-header
- */
+// Destructive confirmation: the user must press and hold until the progress bar fills.
+// Flow: press in → animate 0→1 → if they hold to the end, run onHoldComplete; release early → bar resets.
+// Used by: delete / unlink / other irreversible actions. Release early never fires the action.
+
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
@@ -21,20 +15,100 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_HOLD_DURATION_MS = 1200;
+const RESET_DURATION_MS = 180;
+const DEFAULT_BAR_GRADIENT = ['#8B5CF6', '#DB7093'];
+const DEFAULT_TRACK_COLOR = 'rgba(255,255,255,0.12)';
+const DEFAULT_PILL_LABEL = 'Hold to confirm';
+const DEFAULT_TITLE = 'Confirm';
+const SPINNER_COLOR = '#FDA4AF';
+
+const DARK_TEXT = '#FFFFFF';
+const LIGHT_TEXT = '#1a0a2e';
+const DARK_MUTED = 'rgba(255,255,255,0.55)';
+const LIGHT_MUTED = 'rgba(26,10,46,0.55)';
+const DARK_CARD = 'rgba(14,14,20,0.98)';
+const LIGHT_CARD = '#FFFFFF';
+const DARK_PILL_BORDER = 'rgba(255,255,255,0.14)';
+const LIGHT_PILL_BORDER = 'rgba(0,0,0,0.1)';
+
+const FILL_COMPLETE = 1;
+const FILL_EMPTY = 0;
+
+// ===== HELPER FUNCTIONS =====
+
+function confirmPalette(isDark) {
+  return {
+    textColor: isDark ? DARK_TEXT : LIGHT_TEXT,
+    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
+    cardBg: isDark ? DARK_CARD : LIGHT_CARD,
+    pillBorder: isDark ? DARK_PILL_BORDER : LIGHT_PILL_BORDER,
+  };
+}
+
+function holdPillOpacity(isSubmitting, isPressed) {
+  if (isSubmitting) return 0.65;
+  if (isPressed) return 0.92;
+  return 1;
+}
+
+function completeErrorMessage(error) {
+  return error?.message || error?.code || 'Something went wrong. Try again.';
+}
+
+function stopHoldAnimation(animRef, runningRef, progress) {
+  animRef.current?.stop?.();
+  animRef.current = null;
+  runningRef.current = false;
+  progress.setValue(FILL_EMPTY);
+}
+
+// vocab: Animated.timing fills 0→1 over holdDurationMs. useNativeDriver: false because we animate width.
+function startHoldFill({ progress, holdDurationMs, animRef, runningRef, holdLockedRef, runComplete }) {
+  runningRef.current = true;
+  const anim = Animated.timing(progress, {
+    toValue: FILL_COMPLETE,
+    duration: holdDurationMs,
+    useNativeDriver: false,
+  });
+  animRef.current = anim;
+  anim.start(({ finished }) => {
+    animRef.current = null;
+    if (!finished || !runningRef.current) return;
+    runningRef.current = false;
+    holdLockedRef.current = true;
+    void runComplete();
+  });
+}
+
+function cancelHoldFill({ progress, animRef, runningRef }) {
+  animRef.current?.stop();
+  animRef.current = null;
+  runningRef.current = false;
+  Animated.timing(progress, {
+    toValue: FILL_EMPTY,
+    duration: RESET_DURATION_MS,
+    useNativeDriver: false,
+  }).start();
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * Destructive confirmation: user must press and hold until the progress bar fills.
- * Release early → bar resets; complete → `onHoldComplete` runs (should throw on failure).
+ * Hold-to-confirm modal. `onHoldComplete` should throw on failure so the bar can reset.
+ * @param {object} props
  */
 export default function HoldToConfirmPopup({
   visible,
   onClose,
-  title = 'Confirm',
+  title = DEFAULT_TITLE,
   message = '',
-  holdDurationMs = 1200,
-  /** Gradient for the filling bar */
-  barGradient = ['#8B5CF6', '#DB7093'],
-  trackColor = 'rgba(255,255,255,0.12)',
-  pillLabel = 'Hold to confirm',
+  holdDurationMs = DEFAULT_HOLD_DURATION_MS,
+  barGradient = DEFAULT_BAR_GRADIENT,
+  trackColor = DEFAULT_TRACK_COLOR,
+  pillLabel = DEFAULT_PILL_LABEL,
   onHoldComplete,
   isDark = true,
 }) {
@@ -44,15 +118,10 @@ export default function HoldToConfirmPopup({
   const holdLockedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const textColor = isDark ? '#FFFFFF' : '#1a0a2e';
-  const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(26,10,46,0.55)';
-  const cardBg = isDark ? 'rgba(14,14,20,0.98)' : '#FFFFFF';
+  const palette = confirmPalette(isDark);
 
   const resetBar = useCallback(() => {
-    animRef.current?.stop?.();
-    animRef.current = null;
-    runningRef.current = false;
-    progress.setValue(0);
+    stopHoldAnimation(animRef, runningRef, progress);
   }, [progress]);
 
   useEffect(() => {
@@ -64,13 +133,14 @@ export default function HoldToConfirmPopup({
   }, [visible, resetBar]);
 
   const runComplete = useCallback(async () => {
+    // 1. Lock the pill so a second hold cannot fire while the action runs.
     setSubmitting(true);
     try {
       await onHoldComplete();
       onClose();
-    } catch (e) {
-      const msg = e?.message || e?.code || 'Something went wrong. Try again.';
-      Alert.alert('Could not complete', String(msg));
+    } catch (error) {
+      // 2. Action threw → tell them, reset the bar, unlock the pill.
+      Alert.alert('Could not complete', String(completeErrorMessage(error)));
       resetBar();
     } finally {
       setSubmitting(false);
@@ -79,49 +149,37 @@ export default function HoldToConfirmPopup({
   }, [onHoldComplete, onClose, resetBar]);
 
   const onPressIn = useCallback(() => {
+    // 1. Already submitting → ignore. Otherwise reset and fill 0→1.
     if (submitting) return;
     resetBar();
-    runningRef.current = true;
-    const anim = Animated.timing(progress, {
-      toValue: 1,
-      duration: holdDurationMs,
-      useNativeDriver: false,
-    });
-    animRef.current = anim;
-    anim.start(({ finished }) => {
-      animRef.current = null;
-      if (finished && runningRef.current) {
-        runningRef.current = false;
-        holdLockedRef.current = true;
-        void runComplete();
-      }
+    startHoldFill({
+      progress,
+      holdDurationMs,
+      animRef,
+      runningRef,
+      holdLockedRef,
+      runComplete,
     });
   }, [submitting, resetBar, progress, holdDurationMs, runComplete]);
 
   const onPressOut = useCallback(() => {
+    // 1. Release early → bar resets. After a finished hold, leave the bar full.
     if (submitting || holdLockedRef.current) return;
     if (!runningRef.current) return;
-    animRef.current?.stop();
-    animRef.current = null;
-    runningRef.current = false;
-    Animated.timing(progress, {
-      toValue: 0,
-      duration: 180,
-      useNativeDriver: false,
-    }).start();
+    cancelHoldFill({ progress, animRef, runningRef });
   }, [submitting, progress]);
 
   const fillWidth = progress.interpolate({
-    inputRange: [0, 1],
+    inputRange: [FILL_EMPTY, FILL_COMPLETE],
     outputRange: ['0%', '100%'],
   });
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={submitting ? undefined : onClose}>
       <Pressable style={styles.overlay} onPress={submitting ? undefined : onClose}>
-        <Pressable style={[styles.card, { backgroundColor: cardBg }]} onPress={(e) => e.stopPropagation?.()}>
-          <Text style={[styles.title, { color: textColor }]}>{title}</Text>
-          {message ? <Text style={[styles.message, { color: muted }]}>{message}</Text> : null}
+        <Pressable style={[styles.card, { backgroundColor: palette.cardBg }]} onPress={(event) => event.stopPropagation?.()}>
+          <Text style={[styles.title, { color: palette.textColor }]}>{title}</Text>
+          {message ? <Text style={[styles.message, { color: palette.muted }]}>{message}</Text> : null}
 
           <View style={[styles.track, { backgroundColor: trackColor }]}>
             <Animated.View style={[styles.fillWrap, { width: fillWidth }]}>
@@ -136,20 +194,20 @@ export default function HoldToConfirmPopup({
             style={({ pressed }) => [
               styles.holdPill,
               {
-                opacity: submitting ? 0.65 : pressed ? 0.92 : 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
+                opacity: holdPillOpacity(submitting, pressed),
+                borderColor: palette.pillBorder,
               },
             ]}
           >
             {submitting ? (
-              <ActivityIndicator color="#FDA4AF" />
+              <ActivityIndicator color={SPINNER_COLOR} />
             ) : (
-              <Text style={[styles.holdLabel, { color: textColor }]}>{pillLabel}</Text>
+              <Text style={[styles.holdLabel, { color: palette.textColor }]}>{pillLabel}</Text>
             )}
           </Pressable>
 
           <Pressable onPress={submitting ? undefined : onClose} style={styles.cancelWrap} disabled={submitting}>
-            <Text style={[styles.cancel, { color: muted }]}>Cancel</Text>
+            <Text style={[styles.cancel, { color: palette.muted }]}>Cancel</Text>
           </Pressable>
         </Pressable>
       </Pressable>

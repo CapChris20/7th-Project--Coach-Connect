@@ -10,14 +10,23 @@ import { auth } from '../../app-start/cloudConnection';
 
 // ===== NAMED CONSTANTS =====
 
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MILLISECONDS_PER_SECOND = 1000;
+const MILLISECONDS_PER_DAY =
+  HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+
 // Manipulate here: how many on/off flips one calendar month allows.
 const MAX_AI_TOGGLES_PER_CALENDAR_MONTH = 3;
 // Manipulate here: how many "off" flips in that month force AI to stay off.
 const MAX_AI_OFFS_PER_MONTH_BEFORE_FREEZE = 3;
-// Manipulate here: how long the forced-off period lasts after that churn.
-const FREEZE_OFF_MS = 30 * 24 * 60 * 60 * 1000;
-// Manipulate here: events older than this are dropped the next time we save the log.
-const TOGGLE_EVENT_RETENTION_MS = 400 * 24 * 60 * 60 * 1000;
+// Manipulate here: how many days the forced-off period lasts after that churn.
+const FREEZE_OFF_DAYS = 30;
+const FREEZE_OFF_MS = FREEZE_OFF_DAYS * MILLISECONDS_PER_DAY;
+// Manipulate here: events older than this many days are dropped the next time we save the log.
+const TOGGLE_EVENT_RETENTION_DAYS = 400;
+const TOGGLE_EVENT_RETENTION_MS = TOGGLE_EVENT_RETENTION_DAYS * MILLISECONDS_PER_DAY;
 const MAX_STORED_TOGGLE_EVENTS = 200;
 
 // Device-wide copy. The per-user key below is the one that survives a profile refresh.
@@ -237,13 +246,18 @@ async function loadStoredAiEnabled(uid, refreshToggleMeter) {
  * @returns {string}
  */
 export function getAiToggleMeterHint(meter) {
+  // 1. No meter yet, or they are frozen off from churn.
   if (!meter) return '';
   if (meter.isFrozenFromChurn) {
     return `AI stays off until ${formatShortDate(meter.freezeOffUntil)} after repeated off switches this month.`;
   }
+
+  // 2. Used the full monthly allowance.
   if (meter.remaining <= 0) {
     return "You've used your full allowance for flipping this switch this month. It resets next month.";
   }
+
+  // 3. Unused, almost out, or partway through.
   if (meter.togglesThisMonth <= 0) {
     return 'Each on/off flip uses part of a small monthly allowance — pace yourself.';
   }
@@ -334,10 +348,12 @@ export function AIProvider({ children }) {
   // A read error turns AI on so a storage glitch does not lock the user out of the feature.
   const loadAIPreference = async () => {
     try {
+      // 1. Per-user key wins. Device-wide flag is the fallback.
       const uid = auth?.currentUser?.uid;
       const isEnabled = await loadStoredAiEnabled(uid, refreshToggleMeter);
       setAiEnabled(isEnabled);
     } catch (error) {
+      // 2. A read error turns AI on so a storage glitch does not lock the user out.
       console.error('Failed to load AI preference:', error);
       setAiEnabled(true);
     } finally {
@@ -347,9 +363,11 @@ export function AIProvider({ children }) {
 
   // After login, prefer the per-user key, then cached profiles, then default to on.
   const reconcileForUser = async (uid) => {
+    // 1. Need a signed-in user.
     if (!uid) return;
 
     try {
+      // 2. Per-user key is the source of truth when it is exactly "true" or "false".
       const storedEnabled = await readAndMirrorPerUserAiFlag(uid);
       if (storedEnabled === true || storedEnabled === false) {
         setAiEnabled(storedEnabled);
@@ -359,6 +377,7 @@ export function AIProvider({ children }) {
       /* continue */
     }
 
+    // 3. Cached profile blobs, then default to on.
     const fromProfile = await findAiEnabledFromProfileCaches(uid);
     if (fromProfile === true || fromProfile === false) {
       await applyAiPreference(uid, fromProfile);
@@ -385,9 +404,12 @@ export function AIProvider({ children }) {
 
   const commitMeteredToggle = useCallback(
     async (nextEnabled) => {
+      // 1. Need a signed-in user to count this flip.
       const uid = auth?.currentUser?.uid;
       if (!uid) return;
       const result = await recordMeteredAiToggle(uid, nextEnabled);
+
+      // 2. Frozen from churn, or the monthly flip cap is already used.
       if (result.outcome === 'frozen') {
         Alert.alert(
           'AI stays off for now',
@@ -402,6 +424,8 @@ export function AIProvider({ children }) {
         );
         return;
       }
+
+      // 3. Write the new preference and refresh the meter.
       await applyAiPreference(uid, nextEnabled);
       setAiEnabled(nextEnabled);
       await mirrorProfileAi(uid, nextEnabled);
@@ -413,10 +437,12 @@ export function AIProvider({ children }) {
   /** Settings / user flip — disclaimer + monthly cap + freeze if they churn off. */
   const toggleAI = useCallback(
     (enabled) => {
+      // 1. Ignore taps while storage is still loading, or a no-op flip.
       const nextEnabled = !!enabled;
       if (isLoadingPreference || aiEnabled === null) return;
       if (nextEnabled === aiEnabled) return;
 
+      // 2. Disclaimer first. Continue writes the flip and counts it against the month.
       const meterNote =
         '\n\nFlipping this switch uses part of a small monthly allowance (you can see how much is used on the Settings screen). If you turn AI off repeatedly and leave it off, we may keep it off for about a month so you can settle on what you want.';
 

@@ -35,10 +35,17 @@ export default function TwoColumnGrid({
   gap = DEFAULT_GAP,
   itemWidth = DEFAULT_ITEM_WIDTH,
 }) {
+  const rowStyle = {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap,
+    justifyContent: 'space-between',
+  };
+  const cellStyle = { width: itemWidth };
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap, justifyContent: 'space-between' }}>
+    <View style={rowStyle}>
       {items.map((item, index) => (
-        <View key={cellKey(item, index, keyExtractor)} style={{ width: itemWidth }}>
+        <View key={cellKey(item, index, keyExtractor)} style={cellStyle}>
           {renderItem(item, index)}
         </View>
       ))}

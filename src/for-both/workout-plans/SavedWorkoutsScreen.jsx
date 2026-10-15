@@ -1,13 +1,6 @@
-/**
- * AIWorkout Plans Screen
- *
- * Purpose: UI screen or component: AIWorkout Plans Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: SavedWorkoutsScreen
- *
- * @file-header
- */
+// Saved workout-plan library for a client (trainer or client viewer).
+// Flow: load plans from Firestore → normalize → search/filter → show cards or empty state.
+// Used by trainer client tabs and the client workout library. Layout paints; the export wires data.
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -40,9 +33,8 @@ import {
 } from 'firebase/firestore';
 import { fetchClientWorkoutPlansForLibrary } from '../../workouts/exercise-videos/loadSavedWorkoutPlans';
 
-// ============================================================================
-// COLOR SYSTEM
-// ============================================================================
+// ===== NAMED CONSTANTS =====
+
 const FOCUS_COLORS = {
   pink:   { start: '#FF6B9D', end: '#C084FC' },
   purple: { start: '#C084FC', end: '#7C3AED' },
@@ -79,10 +71,20 @@ const WARM_CTA_GRADIENT = ['#BE185D', '#C2410C'];
 const WARM_ACCENT = '#FF6B9D';
 
 const EMPTY_CHECK_COLORS = ['#FF6B9D', '#F97316', '#BE185D', '#C2410C'];
+const DAYS_PER_WEEK_DEFAULT = 4;
+const EXERCISES_PER_DAY_FALLBACK = 6;
+const MIN_EXERCISE_COUNT_FALLBACK = 8;
+const DEFAULT_TOTAL_WEEKS = 8;
+const DEFAULT_DAYS_PER_WEEK = 3;
+const DEFAULT_SESSION_MINUTES = 45;
+const TRAINING_DAYS_LENGTH = 7;
+const MAX_MUSCLE_TAG_LENGTH = 28;
+const MAX_MUSCLE_TAGS = 8;
+const WEEKDAY_SHORT_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const SHELL_BOTTOM_PAD_EXTRA = 24;
 
-// ============================================================================
-// FIRESTORE HOOK
-// ============================================================================
+// ===== HELPER FUNCTIONS =====
+
 function useClientWorkoutPlans(clientId, trainerId) {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,68 +136,118 @@ const GOAL_COLOR_MAP = {
   recovery: 'green',
 };
 
+function dateFromFirestoreOrRaw(raw) {
+  if (!raw) return null;
+  if (raw?.toDate) return raw.toDate();
+  if (raw instanceof Date) return raw;
+  return new Date(raw);
+}
+
 function formatDate(raw) {
-  if (!raw) return '';
-  const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
-  if (!d || isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const parsedDate = dateFromFirestoreOrRaw(raw);
+  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
+  return parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /** "MAY 5, 2026" for history card headers */
 function formatCreatedUpper(raw) {
-  if (!raw) return '';
-  const d = raw?.toDate ? raw.toDate() : raw instanceof Date ? raw : new Date(raw);
-  if (!d || isNaN(d.getTime())) return '';
-  return d
+  const parsedDate = dateFromFirestoreOrRaw(raw);
+  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
+  return parsedDate
     .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     .toUpperCase();
+}
+
+function structuredPlanDays(structuredPlan) {
+  if (!structuredPlan) return null;
+  if (structuredPlan.days) return structuredPlan.days;
+  if (structuredPlan.sessions) return structuredPlan.sessions;
+  if (Array.isArray(structuredPlan.weeks)) {
+    return structuredPlan.weeks.flatMap((week) => week?.days || []);
+  }
+  return null;
+}
+
+function exerciseCountFromDays(days) {
+  let exerciseCount = 0;
+  for (const day of days) {
+    if (day?.isRest || day?.rest) continue;
+    const exercises = day?.exercises || day?.mainWorkouts || day?.main_workouts || [];
+    if (!Array.isArray(exercises)) continue;
+    exerciseCount += exercises.length;
+  }
+  return exerciseCount;
 }
 
 function deriveExerciseCount(item) {
   const explicit = item?.totalExerciseCount ?? item?.exerciseCount ?? item?.exerciseTotal;
   if (typeof explicit === 'number' && explicit > 0) return explicit;
-  const sp = item?.structuredPlan;
-  const days = sp?.days || sp?.sessions || (Array.isArray(sp?.weeks) ? sp.weeks.flatMap((w) => w?.days || []) : null);
+
+  const days = structuredPlanDays(item?.structuredPlan);
   if (Array.isArray(days)) {
-    let c = 0;
-    for (const d of days) {
-      if (d?.isRest || d?.rest) continue;
-      const ex = d?.exercises || d?.mainWorkouts || d?.main_workouts || [];
-      if (Array.isArray(ex)) c += ex.length;
-    }
-    if (c > 0) return c;
+    const counted = exerciseCountFromDays(days);
+    if (counted > 0) return counted;
   }
-  const dpw = Number(item?.daysPerWeek) || 4;
-  return Math.max(8, dpw * 6);
+
+  const daysPerWeek = Number(item?.daysPerWeek) || DAYS_PER_WEEK_DEFAULT;
+  return Math.max(MIN_EXERCISE_COUNT_FALLBACK, daysPerWeek * EXERCISES_PER_DAY_FALLBACK);
+}
+
+function pushUniqueTag(tags, rawLabel) {
+  const label = String(rawLabel || '').trim();
+  if (!label) return;
+  if (tags.includes(label)) return;
+  if (label.length >= MAX_MUSCLE_TAG_LENGTH) return;
+  tags.push(label);
+}
+
+function muscleLabelFromEntry(entry) {
+  if (typeof entry === 'string') return entry;
+  return entry?.name || entry?.label;
+}
+
+function collectTagsFromDays(days, tags) {
+  if (!Array.isArray(days)) return;
+  for (const day of days) {
+    pushUniqueTag(tags, day?.focus);
+    pushUniqueTag(tags, day?.label);
+    pushUniqueTag(tags, day?.name);
+    const muscleGroups = day?.muscleGroups || day?.muscles || day?.targets;
+    if (!Array.isArray(muscleGroups)) continue;
+    for (const muscle of muscleGroups) {
+      pushUniqueTag(tags, muscleLabelFromEntry(muscle));
+    }
+  }
+}
+
+function collectTagsFromPrimaryMuscles(item, tags) {
+  const primaryMuscles = item?.primaryMuscles || item?.muscleGroups || item?.muscles;
+  if (Array.isArray(primaryMuscles)) {
+    for (const muscle of primaryMuscles) {
+      pushUniqueTag(tags, muscleLabelFromEntry(muscle));
+    }
+    return;
+  }
+  if (typeof primaryMuscles === 'string') {
+    for (const chunk of primaryMuscles.split(/[,/]/)) {
+      pushUniqueTag(tags, chunk);
+    }
+  }
 }
 
 function deriveMuscleTags(item, displayFocus) {
   const tags = [];
-  const push = (s) => {
-    const t = String(s || '').trim();
-    if (t && !tags.includes(t) && t.length < 28) tags.push(t);
-  };
-
-  const sp = item?.structuredPlan;
-  const days = sp?.days || (Array.isArray(sp?.weeks) ? sp.weeks.flatMap((w) => w?.days || []) : null);
-  if (Array.isArray(days)) {
-    for (const d of days) {
-      push(d?.focus);
-      push(d?.label);
-      push(d?.name);
-      const mus = d?.muscleGroups || d?.muscles || d?.targets;
-      if (Array.isArray(mus)) mus.forEach((m) => push(typeof m === 'string' ? m : m?.name || m?.label));
-    }
-  }
-  const pm = item?.primaryMuscles || item?.muscleGroups || item?.muscles;
-  if (Array.isArray(pm)) pm.forEach((m) => push(typeof m === 'string' ? m : m?.name));
-  else if (typeof pm === 'string') pm.split(/[,/]/).forEach((s) => push(s));
+  const days = structuredPlanDays(item?.structuredPlan);
+  collectTagsFromDays(days, tags);
+  collectTagsFromPrimaryMuscles(item, tags);
 
   if (tags.length === 0 && displayFocus) {
-    displayFocus.split(/[,/•]/).forEach((s) => push(s));
+    for (const chunk of displayFocus.split(/[,/•]/)) {
+      pushUniqueTag(tags, chunk);
+    }
   }
-  if (tags.length === 0) push('Full body');
-  return tags.slice(0, 8);
+  if (tags.length === 0) pushUniqueTag(tags, 'Full body');
+  return tags.slice(0, MAX_MUSCLE_TAGS);
 }
 
 function normalizePlan(item) {
@@ -211,20 +263,20 @@ function normalizePlan(item) {
   const focusColor = item.focusColor || GOAL_COLOR_MAP[goalKey] || 'pink';
 
   const totalWeeks = isManual
-    ? (item.durationWeeks || item.totalWeeks || item.weeks || 8)
-    : (item.totalWeeks || item.weeks || item.durationWeeks || 8);
+    ? (item.durationWeeks || item.totalWeeks || item.weeks || DEFAULT_TOTAL_WEEKS)
+    : (item.totalWeeks || item.weeks || item.durationWeeks || DEFAULT_TOTAL_WEEKS);
   const weeksCompleted = item.weeksCompleted || item.currentWeek || 0;
   const daysPerWeek =
     isManual && typeof item.daysPerWeek === 'number'
       ? item.daysPerWeek
-      : item.daysPerWeek || 3;
-  const sessionMinutes = item.sessionMinutes || item.sessionLength || 45;
+      : item.daysPerWeek || DEFAULT_DAYS_PER_WEEK;
+  const sessionMinutes = item.sessionMinutes || item.sessionLength || DEFAULT_SESSION_MINUTES;
 
   // Build a 7-day boolean array from stored field or infer from daysPerWeek
   const trainingDays =
-    Array.isArray(item.trainingDays) && item.trainingDays.length === 7
+    Array.isArray(item.trainingDays) && item.trainingDays.length === TRAINING_DAYS_LENGTH
       ? item.trainingDays
-      : Array.from({ length: 7 }, (_, i) => i < daysPerWeek);
+      : Array.from({ length: TRAINING_DAYS_LENGTH }, (_, dayIndex) => dayIndex < daysPerWeek);
 
   const displayName = isManual
     ? (item.title || item.name || item.planName || 'Custom plan')
@@ -404,7 +456,7 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
                   ]}
                 >
                   <Text style={[styles.weekDayLabel, { color: isTraining ? '#FFF' : theme.textMuted }]}>
-                    {['M','T','W','T','F','S','S'][i]}
+                    {WEEKDAY_SHORT_LABELS[i]}
                   </Text>
                 </View>
               ))}
@@ -442,10 +494,10 @@ const STATUS_STYLES = {
 };
 
 const StatusBadge = ({ status }) => {
-  const s = STATUS_STYLES[status] || STATUS_STYLES.paused;
+  const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.paused;
   return (
-    <View style={[styles.statusBadge, { backgroundColor: s.bg, borderColor: s.border }]}>
-      <Text style={[styles.statusLabel, { color: s.text }]}>{status?.toUpperCase()}</Text>
+    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}>
+      <Text style={[styles.statusLabel, { color: statusStyle.text }]}>{status?.toUpperCase()}</Text>
     </View>
   );
 };
@@ -798,126 +850,34 @@ function TrainerBuilderFooterCard({ isDark, clientName, onGenerateWorkout, onBui
   );
 }
 
-// ============================================================================
-// MAIN SCREEN
-// ============================================================================
-export default function SavedWorkoutsScreen({
-  route,
-  navigation,
-  client: clientProp,
-  embedInLayout = false,
-  onBack,
+// ===== MAIN FUNCTION =====
+
+function SavedWorkoutsScreenLayout({
+  theme,
+  embedInLayout,
+  shellBottomPad,
+  handleBack,
   onProfilePress,
   onSettingsPress,
-  onViewPlan,
+  loading,
+  error,
+  reload,
+  hasPlans,
+  isDark,
+  clientName,
+  clientId,
+  viewerRole,
   onGenerateWorkout,
   onBuildCustom,
-  onEditManualPlan,
+  plans,
+  libraryQuery,
+  setLibraryQuery,
+  plansFilteredBySearch,
+  handleView,
+  showPlanOptions,
+  isTrainerView,
   trainerId,
-  viewerRole = 'trainer',
 }) {
-  const { isDark } = useTheme();
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const shellBottomPad = useShellBottomNavInset(24);
-
-  const clientId   = clientProp?.id   || route?.params?.clientId;
-  const clientName = clientProp?.name || route?.params?.clientName || 'Client';
-
-  const [libraryQuery, setLibraryQuery] = useState('');
-  const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
-
-  // Normalize all Firestore docs into UI-friendly shape
-  const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);
-
-  const plansFilteredBySearch = useMemo(() => {
-    const q = libraryQuery.trim().toLowerCase();
-    if (!q) return plans;
-    return plans.filter((p) => {
-      if (String(p.name || '').toLowerCase().includes(q)) return true;
-      if (String(p.focus || '').toLowerCase().includes(q)) return true;
-      if ((p.muscleTags || []).some((t) => String(t).toLowerCase().includes(q))) return true;
-      return false;
-    });
-  }, [plans, libraryQuery]);
-
-  // ── Firestore write operations (unchanged logic) ─────────────────────────
-  const handleToggleAssigned = useCallback(async (plan) => {
-    if (!db || !clientId || !plan?.id) return;
-    try {
-      const raw = plan._raw;
-      const nextAssigned = !raw.assigned;
-      if (raw._singleDoc && raw._path) {
-        await setDoc(doc(db, ...raw._path), { assigned: nextAssigned }, { merge: true });
-      } else if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
-        await setDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
-      } else {
-        await setDoc(doc(db, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
-      }
-      reload();
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not update plan.');
-    }
-  }, [clientId, reload]);
-
-  const handleDeletePlan = useCallback((plan) => {
-    if (!db || !clientId || !plan?.id) return;
-    Alert.alert('Delete plan', 'Are you sure you want to delete this workout plan?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const raw = plan._raw;
-            if (raw._singleDoc && raw._path) {
-              await deleteDoc(doc(db, ...raw._path));
-            } else if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
-              if (raw._singleDoc && raw._path) {
-                await deleteDoc(doc(db, ...raw._path));
-              }
-              if (plan.id) {
-                try {
-                  await deleteDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id));
-                } catch (_) {}
-              }
-            } else {
-              await deleteDoc(doc(db, 'workoutPlans', plan.id));
-            }
-            reload();
-          } catch (e) {
-            Alert.alert('Error', e?.message || 'Could not delete plan.');
-          }
-        },
-      },
-    ]);
-  }, [clientId, reload]);
-
-  const showPlanOptions = useCallback((plan) => {
-    if (viewerRole !== 'trainer') return;
-    const raw = plan._raw;
-    Alert.alert('Plan options', '', [
-      {
-        text: raw.assigned ? 'Unassign from client' : 'Assign to client',
-        onPress: () => handleToggleAssigned(plan),
-      },
-      { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlan(plan) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [viewerRole, handleToggleAssigned, handleDeletePlan]);
-
-  const handleBack = () => (onBack ? onBack() : navigation?.goBack());
-  const handleView = (plan) => {
-    if (onViewPlan) {
-      onViewPlan(plan._raw);
-      return;
-    }
-    if (typeof navigation?.navigate === 'function') {
-      navigation.navigate('WorkoutDetail', { planId: plan.id });
-    }
-  };
-
-  const hasPlans = plans.length > 0;
-  const isTrainerView = viewerRole === 'trainer';
   const ScreenRoot = embedInLayout ? View : SafeAreaView;
 
   return (
@@ -945,7 +905,6 @@ export default function SavedWorkoutsScreen({
         style={{ backgroundColor: theme.bg }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Loading */}
         {loading && (
           <View style={styles.centeredFeedback}>
             <ActivityIndicator size="large" color="#FF6B9D" />
@@ -953,7 +912,6 @@ export default function SavedWorkoutsScreen({
           </View>
         )}
 
-        {/* Error — real failures only (not Firestore permission noise) */}
         {error && !loading && (
           <View style={{ paddingHorizontal: 16 }}>
             <View
@@ -968,19 +926,18 @@ export default function SavedWorkoutsScreen({
                 },
               ]}
             >
-                <Ionicons name="cloud-offline-outline" size={32} color="#FB923C" />
-                <Text style={[styles.loadErrorTitle, { color: theme.text }]}>Could not load plans</Text>
-                <Text style={[styles.loadErrorText, { color: theme.textMuted }]}>{error}</Text>
-                <TouchableOpacity onPress={reload} activeOpacity={0.88} style={styles.loadErrorRetry}>
-                  <LinearGradient colors={WARM_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
-                    <Text style={styles.retryGradLabel}>Retry</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+              <Ionicons name="cloud-offline-outline" size={32} color="#FB923C" />
+              <Text style={[styles.loadErrorTitle, { color: theme.text }]}>Could not load plans</Text>
+              <Text style={[styles.loadErrorText, { color: theme.textMuted }]}>{error}</Text>
+              <TouchableOpacity onPress={reload} activeOpacity={0.88} style={styles.loadErrorRetry}>
+                <LinearGradient colors={WARM_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
+                  <Text style={styles.retryGradLabel}>Retry</Text>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Empty library */}
         {!loading && !error && !hasPlans && (
           <View style={{ paddingHorizontal: 16 }}>
             <PlansLibraryEmptyHero
@@ -994,7 +951,6 @@ export default function SavedWorkoutsScreen({
           </View>
         )}
 
-        {/* Plans */}
         {!loading && !error && hasPlans && (
           <>
             <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
@@ -1065,9 +1021,170 @@ export default function SavedWorkoutsScreen({
   );
 }
 
-// ============================================================================
-// STYLES
-// ============================================================================
+export default function SavedWorkoutsScreen({
+  route,
+  navigation,
+  client: clientProp,
+  embedInLayout = false,
+  onBack,
+  onProfilePress,
+  onSettingsPress,
+  onViewPlan,
+  onGenerateWorkout,
+  onBuildCustom,
+  onEditManualPlan,
+  trainerId,
+  viewerRole = 'trainer',
+}) {
+  const { isDark } = useTheme();
+  const theme = THEME[isDark ? 'dark' : 'light'];
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_PAD_EXTRA);
+
+  const clientId   = clientProp?.id   || route?.params?.clientId;
+  const clientName = clientProp?.name || route?.params?.clientName || 'Client';
+
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
+
+  // Normalize all Firestore docs into UI-friendly shape
+  const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);
+
+  const plansFilteredBySearch = useMemo(() => {
+    const queryText = libraryQuery.trim().toLowerCase();
+    if (!queryText) return plans;
+    return plans.filter((plan) => {
+      if (String(plan.name || '').toLowerCase().includes(queryText)) return true;
+      if (String(plan.focus || '').toLowerCase().includes(queryText)) return true;
+      if ((plan.muscleTags || []).some((tag) => String(tag).toLowerCase().includes(queryText))) return true;
+      return false;
+    });
+  }, [plans, libraryQuery]);
+
+  const writeAssignedFlag = useCallback(async (plan, nextAssigned) => {
+    const raw = plan._raw;
+    if (raw._singleDoc && raw._path) {
+      await setDoc(doc(db, ...raw._path), { assigned: nextAssigned }, { merge: true });
+      return;
+    }
+    if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
+      await setDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
+      return;
+    }
+    await setDoc(doc(db, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
+  }, [clientId]);
+
+  const deletePlanDocuments = useCallback(async (plan) => {
+    const raw = plan._raw;
+    if (raw._singleDoc && raw._path) {
+      await deleteDoc(doc(db, ...raw._path));
+      return;
+    }
+    if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
+      if (raw._singleDoc && raw._path) {
+        await deleteDoc(doc(db, ...raw._path));
+      }
+      if (!plan.id) return;
+      try {
+        await deleteDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id));
+      } catch {
+        // Subcollection row may already be gone.
+      }
+      return;
+    }
+    await deleteDoc(doc(db, 'workoutPlans', plan.id));
+  }, [clientId]);
+
+  const handleToggleAssigned = useCallback(async (plan) => {
+    if (!db || !clientId || !plan?.id) return;
+    try {
+      await writeAssignedFlag(plan, !plan._raw.assigned);
+      reload();
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not update plan.');
+    }
+  }, [clientId, reload, writeAssignedFlag]);
+
+  const confirmDeletePlan = useCallback(async (plan) => {
+    try {
+      await deletePlanDocuments(plan);
+      reload();
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not delete plan.');
+    }
+  }, [deletePlanDocuments, reload]);
+
+  const handleDeletePlan = useCallback((plan) => {
+    if (!db || !clientId || !plan?.id) return;
+    Alert.alert('Delete plan', 'Are you sure you want to delete this workout plan?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void confirmDeletePlan(plan);
+        },
+      },
+    ]);
+  }, [clientId, confirmDeletePlan]);
+
+  const showPlanOptions = useCallback((plan) => {
+    if (viewerRole !== 'trainer') return;
+    const raw = plan._raw;
+    Alert.alert('Plan options', '', [
+      {
+        text: raw.assigned ? 'Unassign from client' : 'Assign to client',
+        onPress: () => handleToggleAssigned(plan),
+      },
+      { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlan(plan) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [viewerRole, handleToggleAssigned, handleDeletePlan]);
+
+  const handleBack = () => (onBack ? onBack() : navigation?.goBack());
+  const handleView = (plan) => {
+    if (onViewPlan) {
+      onViewPlan(plan._raw);
+      return;
+    }
+    if (typeof navigation?.navigate === 'function') {
+      navigation.navigate('WorkoutDetail', { planId: plan.id });
+    }
+  };
+
+  const hasPlans = plans.length > 0;
+  const isTrainerView = viewerRole === 'trainer';
+
+  return (
+    <SavedWorkoutsScreenLayout
+      theme={theme}
+      embedInLayout={embedInLayout}
+      shellBottomPad={shellBottomPad}
+      handleBack={handleBack}
+      onProfilePress={onProfilePress}
+      onSettingsPress={onSettingsPress}
+      loading={loading}
+      error={error}
+      reload={reload}
+      hasPlans={hasPlans}
+      isDark={isDark}
+      clientName={clientName}
+      clientId={clientId}
+      viewerRole={viewerRole}
+      onGenerateWorkout={onGenerateWorkout}
+      onBuildCustom={onBuildCustom}
+      plans={plans}
+      libraryQuery={libraryQuery}
+      setLibraryQuery={setLibraryQuery}
+      plansFilteredBySearch={plansFilteredBySearch}
+      handleView={handleView}
+      showPlanOptions={showPlanOptions}
+      isTrainerView={isTrainerView}
+      trainerId={trainerId}
+    />
+  );
+}
+
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: 0 },

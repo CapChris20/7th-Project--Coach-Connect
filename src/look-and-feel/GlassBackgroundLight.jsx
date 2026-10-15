@@ -55,7 +55,7 @@ const LIGHT_CORNER_BLURS = [
 // ===== HELPER FUNCTIONS =====
 
 // vocab: RadialGradient = a circular fade. cx/cy pin the hot center; r is how far the color reaches.
-function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
+function CornerBlurDefinition({ gradientId, centerX, centerY, radius, color, stops }) {
   return (
     <RadialGradient id={gradientId} cx={centerX} cy={centerY} r={radius}>
       {stops.map((stop) => (
@@ -70,6 +70,65 @@ function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
   );
 }
 
+function FullScreenWashRect({ gradientId }) {
+  return (
+    <Rect
+      x="0"
+      y="0"
+      width="100%"
+      height="100%"
+      fill={`url(#${gradientId})`}
+    />
+  );
+}
+
+function LightMeshSvg() {
+  return (
+    <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
+      <Defs>
+        {LIGHT_CORNER_BLURS.map((blur) => (
+          <CornerBlurDefinition key={blur.gradientId} {...blur} />
+        ))}
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={PAPER_COLOR} />
+      {LIGHT_CORNER_BLURS.map((blur) => (
+        <FullScreenWashRect key={blur.gradientId} gradientId={blur.gradientId} />
+      ))}
+    </Svg>
+  );
+}
+
+
+/**
+ * @param {string} gradientId
+ * @returns {import('react').ReactElement}
+ */
+function GradientWashRect({ gradientId }) {
+  return (
+    <Rect
+      x="0"
+      y="0"
+      width="100%"
+      height="100%"
+      fill={`url(#${gradientId})`}
+    />
+  );
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+function PaperBaseRect() {
+  return <Rect x="0" y="0" width="100%" height="100%" fill={PAPER_COLOR} />;
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: PAPER_COLOR,
+  },
+});
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -80,34 +139,9 @@ function CornerBlur({ gradientId, centerX, centerY, radius, color, stops }) {
 export default function GlassBackgroundLight({ children }) {
   return (
     <View style={styles.root}>
-      <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
-        <Defs>
-          {LIGHT_CORNER_BLURS.map((blur) => (
-            <CornerBlur key={blur.gradientId} {...blur} />
-          ))}
-        </Defs>
-
-        <Rect x="0" y="0" width="100%" height="100%" fill={PAPER_COLOR} />
-        {LIGHT_CORNER_BLURS.map((blur) => (
-          <Rect
-            key={blur.gradientId}
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            fill={`url(#${blur.gradientId})`}
-          />
-        ))}
-      </Svg>
-
+      <LightMeshSvg />
       {children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: PAPER_COLOR,
-  },
-});

@@ -1,98 +1,205 @@
 // Builds the human copy for push notifications, picking a random phrasing each time.
 // Flow: pull a variant list from config/pushNotificationCopy.json → pick one at random →
 //       substitute {{trainerName}} / {{clientName}} placeholders → return the finished string.
-// Randomizing prevents identical notification text every day. Every function has a hardcoded
-// fallback so a missing/typo'd JSON key degrades to plain copy instead of an empty notification.
+// Used by: session alerts, client-request alerts, and notes-shared alerts. Randomizing prevents
+// identical notification text every day. A missing JSON key falls back to plain copy.
 
 // Manipulate here: all the phrasing variants live in config/pushNotificationCopy.json,
 //                  NOT in this file. Add a string to a list there to add a new variant.
 import COPY from '../../config/pushNotificationCopy.json';
 
-// Uniform random pick. Returns '' (never undefined) for an empty/missing list, which is
-// what lets every caller below use a simple `t ? ... : fallback` check.
-export function pickRandom(arr) {
-  if (!Array.isArray(arr) || !arr.length) return '';
-  return arr[Math.floor(Math.random() * arr.length)];
+// ===== NAMED CONSTANTS =====
+
+const COPY_PLACEHOLDER_PATTERN = /\{\{(\w+)\}\}/g;
+const DEFAULT_TRAINER_NAME = 'Your coach';
+const DEFAULT_CLIENT_NAME = 'Client';
+const SESSION_STATUS_ACCEPTED = 'accepted';
+const SESSION_STATUS_DECLINED = 'declined';
+const SESSION_STATUS_UPDATED = 'updated';
+const SESSION_UPDATED_FALLBACK = 'Your session was updated.';
+const SESSION_CANCELLED_FALLBACK = 'A scheduled session was cancelled.';
+const SESSION_RESPONSE_FALLBACK_TEMPLATE = '{{clientName}} updated a session.';
+const NOTES_SHARED_FALLBACK = 'Shared something new in Notes & Files.';
+const CLIENT_REQUEST_FALLBACK_TITLE = 'New client request';
+const SESSION_SCHEDULED_FALLBACK_TITLE = 'Session scheduled';
+// Manipulate here: ' — ' is the separator between flavor copy and the session details
+const DETAIL_LINE_SEPARATOR = ' — ';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Fills {{placeholders}} in a copy template.
+ * vocab: /\{\{(\w+)\}\}/g = matches "{{word}}"; the backslashes escape the literal braces
+ *        and (\w+) captures the name inside so we can look it up in placeholderValues.
+ * Missing values become '' rather than the literal "undefined".
+ * @param {*} template
+ * @param {object} placeholderValues
+ * @returns {string}
+ */
+function fillCopyPlaceholders(template, placeholderValues) {
+  return String(template || '').replace(COPY_PLACEHOLDER_PATTERN, (_fullMatch, placeholderName) => {
+    const replacement = placeholderValues[placeholderName];
+    if (replacement != null && replacement !== '') return String(replacement);
+    return '';
+  });
 }
 
-// Fills {{placeholders}} in a copy template.
-// vocab: /\{\{(\w+)\}\}/g = matches "{{word}}"; the backslashes escape the literal braces
-//        and (\w+) captures the name inside so we can look it up in `map`.
-// Missing values become '' rather than the literal "undefined" — a slightly awkward
-// sentence is far better than a notification reading "undefined sent you a message".
-function sub(str, map) {
-  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) =>
-    map[k] != null && map[k] !== '' ? String(map[k]) : ''
-  );
+/**
+ * @param {string} trainerName
+ * @returns {string}
+ */
+function trainerNameOrDefault(trainerName) {
+  return trainerName || DEFAULT_TRAINER_NAME;
 }
 
-// Every function below follows the same three-step shape: pick → substitute → fallback.
-// The `|| 'Your coach'` / `|| 'Client'` defaults cover records with no name on file.
+/**
+ * @param {string} clientName
+ * @returns {string}
+ */
+function clientNameOrDefault(clientName) {
+  return clientName || DEFAULT_CLIENT_NAME;
+}
 
+/**
+ * Anything that isn't accepted/declined degrades to the neutral "updated".
+ * @param {string} status
+ * @returns {string}
+ */
+function sessionResponseVerb(status) {
+  if (status === SESSION_STATUS_ACCEPTED) return SESSION_STATUS_ACCEPTED;
+  if (status === SESSION_STATUS_DECLINED) return SESSION_STATUS_DECLINED;
+  return SESSION_STATUS_UPDATED;
+}
+
+/**
+ * @param {string} bodyText
+ * @returns {boolean}
+ */
+function doesBodyNameAcceptOrDecline(bodyText) {
+  return bodyText.includes(SESSION_STATUS_ACCEPTED) || bodyText.includes(SESSION_STATUS_DECLINED);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Uniform random pick. Returns '' (never undefined) for an empty/missing list, which is
+ * what lets every caller below use a simple `chosen ? ... : fallback` check.
+ * @param {Array} copyList
+ * @returns {string}
+ */
+export function pickRandom(copyList) {
+  if (!Array.isArray(copyList) || !copyList.length) return '';
+  return copyList[Math.floor(Math.random() * copyList.length)];
+}
+
+/**
+ * @param {string} trainerName
+ * @returns {string}
+ */
 export function randomTrainerMessageTitle(trainerName) {
-  const t = pickRandom(COPY.trainerMessageTitles || []);
-  return t ? sub(t, { trainerName: trainerName || 'Your coach' }) : trainerName || 'Your coach';
+  const chosenTitle = pickRandom(COPY.trainerMessageTitles || []);
+  return chosenTitle
+    ? fillCopyPlaceholders(chosenTitle, { trainerName: trainerNameOrDefault(trainerName) })
+    : trainerName || DEFAULT_TRAINER_NAME;
 }
 
+/**
+ * @param {string} clientName
+ * @returns {string}
+ */
 export function randomClientRequestTitle(clientName) {
-  const t = pickRandom(COPY.clientRequestTrainerTitles || []);
-  return t ? sub(t, { clientName: clientName || 'Client' }) : 'New client request';
+  const chosenTitle = pickRandom(COPY.clientRequestTrainerTitles || []);
+  return chosenTitle
+    ? fillCopyPlaceholders(chosenTitle, { clientName: clientNameOrDefault(clientName) })
+    : CLIENT_REQUEST_FALLBACK_TITLE;
 }
 
-// These two need no substitution — the copy is generic, so the fallback can live
-// inline as pickRandom's argument.
+/**
+ * Generic session-updated body. No name substitution.
+ * @returns {string}
+ */
 export function randomSessionUpdateClientBody() {
-  return pickRandom(COPY.sessionUpdateClientBodies || ['Your session was updated.']);
+  return pickRandom(COPY.sessionUpdateClientBodies || [SESSION_UPDATED_FALLBACK]);
 }
 
+/**
+ * Generic session-cancelled body. No name substitution.
+ * @returns {string}
+ */
 export function randomSessionCancelledClientBody() {
-  return pickRandom(COPY.sessionCancelledClientBodies || ['A scheduled session was cancelled.']);
+  return pickRandom(COPY.sessionCancelledClientBodies || [SESSION_CANCELLED_FALLBACK]);
 }
 
-// The one case where correctness beats variety: the trainer must learn whether the client
-// accepted or declined. If the randomly chosen variant doesn't already contain that verb,
-// we throw it away and use an explicit sentence instead.
+/**
+ * The trainer must learn whether the client accepted or declined. If the randomly chosen
+ * variant doesn't already contain that verb, we throw it away and use an explicit sentence.
+ * @param {string} clientName
+ * @param {string} status
+ * @returns {string}
+ */
 export function randomSessionResponseTrainerMessage(clientName, status) {
-  const t = pickRandom(COPY.sessionResponseTrainerBodies || ['{{clientName}} updated a session.']);
-  // Anything that isn't accepted/declined degrades to the neutral "updated".
-  const verb =
-    status === 'accepted' ? 'accepted' : status === 'declined' ? 'declined' : 'updated';
-  const base = t ? sub(t, { clientName: clientName || 'Client' }) : `${clientName} ${verb} a session.`;
-  if (base.includes('accepted') || base.includes('declined')) return base;
+  const chosenBody = pickRandom(COPY.sessionResponseTrainerBodies || [SESSION_RESPONSE_FALLBACK_TEMPLATE]);
+  const verb = sessionResponseVerb(status);
+  const filledBody = chosenBody
+    ? fillCopyPlaceholders(chosenBody, { clientName: clientNameOrDefault(clientName) })
+    : `${clientName} ${verb} a session.`;
+  if (doesBodyNameAcceptOrDecline(filledBody)) return filledBody;
   return `${clientName} ${verb} a session.`;
 }
 
+/**
+ * @returns {string}
+ */
 export function randomNotesSharedBody() {
-  return pickRandom(COPY.notesSharedBodies || ['Shared something new in Notes & Files.']);
+  return pickRandom(COPY.notesSharedBodies || [NOTES_SHARED_FALLBACK]);
 }
 
+/**
+ * @param {string} trainerName
+ * @returns {string}
+ */
 export function randomClientRequestAcceptedTitle(trainerName) {
-  const t = pickRandom(COPY.clientRequestAcceptedTitles || []);
-  return t
-    ? sub(t, { trainerName: trainerName || 'Your coach' })
-    : `${trainerName || 'Your coach'} accepted your request`;
+  const chosenTitle = pickRandom(COPY.clientRequestAcceptedTitles || []);
+  return chosenTitle
+    ? fillCopyPlaceholders(chosenTitle, { trainerName: trainerNameOrDefault(trainerName) })
+    : `${trainerNameOrDefault(trainerName)} accepted your request`;
 }
 
+/**
+ * @param {string} trainerName
+ * @returns {string}
+ */
 export function randomClientRequestAcceptedBody(trainerName) {
-  const b = pickRandom(COPY.clientRequestAcceptedBodies || []);
-  return b
-    ? sub(b, { trainerName: trainerName || 'Your coach' })
-    : `${trainerName || 'Your coach'} added you as a client.`;
+  const chosenBody = pickRandom(COPY.clientRequestAcceptedBodies || []);
+  return chosenBody
+    ? fillCopyPlaceholders(chosenBody, { trainerName: trainerNameOrDefault(trainerName) })
+    : `${trainerNameOrDefault(trainerName)} added you as a client.`;
 }
 
+/**
+ * @param {string} trainerName
+ * @returns {string}
+ */
 export function randomSessionScheduledTitle(trainerName) {
-  const t = pickRandom(COPY.sessionBookingTitles || []);
-  return t ? sub(t, { trainerName: trainerName || 'Your coach' }) : 'Session scheduled';
+  const chosenTitle = pickRandom(COPY.sessionBookingTitles || []);
+  return chosenTitle
+    ? fillCopyPlaceholders(chosenTitle, { trainerName: trainerNameOrDefault(trainerName) })
+    : SESSION_SCHEDULED_FALLBACK_TITLE;
 }
 
-/** detailLine e.g. "Session scheduled: Mon at 3:00 PM" */
-// The only two-part body: random flavor text plus the caller's factual detail line,
-// joined by an em dash. The detail line is always kept — if there's no flavor variant,
-// the trainer's name stands in so the notification still reads as a sentence.
+/**
+ * The only two-part body: random flavor text plus the caller's factual detail line,
+ * joined by an em dash. The detail line is always kept — if there's no flavor variant,
+ * the trainer's name stands in so the notification still reads as a sentence.
+ * @param {string} trainerName
+ * @param {string} detailLine e.g. "Session scheduled: Mon at 3:00 PM"
+ * @returns {string}
+ */
 export function randomSessionScheduledDetailBody(trainerName, detailLine) {
-  const b = pickRandom(COPY.sessionBookingBodies || []);
-  const line = b ? sub(b, { trainerName: trainerName || 'Your coach' }) : '';
-  // Manipulate here: ' — ' is the separator between flavor copy and the session details
-  if (line && detailLine) return `${line} — ${detailLine}`;
-  return `${trainerName || 'Your coach'} — ${detailLine}`;
+  const chosenBody = pickRandom(COPY.sessionBookingBodies || []);
+  const flavorLine = chosenBody
+    ? fillCopyPlaceholders(chosenBody, { trainerName: trainerNameOrDefault(trainerName) })
+    : '';
+  if (flavorLine && detailLine) return `${flavorLine}${DETAIL_LINE_SEPARATOR}${detailLine}`;
+  return `${trainerNameOrDefault(trainerName)}${DETAIL_LINE_SEPARATOR}${detailLine}`;
 }

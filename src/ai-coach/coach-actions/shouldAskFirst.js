@@ -129,7 +129,170 @@ const TOOL_ALIGNMENT_PATTERNS = {
   notifyTrainer: /\b(trainer|coach|notify|tell|message|knee|hurt|injur)\b/,
 };
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * One raw model call → a clamped call, or null when the name or the numbers are unusable.
+ * @param {object} rawCall
+ * @returns {{name: string, params: object, reasoning: string}|null}
+ */
+function guardCoachToolProposal(rawCall) {
+  if (!rawCall || typeof rawCall !== 'object') return null;
+  const rawName = sanitizeString(rawCall.name || rawCall.tool || rawCall.action, TOOL_NAME_MAX_LENGTH);
+  const name = TOOL_NAME_ALIASES[rawName] || rawName;
+  if (!name || !ALLOWED_TOOLS.has(name)) return null;
+  const params = sanitizeParamsByTool(name, rawCall.params);
+  if (params == null) return null;
+  return {
+    name,
+    params: compactObject(params),
+    reasoning: sanitizeString(rawCall.reasoning, REASONING_MAX_LENGTH) || '',
+  };
+}
+
+/**
+ * Clamp a list of calls and drop duplicates.
+ * @param {object[]} rawCalls
+ * @returns {object[]}
+ */
+function guardCoachToolProposals(rawCalls) {
+  const seenKeys = new Set();
+  const safeCalls = [];
+  for (const call of Array.isArray(rawCalls) ? rawCalls : []) {
+    const safeCall = guardCoachToolProposal(call);
+    if (!safeCall) continue;
+    const identityKey = toolCallIdentityKey(safeCall);
+    if (seenKeys.has(identityKey)) continue;
+    seenKeys.add(identityKey);
+    safeCalls.push(safeCall);
+  }
+  return safeCalls;
+}
+
+/**
+ * True when the sentence asks us to do something, not just to explain something.
+ * @param {string} userText
+ * @returns {boolean}
+ */
+function userExplicitlyRequestsAction(userText) {
+  const lowerText = String(userText || '').toLowerCase().trim();
+  if (!lowerText) return false;
+  if (isInformationalUserMessage(userText)) return false;
+  return (
+    EXPLICIT_LOG_RE.test(lowerText) ||
+    /\b(set|change|update|adjust)\s+my\b/.test(lowerText) ||
+    /\blog\s+it\b/.test(lowerText) ||
+    (/\b(delete|remove|clear|undo)\b/.test(lowerText) &&
+      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(lowerText)) ||
+    (/\b(book|schedule)\b/.test(lowerText) && /\b(session|trainer|appointment)\b/.test(lowerText)) ||
+    (/\b(swap|replace|substitute)\b/.test(lowerText) && /\b(exercise|press|lift|workout|bench)\b/.test(lowerText)) ||
+    (/\b(tell|notify|message|text)\b/.test(lowerText) && /\b(trainer|coach)\b/.test(lowerText)) ||
+    (/\b(open|show|see|view|pull up)\b/.test(lowerText) && /\b(workout|plan|program)\b/.test(lowerText)) ||
+    (/\b(goal|goals)\b/.test(lowerText) && /\b(change|update|set|switch)\b/.test(lowerText)) ||
+    (/\b(calor(?:ie)?s?|kcal|cals?|macros?|protein|carb)\b/.test(lowerText) &&
+      /\b(change|set|update|adjust|lower|raise|bump)\b/.test(lowerText))
+  );
+}
+
+/**
+ * True when they named a dashboard metric AND used a log verb.
+ * @param {string} userText
+ * @param {string} metric One of the DASHBOARD_METRIC_PATTERNS keys
+ * @returns {boolean}
+ */
+function userWantsExplicitDashboardLog(userText, metric) {
+  const messageText = String(userText || '').trim();
+  if (!messageText) return false;
+  if (!EXPLICIT_LOG_RE.test(messageText) && !/\blog\s+it\b/i.test(messageText)) return false;
+  const pattern = DASHBOARD_METRIC_PATTERNS[metric];
+  return pattern ? pattern.test(messageText) : false;
+}
+
+/**
+ * Questions, web lookups, and "is this too much?" stay as chat. They do not become buttons.
+ * Case is kept on purpose: a few checks below are case-sensitive.
+ * @param {string} userText
+ * @returns {boolean}
+ */
+function isInformationalUserMessage(userText) {
+  const messageText = String(userText || '').trim();
+  if (!messageText) return false;
+  if (isPoliteActionRequest(messageText)) return false;
+  // "Can u log 15000 steps" is an action, not a generic "can you" question.
+  if (EXPLICIT_LOG_RE.test(messageText)) return false;
+  if (
+    /\b(delete|remove|clear|undo)\b/.test(messageText) &&
+    /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(messageText)
+  ) {
+    return false;
+  }
+  if (/\?$/.test(messageText)) return true;
+  if (/\b(too much|too little|too many|good for me|should i)\b/i.test(messageText)) return true;
+  if (/\b(on the web|online|on the internet)\b/i.test(messageText)) return true;
+  if (/\blook up\b/i.test(messageText) && /\b(web|online|internet|google)\b/i.test(messageText)) return true;
+  if (
+    /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
+      messageText,
+    )
+  ) {
+    return true;
+  }
+  return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(messageText);
+}
+
+/**
+ * Whether this proposal should be shown for confirmation given what the user just said.
+ * @param {object} rawCall
+ * @param {string} userText
+ * @returns {boolean}
+ */
+function isValidCoachToolProposal(rawCall, userText) {
+  const guarded = guardCoachToolProposal(rawCall);
+  if (!guarded) return false;
+
+  if (userExplicitlyRequestsAction(userText)) {
+    return toolAlignsWithUserMessage(guarded, userText);
+  }
+
+  if (isInformationalUserMessage(userText)) return false;
+
+  return false;
+}
+
+/**
+ * The proposals that both clamp cleanly and match the user's sentence.
+ * @param {object[]} rawCalls
+ * @param {string} userText
+ * @returns {object[]}
+ */
+function filterValidCoachToolProposals(rawCalls, userText) {
+  if (!Array.isArray(rawCalls)) return [];
+  const safeCalls = [];
+  const seenKeys = new Set();
+  for (const call of rawCalls) {
+    if (!isValidCoachToolProposal(call, userText)) continue;
+    const safeCall = guardCoachToolProposal(call);
+    if (!safeCall) continue;
+    const identityKey = toolCallIdentityKey(safeCall);
+    if (seenKeys.has(identityKey)) continue;
+    seenKeys.add(identityKey);
+    safeCalls.push(safeCall);
+  }
+  return safeCalls;
+}
+
+module.exports = {
+  guardCoachToolProposal,
+  guardCoachToolProposals,
+  isValidCoachToolProposal,
+  filterValidCoachToolProposals,
+  userWantsExplicitDashboardLog,
+  userExplicitlyRequestsAction,
+  isInformationalUserMessage,
+};
+
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
 
 /**
  * Trim a string and cap its length. Null and blank become undefined so compactObject can drop them.
@@ -372,6 +535,25 @@ function sanitizeUpdateWorkoutParams(params) {
   };
 }
 
+// Map tool name → param sanitizer. Keeps sanitizeParamsByTool flat (no switch nesting).
+const PARAM_SANITIZERS_BY_TOOL = {
+  logSleep: sanitizeLogSleepParams,
+  logWater: sanitizeLogWaterParams,
+  logSteps: sanitizeLogStepsParams,
+  rateEnergy: sanitizeRateEnergyParams,
+  rateWorkout: sanitizeRateWorkoutParams,
+  adjustMacroTargets: sanitizeMacroTargetParams,
+  deleteLog: sanitizeDeleteLogParams,
+  logNutrition: sanitizeLogNutritionParams,
+  openWorkoutPlan: sanitizeOpenWorkoutPlanParams,
+  logRestDay: sanitizeLogRestDayParams,
+  logMood: sanitizeLogMoodParams,
+  updateGoal: sanitizeUpdateGoalParams,
+  notifyTrainer: sanitizeNotifyTrainerParams,
+  bookSession: sanitizeBookSessionParams,
+  updateWorkout: sanitizeUpdateWorkoutParams,
+};
+
 /**
  * @param {string} name
  * @param {object} rawParams
@@ -379,41 +561,9 @@ function sanitizeUpdateWorkoutParams(params) {
  */
 function sanitizeParamsByTool(name, rawParams) {
   const params = copyPlainObject(rawParams);
-
-  switch (name) {
-    case 'logSleep':
-      return sanitizeLogSleepParams(params);
-    case 'logWater':
-      return sanitizeLogWaterParams(params);
-    case 'logSteps':
-      return sanitizeLogStepsParams(params);
-    case 'rateEnergy':
-      return sanitizeRateEnergyParams(params);
-    case 'rateWorkout':
-      return sanitizeRateWorkoutParams(params);
-    case 'adjustMacroTargets':
-      return sanitizeMacroTargetParams(params);
-    case 'deleteLog':
-      return sanitizeDeleteLogParams(params);
-    case 'logNutrition':
-      return sanitizeLogNutritionParams(params);
-    case 'openWorkoutPlan':
-      return sanitizeOpenWorkoutPlanParams(params);
-    case 'logRestDay':
-      return sanitizeLogRestDayParams(params);
-    case 'logMood':
-      return sanitizeLogMoodParams(params);
-    case 'updateGoal':
-      return sanitizeUpdateGoalParams(params);
-    case 'notifyTrainer':
-      return sanitizeNotifyTrainerParams(params);
-    case 'bookSession':
-      return sanitizeBookSessionParams(params);
-    case 'updateWorkout':
-      return sanitizeUpdateWorkoutParams(params);
-    default:
-      return copyPlainObject(params);
-  }
+  const sanitizer = PARAM_SANITIZERS_BY_TOOL[name];
+  if (sanitizer) return sanitizer(params);
+  return copyPlainObject(params);
 }
 
 /**
@@ -513,164 +663,3 @@ function toolCallIdentityKey(safeCall) {
   return `${safeCall.name}:${JSON.stringify(safeCall.params)}`;
 }
 
-// ===== MAIN FUNCTION =====
-
-/**
- * One raw model call → a clamped call, or null when the name or the numbers are unusable.
- * @param {object} rawCall
- * @returns {{name: string, params: object, reasoning: string}|null}
- */
-function guardCoachToolProposal(rawCall) {
-  if (!rawCall || typeof rawCall !== 'object') return null;
-  const rawName = sanitizeString(rawCall.name || rawCall.tool || rawCall.action, TOOL_NAME_MAX_LENGTH);
-  const name = TOOL_NAME_ALIASES[rawName] || rawName;
-  if (!name || !ALLOWED_TOOLS.has(name)) return null;
-  const params = sanitizeParamsByTool(name, rawCall.params);
-  if (params == null) return null;
-  return {
-    name,
-    params: compactObject(params),
-    reasoning: sanitizeString(rawCall.reasoning, REASONING_MAX_LENGTH) || '',
-  };
-}
-
-/**
- * Clamp a list of calls and drop duplicates.
- * @param {object[]} rawCalls
- * @returns {object[]}
- */
-function guardCoachToolProposals(rawCalls) {
-  const seenKeys = new Set();
-  const safeCalls = [];
-  for (const call of Array.isArray(rawCalls) ? rawCalls : []) {
-    const safeCall = guardCoachToolProposal(call);
-    if (!safeCall) continue;
-    const identityKey = toolCallIdentityKey(safeCall);
-    if (seenKeys.has(identityKey)) continue;
-    seenKeys.add(identityKey);
-    safeCalls.push(safeCall);
-  }
-  return safeCalls;
-}
-
-/**
- * True when the sentence asks us to do something, not just to explain something.
- * @param {string} userText
- * @returns {boolean}
- */
-function userExplicitlyRequestsAction(userText) {
-  const lowerText = String(userText || '').toLowerCase().trim();
-  if (!lowerText) return false;
-  if (isInformationalUserMessage(userText)) return false;
-  return (
-    EXPLICIT_LOG_RE.test(lowerText) ||
-    /\b(set|change|update|adjust)\s+my\b/.test(lowerText) ||
-    /\blog\s+it\b/.test(lowerText) ||
-    (/\b(delete|remove|clear|undo)\b/.test(lowerText) &&
-      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(lowerText)) ||
-    (/\b(book|schedule)\b/.test(lowerText) && /\b(session|trainer|appointment)\b/.test(lowerText)) ||
-    (/\b(swap|replace|substitute)\b/.test(lowerText) && /\b(exercise|press|lift|workout|bench)\b/.test(lowerText)) ||
-    (/\b(tell|notify|message|text)\b/.test(lowerText) && /\b(trainer|coach)\b/.test(lowerText)) ||
-    (/\b(open|show|see|view|pull up)\b/.test(lowerText) && /\b(workout|plan|program)\b/.test(lowerText)) ||
-    (/\b(goal|goals)\b/.test(lowerText) && /\b(change|update|set|switch)\b/.test(lowerText)) ||
-    (/\b(calor(?:ie)?s?|kcal|cals?|macros?|protein|carb)\b/.test(lowerText) &&
-      /\b(change|set|update|adjust|lower|raise|bump)\b/.test(lowerText))
-  );
-}
-
-/**
- * True when they named a dashboard metric AND used a log verb.
- * @param {string} userText
- * @param {string} metric One of the DASHBOARD_METRIC_PATTERNS keys
- * @returns {boolean}
- */
-function userWantsExplicitDashboardLog(userText, metric) {
-  const messageText = String(userText || '').trim();
-  if (!messageText) return false;
-  if (!EXPLICIT_LOG_RE.test(messageText) && !/\blog\s+it\b/i.test(messageText)) return false;
-  const pattern = DASHBOARD_METRIC_PATTERNS[metric];
-  return pattern ? pattern.test(messageText) : false;
-}
-
-/**
- * Questions, web lookups, and "is this too much?" stay as chat. They do not become buttons.
- * Case is kept on purpose: a few checks below are case-sensitive.
- * @param {string} userText
- * @returns {boolean}
- */
-function isInformationalUserMessage(userText) {
-  const messageText = String(userText || '').trim();
-  if (!messageText) return false;
-  if (isPoliteActionRequest(messageText)) return false;
-  // "Can u log 15000 steps" is an action, not a generic "can you" question.
-  if (EXPLICIT_LOG_RE.test(messageText)) return false;
-  if (
-    /\b(delete|remove|clear|undo)\b/.test(messageText) &&
-    /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(messageText)
-  ) {
-    return false;
-  }
-  if (/\?$/.test(messageText)) return true;
-  if (/\b(too much|too little|too many|good for me|should i)\b/i.test(messageText)) return true;
-  if (/\b(on the web|online|on the internet)\b/i.test(messageText)) return true;
-  if (/\blook up\b/i.test(messageText) && /\b(web|online|internet|google)\b/i.test(messageText)) return true;
-  if (
-    /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
-      messageText,
-    )
-  ) {
-    return true;
-  }
-  return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(messageText);
-}
-
-/**
- * Whether this proposal should be shown for confirmation given what the user just said.
- * @param {object} rawCall
- * @param {string} userText
- * @returns {boolean}
- */
-function isValidCoachToolProposal(rawCall, userText) {
-  const guarded = guardCoachToolProposal(rawCall);
-  if (!guarded) return false;
-
-  if (userExplicitlyRequestsAction(userText)) {
-    return toolAlignsWithUserMessage(guarded, userText);
-  }
-
-  if (isInformationalUserMessage(userText)) return false;
-
-  return false;
-}
-
-/**
- * The proposals that both clamp cleanly and match the user's sentence.
- * @param {object[]} rawCalls
- * @param {string} userText
- * @returns {object[]}
- */
-function filterValidCoachToolProposals(rawCalls, userText) {
-  if (!Array.isArray(rawCalls)) return [];
-  const safeCalls = [];
-  const seenKeys = new Set();
-  for (const call of rawCalls) {
-    if (!isValidCoachToolProposal(call, userText)) continue;
-    const safeCall = guardCoachToolProposal(call);
-    if (!safeCall) continue;
-    const identityKey = toolCallIdentityKey(safeCall);
-    if (seenKeys.has(identityKey)) continue;
-    seenKeys.add(identityKey);
-    safeCalls.push(safeCall);
-  }
-  return safeCalls;
-}
-
-module.exports = {
-  guardCoachToolProposal,
-  guardCoachToolProposals,
-  isValidCoachToolProposal,
-  filterValidCoachToolProposals,
-  userWantsExplicitDashboardLog,
-  userExplicitlyRequestsAction,
-  isInformationalUserMessage,
-};

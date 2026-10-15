@@ -1,6 +1,6 @@
 // Combines the trainer's private notes about a client with the client's own live profile.
 // Flow: start from the trainer row → for each shared field, the client's value wins when it exists → then fill a missing goal.
-// Used by the trainer home and the linked-client loader so the coach sees fresh weight, not a stale copy.
+// Used by: the trainer home and the linked-client loader so the coach sees fresh weight, not a stale copy.
 // vocab: trainer row = trainer_clients/{trainerId}/clients/{clientId}. The users doc is users/{clientId}.
 
 import { normalizeClientProfileFields } from './fillTraineeProfile';
@@ -37,26 +37,50 @@ export const TRAINER_CLIENT_PROFILE_FIELDS = [
 
 // ===== HELPER FUNCTIONS =====
 
-// Empty array counts as "no answer". A cleared multi-select must not wipe a real trainer value.
-function isFieldPresent(value) {
-  if (value == null || value === '') return false;
-  if (Array.isArray(value) && value.length === 0) return false;
+/**
+ * Empty array counts as "no answer". A cleared multi-select must not wipe a real trainer value.
+ * @param {*} fieldValue
+ * @returns {boolean}
+ */
+function isFieldPresent(fieldValue) {
+  if (fieldValue == null || fieldValue === '') return false;
+  if (Array.isArray(fieldValue) && fieldValue.length === 0) return false;
   return true;
+}
+
+/**
+ * Copy each shared field from the client when they answered it; otherwise keep or fill from the trainer row.
+ * @param {object} combinedProfile
+ * @param {object} clientProfile
+ * @param {object} trainerClientRow
+ * @returns {object}
+ */
+function valueForSharedField(clientProfile, trainerClientRow, combinedProfile, fieldName) {
+  if (isFieldPresent(clientProfile[fieldName])) return clientProfile[fieldName];
+  const shouldFillFromTrainer =
+    !isFieldPresent(combinedProfile[fieldName]) && isFieldPresent(trainerClientRow[fieldName]);
+  if (shouldFillFromTrainer) return trainerClientRow[fieldName];
+  return combinedProfile[fieldName];
 }
 
 function copyClientOwnedFields(combinedProfile, clientProfile, trainerClientRow) {
   for (const fieldName of TRAINER_CLIENT_PROFILE_FIELDS) {
-    if (isFieldPresent(clientProfile[fieldName])) {
-      combinedProfile[fieldName] = clientProfile[fieldName];
-    } else if (!isFieldPresent(combinedProfile[fieldName]) && isFieldPresent(trainerClientRow[fieldName])) {
-      // The spread already copied the trainer row. This branch still fills a hole if that copy was empty.
-      combinedProfile[fieldName] = trainerClientRow[fieldName];
-    }
+    combinedProfile[fieldName] = valueForSharedField(
+      clientProfile,
+      trainerClientRow,
+      combinedProfile,
+      fieldName,
+    );
   }
   return combinedProfile;
 }
 
-// Goals lead the trainer UI. An empty goal looks like a broken screen, so the trainer row is the last resort.
+/**
+ * Goals lead the trainer UI. An empty goal looks like a broken screen, so the trainer row is the last resort.
+ * @param {object} combinedProfile
+ * @param {object} trainerClientRow
+ * @returns {object}
+ */
 function applyGoalFallbacks(combinedProfile, trainerClientRow) {
   if (!isFieldPresent(combinedProfile.primaryGoal) && isFieldPresent(trainerClientRow.primaryGoal)) {
     combinedProfile.primaryGoal = trainerClientRow.primaryGoal;
@@ -78,7 +102,8 @@ function applyGoalFallbacks(combinedProfile, trainerClientRow) {
  * @returns {object}
  */
 export function combineTraineeProfile(trainerClientRow = {}, userData = {}) {
-  const trainerRow = trainerClientRow && typeof trainerClientRow === 'object' ? trainerClientRow : {};
+  const trainerRow =
+    trainerClientRow && typeof trainerClientRow === 'object' ? trainerClientRow : {};
   // Normalize first so legacy spellings (goal → primaryGoal, frequency → daysPerWeek) are already resolved.
   const clientProfile = normalizeClientProfileFields(userData);
   // Start from the trainer row so private fields survive. Only TRAINER_CLIENT_PROFILE_FIELDS can be replaced.

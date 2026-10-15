@@ -1,13 +1,7 @@
-/**
- * Edit Modal Form RN
- *
- * Purpose: UI screen or component: Edit Modal Form RN. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: EditModalForm
- *
- * @file-header
- */
+// Bottom-sheet edit modal for one workout-plan builder field (title, chrome, Done/Cancel).
+// Flow: if hidden, render nothing → slide up over a dim backdrop → scroll the field body → Done or Cancel.
+// Used by: CreateWorkoutPlanScreen. The field editor itself is passed in as children.
+
 import React from 'react';
 import {
   KeyboardAvoidingView,
@@ -22,19 +16,56 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_CARD_BG = '#0D1117';
+const DEFAULT_TEXT_COLOR = '#FFFFFF';
+const DEFAULT_MUTED_COLOR = 'rgba(255,255,255,0.55)';
+const DEFAULT_BORDER_COLOR = 'rgba(255,255,255,0.12)';
+const DEFAULT_DONE_GRADIENT = ['#C084FC', '#FF4D8D'];
+const FALLBACK_TITLE = 'Field';
+const EDIT_FIELD_LABEL = 'Edit Field';
+const CANCEL_LABEL = 'Cancel';
+const DONE_LABEL = 'Done';
+const PLATFORM_IOS = 'ios';
+const KEYBOARD_BEHAVIOR_PADDING = 'padding';
+const DRAG_HANDLE_DARK = 'rgba(255,255,255,0.22)';
+const DRAG_HANDLE_LIGHT = 'rgba(15,23,42,0.12)';
+const CANCEL_BG_DARK = 'rgba(255,255,255,0.03)';
+const CANCEL_BG_LIGHT = 'rgba(15,23,42,0.04)';
+const GRADIENT_START = { x: 0, y: 0 };
+const GRADIENT_END = { x: 1, y: 0 };
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Sheet chrome (handle, cancel fill) is slightly stronger in dark mode so it still reads on glass.
+ * @param {boolean} isDark
+ * @returns {{ dragHandle: string, cancelBackground: string }}
+ */
+function sheetChromeColors(isDark) {
+  return {
+    dragHandle: isDark ? DRAG_HANDLE_DARK : DRAG_HANDLE_LIGHT,
+    cancelBackground: isDark ? CANCEL_BG_DARK : CANCEL_BG_LIGHT,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * UI-only “nice” edit modal for Workout Plan builder fields.
  * Uses the existing field editor (`WorkoutPlanBuilderFieldEditBody`) so functionality stays identical.
+ * @param {object} props
  */
 export function EditModalForm({
   visible,
   fieldKey,
   title,
-  cardBg = '#0D1117',
-  textColor = '#FFFFFF',
-  mutedColor = 'rgba(255,255,255,0.55)',
-  borderColor = 'rgba(255,255,255,0.12)',
-  doneGradient = ['#C084FC', '#FF4D8D'], // premium purple → deep pink
+  cardBg = DEFAULT_CARD_BG,
+  textColor = DEFAULT_TEXT_COLOR,
+  mutedColor = DEFAULT_MUTED_COLOR,
+  borderColor = DEFAULT_BORDER_COLOR,
+  doneGradient = DEFAULT_DONE_GRADIENT,
   /** When false, sheet chrome (handle, cancel fill) uses light-mode neutrals */
   isDark = true,
   children,
@@ -42,25 +73,24 @@ export function EditModalForm({
   onDone,
 }) {
   if (!visible) return null;
+  const chrome = sheetChromeColors(isDark);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === PLATFORM_IOS ? KEYBOARD_BEHAVIOR_PADDING : undefined}
+        style={styles.overlay}
+      >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
         <View style={[styles.sheet, { backgroundColor: cardBg, borderColor }]}>
-          <View
-            style={[
-              styles.dragHandle,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)' },
-            ]}
-          />
+          <View style={[styles.dragHandle, { backgroundColor: chrome.dragHandle }]} />
 
           <View style={[styles.header, { borderBottomColor: borderColor }]}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { color: mutedColor }]}>Edit Field</Text>
+              <Text style={[styles.label, { color: mutedColor }]}>{EDIT_FIELD_LABEL}</Text>
               <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
-                {title || fieldKey || 'Field'}
+                {title || fieldKey || FALLBACK_TITLE}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { borderColor }]} activeOpacity={0.9}>
@@ -79,22 +109,22 @@ export function EditModalForm({
                 styles.cancelBtn,
                 {
                   borderColor,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.04)',
+                  backgroundColor: chrome.cancelBackground,
                 },
               ]}
               activeOpacity={0.9}
             >
-              <Text style={[styles.cancelText, { color: textColor }]}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: textColor }]}>{CANCEL_LABEL}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={onDone} style={styles.saveBtnWrap} activeOpacity={0.9}>
               <LinearGradient
                 colors={doneGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                start={GRADIENT_START}
+                end={GRADIENT_END}
                 style={styles.saveBtn}
               >
-                <Text style={styles.saveText}>Done</Text>
+                <Text style={styles.saveText}>{DONE_LABEL}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -155,4 +185,3 @@ const styles = StyleSheet.create({
   saveBtn: { height: 48, alignItems: 'center', justifyContent: 'center' },
   saveText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
 });
-

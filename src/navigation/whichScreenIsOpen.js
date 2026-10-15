@@ -67,15 +67,16 @@ export function useAppNavigation() {
  */
 export function useMergedNavigation(props = {}) {
   const context = useAppNavigation();
+  const fromShell = context || {};
   return {
     // vocab/symbol: context?.onProfilePress reads the field only when a provider exists.
-    onProfilePress: pickHandler(props.onProfilePress, context?.onProfilePress),
-    onSettingsPress: pickHandler(props.onSettingsPress, context?.onSettingsPress),
-    onHomePress: pickHandler(props.onHomePress, context?.onHomePress),
-    onPlusPress: pickHandler(props.onPlusPress, context?.onPlusPress),
-    onVoicePress: pickHandler(props.onVoicePress, context?.onVoicePress),
-    onNutritionPress: pickHandler(props.onNutritionPress, context?.onNutritionPress),
-    onWorkoutPress: pickHandler(props.onWorkoutPress, context?.onWorkoutPress),
-    onMessagesPress: pickHandler(props.onMessagesPress, context?.onMessagesPress),
+    onProfilePress: pickHandler(props.onProfilePress, fromShell.onProfilePress),
+    onSettingsPress: pickHandler(props.onSettingsPress, fromShell.onSettingsPress),
+    onHomePress: pickHandler(props.onHomePress, fromShell.onHomePress),
+    onPlusPress: pickHandler(props.onPlusPress, fromShell.onPlusPress),
+    onVoicePress: pickHandler(props.onVoicePress, fromShell.onVoicePress),
+    onNutritionPress: pickHandler(props.onNutritionPress, fromShell.onNutritionPress),
+    onWorkoutPress: pickHandler(props.onWorkoutPress, fromShell.onWorkoutPress),
+    onMessagesPress: pickHandler(props.onMessagesPress, fromShell.onMessagesPress),
   };
 }

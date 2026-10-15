@@ -1,117 +1,53 @@
-/**
- * workout Plan Pdf Service
- *
- * Purpose: Data/service layer: workout Plan Pdf Service. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: parsePlanForPdf, stripEmojis, stripMarkdown, buildPdfHtml, generatePdfFile, uploadPdfToStorage, savePlanToFirestore, getWorkoutPlans
- *
- * @file-header
- */
-/**
- * Workout plan PDF: parse plan text, generate PDF (expo-print), save to Storage + Firestore.
- * Only used AFTER the plan is generated; does not change AI or prompts.
- */
+// Workout plan PDF: turn plan text into a file, then save it to Storage and Firestore.
+// Flow: parse the plan → build HTML → print to a PDF → upload → write the metadata row.
+// Used after a plan is generated. This file does not change AI prompts.
 
 import * as Print from 'expo-print';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { storage, db } from '../../app-start/cloudConnection';
 
+// ===== NAMED CONSTANTS =====
+
 const STORAGE_PATH_PREFIX = 'workout-plans';
 const FIRESTORE_COLLECTION = 'workoutPlans';
+const USERS_COLLECTION = 'users';
+const DEFAULT_PLAN_TITLE = 'Workout Plan';
+const DEFAULT_CLIENT_NAME = 'Client';
+const MISSING_SET_REP_REST = '—';
+const PDF_CONTENT_TYPE = 'application/pdf';
+const INDEX_MISSING_CODE = 'failed-precondition';
+const MAX_FALLBACK_BULLETS = 15;
+const REST_CAPTURE_GROUP = 7;
+const NOTES_HEADINGS = ['IMPORTANT NOTES', '7\\. IMPORTANT NOTES', 'NOTES', 'Important notes'];
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * Parse plan text into structured data for PDF.
- * Returns { title, subtitle, days: [{ label, exercises: [{ name, sets, reps, rest }] }], notes } or null.
+ * Remove emoji and other symbols (for example 🏆) so the PDF does not print tofu boxes.
+ * @param {string} text
+ * @returns {string}
  */
-export function parsePlanForPdf(planText) {
-  if (!planText || typeof planText !== 'string') return null;
-  const raw = planText.trim();
-  if (!raw.length) return null;
-
-  try {
-    let title = 'Workout Plan';
-    let subtitle = '';
-    const days = [];
-    let notes = '';
-
-    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-    const titleMatch = raw.match(/^(?:#\s*)?([^\n#]+?)(?:\s*[-—|]\s*([^\n]+))?$/m);
-    if (titleMatch) {
-      title = stripEmojis(stripMarkdown(titleMatch[1].trim()));
-      if (titleMatch[2]) subtitle = stripEmojis(stripMarkdown(titleMatch[2].trim()));
-    }
-
-    const dayBlockRegex = /(?:^|\n)(?:(?:Day|Workout)\s*(\d+)[:\s\-—]*([^\n]*)|(?:##?\s*)?([^\n#]+?)\s*(?=\n(?:Exercise|•|\d\.)|$))/gim;
-    let dayMatch;
-    const daySections = [];
-    let lastIndex = 0;
-    while ((dayMatch = dayBlockRegex.exec(raw)) !== null) {
-      const label = stripEmojis(stripMarkdown((dayMatch[2] || dayMatch[3] || `Day ${dayMatch[1] || daySections.length + 1}`).trim()));
-      const start = dayMatch.index;
-      daySections.push({ label, start, end: raw.length });
-    }
-    for (let i = 0; i < daySections.length; i++) {
-      const block = daySections[i];
-      const blockEnd = daySections[i + 1] ? daySections[i + 1].start : raw.length;
-      const blockText = raw.slice(block.start, blockEnd);
-      const exercises = [];
-      const exerciseLineRegex = /(?:^|\n)\s*(?:•|\d+\.|\*)\s*([^—\-]+?)(?:\s*[—\-]\s*|\s+)(?:(\d+)\s*x\s*(\d+)|(\d+)\s*sets?\s*[x×]\s*(\d+)\s*reps?|(\d+)\s*reps?)(?:\s*[,;]\s*|\s+)(?:(\d+)\s*s\s*rest|(\d+)\s*sec(?:onds?)?\s*rest|rest\s*(\d+)\s*s)?/gim;
-      let exMatch;
-      while ((exMatch = exerciseLineRegex.exec(blockText)) !== null) {
-        const name = stripEmojis(stripMarkdown((exMatch[1] || '').trim()));
-        const sets = exMatch[2] || exMatch[4] || exMatch[6] || '—';
-        const reps = exMatch[3] || exMatch[5] || exMatch[6] || '—';
-        const rest = exMatch[7] || exMatch[8] || exMatch[9] ? `${exMatch[7] || exMatch[8] || exMatch[9]}s` : '—';
-        if (name) exercises.push({ name, sets: String(sets), reps: String(reps), rest });
-      }
-      if (exercises.length === 0) {
-        const bulletLines = blockText.split(/\n/).filter((l) => /^[\s•\d.*\-]/.test(l) && l.trim().length > 2);
-        bulletLines.slice(0, 15).forEach((line) => {
-          const cleaned = stripEmojis(stripMarkdown(line.replace(/^[\s•\d.*\-]+\s*/, '').trim()));
-          if (cleaned) exercises.push({ name: cleaned, sets: '—', reps: '—', rest: '—' });
-        });
-      }
-      daySections[i].exercises = exercises;
-      days.push({ label: block.label, exercises: daySections[i].exercises });
-    }
-
-    const notesSections = ['IMPORTANT NOTES', '7\\. IMPORTANT NOTES', 'NOTES', 'Important notes'];
-    for (const heading of notesSections) {
-      const re = new RegExp(`${heading}[\\s\\S]*?(?=\\n\\n|$)`, 'i');
-      const m = raw.match(re);
-      if (m && m[0]) {
-        notes = stripEmojis(stripMarkdown(m[0].replace(new RegExp(heading, 'i'), '').trim()));
-        break;
-      }
-    }
-
-    if (days.length === 0 && !title) return null;
-    return { title, subtitle, days, notes };
-  } catch (e) {
-    return null;
-  }
-}
-
-/** Remove emoji and other symbols (e.g. 🏆) from text for display and PDF. */
-export function stripEmojis(s) {
-  if (s == null || typeof s !== 'string') return '';
-  return String(s)
-    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // misc symbols & pictographs
-    .replace(/[\u{2600}-\u{26FF}]/gu, '')     // misc symbols
-    .replace(/[\u{2700}-\u{27BF}]/gu, '')    // dingbats
-    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')  // emoticons
-    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')  // flags
+export function stripEmojis(text) {
+  if (text == null || typeof text !== 'string') return '';
+  return String(text)
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Strip markdown to plain text so PDF and displays don't show ** or ## etc. */
-export function stripMarkdown(s) {
-  if (s == null || typeof s !== 'string') return '';
-  return String(s)
+/**
+ * Strip markdown markers so the PDF does not show ** or ##.
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripMarkdown(text) {
+  if (text == null || typeof text !== 'string') return '';
+  return String(text)
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/__([^_]+)__/g, '$1')
@@ -122,9 +58,22 @@ export function stripMarkdown(s) {
     .trim();
 }
 
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s)
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function cleanPlanText(text) {
+  return stripEmojis(stripMarkdown(text));
+}
+
+/**
+ * HTML-escape so a plan title with < or & cannot break the PDF markup.
+ * @param {*} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+  if (text == null) return '';
+  return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -132,13 +81,137 @@ function escapeHtml(s) {
 }
 
 /**
- * Build HTML for PDF: header, day sections with table, notes, footer.
+ * @param {string} raw
+ * @returns {{ title: string, subtitle: string }}
  */
-export function buildPdfHtml(parsed, clientName = 'Client') {
-  const title = escapeHtml(parsed.title || 'Workout Plan');
-  const subtitle = escapeHtml(parsed.subtitle || '');
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+function parseTitleAndSubtitle(raw) {
+  let title = DEFAULT_PLAN_TITLE;
+  let subtitle = '';
+  const titleMatch = raw.match(/^(?:#\s*)?([^\n#]+?)(?:\s*[-—|]\s*([^\n]+))?$/m);
+  if (!titleMatch) return { title, subtitle };
+  title = cleanPlanText(titleMatch[1].trim());
+  if (titleMatch[2]) subtitle = cleanPlanText(titleMatch[2].trim());
+  return { title, subtitle };
+}
 
+/**
+ * Headings like "Day 1 — Push" or "## Upper Body". end is filled in on a second pass.
+ * @param {string} raw
+ * @returns {Array<{ label: string, start: number, end: number }>}
+ */
+function collectDaySections(raw) {
+  const dayBlockRegex = /(?:^|\n)(?:(?:Day|Workout)\s*(\d+)[:\s\-—]*([^\n]*)|(?:##?\s*)?([^\n#]+?)\s*(?=\n(?:Exercise|•|\d\.)|$))/gim;
+  const daySections = [];
+  let dayMatch = dayBlockRegex.exec(raw);
+  while (dayMatch !== null) {
+    const fallbackLabel = `Day ${dayMatch[1] || daySections.length + 1}`;
+    const label = cleanPlanText((dayMatch[2] || dayMatch[3] || fallbackLabel).trim());
+    daySections.push({ label, start: dayMatch.index, end: raw.length });
+    dayMatch = dayBlockRegex.exec(raw);
+  }
+  return daySections;
+}
+
+/**
+ * @param {RegExpMatchArray} exerciseMatch
+ * @returns {{ name: string, sets: string, reps: string, rest: string }|null}
+ */
+function exerciseFromRegexMatch(exerciseMatch) {
+  const name = cleanPlanText((exerciseMatch[1] || '').trim());
+  if (!name) return null;
+  const sets = exerciseMatch[2] || exerciseMatch[4] || exerciseMatch[6] || MISSING_SET_REP_REST;
+  const reps = exerciseMatch[3] || exerciseMatch[5] || exerciseMatch[6] || MISSING_SET_REP_REST;
+  const restSeconds = exerciseMatch[REST_CAPTURE_GROUP] || exerciseMatch[8] || exerciseMatch[9];
+  const rest = restSeconds ? `${restSeconds}s` : MISSING_SET_REP_REST;
+  return { name, sets: String(sets), reps: String(reps), rest };
+}
+
+/**
+ * Structured "3 x 10, 60s rest" lines. AI plans usually look like this.
+ * @param {string} blockText
+ * @returns {Array<{ name: string, sets: string, reps: string, rest: string }>}
+ */
+function parseStructuredExercises(blockText) {
+  const exerciseLineRegex = /(?:^|\n)\s*(?:•|\d+\.|\*)\s*([^—\-]+?)(?:\s*[—\-]\s*|\s+)(?:(\d+)\s*x\s*(\d+)|(\d+)\s*sets?\s*[x×]\s*(\d+)\s*reps?|(\d+)\s*reps?)(?:\s*[,;]\s*|\s+)(?:(\d+)\s*s\s*rest|(\d+)\s*sec(?:onds?)?\s*rest|rest\s*(\d+)\s*s)?/gim;
+  const exercises = [];
+  let exerciseMatch = exerciseLineRegex.exec(blockText);
+  while (exerciseMatch !== null) {
+    const exercise = exerciseFromRegexMatch(exerciseMatch);
+    if (exercise) exercises.push(exercise);
+    exerciseMatch = exerciseLineRegex.exec(blockText);
+  }
+  return exercises;
+}
+
+/**
+ * When the structured regex finds nothing, keep the first bullets as names only.
+ * @param {string} blockText
+ * @returns {Array<{ name: string, sets: string, reps: string, rest: string }>}
+ */
+function parseBulletFallbackExercises(blockText) {
+  const bulletLines = blockText.split(/\n/).filter((line) => /^[\s•\d.*\-]/.test(line) && line.trim().length > 2);
+  const exercises = [];
+  for (const line of bulletLines.slice(0, MAX_FALLBACK_BULLETS)) {
+    const cleaned = cleanPlanText(line.replace(/^[\s•\d.*\-]+\s*/, '').trim());
+    if (cleaned) {
+      exercises.push({
+        name: cleaned,
+        sets: MISSING_SET_REP_REST,
+        reps: MISSING_SET_REP_REST,
+        rest: MISSING_SET_REP_REST,
+      });
+    }
+  }
+  return exercises;
+}
+
+/**
+ * @param {string} blockText
+ * @returns {Array<{ name: string, sets: string, reps: string, rest: string }>}
+ */
+function parseExercisesFromBlock(blockText) {
+  const structured = parseStructuredExercises(blockText);
+  if (structured.length > 0) return structured;
+  return parseBulletFallbackExercises(blockText);
+}
+
+/**
+ * @param {string} raw
+ * @param {Array<{ label: string, start: number, end: number }>} daySections
+ * @returns {Array<{ label: string, exercises: object[] }>}
+ */
+function daysFromSections(raw, daySections) {
+  const days = [];
+  for (let i = 0; i < daySections.length; i++) {
+    const block = daySections[i];
+    const blockEnd = daySections[i + 1] ? daySections[i + 1].start : raw.length;
+    const exercises = parseExercisesFromBlock(raw.slice(block.start, blockEnd));
+    daySections[i].exercises = exercises;
+    days.push({ label: block.label, exercises });
+  }
+  return days;
+}
+
+/**
+ * First matching notes heading wins. "7. IMPORTANT NOTES" is an older plan template.
+ * @param {string} raw
+ * @returns {string}
+ */
+function parseNotes(raw) {
+  for (const heading of NOTES_HEADINGS) {
+    const notesRegex = new RegExp(`${heading}[\\s\\S]*?(?=\\n\\n|$)`, 'i');
+    const match = raw.match(notesRegex);
+    if (!match || !match[0]) continue;
+    return cleanPlanText(match[0].replace(new RegExp(heading, 'i'), '').trim());
+  }
+  return '';
+}
+
+/**
+ * @param {object} parsed
+ * @returns {string}
+ */
+function exerciseTablesHtml(parsed) {
   let body = '';
   (parsed.days || []).forEach((day, i) => {
     body += `
@@ -147,12 +220,12 @@ export function buildPdfHtml(parsed, clientName = 'Client') {
       <table class="exercise-table">
         <thead><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Rest</th></tr></thead>
         <tbody>
-          ${(day.exercises || []).map((ex, j) => `
+          ${(day.exercises || []).map((exercise, j) => `
             <tr class="${j % 2 === 0 ? 'row-even' : 'row-odd'}">
-              <td>${escapeHtml(ex.name)}</td>
-              <td>${escapeHtml(ex.sets)}</td>
-              <td>${escapeHtml(ex.reps)}</td>
-              <td>${escapeHtml(ex.rest)}</td>
+              <td>${escapeHtml(exercise.name)}</td>
+              <td>${escapeHtml(exercise.sets)}</td>
+              <td>${escapeHtml(exercise.reps)}</td>
+              <td>${escapeHtml(exercise.rest)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -162,6 +235,99 @@ export function buildPdfHtml(parsed, clientName = 'Client') {
   if (parsed.notes) {
     body += `<div class="notes-section"><div class="notes-header">Notes</div><div class="notes-body">${escapeHtml(parsed.notes)}</div></div>`;
   }
+  return body;
+}
+
+/**
+ * vocab: XMLHttpRequest + responseType blob is how React Native turns a file:// URI into bytes for Storage.
+ * @param {string} uri
+ * @returns {Promise<Blob>}
+ */
+function uriToBlob(uri) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => resolve(xhr.response);
+    xhr.onerror = () => reject(new Error('Failed to fetch file'));
+    xhr.responseType = 'blob';
+    xhr.open('GET', uri, true);
+    xhr.send(null);
+  });
+}
+
+/**
+ * @param {object} planDoc
+ * @returns {object}
+ */
+function mapPlanDocument(planDoc) {
+  const data = planDoc.data();
+  return {
+    id: planDoc.id,
+    url: data.url || null,
+    generatedAt: data.generatedAt,
+    planTitle: data.planTitle || DEFAULT_PLAN_TITLE,
+    clientName: data.clientName || null,
+  };
+}
+
+/**
+ * Newest generatedAt first. Missing timestamps sort as 0 so they sink.
+ * @param {object[]} plans
+ */
+function sortPlansNewestFirst(plans) {
+  plans.sort((leftPlan, rightPlan) => {
+    const leftTime = leftPlan.generatedAt?.toMillis?.() ?? leftPlan.generatedAt ?? 0;
+    const rightTime = rightPlan.generatedAt?.toMillis?.() ?? rightPlan.generatedAt ?? 0;
+    return rightTime - leftTime;
+  });
+}
+
+/**
+ * Used when the generatedAt index is still building.
+ * @param {string} uid
+ * @returns {Promise<object[]>}
+ */
+async function fetchPlansWithoutOrder(uid) {
+  const snapshot = await getDocs(collection(db, USERS_COLLECTION, uid, FIRESTORE_COLLECTION));
+  const plans = snapshot.docs.map(mapPlanDocument);
+  sortPlansNewestFirst(plans);
+  return plans;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Parse plan text into { title, subtitle, days, notes } for the PDF. Null when there is nothing to print.
+ * @param {string} planText
+ * @returns {object|null}
+ */
+export function parsePlanForPdf(planText) {
+  if (!planText || typeof planText !== 'string') return null;
+  const raw = planText.trim();
+  if (!raw.length) return null;
+
+  try {
+    const { title, subtitle } = parseTitleAndSubtitle(raw);
+    const daySections = collectDaySections(raw);
+    const days = daysFromSections(raw, daySections);
+    const notes = parseNotes(raw);
+    if (days.length === 0 && !title) return null;
+    return { title, subtitle, days, notes };
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Build HTML for PDF: header, day tables, notes, footer. Layout CSS stays in this string.
+ * @param {object} parsed
+ * @param {string} [clientName]
+ * @returns {string}
+ */
+export function buildPdfHtml(parsed, clientName = DEFAULT_CLIENT_NAME) {
+  const title = escapeHtml(parsed.title || DEFAULT_PLAN_TITLE);
+  const subtitle = escapeHtml(parsed.subtitle || '');
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const body = exerciseTablesHtml(parsed);
 
   return `
 <!DOCTYPE html>
@@ -207,19 +373,11 @@ export function buildPdfHtml(parsed, clientName = 'Client') {
 </html>`;
 }
 
-function uriToBlob(uri) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => resolve(xhr.response);
-    xhr.onerror = () => reject(new Error('Failed to fetch file'));
-    xhr.responseType = 'blob';
-    xhr.open('GET', uri, true);
-    xhr.send(null);
-  });
-}
-
 /**
  * Generate PDF file from HTML. Returns { uri } (local file URI).
+ * vocab: Print.printToFileAsync = Expo writes HTML to a PDF on disk.
+ * @param {string} html
+ * @returns {Promise<{ uri: string }>}
  */
 export async function generatePdfFile(html) {
   const { uri } = await Print.printToFileAsync({
@@ -231,78 +389,64 @@ export async function generatePdfFile(html) {
 
 /**
  * Upload PDF to Firebase Storage: workout-plans/{uid}/{timestamp}-plan.pdf
+ * @param {string} uid
+ * @param {string} localUri
+ * @returns {Promise<string>}
  */
 export async function uploadPdfToStorage(uid, localUri) {
   if (!storage || !uid) throw new Error('Storage or uid not ready');
   const path = `${STORAGE_PATH_PREFIX}/${uid}/${Date.now()}-plan.pdf`;
   const storageRef = ref(storage, path);
   const blob = await uriToBlob(localUri);
-  await uploadBytes(storageRef, blob, { contentType: 'application/pdf' });
+  await uploadBytes(storageRef, blob, { contentType: PDF_CONTENT_TYPE });
   return getDownloadURL(storageRef);
 }
 
 /**
  * Save plan metadata to Firestore: users/{uid}/workoutPlans/{planId}
+ * @param {string} uid
+ * @param {string} planId
+ * @param {{ url?: string, planTitle?: string, clientName?: string }} fields
+ * @returns {Promise<void>}
  */
 export async function savePlanToFirestore(uid, planId, { url, planTitle, clientName }) {
   if (!db || !uid || !planId) throw new Error('Firestore or ids not ready');
-  await setDoc(doc(db, 'users', uid, FIRESTORE_COLLECTION, planId), {
+  await setDoc(doc(db, USERS_COLLECTION, uid, FIRESTORE_COLLECTION, planId), {
     url: url || null,
     generatedAt: serverTimestamp(),
-    planTitle: planTitle || 'Workout Plan',
+    planTitle: planTitle || DEFAULT_PLAN_TITLE,
     clientName: clientName || null,
   });
 }
 
 /**
- * Fetch all saved workout plans for user from Firestore (users/{uid}/workoutPlans).
- * Returns array of { id, url, generatedAt, planTitle, clientName } sorted newest first.
+ * Fetch saved workout plans for a user, newest first.
+ * @param {string} uid
+ * @returns {Promise<object[]>}
  */
 export async function getWorkoutPlans(uid) {
   if (!db || !uid) return [];
   try {
-    const colRef = collection(db, 'users', uid, FIRESTORE_COLLECTION);
-    const q = query(colRef, orderBy('generatedAt', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        url: data.url || null,
-        generatedAt: data.generatedAt,
-        planTitle: data.planTitle || 'Workout Plan',
-        clientName: data.clientName || null,
-      };
-    });
-  } catch (e) {
-    if (e?.code === 'failed-precondition') return []; // no index; fallback: fetch without orderBy
+    const collectionRef = collection(db, USERS_COLLECTION, uid, FIRESTORE_COLLECTION);
+    const plansQuery = query(collectionRef, orderBy('generatedAt', 'desc'));
+    const snapshot = await getDocs(plansQuery);
+    return snapshot.docs.map(mapPlanDocument);
+  } catch (error) {
+    if (error?.code === INDEX_MISSING_CODE) return [];
     try {
-      const snap = await getDocs(collection(db, 'users', uid, FIRESTORE_COLLECTION));
-      const list = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          url: data.url || null,
-          generatedAt: data.generatedAt,
-          planTitle: data.planTitle || 'Workout Plan',
-          clientName: data.clientName || null,
-        };
-      });
-      list.sort((a, b) => {
-        const ta = a.generatedAt?.toMillis?.() ?? a.generatedAt ?? 0;
-        const tb = b.generatedAt?.toMillis?.() ?? b.generatedAt ?? 0;
-        return tb - ta;
-      });
-      return list;
-    } catch (_) {
+      return await fetchPlansWithoutOrder(uid);
+    } catch (ignoredError) {
       return [];
     }
   }
 }
 
 /**
- * Full flow: build HTML from parsed plan, generate PDF, upload to Storage, save to Firestore.
- * Returns { pdfLocalUri, pdfDownloadUrl, planId }.
+ * Full flow: HTML → PDF → Storage → Firestore.
+ * @param {string} uid
+ * @param {object} parsed
+ * @param {string} clientName
+ * @returns {Promise<{ pdfLocalUri: string, pdfDownloadUrl: string, planId: string }>}
  */
 export async function generateAndSavePlanPdf(uid, parsed, clientName) {
   const html = buildPdfHtml(parsed, clientName);
@@ -311,7 +455,7 @@ export async function generateAndSavePlanPdf(uid, parsed, clientName) {
   const planId = `plan_${Date.now()}`;
   await savePlanToFirestore(uid, planId, {
     url: pdfDownloadUrl,
-    planTitle: parsed.title || 'Workout Plan',
+    planTitle: parsed.title || DEFAULT_PLAN_TITLE,
     clientName,
   });
   return { pdfLocalUri, pdfDownloadUrl, planId };

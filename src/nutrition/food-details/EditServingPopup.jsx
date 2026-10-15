@@ -1,13 +1,7 @@
-/**
- * Edit Serving Modal
- *
- * Purpose: UI screen or component: Edit Serving Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: EditServingPopup
- *
- * @file-header
- */
+// Slim "Edit serving" dialog for a food log entry: quantity, amount, Cancel, Save.
+// Flow: parent sets visible + field values → user edits → Save or Cancel (backdrop tap is Cancel).
+// Used by: the food-details / daily-log serving editor.
+
 import React from 'react';
 import {
   View,
@@ -23,29 +17,92 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import ColorFieldFrame from '../food-cards/ColorFieldFrame';
 
+// ===== NAMED CONSTANTS =====
+
 const ACCENT_PINK = '#FF6B9D';
 const ACCENT_PURPLE = '#8B5CF6';
+const SAVE_GRADIENT = [ACCENT_PINK, ACCENT_PURPLE];
+const RING_GRADIENT_DARK = ['#6D62CE', '#9468A8', '#4F87BA'];
+const RING_GRADIENT_LIGHT = ['#7D72D4', '#9E72A4', '#5F92C4'];
+const RING_GRADIENT_LOCATIONS = [0, 0.5, 1];
+const DEFAULT_QUANTITY_LABEL = 'Quantity (servings)';
+const DEFAULT_AMOUNT_LABEL = 'Amount (oz)';
+const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
+const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
+const GRADIENT_LEFT_CENTER = { x: 0, y: 0.5 };
+const GRADIENT_RIGHT_CENTER = { x: 1, y: 0.5 };
+const KEYBOARD_PAD_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : undefined;
 
-function theme(isDark) {
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Dark vs light paint for the inner card, labels, and inputs.
+ * @param {boolean} isDark
+ */
+function servingPopupColors(isDark) {
   return {
-    cardBg: isDark ? '#1A1A24' : '#FFFFFF',
+    cardBackground: isDark ? '#1A1A24' : '#FFFFFF',
     text: isDark ? '#FFFFFF' : '#0A0A0F',
     muted: isDark ? '#A6A6A6' : '#666666',
     dim: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
     inputFill: isDark ? '#12121A' : '#F5F5F5',
     cancelBorder: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(10,10,15,0.12)',
-    cancelBg: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    cancelBackground: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
   };
 }
 
 /**
- * Slim “Edit serving” dialog for a food log — gradient accents, compact fields.
+ * Outer rainbow ring. Dark and light use slightly different stops so the rim still reads on both.
+ * @param {boolean} isDark
+ * @returns {string[]}
+ */
+function cardRingColors(isDark) {
+  return isDark ? RING_GRADIENT_DARK : RING_GRADIENT_LIGHT;
+}
+
+/**
+ * One labeled number field inside a ColorFieldFrame.
+ * Lives above the modal so the two fields share markup without duplicating the keyboard setup.
+ */
+function ServingNumberField({
+  isDark,
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  mutedColor,
+  dimColor,
+  inputFill,
+  textColor,
+}) {
+  return (
+    <View style={styles.fieldBlock}>
+      <Text style={[styles.label, { color: mutedColor }]}>{label}</Text>
+      <ColorFieldFrame isDark={isDark}>
+        <TextInput
+          style={[styles.input, { backgroundColor: inputFill, color: textColor }]}
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType="decimal-pad"
+          placeholder={placeholder}
+          placeholderTextColor={dimColor}
+        />
+      </ColorFieldFrame>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Compact serving editor: servings + ounces, then Cancel / Save.
+ * @param {{ visible: boolean, foodName: string, quantityLabel?: string, amountLabel?: string, quantityValue: string, amountValue: string, onQuantityChange: Function, onAmountChange: Function, quantityPlaceholder?: string, amountPlaceholder?: string, onCancel: Function, onSave: Function, isDark: boolean }} props
  */
 export default function EditServingPopup({
   visible,
   foodName,
-  quantityLabel = 'Quantity (servings)',
-  amountLabel = 'Amount (oz)',
+  quantityLabel = DEFAULT_QUANTITY_LABEL,
+  amountLabel = DEFAULT_AMOUNT_LABEL,
   quantityValue,
   amountValue,
   onQuantityChange,
@@ -56,56 +113,49 @@ export default function EditServingPopup({
   onSave,
   isDark,
 }) {
-  const t = theme(isDark);
+  const colors = servingPopupColors(isDark);
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
-      >
+      <KeyboardAvoidingView behavior={KEYBOARD_PAD_BEHAVIOR} style={styles.flex}>
         <View style={styles.backdropWrap}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
           <LinearGradient
-            colors={isDark ? ['#6D62CE', '#9468A8', '#4F87BA'] : ['#7D72D4', '#9E72A4', '#5F92C4']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            locations={[0, 0.5, 1]}
+            colors={cardRingColors(isDark)}
+            start={GRADIENT_TOP_LEFT}
+            end={GRADIENT_BOTTOM_RIGHT}
+            locations={RING_GRADIENT_LOCATIONS}
             style={styles.cardRing}
           >
-            <View style={[styles.cardInner, { backgroundColor: t.cardBg }]}>
-              <Text style={[styles.title, { color: t.text }]}>Edit serving</Text>
-              <Text style={[styles.foodName, { color: t.muted }]} numberOfLines={2}>
+            <View style={[styles.cardInner, { backgroundColor: colors.cardBackground }]}>
+              <Text style={[styles.title, { color: colors.text }]}>Edit serving</Text>
+              <Text style={[styles.foodName, { color: colors.muted }]} numberOfLines={2}>
                 {foodName}
               </Text>
 
-              <View style={styles.fieldBlock}>
-                <Text style={[styles.label, { color: t.muted }]}>{quantityLabel}</Text>
-                <ColorFieldFrame isDark={isDark}>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: t.inputFill, color: t.text }]}
-                    value={quantityValue}
-                    onChangeText={onQuantityChange}
-                    keyboardType="decimal-pad"
-                    placeholder={quantityPlaceholder}
-                    placeholderTextColor={t.dim}
-                  />
-                </ColorFieldFrame>
-              </View>
+              <ServingNumberField
+                isDark={isDark}
+                label={quantityLabel}
+                value={quantityValue}
+                onChangeText={onQuantityChange}
+                placeholder={quantityPlaceholder}
+                mutedColor={colors.muted}
+                dimColor={colors.dim}
+                inputFill={colors.inputFill}
+                textColor={colors.text}
+              />
 
-              <View style={styles.fieldBlock}>
-                <Text style={[styles.label, { color: t.muted }]}>{amountLabel}</Text>
-                <ColorFieldFrame isDark={isDark}>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: t.inputFill, color: t.text }]}
-                    value={amountValue}
-                    onChangeText={onAmountChange}
-                    keyboardType="decimal-pad"
-                    placeholder={amountPlaceholder}
-                    placeholderTextColor={t.dim}
-                  />
-                </ColorFieldFrame>
-              </View>
+              <ServingNumberField
+                isDark={isDark}
+                label={amountLabel}
+                value={amountValue}
+                onChangeText={onAmountChange}
+                placeholder={amountPlaceholder}
+                mutedColor={colors.muted}
+                dimColor={colors.dim}
+                inputFill={colors.inputFill}
+                textColor={colors.text}
+              />
 
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -114,18 +164,18 @@ export default function EditServingPopup({
                   style={[
                     styles.cancelBtn,
                     {
-                      backgroundColor: t.cancelBg,
-                      borderColor: t.cancelBorder,
+                      backgroundColor: colors.cancelBackground,
+                      borderColor: colors.cancelBorder,
                     },
                   ]}
                 >
-                  <Text style={[styles.cancelText, { color: t.text }]}>Cancel</Text>
+                  <Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={onSave} activeOpacity={0.9} style={styles.saveWrap}>
                   <LinearGradient
-                    colors={[ACCENT_PINK, ACCENT_PURPLE]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
+                    colors={SAVE_GRADIENT}
+                    start={GRADIENT_LEFT_CENTER}
+                    end={GRADIENT_RIGHT_CENTER}
                     style={styles.saveBtn}
                   >
                     <Text style={styles.saveText}>Save</Text>

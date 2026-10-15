@@ -1,0 +1,5 @@
+# Still partial vs full-file bar — re-run dedicated full rewrite before calling these "done"
+src/nutrition/food-search/searchFoods.js
+src/client-app/home/homeScreenPieces.jsx
+src/client-app/meals/LogTodaysMealsScreen.jsx
+src/client-app/workout-plans/MyWorkoutPlanScreen.jsx

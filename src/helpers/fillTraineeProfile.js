@@ -45,12 +45,11 @@ const AUTH_PROFILE_CACHE_KEY_PREFIX = 'auth_profile_';
 // ===== HELPER FUNCTIONS =====
 
 function isPlaceholderProfileText(value) {
-  return (
-    value === EMPTY_PROFILE_PLACEHOLDER_A ||
-    value === EMPTY_PROFILE_PLACEHOLDER_B ||
-    value === EMPTY_PROFILE_PLACEHOLDER_C ||
-    value === EMPTY_PROFILE_PLACEHOLDER_D
-  );
+  if (value === EMPTY_PROFILE_PLACEHOLDER_A) return true;
+  if (value === EMPTY_PROFILE_PLACEHOLDER_B) return true;
+  if (value === EMPTY_PROFILE_PLACEHOLDER_C) return true;
+  if (value === EMPTY_PROFILE_PLACEHOLDER_D) return true;
+  return false;
 }
 
 // { feet: 0, inches: 0 } is a real object but means "never answered".
@@ -211,13 +210,23 @@ export function normalizeClientProfileFields(doc) {
  * @param {...(object|null|undefined)} sources
  * @returns {object}
  */
+function mergeOneProfileSource(merged, source) {
+  if (!source || typeof source !== 'object') return;
+  const normalized = normalizeClientProfileFields(source);
+  copyKnownProfileFields(merged, normalized);
+  copyExtraProfileFields(merged, normalized);
+}
+
+/**
+ * Merge one or more profile/onboarding objects into one trainee profile.
+ * Later sources overwrite earlier ones for the same field.
+ * @param {...(object|null|undefined)} sources
+ * @returns {object}
+ */
 export function fillTraineeProfile(...sources) {
   const merged = {};
   for (const source of sources) {
-    if (!source || typeof source !== 'object') continue;
-    const normalized = normalizeClientProfileFields(source);
-    copyKnownProfileFields(merged, normalized);
-    copyExtraProfileFields(merged, normalized);
+    mergeOneProfileSource(merged, source);
   }
   // One more pass: firstName from one source and lastName from another can only form `name` now.
   return normalizeClientProfileFields(merged);

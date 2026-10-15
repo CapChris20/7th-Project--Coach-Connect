@@ -6,271 +6,181 @@
 import React from 'react';
 import { StyleSheet, View, Animated } from 'react-native';
 
-const Loader = () => {
-  // One driver value per dot. Each stays between 0 (resting on the floor) and 1 (top of its jump).
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: lower duration = faster, more frantic bounce; raise = slow lava-lamp feel.
+const BOUNCE_DURATION_MS = 800;
+// Manipulate here: widen these gaps for a lazier wave, tighten them for a tighter ripple.
+const DOT_1_DELAY_MS = 100;
+const DOT_2_DELAY_MS = 200;
+const DOT_3_DELAY_MS = 300;
+const DOT_4_DELAY_MS = 400;
+const DOT_5_DELAY_MS = 500;
+// Manipulate here: bigger negative number = higher jump (styles.loader height must grow to match).
+const DOT_JUMP_PX = -48;
+// Manipulate here: 1.9 = nearly double size at the top; drop toward 1 to remove the pop.
+const DOT_PEAK_SCALE = 1.9;
+const DOT_REST_SCALE = 1;
+const DOT_REST_COLOR = '#16b0c1';
+const DOT_PEAK_COLOR = '#661e92';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * One forever-bounce: rise to 1, settle back to 0, repeat.
+ * The delay is what makes the dots look like a wave instead of all jumping together.
+ * vocab: Animated.loop = replay the inner animation endlessly
+ * vocab: Animated.sequence = run these steps one after another (not at the same time)
+ * vocab: useNativeDriver = hand the animation to the native UI thread so JS lag cannot stutter it
+ * @param {Animated.Value} animatedValue
+ * @param {number} delayMs
+ */
+function createDotBounceLoop(animatedValue, delayMs) {
+  return Animated.loop(
+    Animated.sequence([
+      Animated.timing(animatedValue, {
+        toValue: 1,
+        duration: BOUNCE_DURATION_MS,
+        delay: delayMs,
+        useNativeDriver: true,
+      }),
+      // Down leg has no delay, otherwise the dot would hang in mid-air.
+      Animated.timing(animatedValue, {
+        toValue: 0,
+        duration: BOUNCE_DURATION_MS,
+        delay: 0,
+        useNativeDriver: true,
+      }),
+    ]),
+  );
+}
+
+/**
+ * Translate the raw 0..1 driver into hop + pop. Runs as Animated interpolations on the UI thread.
+ * vocab: interpolate = when the driver goes from inputRange[0]→[1], move this style from outputRange[0]→[1]
+ * @param {Animated.Value} animatedValue
+ */
+function interpolateDotMotion(animatedValue) {
+  return {
+    translateY: animatedValue.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, DOT_JUMP_PX],
+    }),
+    scale: animatedValue.interpolate({
+      inputRange: [0, 1],
+      outputRange: [DOT_REST_SCALE, DOT_PEAK_SCALE],
+    }),
+  };
+}
+
+/**
+ * Three-layer sandwich: hop wrapper, always-visible teal circle, purple overlay whose opacity IS the 0..1 driver.
+ * Manipulate here: swap DOT_REST_COLOR / DOT_PEAK_COLOR to rebrand.
+ * @param {object} props
+ */
+function startStaggeredDotLoops(dot1Anim, dot2Anim, dot3Anim, dot4Anim, dot5Anim) {
+  const animations = [
+    createDotBounceLoop(dot1Anim, DOT_1_DELAY_MS),
+    createDotBounceLoop(dot2Anim, DOT_2_DELAY_MS),
+    createDotBounceLoop(dot3Anim, DOT_3_DELAY_MS),
+    createDotBounceLoop(dot4Anim, DOT_4_DELAY_MS),
+    createDotBounceLoop(dot5Anim, DOT_5_DELAY_MS),
+  ];
+  for (let i = 0; i < animations.length; i += 1) {
+    animations[i].start();
+  }
+  return animations;
+}
+
+function stopStaggeredDotLoops(animations) {
+  for (let i = 0; i < animations.length; i += 1) {
+    animations[i].stop();
+  }
+}
+
+function BouncingDot({ translateY, scale, opacityDriver }) {
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        {
+          transform: [{ translateY }, { scale }],
+        },
+      ]}
+    >
+      <View style={[styles.dotBase, { backgroundColor: DOT_REST_COLOR }]} />
+      <Animated.View
+        style={[
+          styles.dotOverlay,
+          {
+            opacity: opacityDriver,
+            backgroundColor: DOT_PEAK_COLOR,
+          },
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Brand five-dot bounce. Each dot's Animated.Value is created once and kept for the component's life.
+ */
+function Loader() {
   // vocab: Animated.Value = a number React Native can animate on the native side without re-rendering React
-  // vocab: React.useState(new Animated.Value(0)) = "make this value once and keep it for the component's life"
-  //        (we only read the value, never the setter — that's why there's no second array slot)
+  // vocab: React.useState(new Animated.Value(0)) = make this value once and keep it (we never use the setter)
   const [dot1Anim] = React.useState(new Animated.Value(0));
   const [dot2Anim] = React.useState(new Animated.Value(0));
   const [dot3Anim] = React.useState(new Animated.Value(0));
   const [dot4Anim] = React.useState(new Animated.Value(0));
   const [dot5Anim] = React.useState(new Animated.Value(0));
 
-  // Start the bounce loops on mount and stop them on unmount.
-  // Why an effect: animations are a side effect — starting them during render would
-  // leak a running loop every time React re-renders this component.
+  // Why an effect: starting animations during render would leak a running loop on every re-render.
   // vocab: React.useEffect = hook that runs after paint, and runs its returned function on cleanup
   React.useEffect(() => {
-    // Builds one dot's forever-bounce: rise to 1, settle back to 0, repeat.
-    // The `delay` is what makes the dots look like a wave instead of all jumping together.
-    const animateDot = (animatedValue, delay) => {
-      // vocab: Animated.loop = replay the inner animation endlessly
-      // vocab: Animated.sequence = run these steps one after another (not at the same time)
-      return Animated.loop(
-        Animated.sequence([
-          // Up leg: 0 → 1 over 800ms, after waiting out this dot's stagger delay.
-          Animated.timing(animatedValue, {
-            toValue: 1,
-            // Manipulate here: lower duration = faster, more frantic bounce; raise = slow lava-lamp feel
-            duration: 800,
-            delay: delay,
-            // vocab: useNativeDriver = hand the animation to the native UI thread so JS lag can't stutter it
-            useNativeDriver: true,
-          }),
-          // Down leg: 1 → 0. No delay here, otherwise the dot would hang in mid-air.
-          Animated.timing(animatedValue, {
-            toValue: 0,
-            duration: 800,
-            delay: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-    };
-
-    // Stagger the five dots 100ms apart so the bounce reads left-to-right as a wave.
-    // Manipulate here: widen the gaps (100/300/500...) for a lazier wave, tighten them for a tighter ripple
-    const animations = [
-      animateDot(dot1Anim, 100),
-      animateDot(dot2Anim, 200),
-      animateDot(dot3Anim, 300),
-      animateDot(dot4Anim, 400),
-      animateDot(dot5Anim, 500),
-    ];
-
-    animations.forEach(anim => anim.start());
-
-    // Cleanup: kill every loop when the loader leaves the screen.
-    // Without this the loops keep ticking forever in the background.
+    const animations = startStaggeredDotLoops(dot1Anim, dot2Anim, dot3Anim, dot4Anim, dot5Anim);
     return () => {
-      animations.forEach(anim => anim.stop());
+      stopStaggeredDotLoops(animations);
     };
   }, [dot1Anim, dot2Anim, dot3Anim, dot4Anim, dot5Anim]);
 
-  // Each dot's raw 0..1 value gets translated into two visual effects below.
-  // vocab: interpolate = "when the driver value goes from inputRange[0]→[1], move this style from outputRange[0]→[1]"
-  // The pattern repeats identically for dots 2–5; only the driver value changes.
+  const dot1Motion = interpolateDotMotion(dot1Anim);
+  const dot2Motion = interpolateDotMotion(dot2Anim);
+  const dot3Motion = interpolateDotMotion(dot3Anim);
+  const dot4Motion = interpolateDotMotion(dot4Anim);
+  const dot5Motion = interpolateDotMotion(dot5Anim);
 
-  // Vertical hop: 0 = sitting on the baseline, 1 = 48px above it (negative Y is up).
-  // Manipulate here: bigger negative number = higher jump (styles.loader height must grow to match)
-  const dot1Transform = dot1Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -48], // -3rem ≈ -48px
-  });
-
-  // Grow-at-the-peak effect, so the airborne dot reads as "closer" to the viewer.
-  // Manipulate here: 1.9 = nearly double size at the top; drop toward 1 to remove the pop
-  const dot1Scale = dot1Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.9],
-  });
-
-  const dot2Transform = dot2Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -48],
-  });
-
-  const dot2Scale = dot2Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.9],
-  });
-
-  const dot3Transform = dot3Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -48],
-  });
-
-  const dot3Scale = dot3Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.9],
-  });
-
-  const dot4Transform = dot4Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -48],
-  });
-
-  const dot4Scale = dot4Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.9],
-  });
-
-  const dot5Transform = dot5Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -48],
-  });
-
-  const dot5Scale = dot5Anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.9],
-  });
-
+  // 1. One Animated.Value per dot, created once.
+  // 2. Start the staggered bounce loops after paint; stop them when we leave.
+  // 3. Map each 0..1 driver into a hop + pop and paint five dots.
   return (
     <View style={styles.container}>
-      {/* Row of five dots, bottom-aligned so the jump reads as leaving the floor. */}
       <View style={styles.loader}>
-        {/*
-          Each dot is the same three-layer sandwich:
-          1. Animated.View  — carries the hop (translateY) and the pop (scale)
-          2. dotBase        — the always-visible teal circle
-          3. dotOverlay     — a purple circle whose opacity IS the raw 0..1 driver value,
-                              so the dot fades teal → purple as it rises and back on the way down.
-          Manipulate here: swap '#16b0c1' (teal resting color) / '#661e92' (purple peak color) to rebrand.
-        */}
-        <Animated.View
-          style={[
-            styles.dot,
-            {
-              transform: [
-                { translateY: dot1Transform },
-                { scale: dot1Scale }
-              ],
-            }
-          ]}
-        >
-          <View style={[styles.dotBase, { backgroundColor: '#16b0c1' }]} />
-          <Animated.View 
-            style={[
-              styles.dotOverlay, 
-              { 
-                opacity: dot1Anim,
-                backgroundColor: '#661e92'
-              }
-            ]} 
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.dot,
-            {
-              transform: [
-                { translateY: dot2Transform },
-                { scale: dot2Scale }
-              ],
-            }
-          ]}
-        >
-          <View style={[styles.dotBase, { backgroundColor: '#16b0c1' }]} />
-          <Animated.View 
-            style={[
-              styles.dotOverlay, 
-              { 
-                opacity: dot2Anim,
-                backgroundColor: '#661e92'
-              }
-            ]} 
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.dot,
-            {
-              transform: [
-                { translateY: dot3Transform },
-                { scale: dot3Scale }
-              ],
-            }
-          ]}
-        >
-          <View style={[styles.dotBase, { backgroundColor: '#16b0c1' }]} />
-          <Animated.View 
-            style={[
-              styles.dotOverlay, 
-              { 
-                opacity: dot3Anim,
-                backgroundColor: '#661e92'
-              }
-            ]} 
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.dot,
-            {
-              transform: [
-                { translateY: dot4Transform },
-                { scale: dot4Scale }
-              ],
-            }
-          ]}
-        >
-          <View style={[styles.dotBase, { backgroundColor: '#16b0c1' }]} />
-          <Animated.View 
-            style={[
-              styles.dotOverlay, 
-              { 
-                opacity: dot4Anim,
-                backgroundColor: '#661e92'
-              }
-            ]} 
-          />
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.dot,
-            {
-              transform: [
-                { translateY: dot5Transform },
-                { scale: dot5Scale }
-              ],
-            }
-          ]}
-        >
-          <View style={[styles.dotBase, { backgroundColor: '#16b0c1' }]} />
-          <Animated.View 
-            style={[
-              styles.dotOverlay, 
-              { 
-                opacity: dot5Anim,
-                backgroundColor: '#661e92'
-              }
-            ]} 
-          />
-        </Animated.View>
+        <BouncingDot translateY={dot1Motion.translateY} scale={dot1Motion.scale} opacityDriver={dot1Anim} />
+        <BouncingDot translateY={dot2Motion.translateY} scale={dot2Motion.scale} opacityDriver={dot2Anim} />
+        <BouncingDot translateY={dot3Motion.translateY} scale={dot3Motion.scale} opacityDriver={dot3Anim} />
+        <BouncingDot translateY={dot4Motion.translateY} scale={dot4Motion.scale} opacityDriver={dot4Anim} />
+        <BouncingDot translateY={dot5Motion.translateY} scale={dot5Motion.scale} opacityDriver={dot5Anim} />
       </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  // Fills whatever it's dropped into and centers the dot row.
   // Manipulate here: `flex: 1` is what makes this a full-screen loader — remove it to use inline
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // `alignItems: 'flex-end'` pins the dots to the bottom of this box, and the fixed
-  // height reserves the airspace above them. If you change the -48 jump, change this too,
-  // or the dots will get clipped at the top of their arc.
+  // alignItems flex-end pins dots to the floor. If you change DOT_JUMP_PX, change this height too.
   loader: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     height: 68, // 20px dot + 48px jump space
   },
-  // `overflow: 'hidden'` + borderRadius is what keeps the purple overlay circular
-  // instead of leaking out as a square.
+  // overflow hidden + borderRadius keeps the purple overlay circular.
   // Manipulate here: height/width/borderRadius must stay in a 20/20/10 ratio to stay a circle
   dot: {
     height: 20,

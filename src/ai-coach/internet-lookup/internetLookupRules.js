@@ -1,10 +1,10 @@
-// Client-side check for topics that should go to a web lookup instead of the normal coach reply.
-// Flow: lowercase the message → see if any keyword is in it.
-// Used by: the coach before it sends a message. This list mirrors the server check.
+// Client-side keyword list for messages that should use web lookup (Perplexity route).
+// Flow: normalize text → scan keyword list → match means route away from plain coach.
+// Used before send; mirrors server/lib coach web routing.
 
 // ===== NAMED CONSTANTS =====
 
-const PERPLEXITY_KEYWORDS = [
+const PERPLEXITY_TOPIC_KEYWORDS = [
   'hormone',
   'trt',
   'testosterone',
@@ -27,25 +27,26 @@ const PERPLEXITY_KEYWORDS = [
   'hgh',
 ];
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * @param {string} messageText
- * @param {string} keyword
- * @returns {boolean}
- */
-function messageIncludesKeyword(messageText, keyword) {
-  return messageText.includes(keyword);
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
+ * True when the user message touches pharmacology / PED topics that need web routing.
  * @param {string} userMessage
  * @returns {boolean}
  */
 export function shouldRouteToPerplexity(userMessage) {
-  const messageText = String(userMessage || '').toLowerCase();
-  if (!messageText.trim()) return false;
-  return PERPLEXITY_KEYWORDS.some((keyword) => messageIncludesKeyword(messageText, keyword));
+  const lowerMessage = String(userMessage || '').toLowerCase();
+  if (!lowerMessage.trim()) return false;
+  return anyPerplexityKeywordMatches(lowerMessage);
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+function anyPerplexityKeywordMatches(lowerMessage) {
+  for (let keywordIndex = 0; keywordIndex < PERPLEXITY_TOPIC_KEYWORDS.length; keywordIndex += 1) {
+    const keyword = PERPLEXITY_TOPIC_KEYWORDS[keywordIndex];
+    if (lowerMessage.includes(keyword)) return true;
+  }
+  return false;
 }

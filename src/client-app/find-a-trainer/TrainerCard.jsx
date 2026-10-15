@@ -1,8 +1,7 @@
 // One trainer's card in the marketplace browse list.
-// Flow: read display fields off the trainer object (with fallbacks) → render avatar, name, rating,
-// bio, price → three actions: View Profile (primary), Message, Connect.
-// Note: `trainer` is a display-shaped object; `trainer._firebase` is the raw Firestore doc, which is
-// where some fields (price, review count) still live.
+// Flow: pull display fields off the trainer object → avatar, name, rating, bio, price → View Profile / Message / Connect.
+// Used by: the find-a-trainer browse list. `trainer._firebase` is the raw Firestore doc for fields the list projection omits.
+
 import React from 'react';
 import { View, Text, Pressable, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,140 +14,262 @@ import {
 } from './trainerFilters';
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
 
-// Manipulate here: the pink→orange gradient used for BOTH the top accent bar and the primary CTA,
-// so they always match. Change it once here.
-const CTA_GRADIENT = ['#BE185D', '#C2410C'];
+// ===== NAMED CONSTANTS =====
 
-// Maps a free-text training mode ("Remote", "In person", "Hybrid") to an icon. Substring matching
-// rather than exact equality because this text is trainer-authored and inconsistently capitalized.
-// Manipulate here: the network icon is the catch-all, which is what "Hybrid"/unknown modes get.
-function modeIcon(mode) {
-  const m = String(mode || '').toLowerCase();
-  if (m.includes('remote')) return 'videocam-outline';
-  if (m.includes('person')) return 'location-outline';
-  return 'git-network-outline';
+// Manipulate here: pink→orange used for BOTH the top accent bar and the primary CTA so they always match.
+const CTA_GRADIENT = ['#BE185D', '#C2410C'];
+const ONLINE_DOT_COLOR = '#22C55E';
+const STAR_COUNT = 5;
+const SPECIALTY_FALLBACK = 'General Fitness';
+const UNRATED_LABEL = 'New';
+const RATE_ON_REQUEST_LABEL = 'Rate on request';
+const STAR_FILLED = 'star';
+const STAR_EMPTY = 'star-outline';
+const MODE_ICON_REMOTE = 'videocam-outline';
+const MODE_ICON_IN_PERSON = 'location-outline';
+const MODE_ICON_HYBRID = 'git-network-outline';
+const CARD_BG_DARK = '#14141C';
+const CARD_BG_LIGHT = '#FFFFFF';
+const BORDER_DARK = 'rgba(255,255,255,0.10)';
+const BORDER_LIGHT = 'rgba(10,10,15,0.08)';
+const SPECIALTY_COLOR = '#FDBA74';
+const STAR_ACTIVE_COLOR = '#FDBA74';
+const CONNECT_COLOR = '#FDBA74';
+const VERIFIED_COLOR = '#22C55E';
+const PRICE_AMOUNT_COLOR = '#FDBA74';
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
+const GRADIENT_DIAGONAL = { x: 1, y: 1 };
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Maps a trainer-authored training mode string to an icon.
+ * Substring matching (not exact equality) because this text is inconsistently capitalized.
+ * @param {string} mode
+ * @returns {string}
+ */
+function trainingModeIcon(mode) {
+  const modeText = String(mode || '').toLowerCase();
+  if (modeText.includes('remote')) return MODE_ICON_REMOTE;
+  if (modeText.includes('person')) return MODE_ICON_IN_PERSON;
+  // Manipulate here: hybrid / unknown modes share the network icon.
+  return MODE_ICON_HYBRID;
 }
 
-export default function TrainerCard({ trainer, t, isDark = true, onMessage, onConnect, onViewProfile }) {
-  const firstName = trainerFirstName(trainer.name);
-  // Gradient colors for the initials avatar, derived from the trainer's assigned `grad` key — that's
-  // how each trainer gets a stable, distinct color instead of a random one per render.
-  const avatarColors = gradGradient(trainer.grad);
+/**
+ * Dark vs light paint for the card chrome. Theme tokens (`theme.foreground`) still come from the parent.
+ * @param {boolean} isDark
+ */
+function trainerCardChrome(isDark) {
+  return {
+    cardBackground: isDark ? CARD_BG_DARK : CARD_BG_LIGHT,
+    borderColor: isDark ? BORDER_DARK : BORDER_LIGHT,
+  };
+}
+
+/**
+ * Caption after the stars: rating, else "New", then reviews or years if present.
+ * Reviews win over years when both exist — the card has one slot for that extra bit.
+ * @param {number|null} rating
+ * @param {number} reviewCount
+ * @param {number} years
+ * @returns {string}
+ */
+function ratingCaption(rating, reviewCount, years) {
+  const ratingText = rating != null ? `${Number(rating).toFixed(1)}` : UNRATED_LABEL;
+  if (reviewCount > 0) return `${ratingText} · ${reviewCount} reviews`;
+  if (years > 0) return `${ratingText} · ${years} yrs`;
+  return ratingText;
+}
+
+/**
+ * Filled star when this index is at or under the rounded rating. Unrated trainers get outlines.
+ * @param {number} starIndex
+ * @param {number|null} rating
+ * @returns {string}
+ */
+function starIconName(starIndex, rating) {
+  const isFilled = rating != null && starIndex <= Math.round(rating);
+  return isFilled ? STAR_FILLED : STAR_EMPTY;
+}
+
+/**
+ * Display fields with "list projection, else raw Firestore" fallbacks.
+ * vocab/symbol: ?? falls back only on null/undefined, so a legitimate 0 rating or 0 years survives.
+ * @param {object} trainer
+ */
+function readTrainerCardFields(trainer) {
   const photoUri = trainer.photoURL || trainerPhotoUri(trainer._firebase);
-  // Several fields are read with a "display value, else raw Firestore value" fallback chain, because
-  // the marketplace list projection doesn't always carry every field.
-  // vocab/symbol: ?? falls back only on null/undefined, so a legitimate 0 rating survives.
+  // vocab: getTrainerPrice reads the billed monthly rate off the raw Firebase doc first.
   const price = getTrainerPrice(trainer._firebase) ?? trainer.price;
-  // A price of 0 is treated as "not set" rather than "free" — that's the deliberate product call
-  // behind checking > 0 instead of just != null.
+  // A price of 0 is treated as "not set" rather than "free".
   const showPrice = price != null && Number(price) > 0;
-  // Only the FIRST specialty is shown; the card has one line for it. Full list is on the profile.
-  // Manipulate here: 'General Fitness' is the fallback for trainers who set no specialty.
-  const specialty = trainer.specialties?.[0] || 'General Fitness';
+  const specialty = trainer.specialties?.[0] || SPECIALTY_FALLBACK;
   const years = trainer.years ?? 0;
   const reviewCount = trainer.reviewCount ?? trainer._firebase?.reviewCount ?? 0;
-  // rating stays NULL (not 0) when unrated, because the star row below uses null to mean "New"
-  // rather than drawing zero stars.
+  // rating stays NULL (not 0) when unrated — the star row uses null to mean "New".
   const rating = trainer.rating ?? trainer._firebase?.averageRating ?? null;
-  const cardBg = isDark ? '#14141C' : '#FFFFFF';
-  const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)';
-  const muted = t.mutedForeground;
+  return {
+    firstName: trainerFirstName(trainer.name),
+    avatarColors: gradGradient(trainer.grad),
+    photoUri,
+    price,
+    showPrice,
+    specialty,
+    years,
+    reviewCount,
+    rating,
+  };
+}
+
+/**
+ * Star row + caption. Built here so the JSX below stays a list of card sections.
+ */
+function RatingRow({ rating, reviewCount, years, mutedColor }) {
+  const starIndexes = Array.from({ length: STAR_COUNT }, (_, index) => index + 1);
+  return (
+    <View style={styles.ratingRow}>
+      {starIndexes.map((starIndex) => (
+        <Ionicons
+          key={starIndex}
+          name={starIconName(starIndex, rating)}
+          size={13}
+          color={rating != null ? STAR_ACTIVE_COLOR : mutedColor}
+        />
+      ))}
+      <Text style={[styles.ratingText, { color: mutedColor }]}>
+        {ratingCaption(rating, reviewCount, years)}
+      </Text>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Marketplace card for one trainer: photo, rating, bio, monthly price, and the three actions.
+ * @param {{ trainer: object, t: object, isDark?: boolean, onMessage: Function, onConnect: Function, onViewProfile: Function }} props
+ */
+export default function TrainerCard({
+  trainer,
+  t: theme,
+  isDark = true,
+  onMessage,
+  onConnect,
+  onViewProfile,
+}) {
+  const fields = readTrainerCardFields(trainer);
+  const chrome = trainerCardChrome(isDark);
+  const mutedColor = theme.mutedForeground;
 
   return (
     <View
       style={[
-        s.card,
+        styles.card,
         {
-          backgroundColor: cardBg,
-          borderColor: border,
+          backgroundColor: chrome.cardBackground,
+          borderColor: chrome.borderColor,
         },
       ]}
     >
-      <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.accentBar} />
+      <LinearGradient
+        colors={CTA_GRADIENT}
+        start={GRADIENT_LEFT}
+        end={GRADIENT_RIGHT}
+        style={styles.accentBar}
+      />
 
-      <View style={s.cardBody}>
-        <View style={s.photoWrap}>
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={s.avatarImg} />
+      <View style={styles.cardBody}>
+        <View style={styles.photoWrap}>
+          {fields.photoUri ? (
+            <Image source={{ uri: fields.photoUri }} style={styles.avatarImg} />
           ) : (
-            <LinearGradient colors={avatarColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarFallback}>
-              <Text style={s.avatarMdText}>{trainer.initials}</Text>
+            <LinearGradient
+              colors={fields.avatarColors}
+              start={GRADIENT_LEFT}
+              end={GRADIENT_DIAGONAL}
+              style={styles.avatarFallback}
+            >
+              <Text style={styles.avatarMdText}>{trainer.initials}</Text>
             </LinearGradient>
           )}
           {trainer.available ? (
-            <View style={[s.onlineDot, { borderColor: cardBg }]}>
-              <View style={[s.onlineDotInner, { backgroundColor: '#22C55E' }]} />
+            <View style={[styles.onlineDot, { borderColor: chrome.cardBackground }]}>
+              <View style={[styles.onlineDotInner, { backgroundColor: ONLINE_DOT_COLOR }]} />
             </View>
           ) : null}
         </View>
 
-        <Text style={[s.trainerName, { color: t.foreground }]} numberOfLines={1}>
+        <Text style={[styles.trainerName, { color: theme.foreground }]} numberOfLines={1}>
           {trainer.name}
         </Text>
         {trainer.verified === true ? (
-          <View style={s.verifiedRow}>
-            <Ionicons name="shield-checkmark" size={13} color="#22C55E" />
-            <Text style={s.verifiedText}>Verified</Text>
+          <View style={styles.verifiedRow}>
+            <Ionicons name="shield-checkmark" size={13} color={VERIFIED_COLOR} />
+            <Text style={styles.verifiedText}>Verified</Text>
           </View>
         ) : null}
-        <Text style={[s.specialty, { color: '#FDBA74' }]} numberOfLines={1}>
-          {specialty}
+        <Text style={[styles.specialty, { color: SPECIALTY_COLOR }]} numberOfLines={1}>
+          {fields.specialty}
         </Text>
 
-        <View style={s.ratingRow}>
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Ionicons
-              key={i}
-              name={rating != null && i <= Math.round(rating) ? 'star' : 'star-outline'}
-              size={13}
-              color={rating != null ? '#FDBA74' : muted}
-            />
-          ))}
-          <Text style={[s.ratingText, { color: muted }]}>
-            {rating != null ? `${Number(rating).toFixed(1)}` : 'New'}
-            {reviewCount > 0 ? ` · ${reviewCount} reviews` : years > 0 ? ` · ${years} yrs` : ''}
-          </Text>
-        </View>
+        <RatingRow
+          rating={fields.rating}
+          reviewCount={fields.reviewCount}
+          years={fields.years}
+          mutedColor={mutedColor}
+        />
 
-        <Text style={[s.bio, { color: muted }]} numberOfLines={3}>
+        <Text style={[styles.bio, { color: mutedColor }]} numberOfLines={3}>
           {trainer.bio}
         </Text>
 
-        <View style={s.metaRow}>
-          <Ionicons name="location-outline" size={12} color={muted} />
-          <Text style={[s.metaText, { color: muted }]} numberOfLines={1}>
+        <View style={styles.metaRow}>
+          <Ionicons name="location-outline" size={12} color={mutedColor} />
+          <Text style={[styles.metaText, { color: mutedColor }]} numberOfLines={1}>
             {trainer.location}
           </Text>
-          <Text style={[s.metaDot, { color: muted }]}>·</Text>
-          <Ionicons name={modeIcon(trainer.mode)} size={12} color={muted} />
-          <Text style={[s.metaText, { color: muted }]}>{trainer.mode}</Text>
+          <Text style={[styles.metaDot, { color: mutedColor }]}>·</Text>
+          <Ionicons name={trainingModeIcon(trainer.mode)} size={12} color={mutedColor} />
+          <Text style={[styles.metaText, { color: mutedColor }]}>{trainer.mode}</Text>
         </View>
 
-        <Text style={[s.priceLine, { color: t.foreground }]}>
-          {showPrice ? (
+        <Text style={[styles.priceLine, { color: theme.foreground }]}>
+          {fields.showPrice ? (
             <>
-              <Text style={s.priceAmount}>${price}</Text>
-              <Text style={{ color: muted, fontSize: 13, fontWeight: '600' }}> /mo</Text>
+              <Text style={styles.priceAmount}>${fields.price}</Text>
+              <Text style={{ color: mutedColor, fontSize: 13, fontWeight: '600' }}> /mo</Text>
             </>
           ) : (
-            <Text style={{ color: muted, fontSize: 14, fontWeight: '600' }}>Rate on request</Text>
+            <Text style={{ color: mutedColor, fontSize: 14, fontWeight: '600' }}>
+              {RATE_ON_REQUEST_LABEL}
+            </Text>
           )}
         </Text>
 
-        <Pressable onPress={() => onViewProfile(trainer)} style={({ pressed }) => [s.ctaHit, pressed && { opacity: 0.9 }]}>
-          <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.ctaBtn}>
-            <Text style={s.ctaText}>View Profile</Text>
+        <Pressable
+          onPress={() => onViewProfile(trainer)}
+          style={({ pressed }) => [styles.ctaHit, pressed && { opacity: 0.9 }]}
+        >
+          <LinearGradient
+            colors={CTA_GRADIENT}
+            start={GRADIENT_LEFT}
+            end={GRADIENT_RIGHT}
+            style={styles.ctaBtn}
+          >
+            <Text style={styles.ctaText}>View Profile</Text>
           </LinearGradient>
         </Pressable>
 
-        <View style={s.secondaryRow}>
-          <Pressable onPress={() => onMessage(trainer)} style={s.secondaryBtn}>
-            <Ionicons name="chatbubble-outline" size={15} color={t.foreground} />
-            <Text style={[s.secondaryText, { color: t.foreground }]}>Message</Text>
+        <View style={styles.secondaryRow}>
+          <Pressable onPress={() => onMessage(trainer)} style={styles.secondaryBtn}>
+            <Ionicons name="chatbubble-outline" size={15} color={theme.foreground} />
+            <Text style={[styles.secondaryText, { color: theme.foreground }]}>Message</Text>
           </Pressable>
-          <Pressable onPress={() => onConnect(trainer)} style={s.secondaryBtn}>
-            <Ionicons name="flash-outline" size={15} color="#FDBA74" />
-            <Text style={[s.secondaryText, { color: '#FDBA74' }]}>Connect</Text>
+          <Pressable onPress={() => onConnect(trainer)} style={styles.secondaryBtn}>
+            <Ionicons name="flash-outline" size={15} color={CONNECT_COLOR} />
+            <Text style={[styles.secondaryText, { color: CONNECT_COLOR }]}>Connect</Text>
           </Pressable>
         </View>
       </View>
@@ -156,7 +277,7 @@ export default function TrainerCard({ trainer, t, isDark = true, onMessage, onCo
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   card: {
     borderRadius: 18,
     borderWidth: 1,
@@ -197,7 +318,7 @@ const s = StyleSheet.create({
   verifiedText: {
     fontSize: 12,
     fontFamily: MP_FONT.bodySemi,
-    color: '#22C55E',
+    color: VERIFIED_COLOR,
   },
   specialty: { fontSize: 13, fontFamily: MP_FONT.bodySemi, marginTop: 4, textAlign: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
@@ -214,7 +335,7 @@ const s = StyleSheet.create({
   metaText: { fontSize: 11, fontFamily: MP_FONT.bodyMedium, maxWidth: 110 },
   metaDot: { fontSize: 11 },
   priceLine: { marginTop: 12, textAlign: 'center' },
-  priceAmount: { fontSize: 24, fontFamily: MP_FONT.displayBold, color: '#FDBA74' },
+  priceAmount: { fontSize: 24, fontFamily: MP_FONT.displayBold, color: PRICE_AMOUNT_COLOR },
   ctaHit: { width: '100%', marginTop: 14 },
   ctaBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   ctaText: { color: '#FFFFFF', fontSize: 15, fontFamily: MP_FONT.bodyBold },

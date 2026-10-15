@@ -19,10 +19,15 @@ try {
 }
 
 // An empty env value falls through to the Expo extra field, then to a blank string.
-const STRIPE_PUBLISHABLE_KEY =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY) ||
-  Constants.expoConfig?.extra?.stripePublishableKey ||
-  '';
+function readStripePublishableKey() {
+  const fromEnv =
+    typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY : '';
+  if (fromEnv) return fromEnv;
+  const fromExpoExtra = Constants.expoConfig?.extra?.stripePublishableKey;
+  if (fromExpoExtra) return fromExpoExtra;
+  return '';
+}
+const STRIPE_PUBLISHABLE_KEY = readStripePublishableKey();
 
 const EXPO_GO_BLOCK = {
   title: 'Expo Go cannot take card payments',
@@ -84,10 +89,19 @@ export function getStripePublishableKey() {
  * @returns {{ title: string, detail: string } | null}
  */
 export function getStripeCardPaymentBlockReason() {
+  // 1. Expo Go cannot load this native card field.
   if (isRunningInExpoGo()) return EXPO_GO_BLOCK;
+
+  // 2. Dev client built before Stripe was added (or needs a rebuild).
   if (isCardEntryMissing(stripeModule)) return MISSING_CARD_MODULE_BLOCK;
+
+  // 3. Missing publishable key — .env was blank and Expo extra was blank.
   if (!STRIPE_PUBLISHABLE_KEY) return MISSING_PUBLISHABLE_KEY_BLOCK;
+
+  // 4. Module loaded but StripeProvider is missing from this install.
   if (isStripeProviderMissing(stripeModule)) return MISSING_PROVIDER_BLOCK;
+
+  // 5. This phone can take a card.
   return null;
 }
 
@@ -96,5 +110,6 @@ export function getStripeCardPaymentBlockReason() {
  * @returns {boolean}
  */
 export function isStripeCardPaymentReady() {
+  // 1. Ready only when getStripeCardPaymentBlockReason has nothing to show.
   return !getStripeCardPaymentBlockReason();
 }

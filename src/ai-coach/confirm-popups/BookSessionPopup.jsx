@@ -12,33 +12,43 @@ const MISSING_VALUE = '—';
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Turn raw tool params into labels the DetailRow can show.
  * @param {object|undefined} params
  * @returns {{ sessionDate: string, sessionTime: string, durationLabel: string, notes: string|undefined }}
  */
-function readSessionDetails(params) {
+function buildSessionDisplayFields(params) {
   const sessionDate = params?.sessionDate || params?.date || MISSING_VALUE;
   const sessionTime = params?.sessionTime || params?.time || MISSING_VALUE;
-  const durationMinutes = params?.durationMinutes ?? params?.duration ?? MISSING_VALUE;
-  const durationLabel = durationMinutes !== MISSING_VALUE ? `${durationMinutes} min` : MISSING_VALUE;
-  return { sessionDate, sessionTime, durationLabel, notes: params?.notes };
+  const durationRaw =
+    params?.durationMin ?? params?.durationMinutes ?? params?.duration ?? MISSING_VALUE;
+  let durationLabel = MISSING_VALUE;
+  if (durationRaw !== MISSING_VALUE) durationLabel = `${durationRaw} min`;
+  const notes = params?.notes;
+  return { sessionDate, sessionTime, durationLabel, notes };
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Modal that asks the user to confirm booking a trainer session from a coach tool call.
  * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
  */
 export default function BookSessionPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  const sessionDetails = readSessionDetails(params);
+  // 1. Read date, time, duration, and notes for the session.
+  const displayFields = buildSessionDisplayFields(params);
+
+  // 2. Confirm books it. onConfirm still gets the original params object.
+
+  const handleConfirmBook = () => onConfirm(params);
 
   return (
     <ToolModalBody title="Book session?" reasoning={reasoning}>
-      <DetailRow label="Date" value={sessionDetails.sessionDate} />
-      <DetailRow label="Time" value={sessionDetails.sessionTime} />
-      <DetailRow label="Duration" value={sessionDetails.durationLabel} />
-      <DetailRow label="Notes" value={sessionDetails.notes} />
+      <DetailRow label="Date" value={displayFields.sessionDate} />
+      <DetailRow label="Time" value={displayFields.sessionTime} />
+      <DetailRow label="Duration" value={displayFields.durationLabel} />
+      <DetailRow label="Notes" value={displayFields.notes} />
       <ConfirmCancelRow
-        onConfirm={() => onConfirm(params)}
+        onConfirm={handleConfirmBook}
         onCancel={onCancel}
         loading={loading}
         confirmLabel="Book"

@@ -1,13 +1,7 @@
-/**
- * Exercise Card
- *
- * Purpose: UI screen or component: Exercise Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: ExerciseCard
- *
- * @file-header
- */
+// One horizontal exercise tile: YouTube thumb, title, instructor initials, difficulty or duration.
+// Flow: press-in scales the card up → press-out snaps back; tap opens the video; bookmark is optional.
+// Used by the exercise-video list. Dark vs light inner colors follow colors.background.
+
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -20,13 +14,77 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const TRANS_MS = 220;
-const DEFAULT_RIM = ['#FF6B9D', '#C2410C'];
+// ===== NAMED CONSTANTS =====
 
-function ytThumb(videoId) {
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+const PRESS_ANIMATION_MS = 220;
+const DEFAULT_RIM = ['#FF6B9D', '#C2410C'];
+const PRESS_SCALE = 1.02;
+const PRESS_LIFT_Y = -2;
+const MIN_GRADIENT_STOPS = 2;
+const DARK_BACKGROUND = '#0a0a0f';
+const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
+const FALLBACK_LABEL = '—';
+const FALLBACK_INITIALS = 'CC';
+const MAX_INITIAL_WORDS = 2;
+const BOOKMARK_HIT_SLOP = 10;
+const SAVED_BOOKMARK_COLOR = '#FF6B9D';
+const UNSAVED_BOOKMARK_COLOR = '#FFFFFF';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * YouTube's standard hqdefault still. videoId is the 11-char watch id, not a full URL.
+ * @param {string} videoId
+ * @returns {string}
+ */
+function youtubeThumbUrl(videoId) {
+  return `${YOUTUBE_THUMB_HOST}/${videoId}/hqdefault.jpg`;
 }
 
+/**
+ * "Beginner • 12 min" — whichever pieces exist, joined with a bullet.
+ * @param {object} exercise
+ * @returns {string}
+ */
+function formatExerciseMeta(exercise) {
+  const difficulty = exercise?.difficulty ? String(exercise.difficulty) : null;
+  const minutes =
+    typeof exercise?.durationMinutes === 'number' ? `${exercise.durationMinutes} min` : null;
+  return [difficulty, minutes].filter(Boolean).join(' • ');
+}
+
+/**
+ * First letter of the first two words of the channel name. Empty channel → "CC".
+ * @param {string|undefined} channel
+ * @returns {string}
+ */
+function initialsFromChannel(channel) {
+  const channelName = String(channel || '').trim();
+  if (!channelName) return FALLBACK_INITIALS;
+  const words = channelName.split(/\s+/).filter(Boolean).slice(0, MAX_INITIAL_WORDS);
+  const initials = words.map((word) => word.slice(0, 1).toUpperCase()).join('');
+  return initials || FALLBACK_INITIALS;
+}
+
+/**
+ * A one-stop array would crash LinearGradient, so fall back to the pink/orange rim.
+ * @param {string[]|undefined} accentGradient
+ * @returns {string[]}
+ */
+function rimColors(accentGradient) {
+  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : DEFAULT_RIM;
+}
+
+function isDarkBackground(colors) {
+  return (colors?.background || '').toLowerCase() === DARK_BACKGROUND;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Exercise video card with a gradient rim, thumbnail, instructor row, and optional bookmark.
+ * @param {object} props
+ */
 export default function ExerciseCard({
   exercise,
   colors,
@@ -37,85 +95,111 @@ export default function ExerciseCard({
   onToggleSave,
   style,
 }) {
+  // vocab: Animated.Value = a number the native driver can tween without bouncing through JS.
   const scale = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-  const [pressed, setPressed] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
 
-  const metaText = useMemo(() => {
-    const diff = exercise?.difficulty ? String(exercise.difficulty) : null;
-    const mins = typeof exercise?.durationMinutes === 'number' ? `${exercise.durationMinutes} min` : null;
-    return [diff, mins].filter(Boolean).join(' • ');
-  }, [exercise?.difficulty, exercise?.durationMinutes]);
+  const metaText = useMemo(
+    () => formatExerciseMeta(exercise),
+    [exercise?.difficulty, exercise?.durationMinutes],
+  );
 
-  const animateTo = (down) => {
-    setPressed(down);
+  const animateToPressed = (isFingerDown) => {
+    setIsPressed(isFingerDown);
     Animated.parallel([
-      Animated.timing(scale, { toValue: down ? 1.02 : 1, duration: TRANS_MS, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: down ? -2 : 0, duration: TRANS_MS, useNativeDriver: true }),
+      Animated.timing(scale, {
+        toValue: isFingerDown ? PRESS_SCALE : 1,
+        duration: PRESS_ANIMATION_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: isFingerDown ? PRESS_LIFT_Y : 0,
+        duration: PRESS_ANIMATION_MS,
+        useNativeDriver: true,
+      }),
     ]).start();
   };
 
-  const isDark = (colors?.background || '').toLowerCase() === '#0a0a0f';
+  const isDark = isDarkBackground(colors);
   const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
   const channelColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.62)';
   const metaColor = isDark ? 'rgba(255,255,255,0.48)' : 'rgba(10,10,15,0.48)';
-  const rim = accentGradient?.length >= 2 ? accentGradient : DEFAULT_RIM;
+  const rim = rimColors(accentGradient);
 
-  const instructorInitials = useMemo(() => {
-    const ch = String(exercise?.channel || '').trim();
-    if (!ch) return 'CC';
-    const parts = ch.split(/\s+/).filter(Boolean).slice(0, 2);
-    const ini = parts.map((p) => p.slice(0, 1).toUpperCase()).join('');
-    return ini || 'CC';
-  }, [exercise?.channel]);
+  const instructorInitials = useMemo(
+    () => initialsFromChannel(exercise?.channel),
+    [exercise?.channel],
+  );
 
   const difficulty = exercise?.difficulty ? String(exercise.difficulty) : null;
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => animateTo(true)}
-      onPressOut={() => animateTo(false)}
+      onPressIn={() => animateToPressed(true)}
+      onPressOut={() => animateToPressed(false)}
       style={[styles.press, style]}
     >
       <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
         <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rim}>
           <View style={[styles.card, { backgroundColor: innerBg }]}>
             <View style={[styles.imageWrap, { height: imageHeight }]}>
-              <Image source={{ uri: ytThumb(exercise.videoId) }} style={styles.image} contentFit="cover" transition={TRANS_MS} />
-              <LinearGradient colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+              <Image
+                source={{ uri: youtubeThumbUrl(exercise.videoId) }}
+                style={styles.image}
+                contentFit="cover"
+                transition={PRESS_ANIMATION_MS}
+              />
+              <LinearGradient
+                colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
               {onToggleSave ? (
                 <Pressable
-                  onPress={(e) => {
-                    e?.stopPropagation?.();
+                  onPress={(event) => {
+                    event?.stopPropagation?.();
                     onToggleSave();
                   }}
-                  hitSlop={10}
+                  hitSlop={BOOKMARK_HIT_SLOP}
                   style={styles.saveBtn}
                 >
-                  <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={16} color={saved ? '#FF6B9D' : '#FFFFFF'} />
+                  <Ionicons
+                    name={saved ? 'bookmark' : 'bookmark-outline'}
+                    size={16}
+                    color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
+                  />
                 </Pressable>
               ) : null}
             </View>
 
             <View style={styles.body}>
               <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
-                {exercise?.name || '—'}
+                {exercise?.name || FALLBACK_LABEL}
               </Text>
 
               <View style={styles.instructorRow}>
                 <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
                   <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' }]}>
-                    <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>{instructorInitials}</Text>
+                    <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
+                      {instructorInitials}
+                    </Text>
                   </View>
                 </LinearGradient>
                 <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
-                  {exercise?.channel || '—'}
+                  {exercise?.channel || FALLBACK_LABEL}
                 </Text>
               </View>
 
               {difficulty ? (
-                <LinearGradient colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.diffChip}>
+                <LinearGradient
+                  colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.diffChip}
+                >
                   <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
                 </LinearGradient>
               ) : metaText ? (

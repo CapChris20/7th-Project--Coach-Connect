@@ -4,6 +4,8 @@
 
 // ===== NAMED CONSTANTS =====
 
+// (no tweakable knobs — wipe rules are structural)
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -14,7 +16,9 @@
 function nextUidFromFirebaseUser(nextFirebaseUser) {
   // vocab: uid = Firebase's permanent id for one account (not the email).
   // vocab/symbol: ?. = read .uid only if nextFirebaseUser exists, otherwise undefined.
-  return nextFirebaseUser?.uid || null;
+  const nextUid = nextFirebaseUser?.uid;
+  if (!nextUid) return null;
+  return nextUid;
 }
 
 /**
@@ -41,9 +45,14 @@ async function clearCachedDataForPreviousUser(previousUid, cleanupDependencies) 
  * @returns {boolean}
  */
 function shouldWipeCachedUserData(previousUid, nextUid) {
-  const isSignOut = !nextUid && Boolean(previousUid);
-  const isAccountSwitch = Boolean(nextUid) && Boolean(previousUid) && nextUid !== previousUid;
-  return isSignOut || isAccountSwitch;
+  const signedOut = !nextUid && Boolean(previousUid);
+  if (signedOut) return true;
+
+  const bothPresent = Boolean(nextUid) && Boolean(previousUid);
+  if (!bothPresent) return false;
+
+  const switchedAccounts = nextUid !== previousUid;
+  return switchedAccounts;
 }
 
 // ===== MAIN FUNCTION =====

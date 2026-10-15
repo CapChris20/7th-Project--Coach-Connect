@@ -1,13 +1,7 @@
-/**
- * Wheel Picker
- *
- * Purpose: Wheel Picker — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/components
- * Key exports: WheelPicker
- *
- * @file-header
- */
+// Scroll-snap "slot machine" picker for session times, dates, and other short lists.
+// Flow: snap each row to ITEM_H → on momentum end, round the offset to an index → onChange(that value).
+// Used by: the trainer session form. Off-center rows dim and shrink; the center band stays full opacity.
+
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
@@ -18,7 +12,15 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// ===== NAMED CONSTANTS =====
+
 const ITEM_H = 44;
+const VISIBLE_ROW_COUNT = 5;
+const DEFAULT_PICKER_HEIGHT = ITEM_H * VISIBLE_ROW_COUNT;
+const THEME_DARK = 'dark';
+const THEME_LIGHT = 'light';
+const SCROLL_EVENT_THROTTLE_MS = 16;
+const NEIGHBOR_COUNT = 2;
 
 const COLORS = {
   dark: {
@@ -47,60 +49,128 @@ const WHEEL_OPACITY_RANGE = {
   light: [0.32, 0.58, 1, 0.58, 0.32],
 };
 
+const WHEEL_SCALE_RANGE = [0.92, 0.96, 1.0, 0.96, 0.92];
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Start from the named theme, then overlay any color props the parent passed (session form warm rim).
+ * @param {string} theme
+ * @param {object} overrides
+ */
+function mergePickerColors(theme, overrides) {
+  const base = COLORS[theme] || COLORS.dark;
+  const nextColors = { ...base };
+  if (overrides.glass !== undefined) nextColors.glass = overrides.glass;
+  if (overrides.glassBorder !== undefined) nextColors.glassBorder = overrides.glassBorder;
+  if (overrides.fadeEdge !== undefined) nextColors.fadeEdge = overrides.fadeEdge;
+  if (overrides.accent !== undefined) nextColors.accent = overrides.accent;
+  if (overrides.accentBandBg !== undefined) nextColors.accentBandBg = overrides.accentBandBg;
+  if (overrides.textOverride !== undefined) nextColors.text = overrides.textOverride;
+  return nextColors;
+}
+
+/**
+ * Index of `value` in `items`, or 0 when it is missing so the wheel still has a selected row.
+ * @param {Array} items
+ * @param {*} value
+ * @returns {number}
+ */
+function selectedItemIndex(items, value) {
+  const foundIndex = items.findIndex((item) => String(item) === String(value));
+  return foundIndex >= 0 ? foundIndex : 0;
+}
+
+/**
+ * Jump the scroll position to the selected row without animating (used when value changes from outside).
+ * @param {object} scrollRef
+ * @param {number} index
+ */
+function jumpScrollToIndex(scrollRef, index) {
+  if (!scrollRef.current) return;
+  try {
+    scrollRef.current.scrollTo?.({ y: index * ITEM_H, animated: false });
+  } catch {
+    // Native scrollTo can throw if the list unmounted mid-jump.
+  }
+}
+
+/**
+ * Round the Y offset to the nearest row and tell the parent. `!= null` keeps a legitimate 0 value.
+ * @param {object} nativeEvent
+ * @param {Array} items
+ * @param {Function} [onChange]
+ */
+function snapToNearestItem(nativeEvent, items, onChange) {
+  const offsetY = nativeEvent?.contentOffset?.y || 0;
+  const index = Math.round(offsetY / ITEM_H);
+  const nextValue = items[index];
+  if (nextValue != null) onChange?.(String(nextValue));
+}
+
+/**
+ * Five-stop interpolator so rows two away from center are dimmest.
+ * @param {number} index
+ * @returns {number[]}
+ */
+function opacityInputRange(index) {
+  return [
+    (index - NEIGHBOR_COUNT) * ITEM_H,
+    (index - 1) * ITEM_H,
+    index * ITEM_H,
+    (index + 1) * ITEM_H,
+    (index + NEIGHBOR_COUNT) * ITEM_H,
+  ];
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Scroll-snap wheel picker. Center row sits in the accent band; neighbors fade and shrink.
+ * vocab: Animated.event wires native scroll Y into an Animated.Value without JS on every pixel.
+ * @param {{ items?: Array, value: *, onChange?: Function, theme?: string, label?: string, height?: number, glass?: string, glassBorder?: string, fadeEdge?: string, accent?: string, accentBandBg?: string, text?: string, labelColor?: string }} props
+ */
 export const WheelPicker = ({
   items = [],
   value,
   onChange,
-  theme = 'dark',
+  theme = THEME_DARK,
   label,
-  height = ITEM_H * 5,
-  /** Optional overrides (e.g. session form warm pink + orange) */
+  height = DEFAULT_PICKER_HEIGHT,
   glass,
   glassBorder,
   fadeEdge,
   accent,
   accentBandBg,
-  /** Override wheel value color (#FFFFFF / #000000) */
   text: textOverride,
-  /** Optional label color (defaults to theme textSecondary) */
   labelColor,
 }) => {
-  const base = COLORS[theme] || COLORS.dark;
-  const colors = {
-    ...base,
-    ...(glass !== undefined ? { glass } : {}),
-    ...(glassBorder !== undefined ? { glassBorder } : {}),
-    ...(fadeEdge !== undefined ? { fadeEdge } : {}),
-    ...(accent !== undefined ? { accent } : {}),
-    ...(accentBandBg !== undefined ? { accentBandBg } : {}),
-    ...(textOverride !== undefined ? { text: textOverride } : {}),
-  };
-  const opacityKey = theme === 'light' ? 'light' : 'dark';
+  const colors = mergePickerColors(theme, {
+    glass,
+    glassBorder,
+    fadeEdge,
+    accent,
+    accentBandBg,
+    textOverride,
+  });
+  const opacityKey = theme === THEME_LIGHT ? THEME_LIGHT : THEME_DARK;
   const opacityOut = WHEEL_OPACITY_RANGE[opacityKey];
   const scrollRef = useRef(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const index = useMemo(() => {
-    const i = items.findIndex((x) => String(x) === String(value));
-    return i >= 0 ? i : 0;
-  }, [items, value]);
+  const index = useMemo(() => selectedItemIndex(items, value), [items, value]);
 
   useEffect(() => {
-    if (!scrollRef.current) return;
-    try {
-      scrollRef.current.scrollTo?.({ y: index * ITEM_H, animated: false });
-    } catch (_) {}
+    jumpScrollToIndex(scrollRef, index);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
-  const onMomentumEnd = (e) => {
-    const y = e?.nativeEvent?.contentOffset?.y || 0;
-    const i = Math.round(y / ITEM_H);
-    const next = items[i];
-    if (next != null) onChange?.(String(next));
+  const onMomentumEnd = (event) => {
+    snapToNearestItem(event?.nativeEvent, items, onChange);
   };
 
   const visiblePad = (height - ITEM_H) / 2;
+  const fadeToTransparent = `${colors.fadeEdge}00`;
 
   return (
     <View style={styles.wrap}>
@@ -118,19 +188,17 @@ export const WheelPicker = ({
           },
         ]}
       >
-        {/* fades */}
         <LinearGradient
-          colors={[colors.fadeEdge, `${colors.fadeEdge}00`]}
+          colors={[colors.fadeEdge, fadeToTransparent]}
           style={[styles.fade, { top: 0 }]}
           pointerEvents="none"
         />
         <LinearGradient
-          colors={[`${colors.fadeEdge}00`, colors.fadeEdge]}
+          colors={[fadeToTransparent, colors.fadeEdge]}
           style={[styles.fade, { bottom: 0 }]}
           pointerEvents="none"
         />
 
-        {/* highlight band — pink ring like Loveable mock */}
         <View
           style={[
             styles.band,
@@ -154,17 +222,11 @@ export const WheelPicker = ({
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
             useNativeDriver: true,
           })}
-          scrollEventThrottle={16}
+          scrollEventThrottle={SCROLL_EVENT_THROTTLE_MS}
           contentContainerStyle={{ paddingVertical: visiblePad }}
         >
-          {items.map(String).map((item, i) => {
-            const inputRange = [
-              (i - 2) * ITEM_H,
-              (i - 1) * ITEM_H,
-              i * ITEM_H,
-              (i + 1) * ITEM_H,
-              (i + 2) * ITEM_H,
-            ];
+          {items.map(String).map((item, rowIndex) => {
+            const inputRange = opacityInputRange(rowIndex);
             const opacity = scrollY.interpolate({
               inputRange,
               outputRange: opacityOut,
@@ -172,11 +234,14 @@ export const WheelPicker = ({
             });
             const scale = scrollY.interpolate({
               inputRange,
-              outputRange: [0.92, 0.96, 1.0, 0.96, 0.92],
+              outputRange: WHEEL_SCALE_RANGE,
               extrapolate: 'clamp',
             });
             return (
-              <View key={`${item}-${i}`} style={{ height: ITEM_H, alignItems: 'center', justifyContent: 'center' }}>
+              <View
+                key={`${item}-${rowIndex}`}
+                style={{ height: ITEM_H, alignItems: 'center', justifyContent: 'center' }}
+              >
                 <Animated.Text
                   style={[
                     styles.itemText,
@@ -235,4 +300,3 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 });
-

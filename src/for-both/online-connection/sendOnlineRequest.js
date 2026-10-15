@@ -22,9 +22,8 @@ const MILLISECONDS_PER_SECOND = 1000;
  * @returns {Error}
  */
 function errorForFailedFetch(caughtError, timeoutMs) {
-  if (caughtError?.name !== ABORT_ERROR_NAME) {
-    return caughtError;
-  }
+  const wasAbortedByTimer = caughtError?.name === ABORT_ERROR_NAME;
+  if (!wasAbortedByTimer) return caughtError;
   const secondsWaited = Math.round(timeoutMs / MILLISECONDS_PER_SECOND);
   const timeoutError = new Error(`Request timed out after ${secondsWaited}s`);
   timeoutError.code = TIMEOUT_ERROR_CODE;

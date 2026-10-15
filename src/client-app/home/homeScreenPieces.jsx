@@ -1,13 +1,7 @@
-/**
- * client Home Components
- *
- * Purpose: client Home Components — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: (see file)
- *
- * @file-header
- */
+// Client home building blocks: greeting, stat rows, agenda, nutrition card, notes/files.
+// Flow: theme tokens → stat cards → agenda / nutrition / notes. Each piece reads props; none own Firestore.
+// Used by ClientMainScreen. HomeTopBanner is re-exported from the shared banner file.
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -52,7 +46,72 @@ const LOTTIE_STRESS_EMPTY = require('../../assets/Stressed Employee At Work.json
 const LOTTIE_NUTRITION_EMPTY = require('../../assets/animations/legacy/Food squeeze_With Burger and hot dog.json');
 const WORKOUT_EMPTY_ICON = require('../../assets/icons/workout.png');
 
-// Builds light/dark style tokens from `isDark` (theme state). 
+// ===== NAMED CONSTANTS =====
+
+const ACCENT_COLOR = '#7C3AED';
+const DAYS_IN_WEEK = 7;
+const SUNDAY_INDEX = 0;
+const MONDAY_SHIFT_FROM_SUNDAY = -6;
+const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DEFAULT_CALORIE_GOAL = 2000;
+const POUNDS_PER_KILOGRAM = 2.20462;
+const CM_PER_INCH = 2.54;
+const WATER_GOAL_OZ = 8;
+const WELLNESS_SCORE_MAX = 8;
+const AGENDA_EXERCISE_PREVIEW = 8;
+const AGENDA_BASE_MINUTES = 20;
+const AGENDA_MINUTES_PER_EXERCISE = 12;
+const AGENDA_MIN_MINUTES = 25;
+const AGENDA_MAX_MINUTES = 75;
+const SODIUM_LIMIT_MG = 2300;
+const POTASSIUM_GOAL_MG = 3500;
+const DEFAULT_FIBER_GOAL_G = 25;
+const DEFAULT_SUGAR_LIMIT_G = 50;
+const DEFAULT_EXTRA_NUTRIENT_GOAL = 25;
+const PERCENT_SCALE = 100;
+const HEX_SHORT_LENGTH = 3;
+const HEX_FULL_LENGTH = 6;
+const WORKOUT_FONT_START = 34;
+const WORKOUT_FONT_FLOOR = 20;
+const WORKOUT_FONT_STEP = 2;
+const WORKOUT_FONT_WIDTH_FACTOR = 0.52;
+const FAT_LOSS_CALORIE_CUT = 500;
+const MUSCLE_CALORIE_SURPLUS = 300;
+const ATHLETIC_CALORIE_SURPLUS = 500;
+const DAYS_VERY_ACTIVE = 6;
+const DAYS_ACTIVE = 4;
+const DAYS_MODERATE = 3;
+const DAYS_LIGHT = 1;
+const SHIMMER_DURATION_MS = 520;
+const SHIMMER_GAP_MS = 1100;
+const DEFAULT_NUTRITION_CARD_GOAL = 2500;
+const COMPACT_RING_STROKE = 7;
+const DEFAULT_PROTEIN_TARGET = 150;
+const DEFAULT_CARBS_TARGET = 250;
+const DEFAULT_FAT_TARGET = 70;
+
+const NUT_DONUT_CALORIES_GRADIENT = ['#DB2777', '#C2410C'];
+const NUT_DONUT_MACRO_GRADIENTS = {
+  protein: ['#6D28D9', '#FDE68A'],
+  carbs: ['#FBBF24', '#FB7185'],
+  fat: ['#6D28D9', '#DB2777'],
+};
+
+const EXTRA_NUTRIENT_RULES = {
+  Fiber: { goal: DEFAULT_FIBER_GOAL_G, color: '#22C55E' },
+  Sugar: { goal: DEFAULT_SUGAR_LIMIT_G, color: '#F97316' },
+  Sodium: { goal: SODIUM_LIMIT_MG, color: '#06B6D4' },
+  Potassium: { goal: POTASSIUM_GOAL_MG, color: '#C084FC' },
+};
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Light/dark style tokens for the home cards.
+ * @param {boolean} isDark
+ * @param {object} colors
+ * @returns {object}
+ */
 const getPremiumTheme = (isDark, colors) => {
   const text = isDark ? '#FFFFFF' : 'rgba(15,23,42,0.92)';
   const subtext = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(15,23,42,0.58)';
@@ -69,55 +128,279 @@ const getPremiumTheme = (isDark, colors) => {
     subtext,
     label,
     icon,
-    background: isDark ? '#0A0A0F' : (colors?.background ?? '#F2F2F7'),
+    background: homeCardBackground(isDark, colors),
   };
 };
 
-// Shared UI helpers: app accent color + number clamping + hex→rgba conversion for opacity-based styling.
-const ACCENT_COLOR = '#7C3AED';
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const hexToRgba = (hex, alpha) => {
-  if (typeof hex !== 'string') return `rgba(0,0,0,${alpha})`;
-  const h = hex.replace('#', '').trim();
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const int = parseInt(full, 16);
-  if (Number.isNaN(int) || full.length !== 6) return `rgba(0,0,0,${alpha})`;
-  const r = (int >> 16) & 255;
-  const g = (int >> 8) & 255;
-  const b = int & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-};
+function homeCardBackground(isDark, colors) {
+  if (isDark) return '#0A0A0F';
+  return colors?.background ?? '#F2F2F7';
+}
 
+function statKickerColor(isDark, colors) {
+  if (isDark) return 'rgba(255,255,255,0.72)';
+  return colors?.textSecondary ?? '#6B7280';
+}
+
+function statFootnoteColor(isDark, colors) {
+  if (isDark) return 'rgba(255,255,255,0.58)';
+  return colors?.textSecondary ?? '#6B7280';
+}
+
+function cardTiltDegrees(cardIndex) {
+  if (cardIndex % 2 === 0) return '-1.2deg';
+  return '1.2deg';
+}
+
+function agendaTextureColorList(isDark) {
+  if (isDark) return ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)'];
+  return ['rgba(0,0,0,0.03)', 'rgba(0,0,0,0)', 'rgba(192,132,252,0.10)'];
+}
+
+function agendaCardColors(isEmpty, isDark) {
+  if (isEmpty && isDark) return ['#1B1430', '#14101F', '#1A120E'];
+  if (isEmpty) return ['#F8F5FF', '#FFFFFF', '#FFF7ED'];
+  if (isDark) return ['#1A1F2E', '#0F1419'];
+  return ['#FFFFFF', '#F3F4F6'];
+}
+
+function agendaEmptyAmbientColors(isDark) {
+  if (isDark) {
+    return ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent'];
+  }
+  return ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent'];
+}
+
+function agendaEmptyRuleColors(isDark) {
+  if (isDark) {
+    return ['transparent', 'rgba(190,24,93,0.55)', 'rgba(194,65,12,0.45)', 'transparent'];
+  }
+  return ['transparent', 'rgba(190,24,93,0.35)', 'rgba(194,65,12,0.28)', 'transparent'];
+}
+
+function agendaDurationColor(isDark) {
+  if (isDark) return 'rgba(255,255,255,0.78)';
+  return 'rgba(17,24,39,0.72)';
+}
+
+function agendaDotColor(isDark) {
+  if (isDark) return 'rgba(255,255,255,0.35)';
+  return 'rgba(10,10,15,0.28)';
+}
+
+function exerciseCountLabel(exerciseCount) {
+  const count = exerciseCount || 0;
+  if (count === 1) return '1 exercise';
+  return `${count} exercises`;
+}
+
+function estimatedDurationLabel(estMinutes) {
+  if (estMinutes) return `Est. ${estMinutes} min`;
+  return 'Est. —';
+}
+
+function compactNutritionRings(nutrientsWithData, consumed, goal) {
+  if (nutrientsWithData.length > 0) return nutrientsWithData.slice(0, 3);
+  const roundedCalories = Math.round(Number(consumed) || 0);
+  if (roundedCalories > 0) {
+    return [{
+      value: roundedCalories,
+      goal,
+      label: 'Calories',
+      color: '#8B5CF6',
+      gradientColors: NUT_DONUT_CALORIES_GRADIENT,
+      unit: '',
+    }];
+  }
+  return [];
+}
+
+function calorieBarColor(isDark) {
+  if (isDark) return '#8B5CF6';
+  return '#7C3AED';
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function hexToRgba(hex, alpha) {
+  if (typeof hex !== 'string') return `rgba(0,0,0,${alpha})`;
+  const hexDigits = hex.replace('#', '').trim();
+  const fullHex =
+    hexDigits.length === HEX_SHORT_LENGTH
+      ? hexDigits.split('').map((digit) => digit + digit).join('')
+      : hexDigits;
+  const colorInt = parseInt(fullHex, 16);
+  if (Number.isNaN(colorInt) || fullHex.length !== HEX_FULL_LENGTH) return `rgba(0,0,0,${alpha})`;
+  const red = (colorInt >> 16) & 255;
+  const green = (colorInt >> 8) & 255;
+  const blue = colorInt & 255;
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+function titleCaseWords(text) {
+  return String(text)
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Human label for a stored goal key (lose_fat → Lose Fat).
+ * @param {string} primaryGoal
+ * @returns {string}
+ */
 const formatGoalLabel = (primaryGoal) => {
   if (!primaryGoal) return 'Active Goal';
-  const g = String(primaryGoal);
-  if (g === 'lose_fat') return 'Lose Fat';
-  if (g === 'build_muscle') return 'Build Muscle';
-  if (g === 'athletic_performance') return 'Athletic';
-  return g
+  const goalKey = String(primaryGoal);
+  if (goalKey === 'lose_fat') return 'Lose Fat';
+  if (goalKey === 'build_muscle') return 'Build Muscle';
+  if (goalKey === 'athletic_performance') return 'Athletic';
+  return goalKey
     .replace(/_/g, ' ')
     .split(' ')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 };
 
-// Display name for today's workout card — use actual workout name (e.g. "Chest Day"), not generic "Workout"
+/**
+ * Display name for today's workout card — the real workout name (e.g. "Chest Day"), not "Workout".
+ * @param {object} todayWorkout
+ * @returns {string|null}
+ */
 const inferWorkoutType = (todayWorkout) => {
   const name = todayWorkout?.name || todayWorkout?.workoutName;
   if (!name) return null;
   const trimmed = String(name).trim();
   if (!trimmed) return null;
-  // Title-case: first letter of each word uppercase
-  const titleCase = trimmed.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-  return titleCase;
+  return titleCaseWords(trimmed);
 };
+
+function workoutNameFromDashboardSummary(dashboardWorkoutSummary) {
+  const summary = String(dashboardWorkoutSummary).trim();
+  const firstLine = summary.includes('\n') ? summary.split('\n')[0].trim() : summary;
+  if (!firstLine) return null;
+  return titleCaseWords(firstLine);
+}
+
+function pickWorkoutDisplayName(todayWorkout, dashboardWorkoutSummary) {
+  if (todayWorkout) return inferWorkoutType(todayWorkout);
+  if (dashboardWorkoutSummary) return workoutNameFromDashboardSummary(dashboardWorkoutSummary);
+  return null;
+}
+
+function exerciseLinesFromWorkout(workout) {
+  if (!workout) return [];
+  if (Array.isArray(workout.exercises)) return workout.exercises.filter(Boolean).map((line) => String(line));
+  if (typeof workout.exercises === 'string' && workout.exercises.trim()) {
+    return workout.exercises
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function estimateAgendaMinutes(exerciseCount) {
+  if (!exerciseCount) return 0;
+  return clamp(
+    AGENDA_BASE_MINUTES + exerciseCount * AGENDA_MINUTES_PER_EXERCISE,
+    AGENDA_MIN_MINUTES,
+    AGENDA_MAX_MINUTES,
+  );
+}
+
+function agendaTitleIconName(rawTitle) {
+  const titleLower = rawTitle.toLowerCase();
+  if (titleLower.includes('arm')) return 'fitness-outline';
+  if (titleLower.includes('leg')) return 'walk-outline';
+  if (titleLower.includes('chest')) return 'barbell-outline';
+  if (titleLower.includes('back')) return 'body-outline';
+  if (titleLower.includes('rest')) return 'leaf-outline';
+  return 'flash-outline';
+}
+
+function splitAgendaExerciseLine(line) {
+  const dashIdx = line.search(/\s[-–—]\s/);
+  const parenIdx = line.indexOf('(');
+  let name = line;
+  let sets = '';
+  if (dashIdx > -1) {
+    name = line.slice(0, dashIdx).trim();
+    sets = line.slice(dashIdx + 1).trim();
+  } else if (parenIdx > -1) {
+    name = line.slice(0, parenIdx).trim();
+    sets = line.slice(parenIdx).trim().replace(/^\(/, '').replace(/\)$/, '').trim();
+  }
+  return { name, sets };
+}
+
+function numericFromNutrientValue(value) {
+  return parseFloat(String(value ?? '').replace(/[^\d.]/g, ''));
+}
+
+function macroRowsFromMacros(macros, nutritionGoals) {
+  return (macros || []).map((macro) => {
+    const numericValue = numericFromNutrientValue(macro.value);
+    let goal = nutritionGoals?.fatTarget || DEFAULT_FAT_TARGET;
+    let color = '#06B6D4';
+    let gradientColors = NUT_DONUT_MACRO_GRADIENTS.fat;
+    if (macro.label === 'Protein') {
+      goal = nutritionGoals?.proteinTarget || DEFAULT_PROTEIN_TARGET;
+      color = '#EC4899';
+      gradientColors = NUT_DONUT_MACRO_GRADIENTS.protein;
+    }
+    if (macro.label === 'Carbs') {
+      goal = nutritionGoals?.carbsTarget || DEFAULT_CARBS_TARGET;
+      color = '#F97316';
+      gradientColors = NUT_DONUT_MACRO_GRADIENTS.carbs;
+    }
+    return {
+      ...macro,
+      value: numericValue,
+      goal,
+      color,
+      gradientColors,
+      unit: 'g',
+    };
+  });
+}
+
+function extraNutrientRow(nutrient) {
+  const rule = EXTRA_NUTRIENT_RULES[nutrient.label] || {
+    goal: DEFAULT_EXTRA_NUTRIENT_GOAL,
+    color: '#22C55E',
+  };
+  const numericValue = numericFromNutrientValue(nutrient.value);
+  const unit = String(nutrient.value ?? '').includes('mg') ? 'mg' : 'g';
+  return {
+    label: nutrient.label,
+    value: numericValue,
+    goal: rule.goal,
+    color: rule.color,
+    unit,
+    icon: nutrient.icon,
+  };
+}
+
+function workoutFontSizeForCard(displayWorkoutType, cardWidth) {
+  if (!displayWorkoutType) return WORKOUT_FONT_START;
+  const maxWidth = Math.max(96, cardWidth - 28);
+  const letterCount = String(displayWorkoutType).length;
+  let size = WORKOUT_FONT_START;
+  while (size > WORKOUT_FONT_FLOOR && letterCount * size * WORKOUT_FONT_WIDTH_FACTOR > maxWidth) {
+    size -= WORKOUT_FONT_STEP;
+  }
+  return size;
+}
 
 const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent }) => {
   const surface = colors?.surface;
   const border = colors?.border;
   const shadow = colors?.black;
-  const bg = isDark ? hexToRgba(surface, 0.35) : hexToRgba(surface, 0.75);
-  const bd = isDark ? hexToRgba(border, 0.6) : hexToRgba(border, 0.75);
+  const cardFill = isDark ? hexToRgba(surface, 0.35) : hexToRgba(surface, 0.75);
+  const cardBorder = isDark ? hexToRgba(border, 0.6) : hexToRgba(border, 0.75);
 
   return (
     <View style={[styles.statCardShadow, { shadowColor: shadow }, style]}>
@@ -127,8 +410,8 @@ const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent })
             styles.statCardInner,
             centerContent && styles.statCardInnerCentered,
             {
-              backgroundColor: bg,
-              borderColor: bd,
+              backgroundColor: cardFill,
+              borderColor: cardBorder,
             },
           ]}
         >
@@ -141,10 +424,10 @@ const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent })
 
 // Circle progress ui components for nutrition stats on client home screen  
 const CircularProgress = ({ progress = 0, size = 72, strokeWidth = 8, trackColor, progressColor }) => {
-  const r = (size - strokeWidth) / 2;
-  const c = 2 * Math.PI * r;
-  const p = clamp(progress, 0, 1);
-  const dashOffset = c * (1 - p);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clampedProgress = clamp(progress, 0, 1);
+  const dashOffset = circumference * (1 - clampedProgress);
 
   // the geometry of the circle progress bar
   return (
@@ -152,7 +435,7 @@ const CircularProgress = ({ progress = 0, size = 72, strokeWidth = 8, trackColor
       <Circle
         cx={size / 2}
         cy={size / 2}
-        r={r}
+        r={radius}
         stroke={trackColor}
         strokeWidth={strokeWidth}
         fill="none"
@@ -160,11 +443,11 @@ const CircularProgress = ({ progress = 0, size = 72, strokeWidth = 8, trackColor
       <Circle
         cx={size / 2}
         cy={size / 2}
-        r={r}
+        r={radius}
         stroke={progressColor}
         strokeWidth={strokeWidth}
         fill="none"
-        strokeDasharray={`${c} ${c}`}
+        strokeDasharray={`${circumference} ${circumference}`}
         strokeDashoffset={dashOffset}
         strokeLinecap="round"
         rotation={-90}
@@ -214,8 +497,8 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(650 + index * 120),
-        Animated.timing(shimmer, { toValue: 1, duration: 520, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.delay(1100),
+        Animated.timing(shimmer, { toValue: 1, duration: SHIMMER_DURATION_MS, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.delay(SHIMMER_GAP_MS),
       ])
     );
     loop.start();
@@ -240,18 +523,22 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
     inputRange: [-1, -0.25, 0, 0.25, 1],
     outputRange: [0, 0.0, 0.28, 0.0, 0],
   });
+  const tiltDegrees = cardTiltDegrees(index);
 
-  return (
-    disableAnimations ? (
+  if (disableAnimations) {
+    return (
       <TouchableOpacity activeOpacity={activeOpacity} onPress={onPress}>
         <View style={{ width: '100%' }}>{children}</View>
       </TouchableOpacity>
-    ) : (
+    );
+  }
+
+  return (
     <Animated.View
       style={{
         transform: [
           { scale: press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.975] }) },
-          { rotateZ: press.interpolate({ inputRange: [0, 1], outputRange: ['0deg', index % 2 === 0 ? '-1.2deg' : '1.2deg'] }) },
+          { rotateZ: press.interpolate({ inputRange: [0, 1], outputRange: ['0deg', tiltDegrees] }) },
           { translateY: press.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) },
         ],
       }}
@@ -282,9 +569,10 @@ const FightyBouncyCardWrap = ({ index = 0, width, children, onPress, activeOpaci
         </View>
       </TouchableOpacity>
     </Animated.View>
-    )
   );
 };
+
+// ===== MAIN FUNCTION =====
 
 // First row: day of workout (ex: Chest Day) / water / sleep — logo-aligned gradient, slightly softened (no grey)
 const TopStatsRow = ({
@@ -308,23 +596,9 @@ const TopStatsRow = ({
   );
   const accent = ACCENT_COLOR;
   const primary = colors?.primary ?? accent;
-  let workoutType = null;
-  if (todayWorkout) {
-    workoutType = inferWorkoutType(todayWorkout);
-  } else if (dashboardWorkoutSummary) {
-    const summary = String(dashboardWorkoutSummary).trim();
-    workoutType = summary.includes('\n') ? summary.split('\n')[0].trim() : summary;
-    if (workoutType) workoutType = workoutType.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-  }
-  let displayWorkoutType = workoutType;
-  const workoutFontSize = (() => {
-    if (!displayWorkoutType) return 34;
-    const maxWidth = Math.max(96, cardWidth - 28);
-    const len = String(displayWorkoutType).length;
-    let size = 34;
-    while (size > 20 && len * size * 0.52 > maxWidth) size -= 2;
-    return size;
-  })();
+  const workoutType = pickWorkoutDisplayName(todayWorkout, dashboardWorkoutSummary);
+  const displayWorkoutType = workoutType;
+  const workoutFontSize = workoutFontSizeForCard(displayWorkoutType, cardWidth);
   const workoutTextStyle = [
     styles.statGradientNumber,
     styles.statGradientWorkoutText,
@@ -338,20 +612,22 @@ const TopStatsRow = ({
   ];
   const isRestDay = workoutType === 'Rest Day';
 
-  const border = colors?.border ?? (isDark ? '#38383A' : '#E5E5E7');
-  const track = hexToRgba(border, isDark ? 0.5 : 0.55);
+  const fallbackBorder = isDark ? '#38383A' : '#E5E5E7';
+  const border = colors?.border ?? fallbackBorder;
+  const borderAlpha = isDark ? 0.5 : 0.55;
+  const track = hexToRgba(border, borderAlpha);
 
   const waterVal = typeof waterIntake === 'number' ? waterIntake : null;
-  const waterGoal = 8;
+  const waterGoal = WATER_GOAL_OZ;
   const waterPct = waterVal === null ? 0 : clamp(waterVal / waterGoal, 0, 1);
 
   const sleepVal = typeof sleepHours === 'number' ? sleepHours : null;
 
   const goalLabel = formatGoalLabel(primaryGoal);
-  const gp = typeof goalProgress === 'number' ? clamp(goalProgress, 0, 1) : null;
+  const goalProgressRatio = typeof goalProgress === 'number' ? clamp(goalProgress, 0, 1) : null;
 
-  const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
-  const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
+  const kickerColor = statKickerColor(isDark, colors);
+  const footnoteColor = statFootnoteColor(isDark, colors);
 
   return (
     <View style={styles.statsRowWrap}>
@@ -477,6 +753,19 @@ const TopStatsRow = ({
 };
 
 // Second row: Soreness, Energy Level, Stress Level — smaller type, teal/indigo color combo
+function formatWellnessScore(rawValue, max) {
+  if (rawValue == null || rawValue === '') return null;
+  const raw = String(rawValue).trim();
+  if (raw.includes('%')) return raw;
+  const slash = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  const scoreNumber = slash ? Number(slash[1]) : Number(raw);
+  const scaleMax = slash ? Number(slash[2]) : max;
+  if (!Number.isFinite(scoreNumber) || !Number.isFinite(scaleMax) || scaleMax <= 0) return raw;
+  const clamped = Math.max(0, Math.min(scaleMax, scoreNumber));
+  const pct = Math.round((clamped / scaleMax) * PERCENT_SCALE);
+  return `${pct}%`;
+}
+
 const wellnessKicker = {
   fontSize: 11,
   fontWeight: '700',
@@ -499,21 +788,8 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
     132,
     Math.floor((windowWidth - STATS_ROW_PAD_H - STATS_ROW_CARD_GAP) / 2),
   );
-  const kickerColor = isDark ? 'rgba(255,255,255,0.72)' : (colors?.textSecondary ?? '#6B7280');
-  const footnoteColor = isDark ? 'rgba(255,255,255,0.58)' : (colors?.textSecondary ?? '#6B7280');
-  const formatScore = (v, max) => {
-    if (v == null || v === '') return null;
-    const raw = String(v).trim();
-    if (raw.includes('%')) return raw;
-    const slash = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
-    const n = slash ? Number(slash[1]) : Number(raw);
-    const scaleMax = slash ? Number(slash[2]) : max;
-    if (!Number.isFinite(n) || !Number.isFinite(scaleMax) || scaleMax <= 0) return raw;
-    const clamped = Math.max(0, Math.min(scaleMax, n));
-    const pct = Math.round((clamped / scaleMax) * 100);
-    return `${pct}%`;
-  };
-
+  const kickerColor = statKickerColor(isDark, colors);
+  const footnoteColor = statFootnoteColor(isDark, colors);
   return (
     <View style={styles.statsRowWrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRowContent} decelerationRate="fast">
@@ -525,10 +801,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {formatScore(soreness, 8) || soreness}
+                      {formatWellnessScore(soreness, WELLNESS_SCORE_MAX) || soreness}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_SORENESS_GRADIENT}>
-                      {formatScore(soreness, 8) || soreness}
+                      {formatWellnessScore(soreness, WELLNESS_SCORE_MAX) || soreness}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>muscle soreness</Text>
@@ -553,10 +829,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {formatScore(energyLevel, 8) || energyLevel}
+                      {formatWellnessScore(energyLevel, WELLNESS_SCORE_MAX) || energyLevel}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_ENERGY_GRADIENT}>
-                      {formatScore(energyLevel, 8) || energyLevel}
+                      {formatWellnessScore(energyLevel, WELLNESS_SCORE_MAX) || energyLevel}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -581,10 +857,10 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                 <View style={styles.statWellnessValueBlock}>
                   <View style={{ position: 'relative', width: '100%' }}>
                     <LightModeOutlineText enabled={!isDark} style={wellnessNumber} align="center">
-                      {formatScore(stressLevel, 8) || stressLevel}
+                      {formatWellnessScore(stressLevel, WELLNESS_SCORE_MAX) || stressLevel}
                     </LightModeOutlineText>
                     <StatColorText style={wellnessNumber} colors={HOME_STAT_STRESS_GRADIENT}>
-                      {formatScore(stressLevel, 8) || stressLevel}
+                      {formatWellnessScore(stressLevel, WELLNESS_SCORE_MAX) || stressLevel}
                     </StatColorText>
                   </View>
                   <Text style={[wellnessLabel, { color: footnoteColor }]}>today</Text>
@@ -627,24 +903,24 @@ const GreetingSection = ({ userName = "User", theme, isDark }) => {
   );
 };
 
+function datesForThisWeekMondayFirst() {
+  const today = new Date();
+  const currentDay = today.getDay();
+  const daysBackToMonday = currentDay === SUNDAY_INDEX ? MONDAY_SHIFT_FROM_SUNDAY : 1;
+  const diff = today.getDate() - currentDay + daysBackToMonday;
+  const monday = new Date(today.setDate(diff));
+  const weekDays = [];
+  for (let i = 0; i < DAYS_IN_WEEK; i++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    weekDays.push(date);
+  }
+  return weekDays;
+}
+
 const NewCalendar = ({ theme }) => {
   const isDark = theme === 'dark';
-  const getWeekDays = () => {
-    const today = new Date();
-    const currentDay = today.getDay();
-    const diff = today.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diff));
-    
-    const weekDays = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + i);
-      weekDays.push(date);
-    }
-    return weekDays;
-  };
-
-  const weekDays = getWeekDays();
+  const weekDays = datesForThisWeekMondayFirst();
   const today = getClientDateKey();
 
   return (
@@ -667,7 +943,7 @@ const NewCalendar = ({ theme }) => {
             {weekDays.map((day, index) => {
               const dayStr = day.toISOString().split('T')[0];
               const isToday = dayStr === today;
-              const dayName = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index];
+              const dayName = WEEKDAY_NAMES[index];
               
               return (
                 <TouchableOpacity 
@@ -697,6 +973,92 @@ const NewCalendar = ({ theme }) => {
   );
 };
 
+function AgendaExerciseList({ shownExercises, itemAnims, dotColor, textColor, mutedColor }) {
+  return (
+    <View style={styles.agendaExercisesWrap}>
+      {shownExercises.map((line, i) => {
+        const { name, sets } = splitAgendaExerciseLine(line);
+        let setsLine = null;
+        if (sets) {
+          setsLine = (
+            <Text style={[styles.agendaExerciseSets, { color: mutedColor }]} numberOfLines={2}>
+              {sets}
+            </Text>
+          );
+        }
+        return (
+          <Animated.View
+            key={`${line}_${i}`}
+            style={{
+              opacity: itemAnims[i],
+              transform: [
+                {
+                  translateY: itemAnims[i].interpolate({ inputRange: [0, 1], outputRange: [6, 0] }),
+                },
+              ],
+            }}
+          >
+            <View style={styles.agendaExerciseRowPremium}>
+              <View style={[styles.agendaDot, { backgroundColor: dotColor }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.agendaExerciseName, { color: textColor }]} numberOfLines={1}>
+                  {name}
+                </Text>
+                {setsLine}
+              </View>
+            </View>
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+}
+
+function AgendaFocusBody({ isEmpty, mutedColor, shownExercises, itemAnims, dotColor, textColor, emptyRuleColors }) {
+  if (isEmpty) {
+    return (
+      <View style={styles.agendaEmptyStage}>
+        <LinearGradient
+          colors={HERO_TITLE_TEXT_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.agendaEmptyIconWrap}
+        >
+          <Ionicons name="barbell-outline" size={22} color="#FFFFFF" />
+        </LinearGradient>
+        <ColorText
+          colors={HERO_TITLE_TEXT_GRADIENT}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.agendaEmptyHeadline}
+        >
+          Ready when you are
+        </ColorText>
+        <Text style={[styles.agendaEmptySubcopy, { color: mutedColor }]}>
+          No lifts on the board yet — today's agenda is wide open.
+        </Text>
+        <LinearGradient
+          colors={emptyRuleColors}
+          locations={[0, 0.35, 0.65, 1]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.agendaEmptyRule}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <AgendaExerciseList
+      shownExercises={shownExercises}
+      itemAnims={itemAnims}
+      dotColor={dotColor}
+      textColor={textColor}
+      mutedColor={mutedColor}
+    />
+  );
+}
+
 // Training agenda: Today's workouts list with checkboxes and structured exercises.
 const TrainingAgenda = ({ theme, workouts = [] }) => {
   const isDark = theme === 'dark';
@@ -704,53 +1066,25 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   const mutedColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(17,24,39,0.58)';
   const subtleBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)';
   const subtleFill = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
-  const agendaTextureColors = isDark
-    ? ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)']
-    : ['rgba(0,0,0,0.03)', 'rgba(0,0,0,0)', 'rgba(192,132,252,0.10)'];
+  const agendaTextureColors = agendaTextureColorList(isDark);
 
-  const w0 = (workouts || [])[0] || null;
-  const rawTitle = String(w0?.name || w0?.workoutName || 'Training Agenda').trim();
+  const firstWorkout = (workouts || [])[0] || null;
+  const rawTitle = String(firstWorkout?.name || firstWorkout?.workoutName || 'Training Agenda').trim();
 
-  const exercises = (() => {
-    if (!w0) return [];
-    if (Array.isArray(w0.exercises)) return w0.exercises.filter(Boolean).map((x) => String(x));
-    if (typeof w0.exercises === 'string' && w0.exercises.trim()) {
-      // Attempt to split "Exercise — 3x10" lines if present
-      return w0.exercises
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    return [];
-  })();
+  const exercises = exerciseLinesFromWorkout(firstWorkout);
 
   const exerciseCount = exercises.length;
   const isEmpty = exerciseCount === 0;
-  const agendaBgColors = isEmpty
-    ? isDark
-      ? ['#1B1430', '#14101F', '#1A120E']
-      : ['#F8F5FF', '#FFFFFF', '#FFF7ED']
-    : isDark
-      ? ['#1A1F2E', '#0F1419']
-      : ['#FFFFFF', '#F3F4F6'];
+  const agendaBgColors = agendaCardColors(isEmpty, isDark);
+  const emptyAmbientColors = agendaEmptyAmbientColors(isDark);
+  const emptyRuleColors = agendaEmptyRuleColors(isDark);
+  const durationColor = agendaDurationColor(isDark);
+  const dotColor = agendaDotColor(isDark);
+  const exerciseLabel = exerciseCountLabel(exerciseCount);
 
-  const estMinutes = (() => {
-    if (!exerciseCount) return 0;
-    // Premium-feeling estimate without overthinking it.
-    const base = 20;
-    const perExercise = 12;
-    return clamp(base + exerciseCount * perExercise, 25, 75);
-  })();
-
-  const titleIconName = (() => {
-    const t = rawTitle.toLowerCase();
-    if (t.includes('arm')) return 'fitness-outline';
-    if (t.includes('leg')) return 'walk-outline';
-    if (t.includes('chest')) return 'barbell-outline';
-    if (t.includes('back')) return 'body-outline';
-    if (t.includes('rest')) return 'leaf-outline';
-    return 'flash-outline';
-  })();
+  const estMinutes = estimateAgendaMinutes(exerciseCount);
+  const durationLabel = estimatedDurationLabel(estMinutes);
+  const titleIconName = agendaTitleIconName(rawTitle);
 
   const nowTime = useRef(new Date()).current;
   const timestamp = nowTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -758,7 +1092,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
   // Animations: card entrance + cascade items
   const enter = useRef(new Animated.Value(0)).current;
   const itemAnims = useRef([]).current;
-  const shownExercises = exercises.slice(0, 8);
+  const shownExercises = exercises.slice(0, AGENDA_EXERCISE_PREVIEW);
   while (itemAnims.length < shownExercises.length) itemAnims.push(new Animated.Value(0));
 
   useEffect(() => {
@@ -844,11 +1178,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
             />
             {isEmpty ? (
               <LinearGradient
-                colors={
-                  isDark
-                    ? ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent']
-                    : ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent']
-                }
+                colors={emptyAmbientColors}
                 locations={[0, 0.35, 0.7, 1]}
                 start={{ x: 0.15, y: 0 }}
                 end={{ x: 0.9, y: 1 }}
@@ -882,102 +1212,25 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
                   ]}
                 >
                   <Text style={[styles.agendaBadgeText, { color: textColor }]}>
-                    {exerciseCount || 0} {exerciseCount === 1 ? 'exercise' : 'exercises'}
+                    {exerciseLabel}
                   </Text>
                 </View>
               </View>
 
-              {isEmpty ? (
-                <View style={styles.agendaEmptyStage}>
-                  <LinearGradient
-                    colors={HERO_TITLE_TEXT_GRADIENT}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.agendaEmptyIconWrap}
-                  >
-                    <Ionicons name="barbell-outline" size={22} color="#FFFFFF" />
-                  </LinearGradient>
-
-                  <ColorText
-                    colors={HERO_TITLE_TEXT_GRADIENT}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={styles.agendaEmptyHeadline}
-                  >
-                    Ready when you are
-                  </ColorText>
-
-                  <Text style={[styles.agendaEmptySubcopy, { color: mutedColor }]}>
-                    No lifts on the board yet — today's agenda is wide open.
-                  </Text>
-
-                  <LinearGradient
-                    colors={
-                      isDark
-                        ? ['transparent', 'rgba(190,24,93,0.55)', 'rgba(194,65,12,0.45)', 'transparent']
-                        : ['transparent', 'rgba(190,24,93,0.35)', 'rgba(194,65,12,0.28)', 'transparent']
-                    }
-                    locations={[0, 0.35, 0.65, 1]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={styles.agendaEmptyRule}
-                  />
-                </View>
-              ) : (
-                <View style={styles.agendaExercisesWrap}>
-                  {shownExercises.map((line, i) => {
-                    // Accept "Exercise — sets", or "Exercise (sets)", or plain "Exercise"
-                    const dashIdx = line.search(/\s[-–—]\s/);
-                    const parenIdx = line.indexOf('(');
-                    let name = line;
-                    let sets = '';
-                    if (dashIdx > -1) {
-                      name = line.slice(0, dashIdx).trim();
-                      sets = line.slice(dashIdx + 1).trim();
-                    } else if (parenIdx > -1) {
-                      name = line.slice(0, parenIdx).trim();
-                      sets = line.slice(parenIdx).trim().replace(/^\(/, '').replace(/\)$/, '').trim();
-                    }
-                    return (
-                      <Animated.View
-                        key={`${line}_${i}`}
-                        style={{
-                          opacity: itemAnims[i],
-                          transform: [
-                            {
-                              translateY: itemAnims[i].interpolate({ inputRange: [0, 1], outputRange: [6, 0] }),
-                            },
-                          ],
-                        }}
-                      >
-                        <View style={styles.agendaExerciseRowPremium}>
-                          <View
-                            style={[
-                              styles.agendaDot,
-                              { backgroundColor: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(10,10,15,0.28)' },
-                            ]}
-                          />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.agendaExerciseName, { color: textColor }]} numberOfLines={1}>
-                              {name}
-                            </Text>
-                            {sets ? (
-                              <Text style={[styles.agendaExerciseSets, { color: mutedColor }]} numberOfLines={2}>
-                                {sets}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      </Animated.View>
-                    );
-                  })}
-                </View>
-              )}
+              <AgendaFocusBody
+                isEmpty={isEmpty}
+                mutedColor={mutedColor}
+                shownExercises={shownExercises}
+                itemAnims={itemAnims}
+                dotColor={dotColor}
+                textColor={textColor}
+                emptyRuleColors={emptyRuleColors}
+              />
 
               {/* Footer */}
               <View style={styles.agendaFooterRow}>
-                <Text style={[styles.agendaDuration, { color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.72)' }]}>
-                  {estMinutes ? `Est. ${estMinutes} min` : 'Est. —'}
+                <Text style={[styles.agendaDuration, { color: durationColor }]}>
+                  {durationLabel}
                 </Text>
                 <Text style={[styles.agendaTimestamp, { color: mutedColor }]}>{timestamp}</Text>
               </View>
@@ -990,77 +1243,20 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
 };
 
 // Nutrition card: Daily macros + calories progress (empty state is Lottie + copy only).
-const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additionalNutrients = null, nutritionGoals = null, compact = true }) => {
+const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL, macros = null, additionalNutrients = null, nutritionGoals = null, compact = true }) => {
   const isDark = theme === 'dark';
 
-  // Nutrition Today donut gradients (match Nutrition screen)
-  const NUT_DONUT_CALORIES_GRADIENT = ['#DB2777', '#C2410C']; // dark pink → dark orange
-  const NUT_DONUT_MACRO_GRADIENTS = {
-    protein: ['#6D28D9', '#FDE68A'], // purple → sand
-    carbs: ['#FBBF24', '#FB7185'],   // gold → pink
-    fat: ['#6D28D9', '#DB2777'],     // purple → pink
-  };
-  
-  // Combine all nutrients for arc progress display
   const allNutrients = [];
-  
-  // Add main macros with actual goals if available
   if (macros) {
-    allNutrients.push(...(macros || []).map(m => {
-      // Extract numeric value from string like "25g"
-      const numericValue = parseFloat(String(m.value ?? '').replace(/[^\d.]/g, ''));
-      return {
-        ...m,
-        value: numericValue,
-        goal: m.label === 'Protein' ? (nutritionGoals?.proteinTarget || 150) : 
-              m.label === 'Carbs' ? (nutritionGoals?.carbsTarget || 250) : 
-              (nutritionGoals?.fatTarget || 70),
-        color: m.label === 'Protein' ? '#EC4899' : m.label === 'Carbs' ? '#F97316' : '#06B6D4',
-        gradientColors:
-          m.label === 'Protein' ? NUT_DONUT_MACRO_GRADIENTS.protein :
-          m.label === 'Carbs' ? NUT_DONUT_MACRO_GRADIENTS.carbs :
-          NUT_DONUT_MACRO_GRADIENTS.fat,
-        unit: 'g'
-      };
-    }));
+    allNutrients.push(...macroRowsFromMacros(macros, nutritionGoals));
   }
-  
-  // Add additional nutrients with evidence-based goals
   if (additionalNutrients) {
-    additionalNutrients.forEach(n => {
-      let nutrientGoal = 25; // Default goal
-      let nutrientColor = '#22C55E'; // Default green
-      
-      if (n.label === 'Fiber') {
-        nutrientGoal = 25; // Daily fiber goal (25g for women, 38g for men, using average)
-        nutrientColor = '#22C55E'; // Green
-      } else if (n.label === 'Sugar') {
-        nutrientGoal = 50; // Added sugar limit (50g per WHO recommendation)
-        nutrientColor = '#F97316'; // Orange
-      } else if (n.label === 'Sodium') {
-        nutrientGoal = 2300; // Daily sodium limit (2300mg per FDA)
-        nutrientColor = '#06B6D4'; // Cyan
-      } else if (n.label === 'Potassium') {
-        nutrientGoal = 3500; // Daily potassium goal (3500mg per NIH)
-        nutrientColor = '#C084FC'; // Purple
-      }
-      
-      // Extract numeric value from string like "25g" or "2300mg"
-      const numericValue = parseFloat(String(n.value ?? '').replace(/[^\d.]/g, ''));
-      const unit = String(n.value ?? '').includes('mg') ? 'mg' : 'g';
-      
-      allNutrients.push({
-        label: n.label,
-        value: numericValue,
-        goal: nutrientGoal,
-        color: nutrientColor,
-        unit: unit,
-        icon: n.icon // Keep icon for fallback display
-      });
+    additionalNutrients.forEach((nutrient) => {
+      allNutrients.push(extraNutrientRow(nutrient));
     });
   }
-  
-  const pct = goal > 0 ? Math.min(100, (consumed / goal) * 100) : 0;
+
+  const pct = goal > 0 ? Math.min(PERCENT_SCALE, (consumed / goal) * PERCENT_SCALE) : 0;
   const hasLoggedNutrition =
     Math.round(Number(consumed) || 0) > 0 ||
     (allNutrients || []).some((n) => Number(n.value) > 0);
@@ -1074,7 +1270,7 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
     const progress = goal > 0 ? Math.min((value / goal) * 100, 100) : 0;
     // Compact for home feed (reduces overall card height).
     const size = compact ? 78 : 72;
-    const strokeWidth = compact ? 7 : 6;
+    const strokeWidth = compact ? COMPACT_RING_STROKE : 6;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const dashOffset = circumference * (1 - progress / 100);
@@ -1120,13 +1316,119 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
   // 2x2 grid: row0 = Protein, Carbs; row1 = Fats, Calories
   const caloriesProgress = goal > 0 ? Math.min((consumed / goal) * 100, 100) : 0;
 
-  const nutrientsWithData = (allNutrients || []).filter((n) => Number(n.value) > 0);
-  const compactRings =
-    nutrientsWithData.length > 0
-      ? nutrientsWithData.slice(0, 3)
-      : Math.round(Number(consumed) || 0) > 0
-        ? [{ value: Math.round(consumed), goal, label: 'Calories', color: '#8B5CF6', gradientColors: NUT_DONUT_CALORIES_GRADIENT, unit: '' }]
-        : [];
+  const nutrientsWithData = (allNutrients || []).filter((nutrient) => Number(nutrient.value) > 0);
+  const compactRings = compactNutritionRings(nutrientsWithData, consumed, goal);
+  const gridNutrients = nutrientsWithData.length > 0 ? nutrientsWithData.slice(0, 3) : [];
+  const roundedCalories = Math.round(Number(consumed) || 0);
+  const showCalorieRing = roundedCalories > 0;
+  const barColor = calorieBarColor(isDark);
+  const calorieSummary = `${Math.round(consumed)} / ${goal} kcal`;
+  const barWidth = `${Math.min(pct, 100)}%`;
+  let nutritionBorderColor = 'rgba(10,10,15,0.08)';
+  if (isDark) nutritionBorderColor = 'rgba(255,255,255,0.10)';
+
+  const ringCells = (rings, cellStyle) => rings.map((ring) => (
+    <View key={ring.label} style={cellStyle}>
+      <ClientArcProgress
+        value={ring.value}
+        goal={ring.goal}
+        label={ring.label}
+        color={ring.color}
+        gradientColors={ring.gradientColors}
+        unit={ring.unit}
+      />
+    </View>
+  ));
+
+  let nutritionRings = (
+    <View style={styles.nutritionGrid2x2}>
+      {ringCells(gridNutrients, styles.nutritionGridCell)}
+      {showCalorieRing ? (
+        <View style={styles.nutritionGridCell}>
+          <ClientArcProgress
+            value={roundedCalories}
+            goal={goal}
+            label="Calories"
+            color="#8B5CF6"
+            gradientColors={NUT_DONUT_CALORIES_GRADIENT}
+            unit=""
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+  if (compact) {
+    nutritionRings = (
+      <View style={styles.nutritionCompactCirclesRow}>
+        {ringCells(compactRings, styles.nutritionCompactCircleCell)}
+      </View>
+    );
+  }
+
+  let calorieTrackStyle = [styles.progressBarBackground, { backgroundColor: '#E5E7EB' }];
+  if (isDark) calorieTrackStyle = styles.progressBarBackground;
+
+  const loggedNutritionBody = (
+    <>
+      {nutritionRings}
+      <View style={styles.caloriesSection}>
+        <View style={styles.caloriesInfo}>
+          <Text style={[styles.caloriesLabel, { color: textMuted }]}>Calories</Text>
+          <Text style={[styles.caloriesValue, { color: textPrimary }]}>{calorieSummary}</Text>
+        </View>
+        <View style={calorieTrackStyle}>
+          <View style={[styles.progressBar, { width: barWidth, backgroundColor: barColor }]} />
+        </View>
+      </View>
+    </>
+  );
+
+  const emptyNutritionBody = (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        gap: 12,
+      }}
+    >
+      <LottieView
+        source={LOTTIE_NUTRITION_EMPTY}
+        autoPlay
+        loop
+        style={{ width: 100, height: 100 }}
+      />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: '800',
+            color: textPrimary,
+            textAlign: 'left',
+            letterSpacing: -0.2,
+          }}
+        >
+          No meals logged yet
+        </Text>
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: '500',
+            color: textMuted,
+            textAlign: 'left',
+            marginTop: 6,
+            lineHeight: 19,
+          }}
+        >
+          Open Nutrition to log food — macros and rings will show here.
+        </Text>
+      </View>
+    </View>
+  );
+
+  let nutritionBody = loggedNutritionBody;
+  if (!hasLoggedNutrition) nutritionBody = emptyNutritionBody;
 
   return (
     <View style={styles.nutritionContainer}>
@@ -1150,111 +1452,14 @@ const NutritionCard = ({ theme, consumed = 0, goal = 2500, macros = null, additi
           styles.nutritionColorBorder,
           {
             borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderColor: nutritionBorderColor,
             borderRadius: 18,
             overflow: 'hidden',
           },
         ]}
       >
         <View style={[styles.nutritionCard, !isDark && styles.nutritionCardLight]}>
-        {!hasLoggedNutrition ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingVertical: 12,
-              paddingHorizontal: 14,
-              gap: 12,
-            }}
-          >
-            <LottieView
-              source={LOTTIE_NUTRITION_EMPTY}
-              autoPlay
-              loop
-              style={{ width: 100, height: 100 }}
-            />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: '800',
-                  color: textPrimary,
-                  textAlign: 'left',
-                  letterSpacing: -0.2,
-                }}
-              >
-                No meals logged yet
-              </Text>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: '500',
-                  color: textMuted,
-                  textAlign: 'left',
-                  marginTop: 6,
-                  lineHeight: 19,
-                }}
-              >
-                Open Nutrition to log food — macros and rings will show here.
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <>
-            {compact ? (
-              <View style={styles.nutritionCompactCirclesRow}>
-                {compactRings.map((n) => (
-                  <View key={n.label} style={styles.nutritionCompactCircleCell}>
-                    <ClientArcProgress
-                      value={n.value}
-                      goal={n.goal}
-                      label={n.label}
-                      color={n.color}
-                      gradientColors={n.gradientColors}
-                      unit={n.unit}
-                    />
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <View style={styles.nutritionGrid2x2}>
-                {(nutrientsWithData.length > 0 ? nutrientsWithData.slice(0, 3) : []).map((n) => (
-                  <View key={n.label} style={styles.nutritionGridCell}>
-                    <ClientArcProgress
-                      value={n.value}
-                      goal={n.goal}
-                      label={n.label}
-                      color={n.color}
-                      gradientColors={n.gradientColors}
-                      unit={n.unit}
-                    />
-                  </View>
-                ))}
-                {Math.round(Number(consumed) || 0) > 0 ? (
-                  <View style={styles.nutritionGridCell}>
-                    <ClientArcProgress
-                      value={Math.round(consumed)}
-                      goal={goal}
-                      label="Calories"
-                      color="#8B5CF6"
-                      gradientColors={NUT_DONUT_CALORIES_GRADIENT}
-                      unit=""
-                    />
-                  </View>
-                ) : null}
-              </View>
-            )}
-            <View style={styles.caloriesSection}>
-              <View style={styles.caloriesInfo}>
-                <Text style={[styles.caloriesLabel, { color: textMuted }]}>Calories</Text>
-                <Text style={[styles.caloriesValue, { color: textPrimary }]}>{Math.round(consumed)} / {goal} kcal</Text>
-              </View>
-              <View style={[styles.progressBarBackground, !isDark && { backgroundColor: '#E5E7EB' }]}>
-                <View style={[styles.progressBar, { width: `${Math.min(pct, 100)}%`, backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' }]} />
-              </View>
-            </View>
-          </>
-        )}
+        {nutritionBody}
         </View>
       </View>
     </View>
@@ -1265,8 +1470,8 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
   const isDark = theme === 'dark';
   const textColor = isDark ? '#fff' : '#1a1040';
   const mutedColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(26,16,64,0.6)';
-  const fromYou = (items || []).filter((x) => (x.addedBy || 'client') === 'client');
-  const fromTrainer = (items || []).filter((x) => x.addedBy === 'trainer' || (x.type === 'document' && x.trainerId));
+  const fromYou = (items || []).filter((item) => (item.addedBy || 'client') === 'client');
+  const fromTrainer = (items || []).filter((item) => item.addedBy === 'trainer' || (item.type === 'document' && item.trainerId));
   const hasAny = items.length > 0;
 
   const openUrl = (url, file) => {
@@ -1274,10 +1479,10 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
     else if (url) Linking.openURL(url).catch(() => {});
   };
 
-  const formatDate = (d) => {
-    if (!d) return '';
-    const t = d instanceof Date ? d : new Date(d);
-    return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const formatDate = (dateValue) => {
+    if (!dateValue) return '';
+    const parsedDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
+    return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const fileIcon = (file) => {
@@ -1303,12 +1508,12 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
   };
 
   const renderBlock = (list, sectionTitle) => {
-    const notes = (list || []).filter((x) => x.type === 'note');
-    const photos = (list || []).filter((x) => x.type === 'photo');
-    const videos = (list || []).filter((x) => x.type === 'video');
-    const docs = (list || []).filter((x) => x.type === 'pdf' || x.type === 'doc');
-    const spreadsheets = (list || []).filter((x) => x.type === 'spreadsheet');
-    const trainerDocs = (list || []).filter((x) => x.type === 'document' || (x.documentId && x.trainerId));
+    const notes = (list || []).filter((item) => item.type === 'note');
+    const photos = (list || []).filter((item) => item.type === 'photo');
+    const videos = (list || []).filter((item) => item.type === 'video');
+    const docs = (list || []).filter((item) => item.type === 'pdf' || item.type === 'doc');
+    const spreadsheets = (list || []).filter((item) => item.type === 'spreadsheet');
+    const trainerDocs = (list || []).filter((item) => item.type === 'document' || (item.documentId && item.trainerId));
     const allFiles = [...docs, ...spreadsheets, ...trainerDocs];
     if (list.length === 0) return null;
     return (
@@ -1317,10 +1522,10 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
         {notes.length > 0 && (
           <>
             <Text style={[styles.notesSectionTitle, { color: mutedColor }]}>Notes</Text>
-            {(notes || []).map((n, i) => (
-              <View key={n.id || i} style={[styles.notesNoteCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
-                <Text style={[styles.notesNoteText, { color: textColor }]}>{n.content}</Text>
-                <Text style={[styles.notesNoteDate, { color: mutedColor }]}>{formatDate(n.createdAt)}</Text>
+            {(notes || []).map((note, i) => (
+              <View key={note.id || i} style={[styles.notesNoteCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                <Text style={[styles.notesNoteText, { color: textColor }]}>{note.content}</Text>
+                <Text style={[styles.notesNoteDate, { color: mutedColor }]}>{formatDate(note.createdAt)}</Text>
               </View>
             ))}
           </>
@@ -1329,18 +1534,18 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
           <>
             <Text style={[styles.notesSectionTitle, { color: mutedColor }]}>Photos & Videos</Text>
             <View style={styles.notesMediaGrid}>
-              {(photos || []).map((p, i) => (
-                <TouchableOpacity key={p.id || i} onPress={() => p.url && openUrl(p.url, p)} style={styles.notesMediaCard} activeOpacity={0.8}>
-                  <Image source={{ uri: p.url }} style={[styles.notesMediaThumb, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
-                  <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{p.name || 'Photo'}</Text>
+              {(photos || []).map((photo, i) => (
+                <TouchableOpacity key={photo.id || i} onPress={() => photo.url && openUrl(photo.url, photo)} style={styles.notesMediaCard} activeOpacity={0.8}>
+                  <Image source={{ uri: photo.url }} style={[styles.notesMediaThumb, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+                  <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{photo.name || 'Photo'}</Text>
                 </TouchableOpacity>
               ))}
-              {(videos || []).map((v, i) => (
-                <TouchableOpacity key={v.id || i} onPress={() => v.url && openUrl(v.url, v)} style={styles.notesMediaCard} activeOpacity={0.8}>
+              {(videos || []).map((video, i) => (
+                <TouchableOpacity key={video.id || i} onPress={() => video.url && openUrl(video.url, video)} style={styles.notesMediaCard} activeOpacity={0.8}>
                   <View style={[styles.notesMediaThumb, styles.notesVideoPlaceholder, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
                     <Feather name="video" size={24} color={isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)'} />
                   </View>
-                  <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{v.name || 'Video'}</Text>
+                  <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{video.name || 'Video'}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1349,28 +1554,28 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
         {allFiles.length > 0 && (
           <>
             <Text style={[styles.notesSectionTitle, { color: mutedColor }]}>Files</Text>
-            {(allFiles || []).map((f, i) => (
+            {(allFiles || []).map((file, i) => (
               <TouchableOpacity
-                key={f.id || i}
+                key={file.id || i}
                 onPress={() => {
-                  if (f.type === 'document' || (f.documentId && f.trainerId)) {
-                    if (onOpenFile) onOpenFile(null, f);
-                  } else if (f.url) {
-                    openUrl(f.url, f);
+                  if (file.type === 'document' || (file.documentId && file.trainerId)) {
+                    if (onOpenFile) onOpenFile(null, file);
+                  } else if (file.url) {
+                    openUrl(file.url, file);
                   }
                 }}
                 style={[styles.notesDocRow, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}
                 activeOpacity={0.8}
               >
                 <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={fileIcon(f)} size={22} color={textColor} />
+                  <Ionicons name={fileIcon(file)} size={22} color={textColor} />
                 </View>
                 <View style={styles.notesFileInfo}>
-                  <Text style={[styles.notesDocName, { color: textColor }]} numberOfLines={1}>{f.name || f.title || 'File'}</Text>
-                  <Text style={[styles.notesFileMeta, { color: mutedColor }]}>{formatDate(f.createdAt)} · <Text style={{ color: fileTypeLabelColor(f), fontWeight: '600' }}>{fileTypeLabel(f)}</Text></Text>
+                  <Text style={[styles.notesDocName, { color: textColor }]} numberOfLines={1}>{file.name || file.title || 'File'}</Text>
+                  <Text style={[styles.notesFileMeta, { color: mutedColor }]}>{formatDate(file.createdAt)} · <Text style={{ color: fileTypeLabelColor(file), fontWeight: '600' }}>{fileTypeLabel(file)}</Text></Text>
                 </View>
-                {f.type !== 'document' && f.type !== 'spreadsheet' && <Feather name="external-link" size={18} color={mutedColor} />}
-                {(f.type === 'document' || f.type === 'spreadsheet' || (f.documentId && f.trainerId)) && <Ionicons name="chevron-forward" size={20} color={mutedColor} />}
+                {file.type !== 'document' && file.type !== 'spreadsheet' && <Feather name="external-link" size={18} color={mutedColor} />}
+                {(file.type === 'document' || file.type === 'spreadsheet' || (file.documentId && file.trainerId)) && <Ionicons name="chevron-forward" size={20} color={mutedColor} />}
               </TouchableOpacity>
             ))}
           </>
@@ -1422,25 +1627,46 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
 };
 
 // Helper functions
+function activityLevelFromDaysPerWeek(daysPerWeek) {
+  if (daysPerWeek >= DAYS_VERY_ACTIVE) return 'very_active';
+  if (daysPerWeek >= DAYS_ACTIVE) return 'active';
+  if (daysPerWeek >= DAYS_MODERATE) return 'moderate';
+  if (daysPerWeek >= DAYS_LIGHT) return 'light';
+  return 'sedentary';
+}
+
+function calorieGoalFromTdee(primaryGoal, tdee) {
+  if (primaryGoal === 'lose_fat') return Math.round(tdee - FAT_LOSS_CALORIE_CUT);
+  if (primaryGoal === 'build_muscle') return Math.round(tdee + MUSCLE_CALORIE_SURPLUS);
+  if (primaryGoal === 'athletic_performance') return Math.round(tdee + ATHLETIC_CALORIE_SURPLUS);
+  return Math.round(tdee);
+}
+
+/**
+ * Daily calorie target from weight (lbs), height (inches), age, and days trained.
+ * @param {string} primaryGoal
+ * @param {number} weight
+ * @param {number} height
+ * @param {number} age
+ * @param {string} gender
+ * @param {number} daysPerWeek
+ * @returns {number}
+ */
 const calculateCalorieGoal = (primaryGoal, weight, height, age, gender, daysPerWeek) => {
-  if (!weight || !height || !age || !gender) return 2000;
-  const weightKg = weight / 2.20462;
-  const heightCm = height * 2.54;
+  if (!weight || !height || !age || !gender) return DEFAULT_CALORIE_GOAL;
+  const weightKg = weight / POUNDS_PER_KILOGRAM;
+  const heightCm = height * CM_PER_INCH;
   const bmr = calculateBMR(weightKg, heightCm, age, gender);
-  let activityLevel = 'sedentary';
-  if (daysPerWeek >= 6) activityLevel = 'very_active';
-  else if (daysPerWeek >= 4) activityLevel = 'active';
-  else if (daysPerWeek >= 3) activityLevel = 'moderate';
-  else if (daysPerWeek >= 1) activityLevel = 'light';
+  const activityLevel = activityLevelFromDaysPerWeek(daysPerWeek);
   const tdee = calculateTDEE(bmr, activityLevel);
-  switch (primaryGoal) {
-    case 'lose_fat': return Math.round(tdee - 500);
-    case 'build_muscle': return Math.round(tdee + 300);
-    case 'athletic_performance': return Math.round(tdee + 500);
-    default: return Math.round(tdee);
-  }
+  return calorieGoalFromTdee(primaryGoal, tdee);
 };
 
+/**
+ * Consecutive days with a completed workout, counting back from today.
+ * @param {object[]} completedWorkouts
+ * @returns {number}
+ */
 const calculateStreak = (completedWorkouts) => {
   if (!completedWorkouts || completedWorkouts.length === 0) return 0;
   const sorted = [...completedWorkouts].sort((a, b) => {

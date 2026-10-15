@@ -1,138 +1,198 @@
-// Auto-fit sizing for spreadsheet columns and rows, using estimated (not measured) text size.
-// Flow: columnWidths/measureRowHeight estimate one string → calcColWidth/calcRowHeight scan a
-// column/row for its widest/tallest cell → setColWidth/setRowHeight store the result sparsely.
+// Estimates how wide and tall spreadsheet cells should be from the text inside them.
+// Flow: measure one string → scan the column or row for the largest cell → store only sizes that are not the default.
 // Used after typing, pasting, clearing, or double-tapping a header to auto-size.
+
 import { DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, MAX_COL_WIDTH } from './spreadsheetConstants';
 
-/** Approximate text width for auto-sizing columns (RN has no canvas columnWidths). */
-// Why an estimate: on the web you'd ask a canvas for the real pixel width of a string, but React
-// Native has no synchronous text measurement. So we multiply character count by an average glyph
-// width. It's wrong for very narrow ('i') or wide ('W') text, but it's instant and good enough.
-export function columnWidths(text, bold = false) {
-  // Multi-line cells: only the LONGEST line decides the column width, so fold the lines down to
-  // that one. reduce keeps whichever string is longer as it walks the array.
-  const longest = String(text || '')
-    .split('\n')
-    .reduce((a, b) => (a.length > b.length ? a : b), '');
-  // Manipulate here: average character width in points. Bold is wider, hence the larger number.
-  // If auto-fit consistently clips text, raise these; if columns come out too roomy, lower them.
-  const charW = bold ? 8.5 : 7.5;
-  // Manipulate here: +24 is the horizontal padding budget (cell padding on both sides plus a
-  // little slack so the last character never touches the gridline).
-  return Math.ceil(longest.length * charW) + 24;
-}
+// ===== NAMED CONSTANTS =====
 
-// Row height is driven purely by line COUNT — no wrapping estimate, because cells don't soft-wrap;
-// they only grow when the content contains explicit newlines.
-export function measureRowHeight(text) {
-  const lines = String(text || '').split('\n').length;
-  // Manipulate here: 22 is per-line height and +6 is vertical padding. Math.max keeps a row from
-  // ever shrinking below the standard row height.
-  return Math.max(DEFAULT_ROW_HEIGHT, lines * 22 + 6);
+// Manipulate here: average character width. Raise these if auto-fit clips text.
+const BOLD_CHAR_WIDTH = 8.5;
+const REGULAR_CHAR_WIDTH = 7.5;
+// Horizontal padding so the last character does not sit on the gridline.
+const COLUMN_PADDING = 24;
+const LINE_HEIGHT = 22;
+const ROW_VERTICAL_PADDING = 6;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * The longest line decides the width. React Native has no canvas to measure real pixels.
+ * @param {string} text
+ * @returns {string}
+ */
+function longestLine(text) {
+  const lines = String(text || '').split('\n');
+  let longest = '';
+  for (const line of lines) {
+    if (line.length > longest.length) longest = line;
+  }
+  return longest;
 }
 
 /**
- * Widest content in column c across all cells.
- * @param {{ r: number, c: number, text: string, bold?: boolean } | null} draft - live edit overlay
+ * @param {string} cellKey
+ * @returns {{ rowIndex: number, columnIndex: number }}
  */
-export function calcColWidth(c, cells, draft = null) {
-  // Start at the default so auto-fit can only ever WIDEN a column past standard, never below it.
-  let maxW = DEFAULT_COL_WIDTH;
-
-  // `draft` is the text currently being typed, which isn't committed into `cells` yet. Measuring
-  // it here is what makes the column grow live as you type instead of only after you hit enter.
-  if (draft?.c === c) {
-    // vocab/symbol: ?? '' = use '' only if draft.text is null/undefined (an empty string is kept)
-    maxW = Math.max(maxW, columnWidths(draft.text ?? '', draft.bold));
-  }
-
-  // Scan every stored cell and keep only the ones in this column. We iterate all cells rather than
-  // indexing by column because storage is a flat "r,c" map — but it's sparse, so this only visits
-  // cells the user actually filled in.
-  for (const [k, cell] of Object.entries(cells || {})) {
-    const [r, col] = k.split(',').map(Number);
-    if (col !== c) continue;
-    // Skip the committed value of the cell being edited — the draft above is the newer truth, and
-    // counting both would size the column to whichever happened to be longer.
-    if (draft?.r === r && draft?.c === c) continue;
-    const raw = cell?.raw ?? '';
-    if (!raw) continue;
-    maxW = Math.max(maxW, columnWidths(raw, cell?.style?.bold));
-  }
-
-  // Clamp into [DEFAULT, MAX]. The upper bound matters: one cell with a paragraph in it would
-  // otherwise make a single column wider than the screen.
-  return Math.min(Math.max(maxW, DEFAULT_COL_WIDTH), MAX_COL_WIDTH);
-}
-
-/**
- * Tallest content in row r across all cells.
- * @param {{ r: number, c: number, text: string } | null} draft - live edit overlay
- */
-export function calcRowHeight(r, cells, draft = null) {
-  let maxH = DEFAULT_ROW_HEIGHT;
-
-  // Same live-draft logic as calcColWidth, so a row grows as you add newlines mid-edit.
-  if (draft?.r === r) {
-    maxH = Math.max(maxH, measureRowHeight(draft.text ?? ''));
-  }
-
-  for (const [k, cell] of Object.entries(cells || {})) {
-    const [row] = k.split(',').map(Number);
-    if (row !== r) continue;
-    // Skip the edited cell's committed value in favor of the draft. The column index is re-parsed
-    // from the key here (rather than destructured above) since only the row was needed for filtering.
-    if (draft?.r === r && draft?.c === parseInt(k.split(',')[1], 10)) continue;
-    const raw = cell?.raw ?? '';
-    if (!raw) continue;
-    maxH = Math.max(maxH, measureRowHeight(raw));
-  }
-
-  // No upper clamp here (unlike width) — a tall row is scrollable, whereas a too-wide column
-  // breaks the horizontal layout.
-  return maxH;
-}
-
-// Writes a computed width into the widths map. The delete is the important part: only
-// non-default widths are stored, so a sheet's saved data stays small and "reset to default"
-// is simply the absence of a key.
-// vocab/symbol: { ...colWidths } = shallow copy, so we return a NEW object instead of mutating
-// state in place (React needs a new reference to notice the change).
-export function setColWidth(colWidths, c, cells, draft = null) {
-  const w = calcColWidth(c, cells, draft);
-  const next = { ...colWidths };
-  if (w <= DEFAULT_COL_WIDTH) delete next[c];
-  else next[c] = w;
-  return next;
-}
-
-// Row-height twin of setColWidth, with the same "don't store defaults" rule.
-export function setRowHeight(rowHeights, r, cells, draft = null) {
-  const h = calcRowHeight(r, cells, draft);
-  const next = { ...rowHeights };
-  if (h <= DEFAULT_ROW_HEIGHT) delete next[r];
-  else next[r] = h;
-  return next;
-}
-
-/** Recalc column + row size for one cell (optionally using in-progress draft text). */
-// The common case: the user edited one cell, so exactly one column and one row can have changed.
-export function syncCellDims(cells, r, c, colWidths, rowHeights, draft = null) {
+function rowAndColumnFromKey(cellKey) {
+  const [rowText, columnText] = cellKey.split(',');
   return {
-    colWidths: setColWidth(colWidths, c, cells, draft),
-    rowHeights: setRowHeight(rowHeights, r, cells, draft),
+    rowIndex: Number(rowText),
+    columnIndex: Number(columnText),
   };
 }
 
-/** Recalc after bulk changes (clear, paste, etc.). */
-// Re-measures every column and row the operation touched. The accumulators are reassigned each
-// pass because setColWidth/setRowHeight return new objects rather than mutating — so `cw` and `rh`
-// carry the running result through the loops.
-// Note: no `draft` here, since a bulk change means editing has already been committed.
-export function syncDimsForRange(cells, colWidths, rowHeights, r1, r2, c1, c2) {
-  let cw = { ...colWidths };
-  let rh = { ...rowHeights };
-  for (let c = c1; c <= c2; c++) cw = setColWidth(cw, c, cells);
-  for (let r = r1; r <= r2; r++) rh = setRowHeight(rh, r, cells);
-  return { colWidths: cw, rowHeights: rh };
+/**
+ * @param {object|null} draft
+ * @param {number} rowIndex
+ * @param {number} columnIndex
+ * @returns {boolean}
+ */
+function isDraftForCell(draft, rowIndex, columnIndex) {
+  return draft?.r === rowIndex && draft?.c === columnIndex;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Approximate text width. Bold glyphs are a little wider.
+ * @param {string} text
+ * @param {boolean} [isBold]
+ * @returns {number}
+ */
+export function columnWidths(text, isBold = false) {
+  const longest = longestLine(text);
+  const characterWidth = isBold ? BOLD_CHAR_WIDTH : REGULAR_CHAR_WIDTH;
+  return Math.ceil(longest.length * characterWidth) + COLUMN_PADDING;
+}
+
+/**
+ * Row height follows line count. Cells do not wrap; they grow when the text has newlines.
+ * @param {string} text
+ * @returns {number}
+ */
+export function measureRowHeight(text) {
+  const lineCount = String(text || '').split('\n').length;
+  return Math.max(DEFAULT_ROW_HEIGHT, lineCount * LINE_HEIGHT + ROW_VERTICAL_PADDING);
+}
+
+/**
+ * Widest content in this column, including the live draft if that draft is in this column.
+ * @param {number} columnIndex
+ * @param {object} cells
+ * @param {{ r: number, c: number, text: string, bold?: boolean }|null} [draft]
+ * @returns {number}
+ */
+export function calcColWidth(columnIndex, cells, draft = null) {
+  let maxWidth = DEFAULT_COL_WIDTH;
+  if (draft?.c === columnIndex) {
+    maxWidth = Math.max(maxWidth, columnWidths(draft.text ?? '', draft.bold));
+  }
+
+  for (const [cellKey, cell] of Object.entries(cells || {})) {
+    const { rowIndex, columnIndex: storedColumn } = rowAndColumnFromKey(cellKey);
+    if (storedColumn !== columnIndex) continue;
+    if (isDraftForCell(draft, rowIndex, columnIndex)) continue;
+    const rawText = cell?.raw ?? '';
+    if (!rawText) continue;
+    maxWidth = Math.max(maxWidth, columnWidths(rawText, cell?.style?.bold));
+  }
+
+  return Math.min(Math.max(maxWidth, DEFAULT_COL_WIDTH), MAX_COL_WIDTH);
+}
+
+/**
+ * Tallest content in this row, including the live draft if that draft is in this row.
+ * @param {number} rowIndex
+ * @param {object} cells
+ * @param {{ r: number, c: number, text: string }|null} [draft]
+ * @returns {number}
+ */
+export function calcRowHeight(rowIndex, cells, draft = null) {
+  let maxHeight = DEFAULT_ROW_HEIGHT;
+  if (draft?.r === rowIndex) {
+    maxHeight = Math.max(maxHeight, measureRowHeight(draft.text ?? ''));
+  }
+
+  for (const [cellKey, cell] of Object.entries(cells || {})) {
+    const { rowIndex: storedRow, columnIndex: storedColumn } = rowAndColumnFromKey(cellKey);
+    if (storedRow !== rowIndex) continue;
+    if (isDraftForCell(draft, rowIndex, storedColumn)) continue;
+    const rawText = cell?.raw ?? '';
+    if (!rawText) continue;
+    maxHeight = Math.max(maxHeight, measureRowHeight(rawText));
+  }
+
+  return maxHeight;
+}
+
+/**
+ * Only non-default widths are stored, so a reset is simply a missing key.
+ * @param {object} colWidths
+ * @param {number} columnIndex
+ * @param {object} cells
+ * @param {object|null} [draft]
+ * @returns {object}
+ */
+export function setColWidth(colWidths, columnIndex, cells, draft = null) {
+  const nextWidth = calcColWidth(columnIndex, cells, draft);
+  const nextWidths = { ...colWidths };
+  if (nextWidth <= DEFAULT_COL_WIDTH) delete nextWidths[columnIndex];
+  else nextWidths[columnIndex] = nextWidth;
+  return nextWidths;
+}
+
+/**
+ * @param {object} rowHeights
+ * @param {number} rowIndex
+ * @param {object} cells
+ * @param {object|null} [draft]
+ * @returns {object}
+ */
+export function setRowHeight(rowHeights, rowIndex, cells, draft = null) {
+  const nextHeight = calcRowHeight(rowIndex, cells, draft);
+  const nextHeights = { ...rowHeights };
+  if (nextHeight <= DEFAULT_ROW_HEIGHT) delete nextHeights[rowIndex];
+  else nextHeights[rowIndex] = nextHeight;
+  return nextHeights;
+}
+
+/**
+ * One edited cell can only change its column and its row.
+ * @param {object} cells
+ * @param {number} rowIndex
+ * @param {number} columnIndex
+ * @param {object} colWidths
+ * @param {object} rowHeights
+ * @param {object|null} [draft]
+ * @returns {{ colWidths: object, rowHeights: object }}
+ */
+export function syncCellDims(cells, rowIndex, columnIndex, colWidths, rowHeights, draft = null) {
+  return {
+    colWidths: setColWidth(colWidths, columnIndex, cells, draft),
+    rowHeights: setRowHeight(rowHeights, rowIndex, cells, draft),
+  };
+}
+
+/**
+ * After a paste or a clear, re-measure every column and row the change touched.
+ * @param {object} cells
+ * @param {object} colWidths
+ * @param {object} rowHeights
+ * @param {number} firstRow
+ * @param {number} lastRow
+ * @param {number} firstColumn
+ * @param {number} lastColumn
+ * @returns {{ colWidths: object, rowHeights: object }}
+ */
+export function syncDimsForRange(cells, colWidths, rowHeights, firstRow, lastRow, firstColumn, lastColumn) {
+  let nextColWidths = { ...colWidths };
+  let nextRowHeights = { ...rowHeights };
+  for (let columnIndex = firstColumn; columnIndex <= lastColumn; columnIndex += 1) {
+    nextColWidths = setColWidth(nextColWidths, columnIndex, cells);
+  }
+  for (let rowIndex = firstRow; rowIndex <= lastRow; rowIndex += 1) {
+    nextRowHeights = setRowHeight(nextRowHeights, rowIndex, cells);
+  }
+  return { colWidths: nextColWidths, rowHeights: nextRowHeights };
 }

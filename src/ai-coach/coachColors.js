@@ -1,8 +1,45 @@
 // Colors for the coach chat. Dark glass is the default. The light set is the small override.
-// Flow: screens read AI_COACH_UI for the dark palette, or AI_COACH_LIGHT when the phone is in light mode.
+// Flow: build dark tokens → build light overrides → screens import AI_COACH_UI or AI_COACH_LIGHT.
 // Used by the coach conversation and the coach home cards.
 
 // ===== NAMED CONSTANTS =====
+
+// Manipulate here: chip colors label quick-action categories on the coach home row.
+const AI_COACH_CHIP_COLORS = {
+  food: '#F97316',
+  workout: '#C084FC',
+  sleep: '#06B6D4',
+  steps: '#34D399',
+  energy: '#FBBF24',
+  kcal: '#FB923C',
+  program: '#A78BFA',
+  muted: '#94A3B8',
+};
+
+// Manipulate here: gradient pairs for borders, CTAs, and the composer send pill.
+const AI_COACH_GRADIENTS = {
+  borderWarm: ['#BE185D', '#C2410C'],
+  borderWarmSubtle: ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'],
+  borderBrand: ['#6D28D9', '#C2410C'],
+  ctaWarm: ['#BE185D', '#C2410C'],
+  ctaCool: ['#C084FC', '#FF6B9D'],
+  borderCyanPink: ['#06B6D4', '#FF6B9D'],
+  userBubble: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.06)'],
+  borderPinkPurple: ['#FF6B9D', '#C084FC'],
+  heroBorder: ['#BE185D', '#C2410C', '#BE185D'],
+  categoryOrb: ['#BE185D', '#C2410C'],
+  composerSend: ['#BE185D', '#C2410C'],
+  composerSendLight: ['#DB2777', '#EA580C'],
+};
+
+const AI_COACH_COMPOSER_ICONS = {
+  iconAttach: '#BE185D',
+  iconMic: '#C2410C',
+  iconAttachLight: '#DB2777',
+  iconMicLight: '#EA580C',
+  micActiveBg: 'rgba(190,24,93,0.22)',
+  micActiveBgLight: 'rgba(219,39,119,0.16)',
+};
 
 const AI_COACH_UI = {
   bg: '#0A0A0F',
@@ -24,38 +61,9 @@ const AI_COACH_UI = {
   orange: '#F97316',
   green: '#34D399',
   yellow: '#FBBF24',
-  chip: {
-    food: '#F97316',
-    workout: '#C084FC',
-    sleep: '#06B6D4',
-    steps: '#34D399',
-    energy: '#FBBF24',
-    kcal: '#FB923C',
-    program: '#A78BFA',
-    muted: '#94A3B8',
-  },
-  gradient: {
-    borderWarm: ['#BE185D', '#C2410C'],
-    borderWarmSubtle: ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'],
-    borderBrand: ['#6D28D9', '#C2410C'],
-    ctaWarm: ['#BE185D', '#C2410C'],
-    ctaCool: ['#C084FC', '#FF6B9D'],
-    borderCyanPink: ['#06B6D4', '#FF6B9D'],
-    userBubble: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.06)'],
-    borderPinkPurple: ['#FF6B9D', '#C084FC'],
-    heroBorder: ['#BE185D', '#C2410C', '#BE185D'],
-    categoryOrb: ['#BE185D', '#C2410C'],
-    composerSend: ['#BE185D', '#C2410C'],
-    composerSendLight: ['#DB2777', '#EA580C'],
-  },
-  composer: {
-    iconAttach: '#BE185D',
-    iconMic: '#C2410C',
-    iconAttachLight: '#DB2777',
-    iconMicLight: '#EA580C',
-    micActiveBg: 'rgba(190,24,93,0.22)',
-    micActiveBgLight: 'rgba(219,39,119,0.16)',
-  },
+  chip: AI_COACH_CHIP_COLORS,
+  gradient: AI_COACH_GRADIENTS,
+  composer: AI_COACH_COMPOSER_ICONS,
 };
 
 const AI_COACH_LIGHT = {

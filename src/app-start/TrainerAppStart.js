@@ -1,9 +1,7 @@
-// Two things live in this file: the trainer's CRM data layer, and the trainer app shell.
-// Flow (shell): LoginGate mounts TrainerAppStart → providers for theme/subscription/sessions → TrainerAppStartContent
-//       loads roster + profile, wires notifications, bundles everything into `shell` → TrainerScreenList renders screens.
-// Flow (CRM): the exported get/create/update/delete functions below are the only sanctioned way to read
-//       and write trainer_clients data; screens and hooks import them (some via clientCRMService re-exports).
-// Key exports: default TrainerAppStart, plus the CRM functions (getClient, getTrainerClients, addProgress, createTask, …).
+// Trainer shell plus the client-record reads and writes.
+// Flow: LoginGate mounts the shell → roster, profile, and notifications → screens read the shell.
+// CRM exports are how screens read and write trainer_clients data.
+// Used by LoginGate and by screens that import getClient, getTrainerClients, and the rest.
 
 import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from "react";
 import { NavigationContainer } from '@react-navigation/native';
@@ -166,6 +164,22 @@ import {
   trainerClientDocRef,
 } from '../trainer-app/trainee-records/traineeDatabaseLocations';
 
+// ===== NAMED CONSTANTS =====
+
+const CRM_CLIENTS_COLLECTION = "clients";
+const CRM_PROGRESS_SUBCOLLECTION = "progress";
+const CRM_TASKS_SUBCOLLECTION = "tasks";
+const CRM_NOTES_SUBCOLLECTION = "notes";
+const TRAINER_CLIENT_LINKS = "trainer_client_links";
+const MILLISECONDS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const WEEKLY_REPORT_DAY_COUNT = 7;
+const PERMISSION_DENIED_CODE = "permission-denied";
+
+// ===== HELPER FUNCTIONS =====
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLIENT CRM SERVICE
 // Every function below reads/writes the trainer's client records. They share one shape:
@@ -181,25 +195,16 @@ import {
 // vocab: parseInt(x, 16) = read the two hex characters as a base-16 number.
 // Manipulate here: '255, 107, 157' is the brand pink used as the fallback whenever the input isn't
 // a clean 6-digit hex (both guards below return it rather than producing an invalid color string).
-function hexToRgbTriple(hex) {
-  const h = String(hex || "").replace("#", "").trim();
-  if (h.length !== 6) return "255, 107, 157";
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if ([r, g, b].some((n) => Number.isNaN(n))) return "255, 107, 157";
-  return `${r}, ${g}, ${b}`;
+function hexToRgbTriple(hexColor) {
+  const hexDigits = String(hexColor || "").replace("#", "").trim();
+  if (hexDigits.length !== 6) return "255, 107, 157";
+  const redChannel = parseInt(hexDigits.slice(0, 2), 16);
+  const greenChannel = parseInt(hexDigits.slice(2, 4), 16);
+  const blueChannel = parseInt(hexDigits.slice(4, 6), 16);
+  const channels = [redChannel, greenChannel, blueChannel];
+  if (channels.some((channel) => Number.isNaN(channel))) return "255, 107, 157";
+  return `${redChannel}, ${greenChannel}, ${blueChannel}`;
 }
-
-// Collection names as constants so a typo fails loudly at import rather than silently reading an
-// empty collection at runtime.
-// `clients` is the LEGACY top-level collection; current data lives at trainer_clients/{trainerId}/clients.
-// Writes still mirror into the legacy path for older installs — see createOrUpdateClient.
-const CRM_CLIENTS_COLLECTION = "clients";
-const CRM_PROGRESS_SUBCOLLECTION = "progress";
-const CRM_TASKS_SUBCOLLECTION = "tasks";
-const CRM_NOTES_SUBCOLLECTION = "notes";
-const TRAINER_CLIENT_LINKS = "trainer_client_links";
 
 // Fallback dashboard payload built purely from CRM data, used when the client's own user profile
 // can't be read (they haven't finished signup, or rules block it). Every field gets a defined value
@@ -237,6 +242,290 @@ function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = [
   };
 }
 
+function clientWritePayload(clientId, clientData) {
+  return {
+    id: clientId,
+    name: clientData.name || "",
+    email: clientData.email || "",
+    photoURL: clientData.photoURL || null,
+    height: clientData.height || null,
+    weight: clientData.weight || null,
+    age: clientData.age || null,
+    gender: clientData.gender || null,
+    goals: clientData.goals || "",
+    fitnessLevel: clientData.fitnessLevel || null,
+    equipmentAccess: clientData.equipmentAccess || [],
+    daysPerWeek: clientData.daysPerWeek || null,
+    injuries: clientData.injuries || null,
+    exercisesDislike: clientData.exercisesDislike || "",
+    preferredWorkoutTime: clientData.preferredWorkoutTime || null,
+    trainingEnvironment: clientData.trainingEnvironment || null,
+    currentStressLevel: clientData.currentStressLevel || null,
+    sleepQuality: clientData.sleepQuality || null,
+    energyLevels: clientData.energyLevels || null,
+    supplementsCurrentlyTaking: clientData.supplementsCurrentlyTaking || "",
+    hydrationHabits: clientData.hydrationHabits || null,
+    phone: clientData.phone || null,
+    bio: clientData.bio || null,
+    role: clientData.role || "client",
+    createdAt: clientData.createdAt || serverTimestamp(),
+    joinedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    status: "active",
+  };
+}
+
+async function ensureConversationExists(clientId, trainerId) {
+  try {
+    await getOrCreateConversation(clientId, trainerId);
+  } catch (conversationError) {
+    console.error("⚠️ Error creating auto-conversation:", conversationError);
+  }
+}
+
+async function writeCanonicalClientDoc(trainerId, clientId, payload) {
+  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+  const existingDoc = await getDoc(clientRef);
+  if (existingDoc.exists()) {
+    await setDoc(clientRef, payload, { merge: true });
+    return;
+  }
+  await setDoc(clientRef, payload);
+}
+
+async function writeTrainerClientLink(trainerId, clientId, payload) {
+  try {
+    const linkId = `${trainerId}_${clientId}`;
+    const linkRef = doc(db, TRAINER_CLIENT_LINKS, linkId);
+    await setDoc(
+      linkRef,
+      {
+        trainerId,
+        clientId,
+        name: payload.name,
+        email: payload.email,
+        goals: payload.goals,
+        status: payload.status,
+        joinedAt: payload.joinedAt,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (linkError) {
+    console.warn("⚠️ trainer_client_links write skipped:", linkError?.message);
+  }
+}
+
+async function confirmClientDocSaved(trainerId, clientId) {
+  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+  const verifyDoc = await getDoc(clientRef);
+  if (verifyDoc.exists()) return;
+  console.error("❌ ERROR: Client was not saved!");
+}
+
+async function mirrorLegacyClientDoc(clientId, trainerId, payload) {
+  try {
+    const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+    await setDoc(
+      legacyClientRef,
+      {
+        id: clientId,
+        trainerId,
+        ...payload,
+      },
+      { merge: true },
+    );
+  } catch (legacyError) {
+    /* ignore */
+  }
+}
+
+function compareClientNames(leftClient, rightClient) {
+  const leftName = (leftClient.name || "").toLowerCase();
+  const rightName = (rightClient.name || "").toLowerCase();
+  return leftName.localeCompare(rightName);
+}
+
+function clientStatusIsHidden(client) {
+  const status = String(client.status || "active").toLowerCase();
+  if (status === "inactive" || status === "removed" || status === "deleted") return true;
+  return client.archived === true;
+}
+
+function clientStillBelongsToTrainer(userData, trainerId) {
+  const linkedTrainerId = userData?.trainerId;
+  if (linkedTrainerId == null || linkedTrainerId === "") return false;
+  return String(linkedTrainerId) === String(trainerId);
+}
+
+async function saveRealNameIfPlaceholder(trainerId, clientId, storedName, resolvedName) {
+  if (!resolvedName) return;
+  if (isGenericClientDisplayName(resolvedName)) return;
+  if (!isGenericClientDisplayName(storedName)) return;
+  try {
+    await setDoc(
+      doc(db, `trainer_clients/${trainerId}/clients/${clientId}`),
+      { name: resolvedName, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+async function rosterRowFromUserDoc(client, trainerId) {
+  const userDoc = await getDoc(doc(db, "users", client.id));
+  if (!userDoc.exists()) return combineTraineeProfile(client, {});
+  const userData = userDoc.data();
+  if (!clientStillBelongsToTrainer(userData, trainerId)) return null;
+  const storedName = String(client.name || "").trim();
+  const resolvedName = resolveTrainerClientDisplayName(client, userData);
+  const mergedClient = combineTraineeProfile(
+    { ...client, name: resolvedName, photoURL: client.photoURL || userData.photoURL || null },
+    userData,
+  );
+  await saveRealNameIfPlaceholder(trainerId, client.id, storedName, mergedClient.name);
+  return mergedClient;
+}
+
+async function rosterRowForClient(client, trainerId) {
+  if (clientStatusIsHidden(client)) return null;
+  try {
+    return await rosterRowFromUserDoc(client, trainerId);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function loadSortedRoster(trainerId) {
+  const clients = await fetchTrainerClientRoster(trainerId, { includeLegacy: true });
+  const validClients = [];
+  for (const client of clients) {
+    const rosterRow = await rosterRowForClient(client, trainerId);
+    if (!rosterRow) continue;
+    validClients.push(rosterRow);
+  }
+  validClients.sort(compareClientNames);
+  return validClients;
+}
+
+function weightPointsFromProgress(progressEntries, limitCount) {
+  const weightData = [];
+  for (let index = 0; index < progressEntries.length; index += 1) {
+    const entry = progressEntries[index];
+    if (entry.weight == null || entry.weight <= 0) continue;
+    weightData.push({
+      date: entry.createdAt?.toDate?.() || entry.createdAt || new Date(),
+      weight: Number(entry.weight),
+    });
+    if (weightData.length >= limitCount) break;
+  }
+  return weightData;
+}
+
+function wholeDaysSince(earlierDate) {
+  if (!earlierDate) return null;
+  const millisecondsPerDay = MILLISECONDS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+  const elapsedMilliseconds = new Date() - earlierDate;
+  return Math.floor(elapsedMilliseconds / millisecondsPerDay);
+}
+
+function latestCheckInSummary(progressEntries) {
+  if (progressEntries.length === 0) {
+    return { lastProgressDate: null, daysSinceLastCheckIn: null };
+  }
+  const lastEntry = progressEntries[0];
+  const lastProgressDate = lastEntry.createdAt?.toDate?.() || lastEntry.createdAt || null;
+  return {
+    lastProgressDate,
+    daysSinceLastCheckIn: wholeDaysSince(lastProgressDate),
+  };
+}
+
+function emptyClientAnalytics() {
+  return {
+    weightTrend: [],
+    taskStats: { total: 0, completed: 0, pending: 0 },
+    lastProgressDate: null,
+    daysSinceLastCheckIn: null,
+    progressEntriesCount: 0,
+  };
+}
+
+// Day keys use en-CA (YYYY-MM-DD) in America/New_York. Those letters must stay.
+function recentReportDateKeys(dayCount) {
+  const today = new Date();
+  const dateKeys = [];
+  for (let dayOffset = 0; dayOffset < dayCount; dayOffset += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - dayOffset);
+    const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    dateKeys.push(dateKey);
+  }
+  return dateKeys;
+}
+
+function weekAvailabilityReport(dateKeys, daysWithData) {
+  return {
+    totalDays: WEEKLY_REPORT_DAY_COUNT,
+    daysWithData: daysWithData.length,
+    missingDays: WEEKLY_REPORT_DAY_COUNT - daysWithData.length,
+    details: daysWithData,
+    dateRange: {
+      start: dateKeys[dateKeys.length - 1],
+      end: dateKeys[0],
+    },
+  };
+}
+
+function emptyWeekAvailability(dateKeys) {
+  return {
+    totalDays: WEEKLY_REPORT_DAY_COUNT,
+    daysWithData: 0,
+    missingDays: WEEKLY_REPORT_DAY_COUNT,
+    details: [],
+    dateRange: {
+      start: dateKeys[dateKeys.length - 1],
+      end: dateKeys[0],
+    },
+  };
+}
+
+function loggedDayRow(dateKey, data) {
+  return {
+    date: dateKey,
+    hasWorkout: !!data.workout,
+    hasNutrition: !!data.nutrition,
+    hasWeight: !!data.weight,
+    hasMood: !!data.mood,
+    data,
+  };
+}
+
+async function dailyLogRowsForKeys(userId, dateKeys) {
+  const daysWithData = [];
+  const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
+  for (const dateKey of dateKeys) {
+    const docSnap = await getDoc(doc(dailyLogsRef, dateKey));
+    if (!docSnap.exists()) continue;
+    daysWithData.push(loggedDayRow(dateKey, docSnap.data()));
+  }
+  return daysWithData;
+}
+
+function weeklyAvailabilityFailed(error, dateKeys) {
+  const code = error?.code;
+  const message = String(error?.message || error || "").toLowerCase();
+  const permissionDenied =
+    code === PERMISSION_DENIED_CODE || message.includes("missing or insufficient permissions");
+  if (permissionDenied) return emptyWeekAvailability(dateKeys);
+  console.error("Error checking weekly data availability:", error);
+  reportCrashAutomaticallySync(error, "TrainerAppStart CRM - checkWeeklyDataAvailability");
+  throw error;
+}
+
+// ===== MAIN FUNCTION =====
+
 // Read one client record.
 export async function getClient(clientId, trainerId = null) {
   if (!clientId || !db) return null;
@@ -272,106 +561,12 @@ export async function createOrUpdateClient(clientId, trainerId, clientData) {
   }
 
   try {
-    const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
-
-    // Every field is defaulted (|| "" / || null / || []) rather than left undefined, because
-    // Firestore rejects undefined values outright and one stray field fails the whole write.
-    const payload = {
-      id: clientId,
-      name: clientData.name || "",
-      email: clientData.email || "",
-      photoURL: clientData.photoURL || null,
-      height: clientData.height || null,
-      weight: clientData.weight || null,
-      age: clientData.age || null,
-      gender: clientData.gender || null,
-      goals: clientData.goals || "",
-      fitnessLevel: clientData.fitnessLevel || null,
-      equipmentAccess: clientData.equipmentAccess || [],
-      daysPerWeek: clientData.daysPerWeek || null,
-      injuries: clientData.injuries || null,
-      exercisesDislike: clientData.exercisesDislike || "",
-      preferredWorkoutTime: clientData.preferredWorkoutTime || null,
-      trainingEnvironment: clientData.trainingEnvironment || null,
-      currentStressLevel: clientData.currentStressLevel || null,
-      sleepQuality: clientData.sleepQuality || null,
-      energyLevels: clientData.energyLevels || null,
-      supplementsCurrentlyTaking: clientData.supplementsCurrentlyTaking || "",
-      hydrationHabits: clientData.hydrationHabits || null,
-      phone: clientData.phone || null,
-      bio: clientData.bio || null,
-      role: clientData.role || "client",
-      createdAt: clientData.createdAt || serverTimestamp(),
-      joinedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      status: "active",
-    };
-
-    // Open a message thread up front so a newly added client can be contacted immediately.
-    // Non-fatal: failing to create the conversation must not stop the client being added.
-    try {
-      await getOrCreateConversation(clientId, trainerId);
-    } catch (convError) {
-      console.error("⚠️ Error creating auto-conversation:", convError);
-    }
-
-    // merge:true on an existing record so we only touch the fields in `payload` and leave anything
-    // else (trainer-authored extras) intact; a full overwrite for a genuinely new record.
-    const existingDoc = await getDoc(clientRef);
-    if (existingDoc.exists()) {
-      await setDoc(clientRef, payload, { merge: true });
-    } else {
-      await setDoc(clientRef, payload);
-    }
-
-    // The flat link document — this is what the CLIENT app can query (it can't read inside another
-    // trainer's collection). Deterministic id `${trainerId}_${clientId}` means re-running this
-    // updates the same link instead of creating duplicates.
-    try {
-      const linkId = `${trainerId}_${clientId}`;
-      const linkRef = doc(db, TRAINER_CLIENT_LINKS, linkId);
-      await setDoc(
-        linkRef,
-        {
-          trainerId,
-          clientId,
-          name: payload.name,
-          email: payload.email,
-          goals: payload.goals,
-          status: payload.status,
-          joinedAt: payload.joinedAt,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-    } catch (linkErr) {
-      console.warn("⚠️ trainer_client_links write skipped:", linkErr?.message);
-    }
-
-    // Read-back check: setDoc can resolve while offline (Firestore queues the write), so this
-    // confirms the record is really there and logs loudly if it silently vanished.
-    const verifyDoc = await getDoc(clientRef);
-    if (!verifyDoc.exists()) {
-      console.error("❌ ERROR: Client was not saved!");
-    }
-
-    // Mirror into the legacy top-level collection for older app versions still reading from there.
-    // Fully ignorable: modern clients don't need it, so a failure here isn't worth surfacing.
-    try {
-      const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
-      await setDoc(
-        legacyClientRef,
-        {
-          id: clientId,
-          trainerId,
-          ...payload,
-        },
-        { merge: true },
-      );
-    } catch (legacyError) {
-      /* ignore */
-    }
-
+    const payload = clientWritePayload(clientId, clientData);
+    await ensureConversationExists(clientId, trainerId);
+    await writeCanonicalClientDoc(trainerId, clientId, payload);
+    await writeTrainerClientLink(trainerId, clientId, payload);
+    await confirmClientDocSaved(trainerId, clientId);
+    await mirrorLegacyClientDoc(clientId, trainerId, payload);
     return { success: true, id: clientId };
   } catch (error) {
     console.error("Error creating/updating client:", error);
@@ -469,75 +664,7 @@ export async function getTrainerClients(trainerId) {
   if (!trainerId || !db) return [];
 
   try {
-    // includeLegacy pulls rows from the old top-level collection too, so trainers from before the
-    // schema change don't see an empty roster.
-    const clients = await fetchTrainerClientRoster(trainerId, { includeLegacy: true });
-
-    const validClients = [];
-    for (const client of clients) {
-      // Filter 1 — status. Defaulting to "active" keeps legacy rows (written before the field
-      // existed) visible instead of silently hiding a trainer's whole roster.
-      const st = String(client.status || "active").toLowerCase();
-      if (st === "inactive" || st === "removed" || st === "deleted" || client.archived === true) {
-        continue;
-      }
-      try {
-        const userDoc = await getDoc(doc(db, "users", client.id));
-        if (userDoc.exists()) {
-          const d = userDoc.data();
-          // Filter 2 — the client must still point back at THIS trainer. The CRM row is our copy;
-          // the client's own doc is the source of truth. If they left or switched coaches, their doc
-          // says so and we drop the stale row rather than showing a client who isn't ours.
-          const tid = d?.trainerId;
-          if (tid == null || tid === "" || String(tid) !== String(trainerId)) {
-            continue;
-          }
-          const crmNameRaw = String(client.name || '').trim();
-          const resolvedName = resolveTrainerClientDisplayName(client, d);
-          // Merge CRM row + live profile. Passing the resolved name and a photo fallback in the
-          // first argument means those win over whatever the merge helper would otherwise pick.
-          const mergedClient = combineTraineeProfile(
-            { ...client, name: resolvedName, photoURL: client.photoURL || d.photoURL || null },
-            d,
-          );
-          // Self-healing write: if the stored CRM name is a placeholder ("Client", "New Client")
-          // but we now know their real name, persist the upgrade. Guarded so it only fires on the
-          // placeholder→real transition, not on every roster load.
-          if (
-            mergedClient.name &&
-            !isGenericClientDisplayName(mergedClient.name) &&
-            isGenericClientDisplayName(crmNameRaw)
-          ) {
-            try {
-              await setDoc(
-                doc(db, `trainer_clients/${trainerId}/clients/${client.id}`),
-                { name: mergedClient.name, updatedAt: serverTimestamp() },
-                { merge: true }
-              );
-            } catch (_) {
-              /* ignore */
-            }
-          }
-          validClients.push(mergedClient);
-        } else {
-          // No user doc (invited, never signed up). Keep them — the trainer added this person on
-          // purpose — but with CRM data only.
-          validClients.push(combineTraineeProfile(client, {}));
-        }
-      } catch (_) {
-        // One unreadable client must not break the entire roster, so skip just this row.
-      }
-    }
-
-    // vocab: localeCompare = string comparison that respects accents and locale rules, unlike `<`
-    // which compares raw character codes and would sort "Émile" after "Zoe".
-    validClients.sort((a, b) => {
-      const nameA = (a.name || "").toLowerCase();
-      const nameB = (b.name || "").toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-
-    return validClients;
+    return await loadSortedRoster(trainerId);
   } catch (error) {
     console.error("Error getting trainer clients:", error);
     reportCrashAutomaticallySync(error, "TrainerAppStart CRM - getTrainerClients");
@@ -602,6 +729,7 @@ export async function addProgress(clientId, progressData, trainerId = null) {
   }
 }
 
+// Newest check-ins first.
 export async function getProgressHistory(clientId, trainerId = null) {
   if (!clientId || !db) return [];
 
@@ -637,6 +765,7 @@ export async function getProgressHistory(clientId, trainerId = null) {
   }
 }
 
+// Remove one check-in row.
 export async function deleteProgress(clientId, progressId, trainerId = null) {
   if (!clientId || !progressId || !db) {
     throw new Error("Missing required parameters: clientId or progressId");
@@ -680,6 +809,7 @@ export async function createTask(clientId, trainerId, taskData) {
   }
 }
 
+// Newest tasks first.
 export async function getTasks(clientId, trainerId = null) {
   if (!clientId || !db) return [];
 
@@ -704,6 +834,7 @@ export async function getTasks(clientId, trainerId = null) {
   }
 }
 
+// Change fields on one task.
 export async function updateTask(clientId, taskId, updates, trainerId = null) {
   if (!clientId || !taskId || !db) {
     throw new Error("Missing required parameters: clientId or taskId");
@@ -725,6 +856,7 @@ export async function toggleTaskComplete(clientId, taskId, completed) {
   return await updateTask(clientId, taskId, { completed });
 }
 
+// Remove one task.
 export async function deleteTask(clientId, taskId, trainerId = null) {
   if (!clientId || !taskId || !db) {
     throw new Error("Missing required parameters: clientId or taskId");
@@ -766,6 +898,7 @@ export async function createNote(clientId, trainerId, noteData) {
   }
 }
 
+// Newest notes first.
 export async function getNotes(clientId, trainerId = null) {
   if (!clientId || !db) return [];
 
@@ -787,6 +920,7 @@ export async function getNotes(clientId, trainerId = null) {
   }
 }
 
+// Change fields on one note.
 export async function updateNote(clientId, noteId, updates, trainerId = null) {
   if (!clientId || !noteId || !db) {
     throw new Error("Missing required parameters: clientId or noteId");
@@ -803,6 +937,7 @@ export async function updateNote(clientId, noteId, updates, trainerId = null) {
   }
 }
 
+// Remove one note.
 export async function deleteNote(clientId, noteId, trainerId = null) {
   if (!clientId || !noteId || !db) {
     throw new Error("Missing required parameters: clientId or noteId");
@@ -828,21 +963,7 @@ export async function getWeightTrend(clientId, limitCount = 30) {
 
   try {
     const progressEntries = await getProgressHistory(clientId);
-    const weightData = progressEntries
-      // Drop check-ins with no weight (measurements-only entries) and any zero, which is a data
-      // error rather than a real reading — a 0 would wreck the chart's y-axis.
-      .filter((entry) => entry.weight != null && entry.weight > 0)
-      .map((entry) => ({
-        // vocab: toDate() = convert a Firestore Timestamp to a JS Date; the fallbacks cover entries
-        // written locally or still awaiting a server timestamp.
-        date: entry.createdAt?.toDate?.() || entry.createdAt || new Date(),
-        weight: Number(entry.weight),
-      }))
-      // slice AFTER filtering, so 30 usable points come back rather than 30 rows that might mostly
-      // have no weight. Entries are already newest-first, so this is "the 30 most recent".
-      .slice(0, limitCount);
-
-    return weightData;
+    return weightPointsFromProgress(progressEntries, limitCount);
   } catch (error) {
     console.error("Error getting weight trend:", error);
     reportCrashAutomaticallySync(error, "TrainerAppStart CRM - getWeightTrend");
@@ -850,6 +971,7 @@ export async function getWeightTrend(clientId, limitCount = 30) {
   }
 }
 
+// Count finished and unfinished tasks.
 export async function getTaskStats(clientId) {
   if (!clientId || !db) {
     return { total: 0, completed: 0, pending: 0 };
@@ -871,59 +993,28 @@ export async function getTaskStats(clientId) {
   }
 }
 
+// Weight trend, task counts, and days since the last check-in.
 export async function getClientAnalytics(clientId) {
-  if (!clientId || !db) {
-    return {
-      weightTrend: [],
-      taskStats: { total: 0, completed: 0, pending: 0 },
-      lastProgressDate: null,
-      daysSinceLastCheckIn: null,
-      progressEntriesCount: 0,
-    };
-  }
+  if (!clientId || !db) return emptyClientAnalytics();
 
   try {
-    // All three in parallel — they're independent, so awaiting them in sequence would triple the wait.
     const [weightTrend, taskStats, progressEntries] = await Promise.all([
       getWeightTrend(clientId),
       getTaskStats(clientId),
       getProgressHistory(clientId),
     ]);
-
-    let lastProgressDate = null;
-    let daysSinceLastCheckIn = null;
-
-    if (progressEntries.length > 0) {
-      // [0] is the most recent because getProgressHistory sorts newest-first.
-      const lastEntry = progressEntries[0];
-      lastProgressDate = lastEntry.createdAt?.toDate?.() || lastEntry.createdAt || null;
-
-      if (lastProgressDate) {
-        const now = new Date();
-        // Subtracting two Dates yields milliseconds; 1000*60*60*24 converts that to whole days.
-        // This powers the "hasn't checked in for N days" nudge on the dashboard.
-        const diffTime = now - lastProgressDate;
-        daysSinceLastCheckIn = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      }
-    }
-
+    const checkIn = latestCheckInSummary(progressEntries);
     return {
       weightTrend,
       taskStats,
-      lastProgressDate,
-      daysSinceLastCheckIn,
+      lastProgressDate: checkIn.lastProgressDate,
+      daysSinceLastCheckIn: checkIn.daysSinceLastCheckIn,
       progressEntriesCount: progressEntries.length,
     };
   } catch (error) {
     console.error("Error getting client analytics:", error);
     reportCrashAutomaticallySync(error, "TrainerAppStart CRM - getClientAnalytics");
-    return {
-      weightTrend: [],
-      taskStats: { total: 0, completed: 0, pending: 0 },
-      lastProgressDate: null,
-      daysSinceLastCheckIn: null,
-      progressEntriesCount: 0,
-    };
+    return emptyClientAnalytics();
   }
 }
 
@@ -934,88 +1025,12 @@ export async function checkWeeklyDataAvailability(userId) {
     throw new Error("Missing userId or db");
   }
 
+  const dateKeys = recentReportDateKeys(WEEKLY_REPORT_DAY_COUNT);
   try {
-    const today = new Date();
-    const daysWithData = [];
-    const dateKeys = [];
-
-    // Build the last 7 date keys, today backwards.
-    // vocab: toLocaleDateString("en-CA") = the en-CA locale formats dates as YYYY-MM-DD, which is
-    // exactly the document-id format daily logs use — a shortcut instead of manual padding.
-    // Manipulate here: the timezone is pinned to America/New_York so the report's "day" matches the
-    // rest of the app's day boundary regardless of where the trainer's phone is.
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-      dateKeys.push(dateKey);
-    }
-
-    const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
-
-    // Sequential reads: only 7 documents, and doing them one at a time keeps the error handling
-    // simple (any failure drops into the permission fallback below).
-    for (const dateKey of dateKeys) {
-      const docRef = doc(dailyLogsRef, dateKey);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        daysWithData.push({
-          date: dateKey,
-          hasWorkout: !!data.workout,
-          hasNutrition: !!data.nutrition,
-          hasWeight: !!data.weight,
-          hasMood: !!data.mood,
-          data,
-        });
-      }
-    }
-
-    return {
-      totalDays: 7,
-      daysWithData: daysWithData.length,
-      missingDays: 7 - daysWithData.length,
-      details: daysWithData,
-      // dateKeys was built newest-first, so the LAST entry is the oldest date — hence start/end
-      // being reversed relative to array order.
-      dateRange: {
-        start: dateKeys[dateKeys.length - 1],
-        end: dateKeys[0],
-      },
-    };
+    const daysWithData = await dailyLogRowsForKeys(userId, dateKeys);
+    return weekAvailabilityReport(dateKeys, daysWithData);
   } catch (error) {
-    // Permission denied means the client hasn't granted access to their logs — a normal state, not a
-    // crash. Firestore reports it as a code on some paths and only in the message on others, so we
-    // check both, then return an honest "0 of 7 days" result instead of throwing.
-    const code = error?.code;
-    const msg = String(error?.message || error || "").toLowerCase();
-    const permissionDenied = code === "permission-denied" || msg.includes("missing or insufficient permissions");
-
-    if (permissionDenied) {
-      const today = new Date();
-      const dateKeys = [];
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-        dateKeys.push(dateKey);
-      }
-      return {
-        totalDays: 7,
-        daysWithData: 0,
-        missingDays: 7,
-        details: [],
-        dateRange: {
-          start: dateKeys[dateKeys.length - 1],
-          end: dateKeys[0],
-        },
-      };
-    }
-
-    console.error("Error checking weekly data availability:", error);
-    reportCrashAutomaticallySync(error, "TrainerAppStart CRM - checkWeeklyDataAvailability");
-    throw error;
+    return weeklyAvailabilityFailed(error, dateKeys);
   }
 }
 
@@ -1023,6 +1038,18 @@ export async function checkWeeklyDataAvailability(userId) {
 // END CLIENT CRM SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+
+function TrainerShellLayout({ shell }) {
+  return (
+    <TrainerAppStartShellProvider value={shell}>
+      <CrashCatcher>
+        <NavigationContainer ref={rootNavigationRef} webLinks={trainerLinking}>
+          <TrainerScreenList />
+        </NavigationContainer>
+      </CrashCatcher>
+    </TrainerAppStartShellProvider>
+  );
+}
 
 // Thin wrapper whose only job is stacking the providers the trainer UI depends on.
 // Order matters outside-in: styles first (everything themes off it), then subscription (gates
@@ -1055,7 +1082,7 @@ function TrainerAppStartContent({ user }) {
 
   // Same pattern as the client shell: one hook owns every "which panel is open" flag and all the
   // open*/handle* functions, and the big destructure below just unpacks it.
-  const nav = goToTrainerScreen();
+  const trainerNavigation = goToTrainerScreen();
   const {
     showTrainerMessaging,
     setShowTrainerMessaging,
@@ -1103,7 +1130,7 @@ function TrainerAppStartContent({ user }) {
     onNavigate,
     navProviderProps,
     rootGoBack,
-  } = nav;
+  } = trainerNavigation;
   // Several separate "selected client" slots rather than one shared value. That's intentional: the
   // client you're viewing in the dashboard, the one you're messaging, and the one highlighted in nav
   // are different questions, and collapsing them into one would make opening a chat also change the
@@ -1312,9 +1339,9 @@ function TrainerAppStartContent({ user }) {
           getDoc(doc(db, 'users', user.uid)),
           getDoc(doc(db, 'trainers', user.uid)),
         ]);
-        const u = userDoc.exists() ? userDoc.data() : null;
-        const t = trainerDoc.exists() ? trainerDoc.data() : null;
-        setUserName(u?.firstName || u?.name || t?.name || user?.displayName || 'Coach');
+        const userProfile = userDoc.exists() ? userDoc.data() : null;
+        const trainerProfile = trainerDoc.exists() ? trainerDoc.data() : null;
+        setUserName(userProfile?.firstName || userProfile?.name || trainerProfile?.name || user?.displayName || 'Coach');
       } catch {
         setUserName(user?.displayName || 'Coach');
       }
@@ -1563,19 +1590,6 @@ function TrainerAppStartContent({ user }) {
     trainerDocsRefreshKey,
   ]);
 
-  // Almost no UI here by design — the navigator renders every trainer screen, and they pull what
-  // they need out of the shell context.
-  return (
-    <TrainerAppStartShellProvider value={shell}>
-      {/* Catches a render crash anywhere below and shows a fallback instead of a white screen. */}
-      <CrashCatcher>
-        {/* rootNavigationRef lets non-React code (notification taps, auth changes) navigate;
-            trainerLinking maps coachconnect://trainer/... deep links onto these screens. */}
-        <NavigationContainer ref={rootNavigationRef} webLinks={trainerLinking}>
-          <TrainerScreenList />
-        </NavigationContainer>
-      </CrashCatcher>
-    </TrainerAppStartShellProvider>
-  );
+  return <TrainerShellLayout shell={shell} />;
 }
 

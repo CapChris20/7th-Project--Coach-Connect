@@ -1,13 +1,6 @@
-/**
- * Profile Screen
- *
- * Purpose: UI screen or component: Profile Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/profile
- * Key exports: ViewMyMyProfileScreen
- *
- * @file-header
- */
+// Profile screen for a client or a trainer: photo, personal rows, and account actions.
+// Flow: read the signed-in user, then save one field or a certification sheet.
+// Used by the client profile stack and the trainer app. userRole "Client" stays that letter.
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -86,7 +79,29 @@ import {
 } from '../../helpers/showSetupAnswers';
 import { fillTraineeProfile } from '../../helpers/fillTraineeProfile';
 
-/** Unified profile chrome — CoachConnect warm accent (dark pink → dark orange). */
+// ===== NAMED CONSTANTS =====
+
+const SHELL_NAV_EXTRA_INSET = 24;
+const ENTRANCE_FADE_MS = 420;
+const ENTRANCE_STAGGER_MS = 90;
+const BYTES_PER_KIBIBYTE = 1024;
+const KIBIBYTES_PER_MEBIBYTE = 1024;
+const MAX_CERT_FILE_MEBIBYTES = 10;
+const MAX_CERT_FILE_BYTES = MAX_CERT_FILE_MEBIBYTES * BYTES_PER_KIBIBYTE * KIBIBYTES_PER_MEBIBYTE;
+const BIO_PREVIEW_MAX_CHARS = 180;
+const BIO_PREVIEW_CUT_CHARS = 177;
+const USERS_COLLECTION = 'users';
+const PROFILE_PHOTO_FOLDER = 'profile_photos';
+const CERT_STATUS_SUCCESS = 'success';
+const CERT_STATUS_DANGER = 'danger';
+const CERT_SUCCESS_BORDER = 'rgba(22,163,74,0.35)';
+const CERT_DANGER_BORDER = 'rgba(220,38,38,0.35)';
+const CERT_SUCCESS_FILL = 'rgba(22,163,74,0.08)';
+const CERT_DANGER_FILL = 'rgba(220,38,38,0.08)';
+const CERT_SUCCESS_TEXT = '#16a34a';
+const CERT_DANGER_TEXT = '#dc2626';
+const EMPTY_PROFILE_MARK = '—';
+
 const PROFILE = {
   purple: '#BE185D',
   pink: '#C2410C',
@@ -117,22 +132,25 @@ const LIGHT = {
   toggleOff: 'rgba(10,10,15,0.18)',
 };
 
+// ===== HELPER FUNCTIONS =====
+
 function hexToRgba(hex, alpha) {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || ''));
-  if (!m) return `rgba(255,107,157,${alpha})`;
-  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`;
+  const hexMatch = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || ''));
+  if (!hexMatch) return `rgba(255,107,157,${alpha})`;
+  return `rgba(${parseInt(hexMatch[1], 16)},${parseInt(hexMatch[2], 16)},${parseInt(hexMatch[3], 16)},${alpha})`;
 }
 
 // ============================================================================
 // FIELD PARSING
 // ============================================================================
 
-function coerceNumber(v) {
-  if (v == null || v === '') return null;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string') {
-    const n = parseFloat(String(v).replace(/,/g, ''));
-    return Number.isFinite(n) ? n : null;
+function coerceNumber(rawValue) {
+  if (rawValue == null || rawValue === '') return null;
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+  if (typeof rawValue === 'string') {
+    const parsedNumber = parseFloat(String(rawValue).replace(/,/g, ''));
+    if (!Number.isFinite(parsedNumber)) return null;
+    return parsedNumber;
   }
   return null;
 }
@@ -141,30 +159,33 @@ function coerceNumber(v) {
  * Height in Firestore may be a number (inches), string, or legacy object shape.
  * Returns display string, seed for the edit field (inches as number string), and total inches if known.
  */
-function parseHeightForProfile(h) {
-  if (h == null || h === '') return { display: '—', editSeed: '', inches: null };
-  if (typeof h === 'number' && Number.isFinite(h)) {
-    return { display: formatInchesAsFeet(h), editSeed: String(h), inches: h };
+function parseHeightForProfile(heightValue) {
+  if (heightValue == null || heightValue === '') return { display: '—', editSeed: '', inches: null };
+  if (typeof heightValue === 'number' && Number.isFinite(heightValue)) {
+    return { display: formatInchesAsFeet(heightValue), editSeed: String(heightValue), inches: heightValue };
   }
-  if (typeof h === 'string') {
-    const n = coerceNumber(h);
-    if (n != null) return { display: formatInchesAsFeet(n), editSeed: String(n), inches: n };
-    const t = h.trim();
-    return t ? { display: t, editSeed: t, inches: null } : { display: '—', editSeed: '', inches: null };
+  if (typeof heightValue === 'string') {
+    const parsedInches = coerceNumber(heightValue);
+    if (parsedInches != null) {
+      return { display: formatInchesAsFeet(parsedInches), editSeed: String(parsedInches), inches: parsedInches };
+    }
+    const trimmedHeight = heightValue.trim();
+    if (trimmedHeight) return { display: trimmedHeight, editSeed: trimmedHeight, inches: null };
+    return { display: '—', editSeed: '', inches: null };
   }
-  if (typeof h === 'object' && h !== null && !Array.isArray(h)) {
-    const cm = coerceNumber(h.cm ?? h.CM ?? h.centimeters ?? h.cmTotal);
+  if (typeof heightValue === 'object' && heightValue !== null && !Array.isArray(heightValue)) {
+    const cm = coerceNumber(heightValue.cm ?? heightValue.CM ?? heightValue.centimeters ?? heightValue.cmTotal);
     if (cm != null) {
       const inches = cm / 2.54;
       return { display: `${cm} cm (${formatInchesAsFeet(inches)})`, editSeed: String(Math.round(inches * 10) / 10), inches };
     }
-    const ft = coerceNumber(h.feet ?? h.ft ?? h.f);
-    const inch = coerceNumber(h.inches ?? h.in ?? h.inch ?? h.ins);
+    const ft = coerceNumber(heightValue.feet ?? heightValue.ft ?? heightValue.f);
+    const inch = coerceNumber(heightValue.inches ?? heightValue.in ?? heightValue.inch ?? heightValue.ins);
     if (ft != null || inch != null) {
       const totalIn = (ft ?? 0) * 12 + (inch ?? 0);
       return { display: formatInchesAsFeet(totalIn), editSeed: String(Math.round(totalIn * 10) / 10), inches: totalIn };
     }
-    const total = coerceNumber(h.totalInches ?? h.total_inches ?? h.inchesTotal ?? h.value);
+    const total = coerceNumber(heightValue.totalInches ?? heightValue.total_inches ?? heightValue.inchesTotal ?? heightValue.value);
     if (total != null) return { display: formatInchesAsFeet(total), editSeed: String(total), inches: total };
   }
   return { display: '—', editSeed: '', inches: null };
@@ -183,11 +204,11 @@ function formatInchesAsFeet(totalIn) {
 }
 
 function initialsFromName(name) {
-  const s = String(name || '').trim();
-  if (!s) return 'CC';
-  return s
+  const nameText = String(name || '').trim();
+  if (!nameText) return 'CC';
+  return nameText
     .split(/\s+/)
-    .map((p) => p[0])
+    .map((namePart) => namePart[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
@@ -477,14 +498,20 @@ function TrainerStatsStrip({ clientCount, years, rating, theme, isDark }) {
   );
 }
 
+function paymentStatusLabel(status) {
+  if (status === 'active') return 'Payouts active';
+  if (status === 'pending') return 'Verification in progress';
+  return 'Complete payout setup';
+}
+
+function paymentButtonLabel(status) {
+  if (status === 'active') return 'Manage';
+  return 'Set Up';
+}
+
 function TrainerPaymentCard({ status, onPress, theme, isDark }) {
-  const label =
-    status === 'active'
-      ? 'Payouts active'
-      : status === 'pending'
-        ? 'Verification in progress'
-        : 'Complete payout setup';
-  const cta = status === 'active' ? 'Manage' : 'Set Up';
+  const label = paymentStatusLabel(status);
+  const cta = paymentButtonLabel(status);
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
       <LinearGradient colors={['#7C2D12', '#C2410C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.paymentCard}>
@@ -550,19 +577,19 @@ const YEARS_COACHING_LABELS = {
   '10_plus': '10+ years',
 };
 
-function formatYearsCoaching(v) {
-  if (v == null || v === '') return '—';
-  const key = String(v);
-  return YEARS_COACHING_LABELS[key] || key.replace(/_/g, ' ');
+function formatYearsCoaching(yearsValue) {
+  if (yearsValue == null || yearsValue === '') return '—';
+  const yearsKey = String(yearsValue);
+  return YEARS_COACHING_LABELS[yearsKey] || yearsKey.replace(/_/g, ' ');
 }
 
-function formatSpecialtyList(arr) {
-  if (!Array.isArray(arr) || arr.length === 0) return '—';
-  return arr
-    .map((s) =>
-      String(s || '')
+function formatSpecialtyList(specialtyList) {
+  if (!Array.isArray(specialtyList) || specialtyList.length === 0) return '—';
+  return specialtyList
+    .map((specialty) =>
+      String(specialty || '')
         .replace(/_/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
     )
     .join(', ');
 }
@@ -582,9 +609,144 @@ function formatAvailability(status) {
   return status ? String(status).replace(/_/g, ' ') : '—';
 }
 
-// ============================================================================
-// MAIN SCREEN
-// ============================================================================
+const CERT_FILE_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+];
+
+const NUMBER_PROFILE_FIELDS = ['height', 'weight', 'age', 'daysPerWeek'];
+
+function genderFromTypedText(raw) {
+  const genderSlug = raw.toLowerCase().replace(/\s+/g, '_').replace(/'/g, '');
+  if (genderSlug === 'male' || genderSlug === 'm') return 'male';
+  if (genderSlug === 'female' || genderSlug === 'f') return 'female';
+  if (genderSlug === 'other') return 'other';
+  if (genderSlug === 'prefer_not_to_say' || genderSlug === 'prefernottosay') return 'prefer_not_to_say';
+  if (raw === '') return null;
+  return raw;
+}
+
+function numberFromTypedText(raw) {
+  if (raw === '') return null;
+  const numericValue = Number(raw);
+  if (!Number.isFinite(numericValue)) return null;
+  return numericValue;
+}
+
+function equipmentFromTypedText(raw) {
+  const parts = raw
+    .split(',')
+    .map((piece) => piece.trim().toLowerCase().replace(/\s+/g, '_'))
+    .filter(Boolean);
+  return {
+    equipmentAccess: parts.length ? parts : null,
+    equipment: parts.length ? parts.join(', ') : null,
+  };
+}
+
+function profilePayloadForField(editKey, raw) {
+  const payload = { updatedAt: new Date().toISOString() };
+  if (editKey === 'name') {
+    const trimmed = raw === '' ? null : raw;
+    const parts = trimmed ? trimmed.split(/\s+/).filter(Boolean) : [];
+    payload.name = trimmed;
+    payload.firstName = parts[0] || '';
+    payload.lastName = parts.slice(1).join(' ') || '';
+    return payload;
+  }
+  if (editKey === 'gender') {
+    payload.gender = genderFromTypedText(raw);
+    return payload;
+  }
+  if (NUMBER_PROFILE_FIELDS.includes(editKey)) {
+    payload[editKey] = numberFromTypedText(raw);
+    return payload;
+  }
+  if (editKey === 'equipment') {
+    return { ...payload, ...equipmentFromTypedText(raw) };
+  }
+  payload[editKey] = raw === '' ? null : raw;
+  return payload;
+}
+
+async function pickCertificationFile() {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: CERT_FILE_TYPES,
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled) return null;
+  const file = result.assets?.[0];
+  if (!file?.uri) {
+    Alert.alert('Upload failed', 'Could not read the selected file.');
+    return null;
+  }
+  if (file.size != null && file.size > MAX_CERT_FILE_BYTES) {
+    Alert.alert('File too large', 'Certification sheets must be 10MB or smaller.');
+    return null;
+  }
+  return file;
+}
+
+function certificationLooksLikeImage(file, meta) {
+  const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  return /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''));
+}
+
+async function checkImageCertification({ file, meta, url, trainerId, trainerName }) {
+  const verification = await checkTrainerCertificate({
+    trainerId,
+    trainerName,
+    localUri: file.uri,
+    imageUrl: url,
+    mediaType: file.mimeType || 'image/jpeg',
+    storagePath: meta?.storagePath,
+    fileName: meta?.fileName,
+  });
+  const nextStatus = verification.status || 'manual_review';
+  let verifyMessage =
+    verification.userMessage ||
+    certificationStatusLabel(nextStatus) ||
+    'Certification sheet added to your profile.';
+  const firstIssue = verification.analysis?.issues?.[0];
+  if (firstIssue && verification.status === 'rejected') {
+    verifyMessage = `${verifyMessage}\n${firstIssue}`;
+  }
+  return { nextStatus, verifyMessage };
+}
+
+async function reviewUploadedCertification({
+  file,
+  meta,
+  url,
+  trainerId,
+  trainerName,
+  setCertVerifyBusy,
+  setCertVerifyStatus,
+}) {
+  if (!certificationLooksLikeImage(file, meta)) {
+    setCertVerifyStatus('manual_review');
+    return 'Uploaded — Under review. Photos (JPG/PNG) get instant AI checks; other file types are reviewed within 24–48 hours.';
+  }
+  setCertVerifyBusy(true);
+  setCertVerifyStatus('checking');
+  try {
+    const check = await checkImageCertification({ file, meta, url, trainerId, trainerName });
+    setCertVerifyStatus(check.nextStatus);
+    return check.verifyMessage;
+  } catch (verifyErr) {
+    if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
+    setCertVerifyStatus('manual_review');
+    return 'Uploaded — Under review. AI check was unavailable; we’ll review it within 24–48 hours.';
+  } finally {
+    setCertVerifyBusy(false);
+  }
+}
+
+// ===== MAIN FUNCTION =====
 
 export function ViewMyMyProfileScreen({
   isDark: isDarkProp,
@@ -607,7 +769,7 @@ export function ViewMyMyProfileScreen({
 }) {
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
-  const shellNavInset = useShellBottomNavInset(24);
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_EXTRA_INSET);
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
   const theme = isDark ? DARK : LIGHT;
   const [notificationsOn, setNotificationsOn] = useState(true);
@@ -634,11 +796,11 @@ export function ViewMyMyProfileScreen({
   const trainingAnim = useMemo(() => new Animated.Value(0), []);
   const accountAnim = useMemo(() => new Animated.Value(0), []);
   React.useEffect(() => {
-    Animated.stagger(90, [
-      Animated.timing(heroAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.timing(personalAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.timing(trainingAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.timing(accountAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
+    Animated.stagger(ENTRANCE_STAGGER_MS, [
+      Animated.timing(heroAnim, { toValue: 1, duration: ENTRANCE_FADE_MS, useNativeDriver: true }),
+      Animated.timing(personalAnim, { toValue: 1, duration: ENTRANCE_FADE_MS, useNativeDriver: true }),
+      Animated.timing(trainingAnim, { toValue: 1, duration: ENTRANCE_FADE_MS, useNativeDriver: true }),
+      Animated.timing(accountAnim, { toValue: 1, duration: ENTRANCE_FADE_MS, useNativeDriver: true }),
     ]).start();
   }, [heroAnim, personalAnim, trainingAnim, accountAnim]);
 
@@ -665,36 +827,18 @@ export function ViewMyMyProfileScreen({
   ]);
 
   const handleAddCertification = async () => {
-    const tid = auth?.currentUser?.uid;
-    if (!tid) {
+    const trainerId = auth?.currentUser?.uid;
+    if (!trainerId) {
       Alert.alert('Sign in required', 'Sign in again to upload certifications.');
       return;
     }
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'image/jpeg',
-          'image/png',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/msword',
-        ],
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const file = result.assets?.[0];
-      if (!file?.uri) {
-        Alert.alert('Upload failed', 'Could not read the selected file.');
-        return;
-      }
-      if (file.size != null && file.size > 10 * 1024 * 1024) {
-        Alert.alert('File too large', 'Certification sheets must be 10MB or smaller.');
-        return;
-      }
+      const file = await pickCertificationFile();
+      if (!file) return;
       setCertUploading(true);
       setCertProgress(0);
       const { meta, url } = await uploadTrainerCertificationSheet(
-        tid,
+        trainerId,
         {
           localUri: file.uri,
           filename: file.name || 'certification.pdf',
@@ -703,7 +847,7 @@ export function ViewMyMyProfileScreen({
         },
         (pct) => setCertProgress(pct),
       );
-      setCertSheets((prev) => [...prev, meta]);
+      setCertSheets((previousSheets) => [...previousSheets, meta]);
       onProfileSaved?.();
 
       const trainerName =
@@ -711,46 +855,19 @@ export function ViewMyMyProfileScreen({
         String(userData?.name || onboardingData?.name || auth?.currentUser?.displayName || '').trim() ||
         'Trainer';
 
-      let verifyMessage = 'Certification sheet added to your profile.';
-      const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
-      if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''))) {
-        try {
-          setCertVerifyBusy(true);
-          setCertVerifyStatus('checking');
-          const verification = await checkTrainerCertificate({
-            trainerId: tid,
-            trainerName,
-            localUri: file.uri,
-            imageUrl: url,
-            mediaType: file.mimeType || 'image/jpeg',
-            storagePath: meta?.storagePath,
-            fileName: meta?.fileName,
-          });
-          const nextStatus = verification.status || 'manual_review';
-          setCertVerifyStatus(nextStatus);
-          verifyMessage =
-            verification.userMessage ||
-            certificationStatusLabel(nextStatus) ||
-            verifyMessage;
-          if (verification.analysis?.issues?.length && verification.status === 'rejected') {
-            verifyMessage = `${verifyMessage}\n${verification.analysis.issues[0]}`;
-          }
-        } catch (verifyErr) {
-          if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
-          setCertVerifyStatus('manual_review');
-          verifyMessage = 'Uploaded — Under review. AI check was unavailable; we’ll review it within 24–48 hours.';
-        } finally {
-          setCertVerifyBusy(false);
-        }
-      } else {
-        setCertVerifyStatus('manual_review');
-        verifyMessage =
-          'Uploaded — Under review. Photos (JPG/PNG) get instant AI checks; other file types are reviewed within 24–48 hours.';
-      }
+      const verifyMessage = await reviewUploadedCertification({
+        file,
+        meta,
+        url,
+        trainerId,
+        trainerName,
+        setCertVerifyBusy,
+        setCertVerifyStatus,
+      });
 
       Alert.alert('Certification', verifyMessage);
-    } catch (e) {
-      Alert.alert('Upload failed', e?.message || 'Could not upload certification. Try again.');
+    } catch (uploadError) {
+      Alert.alert('Upload failed', uploadError?.message || 'Could not upload certification. Try again.');
     } finally {
       setCertUploading(false);
       setCertProgress(0);
@@ -785,12 +902,13 @@ export function ViewMyMyProfileScreen({
   const profileDoc = isTrainer ? trainerDoc : clientProfile;
 
   const displayName = useMemo(() => {
-    const u = auth?.currentUser;
+    const signedInUser = auth?.currentUser;
     const first = userData?.firstName ? String(userData.firstName).trim() : '';
     const last = userData?.lastName ? String(userData.lastName).trim() : '';
     const fromUser = `${first} ${last}`.trim();
     const fromDoc = String(clientProfile?.name || onboardingData?.name || '').trim();
-    return (fromUser || fromDoc || String(u?.displayName || '').trim() || 'Your Profile').trim();
+    const accountName = signedInUser ? String(signedInUser.displayName || '').trim() : '';
+    return (fromUser || fromDoc || accountName || 'Your Profile').trim();
   }, [userData?.firstName, userData?.lastName, clientProfile?.name, onboardingData?.name]);
 
   const handle = useMemo(() => {
@@ -800,13 +918,13 @@ export function ViewMyMyProfileScreen({
 
   const profileHeadline = useMemo(() => {
     if (isTrainer) {
-      const b = String(trainerDoc?.trainerProfileBio || '').trim();
-      if (b.length > 180) return `${b.slice(0, 177)}…`;
-      if (b) return b;
+      const bioText = String(trainerDoc?.trainerProfileBio || '').trim();
+      if (bioText.length > BIO_PREVIEW_MAX_CHARS) return `${bioText.slice(0, BIO_PREVIEW_CUT_CHARS)}…`;
+      if (bioText) return bioText;
       return 'Add a short public line about who you are — it appears on your profile.';
     }
-    const g = String(clientProfile?.primaryGoal || '').trim();
-    if (g) return showSetupAnswers(g, '');
+    const goalText = String(clientProfile?.primaryGoal || '').trim();
+    if (goalText) return showSetupAnswers(goalText, '');
     return 'Keep your details current for a tailored experience.';
   }, [isTrainer, trainerDoc?.trainerProfileBio, clientProfile?.primaryGoal, onboardingData?.primaryGoal]);
 
@@ -853,11 +971,11 @@ export function ViewMyMyProfileScreen({
       const blob = await response.blob();
 
       const storage = getStorage();
-      const storageRef = ref(storage, `profile_photos/${uid}`);
+      const storageRef = ref(storage, `${PROFILE_PHOTO_FOLDER}/${uid}`);
       await uploadBytes(storageRef, blob);
       const downloadURL = await getDownloadURL(storageRef);
 
-      await setDoc(doc(db, 'users', uid), { photoURL: downloadURL }, { merge: true });
+      await setDoc(doc(db, USERS_COLLECTION, uid), { photoURL: downloadURL }, { merge: true });
 
       try {
         await syncTrainerMarketplaceDoc(db, uid, {
@@ -877,23 +995,23 @@ export function ViewMyMyProfileScreen({
     }
   };
 
-  const formatGender = (g) => {
-    const s = String(g || '').trim();
-    if (!s) return '—';
-    if (s === 'male') return 'Male';
-    if (s === 'female') return 'Female';
-    if (s === 'prefer_not_to_say') return 'Prefer not to say';
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  };
+function formatGender(genderValue) {
+  const genderText = String(genderValue || '').trim();
+  if (!genderText) return '—';
+  if (genderText === 'male') return 'Male';
+  if (genderText === 'female') return 'Female';
+  if (genderText === 'prefer_not_to_say') return 'Prefer not to say';
+  return genderText.charAt(0).toUpperCase() + genderText.slice(1);
+}
 
   const formatHeight = (h) => parseHeightForProfile(h).display;
 
-  const formatWeight = (w) => {
-    if (w == null || w === '') return '—';
-    const n = Number(w);
-    if (Number.isFinite(n)) return `${n}`;
-    return String(w);
-  };
+function formatWeight(weightValue) {
+  if (weightValue == null || weightValue === '') return '—';
+  const weightNumber = Number(weightValue);
+  if (Number.isFinite(weightNumber)) return `${weightNumber}`;
+  return String(weightValue);
+}
 
   const getEditSeedForKey = (key) => {
     if (key === 'height') return parseHeightForProfile(profileDoc?.height).editSeed;
@@ -952,36 +1070,7 @@ export function ViewMyMyProfileScreen({
     try {
       setSavingField(true);
       const raw = String(editValue ?? '').trim();
-      const updatedAt = new Date().toISOString();
-      let payload = { updatedAt };
-
-      if (editKey === 'name') {
-        const trimmed = raw === '' ? null : raw;
-        const parts = trimmed ? trimmed.split(/\s+/).filter(Boolean) : [];
-        payload.name = trimmed;
-        payload.firstName = parts[0] || '';
-        payload.lastName = parts.slice(1).join(' ') || '';
-      } else if (editKey === 'gender') {
-        const g = raw.toLowerCase().replace(/\s+/g, '_').replace(/'/g, '');
-        if (g === 'male' || g === 'm') payload.gender = 'male';
-        else if (g === 'female' || g === 'f') payload.gender = 'female';
-        else if (g === 'prefer_not_to_say' || g === 'prefernottosay' || g === 'other') payload.gender = g === 'other' ? 'other' : 'prefer_not_to_say';
-        else payload.gender = raw === '' ? null : raw;
-      } else if (editKey === 'height' || editKey === 'weight' || editKey === 'age' || editKey === 'daysPerWeek') {
-        const n = raw === '' ? null : Number(raw);
-        payload[editKey] = Number.isFinite(n) ? n : null;
-      } else if (editKey === 'equipment') {
-        const parts = raw
-          .split(',')
-          .map((p) => p.trim().toLowerCase().replace(/\s+/g, '_'))
-          .filter(Boolean);
-        payload.equipmentAccess = parts.length ? parts : null;
-        payload.equipment = parts.length ? parts.join(', ') : null;
-      } else if (editKey === 'location' || editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' || editKey === 'instagram' || editKey === 'website') {
-        payload[editKey] = raw === '' ? null : raw;
-      } else {
-        payload[editKey] = raw === '' ? null : raw;
-      }
+      const payload = profilePayloadForField(editKey, raw);
 
       await setDoc(doc(db, 'users', uid), payload, { merge: true });
 

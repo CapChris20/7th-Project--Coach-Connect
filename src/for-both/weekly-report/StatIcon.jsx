@@ -19,9 +19,11 @@ const DEFAULT_ICON_SIZE = 36;
 const DEFAULT_IMAGE_SIZE = 20;
 const RING_INSET = 2;
 const MIN_INNER_RADIUS = 8;
+const RING_PADDING = 1.5;
 const DARK_MODE = 'dark';
 const DARK_INNER_COLOR = 'rgba(12,10,20,0.98)';
 const LIGHT_INNER_COLOR = '#FFFFFF';
+const FALLBACK_METRIC_KEY = 'energy';
 
 const EXTRA_METRIC_VISUAL = {
   nutrition: {
@@ -50,7 +52,18 @@ const EXTRA_METRIC_VISUAL = {
  * @returns {{ source: number, gradient: string[] }}
  */
 export function getReportMetricVisual(metricKey) {
-  return EXTRA_METRIC_VISUAL[metricKey] || WR_METRIC_VISUAL[metricKey] || WR_METRIC_VISUAL.energy;
+  if (EXTRA_METRIC_VISUAL[metricKey]) return EXTRA_METRIC_VISUAL[metricKey];
+  if (WR_METRIC_VISUAL[metricKey]) return WR_METRIC_VISUAL[metricKey];
+  return WR_METRIC_VISUAL[FALLBACK_METRIC_KEY];
+}
+
+function innerCircleRadius(size) {
+  return Math.max(MIN_INNER_RADIUS, size / 2 - RING_INSET);
+}
+
+function ringBackgroundColor(mode) {
+  if (mode === DARK_MODE) return DARK_INNER_COLOR;
+  return LIGHT_INNER_COLOR;
 }
 
 // ===== MAIN FUNCTION =====
@@ -61,22 +74,23 @@ export function getReportMetricVisual(metricKey) {
 export function StatIcon({ metricKey, size = DEFAULT_ICON_SIZE, imageSize = DEFAULT_IMAGE_SIZE }) {
   const { mode } = useTheme();
   const metricVisual = getReportMetricVisual(metricKey);
-  const innerRadius = Math.max(MIN_INNER_RADIUS, size / 2 - RING_INSET);
-  const isDarkMode = mode === DARK_MODE;
+  const innerRadius = innerCircleRadius(size);
+  const ringRadius = innerRadius + RING_INSET;
+  const fillColor = ringBackgroundColor(mode);
 
   return (
     <LinearGradient
       colors={metricVisual.gradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.ring, { width: size, height: size, borderRadius: innerRadius + RING_INSET }]}
+      style={[styles.ring, { width: size, height: size, borderRadius: ringRadius }]}
     >
       <View
         style={[
           styles.inner,
           {
             borderRadius: innerRadius,
-            backgroundColor: isDarkMode ? DARK_INNER_COLOR : LIGHT_INNER_COLOR,
+            backgroundColor: fillColor,
           },
         ]}
       >
@@ -88,7 +102,7 @@ export function StatIcon({ metricKey, size = DEFAULT_ICON_SIZE, imageSize = DEFA
 
 const styles = StyleSheet.create({
   ring: {
-    padding: 1.5,
+    padding: RING_PADDING,
   },
   inner: {
     flex: 1,

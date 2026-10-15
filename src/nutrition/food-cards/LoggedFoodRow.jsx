@@ -9,6 +9,8 @@ import { foodCardText } from './foodCardText';
 
 // ===== NAMED CONSTANTS =====
 
+const ROW_BOTTOM_GAP = 10;
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -64,6 +66,35 @@ function deleteHandlerForLoggedFood(onRemove, log) {
   return () => onRemove(log.id);
 }
 
+/**
+ * Build the FoodCard prop bag so the main component stays a short checklist.
+ * @param {object} options
+ * @returns {object}
+ */
+function buildLoggedFoodCardProps({
+  food,
+  permanentlyExpanded,
+  isExpanded,
+  isDark,
+  log,
+  onEdit,
+  onRemove,
+  onBookmark,
+  setIsExpanded,
+}) {
+  return {
+    food,
+    expanded: isRowExpanded(permanentlyExpanded, isExpanded),
+    permanentlyExpanded,
+    embedded: true,
+    isDark,
+    onToggle: expansionToggleHandler(permanentlyExpanded, setIsExpanded),
+    onEdit: editHandlerForLoggedFood(onEdit, log),
+    onDelete: deleteHandlerForLoggedFood(onRemove, log),
+    onBookmark,
+  };
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -89,30 +120,35 @@ export default function LoggedFoodRow({
   style,
   permanentlyExpanded = false,
 }) {
+  // 1. Remember expand/collapse unless the parent forces it open.
   const [isExpanded, setIsExpanded] = useState(permanentlyExpanded);
-  // vocab: useMemo = reuse this result until log or amount changes, so parent re-renders do not rebuild the card text.
+
+  // 2. vocab: useMemo = reuse card text until log or amount changes.
   const food = useMemo(() => foodCardText(log, amount), [log, amount]);
+
+  // 3. Wire handlers once, then paint the embedded card.
+  const cardProps = buildLoggedFoodCardProps({
+    food,
+    permanentlyExpanded,
+    isExpanded,
+    isDark,
+    log,
+    onEdit,
+    onRemove,
+    onBookmark,
+    setIsExpanded,
+  });
 
   return (
     <View style={[styles.wrap, style]}>
       {/* embedded asks FoodCard for the in-section palette. The meal section already paints the background. */}
-      <FoodCard
-        food={food}
-        expanded={isRowExpanded(permanentlyExpanded, isExpanded)}
-        permanentlyExpanded={permanentlyExpanded}
-        embedded
-        isDark={isDark}
-        onToggle={expansionToggleHandler(permanentlyExpanded, setIsExpanded)}
-        onEdit={editHandlerForLoggedFood(onEdit, log)}
-        onDelete={deleteHandlerForLoggedFood(onRemove, log)}
-        onBookmark={onBookmark}
-      />
+      <FoodCard {...cardProps} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: 10,
+    marginBottom: ROW_BOTTOM_GAP,
   },
 });

@@ -21,8 +21,8 @@ const EMPTY_LOG_DATA = '';
  * @returns {*}
  */
 function logPayloadOrBlank(logData) {
-  if (logData !== undefined) return logData;
-  return EMPTY_LOG_DATA;
+  if (logData === undefined) return EMPTY_LOG_DATA;
+  return logData;
 }
 
 /**

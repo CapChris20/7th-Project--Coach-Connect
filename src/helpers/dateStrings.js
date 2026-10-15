@@ -18,9 +18,23 @@ const DATE_KEY_LOCALE = 'en-CA';
  * @returns {string}
  */
 function readProfileTimeZone(profile) {
-  return String(
-    profile?.timezone || profile?.timeZone || profile?.workoutReminder?.timeZone || '',
-  ).trim();
+  const fromTimezone = profile?.timezone;
+  const fromTimeZone = profile?.timeZone;
+  const fromReminder = profile?.workoutReminder?.timeZone;
+  return String(fromTimezone || fromTimeZone || fromReminder || '').trim();
+}
+
+function formatDateKeyInTimeZone(date, timeZone) {
+  return new Date(date).toLocaleDateString(DATE_KEY_LOCALE, { timeZone });
+}
+
+function tryProfileDateKey(date, profileTimeZone) {
+  try {
+    return formatDateKeyInTimeZone(date, profileTimeZone);
+  } catch {
+    // An unrecognized timezone throws. Fall back so a bad profile cannot break the caller.
+    return getLocalDateKey(date);
+  }
 }
 
 // ===== MAIN FUNCTION =====
@@ -40,7 +54,7 @@ export function getClientDateKey(date = new Date()) {
  * @returns {string}
  */
 export function getDateKey(timeZone = DEFAULT_TIME_ZONE) {
-  return new Date().toLocaleDateString(DATE_KEY_LOCALE, { timeZone });
+  return formatDateKeyInTimeZone(new Date(), timeZone);
 }
 
 /**
@@ -52,12 +66,7 @@ export function getDateKey(timeZone = DEFAULT_TIME_ZONE) {
 export function getProfileDateKey(profile, date = new Date()) {
   const profileTimeZone = readProfileTimeZone(profile);
   if (!profileTimeZone) return getLocalDateKey(date);
-  try {
-    return new Date(date).toLocaleDateString(DATE_KEY_LOCALE, { timeZone: profileTimeZone });
-  } catch (_) {
-    // An unrecognized timezone throws. Fall back so a bad profile cannot break the caller.
-    return getLocalDateKey(date);
-  }
+  return tryProfileDateKey(date, profileTimeZone);
 }
 
 export default getDateKey;

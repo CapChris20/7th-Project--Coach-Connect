@@ -1,18 +1,14 @@
-/**
- * Premium Stats Section
- *
- * Purpose: UI screen or component: Premium Stats Section. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: ColorBorderShell, TodayStatsCards
- *
- * @file-header
- */
+// Today's calorie ring on the client home screen: eaten vs goal, remaining, Log food.
+// Flow: read current/goal → clamp progress → animate the ring → Log food or Open Nutrition.
+// Used by the client home dashboard under the TODAY heading.
+
 import React, { useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+
+// ===== NAMED CONSTANTS =====
 
 const BORDER_GRADIENT = ['#06B6D4', '#C084FC', '#FF6B9D'];
 /** Dark pink → dark orange — trainer card shell and CTAs */
@@ -39,10 +35,41 @@ const CC_LIGHT = {
   track: 'rgba(15,23,42,0.08)',
 };
 
-const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const RING_SIZE = 102;
+const STROKE = 8;
+const RING_RADIUS = (RING_SIZE - STROKE) / 2;
+const RING_CENTER_X = RING_SIZE / 2;
+const RING_CENTER_Y = RING_SIZE / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+// Manipulate here: fallback daily calorie target when the profile has not set one.
+const DEFAULT_CALORIE_GOAL = 2000;
+const PERCENT_SCALE = 100;
+const RING_ANIMATION_MS = 380;
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+// ===== HELPER FUNCTIONS =====
 
+function clamp01(progress) {
+  return Math.max(0, Math.min(1, progress));
+}
+
+function themeForMode(isDark) {
+  return isDark ? CC : { ...CC, ...CC_LIGHT };
+}
+
+function caloriesProgressRatio(currentCalories, goalCalories) {
+  const eaten = Number(currentCalories ?? 0);
+  const goal = Number(goalCalories ?? DEFAULT_CALORIE_GOAL);
+  return goal > 0 ? eaten / goal : 0;
+}
+
+/**
+ * Gradient rim around a home card. The inner pad is where the ring / copy sit.
+ * @param {object} props
+ * @param {boolean} props.isDark
+ * @param {import('react').ReactNode} props.children
+ * @param {object} [props.style]
+ * @param {string[]} [props.borderColors]
+ */
 export const ColorBorderShell = ({ isDark, children, style, borderColors = BORDER_GRADIENT }) => (
   <LinearGradient
     colors={borderColors}
@@ -75,52 +102,49 @@ export const ColorBorderShell = ({ isDark, children, style, borderColors = BORDE
   </LinearGradient>
 );
 
-const RING_SIZE = 102;
-const STROKE = 8;
-const R = (RING_SIZE - STROKE) / 2;
-const CX = RING_SIZE / 2;
-const CY = RING_SIZE / 2;
-const CIRC = 2 * Math.PI * R;
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const CaloriesHeroCard = ({ isDark, current, goal, progress, onPress, onPressLogFood }) => {
-  const pct = Math.round(clamp01(progress) * 100);
-  const cur = Math.round(Number(current || 0));
-  const g = Math.round(Number(goal || 2000));
-  const remaining = Math.max(0, g - cur);
-  const p = clamp01(progress);
+function CaloriesHeroCard({ isDark, current, goal, progress, onPress, onPressLogFood }) {
+  const percentComplete = Math.round(clamp01(progress) * PERCENT_SCALE);
+  const caloriesEaten = Math.round(Number(current || 0));
+  const caloriesGoal = Math.round(Number(goal || DEFAULT_CALORIE_GOAL));
+  const caloriesRemaining = Math.max(0, caloriesGoal - caloriesEaten);
+  const clampedProgress = clamp01(progress);
 
-  const c = isDark ? CC : { ...CC, ...CC_LIGHT };
+  const themeColors = themeForMode(isDark);
   const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)';
   const trackStroke = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.12)';
+  // vocab: toString(36) = base-36 id so two rings on screen do not share one SVG gradient id.
   const gradId = useRef(`calRing_${Math.random().toString(36).slice(2, 9)}`).current;
-  const innerDiscR = Math.max(R - STROKE * 0.9, 6);
+  const innerDiscR = Math.max(RING_RADIUS - STROKE * 0.9, 6);
   const innerFill = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)';
   const innerStroke = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  // vocab: useEffect = run the ring animation after paint when progress changes.
   useEffect(() => {
     progressAnim.setValue(0);
     Animated.timing(progressAnim, {
-      toValue: p,
-      duration: 380,
+      toValue: clampedProgress,
+      duration: RING_ANIMATION_MS,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [p, progressAnim]);
+  }, [clampedProgress, progressAnim]);
 
   const strokeDashoffset = progressAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [CIRC, 0],
+    outputRange: [RING_CIRCUMFERENCE, 0],
   });
 
   const logHandler = typeof onPressLogFood === 'function' ? onPressLogFood : onPress;
 
   return (
-    <ColorBorderShell isDark={isDark} style={s.borderShell}>
-      <View style={s.cardRow}>
-          <View style={s.ringCol}>
-            <View style={s.ringWrap}>
-              <Svg width={RING_SIZE} height={RING_SIZE} style={s.ringSvg}>
+    <ColorBorderShell isDark={isDark} style={cardStyles.borderShell}>
+      <View style={cardStyles.cardRow}>
+          <View style={cardStyles.ringCol}>
+            <View style={cardStyles.ringWrap}>
+              <Svg width={RING_SIZE} height={RING_SIZE} style={cardStyles.ringSvg}>
                 <Defs>
                   <SvgLinearGradient
                     id={gradId}
@@ -134,84 +158,84 @@ const CaloriesHeroCard = ({ isDark, current, goal, progress, onPress, onPressLog
                     <Stop offset="1" stopColor={CC.cyan} />
                   </SvgLinearGradient>
                 </Defs>
-                <Circle cx={CX} cy={CY} r={innerDiscR} fill={innerFill} stroke={innerStroke} strokeWidth={1} />
+                <Circle cx={RING_CENTER_X} cy={RING_CENTER_Y} r={innerDiscR} fill={innerFill} stroke={innerStroke} strokeWidth={1} />
                 <Circle
-                  cx={CX}
-                  cy={CY}
-                  r={R}
+                  cx={RING_CENTER_X}
+                  cy={RING_CENTER_Y}
+                  r={RING_RADIUS}
                   stroke={trackStroke}
                   strokeWidth={STROKE}
                   fill="none"
                 />
                 <AnimatedCircle
-                  cx={CX}
-                  cy={CY}
-                  r={R}
-                  stroke={p > 0 ? `url(#${gradId})` : trackStroke}
+                  cx={RING_CENTER_X}
+                  cy={RING_CENTER_Y}
+                  r={RING_RADIUS}
+                  stroke={clampedProgress > 0 ? `url(#${gradId})` : trackStroke}
                   strokeWidth={STROKE}
                   fill="none"
-                  strokeDasharray={CIRC}
+                  strokeDasharray={RING_CIRCUMFERENCE}
                   strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
                   rotation="-90"
-                  origin={`${CX}, ${CY}`}
+                  origin={`${RING_CENTER_X}, ${RING_CENTER_Y}`}
                 />
               </Svg>
-              <View style={s.ringCenter} pointerEvents="none">
-                <Text style={[s.ringBig, { color: c.textPrimary }]}>{cur.toLocaleString()}</Text>
-                <Text style={[s.ringGoal, { color: c.textSecondary }]}>
-                  / {g.toLocaleString()}{' '}
-                  <Text style={{ color: c.textTertiary, fontWeight: '600' }}>kcal</Text>
+              <View style={cardStyles.ringCenter} pointerEvents="none">
+                <Text style={[cardStyles.ringBig, { color: themeColors.textPrimary }]}>{caloriesEaten.toLocaleString()}</Text>
+                <Text style={[cardStyles.ringGoal, { color: themeColors.textSecondary }]}>
+                  / {caloriesGoal.toLocaleString()}{' '}
+                  <Text style={{ color: themeColors.textTertiary, fontWeight: '600' }}>kcal</Text>
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={[s.rightCol, { borderLeftColor: hairline }]}>
-            <View style={s.headerRow}>
-              <View style={s.headerTitleWrap}>
-                <Text style={[s.headerTitle, { color: c.textPrimary }]}>Calories</Text>
-                <Text style={[s.headerSubtitle, { color: c.textSecondary }]}>Today's budget</Text>
+          <View style={[cardStyles.rightCol, { borderLeftColor: hairline }]}>
+            <View style={cardStyles.headerRow}>
+              <View style={cardStyles.headerTitleWrap}>
+                <Text style={[cardStyles.headerTitle, { color: themeColors.textPrimary }]}>Calories</Text>
+                <Text style={[cardStyles.headerSubtitle, { color: themeColors.textSecondary }]}>Today's budget</Text>
               </View>
               {typeof logHandler === 'function' ? (
-                <TouchableOpacity style={[s.logFoodBtn, s.logFoodBtnFx]} onPress={logHandler} activeOpacity={0.75}>
+                <TouchableOpacity style={[cardStyles.logFoodBtn, cardStyles.logFoodBtnFx]} onPress={logHandler} activeOpacity={0.75}>
                   <Ionicons name="add-circle-outline" size={18} color={CC.pink} />
-                  <Text style={s.logFoodText}>Log food</Text>
+                  <Text style={cardStyles.logFoodText}>Log food</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
 
             <View
               style={[
-                s.metricsCard,
+                cardStyles.metricsCard,
                 { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-                isDark ? s.metricsCardEdgeDark : s.metricsCardEdgeLight,
+                isDark ? cardStyles.metricsCardEdgeDark : cardStyles.metricsCardEdgeLight,
               ]}
             >
-              <View style={s.metricCol}>
-                <Text style={[s.metricLabel, { color: c.textTertiary }]}>REMAINING</Text>
-                <Text style={[s.metricValue, { color: c.textPrimary }]}>{remaining.toLocaleString()}</Text>
-                <Text style={[s.metricUnit, { color: c.textSecondary }]}>kcal</Text>
+              <View style={cardStyles.metricCol}>
+                <Text style={[cardStyles.metricLabel, { color: themeColors.textTertiary }]}>REMAINING</Text>
+                <Text style={[cardStyles.metricValue, { color: themeColors.textPrimary }]}>{caloriesRemaining.toLocaleString()}</Text>
+                <Text style={[cardStyles.metricUnit, { color: themeColors.textSecondary }]}>kcal</Text>
               </View>
-              <View style={[s.metricDivider, { backgroundColor: hairline }]} />
-              <View style={s.metricCol}>
-                <Text style={[s.metricLabel, { color: c.textTertiary }]}>PROGRESS</Text>
-                <Text style={[s.metricValue, { color: pct > 0 ? CC.pink : c.textPrimary }]}>
-                  {pct}%
+              <View style={[cardStyles.metricDivider, { backgroundColor: hairline }]} />
+              <View style={cardStyles.metricCol}>
+                <Text style={[cardStyles.metricLabel, { color: themeColors.textTertiary }]}>PROGRESS</Text>
+                <Text style={[cardStyles.metricValue, { color: percentComplete > 0 ? CC.pink : themeColors.textPrimary }]}>
+                  {percentComplete}%
                 </Text>
-                <Text style={[s.metricUnit, { color: c.textSecondary }]}>of goal</Text>
+                <Text style={[cardStyles.metricUnit, { color: themeColors.textSecondary }]}>of goal</Text>
               </View>
             </View>
 
             {typeof onPress === 'function' ? (
-              <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={s.nutritionTouch}>
-                <View style={[s.nutritionGrad, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
-                  <View style={s.nutritionRowInner}>
-                    <View style={s.nutritionRowLeft}>
+              <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={cardStyles.nutritionTouch}>
+                <View style={[cardStyles.nutritionGrad, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
+                  <View style={cardStyles.nutritionRowInner}>
+                    <View style={cardStyles.nutritionRowLeft}>
                       <Ionicons name="nutrition-outline" size={20} color={CC.pink} />
-                      <Text style={[s.nutritionRowTitle, { color: c.textPrimary }]}>Open Nutrition</Text>
+                      <Text style={[cardStyles.nutritionRowTitle, { color: themeColors.textPrimary }]}>Open Nutrition</Text>
                     </View>
-                    <View style={[s.chevronPill, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
+                    <View style={[cardStyles.chevronPill, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
                       <Ionicons name="chevron-forward" size={18} color={CC.cyan} />
                     </View>
                   </View>
@@ -222,16 +246,25 @@ const CaloriesHeroCard = ({ isDark, current, goal, progress, onPress, onPressLog
         </View>
     </ColorBorderShell>
   );
-};
+}
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * TODAY heading plus the calorie hero card.
+ * @param {object} props
+ * @param {boolean} [props.isDark]
+ * @param {object} [props.stats]
+ * @param {Function} [props.onPressCalories]
+ * @param {Function} [props.onPressLogFood]
+ */
 export default function TodayStatsCards({ isDark = true, stats, onPressCalories, onPressLogFood }) {
   const calories = stats?.calories || {};
 
-  const calProgress = useMemo(() => {
-    const cur = Number(calories.current ?? 0);
-    const goal = Number(calories.goal ?? 2000);
-    return goal > 0 ? cur / goal : 0;
-  }, [calories.current, calories.goal]);
+  const calProgress = useMemo(
+    () => caloriesProgressRatio(calories.current, calories.goal),
+    [calories.current, calories.goal],
+  );
 
   return (
     <View style={styles.wrap}>
@@ -242,7 +275,7 @@ export default function TodayStatsCards({ isDark = true, stats, onPressCalories,
       <CaloriesHeroCard
         isDark={isDark}
         current={Number(calories.current ?? 0)}
-        goal={Number(calories.goal ?? 2000)}
+        goal={Number(calories.goal ?? DEFAULT_CALORIE_GOAL)}
         progress={calProgress}
         onPress={onPressCalories}
         onPressLogFood={onPressLogFood}
@@ -251,7 +284,7 @@ export default function TodayStatsCards({ isDark = true, stats, onPressCalories,
   );
 }
 
-const s = StyleSheet.create({
+const cardStyles = StyleSheet.create({
   borderShell: {
     marginBottom: 0,
   },

@@ -9,7 +9,7 @@ import {
   BRAND_ICON_GRADIENT_START,
   BRAND_ICON_GRADIENT_END,
 } from '../../look-and-feel/brandColors';
-import { BRAND_GRADIENT_ICON_PATHS } from './iconShapes';
+import { iconShapeForName } from './iconShapes';
 
 // ===== NAMED CONSTANTS =====
 
@@ -40,6 +40,45 @@ function isStrokeIcon(icon) {
   return icon.style !== 'fill';
 }
 
+function hasIconPaths(icon) {
+  return Boolean(icon?.paths?.length);
+}
+
+/**
+ * Evenly spaced gradient stops. One color sits at the start.
+ * @param {string[]} colors
+ */
+function BrandGradientStops({ colors }) {
+  return colors.map((color, colorIndex) => (
+    <Stop
+      key={`${color}-${colorIndex}`}
+      offset={gradientStopOffset(colorIndex, colors.length)}
+      stopColor={color}
+    />
+  ));
+}
+
+/**
+ * Stroke or fill each stored path with the same paint.
+ * @param {{ paths: string[] }} icon
+ * @param {string} paint
+ * @param {boolean} isStroke
+ * @param {number} strokeWidth
+ */
+function IconPaths({ icon, paint, isStroke, strokeWidth }) {
+  return icon.paths.map((pathData) => (
+    <Path
+      key={pathData}
+      d={pathData}
+      fill={isStroke ? 'none' : paint}
+      stroke={isStroke ? paint : 'none'}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ));
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -55,9 +94,12 @@ export default function ColorfulIcon({
   end = BRAND_ICON_GRADIENT_END,
   strokeWidth = DEFAULT_STROKE_WIDTH,
 }) {
-  const icon = BRAND_GRADIENT_ICON_PATHS[name];
-  if (!icon?.paths?.length) return null;
+  const icon = iconShapeForName(name);
 
+  // 1. Unknown name → draw nothing.
+  if (!hasIconPaths(icon)) return null;
+
+  // 2. Stroke or fill each path with the brand gradient.
   const gradientId = `cc-brand-${name}`;
   const paint = `url(#${gradientId})`;
   const isStroke = isStrokeIcon(icon);
@@ -80,26 +122,10 @@ export default function ColorfulIcon({
           // vocab: userSpaceOnUse = the gradient is measured in the 24px viewBox, not a 0–1 box.
           gradientUnits="userSpaceOnUse"
         >
-          {colors.map((color, colorIndex) => (
-            <Stop
-              key={`${color}-${colorIndex}`}
-              offset={gradientStopOffset(colorIndex, colors.length)}
-              stopColor={color}
-            />
-          ))}
+          <BrandGradientStops colors={colors} />
         </LinearGradient>
       </Defs>
-      {icon.paths.map((pathData) => (
-        <Path
-          key={pathData}
-          d={pathData}
-          fill={isStroke ? 'none' : paint}
-          stroke={isStroke ? paint : 'none'}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
+      <IconPaths icon={icon} paint={paint} isStroke={isStroke} strokeWidth={strokeWidth} />
     </Svg>
   );
 }

@@ -1,6 +1,6 @@
 // Shares the client app shell (navigation, theme, the open screen) with every client tab.
 // Flow: the shell screen builds one value → the provider publishes it → screens read it with the hook.
-// Used by: the client main screen and every client tab that needs shell actions.
+// Used by the client main screen and every client tab that needs shell actions.
 
 import React, { createContext, useContext } from 'react';
 
@@ -10,12 +10,17 @@ const MISSING_PROVIDER_MESSAGE = 'useClientAppStartShell must be used within Cli
 
 // ===== HELPER FUNCTIONS =====
 
-// vocab: createContext broadcasts a value down the tree. Null means no provider is above this screen.
 const ClientOpenScreenTracker = createContext(null);
+
+function requireClientShell(shellValue) {
+  if (shellValue) return shellValue;
+  throw new Error(MISSING_PROVIDER_MESSAGE);
+}
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Publishes the client shell to every screen under this provider.
  * @param {{ value: object, children: import('react').ReactNode }} props
  */
 export function ClientAppStartShellProvider({ value, children }) {
@@ -27,17 +32,11 @@ export function ClientAppStartShellProvider({ value, children }) {
 }
 
 /**
- * Reads the client shell. Throws when a screen is mounted outside the provider,
- * so a dead nav button fails loudly instead of rendering blank.
+ * Reads the client shell. Throws when a screen is mounted outside the provider.
  * @returns {object}
  */
 export function useClientAppStartShell() {
-  // vocab: useContext reads the nearest provider for this context.
-  const shellValue = useContext(ClientOpenScreenTracker);
-  if (!shellValue) {
-    throw new Error(MISSING_PROVIDER_MESSAGE);
-  }
-  return shellValue;
+  return requireClientShell(useContext(ClientOpenScreenTracker));
 }
 
 export { ClientOpenScreenTracker };

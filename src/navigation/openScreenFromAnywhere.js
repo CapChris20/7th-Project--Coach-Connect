@@ -40,7 +40,8 @@ export function rootNavigate(name, params) {
  */
 export function rootGoBack() {
   if (!isNavigatorReady()) return;
-  if (!rootNavigationRef.canGoBack()) return;
+  const canGoBack = rootNavigationRef.canGoBack();
+  if (!canGoBack) return;
   rootNavigationRef.goBack();
 }
 

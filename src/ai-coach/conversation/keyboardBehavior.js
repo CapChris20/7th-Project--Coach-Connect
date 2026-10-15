@@ -9,11 +9,14 @@ import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomMenuSpacing';
 
 // ===== NAMED CONSTANTS =====
 
+const PLATFORM_IOS = 'ios';
+const PLATFORM_ANDROID = 'android';
+
 // iOS moves the field with the keyboard animation. Android only tells us after the keyboard is up.
-const IOS_KEYBOARD_SHOW_EVENT = 'keyboardWillShow';
-const OTHER_KEYBOARD_SHOW_EVENT = 'keyboardDidShow';
-const IOS_KEYBOARD_HIDE_EVENT = 'keyboardWillHide';
-const OTHER_KEYBOARD_HIDE_EVENT = 'keyboardDidHide';
+const KEYBOARD_EVENTS_BY_PLATFORM = {
+  ios: { show: 'keyboardWillShow', hide: 'keyboardWillHide' },
+  default: { show: 'keyboardDidShow', hide: 'keyboardDidHide' },
+};
 
 // Manipulate here: these are the breathing gaps, not a second copy of the nav bar height.
 const COMPOSER_GAP_WHEN_KEYBOARD_OPEN = 8;
@@ -21,53 +24,94 @@ const COMPOSER_GAP_ABOVE_NAV = 10;
 const LIST_GAP_WHEN_KEYBOARD_OPEN = 12;
 const LIST_GAP_WHEN_KEYBOARD_CLOSED = 20;
 
+function extraAutofillPropsForPlatform() {
+  if (Platform.OS === PLATFORM_ANDROID) {
+    return { importantForAutofill: 'no' };
+  }
+  return {};
+}
+
 // Android's password bar ignores autoComplete: 'off'. This extra flag is what actually blocks it.
 export const COACH_COMPOSER_TEXT_INPUT_PROPS = {
   autoComplete: 'off',
   textContentType: 'none',
   autoCorrect: true,
   spellCheck: true,
-  ...(Platform.OS === 'android' ? { importantForAutofill: 'no' } : {}),
+  ...extraAutofillPropsForPlatform(),
 };
 
 // ===== HELPER FUNCTIONS =====
 
-function keyboardShowEventName() {
-  if (Platform.OS === 'ios') return IOS_KEYBOARD_SHOW_EVENT;
-  return OTHER_KEYBOARD_SHOW_EVENT;
-}
-
-function keyboardHideEventName() {
-  if (Platform.OS === 'ios') return IOS_KEYBOARD_HIDE_EVENT;
-  return OTHER_KEYBOARD_HIDE_EVENT;
+function keyboardEventNamesForPlatform() {
+  if (Platform.OS === PLATFORM_IOS) return KEYBOARD_EVENTS_BY_PLATFORM.ios;
+  return KEYBOARD_EVENTS_BY_PLATFORM.default;
 }
 
 // iOS reports the keyboard's top in screen coordinates. The inset is the window height minus that top.
-function iosKeyboardInset(endCoordinates) {
+function iosKeyboardInsetFromCoordinates(endCoordinates) {
   const windowHeight = Dimensions.get('window').height;
-  return Math.max(0, Math.round(windowHeight - endCoordinates.screenY));
+  const keyboardTopY = endCoordinates.screenY;
+  return Math.max(0, Math.round(windowHeight - keyboardTopY));
 }
 
-function keyboardInsetFromEvent(keyboardEvent) {
-  const endCoordinates = keyboardEvent?.endCoordinates;
-  if (!endCoordinates) return 0;
-  if (Platform.OS === 'ios') return iosKeyboardInset(endCoordinates);
-  return Math.max(0, endCoordinates.height ?? 0);
+/**
+ * vocab: ?? keeps a reported height of 0. Do not switch it to ||.
+ * @param {object} keyboardEvent
+ * @returns {number}
+ */
+function readKeyboardInsetFromEvent(keyboardEvent) {
+  if (!keyboardEvent || !keyboardEvent.endCoordinates) return 0;
+  const endCoordinates = keyboardEvent.endCoordinates;
+  if (Platform.OS === PLATFORM_IOS) return iosKeyboardInsetFromCoordinates(endCoordinates);
+  const androidHeight = endCoordinates.height ?? 0;
+  return Math.max(0, androidHeight);
 }
 
-function composerBottomPadding(isKeyboardVisible, shellNavPad) {
+/**
+ * @param {boolean} isKeyboardVisible
+ * @param {number} shellNavPad
+ * @returns {number}
+ */
+function composerBottomPaddingWhenClosedOrOpen(isKeyboardVisible, shellNavPad) {
   if (isKeyboardVisible) return COMPOSER_GAP_WHEN_KEYBOARD_OPEN;
   return COMPOSER_GAP_ABOVE_NAV + shellNavPad;
 }
 
-function listBottomPadding(isKeyboardVisible) {
+/**
+ * @param {boolean} isKeyboardVisible
+ * @returns {number}
+ */
+function listBottomPaddingForKeyboard(isKeyboardVisible) {
   if (isKeyboardVisible) return LIST_GAP_WHEN_KEYBOARD_OPEN;
   return LIST_GAP_WHEN_KEYBOARD_CLOSED;
 }
 
-function composerKeyboardPadding(isKeyboardVisible, keyboardInset, closedComposerPad) {
+/**
+ * @param {boolean} isKeyboardVisible
+ * @param {number} keyboardInset
+ * @param {number} closedComposerPad
+ * @returns {number}
+ */
+function composerKeyboardPaddingPixels(isKeyboardVisible, keyboardInset, closedComposerPad) {
   if (isKeyboardVisible) return keyboardInset + COMPOSER_GAP_WHEN_KEYBOARD_OPEN;
   return closedComposerPad;
+}
+
+/**
+ * @param {boolean} isKeyboardVisible
+ * @param {number} keyboardInset
+ * @param {number} shellNavPad
+ * @returns {{ composerBottomPad: number, listBottomPad: number, composerKeyboardPad: number }}
+ */
+function buildCoachPaddingBundle(isKeyboardVisible, keyboardInset, shellNavPad) {
+  const composerBottomPad = composerBottomPaddingWhenClosedOrOpen(isKeyboardVisible, shellNavPad);
+  const listBottomPad = listBottomPaddingForKeyboard(isKeyboardVisible);
+  const composerKeyboardPad = composerKeyboardPaddingPixels(
+    isKeyboardVisible,
+    keyboardInset,
+    composerBottomPad,
+  );
+  return { composerBottomPad, listBottomPad, composerKeyboardPad };
 }
 
 // ===== MAIN FUNCTION =====
@@ -86,12 +130,15 @@ export function keyboardBehavior({ hideBottomNav: _hideBottomNav = false } = {})
 
   // vocab: useEffect cleanup removes the listeners so a closed chat does not keep moving padding.
   useEffect(() => {
-    const showEventName = keyboardShowEventName();
-    const hideEventName = keyboardHideEventName();
-    const onShow = (keyboardEvent) => setKeyboardInset(keyboardInsetFromEvent(keyboardEvent));
-    const onHide = () => setKeyboardInset(0);
-    const showSubscription = Keyboard.addListener(showEventName, onShow);
-    const hideSubscription = Keyboard.addListener(hideEventName, onHide);
+    const eventNames = keyboardEventNamesForPlatform();
+    const onKeyboardShow = (keyboardEvent) => {
+      setKeyboardInset(readKeyboardInsetFromEvent(keyboardEvent));
+    };
+    const onKeyboardHide = () => {
+      setKeyboardInset(0);
+    };
+    const showSubscription = Keyboard.addListener(eventNames.show, onKeyboardShow);
+    const hideSubscription = Keyboard.addListener(eventNames.hide, onKeyboardHide);
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
@@ -99,20 +146,14 @@ export function keyboardBehavior({ hideBottomNav: _hideBottomNav = false } = {})
   }, []);
 
   const isKeyboardVisible = keyboardInset > 0;
-  const composerBottomPad = composerBottomPadding(isKeyboardVisible, shellNavPad);
-  const listBottomPad = listBottomPadding(isKeyboardVisible);
-  const composerKeyboardPad = composerKeyboardPadding(
-    isKeyboardVisible,
-    keyboardInset,
-    composerBottomPad,
-  );
+  const paddingBundle = buildCoachPaddingBundle(isKeyboardVisible, keyboardInset, shellNavPad);
 
   return {
     keyboardVisible: isKeyboardVisible,
     keyboardInset,
-    composerBottomPad,
-    composerKeyboardPad,
-    listBottomPad,
+    composerBottomPad: paddingBundle.composerBottomPad,
+    composerKeyboardPad: paddingBundle.composerKeyboardPad,
+    listBottomPad: paddingBundle.listBottomPad,
     shellNavPad,
   };
 }

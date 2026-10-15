@@ -15,8 +15,14 @@ const QUOTE_LIST = Array.isArray(dailyQuotesData?.quotes) ? dailyQuotesData.quot
 const FALLBACK_QUOTE = { q: 'Keep showing up.', a: 'Daily Motivation' };
 const FALLBACK_AUTHOR = 'Daily Motivation';
 const UNKNOWN_AUTHOR = 'unknown';
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
 // Manipulate here: milliseconds in a day, used to turn "now" into a day-of-year index.
-const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
+const MILLISECONDS_PER_DAY = MS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+const ISO_DATE_LENGTH = 10;
+const CARD_MIN_HEIGHT_DEFAULT = 96;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -29,7 +35,50 @@ function dailyQuoteSeenKey(userId) {
 }
 
 function todayKeyLocal() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, ISO_DATE_LENGTH);
+}
+
+/**
+ * Embedded cards sit on a parent surface, so this card drops its own fill and border.
+ * @param {boolean} isDark
+ * @param {boolean} embedded
+ * @returns {{ cardBackground: string, borderColor: string, textColor: string, authorColor: string }}
+ */
+function cardThemeColors(isDark, embedded) {
+  if (embedded) {
+    return {
+      cardBackground: 'transparent',
+      borderColor: 'transparent',
+      textColor: isDark ? '#FFFFFF' : '#111827',
+      authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
+    };
+  }
+  return {
+    cardBackground: isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)',
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.10)',
+    textColor: isDark ? '#FFFFFF' : '#111827',
+    authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
+  };
+}
+
+/**
+ * @param {boolean} isDark
+ * @param {boolean} embedded
+ * @returns {{ backgroundColor: string, borderColor: string, borderRadius: number }}
+ */
+function pillSurfaceColors(isDark, embedded) {
+  if (embedded) {
+    return {
+      backgroundColor: 'transparent',
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)',
+      borderRadius: 14,
+    };
+  }
+  return {
+    backgroundColor: isDark ? 'rgba(10,10,15,0.80)' : 'rgba(255,255,255,0.92)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)',
+    borderRadius: 26,
+  };
 }
 
 function dayOfYearNumber(now) {
@@ -131,18 +180,9 @@ async function resolveQuoteIndexForPill(userId, onIndex) {
 export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embedded = false }) {
   const { isDark } = useTheme();
   const outerWidth = cardWidth ?? '100%';
-  const outerMinHeight = cardMinHeight ?? 96;
+  const outerMinHeight = cardMinHeight ?? CARD_MIN_HEIGHT_DEFAULT;
   const [quoteIndex, setQuoteIndex] = useState(0);
-
-  // Embedded cards sit on a parent surface, so this card drops its own fill and border.
-  const cardBackground = embedded
-    ? 'transparent'
-    : (isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)');
-  const borderColor = embedded
-    ? 'transparent'
-    : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.10)');
-  const textColor = isDark ? '#FFFFFF' : '#111827';
-  const authorColor = isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)';
+  const { cardBackground, borderColor, textColor, authorColor } = cardThemeColors(isDark, embedded);
 
   useEffect(() => {
     let isCancelled = false;
@@ -215,6 +255,7 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = fa
 
   const quote = quoteAtIndex(quoteIndex);
   const hasLineLimit = typeof maxLines === 'number' && maxLines > 0;
+  const surface = pillSurfaceColors(isDark, embedded);
 
   return (
     <View style={[pillStyles.wrap, embedded && pillStyles.wrapEmbedded]}>
@@ -222,20 +263,10 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = fa
         style={[
           pillStyles.inner,
           {
-            backgroundColor: embedded
-              ? 'transparent'
-              : isDark
-                ? 'rgba(10,10,15,0.80)'
-                : 'rgba(255,255,255,0.92)',
-            borderColor: embedded
-              ? isDark
-                ? 'rgba(255,255,255,0.12)'
-                : 'rgba(10,10,15,0.10)'
-              : isDark
-                ? 'rgba(255,255,255,0.08)'
-                : 'rgba(10,10,15,0.06)',
+            backgroundColor: surface.backgroundColor,
+            borderColor: surface.borderColor,
             borderWidth: 1,
-            borderRadius: embedded ? 14 : 26,
+            borderRadius: surface.borderRadius,
           },
         ]}
       >

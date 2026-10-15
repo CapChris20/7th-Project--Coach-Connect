@@ -1,3 +1,7 @@
+// One food row on the daily log: name, macros, expand for nutrition facts.
+// Flow: paint the card → optional expand → edit / delete / save actions.
+// Used by the daily food log list.
+
 import React, { useMemo } from 'react';
 import {
   View,
@@ -27,6 +31,10 @@ import ColorText from './ColorText';
 import NutritionFactsPanel from './NutritionFactsPanel';
 import { gradients, radii, fonts, pillBackgroundGradient, getFoodCardPalette } from './foodCardColors';
 
+// ===== NAMED CONSTANTS =====
+
+// ===== HELPER FUNCTIONS =====
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function IconAction({ onPress, children, accessibilityLabel, palette }) {
@@ -49,12 +57,12 @@ function IconAction({ onPress, children, accessibilityLabel, palette }) {
 }
 
 function MacroPill({ label, grams, gradientStops, palette }) {
-  const bg = pillBackgroundGradient(gradientStops);
+  const pillBackground = pillBackgroundGradient(gradientStops);
   const display = Math.round(Number(grams) || 0);
 
   return (
     <View style={[styles.macroPillOuter, { borderColor: palette.borderStrong }]}>
-      <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.macroPillBg}>
+      <LinearGradient colors={pillBackground} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.macroPillBg}>
         <ColorText
           colors={gradientStops}
           style={styles.macroPillLabel}
@@ -71,6 +79,8 @@ function MacroPill({ label, grams, gradientStops, palette }) {
     </View>
   );
 }
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Premium expandable food logging card.

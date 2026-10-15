@@ -68,16 +68,25 @@ const WORKOUT_DAY_EXAMPLES_SHORT =
  * @param {string} rawLabel
  * @returns {string}
  */
-export const normalizeWorkoutDayLabel = (rawLabel) =>
-  String(rawLabel ?? '')
+export function normalizeWorkoutDayLabel(rawLabel) {
+  return String(rawLabel ?? '')
     .trim()
     .toLowerCase()
     .replace(WHITESPACE_PATTERN, ' ');
+}
 
-const ALLOWED_WORKOUT_DAY_LABELS = new Set([
-  ...MULTI_WORD_OR_PHRASE.map((phrase) => phrase.toLowerCase()),
-  ...SINGLE_WORD,
-]);
+function buildAllowedLabelSet() {
+  const allowed = new Set();
+  for (const phrase of MULTI_WORD_OR_PHRASE) {
+    allowed.add(phrase.toLowerCase());
+  }
+  for (const word of SINGLE_WORD) {
+    allowed.add(word);
+  }
+  return allowed;
+}
+
+const ALLOWED_WORKOUT_DAY_LABELS = buildAllowedLabelSet();
 
 // ===== MAIN FUNCTION =====
 

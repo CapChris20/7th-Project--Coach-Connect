@@ -1,0 +1,19 @@
+{
+  "batchSize": 40,
+  "totalFiles": 432,
+  "totalBatches": 11,
+  "completedBatches": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "notes": "After Metro passes, append batch number to completedBatches. Re-run fullRewriteInventory.mjs if inventory script changes."
+}

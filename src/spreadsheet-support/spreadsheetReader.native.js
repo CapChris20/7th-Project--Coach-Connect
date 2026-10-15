@@ -7,12 +7,26 @@ import * as XLSX from 'xlsx';
 
 // ===== NAMED CONSTANTS =====
 
+// No tweakable numbers — this file only re-exports the native SheetJS module.
+
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * Return the SheetJS module object Metro loaded for native.
+ * @returns {typeof XLSX}
+ */
+function nativeSheetJsModule() {
+  return XLSX;
+}
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Device build: the spreadsheet viewer imports this as the xlsx API.
+ * @returns {typeof XLSX}
+ */
 function loadNativeSheetJs() {
-  return XLSX;
+  return nativeSheetJsModule();
 }
 
 export default loadNativeSheetJs();

@@ -117,6 +117,24 @@ async function newestRequestInConversation(conversationDoc, trainerUid) {
 
 // ===== MAIN FUNCTION =====
 
+async function collectPendingRequestCards(trainerUid) {
+  const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
+  // vocab: 'array-contains' means this array field includes this value.
+  const conversationQuery = query(
+    conversationsRef,
+    where('participants', 'array-contains', trainerUid),
+  );
+  const conversationSnapshot = await getDocs(conversationQuery);
+  const requests = [];
+
+  for (const conversationDoc of conversationSnapshot.docs) {
+    const requestCard = await newestRequestInConversation(conversationDoc, trainerUid);
+    if (requestCard) requests.push(requestCard);
+  }
+
+  return requests;
+}
+
 /**
  * Fetch all pending client requests for a trainer.
  * Flow: 1. conversations this trainer is in  2. newest pending message per client  3. the card list
@@ -128,21 +146,7 @@ export async function getTrainerPendingRequests(trainerUid) {
   if (!trainerUid || !db) return [];
 
   try {
-    const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
-    // vocab: 'array-contains' means this array field includes this value.
-    const conversationQuery = query(
-      conversationsRef,
-      where('participants', 'array-contains', trainerUid),
-    );
-    const conversationSnapshot = await getDocs(conversationQuery);
-    const requests = [];
-
-    for (const conversationDoc of conversationSnapshot.docs) {
-      const requestCard = await newestRequestInConversation(conversationDoc, trainerUid);
-      if (requestCard) requests.push(requestCard);
-    }
-
-    return requests;
+    return await collectPendingRequestCards(trainerUid);
   } catch (error) {
     console.error('Error fetching trainer pending requests:', error);
     return [];

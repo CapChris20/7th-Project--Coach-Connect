@@ -1,17 +1,6 @@
-/**
- * Conversations List Screen
- *
- * Purpose: UI screen or component: Conversations List Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: InboxScreen
- *
- * @file-header
- */
-/**
- * Conversations List Screen — new glass UI, existing Firebase and navigation.
- * Real-time via subscribeToConversations; account isolation via participants + trainer clients filter.
- */
+// InboxScreen — glass list of chat threads for clients and trainers.
+// Flow: load unread + conversations → filter by role/blocked/selected client → open a thread or start coach chat.
+// Used by: messaging tab / trainer client inbox. Firebase paths stay under conversations + users.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -43,7 +32,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { blockedList } from '../block-and-report/blockedList';
 
-// ── DESIGN TOKENS ─────────────────────────────────────────────
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: dark vs light glass palette for the inbox list.
 const DARK = {
   bg: ['#0a0a1a', '#1a0825', '#0d1117'],
   glass: 'rgba(255,255,255,0.05)',
@@ -65,42 +56,195 @@ const GRADIENT = {
   badge: ['#FF6B9D', '#F97316'],
 };
 
+// Manipulate here: relative-time buckets for the thread timestamp column.
+const MS_PER_MINUTE = 60000;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 1440;
+const MINUTES_PER_MONTH_APPROX = 43200;
+
+// Manipulate here: bottom shell clearance, delayed coach-thread ensure, unread UI re-check.
+const SHELL_BOTTOM_NAV_INSET = 24;
+const ENSURE_CLIENT_CONVERSATION_DELAY_MS = 1000;
+const UNREAD_COUNT_RECHECK_MS = 500;
+
+const DEFAULT_AVATAR_SIZE = 48;
+const UNREAD_BADGE_CAP = 99;
+const BLUR_INTENSITY_IOS = 20;
+const PRIMARY_FALLBACK = '#6C5CE7';
+const PLATFORM_IOS = 'ios';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Turn a Firestore timestamp (or Date-ish value) into a short relative label.
+ * vocab: toDate = Firestore Timestamp helper that returns a JS Date
+ * @param {*} timestamp
+ * @returns {string|null}
+ */
 function formatTimestamp(timestamp) {
   if (!timestamp) return null;
   try {
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     if (isNaN(date.getTime())) return null;
     const now = new Date();
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
-    if (minutes < 43200) return `${Math.floor(minutes / 1440)}d ago`;
+    const diffMs = now - date;
+    const minutesAgo = Math.floor(diffMs / MS_PER_MINUTE);
+    if (minutesAgo < 1) return 'Just now';
+    if (minutesAgo < MINUTES_PER_HOUR) return `${minutesAgo}m ago`;
+    if (minutesAgo < MINUTES_PER_DAY) {
+      return `${Math.floor(minutesAgo / MINUTES_PER_HOUR)}h ago`;
+    }
+    if (minutesAgo < MINUTES_PER_MONTH_APPROX) {
+      return `${Math.floor(minutesAgo / MINUTES_PER_DAY)}d ago`;
+    }
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch (e) {
+  } catch (error) {
     return null;
   }
 }
 
-const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
-  const t = isDark ? DARK : LIGHT;
+/**
+ * Preview line under the name — string, { text }, or String(fallback).
+ * Flattened so the row renderer stays shallow (no else-if nest under if).
+ * @param {object} conversation
+ * @returns {string}
+ */
+function previewTextFromConversation(conversation) {
+  const lastMessage = conversation?.lastMessage;
+  if (!lastMessage) return 'No messages yet';
+  if (typeof lastMessage === 'string') return lastMessage;
+  if (typeof lastMessage === 'object' && lastMessage?.text) return String(lastMessage.text);
+  return String(lastMessage);
+}
+
+/**
+ * Sort key for a thread — prefer updatedAt millis when present.
+ * vocab/symbol: ?? = use right side only when left is null/undefined
+ * @param {object} conversation
+ * @returns {number}
+ */
+function conversationSortTime(conversation) {
+  return conversation?.updatedAt?.toMillis?.() ?? conversation?.updatedAt ?? 0;
+}
+
+/**
+ * Load role + roster for the signed-in user (early returns keep nesting flat).
+ * @param {string} userId
+ * @returns {Promise<{isUserTrainer: boolean, clients: Array}>}
+ */
+async function loadTrainerRoleAndClients(userId) {
+  const userSnap = await getDoc(doc(db, 'users', userId));
+  if (!userSnap.exists()) return { isUserTrainer: false, clients: [] };
+
+  const userData = userSnap.data();
+  const isUserTrainer = userData.role === 'trainer';
+  if (!isUserTrainer) return { isUserTrainer: false, clients: [] };
+
+  const clients = await getTrainerClients(userId);
+  return { isUserTrainer: true, clients };
+}
+
+/**
+ * Clients: make sure a thread with their assigned trainer exists.
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
+async function ensureAssignedTrainerConversation(userId) {
+  const userSnap = await getDoc(doc(db, 'users', userId));
+  if (!userSnap.exists()) return;
+
+  const assignedTrainerId = userSnap.data()?.trainerId;
+  if (!assignedTrainerId) return;
+
+  await getOrCreateConversation(userId, assignedTrainerId);
+}
+
+/**
+ * Build the payload we store when a trainer taps “+ Add” on a stranger thread.
+ * @param {object} fullUserData
+ * @returns {object}
+ */
+function buildClientPayloadFromUserData(fullUserData) {
+  const clientName =
+    fullUserData.name ||
+    `${fullUserData.firstName || ''} ${fullUserData.lastName || ''}`.trim() ||
+    fullUserData.displayName ||
+    'Client';
+  return {
+    name: clientName,
+    email: fullUserData.email || '',
+    photoURL: fullUserData.photoURL || null,
+    height: fullUserData.height || null,
+    weight: fullUserData.weight || null,
+    age: fullUserData.age || null,
+    gender: fullUserData.gender || null,
+    goals: fullUserData.primaryGoal || fullUserData.goals || '',
+    fitnessLevel: fullUserData.fitnessLevel || null,
+    equipmentAccess: fullUserData.equipmentAccess || [],
+    daysPerWeek: fullUserData.daysPerWeek || null,
+    injuries: fullUserData.injuries || null,
+    phone: fullUserData.phone || null,
+    bio: fullUserData.bio || null,
+    role: fullUserData.role || 'client',
+    createdAt: fullUserData.createdAt || null,
+  };
+}
+
+/**
+ * Mark a thread read, zero the badge locally, then re-zero after a short delay
+ * in case the Firebase unread listener races.
+ * @param {string} conversationId
+ * @param {string} userId
+ * @param {object} unreadByConversationId
+ * @param {Function} setUnreadByConversationId
+ * @returns {Promise<void>}
+ */
+async function markConversationReadAndClearBadge(
+  conversationId,
+  userId,
+  unreadByConversationId,
+  setUnreadByConversationId,
+) {
+  console.log('🔕 Marking messages as read for conversation:', conversationId);
+  await markMessagesAsRead(conversationId, userId);
+  console.log('✅ Messages marked as read, forcing unread count refresh');
+
+  const clearedOnce = { ...unreadByConversationId };
+  clearedOnce[conversationId] = 0;
+  console.log('🔄 Immediately setting unread count to 0 for:', conversationId);
+  setUnreadByConversationId(clearedOnce);
+
+  // Manipulate here: UNREAD_COUNT_RECHECK_MS — second local clear after listener settle.
+  setTimeout(() => {
+    const clearedAgain = { ...unreadByConversationId };
+    clearedAgain[conversationId] = 0;
+    console.log('🔄 Double-checking unread count is 0 for:', conversationId);
+    setUnreadByConversationId(clearedAgain);
+  }, UNREAD_COUNT_RECHECK_MS);
+}
+
+/**
+ * Frosted row chrome — BlurredBackground on iOS, plain View elsewhere.
+ * @param {{ children: *, style?: object, contentWrapperStyle?: object, isDark: boolean }} props
+ */
+function GlassCard({ children, style, contentWrapperStyle, isDark }) {
+  const themePalette = isDark ? DARK : LIGHT;
   const cardStyle = {
-    backgroundColor: t.glass,
+    backgroundColor: themePalette.glass,
     borderWidth: 1,
-    borderColor: t.glassBorder,
+    borderColor: themePalette.glassBorder,
     borderRadius: 20,
-    ...(Platform.OS === 'ios' && {
+    ...(Platform.OS === PLATFORM_IOS && {
       shadowColor: '#FF6B9D',
       shadowRadius: 12,
       shadowOpacity: 0.2,
       shadowOffset: { width: 0, height: 4 },
     }),
   };
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === PLATFORM_IOS) {
     return (
       <BlurredBackground
-        intensity={20}
+        intensity={BLUR_INTENSITY_IOS}
         tint={isDark ? 'dark' : 'light'}
         style={[cardStyle, style]}
         contentWrapperStyle={contentWrapperStyle}
@@ -110,28 +254,56 @@ const GlassCard = ({ children, style, contentWrapperStyle, isDark }) => {
     );
   }
   return <View style={[cardStyle, style, contentWrapperStyle]}>{children}</View>;
-};
+}
 
-const GradientAvatar = ({ name, photoURL, size = 48 }) => {
-  const initials = (name || '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+/**
+ * Initials-in-gradient avatar, or photo when photoURL is set.
+ * @param {{ name?: string, photoURL?: string, size?: number }} props
+ */
+function GradientAvatar({ name, photoURL, size = DEFAULT_AVATAR_SIZE }) {
+  const initials = (name || '?')
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
   return (
     <LinearGradient
       colors={['#FF6B9D', '#C084FC']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
     >
       {photoURL ? (
         <Image source={{ uri: photoURL }} style={{ width: size, height: size }} />
       ) : (
-        <Text style={{ color: 'white', fontWeight: '700', fontSize: size * 0.28 }}>{initials}</Text>
+        <Text style={{ color: 'white', fontWeight: '700', fontSize: size * 0.28 }}>
+          {initials}
+        </Text>
       )}
     </LinearGradient>
   );
-};
+}
 
 const rowStyles = StyleSheet.create({
-  unreadBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   unreadText: { color: 'white', fontSize: 10, fontWeight: '700' },
   name: { fontSize: 15, fontWeight: '700', flex: 1 },
   timestamp: { fontSize: 11, marginLeft: 8, flexShrink: 0 },
@@ -139,12 +311,26 @@ const rowStyles = StyleSheet.create({
 });
 
 const screenStyles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
   headerTitle: { fontSize: 26, fontWeight: '800' },
   separator: { height: 1, marginHorizontal: 16, marginBottom: 4 },
   addBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginLeft: 8 },
   addBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  clientBadge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
+  clientBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
   clientBadgeText: { color: '#22C55E', fontSize: 12, fontWeight: '700' },
   emptyWrap: {
     flex: 1,
@@ -177,14 +363,27 @@ const screenStyles = StyleSheet.create({
   emptyCtaText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
 
-export default function InboxScreen({ onSelectConversation, onClose, onProfilePress, onSettingsPress, embedInLayout, selectedClientId }) {
+// ===== MAIN FUNCTION =====
+
+/**
+ * Conversations list — live Firebase threads with trainer/client filtering and unread badges.
+ * @param {{ onSelectConversation?: Function, onClose?: Function, onProfilePress?: Function, onSettingsPress?: Function, embedInLayout?: boolean, selectedClientId?: string }} props
+ */
+export default function InboxScreen({
+  onSelectConversation,
+  onClose,
+  onProfilePress,
+  onSettingsPress,
+  embedInLayout,
+  selectedClientId,
+}) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const embedTopPad = embedInLayout ? Math.max(insets.top, 8) : 0;
   // Shell BottomMenuBar stays visible on the conversations list — reserve it.
-  const shellBottomPad = useShellBottomNavInset(24);
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_NAV_INSET);
   const embedBottomPad = embedInLayout ? shellBottomPad : 0;
-  const t = isDark ? DARK : LIGHT;
+  const themePalette = isDark ? DARK : LIGHT;
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [participantNames, setParticipantNames] = useState({});
@@ -202,6 +401,7 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
   const currentUser = auth.currentUser;
   const { blockedIds } = blockedList(currentUser?.uid);
 
+  // Live unread badge map keyed by conversation id.
   useEffect(() => {
     if (!currentUser?.uid) return;
     const unsub = subscribeToUnreadByConversation(currentUser.uid, (byConv) => {
@@ -211,34 +411,36 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     return () => unsub();
   }, [currentUser?.uid]);
 
+  // Detect trainer role and load roster (flat helper — no nested if/try depth).
   useEffect(() => {
     if (!currentUser || !db) return;
-    const checkTrainerRole = async () => {
+    const runRoleCheck = async () => {
       try {
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const isUserTrainer = userData.role === 'trainer';
-          setIsTrainer(isUserTrainer);
-          if (isUserTrainer) {
-            const clients = await getTrainerClients(currentUser.uid);
-            setTrainerClients(clients);
-          }
-        }
+        const result = await loadTrainerRoleAndClients(currentUser.uid);
+        setIsTrainer(result.isUserTrainer);
+        if (result.isUserTrainer) setTrainerClients(result.clients);
       } catch (error) {
         console.error('Error checking trainer role:', error);
       }
     };
-    checkTrainerRole();
+    runRoleCheck();
   }, [currentUser]);
 
+  // Real-time conversation list (+ retry bump via listRefreshKey).
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
     setListError(null);
     const unsubscribe = subscribeToConversations(
       currentUser.uid,
-      ({ conversations: list, participantNames: names, participantData: data, lastDoc, hasMore, error }) => {
+      ({
+        conversations: list,
+        participantNames: names,
+        participantData: data,
+        lastDoc,
+        hasMore,
+        error,
+      }) => {
         setConversations(list || []);
         setParticipantNames(names || {});
         setParticipantData(data || {});
@@ -251,50 +453,48 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     return () => unsubscribe();
   }, [currentUser, listRefreshKey]);
 
+  // One thread per other person; hide blocked / non-clients / wrong selected client.
   const filteredConversations = useMemo(() => {
     if (!conversations.length) return [];
-    const clientIds = new Set((trainerClients || []).map((c) => c.id));
-    const byOther = new Map();
-    for (const conv of conversations) {
-      const otherId = conv.participants?.find((id) => id && id !== currentUser?.uid);
+    const clientIds = new Set((trainerClients || []).map((client) => client.id));
+    const newestByOtherUser = new Map();
+
+    for (const thread of conversations) {
+      const otherId = thread.participants?.find((id) => id && id !== currentUser?.uid);
       if (!otherId) continue;
       // Hide threads with people the user blocked (Settings → Blocked users to undo)
       if (blockedIds?.has(otherId)) continue;
-
       // If a specific client is selected, only show conversations with that client
       if (selectedClientId && otherId !== selectedClientId) continue;
-
       if (isTrainer && clientIds.size > 0 && !clientIds.has(otherId)) continue;
-      const time = conv.updatedAt?.toMillis?.() ?? conv.updatedAt ?? 0;
-      const prev = byOther.get(otherId);
-      if (!prev || time > prev.time) byOther.set(otherId, { conv, time });
-    }
-    return Array.from(byOther.values())
-      .map(({ conv }) => conv)
-      .sort((a, b) => {
-        const timeA = a.updatedAt?.toMillis?.() ?? a.updatedAt ?? 0;
-        const timeB = b.updatedAt?.toMillis?.() ?? b.updatedAt ?? 0;
-        return timeB - timeA;
-      });
-  }, [conversations, isTrainer, trainerClients, currentUser?.uid, selectedClientId, blockedIds]);
 
+      const time = conversationSortTime(thread);
+      const previous = newestByOtherUser.get(otherId);
+      if (!previous || time > previous.time) {
+        newestByOtherUser.set(otherId, { thread, time });
+      }
+    }
+
+    return Array.from(newestByOtherUser.values())
+      .map(({ thread }) => thread)
+      .sort((left, right) => conversationSortTime(right) - conversationSortTime(left));
+  }, [
+    conversations,
+    isTrainer,
+    trainerClients,
+    currentUser?.uid,
+    selectedClientId,
+    blockedIds,
+  ]);
+
+  // Clients only: after a short delay, open/create the assigned-trainer thread.
   useEffect(() => {
     if (!currentUser || isTrainer) return;
-    const ensureClientConversation = async () => {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const assignedTrainerId = userData.trainerId;
-          if (assignedTrainerId) {
-            await getOrCreateConversation(currentUser.uid, assignedTrainerId);
-          }
-        }
-      } catch (error) {
+    const timer = setTimeout(() => {
+      ensureAssignedTrainerConversation(currentUser.uid).catch((error) => {
         console.error('Error ensuring client conversation:', error);
-      }
-    };
-    const timer = setTimeout(ensureClientConversation, 1000);
+      });
+    }, ENSURE_CLIENT_CONVERSATION_DELAY_MS);
     return () => clearTimeout(timer);
   }, [currentUser, isTrainer]);
 
@@ -304,38 +504,23 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     setAddingClient((prev) => ({ ...prev, [clientId]: true }));
     try {
       const existingClients = await getTrainerClients(currentUser.uid);
-      if (existingClients.some((c) => c.id === clientId)) {
+      if (existingClients.some((client) => client.id === clientId)) {
         Alert.alert('Info', 'This person is already your client');
         setAddingClient((prev) => ({ ...prev, [clientId]: false }));
         return;
       }
-      const userDoc = await getDoc(doc(db, 'users', clientId));
-      const fullUserData = userDoc.exists() ? userDoc.data() : null;
+      const userSnap = await getDoc(doc(db, 'users', clientId));
+      const fullUserData = userSnap.exists() ? userSnap.data() : null;
       if (!fullUserData) {
         Alert.alert('Error', 'Could not load user data');
         setAddingClient((prev) => ({ ...prev, [clientId]: false }));
         return;
       }
-      const clientName = fullUserData.name || `${fullUserData.firstName || ''} ${fullUserData.lastName || ''}`.trim() || fullUserData.displayName || 'Client';
-      const clientPayload = {
-        name: clientName,
-        email: fullUserData.email || '',
-        photoURL: fullUserData.photoURL || null,
-        height: fullUserData.height || null,
-        weight: fullUserData.weight || null,
-        age: fullUserData.age || null,
-        gender: fullUserData.gender || null,
-        goals: fullUserData.primaryGoal || fullUserData.goals || '',
-        fitnessLevel: fullUserData.fitnessLevel || null,
-        equipmentAccess: fullUserData.equipmentAccess || [],
-        daysPerWeek: fullUserData.daysPerWeek || null,
-        injuries: fullUserData.injuries || null,
-        phone: fullUserData.phone || null,
-        bio: fullUserData.bio || null,
-        role: fullUserData.role || 'client',
-        createdAt: fullUserData.createdAt || null,
-      };
-      await createOrUpdateClient(clientId, currentUser.uid, clientPayload);
+      await createOrUpdateClient(
+        clientId,
+        currentUser.uid,
+        buildClientPayloadFromUserData(fullUserData),
+      );
       const updatedClients = await getTrainerClients(currentUser.uid);
       setTrainerClients(updatedClients);
       Alert.alert('Success', 'Client added successfully!');
@@ -351,18 +536,18 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     if (!currentUser?.uid || startingChat) return;
     setStartingChat(true);
     try {
-      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-      const trainerId = userDoc.exists() ? userDoc.data()?.trainerId : null;
+      const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+      const trainerId = userSnap.exists() ? userSnap.data()?.trainerId : null;
       if (!trainerId) {
         Alert.alert('No coach yet', 'Find a trainer in the app to start messaging.');
         return;
       }
       const conversationId = await getOrCreateConversation(currentUser.uid, trainerId);
-      const convSnap = await getDoc(doc(db, 'conversations', conversationId));
+      const conversationSnap = await getDoc(doc(db, 'conversations', conversationId));
       const trainerSnap = await getDoc(doc(db, 'users', trainerId));
       const trainerData = trainerSnap.exists() ? trainerSnap.data() : {};
-      const conversation = convSnap.exists()
-        ? { id: conversationId, ...convSnap.data() }
+      const conversation = conversationSnap.exists()
+        ? { id: conversationId, ...conversationSnap.data() }
         : { id: conversationId, participants: [currentUser.uid, trainerId] };
       onSelectConversation?.(conversation, { id: trainerId, ...trainerData });
     } catch (error) {
@@ -383,19 +568,34 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     if (listError) {
       return (
         <View style={screenStyles.emptyWrap}>
-          <View style={[screenStyles.emptyIconBox, { borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.08)' }]}>
+          <View
+            style={[
+              screenStyles.emptyIconBox,
+              {
+                borderColor: 'rgba(239,68,68,0.35)',
+                backgroundColor: 'rgba(239,68,68,0.08)',
+              },
+            ]}
+          >
             <Ionicons name="cloud-offline-outline" size={34} color="#f87171" />
           </View>
-          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>Couldn't load messages</Text>
-          <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+          <Text style={[screenStyles.emptyTitle, { color: themePalette.textPrimary }]}>
+            Couldn't load messages
+          </Text>
+          <Text style={[screenStyles.emptySubtitle, { color: themePalette.textMuted }]}>
             Check your connection, then try again.
           </Text>
           <TouchableOpacity
-            onPress={() => setListRefreshKey((k) => k + 1)}
+            onPress={() => setListRefreshKey((key) => key + 1)}
             activeOpacity={0.85}
             style={{ marginTop: 20 }}
           >
-            <LinearGradient colors={GRADIENT.badge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.emptyCta}>
+            <LinearGradient
+              colors={GRADIENT.badge}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={screenStyles.emptyCta}
+            >
               <Text style={screenStyles.emptyCtaText}>Retry</Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -406,8 +606,10 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     if (filteredOut) {
       return (
         <View style={screenStyles.emptyWrap}>
-          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No client chats yet</Text>
-          <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+          <Text style={[screenStyles.emptyTitle, { color: themePalette.textPrimary }]}>
+            No client chats yet
+          </Text>
+          <Text style={[screenStyles.emptySubtitle, { color: themePalette.textMuted }]}>
             Conversations with people who aren't in your client list are hidden here.
           </Text>
         </View>
@@ -415,16 +617,28 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     }
 
     return (
-        <View style={screenStyles.emptyWrap}>
-          <Text style={[screenStyles.emptyTitle, { color: t.textPrimary }]}>No conversations yet</Text>
-        <Text style={[screenStyles.emptySubtitle, { color: t.textMuted }]}>
+      <View style={screenStyles.emptyWrap}>
+        <Text style={[screenStyles.emptyTitle, { color: themePalette.textPrimary }]}>
+          No conversations yet
+        </Text>
+        <Text style={[screenStyles.emptySubtitle, { color: themePalette.textMuted }]}>
           {isTrainer
             ? 'Message a client from your roster, or add someone new from a chat.'
             : 'Say hi to your coach — your thread will show up here.'}
         </Text>
         {!isTrainer ? (
-          <TouchableOpacity onPress={handleMessageCoach} disabled={startingChat} activeOpacity={0.85} style={{ marginTop: 20 }}>
-            <LinearGradient colors={GRADIENT.badge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.emptyCta}>
+          <TouchableOpacity
+            onPress={handleMessageCoach}
+            disabled={startingChat}
+            activeOpacity={0.85}
+            style={{ marginTop: 20 }}
+          >
+            <LinearGradient
+              colors={GRADIENT.badge}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={screenStyles.emptyCta}
+            >
               {startingChat ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
@@ -441,42 +655,30 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     if (!conversation?.participants) return null;
     const otherId = conversation.participants.find((id) => id !== currentUser?.uid);
     if (!otherId) return null;
+
     const name = participantNames[otherId] || 'User';
     const otherData = participantData[otherId] || {};
-    let lastMessage = 'No messages yet';
-    if (conversation.lastMessage) {
-      if (typeof conversation.lastMessage === 'string') lastMessage = conversation.lastMessage;
-      else if (typeof conversation.lastMessage === 'object' && conversation.lastMessage?.text) lastMessage = String(conversation.lastMessage.text);
-      else lastMessage = String(conversation.lastMessage);
-    }
-    const timestamp = formatTimestamp(conversation.lastMessageTime) || formatTimestamp(conversation.updatedAt) || null;
-    const isAlreadyClient = isTrainer && trainerClients.some((c) => c.id === otherId);
+    const lastMessage = previewTextFromConversation(conversation);
+    const timestamp =
+      formatTimestamp(conversation.lastMessageTime) ||
+      formatTimestamp(conversation.updatedAt) ||
+      null;
+    const isAlreadyClient = isTrainer && trainerClients.some((client) => client.id === otherId);
     const isAdding = addingClient[otherId];
     const unreadCount = unreadByConversationId[conversation.id] ?? 0;
     const showBell = unreadCount > 0;
+    const unreadLabel = unreadCount > UNREAD_BADGE_CAP ? '99+' : unreadCount;
 
     return (
       <TouchableOpacity
         onPress={async () => {
-          // Mark messages as read when conversation is selected
           try {
-            console.log('🔕 Marking messages as read for conversation:', conversation.id);
-            await markMessagesAsRead(conversation.id, auth.currentUser.uid);
-            console.log('✅ Messages marked as read, forcing unread count refresh');
-            
-            // Immediately update the unread count to 0
-            const currentUnread = { ...unreadByConversationId };
-            currentUnread[conversation.id] = 0;
-            console.log('🔄 Immediately setting unread count to 0 for:', conversation.id);
-            setUnreadByConversationId(currentUnread);
-            
-            // Also force refresh after a delay in case Firebase listener updates
-            setTimeout(() => {
-              const refreshUnread = { ...unreadByConversationId };
-              refreshUnread[conversation.id] = 0;
-              console.log('🔄 Double-checking unread count is 0 for:', conversation.id);
-              setUnreadByConversationId(refreshUnread);
-            }, 500);
+            await markConversationReadAndClearBadge(
+              conversation.id,
+              auth.currentUser.uid,
+              unreadByConversationId,
+              setUnreadByConversationId,
+            );
           } catch (error) {
             console.error('❌ Error marking messages as read:', error);
           }
@@ -485,34 +687,92 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
         activeOpacity={0.85}
         style={{ marginHorizontal: 16, marginBottom: 10 }}
       >
-        <GlassCard isDark={isDark} contentWrapperStyle={{ flexDirection: 'row', alignItems: 'center', padding: 16, minWidth: 0 }}>
+        <GlassCard
+          isDark={isDark}
+          contentWrapperStyle={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            padding: 16,
+            minWidth: 0,
+          }}
+        >
           <View style={{ position: 'relative', flexShrink: 0 }}>
-            <GradientAvatar name={name} photoURL={otherData.photoURL} size={48} />
+            <GradientAvatar name={name} photoURL={otherData.photoURL} size={DEFAULT_AVATAR_SIZE} />
             {showBell && (
               <LinearGradient colors={GRADIENT.badge} style={rowStyles.unreadBadge}>
-                <Text style={rowStyles.unreadText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                <Text style={rowStyles.unreadText}>{unreadLabel}</Text>
               </LinearGradient>
             )}
           </View>
           <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[rowStyles.name, { color: t.textPrimary }]} numberOfLines={1}>{name}</Text>
-              {timestamp ? <Text style={[rowStyles.timestamp, { color: t.textTimestamp }]}>{timestamp}</Text> : null}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <Text
+                style={[rowStyles.name, { color: themePalette.textPrimary }]}
+                numberOfLines={1}
+              >
+                {name}
+              </Text>
+              {timestamp ? (
+                <Text style={[rowStyles.timestamp, { color: themePalette.textTimestamp }]}>
+                  {timestamp}
+                </Text>
+              ) : null}
             </View>
-            <Text style={[rowStyles.preview, { color: t.textMuted }]} numberOfLines={1}>{lastMessage}</Text>
+            <Text style={[rowStyles.preview, { color: themePalette.textMuted }]} numberOfLines={1}>
+              {lastMessage}
+            </Text>
           </View>
           {isTrainer && !isAlreadyClient && (
             <TouchableOpacity
-              onPress={(e) => handleAddAsClient(otherId, otherData, e)}
+              onPress={(pressEvent) => handleAddAsClient(otherId, otherData, pressEvent)}
               disabled={!!isAdding}
-              style={[screenStyles.addBtn, { backgroundColor: colors?.primary ?? '#6C5CE7' }]}
+              style={[
+                screenStyles.addBtn,
+                { backgroundColor: colors?.primary ?? PRIMARY_FALLBACK },
+              ]}
             >
-              {isAdding ? <ActivityIndicator size="small" color="#fff" /> : <Text style={screenStyles.addBtnText}>+ Add</Text>}
+              {isAdding ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={screenStyles.addBtnText}>+ Add</Text>
+              )}
             </TouchableOpacity>
           )}
         </GlassCard>
       </TouchableOpacity>
     );
+  };
+
+  const loadMoreConversations = async () => {
+    if (!currentUser?.uid || loadingMoreConversations || !lastConversationDocRef.current) return;
+    setLoadingMoreConversations(true);
+    try {
+      const page = await fetchMoreConversations(
+        currentUser.uid,
+        lastConversationDocRef.current,
+      );
+      if (page.lastDoc) lastConversationDocRef.current = page.lastDoc;
+      setHasMoreConversations(page.hasMore);
+      if (page.conversations?.length) {
+        setConversations((prev) => {
+          const byId = new Map((prev || []).map((existing) => [existing.id, existing]));
+          for (const pageConversation of page.conversations) {
+            byId.set(pageConversation.id, pageConversation);
+          }
+          return [...byId.values()];
+        });
+      }
+    } catch (error) {
+      console.error('fetchMoreConversations failed:', error);
+    } finally {
+      setLoadingMoreConversations(false);
+    }
   };
 
   const headerBlock = embedInLayout ? (
@@ -526,13 +786,25 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
     />
   ) : (
     <>
-      <View style={[screenStyles.header, embedTopPad ? { paddingTop: embedTopPad + 12 } : null]}>
+      <View
+        style={[
+          screenStyles.header,
+          embedTopPad ? { paddingTop: embedTopPad + 12 } : null,
+        ]}
+      >
         <TouchableOpacity onPress={onClose} style={{ padding: 8 }}>
-          <Ionicons name="arrow-back" size={22} color={t.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color={themePalette.textPrimary} />
         </TouchableOpacity>
-        <Text style={[screenStyles.headerTitle, { color: t.textPrimary }]}>Messages</Text>
+        <Text style={[screenStyles.headerTitle, { color: themePalette.textPrimary }]}>
+          Messages
+        </Text>
       </View>
-      <LinearGradient colors={GRADIENT.separator} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.separator} />
+      <LinearGradient
+        colors={GRADIENT.separator}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={screenStyles.separator}
+      />
     </>
   );
 
@@ -541,7 +813,7 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
       {embedInLayout ? headerBlock : null}
       {loading ? (
         <View style={screenStyles.emptyWrap}>
-          <ActivityIndicator size="large" color={colors?.primary ?? '#6C5CE7'} />
+          <ActivityIndicator size="large" color={colors?.primary ?? PRIMARY_FALLBACK} />
         </View>
       ) : filteredConversations.length === 0 ? (
         renderEmptyState()
@@ -560,38 +832,29 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
           ListFooterComponent={
             hasMoreConversations ? (
               <TouchableOpacity
-                onPress={async () => {
-                  if (!currentUser?.uid || loadingMoreConversations || !lastConversationDocRef.current) return;
-                  setLoadingMoreConversations(true);
-                  try {
-                    const page = await fetchMoreConversations(
-                      currentUser.uid,
-                      lastConversationDocRef.current,
-                    );
-                    if (page.lastDoc) lastConversationDocRef.current = page.lastDoc;
-                    setHasMoreConversations(page.hasMore);
-                    if (page.conversations?.length) {
-                      setConversations((prev) => {
-                        const byId = new Map((prev || []).map((c) => [c.id, c]));
-                        for (const c of page.conversations) byId.set(c.id, c);
-                        return [...byId.values()];
-                      });
-                    }
-                  } catch (e) {
-                    console.error('fetchMoreConversations failed:', e);
-                  } finally {
-                    setLoadingMoreConversations(false);
-                  }
-                }}
+                onPress={loadMoreConversations}
                 disabled={loadingMoreConversations}
                 accessibilityRole="button"
                 accessibilityLabel="Load more conversations"
-                style={{ alignSelf: 'center', marginTop: 12, paddingVertical: 10, paddingHorizontal: 16 }}
+                style={{
+                  alignSelf: 'center',
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                }}
               >
                 {loadingMoreConversations ? (
-                  <ActivityIndicator size="small" color={colors?.primary ?? '#6C5CE7'} />
+                  <ActivityIndicator size="small" color={colors?.primary ?? PRIMARY_FALLBACK} />
                 ) : (
-                  <Text style={{ color: t.textMuted, fontSize: 13, fontWeight: '700' }}>Load more</Text>
+                  <Text
+                    style={{
+                      color: themePalette.textMuted,
+                      fontSize: 13,
+                      fontWeight: '700',
+                    }}
+                  >
+                    Load more
+                  </Text>
                 )}
               </TouchableOpacity>
             ) : null
@@ -602,7 +865,7 @@ export default function InboxScreen({ onSelectConversation, onClose, onProfilePr
   );
 
   const inner = (
-    <LinearGradient colors={t.bg} style={{ flex: 1 }}>
+    <LinearGradient colors={themePalette.bg} style={{ flex: 1 }}>
       {listContent}
     </LinearGradient>
   );

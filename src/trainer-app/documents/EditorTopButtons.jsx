@@ -1,17 +1,18 @@
-/**
- * Editor Header Actions
- *
- * Purpose: Editor Header Actions — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: EditorTitleField, EditorHeaderActionBar, EditorActionButton, EditorIconButton, EDITOR_NAME_PLACEHOLDER, DEFAULT_SAVE_TITLE_DOCUMENT, DEFAULT_SAVE_TITLE_SPREADSHEET
- *
- * @file-header
- */
+// Title field and header action buttons for the trainer document / spreadsheet editor.
+// Flow: name the file (inline or boxed) → action bar of save / share / icon buttons using the editor theme.
+// Used by: the document editor and spreadsheet editor screens.
+
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { EditorGradientBorder, EditorGradientIcon } from './editorAccent';
+
+// ===== NAMED CONSTANTS =====
+
+const VARIANT_PRIMARY = 'primary';
+const VARIANT_SECONDARY = 'secondary';
+const DISABLED_OPACITY = 0.45;
+const PRIMARY_ACCENT_FILL_SUFFIX = '18';
 
 /** Shown in UI only — never saved as the file title. */
 export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
@@ -19,6 +20,65 @@ export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
 export const DEFAULT_SAVE_TITLE_DOCUMENT = 'Document';
 export const DEFAULT_SAVE_TITLE_SPREADSHEET = 'Spreadsheet';
 
+// ===== HELPER FUNCTIONS =====
+
+function hasTitleText(value) {
+  return Boolean(String(value || '').trim());
+}
+
+function titleInputSharedProps({
+  inputRef,
+  value,
+  onChangeText,
+  onFocus,
+  onBlur,
+  placeholder,
+  theme,
+}) {
+  return {
+    ref: inputRef,
+    testID: 'doc-title-input',
+    value,
+    onChangeText,
+    onFocus,
+    onBlur,
+    placeholder,
+    placeholderTextColor: theme.textMuted,
+    selectTextOnFocus: hasTitleText(value),
+    returnKeyType: 'done',
+    autoCorrect: false,
+    autoCapitalize: 'sentences',
+  };
+}
+
+function actionButtonColors(theme, isPrimary) {
+  if (isPrimary) {
+    return {
+      backgroundColor: `${theme.accent}${PRIMARY_ACCENT_FILL_SUFFIX}`,
+      borderColor: theme.accent,
+      contentColor: theme.accent,
+    };
+  }
+  return {
+    backgroundColor: theme.inputBg,
+    borderColor: theme.border,
+    contentColor: theme.text,
+  };
+}
+
+function iconButtonColors(theme) {
+  return {
+    backgroundColor: theme.inputBg,
+    borderColor: theme.border,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * One-line title in the header (no boxed border).
+ * @param {object} props
+ */
 export function EditorInlineTitle({
   value,
   onChangeText,
@@ -31,18 +91,7 @@ export function EditorInlineTitle({
 }) {
   return (
     <TextInput
-      ref={inputRef}
-      testID="doc-title-input"
-      value={value}
-      onChangeText={onChangeText}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      placeholder={placeholder}
-      placeholderTextColor={theme.textMuted}
-      selectTextOnFocus={Boolean(String(value || '').trim())}
-      returnKeyType="done"
-      autoCorrect={false}
-      autoCapitalize="sentences"
+      {...titleInputSharedProps({ inputRef, value, onChangeText, onFocus, onBlur, placeholder, theme })}
       numberOfLines={1}
       style={[
         titleStyles.inlineInput,
@@ -55,6 +104,10 @@ export function EditorInlineTitle({
   );
 }
 
+/**
+ * Boxed title field with a pencil icon. Gradient ring when focused.
+ * @param {object} props
+ */
 export function EditorTitleField({
   value,
   onChangeText,
@@ -75,18 +128,7 @@ export function EditorTitleField({
       innerStyle={{ flexDirection: 'row', alignItems: 'center', minHeight: 50 }}
     >
       <TextInput
-        ref={inputRef}
-        testID="doc-title-input"
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textMuted}
-        selectTextOnFocus={Boolean(String(value || '').trim())}
-        returnKeyType="done"
-        autoCorrect={false}
-        autoCapitalize="sentences"
+        {...titleInputSharedProps({ inputRef, value, onChangeText, onFocus, onBlur, placeholder, theme })}
         clearButtonMode="while-editing"
         style={[titleStyles.input, { color: theme.text }]}
       />
@@ -95,6 +137,10 @@ export function EditorTitleField({
   );
 }
 
+/**
+ * Full-width header strip that hosts the action buttons.
+ * @param {{ theme: object, children: * }} props
+ */
 export function EditorHeaderActionBar({ theme, children }) {
   return (
     <View style={[styles.bar, { borderBottomColor: theme.border, backgroundColor: theme.headerBg }]}>
@@ -103,15 +149,20 @@ export function EditorHeaderActionBar({ theme, children }) {
   );
 }
 
+/**
+ * Labeled editor action (Save, Share, …). `variant="primary"` uses the accent color.
+ * @param {object} props
+ */
 export function EditorActionButton({
   label,
   icon,
   onPress,
   theme,
-  variant = 'secondary',
+  variant = VARIANT_SECONDARY,
   disabled,
 }) {
-  const isPrimary = variant === 'primary';
+  const isPrimary = variant === VARIANT_PRIMARY;
+  const colors = actionButtonColors(theme, isPrimary);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -119,30 +170,24 @@ export function EditorActionButton({
       activeOpacity={0.82}
       style={[
         styles.btn,
-        isPrimary
-          ? { backgroundColor: `${theme.accent}18`, borderColor: theme.accent }
-          : { backgroundColor: theme.inputBg, borderColor: theme.border },
-        disabled ? { opacity: 0.45 } : null,
+        { backgroundColor: colors.backgroundColor, borderColor: colors.borderColor },
+        disabled ? { opacity: DISABLED_OPACITY } : null,
       ]}
     >
-      <Ionicons
-        name={icon}
-        size={15}
-        color={isPrimary ? theme.accent : theme.text}
-      />
-      <Text
-        style={[
-          styles.label,
-          { color: isPrimary ? theme.accent : theme.text },
-        ]}
-      >
+      <Ionicons name={icon} size={15} color={colors.contentColor} />
+      <Text style={[styles.label, { color: colors.contentColor }]}>
         {label}
       </Text>
     </TouchableOpacity>
   );
 }
 
+/**
+ * Round icon-only header button. `active` swaps in the gradient icon.
+ * @param {object} props
+ */
 export function EditorIconButton({ icon, onPress, theme, active, accessibilityLabel }) {
+  const colors = iconButtonColors(theme);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -150,7 +195,7 @@ export function EditorIconButton({ icon, onPress, theme, active, accessibilityLa
       hitSlop={8}
       style={[
         styles.iconBtn,
-        { backgroundColor: theme.inputBg, borderColor: theme.border },
+        { backgroundColor: colors.backgroundColor, borderColor: colors.borderColor },
       ]}
     >
       {active ? (

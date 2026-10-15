@@ -1,11 +1,6 @@
 // Full-screen modal listing every file the client's trainer has shared with them.
-// Flow: parent passes visible + files → we render a sheet with a close button, titles, and the
-// shared FileGrid → tapping an item calls back up to the parent to open it.
-// Presentation-only: no fetching here, so the home-screen preview and this modal show one dataset.
-
-/**
- * Full-screen list of trainer-shared files (same grid chrome as home preview).
- */
+// Flow: parent passes visible + files → we render a sheet with a close button, titles, and the shared FileGrid.
+// Used by the client home preview. Presentation-only: no fetching here, so both surfaces show one dataset.
 
 import React from 'react';
 import {
@@ -24,58 +19,112 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FileGrid from '../../for-both/files-and-notes/viewers/FileGrid';
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_TITLE = 'Trainer shared files';
+const DEFAULT_SUBTITLE = 'Everything your coach has shared with you.';
+const DARK_BACKGROUND = '#0A0A0F';
+const LIGHT_BACKGROUND = '#F7F7FA';
+const DARK_FOREGROUND = '#FFFFFF';
+const LIGHT_FOREGROUND = '#0B0B12';
+const DARK_MUTED = 'rgba(255,255,255,0.55)';
+const LIGHT_MUTED = 'rgba(15,23,42,0.55)';
+const CLOSE_ICON_SIZE = 26;
+const HEADER_SPACER_WIDTH = 40;
+const CLOSE_HIT_SLOP = 14;
+const GRID_BOTTOM_PADDING = 24;
+const IOS_KEYBOARD_BEHAVIOR = 'padding';
+const MODAL_ANIMATION = 'slide';
+const MODAL_PRESENTATION = 'pageSheet';
+const CLOSE_ICON_NAME = 'close';
+
+// ===== HELPER FUNCTIONS =====
+
+function sheetColors(isDark) {
+  return {
+    background: isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND,
+    foreground: isDark ? DARK_FOREGROUND : LIGHT_FOREGROUND,
+    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
+  };
+}
+
+function keyboardAvoidBehavior() {
+  // iOS needs 'padding'; Android already resizes the window itself, so passing undefined lets
+  // the OS handle it (specifying a behavior there causes double-shifting).
+  return Platform.OS === 'ios' ? IOS_KEYBOARD_BEHAVIOR : undefined;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full-screen list of trainer-shared files (same grid chrome as home preview).
+ * @param {{
+ *   visible: boolean,
+ *   onClose: Function,
+ *   title?: string,
+ *   subtitle?: string,
+ *   isDark: boolean,
+ *   files?: Array,
+ *   onPressItem: Function,
+ * }} props
+ * @returns {import('react').ReactElement}
+ */
 export default function TrainerSharedFilesPopup({
   visible,
   onClose,
   // Manipulate here: default header copy. Callers override these to reuse the same modal for a
   // different file collection.
-  title = 'Trainer shared files',
-  subtitle = 'Everything your coach has shared with you.',
+  title = DEFAULT_TITLE,
+  subtitle = DEFAULT_SUBTITLE,
   isDark,
   files,
   onPressItem,
 }) {
   const insets = useSafeAreaInsets();
-  // Theme colors resolved per render since they flip with the app's light/dark setting.
-  // Manipulate here: bg is the sheet background, fg the title/icon color, muted the subtitle.
-  const bg = isDark ? '#0A0A0F' : '#F7F7FA';
-  const fg = isDark ? '#FFFFFF' : '#0B0B12';
-  const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.55)';
+  const colors = sheetColors(isDark);
 
   return (
     // Manipulate here: 'slide' animates up from the bottom; 'pageSheet' is the iOS card style that
     // leaves the previous screen visible behind it.
     // onRequestClose is what makes the Android hardware back button dismiss the modal — without it
     // back would exit the screen underneath instead.
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      {/* KeyboardAvoidingView is here because FileGrid items can open inline rename inputs.
-          iOS needs 'padding'; Android already resizes the window itself, so passing undefined lets
-          the OS handle it (specifying a behavior there causes double-shifting). */}
+    <Modal
+      visible={visible}
+      animationType={MODAL_ANIMATION}
+      presentationStyle={MODAL_PRESENTATION}
+      onRequestClose={onClose}
+    >
+      {/* KeyboardAvoidingView is here because FileGrid items can open inline rename inputs. */}
       <KeyboardAvoidingView
-        style={[styles.flex, { backgroundColor: bg, paddingTop: insets.top }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[styles.flex, { backgroundColor: colors.background, paddingTop: insets.top }]}
+        behavior={keyboardAvoidBehavior()}
       >
         {/* Header: close button | centered titles | spacer. The spacer's width matches the close
             button so the titles are optically centered — without it they'd sit slightly left. */}
         <View style={styles.header}>
-          {/* Manipulate here: hitSlop 14 expands the tap area beyond the visible icon, which is
+          {/* Manipulate here: hitSlop expands the tap area beyond the visible icon, which is
               what makes a small X comfortable to hit. accessibilityRole announces it as a button. */}
-          <TouchableOpacity onPress={onClose} hitSlop={14} style={styles.backBtn} accessibilityRole="button">
-            <Ionicons name="close" size={26} color={fg} />
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={CLOSE_HIT_SLOP}
+            style={styles.backBtn}
+            accessibilityRole="button"
+          >
+            <Ionicons name={CLOSE_ICON_NAME} size={CLOSE_ICON_SIZE} color={colors.foreground} />
           </TouchableOpacity>
           <View style={styles.headerTitles}>
-            <Text style={[styles.title, { color: fg }]}>{title}</Text>
-            <Text style={[styles.subtitle, { color: muted }]}>{subtitle}</Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>{subtitle}</Text>
           </View>
-          <View style={{ width: 40 }} />
+          <View style={{ width: HEADER_SPACER_WIDTH }} />
         </View>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={{
             paddingHorizontal: 16,
             // Adding the bottom inset keeps the last row of files clear of the home indicator.
-            // Manipulate here: 24 is the base breathing room below the grid.
-            paddingBottom: 24 + insets.bottom,
+            // Manipulate here: GRID_BOTTOM_PADDING is the base breathing room below the grid.
+            paddingBottom: GRID_BOTTOM_PADDING + insets.bottom,
           }}
           // 'handled' lets a tap land on a file even while the keyboard is open, instead of the
           // first tap only being consumed to dismiss the keyboard.

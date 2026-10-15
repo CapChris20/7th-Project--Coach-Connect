@@ -1,8 +1,13 @@
-/**
- * Curated exercise catalog for onboarding "exercises you dislike" multi-select.
- * IDs align with MANUAL_EXERCISE_LIBRARY where possible; extras cover cardio, machines, etc.
- */
+// Curated exercise catalog for onboarding "exercises you dislike" multi-select.
+// Flow: merge the manual builder library + extras → drop duplicate ids → filter by category or search.
+// Used by the onboarding dislike picker. IDs align with MANUAL_EXERCISE_LIBRARY where possible.
+
 import { MANUAL_EXERCISE_LIBRARY } from '../../trainer-app/workout-plans/builtInExerciseList';
+
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_DISLIKE_CATEGORY = 'mobility';
+const DEFAULT_SEARCH_LIMIT = 200;
 
 export const EXERCISE_DISLIKE_CATEGORIES = [
   { id: 'push', label: 'Chest & Push' },
@@ -26,14 +31,6 @@ const CATEGORY_BY_MUSCLE = [
   { match: /forearm/i, category: 'arms' },
   { match: /full body/i, category: 'cardio' },
 ];
-
-function inferCategory(muscleGroups = []) {
-  const joined = muscleGroups.join(' ');
-  for (const rule of CATEGORY_BY_MUSCLE) {
-    if (rule.match.test(joined)) return rule.category;
-  }
-  return 'mobility';
-}
 
 /** Additional movements not in the manual builder seed. */
 const EXTRA_DISLIKE_EXERCISES = [
@@ -94,29 +91,63 @@ const EXTRA_DISLIKE_EXERCISES = [
   { id: 'tricep_dip_bench', name: 'Bench Tricep Dip', category: 'arms' },
 ];
 
-const fromManual = MANUAL_EXERCISE_LIBRARY.map((ex) => ({
-  id: ex.id,
-  name: ex.name,
-  category: inferCategory(ex.muscleGroups),
-}));
+// ===== HELPER FUNCTIONS =====
 
-const seen = new Set();
-export const EXERCISE_DISLIKE_CATALOG = [...fromManual, ...EXTRA_DISLIKE_EXERCISES].filter((ex) => {
-  if (seen.has(ex.id)) return false;
-  seen.add(ex.id);
-  return true;
-});
-
-export const EXERCISE_DISLIKE_BY_ID = Object.fromEntries(
-  EXERCISE_DISLIKE_CATALOG.map((ex) => [ex.id, ex]),
-);
-
-export function getExercisesByCategory(categoryId) {
-  return EXERCISE_DISLIKE_CATALOG.filter((ex) => ex.category === categoryId);
+function inferCategory(muscleGroups = []) {
+  const joinedMuscleNames = muscleGroups.join(' ');
+  for (const rule of CATEGORY_BY_MUSCLE) {
+    if (rule.match.test(joinedMuscleNames)) return rule.category;
+  }
+  return DEFAULT_DISLIKE_CATEGORY;
 }
 
-export function searchExerciseDislikeCatalog(query, limit = 200) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!q) return EXERCISE_DISLIKE_CATALOG;
-  return EXERCISE_DISLIKE_CATALOG.filter((ex) => ex.name.toLowerCase().includes(q)).slice(0, limit);
+function exercisesFromManualLibrary() {
+  return MANUAL_EXERCISE_LIBRARY.map((exercise) => ({
+    id: exercise.id,
+    name: exercise.name,
+    category: inferCategory(exercise.muscleGroups),
+  }));
+}
+
+function dedupeExercisesById(exercises) {
+  const seenIds = new Set();
+  return exercises.filter((exercise) => {
+    if (seenIds.has(exercise.id)) return false;
+    seenIds.add(exercise.id);
+    return true;
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+export const EXERCISE_DISLIKE_CATALOG = dedupeExercisesById([
+  ...exercisesFromManualLibrary(),
+  ...EXTRA_DISLIKE_EXERCISES,
+]);
+
+export const EXERCISE_DISLIKE_BY_ID = Object.fromEntries(
+  EXERCISE_DISLIKE_CATALOG.map((exercise) => [exercise.id, exercise]),
+);
+
+/**
+ * Exercises in one onboarding category.
+ * @param {string} categoryId
+ * @returns {Array}
+ */
+export function getExercisesByCategory(categoryId) {
+  return EXERCISE_DISLIKE_CATALOG.filter((exercise) => exercise.category === categoryId);
+}
+
+/**
+ * Case-insensitive name search. Empty query returns the full catalog.
+ * @param {string} query
+ * @param {number} [limit=200]
+ * @returns {Array}
+ */
+export function searchExerciseDislikeCatalog(query, limit = DEFAULT_SEARCH_LIMIT) {
+  const searchText = String(query || '').trim().toLowerCase();
+  if (!searchText) return EXERCISE_DISLIKE_CATALOG;
+  return EXERCISE_DISLIKE_CATALOG.filter((exercise) =>
+    exercise.name.toLowerCase().includes(searchText),
+  ).slice(0, limit);
 }

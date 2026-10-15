@@ -53,6 +53,44 @@ function captureServerFailureMessage(error) {
 
 // isRunCancelled is a function, not a boolean copied once. The loop lasts many seconds, and the
 // cleanup flag flips while we are sitting in sleep(). Reading it fresh is the only way to notice.
+function renderingStatusText(captureStep) {
+  return `Rendering ${captureStep.role} step ${captureStep.step}…`;
+}
+
+function capturedStatusText(captureIndex) {
+  return `Captured ${captureIndex + 1}/${ONBOARDING_SNAPSHOT_TOTAL}`;
+}
+
+async function captureOneStep({
+  captureStep,
+  captureIndex,
+  isRunCancelled,
+  setCurrentCapture,
+  setProgress,
+  setStatus,
+  setError,
+}) {
+  // Setting the capture re-renders the wizard. The sleep is what lets that paint finish.
+  setCurrentCapture(captureStep);
+  setProgress(captureIndex + 1);
+  setStatus(renderingStatusText(captureStep));
+
+  await sleep(RENDER_WAIT_MS);
+  if (isRunCancelled()) return false;
+
+  try {
+    await postScreenshotRequest(captureStep.file);
+    setStatus(capturedStatusText(captureIndex));
+  } catch (captureError) {
+    // Stop on the first failure. If the server is down, every later shot fails too.
+    setError(captureServerFailureMessage(captureError));
+    return false;
+  }
+
+  await sleep(PAUSE_BETWEEN_CAPTURES_MS);
+  return true;
+}
+
 async function captureAllSteps({
   isRunCancelled,
   setCurrentCapture,
@@ -64,24 +102,16 @@ async function captureAllSteps({
   for (let captureIndex = 0; captureIndex < ONBOARDING_SNAPSHOT_CAPTURES.length; captureIndex += 1) {
     if (isRunCancelled()) return;
     const captureStep = ONBOARDING_SNAPSHOT_CAPTURES[captureIndex];
-    // Setting the capture re-renders the wizard. The sleep is what lets that paint finish.
-    setCurrentCapture(captureStep);
-    setProgress(captureIndex + 1);
-    setStatus(`Rendering ${captureStep.role} step ${captureStep.step}…`);
-
-    await sleep(RENDER_WAIT_MS);
-    if (isRunCancelled()) return;
-
-    try {
-      await postScreenshotRequest(captureStep.file);
-      setStatus(`Captured ${captureIndex + 1}/${ONBOARDING_SNAPSHOT_TOTAL}`);
-    } catch (captureError) {
-      // Stop on the first failure. If the server is down, every later shot fails too.
-      setError(captureServerFailureMessage(captureError));
-      return;
-    }
-
-    await sleep(PAUSE_BETWEEN_CAPTURES_MS);
+    const keepGoing = await captureOneStep({
+      captureStep,
+      captureIndex,
+      isRunCancelled,
+      setCurrentCapture,
+      setProgress,
+      setStatus,
+      setError,
+    });
+    if (!keepGoing) return;
   }
 
   setStatus(STATUS_DONE);

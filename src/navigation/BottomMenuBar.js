@@ -24,6 +24,53 @@ import WorkoutTabIcon from '../for-both/icons/WorkoutTabIcon';
 import { useAI } from '../for-both/app-wide-settings/AIPermission';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ===== NAMED CONSTANTS =====
+
+const ACTIVE_KEY_STORAGE = '@coachconnect_nav_active_key';
+// Manipulate here: friction 8 = bounce amount — lower is springier; higher settles faster.
+const TAB_HIGHLIGHT_SPRING_FRICTION = 8;
+const ALLOWED_TAB_KEYS = new Set(['home', 'workout', 'files', 'nutrition', 'ai']);
+const DEFAULT_ACTIVE_TAB = 'home';
+const BAR_VISUAL_HEIGHT = 80;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Theme colors for the frosted tab bar chrome.
+ * @param {boolean} isDark
+ * @param {{ primary?: string }} colors
+ */
+function navThemeColors(isDark, colors) {
+  return {
+    border: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)',
+    label: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)',
+    labelActive: isDark ? '#FFFFFF' : colors.primary,
+    inactiveIcon: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
+  };
+}
+
+/**
+ * Spring the highlight pill toward fully on or fully off.
+ */
+
+function highlightTarget(isActive) {
+  return isActive ? 1 : 0;
+}
+
+function springHighlight(animValue, isActive) {
+  return Animated.spring(animValue, {
+    toValue: highlightTarget(isActive),
+    friction: TAB_HIGHLIGHT_SPRING_FRICTION,
+    useNativeDriver: true,
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Frosted bottom tab bar for client and trainer shells.
+ * @param {object} props
+ */
 // Every handler prop is renamed to *Prop on the way in. That's deliberate: the same names come back
 // out of useMergedNavigation below, and this keeps "what the parent passed" separate from "what we
 // actually call" — the merge decides which wins (prop first, then context).
@@ -72,16 +119,16 @@ export default function BottomMenuBar({
   // Theme-dependent colors computed once per render.
   // Manipulate here: rgba(255,255,255,0.55) is white at 55% opacity — that's how muted text and
   // hairline borders are done on the dark theme. Raise the last number for more contrast.
-  const NAV_BORDER = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)';
-  const NAV_LABEL = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)';
-  const NAV_LABEL_ACTIVE = isDark ? '#FFFFFF' : colors.primary;
-  const INACTIVE_ICON_COLOR = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+  const themeChrome = navThemeColors(isDark, colors);
+  const NAV_BORDER = themeChrome.border;
+  const NAV_LABEL = themeChrome.label;
+  const NAV_LABEL_ACTIVE = themeChrome.labelActive;
+  const INACTIVE_ICON_COLOR = themeChrome.inactiveIcon;
 
   // Which tab shows the frosted highlight pill. Seeded from the prop when a screen knows the answer
   // synchronously — otherwise the AsyncStorage effect below fills it in, and starting from storage
   // alone would make the highlight visibly jump from 'home' to the real tab.
-  const [activeKey, setActiveKey] = useState(activeTabKeyProp || 'home');
-  const ACTIVE_KEY_STORAGE = '@coachconnect_nav_active_key';
+  const [activeKey, setActiveKey] = useState(activeTabKeyProp || DEFAULT_ACTIVE_TAB);
 
   // One animated value per tab, each 0 (hidden) → 1 (highlight visible).
   // vocab: Animated.Value = a number the native animation system owns; changing it repaints without
@@ -97,18 +144,14 @@ export default function BottomMenuBar({
   // toward 0. Running them in parallel is what makes the highlight look like it slides across
   // rather than popping off one tab and onto another.
   useEffect(() => {
-    const to01 = (b) => (b ? 1 : 0);
     // vocab: Animated.parallel = start these animations together; .start() kicks them off.
+    // vocab: Animated.spring = physics-based easing, not a fixed duration.
     Animated.parallel([
-      // vocab: Animated.spring = physics-based easing, not a fixed duration.
-      // Manipulate here: friction 8 controls the bounce — lower is springier/wobblier, higher is
-      // stiffer and settles faster. useNativeDriver: true runs it on the UI thread so the highlight
-      // stays smooth even while JS is busy (only works for opacity/transform, which is all we animate).
-      Animated.spring(homeAnim, { toValue: to01(activeKey === 'home'), friction: 8, useNativeDriver: true }),
-      Animated.spring(workoutAnim, { toValue: to01(activeKey === 'workout'), friction: 8, useNativeDriver: true }),
-      Animated.spring(filesAnim, { toValue: to01(activeKey === 'files'), friction: 8, useNativeDriver: true }),
-      Animated.spring(nutritionAnim, { toValue: to01(activeKey === 'nutrition'), friction: 8, useNativeDriver: true }),
-      Animated.spring(aiAnim, { toValue: to01(activeKey === 'ai'), friction: 8, useNativeDriver: true }),
+      springHighlight(homeAnim, activeKey === 'home'),
+      springHighlight(workoutAnim, activeKey === 'workout'),
+      springHighlight(filesAnim, activeKey === 'files'),
+      springHighlight(nutritionAnim, activeKey === 'nutrition'),
+      springHighlight(aiAnim, activeKey === 'ai'),
     ]).start();
   }, [activeKey, homeAnim, workoutAnim, filesAnim, nutritionAnim, aiAnim]);
 
@@ -130,9 +173,7 @@ export default function BottomMenuBar({
         if (cancelled) return;
         // Whitelist: storage is untrusted (stale key from an older build with different tabs), and
         // an unrecognized value would leave every pill at 0 with no tab looking selected.
-        // Manipulate here: adding a tab means adding its key to this set too.
-        const allowed = new Set(['home', 'workout', 'files', 'nutrition', 'ai']);
-        if (saved && allowed.has(saved)) setActiveKey(saved);
+        if (saved && ALLOWED_TAB_KEYS.has(saved)) setActiveKey(saved);
       } catch (_) {
         // ignore storage failures — worst case the highlight starts on 'home'
       }
@@ -152,9 +193,9 @@ export default function BottomMenuBar({
       // Semi-transparent on purpose: the blur plate behind it needs something to show through.
       // Manipulate here: raise 0.55 toward 1 for a more solid bar (and a weaker frosted look).
       backgroundColor: isDark ? 'rgba(12,12,18,0.55)' : 'rgba(255,255,255,0.55)',
-      // 80 = the visual bar height (kept in sync with BOTTOM_NAV_BAR_HEIGHT in bottomMenuSpacing.js);
+      // BAR_VISUAL_HEIGHT stays in sync with BOTTOM_NAV_BAR_HEIGHT in bottomMenuSpacing.js;
       // + insets.bottom grows it to cover the home-indicator strip so the bar reaches the screen edge.
-      minHeight: 80 + insets.bottom,
+      minHeight: BAR_VISUAL_HEIGHT + insets.bottom,
       alignItems: 'stretch',
       justifyContent: 'flex-end',
       paddingHorizontal: 0,

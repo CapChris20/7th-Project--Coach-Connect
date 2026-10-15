@@ -1,13 +1,7 @@
-/**
- * trainer Dashboard Ui
- *
- * Purpose: trainer Dashboard Ui — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: (see file)
- *
- * @file-header
- */
+// Shared trainer-home UI pieces: empty-state Lotties, color helpers, cards used by TrainerHomeContent.
+// Flow: pick a Lottie/caption → paint accent colors → render dashboard cards.
+// Used by TrainerHomeContent and related trainer home popups.
+
 import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -47,12 +41,16 @@ import {
 import { Dimensions } from 'react-native';
 import { useTheme as useGlobalTheme } from '../../look-and-feel/lightDarkMode';
 
+// ===== NAMED CONSTANTS =====
+
 const LOTTIE_WELLNESS_SORENESS_EMPTY = require('../../assets/sad reaction.json');
 const LOTTIE_WELLNESS_ENERGY_EMPTY = require('../../assets/Run Hamster... run.json');
 const LOTTIE_WELLNESS_STRESS_EMPTY = require('../../assets/Stressed Employee At Work.json');
 const LOTTIE_STEPS_EMPTY = require('../../for-both/assets/Walking steps.json');
 const LOTTIE_MOOD_EMPTY = require('../../for-both/assets/Happy SUN.json');
 const LOTTIE_FOOD_AROUND_CITY = require('../../assets/animations/legacy/food around the city.json');
+
+// ===== HELPER FUNCTIONS =====
 
 function getTrainerDashboardLottieSource(lottieType) {
   switch (lottieType) {
@@ -108,13 +106,13 @@ function getTrainerDashboardLottieCaption(lottieType) {
 }
 
 function hexToRgbTriple(hex) {
-  const h = String(hex || '').replace('#', '').trim();
-  if (h.length !== 6) return '255, 107, 157';
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if ([r, g, b].some((n) => Number.isNaN(n))) return '255, 107, 157';
-  return `${r}, ${g}, ${b}`;
+  const hexDigits = String(hex || '').replace('#', '').trim();
+  if (hexDigits.length !== 6) return '255, 107, 157';
+  const red = parseInt(hexDigits.slice(0, 2), 16);
+  const green = parseInt(hexDigits.slice(2, 4), 16);
+  const blue = parseInt(hexDigits.slice(4, 6), 16);
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) return '255, 107, 157';
+  return `${red}, ${green}, ${blue}`;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -388,9 +386,9 @@ const formatClientHeightDisplay = (h) => {
     const inch = Number(h.inches) || 0;
     return `${h.feet}'${inch}"`;
   }
-  const n = typeof h === 'number' ? h : Number(String(h).replace(/[^0-9.]/g, ''));
-  if (Number.isFinite(n) && n >= 36 && n <= 96) {
-    const total = Math.round(n);
+  const totalInches = typeof h === 'number' ? h : Number(String(h).replace(/[^0-9.]/g, ''));
+  if (Number.isFinite(totalInches) && totalInches >= 36 && totalInches <= 96) {
+    const total = Math.round(totalInches);
     return `${Math.floor(total / 12)}'${total % 12}"`;
   }
   return typeof h === 'string' && h.trim() ? h.trim() : null;
@@ -450,7 +448,7 @@ const PremiumTabEmptyState = ({
   const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
   const iconColor = isDark ? '#E9D5FF' : '#7C3AED';
   const border = ['#9333EA', '#DB2777'];
-  const bg = isDark ? ['#12081f', '#08050f'] : ['#F3F0FA', '#FFFFFF'];
+  const emptyStateFill = isDark ? ['#12081f', '#08050f'] : ['#F3F0FA', '#FFFFFF'];
 
   return (
     <LinearGradient
@@ -466,7 +464,7 @@ const PremiumTabEmptyState = ({
       }}
     >
       <View style={{ borderRadius: 18, overflow: 'hidden', backgroundColor: innerBg }}>
-        <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
+        <LinearGradient colors={emptyStateFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
           <LinearGradient colors={border} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, width: '100%' }} />
           <View style={{ paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center' }}>
             {lottieSource ? (
@@ -845,6 +843,9 @@ const TabPills = ({ activeTab, onTabChange, isDark }) => {
   );
 };
 
+// ===== MAIN FUNCTION =====
+
+// Barrel of trainer-home pieces and tokens — names frozen for TrainerHomeContent imports.
 export {
   SCREEN_WIDTH,
   PURPLE,

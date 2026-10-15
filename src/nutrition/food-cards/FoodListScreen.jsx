@@ -1,3 +1,7 @@
+// Today's logged foods as a searchable list of FoodCards.
+// Flow: pick foods (or the demo bowl) → filter by the search box → sticky header + calorie total + cards.
+// Used by the nutrition tab. FoodCard owns expand/collapse; this screen only tracks which id is open.
+
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
@@ -14,41 +18,92 @@ import FoodCard from './FoodCard';
 import { colors, fonts } from './foodCardColors';
 import { DEMO_YOGURT_BOWL } from './foodCardText';
 
+// ===== NAMED CONSTANTS =====
+
+const WEEKDAY_FORMAT = { weekday: 'short' };
+const MONTH_FORMAT = { month: 'short' };
+const LOCALE_US = 'en-US';
+const SEARCH_ICON_SIZE = 16;
+const SEARCH_ICON_STROKE_WIDTH = 2;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * "Today · Mon Oct 8" for the eyebrow above the Nutrition title.
+ * Device locale is ignored on purpose so the header always looks the same.
+ * @returns {string}
+ */
 function formatTodayHeader() {
   const now = new Date();
-  const day = now.toLocaleDateString('en-US', { weekday: 'short' });
-  const month = now.toLocaleDateString('en-US', { month: 'short' });
-  const date = now.getDate();
-  return `Today · ${day} ${month} ${date}`;
+  const weekday = now.toLocaleDateString(LOCALE_US, WEEKDAY_FORMAT);
+  const month = now.toLocaleDateString(LOCALE_US, MONTH_FORMAT);
+  const dayOfMonth = now.getDate();
+  return `Today · ${weekday} ${month} ${dayOfMonth}`;
 }
 
 /**
- * Premium nutrition list screen — FlatList of FoodCards with sticky-style header.
+ * Every row needs an id for FlatList. Missing ids get food-0, food-1, …
+ * @param {object} food
+ * @param {number} index
+ * @returns {object}
+ */
+function foodWithListId(food, index) {
+  return { ...food, id: food.id || `food-${index}` };
+}
+
+/**
+ * Empty search shows the full list. Match is case-insensitive on the food name.
+ * @param {Array} foods
+ * @param {string} searchText
+ * @returns {Array}
+ */
+function foodsMatchingSearch(foods, searchText) {
+  const baseFoods = foods?.length ? foods : [DEMO_YOGURT_BOWL];
+  const trimmedSearch = searchText.trim().toLowerCase();
+  if (!trimmedSearch) return baseFoods.map(foodWithListId);
+  return baseFoods
+    .filter((food) => String(food.name || '').toLowerCase().includes(trimmedSearch))
+    .map(foodWithListId);
+}
+
+/**
+ * Prefer the parent-supplied total so the header matches the rest of the nutrition tab.
+ * @param {Array} foodItems
+ * @param {number|null|undefined} totalCalories
+ * @returns {number}
+ */
+function roundedCalorieTotal(foodItems, totalCalories) {
+  if (totalCalories != null) return Math.round(totalCalories);
+  return foodItems.reduce((sum, food) => sum + (Number(food.calories) || 0), 0);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Premium nutrition list — FlatList of FoodCards with a search box and calorie total.
+ * @param {{ foods?: Array, totalCalories?: number }} props
  */
 export default function FoodListScreen({ foods, totalCalories }) {
   const [expandedId, setExpandedId] = useState(null);
-  const [query, setQuery] = useState('');
+  const [searchText, setSearchText] = useState('');
 
-  const items = useMemo(() => {
-    const base = foods?.length ? foods : [DEMO_YOGURT_BOWL];
-    const q = query.trim().toLowerCase();
-    if (!q) return base.map((f, i) => ({ ...f, id: f.id || `food-${i}` }));
-    return base
-      .filter((f) => String(f.name || '').toLowerCase().includes(q))
-      .map((f, i) => ({ ...f, id: f.id || `food-${i}` }));
-  }, [foods, query]);
+  const foodItems = useMemo(
+    () => foodsMatchingSearch(foods, searchText),
+    [foods, searchText],
+  );
 
-  const totalKcal = useMemo(() => {
-    if (totalCalories != null) return Math.round(totalCalories);
-    return items.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
-  }, [items, totalCalories]);
+  const totalKcal = useMemo(
+    () => roundedCalorieTotal(foodItems, totalCalories),
+    [foodItems, totalCalories],
+  );
 
+  // Tapping the open card closes it; tapping another opens that one instead.
   const renderItem = useCallback(
     ({ item }) => (
       <FoodCard
         food={item}
         expanded={expandedId === item.id}
-        onToggle={() => setExpandedId((cur) => (cur === item.id ? null : item.id))}
+        onToggle={() => setExpandedId((currentId) => (currentId === item.id ? null : item.id))}
       />
     ),
     [expandedId],
@@ -68,10 +123,10 @@ export default function FoodListScreen({ foods, totalCalories }) {
       </View>
 
       <View style={styles.searchRow}>
-        <Search size={16} color={colors.subtle} strokeWidth={2} />
+        <Search size={SEARCH_ICON_SIZE} color={colors.subtle} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
         <TextInput
-          value={query}
-          onChangeText={setQuery}
+          value={searchText}
+          onChangeText={setSearchText}
           placeholder="Search logged foods…"
           placeholderTextColor={colors.subtle}
           style={styles.searchInput}
@@ -80,7 +135,7 @@ export default function FoodListScreen({ foods, totalCalories }) {
       </View>
 
       <FlatList
-        data={items}
+        data={foodItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}

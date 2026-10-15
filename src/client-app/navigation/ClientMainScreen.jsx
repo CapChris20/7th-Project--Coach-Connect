@@ -1,13 +1,7 @@
-/**
- * Client Main Screen
- *
- * Purpose: UI screen or component: Client Main Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: ClientMainScreen
- *
- * @file-header
- */
+// Client home shell: tabs, dashboard overlay, nutrition, AI coach, and notes/files.
+// Flow: read the shared shell → pick the overlay or tab → keep AI/workout mounted when needed.
+// Used once as the client MainTabs screen. Tab keys stay CLIENT_MAIN_TABS.*.
+
 import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
@@ -68,8 +62,162 @@ import { useIsFocused } from '@react-navigation/native';
 import { CLIENT_MAIN_TABS } from './goToClientScreen';
 import { useClientAppStartShell } from './ClientOpenScreenTracker';
 
+// ===== NAMED CONSTANTS =====
+
+const PAYMENT_STATUS_INACTIVE = 'inactive';
+const PAYMENT_STATUS_PAST_DUE = 'past_due';
+const AI_CHAT_HOME = 'home';
+const DEFAULT_SELF_NAME = 'You';
+const DEFAULT_COACH_NAME = 'Your coach';
+const DEFAULT_TRAINER_NAME = 'Your trainer';
+const ROLE_TRAINER = 'trainer';
+const SCROLL_BOTTOM_PAD = 130;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Workout-tab badge: show "ready" only when a background generate finished and the user is not already on Workout.
+ * A session for a different uid is ignored so a stale write cannot flip this user's badge.
+ * @param {object} session
+ * @param {string} uid
+ * @param {string} mainTab
+ * @param {Function} setWorkoutGenInFlight
+ * @param {Function} setWorkoutPlanReadyBadge
+ */
+function applyWorkoutGenerationSession(session, uid, mainTab, setWorkoutGenInFlight, setWorkoutPlanReadyBadge) {
+  if (session?.uid && session.uid !== uid) return;
+  setWorkoutGenInFlight(!!session?.inFlight);
+  const showReadyBadge =
+    !!session?.pendingReady &&
+    !session?.inFlight &&
+    mainTab !== CLIENT_MAIN_TABS.workout;
+  setWorkoutPlanReadyBadge(showReadyBadge);
+}
+
+/**
+ * Saved workoutLog rows use exerciseName + numeric reps/weight. The form uses name.
+ * @param {object[]} workoutExercises
+ * @returns {object[]}
+ */
+function workoutLogRowsFromExercises(workoutExercises) {
+  return workoutExercises.map((exercise) => ({
+    exerciseName: exercise.name || exercise.exerciseName || '',
+    sets: Array.isArray(exercise.sets)
+      ? exercise.sets.map((setRow) => ({
+          reps: parseInt(setRow.reps, 10) || 0,
+          weight: parseFloat(setRow.weight) || 0,
+        }))
+      : [],
+  }));
+}
+
+/**
+ * dailyLogs field names stay dashboard_water / dashboard_sleep / dashboard_workouts.
+ * @param {object} patch
+ * @returns {object}
+ */
+function buildDailyLogsPatch(patch) {
+  const logsPatch = {};
+  if (typeof patch.waterIntake === 'number') {
+    logsPatch.dashboard_water = String(patch.waterIntake);
+  }
+  if (typeof patch.sleepHours === 'number') {
+    logsPatch.dashboard_sleep = String(patch.sleepHours);
+  }
+  if (patch.workoutSummary != null) {
+    logsPatch.dashboard_workouts = patch.workoutSummary;
+  }
+  if (patch.workoutName != null) {
+    logsPatch.dashboard_workout_name = patch.workoutName;
+  }
+  if (Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0) {
+    logsPatch.workoutLog = workoutLogRowsFromExercises(patch.workoutExercises);
+  }
+  return logsPatch;
+}
+
+/**
+ * Write the dashboard patch to dailyLogs + the legacy tracking copy, and mirror it onto home-row state.
+ * @param {object} patch
+ * @param {object} user
+ * @param {object} setters
+ */
+async function saveTrainerMetricsPatch(patch, user, setters) {
+  const updateData = {};
+  if (typeof patch.waterIntake === 'number') {
+    updateData.waterIntake = patch.waterIntake;
+    setters.setWaterIntake(patch.waterIntake);
+  }
+  if (typeof patch.sleepHours === 'number') {
+    updateData.sleepHours = patch.sleepHours;
+    setters.setSleepHours(patch.sleepHours);
+  }
+  if (patch.workoutSummary != null) {
+    updateData.workoutSummary = patch.workoutSummary;
+    setters.setDashboardWorkoutSummary(patch.workoutSummary);
+  }
+  if (patch.workoutName != null || (Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0)) {
+    updateData.workoutName = patch.workoutName;
+    updateData.workoutExercises = patch.workoutExercises;
+    setters.setTodayWorkout({
+      name: patch.workoutName || '',
+      exercises: Array.isArray(patch.workoutExercises) ? patch.workoutExercises : [],
+    });
+  }
+
+  if (Object.keys(updateData).length === 0) return;
+
+  const todayKey = getClientDateKey();
+  const logsPatch = buildDailyLogsPatch(patch);
+  await mergeClientDailyMetrics(user.uid, todayKey, {
+    logs: logsPatch,
+    tracking: updateData,
+  });
+}
+
+/**
+ * Wellness ratings update the home row immediately. Water / sleep / workout persist first.
+ * @param {object} patch
+ * @param {object} user
+ * @param {object} setters
+ */
+async function applyDashboardMetricsPatch(patch, user, setters) {
+  // 1. Wellness ratings update the home row immediately (empty string is ignored).
+  if (patch.soreness != null && patch.soreness !== '') {
+    setters.setSoreness(String(patch.soreness));
+  }
+  if (patch.energyLevel != null && patch.energyLevel !== '') {
+    setters.setEnergyLevel(String(patch.energyLevel));
+  }
+  if (patch.stressLevel != null && patch.stressLevel !== '') {
+    setters.setStressLevel(String(patch.stressLevel));
+  }
+
+  try {
+    // 2. Water / sleep / workout persist to dailyLogs, then mirror onto home-row state.
+    await saveTrainerMetricsPatch(patch, user, setters);
+  } catch (error) {
+    console.error('❌ Failed to save trainer metrics:', error);
+  }
+}
+
+function unreadNotesCount(notesAndFiles) {
+  if (!Array.isArray(notesAndFiles)) return 0;
+  return notesAndFiles.filter((file) => file?.isRead === false).length;
+}
+
+function notesFileCount(notesAndFiles) {
+  return Array.isArray(notesAndFiles) ? notesAndFiles.length : 0;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Client main tabs: home feed, nutrition, workout generator, AI coach, plus overlays.
+ * @returns {import('react').ReactElement}
+ */
 export default function ClientMainScreen() {
-  const s = useClientAppStartShell();
+  const shell = useClientAppStartShell();
   const {
     navProviderProps,
     isDark,
@@ -176,7 +324,7 @@ export default function ClientMainScreen() {
     aiChatNavHandlers,
     openCoachingPayment,
     setTrainerData,
-  } = s;
+  } = shell;
 
   const [workoutPlanReadyBadge, setWorkoutPlanReadyBadge] = useState(false);
   const [workoutGenInFlight, setWorkoutGenInFlight] = useState(false);
@@ -190,20 +338,14 @@ export default function ClientMainScreen() {
     }
 
     const syncSession = (session) => {
-      if (session?.uid && session.uid !== uid) return;
-      setWorkoutGenInFlight(!!session?.inFlight);
-      const show =
-        !!session?.pendingReady &&
-        !session?.inFlight &&
-        mainTab !== CLIENT_MAIN_TABS.workout;
-      setWorkoutPlanReadyBadge(show);
+      applyWorkoutGenerationSession(session, uid, mainTab, setWorkoutGenInFlight, setWorkoutPlanReadyBadge);
     };
 
     readWorkoutGenerationSession(uid).then(syncSession);
     return subscribeWorkoutGenerationSession(syncSession);
   }, [user?.uid, mainTab]);
 
-  const clientPaymentStatus = userData?.paymentStatus || 'inactive';
+  const clientPaymentStatus = userData?.paymentStatus || PAYMENT_STATUS_INACTIVE;
 
   const aiChatPayload = aiChatState && typeof aiChatState === 'object' ? aiChatState : null;
   const isMainFocused = useIsFocused();
@@ -271,88 +413,27 @@ export default function ClientMainScreen() {
               calorieGoal={calorieGoal}
               waterOz={waterIntake}
               sleepHoursValue={sleepHours}
-              onMetricsChange={async (patch) => {
-                // Wellness ratings: saved to dailyLogs inside My Dashboard; sync home row immediately
-                if (patch.soreness != null && patch.soreness !== '') {
-                  setSoreness(String(patch.soreness));
-                }
-                if (patch.energyLevel != null && patch.energyLevel !== '') {
-                  setEnergyLevel(String(patch.energyLevel));
-                }
-                if (patch.stressLevel != null && patch.stressLevel !== '') {
-                  setStressLevel(String(patch.stressLevel));
-                }
-
-                // Save to Firebase first so data persists
-                try {
-                  const updateData = {};
-
-                  if (typeof patch.waterIntake === 'number') {
-                    updateData.waterIntake = patch.waterIntake;
-                    setWaterIntake(patch.waterIntake);
-                  }
-                  if (typeof patch.sleepHours === 'number') {
-                    updateData.sleepHours = patch.sleepHours;
-                    setSleepHours(patch.sleepHours);
-                  }
-                  if (patch.workoutSummary != null) {
-                    updateData.workoutSummary = patch.workoutSummary;
-                    setDashboardWorkoutSummary(patch.workoutSummary);
-                  }
-                  if (patch.workoutName != null || (Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0)) {
-                    updateData.workoutName = patch.workoutName;
-                    updateData.workoutExercises = patch.workoutExercises;
-                    setTodayWorkout({
-                      name: patch.workoutName || '',
-                      exercises: Array.isArray(patch.workoutExercises) ? patch.workoutExercises : [],
-                    });
-                  }
-
-                  if (Object.keys(updateData).length > 0) {
-                    const todayKey = getClientDateKey();
-                    const logsPatch = {};
-                    if (typeof patch.waterIntake === 'number') {
-                      logsPatch.dashboard_water = String(patch.waterIntake);
-                    }
-                    if (typeof patch.sleepHours === 'number') {
-                      logsPatch.dashboard_sleep = String(patch.sleepHours);
-                    }
-                    if (patch.workoutSummary != null) {
-                      logsPatch.dashboard_workouts = patch.workoutSummary;
-                    }
-                    if (patch.workoutName != null) {
-                      logsPatch.dashboard_workout_name = patch.workoutName;
-                    }
-                    if (Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0) {
-                      logsPatch.workoutLog = patch.workoutExercises.map((ex) => ({
-                        exerciseName: ex.name || ex.exerciseName || '',
-                        sets: Array.isArray(ex.sets)
-                          ? ex.sets.map((s) => ({
-                              reps: parseInt(s.reps, 10) || 0,
-                              weight: parseFloat(s.weight) || 0,
-                            }))
-                          : [],
-                      }));
-                    }
-                    await mergeClientDailyMetrics(user.uid, todayKey, {
-                      logs: logsPatch,
-                      tracking: updateData,
-                    });
-                  }
-                } catch (error) {
-                  console.error('❌ Failed to save trainer metrics:', error);
-                }
-              }}
+              onMetricsChange={(patch) =>
+                applyDashboardMetricsPatch(patch, user, {
+                  setSoreness,
+                  setEnergyLevel,
+                  setStressLevel,
+                  setWaterIntake,
+                  setSleepHours,
+                  setDashboardWorkoutSummary,
+                  setTodayWorkout,
+                })
+              }
               onPressMessage={handleOpenConversations}
               onPressFindTrainer={handleFindTrainers}
               trainerClientId={user?.uid}
-              trainerClientName={userData?.firstName || user?.displayName || 'You'}
+              trainerClientName={userData?.firstName || user?.displayName || DEFAULT_SELF_NAME}
               onOpenPhotoGallery={() => {
-                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || 'You' });
+                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
                 openPhotoGallery();
               }}
               onOpenAIWorkouts={() => {
-                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || 'You' });
+                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
                 openAIWorkouts();
               }}
               onOpenWeeklyReport={() => openWeeklyReport()}
@@ -375,7 +456,7 @@ export default function ClientMainScreen() {
           />
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 130 }}
+            contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_PAD }}
             keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
             keyboardDismissMode="on-drag"
@@ -449,21 +530,21 @@ export default function ClientMainScreen() {
         ) : null}
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 130, paddingTop: 6 }}
+        contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_PAD, paddingTop: 6 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={!isDark ? '#000' : '#fff'} />}
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         <HomeTopBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
-        {userRole !== 'trainer' && !hasTrainer && (
+        {userRole !== ROLE_TRAINER && !hasTrainer && (
           <FindTrainerBanner
             onPress={() => openTrainerSearch()}
             notificationCount={0}
             isDark={isDark}
           />
         )}
-        {userRole !== 'trainer' && clientPaymentStatus === 'past_due' ? (
+        {userRole !== ROLE_TRAINER && clientPaymentStatus === PAYMENT_STATUS_PAST_DUE ? (
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => openCoachingPayment?.()}
@@ -484,7 +565,7 @@ export default function ClientMainScreen() {
             </Text>
           </TouchableOpacity>
         ) : null}
-        {userRole !== 'trainer' && (
+        {userRole !== ROLE_TRAINER && (
           <TopBannerCard
             onPress={() => setShowMyDashboard(true)}
             unreadMessageCount={unreadMessageCount}
@@ -505,7 +586,7 @@ export default function ClientMainScreen() {
         />
         <TrainingAgenda theme={isDark ? 'dark' : 'light'} workouts={agendaWorkouts} />
         {/* Weekly calendar removed */}
-        {userRole !== 'trainer' && (
+        {userRole !== ROLE_TRAINER && (
           <WellnessStatsRow
             isDark={isDark}
             colors={colors}
@@ -527,8 +608,8 @@ export default function ClientMainScreen() {
         {/* Notes & Files hero card */}
         <FilesHeaderCard
           onPress={() => setShowNotesFiles(true)}
-          fileCount={Array.isArray(notesAndFiles) ? notesAndFiles.length : 0}
-          newCount={Array.isArray(notesAndFiles) ? notesAndFiles.filter((f) => f?.isRead === false).length : 0}
+          fileCount={notesFileCount(notesAndFiles)}
+          newCount={unreadNotesCount(notesAndFiles)}
           isDark={isDark}
         />
 
@@ -585,13 +666,13 @@ export default function ClientMainScreen() {
             </View>
           </View>
 
-          {pendingSessions.map((s) => (
+          {pendingSessions.map((session) => (
             <UpcomingSessionCard
-              key={s.id}
+              key={session.id}
               mode="invite"
               isDark={isDark}
-              coachName={trainerData?.displayName || trainerData?.name || 'Your coach'}
-              session={s}
+              coachName={trainerData?.displayName || trainerData?.name || DEFAULT_COACH_NAME}
+              session={session}
               onRespond={respondToSession}
             />
           ))}
@@ -648,7 +729,7 @@ export default function ClientMainScreen() {
               sessionId={aiChatPayload.sessionId}
               initialAttachments={aiChatPayload.initialAttachments}
               onBack={() => {
-                setAiChatState('home');
+                setAiChatState(AI_CHAT_HOME);
               }}
               onSessionSwitch={(session) =>
                 openAIChatSession({ sessionId: session.sessionId || session.id })
@@ -731,7 +812,7 @@ export default function ClientMainScreen() {
         onClose={() => setShowRemoveTrainerPopup(false)}
         onRemovalComplete={() => {
           if (trainerData) {
-            setReviewPromptTrainer({ id: trainerData.id, name: trainerData.displayName || trainerData.name || 'Your trainer' });
+            setReviewPromptTrainer({ id: trainerData.id, name: trainerData.displayName || trainerData.name || DEFAULT_TRAINER_NAME });
           }
           setTrainerData(null);
           setShowRemoveTrainerPopup(false);

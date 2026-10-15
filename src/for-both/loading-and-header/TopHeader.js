@@ -1,13 +1,7 @@
-/**
- * Coach Connect Header
- *
- * Purpose: Coach Connect Header — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: TopHeader
- *
- * @file-header
- */
+// Main app header: frosted bar with profile + settings. Always draws under the status bar.
+// Flow: read theme + safe-area inset → optional left slot → profile icon → settings icon.
+// Used by client and trainer shells. Parent shells should use SHELL_SAFE_AREA_EDGES (left/right only).
+
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
@@ -17,10 +11,16 @@ import { useMergedNavigation } from '../../navigation/whichScreenIsOpen';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import ColorfulIcon from '../icons/ColorfulIcon';
 
+// ===== NAMED CONSTANTS =====
+
 /** Matches Settings screen pill gradient (dark pink → dark orange). */
 const HEADER_PROFILE_GRADIENT = ['#BE185D', '#C2410C'];
+const DEFAULT_PROFILE_ICON_SIZE = 36;
+const HEADER_TOP_GAP = 8;
 
-function GradientProfileHeaderIcon({ size = 36 }) {
+// ===== HELPER FUNCTIONS =====
+
+function GradientProfileHeaderIcon({ size = DEFAULT_PROFILE_ICON_SIZE }) {
   return (
     <ColorfulIcon
       name="people"
@@ -32,10 +32,44 @@ function GradientProfileHeaderIcon({ size = 36 }) {
   );
 }
 
+function headerChrome(isDark) {
+  return {
+    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)',
+    containerBlurIntensity: isDark ? 28 : 18,
+    containerTint: isDark ? 'dark' : 'light',
+    containerTintColor: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)',
+    glassBackground: isDark ? 'rgba(12,12,18,0.55)' : 'rgba(255,255,255,0.55)',
+  };
+}
+
+function isAppearanceDark(appearanceIsDark, theme) {
+  if (appearanceIsDark !== undefined) return appearanceIsDark;
+  return Boolean(theme?.isDark);
+}
+
+function headerPaddingTop(safeAreaTop) {
+  return safeAreaTop + HEADER_TOP_GAP;
+}
+
+function shouldShowHeaderSideActions(showHeaderActions) {
+  return showHeaderActions !== false;
+}
+
+function headerSurfaceStyle(insets, chrome) {
+  return {
+    paddingTop: headerPaddingTop(insets.top),
+    borderBottomColor: chrome.borderColor,
+    backgroundColor: chrome.glassBackground,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Main app header: profile + settings actions only.
  * Always extends to the physical top edge; status-bar inset is applied inside this component.
  * Parent shells should use SHELL_SAFE_AREA_EDGES (left/right only), not top safe-area padding.
+ * @param {object} props
  */
 export default function TopHeader({
   title: _title,
@@ -49,35 +83,33 @@ export default function TopHeader({
   /** Override global theme for embedded editors (spreadsheet/document modals). */
   appearanceIsDark,
 }) {
+  // vocab: useSafeAreaInsets = pixels under the notch / status bar. We add them here so parent shells skip top padding.
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const isDark = appearanceIsDark !== undefined ? appearanceIsDark : Boolean(theme?.isDark);
-  const borderColor = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.08)';
-  const containerBlurIntensity = isDark ? 28 : 18;
-  const containerTint = isDark ? 'dark' : 'light';
-  const containerTintColor = isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.35)';
-  const glassBackground = isDark ? 'rgba(12,12,18,0.55)' : 'rgba(255,255,255,0.55)';
+  const isDark = isAppearanceDark(appearanceIsDark, theme);
+  const chrome = headerChrome(isDark);
+  const {
+    containerBlurIntensity,
+    containerTint,
+    containerTintColor,
+  } = chrome;
 
+  // vocab: useMergedNavigation = fill missing profile/settings taps from the current screen's nav helpers.
   const { onProfilePress, onSettingsPress } = useMergedNavigation({
     onProfilePress: onProfilePressProp,
     onSettingsPress: onSettingsPressProp,
   });
 
-  const sideActionsVisible = showHeaderActions !== false;
+  const shouldShowSideActions = shouldShowHeaderSideActions(showHeaderActions);
+  const surfaceStyle = headerSurfaceStyle(insets, chrome);
 
-  if (!sideActionsVisible) {
+  // 1. Embedded editors hide the buttons — frosted bar still sits under the status bar.
+  if (!shouldShowSideActions) {
     return (
       <BlurredBackground
         intensity={containerBlurIntensity}
         tint={containerTint}
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 8,
-            borderBottomColor: borderColor,
-            backgroundColor: glassBackground,
-          },
-        ]}
+        style={[styles.header, surfaceStyle]}
         contentWrapperStyle={styles.headerContentMinimal}
       >
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: containerTintColor }]} pointerEvents="none" />
@@ -85,18 +117,12 @@ export default function TopHeader({
     );
   }
 
+  // 2. Profile + settings on the frosted bar.
   return (
     <BlurredBackground
       intensity={containerBlurIntensity}
       tint={containerTint}
-      style={[
-        styles.header,
-        {
-          paddingTop: insets.top + 8,
-          borderBottomColor: borderColor,
-          backgroundColor: glassBackground,
-        },
-      ]}
+      style={[styles.header, surfaceStyle]}
       contentWrapperStyle={styles.headerContent}
     >
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: containerTintColor }]} pointerEvents="none" />
@@ -109,7 +135,7 @@ export default function TopHeader({
             accessibilityRole="button"
             accessibilityLabel="Open profile"
           >
-            <GradientProfileHeaderIcon size={36} />
+            <GradientProfileHeaderIcon size={DEFAULT_PROFILE_ICON_SIZE} />
           </TouchableOpacity>
 
           <TouchableOpacity onPress={onSettingsPress} style={styles.settingsButton}>

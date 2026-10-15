@@ -23,14 +23,21 @@ const LIGHT_SHADOW_OPACITY = 0.32;
  * @returns {object}
  */
 function plateStyle(isDark, borderRadius) {
+  let plateColor = LIGHT_PLATE_COLOR;
+  let shadowOpacity = LIGHT_SHADOW_OPACITY;
+  if (isDark) {
+    plateColor = DARK_PLATE_COLOR;
+    shadowOpacity = DARK_SHADOW_OPACITY;
+  }
+  const glowRadius = borderRadius + GLOW_EXTRA_RADIUS;
   return {
-    borderRadius: borderRadius + GLOW_EXTRA_RADIUS,
-    backgroundColor: isDark ? DARK_PLATE_COLOR : LIGHT_PLATE_COLOR,
+    borderRadius: glowRadius,
+    backgroundColor: plateColor,
     ...Platform.select({
       ios: {
         shadowColor: SHADOW_COLOR,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: isDark ? DARK_SHADOW_OPACITY : LIGHT_SHADOW_OPACITY,
+        shadowOpacity,
         shadowRadius: 22,
       },
       android: { elevation: 10 },
@@ -44,6 +51,7 @@ function plateStyle(isDark, borderRadius) {
  * @param {{ isDark?: boolean, borderRadius?: number }} props
  */
 export default function CardGlow({ isDark = true, borderRadius = DEFAULT_BORDER_RADIUS }) {
+  // 1. One plate behind the card, tinted for light or dark. It does not catch taps.
   return <View style={[styles.plate, plateStyle(isDark, borderRadius)]} pointerEvents="none" />;
 }
 

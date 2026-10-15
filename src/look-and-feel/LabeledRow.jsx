@@ -48,11 +48,12 @@ export function FieldLabel({ children, mutedColor, borderColor }) {
  * @returns {JSX.Element}
  */
 export default function LabeledRow({ label, children, mutedColor, borderColor, style }) {
+  const showLabelRow = hasSectionLabel(label);
   return (
     <View style={[styles.section, style]}>
-      {hasSectionLabel(label) ? (
+      {showLabelRow && (
         <FieldLabel mutedColor={mutedColor} borderColor={borderColor}>{label}</FieldLabel>
-      ) : null}
+      )}
       {children}
     </View>
   );

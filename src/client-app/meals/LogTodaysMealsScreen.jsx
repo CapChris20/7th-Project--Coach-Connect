@@ -1,13 +1,7 @@
-/**
- * Meal Plan Home Screen
- *
- * Purpose: UI screen or component: Meal Plan Home Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: LogTodaysMealsScreen
- *
- * @file-header
- */
+// Client nutrition home: today's meals, macro bars, and the add-food / barcode popups.
+// Flow: load profile + today's logs → paint calories/macros → add or delete food → refresh.
+// Used as the Nutrition tab. Meal keys stay breakfast / lunch / dinner / snacks.
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -45,7 +39,22 @@ import TopHeader from '../../for-both/loading-and-header/TopHeader';
 
 const { width } = Dimensions.get('window');
 
+// ===== NAMED CONSTANTS =====
+
 const ACCENT = '#7C3AED';
+const USERS_COLLECTION = 'users';
+const DEFAULT_DISPLAY_NAME = 'User';
+const DEFAULT_INITIAL = 'U';
+const MEAL_BREAKFAST = 'breakfast';
+const DAYS_IN_WEEK = 7;
+const MORNING_ENDS_AT_HOUR = 12;
+const AFTERNOON_ENDS_AT_HOUR = 18;
+const FOOD_REFRESH_WAIT_MS = 800;
+const FOOD_REFRESH_BACKUP_MS = 2000;
+const DELETE_REFRESH_MS = 300;
+const BAR_ANIMATION_MS = 800;
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FALLBACK_GOAL_CALORIES = 2200;
 
 const meals = [
   { key: 'breakfast', label: 'Breakfast' },
@@ -54,249 +63,221 @@ const meals = [
   { key: 'snacks', label: 'Snacks' },
 ];
 
-export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePress, onSettingsPress }) {
-  const scrollBottomPad = useModalScrollBottomPad(48);
-  const { colors, spacing, isDark } = useTheme();
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [loading, setLoading] = useState(true);
-  const [logsByMeal, setLogsByMeal] = useState({});
-  const [totals, setTotals] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 });
-  const [goals, setGoals] = useState(null);
-  const [showFoodSearch, setShowFoodSearch] = useState(false);
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
-  const [showNutritionSettings, setShowNutritionSettings] = useState(false);
-  const [activeMeal, setActiveMeal] = useState('breakfast');
-  const [showNutritionFacts, setShowNutritionFacts] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [userName, setUserName] = useState('');
-  const [userPhoto, setUserPhoto] = useState(null);
-  const user = auth.currentUser;
-  
-  const proteinAnim = useRef(new Animated.Value(0)).current;
-  const carbsAnim = useRef(new Animated.Value(0)).current;
-  const fatAnim = useRef(new Animated.Value(0)).current;
+const EMPTY_TOTALS = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
 
-  const styles = createStyles(spacing, colors, isDark);
+// ===== HELPER FUNCTIONS =====
 
-  const refreshData = useCallback(async () => {
-    if (!user) {
-      setTotals({ calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 });
-      return;
-    }
-    setLoading(true);
-    try {
-      const [logs, userGoals] = await Promise.all([
-        getFoodLogsForDate(user.uid, selectedDate),
-        getDailyGoals(user.uid),
-      ]);
-      
-      // ICON GOES HERE — refresh debug indicator
-      console.log('REFRESH DATA - Logs received:', logs.length);
-      console.log('Log calories:', logs.map(l => ({ name: l.food_name, cals: l.calories })));
-      
-      setGoals(userGoals);
-      const split = splitLogsByMeal(logs);
-      setLogsByMeal(split);
-      const calculated = calculateMacroTotals(logs);
-      
-      console.log('Calculated totals BEFORE setting:', calculated);
-      
-      // Force state update - ensure all values are numbers
-      const finalTotals = {
-        calories: Number(calculated.calories) || 0,
-        protein: Number(calculated.protein) || 0,
-        carbs: Number(calculated.carbs) || 0,
-        fat: Number(calculated.fat) || 0,
-        fiber: Number(calculated.fiber) || 0,
-        sugar: Number(calculated.sugar) || 0,
-        sodium: Number(calculated.sodium) || 0,
-      };
-      
-      console.log('Setting totals to:', finalTotals);
-      // Force update by creating new object reference
-      setTotals({ ...finalTotals });
-      
-      // Animate nutrient bars
-      Animated.parallel([
-        Animated.timing(proteinAnim, {
-          toValue: userGoals ? finalTotals.protein / userGoals.proteinTarget : 0,
-          duration: 800,
-          useNativeDriver: false,
-        }),
-        Animated.timing(carbsAnim, {
-          toValue: userGoals ? finalTotals.carbs / userGoals.carbsTarget : 0,
-          duration: 800,
-          useNativeDriver: false,
-        }),
-        Animated.timing(fatAnim, {
-          toValue: userGoals ? finalTotals.fat / userGoals.fatTarget : 0,
-          duration: 800,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    } catch (error) {
-      console.error('Failed to load food logs', error);
-      reportCrashAutomaticallySync(error, 'LogTodaysMealsScreen - loadFoodLogs');
-    }
-  }, [selectedDate, user, proteinAnim, carbsAnim, fatAnim]);
+/**
+ * Overlay Firestore name/photo onto the auth defaults. Missing fields keep the auth values.
+ * @param {object} userDoc
+ * @param {Function} setUserData
+ * @param {Function} setUserName
+ * @param {Function} setUserPhoto
+ */
+function applyProfileFromUserDoc(userDoc, setUserData, setUserName, setUserPhoto) {
+  if (!userDoc.exists()) return;
+  const data = userDoc.data();
+  setUserData(data);
+  if (data.name) setUserName(data.name);
+  if (data.photoURL) setUserPhoto(data.photoURL);
+}
 
-  useEffect(() => {
-    refreshData();
-    loadUserProfile();
-  }, [refreshData]);
+/**
+ * @param {object} user
+ * @param {Function} setUserData
+ * @param {Function} setUserName
+ * @param {Function} setUserPhoto
+ */
+async function overlayProfileFromFirestore(user, setUserData, setUserName, setUserPhoto) {
+  if (!db) return;
+  const userDoc = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+  applyProfileFromUserDoc(userDoc, setUserData, setUserName, setUserPhoto);
+}
 
-  const loadUserProfile = async () => {
-    if (!user) return;
-    try {
-      // Get user display name from auth
-      const displayName = user.displayName || user.email?.split('@')[0] || 'User';
-      setUserName(displayName);
-      setUserPhoto(user.photoURL);
-      
-      // Get additional user data from Firestore
-      if (db) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setUserData(data);
-          if (data.name) setUserName(data.name);
-          if (data.photoURL) setUserPhoto(data.photoURL);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading user profile:', error);
-    }
+/**
+ * Logs and goals in one trip so the spinner does not wait on two sequential reads.
+ * @param {string} userId
+ * @param {Date} selectedDate
+ * @returns {Promise<[object[], object]>}
+ */
+async function fetchLogsAndGoals(userId, selectedDate) {
+  return Promise.all([
+    getFoodLogsForDate(userId, selectedDate),
+    getDailyGoals(userId),
+  ]);
+}
+
+function totalsFromCalculated(calculated) {
+  return {
+    calories: Number(calculated.calories) || 0,
+    protein: Number(calculated.protein) || 0,
+    carbs: Number(calculated.carbs) || 0,
+    fat: Number(calculated.fat) || 0,
+    fiber: Number(calculated.fiber) || 0,
+    sugar: Number(calculated.sugar) || 0,
+    sodium: Number(calculated.sodium) || 0,
   };
+}
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
+function animateMacroBars(proteinAnim, carbsAnim, fatAnim, userGoals, finalTotals) {
+  Animated.parallel([
+    Animated.timing(proteinAnim, {
+      toValue: userGoals ? finalTotals.protein / userGoals.proteinTarget : 0,
+      duration: BAR_ANIMATION_MS,
+      useNativeDriver: false,
+    }),
+    Animated.timing(carbsAnim, {
+      toValue: userGoals ? finalTotals.carbs / userGoals.carbsTarget : 0,
+      duration: BAR_ANIMATION_MS,
+      useNativeDriver: false,
+    }),
+    Animated.timing(fatAnim, {
+      toValue: userGoals ? finalTotals.fat / userGoals.fatTarget : 0,
+      duration: BAR_ANIMATION_MS,
+      useNativeDriver: false,
+    }),
+  ]).start();
+}
+
+function greetingForHour(hour) {
+  if (hour < MORNING_ENDS_AT_HOUR) return 'Good Morning';
+  if (hour < AFTERNOON_ENDS_AT_HOUR) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+function initialsFromName(name) {
+  if (!name) return DEFAULT_INITIAL;
+  const parts = name.split(' ');
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
+function foodIsMissingCalories(food) {
+  return !food || (!food.calories && food.calories !== 0);
+}
+
+function foodIsFromFatSecret(food) {
+  return food.source === 'fatsecret' || food.food_id;
+}
+
+function datesForSelectedWeek(selectedDate) {
+  const dates = [];
+  const selected = new Date(selectedDate);
+  const startOfWeek = new Date(selected);
+  startOfWeek.setDate(selected.getDate() - selected.getDay());
+  for (let i = 0; i < DAYS_IN_WEEK; i++) {
+    const date = new Date(startOfWeek);
+    date.setDate(startOfWeek.getDate() + i);
+    dates.push(date);
+  }
+  return dates;
+}
+
+function shiftDateByWeeks(date, direction) {
+  const next = new Date(date);
+  next.setDate(date.getDate() + (direction * DAYS_IN_WEEK));
+  return next;
+}
+
+function formatDateShort(date) {
+  return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()}`;
+}
+
+function formatDateLong(date) {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function totalsAfterDeletingItem(previous, item) {
+  return {
+    calories: Math.max(0, (previous.calories || 0) - (Number(item.calories) || 0)),
+    protein: Math.max(0, (previous.protein || 0) - (Number(item.protein) || 0)),
+    carbs: Math.max(0, (previous.carbs || 0) - (Number(item.carbs) || 0)),
+    fat: Math.max(0, (previous.fat || 0) - (Number(item.fat) || 0)),
+    fiber: Math.max(0, (previous.fiber || 0) - (Number(item.fiber) || 0)),
+    sugar: Math.max(0, (previous.sugar || 0) - (Number(item.sugar) || 0)),
+    sodium: Math.max(0, (previous.sodium || 0) - (Number(item.sodium) || 0)),
   };
+}
 
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    const parts = name.split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
+function mealBodyTextColor(isDark, colors) {
+  if (isDark) return colors.text;
+  if (colors.gray && colors.gray[900]) return colors.gray[900];
+  return colors.text;
+}
 
-  const handleAddFood = async (food, mealType) => {
-    if (!user) return;
-    
-    // Validate food has calories
-    if (!food || (!food.calories && food.calories !== 0)) {
-      console.error('❌ Food object missing calories:', food);
-      setErrorMessage('Food data is missing. Please try again.');
-      return;
-    }
-    
-    try {
-      // Use enhanced service if food is from FatSecret
-      if (food.source === 'fatsecret' || food.food_id) {
-        await addFoodLogWithFatSecret(user.uid, {
-          mealType: mealType || activeMeal,
-          food,
-          date: selectedDate,
-          servingSize: food.servingSize || 1,
-          foodId: food.food_id,
-          source: 'fatsecret',
-        });
-      } else {
-        // Use existing service for manual/cache foods
-        await addFoodLog(user.uid, {
-          mealType: mealType || activeMeal,
-          food,
-          date: selectedDate,
-          servingSize: food.servingSize || 1,
-        });
-      }
-      
-      setShowFoodSearch(false);
-      setShowBarcodeScanner(false);
-      setErrorMessage(null);
-      
-      // Force refresh immediately - wait a bit for Firestore
-      setTimeout(async () => {
-        await refreshData();
-      }, 800);
-      
-      // Backup refresh
-      setTimeout(async () => {
-        await refreshData();
-      }, 2000);
-    } catch (error) {
-      console.error('❌ Failed to add food', error);
-      }
-  };
+function CalorieProgressBar({ totals, goalCalories, colors, styles }) {
+  const caloriesEaten = Number(totals.calories) || 0;
+  let ratio = 0;
+  if (goalCalories > 0) ratio = caloriesEaten / goalCalories;
+  const fillRatio = Math.max(0, Math.min(1, ratio));
+  const fillPercent = Math.round(fillRatio * 100);
+  const fillColor = calorieFillColor(ratio, colors);
+  return (
+    <View style={styles.calorieProgressTrack}>
+      <View style={[styles.calorieProgressFill, { width: `${fillPercent}%`, backgroundColor: fillColor }]} />
+    </View>
+  );
+}
 
-  const handleBarcodeScanSuccess = (food, mealType) => {
-    handleAddFood(food, mealType || activeMeal);
-  };
+function calorieFillColor(ratio, colors) {
+  if (ratio > 1) return colors.error;
+  if (ratio >= 0.8) return colors.success;
+  if (ratio >= 0.5) return colors.info;
+  return ACCENT;
+}
 
-  const handleDeleteFood = async (item) => {
-    if (!user) return;
-    try {
-      await deleteFoodLog(item.id);
-      
-      // Optimistically update totals immediately
-      setTotals(prev => ({
-        calories: Math.max(0, (prev.calories || 0) - (Number(item.calories) || 0)),
-        protein: Math.max(0, (prev.protein || 0) - (Number(item.protein) || 0)),
-        carbs: Math.max(0, (prev.carbs || 0) - (Number(item.carbs) || 0)),
-        fat: Math.max(0, (prev.fat || 0) - (Number(item.fat) || 0)),
-        fiber: Math.max(0, (prev.fiber || 0) - (Number(item.fiber) || 0)),
-        sugar: Math.max(0, (prev.sugar || 0) - (Number(item.sugar) || 0)),
-        sodium: Math.max(0, (prev.sodium || 0) - (Number(item.sodium) || 0)),
-      }));
-      
-      // Also refresh from Firestore
-      setTimeout(() => refreshData(), 300);
-    } catch (error) {
-      console.error('Failed to delete food', error);
-      }
-  };
-
-  const getWeekDates = () => {
-    const dates = [];
-    const selected = new Date(selectedDate);
-    const startOfWeek = new Date(selected);
-    startOfWeek.setDate(selected.getDate() - selected.getDay());
-    
-    // Show 7 days starting from Sunday of the selected week
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      dates.push(date);
-    }
-    return dates;
-  };
-
-  const navigateWeek = (direction) => {
-    setSelectedDate((prev) => {
-      const next = new Date(prev);
-      next.setDate(prev.getDate() + (direction * 7));
-      return next;
-    });
-  };
-
-  const formatDateShort = (date) => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return `${days[date.getDay()]} ${date.getDate()}`;
-  };
-
-  const formatDateLong = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
+function LogTodaysMealsLayout({
+  goals,
+  totals,
+  loading,
+  styles,
+  isDark,
+  onProfilePress,
+  onSettingsPress,
+  userPhoto,
+  getInitials,
+  userName,
+  getGreeting,
+  refreshData,
+  setShowNutritionSettings,
+  onClose,
+  isConnected,
+  scrollBottomPad,
+  getWeekDates,
+  selectedDate,
+  setSelectedDate,
+  colors,
+  proteinAnim,
+  carbsAnim,
+  fatAnim,
+  logsByMeal,
+  setActiveMeal,
+  setShowFoodSearch,
+  setShowBarcodeScanner,
+  handleDeleteFood,
+  setShowNutritionFacts,
+  showNutritionFacts,
+  showNutritionSettings,
+  showBarcodeScanner,
+  handleBarcodeScanSuccess,
+  activeMeal,
+  showFoodSearch,
+  handleAddFood,
+  onNavigate,
+}) {
   const remainingCalories = goals ? Math.max(goals.calories - totals.calories, 0) : 0;
   const burnedCalories = 0; // Requires integration with workout service
-  const goalCalories = goals?.calories || 2200;
+  const goalCalories = goals?.calories || FALLBACK_GOAL_CALORIES;
+  const blurTint = isDark ? 'dark' : 'light';
+  let glassTint = 'rgba(255, 255, 255, 0.8)';
+  if (isDark) glassTint = 'rgba(255, 255, 255, 0.05)';
+  const caloriesEatenLabel = `${Math.round(Number(totals.calories) || 0).toLocaleString()} Kcal`;
+  const foodCaloriesLabel = `${Math.round(Number(totals.calories) || 0).toLocaleString()} kcal`;
+  const goalCaloriesLabel = `${Math.round(goalCalories).toLocaleString()} kcal`;
+  const caloriesLeftLabel = Math.round(remainingCalories).toLocaleString();
+  const nutritionFactsIcon = showNutritionFacts ? '▼' : '▶';
 
   if (loading && !goals) {
     return (
@@ -400,40 +381,28 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
         <View style={styles.calorieCardWrap}>
           <BlurView
             intensity={20}
-            tint={isDark ? 'dark' : 'light'}
+            tint={blurTint}
             style={styles.calorieCardBlur}
           >
             <View style={styles.calorieCardInner}>
               <Text style={styles.calorieCardLabel} selectable={true}>Today Calories</Text>
               <Text style={styles.calorieCardValue} selectable={true}>
-                {Math.round(Number(totals.calories) || 0).toLocaleString()} Kcal
+                {caloriesEatenLabel}
               </Text>
 
               <View style={styles.calorieLeftRow}>
                 <Text style={styles.calorieLeftLabel} selectable={true}>Calories Left</Text>
                 <Text style={styles.calorieLeftNumber} selectable={true}>
-                  {Math.round(remainingCalories).toLocaleString()}
+                  {caloriesLeftLabel}
                 </Text>
               </View>
 
-              {(() => {
-                const ratio = goalCalories > 0 ? (Number(totals.calories) || 0) / goalCalories : 0;
-                const pct = Math.max(0, Math.min(1, ratio));
-                const pct100 = Math.round(pct * 100);
-
-                const fillColor = (() => {
-                  if (ratio > 1) return colors.error;
-                  if (ratio >= 0.8) return colors.success;
-                  if (ratio >= 0.5) return colors.info;
-                  return ACCENT;
-                })();
-
-                return (
-                  <View style={styles.calorieProgressTrack}>
-                    <View style={[styles.calorieProgressFill, { width: `${pct100}%`, backgroundColor: fillColor }]} />
-                  </View>
-                );
-              })()}
+              <CalorieProgressBar
+                totals={totals}
+                goalCalories={goalCalories}
+                colors={colors}
+                styles={styles}
+              />
             </View>
           </BlurView>
         </View>
@@ -442,13 +411,13 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
         <View style={styles.summaryCardsRow}>
           {/* Goal Card */}
           <View style={styles.summaryCardWrap}>
-            <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={styles.summaryCardBlur}>
+            <BlurView intensity={20} tint={blurTint} style={styles.summaryCardBlur}>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryCardLabel} selectable={true}>Goal</Text>
                 {/* ICON GOES HERE — goal */}
                 <View style={styles.summaryCardIconSpacer} />
                 <Text style={styles.summaryCardValue} selectable={true}>
-                  {Math.round(goalCalories).toLocaleString()} kcal
+                  {goalCaloriesLabel}
                 </Text>
               </View>
             </BlurView>
@@ -456,13 +425,13 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
 
           {/* Food Card */}
           <View style={styles.summaryCardWrap}>
-            <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={styles.summaryCardBlur}>
+            <BlurView intensity={20} tint={blurTint} style={styles.summaryCardBlur}>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryCardLabel} selectable={true}>Food</Text>
                 {/* ICON GOES HERE — food */}
                 <View style={styles.summaryCardIconSpacer} />
                 <Text style={styles.summaryCardValue} selectable={true}>
-                  {Math.round(Number(totals.calories) || 0).toLocaleString()} kcal
+                  {foodCaloriesLabel}
                 </Text>
               </View>
             </BlurView>
@@ -470,7 +439,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
 
           {/* Exercise Card */}
           <View style={styles.summaryCardWrap}>
-            <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={styles.summaryCardBlur}>
+            <BlurView intensity={20} tint={blurTint} style={styles.summaryCardBlur}>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryCardLabel} selectable={true}>Exercise</Text>
                 {/* ICON GOES HERE — exercise */}
@@ -490,7 +459,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
               <GlassPanel
                 transmission={0.85}
                 roughness={0.15}
-                tint={isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.8)'}
+                tint={glassTint}
                 style={styles.habitCard}
               >
                 <View style={styles.habitIconCircle}>
@@ -510,7 +479,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
               <GlassPanel
                 transmission={0.85}
                 roughness={0.15}
-                tint={isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.8)'}
+                tint={glassTint}
                 style={styles.habitCard}
               >
                 <View style={styles.habitIconCircle}>
@@ -532,7 +501,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
 
         {/* Macro Section */}
         <View style={styles.macroCardWrap}>
-          <BlurView intensity={20} tint={isDark ? 'dark' : 'light'} style={styles.macroCardBlur}>
+          <BlurView intensity={20} tint={blurTint} style={styles.macroCardBlur}>
             <View style={styles.macroCard}>
               <View style={styles.nutrientsHeader}>
                 <Text style={styles.sectionTitle} selectable={true}>Nutrients</Text>
@@ -600,7 +569,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
         >
           <View style={styles.nutritionFactsHeader}>
             <Text style={styles.nutritionFactsTitle} selectable={true}>Nutrition Facts</Text>
-            <Text style={styles.nutritionFactsIcon} selectable={true}>{showNutritionFacts ? '▼' : '▶'}</Text>
+            <Text style={styles.nutritionFactsIcon} selectable={true}>{nutritionFactsIcon}</Text>
           </View>
           {showNutritionFacts && (
             <View style={styles.nutritionFactsContent}>
@@ -626,7 +595,7 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
       <TouchableOpacity
         style={styles.fab}
         onPress={() => {
-          setActiveMeal('breakfast');
+          setActiveMeal(MEAL_BREAKFAST);
           setShowFoodSearch(true);
         }}
         activeOpacity={0.8}
@@ -701,14 +670,221 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Nutrition home: greeting, week strip, calorie card, meal cards, add-food popups.
+ * @param {object} props
+ * @param {Function} [props.onClose]
+ * @param {Function} [props.onNavigate]
+ * @param {Function} [props.onProfilePress]
+ * @param {Function} [props.onSettingsPress]
+ */
+export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePress, onSettingsPress }) {
+  const scrollBottomPad = useModalScrollBottomPad(48);
+  const { colors, spacing, isDark } = useTheme();
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [logsByMeal, setLogsByMeal] = useState({});
+  const [totals, setTotals] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+  const [goals, setGoals] = useState(null);
+  const [showFoodSearch, setShowFoodSearch] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showNutritionSettings, setShowNutritionSettings] = useState(false);
+  const [activeMeal, setActiveMeal] = useState('breakfast');
+  const [showNutritionFacts, setShowNutritionFacts] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [userName, setUserName] = useState('');
+  const [userPhoto, setUserPhoto] = useState(null);
+  const user = auth.currentUser;
+  
+  const proteinAnim = useRef(new Animated.Value(0)).current;
+  const carbsAnim = useRef(new Animated.Value(0)).current;
+  const fatAnim = useRef(new Animated.Value(0)).current;
+
+  const styles = createStyles(spacing, colors, isDark);
+
+  const refreshData = useCallback(async () => {
+    // 1. No signed-in user → zero the bars and stop.
+    if (!user) {
+      setTotals({ ...EMPTY_TOTALS });
+      return;
+    }
+    setLoading(true);
+    try {
+      // 2. Logs and goals together so one slow read cannot stall the other forever.
+      const [logs, userGoals] = await fetchLogsAndGoals(user.uid, selectedDate);
+
+      console.log('REFRESH DATA - Logs received:', logs.length);
+      console.log('Log calories:', logs.map((logRow) => ({ name: logRow.food_name, cals: logRow.calories })));
+
+      // 3. Split by meal, then turn the rows into the calorie/protein numbers on the card.
+      setGoals(userGoals);
+      const split = splitLogsByMeal(logs);
+      setLogsByMeal(split);
+      const calculated = calculateMacroTotals(logs);
+      console.log('Calculated totals BEFORE setting:', calculated);
+      const finalTotals = totalsFromCalculated(calculated);
+      console.log('Setting totals to:', finalTotals);
+      setTotals({ ...finalTotals });
+
+      // 4. Grow the protein / carbs / fat bars to the new ratios.
+      animateMacroBars(proteinAnim, carbsAnim, fatAnim, userGoals, finalTotals);
+    } catch (error) {
+      console.error('Failed to load food logs', error);
+      reportCrashAutomaticallySync(error, 'LogTodaysMealsScreen - loadFoodLogs');
+    }
+  }, [selectedDate, user, proteinAnim, carbsAnim, fatAnim]);
+
+  useEffect(() => {
+    refreshData();
+    loadUserProfile();
+  }, [refreshData]);
+
+  const loadUserProfile = async () => {
+    // 1. Need a signed-in user before we touch auth or Firestore.
+    if (!user) return;
+    try {
+      // 2. Auth name/photo first so the greeting is not blank while Firestore loads.
+      const displayName = user.displayName || user.email?.split('@')[0] || DEFAULT_DISPLAY_NAME;
+      setUserName(displayName);
+      setUserPhoto(user.photoURL);
+      // 3. Firestore name/photo overwrite when the user doc has them.
+      await overlayProfileFromFirestore(user, setUserData, setUserName, setUserPhoto);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
+
+  const getGreeting = () => greetingForHour(new Date().getHours());
+  const getInitials = (name) => initialsFromName(name);
+
+  const handleAddFood = async (food, mealType) => {
+    // 1. Failures first: need a user, and the card must have a calorie number (0 is allowed).
+    if (!user) return;
+    if (foodIsMissingCalories(food)) {
+      console.error('❌ Food object missing calories:', food);
+      setErrorMessage('Food data is missing. Please try again.');
+      return;
+    }
+
+    try {
+      // 2. FatSecret cards keep food_id / source. Everything else uses the regular log write.
+      if (foodIsFromFatSecret(food)) {
+        await addFoodLogWithFatSecret(user.uid, {
+          mealType: mealType || activeMeal,
+          food,
+          date: selectedDate,
+          servingSize: food.servingSize || 1,
+          foodId: food.food_id,
+          source: 'fatsecret',
+        });
+      } else {
+        await addFoodLog(user.uid, {
+          mealType: mealType || activeMeal,
+          food,
+          date: selectedDate,
+          servingSize: food.servingSize || 1,
+        });
+      }
+
+      // 3. Close the pickers, then refresh twice so a slow Firestore write still lands.
+      setShowFoodSearch(false);
+      setShowBarcodeScanner(false);
+      setErrorMessage(null);
+      setTimeout(async () => {
+        await refreshData();
+      }, FOOD_REFRESH_WAIT_MS);
+      setTimeout(async () => {
+        await refreshData();
+      }, FOOD_REFRESH_BACKUP_MS);
+    } catch (error) {
+      console.error('❌ Failed to add food', error);
+      }
+  };
+
+  const handleBarcodeScanSuccess = (food, mealType) => {
+    handleAddFood(food, mealType || activeMeal);
+  };
+
+  const handleDeleteFood = async (item) => {
+    // 1. Need a signed-in user. Then delete, subtract locally, refresh from the server.
+    if (!user) return;
+    try {
+      await deleteFoodLog(item.id);
+      setTotals((previous) => totalsAfterDeletingItem(previous, item));
+      setTimeout(() => refreshData(), DELETE_REFRESH_MS);
+    } catch (error) {
+      console.error('Failed to delete food', error);
+      }
+  };
+
+  const getWeekDates = () => datesForSelectedWeek(selectedDate);
+
+  const navigateWeek = (direction) => {
+    setSelectedDate((previous) => shiftDateByWeeks(previous, direction));
+  };
+
+  return (
+    <LogTodaysMealsLayout
+      goals={goals}
+      totals={totals}
+      loading={loading}
+      styles={styles}
+      isDark={isDark}
+      onProfilePress={onProfilePress}
+      onSettingsPress={onSettingsPress}
+      userPhoto={userPhoto}
+      getInitials={getInitials}
+      userName={userName}
+      getGreeting={getGreeting}
+      refreshData={refreshData}
+      setShowNutritionSettings={setShowNutritionSettings}
+      onClose={onClose}
+      isConnected={isConnected}
+      scrollBottomPad={scrollBottomPad}
+      getWeekDates={getWeekDates}
+      selectedDate={selectedDate}
+      setSelectedDate={setSelectedDate}
+      colors={colors}
+      proteinAnim={proteinAnim}
+      carbsAnim={carbsAnim}
+      fatAnim={fatAnim}
+      logsByMeal={logsByMeal}
+      setActiveMeal={setActiveMeal}
+      setShowFoodSearch={setShowFoodSearch}
+      setShowBarcodeScanner={setShowBarcodeScanner}
+      handleDeleteFood={handleDeleteFood}
+      setShowNutritionFacts={setShowNutritionFacts}
+      showNutritionFacts={showNutritionFacts}
+      showNutritionSettings={showNutritionSettings}
+      showBarcodeScanner={showBarcodeScanner}
+      handleBarcodeScanSuccess={handleBarcodeScanSuccess}
+      activeMeal={activeMeal}
+      showFoodSearch={showFoodSearch}
+      handleAddFood={handleAddFood}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+
 function NutritionFactRow({ label, value }) {
   const { isDark } = useTheme();
+  let labelColor = '#6B7280';
+  let valueColor = '#111827';
+  if (isDark) {
+    labelColor = '#9CA3AF';
+    valueColor = '#FFFFFF';
+  }
   return (
     <View style={styles.nutritionFactRow}>
-      <Text style={[styles.nutritionFactLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]} selectable={true}>
+      <Text style={[styles.nutritionFactLabel, { color: labelColor }]} selectable={true}>
         {label}
       </Text>
-      <Text style={[styles.nutritionFactValue, { color: isDark ? '#FFFFFF' : '#111827' }]} selectable={true}>
+      <Text style={[styles.nutritionFactValue, { color: valueColor }]} selectable={true}>
         {value}
       </Text>
     </View>
@@ -903,7 +1079,7 @@ const createStyles = (spacing, colors, isDark) =>
     calorieCardValue: {
       fontSize: 48,
       fontWeight: '800',
-      color: isDark ? colors.text : ((colors.gray && colors.gray[900]) ? colors.gray[900] : colors.text),
+      color: mealBodyTextColor(isDark, colors),
       letterSpacing: -1,
       marginBottom: 14,
     },
@@ -921,7 +1097,7 @@ const createStyles = (spacing, colors, isDark) =>
     calorieLeftNumber: {
       fontSize: 13,
       fontWeight: '800',
-      color: isDark ? colors.text : ((colors.gray && colors.gray[900]) ? colors.gray[900] : colors.text),
+      color: mealBodyTextColor(isDark, colors),
     },
     calorieProgressTrack: {
       height: 8,
@@ -1033,7 +1209,7 @@ const createStyles = (spacing, colors, isDark) =>
     summaryCardValue: {
       fontSize: 16,
       fontWeight: '800',
-      color: isDark ? colors.text : ((colors.gray && colors.gray[900]) ? colors.gray[900] : colors.text),
+      color: mealBodyTextColor(isDark, colors),
     },
     nextHabitSection: {
       paddingHorizontal: 20,

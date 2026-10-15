@@ -1,6 +1,7 @@
-/**
- * Reusable payment education UI — how payments work, Venmo comparison, earnings preview.
- */
+// Reusable payment education UI — how payments work, Venmo comparison, earnings preview.
+// Flow: bullet list of how payouts work → mock earnings card → optional Venmo vs Coach Connect grid → FAQ.
+// Used by: earnings screen, payout reminder popup, and trainer payout setup.
+
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,26 +13,79 @@ import {
   formatPaymentDollars,
 } from './howPaymentsWorkText';
 
-export function HowPaymentsWorkSection({ compact = false, textColor = '#FFFFFF', mutedColor = 'rgba(255,255,255,0.6)' }) {
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_TEXT_COLOR = '#FFFFFF';
+const DEFAULT_MUTED_COLOR = 'rgba(255,255,255,0.6)';
+const DEFAULT_MUTED_PREVIEW = 'rgba(255,255,255,0.55)';
+const DEFAULT_BORDER_COLOR = 'rgba(255,255,255,0.1)';
+const DEFAULT_SURFACE_COLOR = 'rgba(255,255,255,0.04)';
+const CHECK_ICON_COLOR = '#34D399';
+const STATUS_COMPLETED = 'Completed';
+const STATUS_COMPLETED_COLOR = '#34D399';
+const STATUS_PENDING_COLOR = '#FBBF24';
+const HIGHLIGHT_BORDER = '#FF1493';
+const COMPACT_BULLET_SIZE = 12;
+const REGULAR_BULLET_SIZE = 13;
+const ICON_CHECK = 'checkmark-circle';
+const ICON_CHEVRON_UP = 'chevron-up';
+const ICON_CHEVRON_DOWN = 'chevron-down';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Completed payouts are green; anything else (pending) is amber.
+ * @param {string} status
+ * @returns {string}
+ */
+function transactionStatusColor(status) {
+  return status === STATUS_COMPLETED ? STATUS_COMPLETED_COLOR : STATUS_PENDING_COLOR;
+}
+
+/**
+ * @param {boolean} compact
+ * @returns {number}
+ */
+function bulletFontSize(compact) {
+  return compact ? COMPACT_BULLET_SIZE : REGULAR_BULLET_SIZE;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Checklist of how Coach Connect payments work.
+ * @param {{ compact?: boolean, textColor?: string, mutedColor?: string }} props
+ */
+export function HowPaymentsWorkSection({
+  compact = false,
+  textColor = DEFAULT_TEXT_COLOR,
+  mutedColor = DEFAULT_MUTED_COLOR,
+}) {
+  // 1. Draw the checklist of how payouts work (90% trainer / 10% platform).
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: textColor }]}>How payments work</Text>
       {HOW_PAYMENTS_WORK.map((line) => (
         <View key={line} style={styles.bulletRow}>
-          <Ionicons name="checkmark-circle" size={16} color="#34D399" style={styles.bulletIcon} />
-          <Text style={[styles.bulletText, { color: mutedColor, fontSize: compact ? 12 : 13 }]}>{line}</Text>
+          <Ionicons name={ICON_CHECK} size={16} color={CHECK_ICON_COLOR} style={styles.bulletIcon} />
+          <Text style={[styles.bulletText, { color: mutedColor, fontSize: bulletFontSize(compact) }]}>{line}</Text>
         </View>
       ))}
     </View>
   );
 }
 
+/**
+ * Fake earnings rows so a trainer who has not been paid yet can see what the dashboard will look like.
+ * @param {{ textColor?: string, mutedColor?: string, borderColor?: string, surfaceColor?: string }} props
+ */
 export function EarningsDashboardPreview({
-  textColor = '#FFFFFF',
-  mutedColor = 'rgba(255,255,255,0.55)',
-  borderColor = 'rgba(255,255,255,0.1)',
-  surfaceColor = 'rgba(255,255,255,0.04)',
+  textColor = DEFAULT_TEXT_COLOR,
+  mutedColor = DEFAULT_MUTED_PREVIEW,
+  borderColor = DEFAULT_BORDER_COLOR,
+  surfaceColor = DEFAULT_SURFACE_COLOR,
 }) {
+  // 1. Fake pending total + three example rows so a new trainer can see the dashboard.
   return (
     <View style={[styles.previewCard, { borderColor, backgroundColor: surfaceColor }]}>
       <Text style={[styles.previewLabel, { color: mutedColor }]}>After your first client pays, you will see:</Text>
@@ -39,20 +93,20 @@ export function EarningsDashboardPreview({
         <Text style={[styles.previewStat, { color: textColor }]}>{EARNINGS_MOCK.pendingLabel}</Text>
         <Text style={[styles.previewMeta, { color: mutedColor }]}>Next payout: {EARNINGS_MOCK.nextPayout}</Text>
       </View>
-      {EARNINGS_MOCK.transactions.map((row) => (
-        <View key={`${row.date}-${row.name}`} style={[styles.txRow, { borderTopColor: borderColor }]}>
-          <Text style={[styles.txDate, { color: mutedColor }]}>{row.date}</Text>
+      {EARNINGS_MOCK.transactions.map((transaction) => (
+        <View key={`${transaction.date}-${transaction.name}`} style={[styles.txRow, { borderTopColor: borderColor }]}>
+          <Text style={[styles.txDate, { color: mutedColor }]}>{transaction.date}</Text>
           <Text style={[styles.txName, { color: textColor }]} numberOfLines={1}>
-            {row.name}
+            {transaction.name}
           </Text>
-          <Text style={[styles.txAmount, { color: textColor }]}>{formatPaymentDollars(row.amount)}</Text>
+          <Text style={[styles.txAmount, { color: textColor }]}>{formatPaymentDollars(transaction.amount)}</Text>
           <Text
             style={[
               styles.txStatus,
-              { color: row.status === 'Completed' ? '#34D399' : '#FBBF24' },
+              { color: transactionStatusColor(transaction.status) },
             ]}
           >
-            {row.status}
+            {transaction.status}
           </Text>
         </View>
       ))}
@@ -60,21 +114,35 @@ export function EarningsDashboardPreview({
   );
 }
 
+/**
+ * Collapsed by default. Open to compare Venmo vs Coach Connect side by side.
+ * @param {{ textColor?: string, mutedColor?: string, borderColor?: string }} props
+ */
 export function VenmoComparisonSection({
-  textColor = '#FFFFFF',
-  mutedColor = 'rgba(255,255,255,0.6)',
-  borderColor = 'rgba(255,255,255,0.1)',
+  textColor = DEFAULT_TEXT_COLOR,
+  mutedColor = DEFAULT_MUTED_COLOR,
+  borderColor = DEFAULT_BORDER_COLOR,
 }) {
-  const [open, setOpen] = useState(false);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+
+  const toggleComparisonOpen = () => {
+    // 1. Flip the Venmo vs Coach Connect grid open or closed.
+    setIsComparisonOpen((isCurrentlyOpen) => !isCurrentlyOpen);
+  };
+
   return (
     <View style={styles.section}>
-      <TouchableOpacity style={styles.collapseHeader} onPress={() => setOpen((v) => !v)} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={styles.collapseHeader}
+        onPress={toggleComparisonOpen}
+        activeOpacity={0.85}
+      >
         <Text style={[styles.sectionTitle, { color: textColor, marginBottom: 0 }]}>
           Coach Connect vs Venmo
         </Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={mutedColor} />
+        <Ionicons name={isComparisonOpen ? ICON_CHEVRON_UP : ICON_CHEVRON_DOWN} size={18} color={mutedColor} />
       </TouchableOpacity>
-      {open ? (
+      {isComparisonOpen ? (
         <View style={styles.compareGrid}>
           <View style={[styles.compareCol, { borderColor }]}>
             <Text style={[styles.compareHeading, { color: mutedColor }]}>Venmo</Text>
@@ -84,7 +152,7 @@ export function VenmoComparisonSection({
               </Text>
             ))}
           </View>
-          <View style={[styles.compareCol, styles.compareColHighlight, { borderColor: '#FF1493' }]}>
+          <View style={[styles.compareCol, styles.compareColHighlight, { borderColor: HIGHLIGHT_BORDER }]}>
             <Text style={[styles.compareHeading, { color: textColor }]}>Coach Connect</Text>
             {VENMO_VS_COACHCONNECT.coachConnect.map((line) => (
               <Text key={line} style={[styles.compareLine, { color: mutedColor }]}>
@@ -98,7 +166,15 @@ export function VenmoComparisonSection({
   );
 }
 
-export function TrainerPaymentFaqSnippet({ textColor = '#FFFFFF', mutedColor = 'rgba(255,255,255,0.6)' }) {
+/**
+ * One trainer/client payment FAQ pulled from the shared copy file.
+ * @param {{ textColor?: string, mutedColor?: string }} props
+ */
+export function TrainerPaymentFaqSnippet({
+  textColor = DEFAULT_TEXT_COLOR,
+  mutedColor = DEFAULT_MUTED_COLOR,
+}) {
+  // 1. One FAQ: tell clients to pay in the app, not Venmo.
   return (
     <View style={styles.faqBox}>
       <Text style={[styles.faqQ, { color: textColor }]}>{TRAINER_CLIENT_PAYMENT_FAQ.question}</Text>

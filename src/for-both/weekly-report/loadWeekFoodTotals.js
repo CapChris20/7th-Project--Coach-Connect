@@ -20,15 +20,19 @@ function emptyDayTotals() {
   return { calories: 0, protein: 0, carbs: 0, fat: 0 };
 }
 
-// Number() turns a numeric string into a number. A missing field is NaN, and NaN || 0 is 0,
-// so a half-filled log still adds instead of poisoning the week with NaN.
+function numberOrZero(value) {
+  // Number() turns a numeric string into a number. A missing field is NaN, and NaN || 0 is 0,
+  // so a half-filled log still adds instead of poisoning the week with NaN.
+  return Number(value) || 0;
+}
+
 function addFoodLogToDay(totalsByDay, dayKey, logData) {
   if (!dayKey) return;
   if (!totalsByDay[dayKey]) totalsByDay[dayKey] = emptyDayTotals();
-  totalsByDay[dayKey].calories += Number(logData.calories) || 0;
-  totalsByDay[dayKey].protein += Number(logData.protein) || 0;
-  totalsByDay[dayKey].carbs += Number(logData.carbs) || 0;
-  totalsByDay[dayKey].fat += Number(logData.fat) || 0;
+  totalsByDay[dayKey].calories += numberOrZero(logData.calories);
+  totalsByDay[dayKey].protein += numberOrZero(logData.protein);
+  totalsByDay[dayKey].carbs += numberOrZero(logData.carbs);
+  totalsByDay[dayKey].fat += numberOrZero(logData.fat);
 }
 
 // Day keys are "YYYY-MM-DD", so plain string compare is chronological.
@@ -40,34 +44,41 @@ function isDayInsideRange(dayKey, startKey, endKey) {
 }
 
 function addLogsInsideRange(totalsByDay, logDocuments, weekStart, weekEndKey) {
-  logDocuments.forEach((logDoc) => {
+  for (const logDoc of logDocuments) {
     const logData = logDoc.data() || {};
     const dayKey = logData.date;
-    if (isDayInsideRange(dayKey, weekStart, weekEndKey)) {
-      addFoodLogToDay(totalsByDay, dayKey, logData);
-    }
-  });
+    if (!isDayInsideRange(dayKey, weekStart, weekEndKey)) continue;
+    addFoodLogToDay(totalsByDay, dayKey, logData);
+  }
+}
+
+async function queryLogsInDateRange(userId, weekStart, weekEndKey, userIdField) {
+  const rangedSnapshot = await getDocs(
+    query(
+      collection(db, NUTRITION_LOGS_COLLECTION),
+      where(userIdField, '==', userId),
+      where(DATE_FIELD, '>=', weekStart),
+      where(DATE_FIELD, '<=', weekEndKey),
+    ),
+  );
+  return rangedSnapshot.docs;
+}
+
+async function queryAllLogsForUser(userId, userIdField) {
+  const allSnapshot = await getDocs(
+    query(collection(db, NUTRITION_LOGS_COLLECTION), where(userIdField, '==', userId)),
+  );
+  return allSnapshot.docs;
 }
 
 // The ranged query needs a composite index. If Firestore rejects it, load every log for that
 // user and keep only the days in range. If that also fails, this field spelling has no rows.
 async function loadNutritionLogDocs(userId, weekStart, weekEndKey, userIdField) {
   try {
-    const rangedSnapshot = await getDocs(
-      query(
-        collection(db, NUTRITION_LOGS_COLLECTION),
-        where(userIdField, '==', userId),
-        where(DATE_FIELD, '>=', weekStart),
-        where(DATE_FIELD, '<=', weekEndKey),
-      ),
-    );
-    return rangedSnapshot.docs;
+    return await queryLogsInDateRange(userId, weekStart, weekEndKey, userIdField);
   } catch {
     try {
-      const allSnapshot = await getDocs(
-        query(collection(db, NUTRITION_LOGS_COLLECTION), where(userIdField, '==', userId)),
-      );
-      return allSnapshot.docs;
+      return await queryAllLogsForUser(userId, userIdField);
     } catch {
       return [];
     }
@@ -84,17 +95,21 @@ function legacyDayTotals(logData) {
   return logData.dayTotals || logData.totals || logData;
 }
 
+function mergeLegacySnapshotIntoTotals(totalsByDay, legacySnapshot, weekStart, weekEndKey) {
+  for (const logDoc of legacySnapshot.docs) {
+    const logData = logDoc.data() || {};
+    const dayKey = legacyDayKey(logDoc, logData);
+    if (!isDayInsideRange(dayKey, weekStart, weekEndKey)) continue;
+    addFoodLogToDay(totalsByDay, dayKey, legacyDayTotals(logData));
+  }
+}
+
 async function addLegacyNutritionLogs(totalsByDay, userId, weekStart, weekEndKey) {
   try {
     const legacySnapshot = await getDocs(
       collection(db, USERS_COLLECTION, userId, LEGACY_NUTRITION_LOGS_COLLECTION),
     );
-    legacySnapshot.docs.forEach((logDoc) => {
-      const logData = logDoc.data() || {};
-      const dayKey = legacyDayKey(logDoc, logData);
-      if (!isDayInsideRange(dayKey, weekStart, weekEndKey)) return;
-      addFoodLogToDay(totalsByDay, dayKey, legacyDayTotals(logData));
-    });
+    mergeLegacySnapshotIntoTotals(totalsByDay, legacySnapshot, weekStart, weekEndKey);
   } catch {
     // The legacy subcollection is optional. A missing one is not a failed week.
   }
@@ -141,10 +156,10 @@ export async function fetchNutritionByDayForRange(userId, weekStart, weekEnd) {
  */
 export function mergeNutritionMaps(...nutritionMaps) {
   const mergedTotals = {};
-  nutritionMaps.forEach((nutritionMap) => {
-    Object.entries(nutritionMap || {}).forEach(([dayKey, totals]) => {
+  for (const nutritionMap of nutritionMaps) {
+    for (const [dayKey, totals] of Object.entries(nutritionMap || {})) {
       addMergedDayTotals(mergedTotals, dayKey, totals);
-    });
-  });
+    }
+  }
   return mergedTotals;
 }

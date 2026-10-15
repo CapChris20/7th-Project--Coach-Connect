@@ -36,15 +36,24 @@ function failureResult(error) {
   return { success: false, error: error.message };
 }
 
+function successUploadResult(uploadResult, downloadURL) {
+  return {
+    success: true,
+    downloadURL,
+    ref: uploadResult.ref,
+    metadata: uploadResult.metadata,
+  };
+}
+
 // A web <input> gives a File. React Native gives { uri }. Anything else cannot be uploaded.
 async function fileToBlob(file) {
   if (file instanceof File) return file;
-  if (file.uri) {
-    // vocab: fetch(uri).blob() = download the local file bytes so Storage can accept them.
-    const response = await fetch(file.uri);
-    return response.blob();
+  if (!file.uri) {
+    throw new Error('Invalid file format');
   }
-  throw new Error('Invalid file format');
+  // vocab: fetch(uri).blob() = download the local file bytes so Storage can accept them.
+  const response = await fetch(file.uri);
+  return response.blob();
 }
 
 function imageUploadMetadata(userId, imageKind, extraFields) {
@@ -76,6 +85,18 @@ function trainerNoteStoragePath(trainerId, clientId, timestamp) {
   return `trainerNotes/${trainerId}/${clientId}/${timestamp}.txt`;
 }
 
+function trainerNoteMetadata(trainerId, clientId, timestamp) {
+  return {
+    contentType: PLAIN_TEXT_CONTENT_TYPE,
+    customMetadata: {
+      uploadedBy: trainerId,
+      clientId: clientId,
+      type: TRAINER_NOTE_KIND,
+      timestamp: timestamp.toString(),
+    },
+  };
+}
+
 // One listed file. A bad metadata read is skipped so the rest of the folder still returns.
 async function describeListedFile(itemRef) {
   try {
@@ -93,6 +114,29 @@ async function describeListedFile(itemRef) {
   }
 }
 
+/**
+ * List files in one folder. Failures on a single item are dropped, not thrown.
+ * @param {object[]} itemRefs
+ * @returns {Promise<object[]>}
+ */
+async function describeAllListedFiles(itemRefs) {
+  const files = [];
+  for (const itemRef of itemRefs) {
+    const describedFile = await describeListedFile(itemRef);
+    if (!describedFile) continue;
+    files.push(describedFile);
+  }
+  return files;
+}
+
+async function writeBlobToStoragePath(fileBlob, path, metadata) {
+  // vocab: ref() = a pointer to a Storage path. uploadBytes writes the blob there.
+  const storageRef = ref(storage, path);
+  const uploadResult = await uploadBytes(storageRef, fileBlob, metadata);
+  const downloadURL = await getDownloadURL(uploadResult.ref);
+  return successUploadResult(uploadResult, downloadURL);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -106,18 +150,10 @@ export const uploadFile = async (file, path, metadata = {}) => {
   try {
     assertStorageReady();
     console.log('Uploading file to path:', path);
-    // vocab: ref() = a pointer to a Storage path. uploadBytes writes the blob there.
-    const storageRef = ref(storage, path);
     const fileBlob = await fileToBlob(file);
-    const uploadResult = await uploadBytes(storageRef, fileBlob, metadata);
-    const downloadURL = await getDownloadURL(uploadResult.ref);
-    console.log('File uploaded successfully:', downloadURL);
-    return {
-      success: true,
-      downloadURL,
-      ref: uploadResult.ref,
-      metadata: uploadResult.metadata,
-    };
+    const result = await writeBlobToStoragePath(fileBlob, path, metadata);
+    console.log('File uploaded successfully:', result.downloadURL);
+    return result;
   } catch (error) {
     console.error('Upload file error:', error);
     return failureResult(error);
@@ -173,11 +209,7 @@ export const listFiles = async (path) => {
     const storageRef = ref(storage, path);
     // vocab: listAll = every file and subfolder pointer under this path, one page.
     const result = await listAll(storageRef);
-    const files = [];
-    for (const itemRef of result.items) {
-      const describedFile = await describeListedFile(itemRef);
-      if (describedFile) files.push(describedFile);
-    }
+    const files = await describeAllListedFiles(result.items);
     console.log('Files listed successfully:', files.length, 'files found');
     return { success: true, files };
   } catch (error) {
@@ -243,15 +275,7 @@ export const uploadTrainerNote = async (trainerId, clientId, textContent) => {
     const path = trainerNoteStoragePath(trainerId, clientId, timestamp);
     // vocab: Blob = a bag of bytes. Here it is the note text with a text/plain type.
     const blob = new Blob([textContent], { type: PLAIN_TEXT_CONTENT_TYPE });
-    const metadata = {
-      contentType: PLAIN_TEXT_CONTENT_TYPE,
-      customMetadata: {
-        uploadedBy: trainerId,
-        clientId: clientId,
-        type: TRAINER_NOTE_KIND,
-        timestamp: timestamp.toString(),
-      },
-    };
+    const metadata = trainerNoteMetadata(trainerId, clientId, timestamp);
     return uploadFile(blob, path, metadata);
   } catch (error) {
     console.error('Upload trainer note error:', error);

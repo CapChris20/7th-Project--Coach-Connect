@@ -1,13 +1,7 @@
-/**
- * Terms Of Service Screen
- *
- * Purpose: UI screen or component: Terms Of Service Screen. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/settings
- * Key exports: TermsOfServiceScreen
- *
- * @file-header
- */
+// In-app Terms of Service: hero, numbered sections, contact line, lawyer-disclaimer note.
+// Flow: theme + safe-area → fade the page in → scroll the section cards.
+// Used by: Settings. Binding legal copy lives with counsel; this screen is the readable summary.
+
 import React, { useRef } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,104 +12,66 @@ import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
 const PINK = '#FF6B9D';
 const CYAN = '#06B6D4';
 const PURPLE = '#C084FC';
 const BORDER_PAD = 0.6;
-
 const LAST_UPDATED = 'May 9, 2026';
+const SHELL_NAV_INSET_FALLBACK = 24;
+const SCROLL_BOTTOM_EXTRA = 24;
+const MIN_BOTTOM_INSET = 16;
+const FADE_MS = 350;
+const RISE_START = 10;
+const HERO_BORDER = [CYAN, PURPLE];
+const SECTION_ACCENT = [CYAN, PURPLE];
+const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
+const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Dark vs light paint for the cards. Kept as a helper so the screen body is just layout.
+ * @param {boolean} isDark
+ */
 function getCardTokens(isDark) {
-  return isDark
-    ? {
-        bg: '#141419',
-        border: 'rgba(255,255,255,0.08)',
-        text2: 'rgba(255,255,255,0.92)',
-        text3: 'rgba(255,255,255,0.72)',
-      }
-    : {
-        bg: '#FFFFFF',
-        border: 'rgba(10,10,15,0.06)',
-        text2: 'rgba(10,10,15,0.86)',
-        text3: 'rgba(10,10,15,0.68)',
-      };
+  if (isDark) {
+    return {
+      bg: '#141419',
+      border: 'rgba(255,255,255,0.08)',
+      text2: 'rgba(255,255,255,0.92)',
+      text3: 'rgba(255,255,255,0.72)',
+    };
+  }
+  return {
+    bg: '#FFFFFF',
+    border: 'rgba(10,10,15,0.06)',
+    text2: 'rgba(10,10,15,0.86)',
+    text3: 'rgba(10,10,15,0.68)',
+  };
 }
 
+/**
+ * Gradient rim wrapping a solid inner. Reused for the hero, the icon badge, and (via LinearGradient) section feet.
+ */
 function GradientCard({ borderColors, style, innerStyle, children }) {
   return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
+    <LinearGradient colors={borderColors} start={GRADIENT_TOP_LEFT} end={GRADIENT_BOTTOM_RIGHT} style={style}>
       <View style={innerStyle}>{children}</View>
     </LinearGradient>
   );
 }
 
-export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const shellNavInset = useShellBottomNavInset(24);
-  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, 16) + 24;
-  const supportEmail = getSupportEmail();
-  const t = getCardTokens(isDark);
-  const contactLine = `Contact: ${supportEmail}`;
-
-  const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
-
-    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
-    heroInner: {
-      borderRadius: 14,
-      padding: 24,
-      backgroundColor: t.bg,
-      alignItems: 'center',
-      borderWidth: 0.5,
-      borderColor: t.border,
-    },
-    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
-    heroIconInner: {
-      flex: 1,
-      borderRadius: 30,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 0.5,
-      borderColor: 'rgba(255,255,255,0.08)',
-    },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: t.text2, textAlign: 'center', lineHeight: 21 },
-
-    pageSub: { fontSize: 14, fontWeight: '600', color: t.text2, lineHeight: 22, marginBottom: 16 },
-
-    sectionCard: {
-      marginBottom: 12,
-      backgroundColor: t.bg,
-      borderRadius: 12,
-      overflow: 'hidden',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: 'rgba(255,255,255,0.08)',
-    },
-    sectionCardBody: { padding: 16 },
-    sectionBottomAccent: { height: 1, width: '100%' },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-    sectionNum: { width: 24, fontSize: 14, fontWeight: '900', color: PINK },
-    sectionTitle: { flex: 1, fontSize: 15, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', letterSpacing: -0.15 },
-    sectionText: { marginLeft: 24, fontSize: 14, fontWeight: '600', color: t.text2, lineHeight: 22 },
-
-    legalNote: {
-      fontSize: 12,
-      color: t.text2,
-      fontStyle: 'italic',
-      marginTop: 12,
-      padding: 16,
-      backgroundColor: t.bg,
-      borderRadius: 10,
-      borderWidth: 0.5,
-      borderColor: t.border,
-      lineHeight: 18,
-    },
-  });
-
-  const sections = [
+/**
+ * Copy is data, not JSX, so legal edits happen in one list.
+ * @param {string} contactLine
+ * @returns {Array<{ num: string, title: string, body: string }>}
+ */
+function termsSections(contactLine) {
+  return [
     {
       num: '01',
       title: 'Plain summary',
@@ -196,14 +152,105 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
       body: contactLine,
     },
   ];
+}
+
+/**
+ * Styles depend on theme + the scroll pad, so they are built after those hooks run.
+ * @param {{ isDark: boolean, cardTokens: object, scrollBottomPad: number }} args
+ */
+function buildTermsStyles({ isDark, cardTokens, scrollBottomPad }) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
+    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
+
+    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
+    heroInner: {
+      borderRadius: 14,
+      padding: 24,
+      backgroundColor: cardTokens.bg,
+      alignItems: 'center',
+      borderWidth: 0.5,
+      borderColor: cardTokens.border,
+    },
+    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
+    heroIconInner: {
+      flex: 1,
+      borderRadius: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderWidth: 0.5,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
+
+    pageSub: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22, marginBottom: 16 },
+
+    sectionCard: {
+      marginBottom: 12,
+      backgroundColor: cardTokens.bg,
+      borderRadius: 12,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    sectionCardBody: { padding: 16 },
+    sectionBottomAccent: { height: 1, width: '100%' },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+    sectionNum: { width: 24, fontSize: 14, fontWeight: '900', color: PINK },
+    sectionTitle: { flex: 1, fontSize: 15, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', letterSpacing: -0.15 },
+    sectionText: { marginLeft: 24, fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22 },
+
+    legalNote: {
+      fontSize: 12,
+      color: cardTokens.text2,
+      fontStyle: 'italic',
+      marginTop: 12,
+      padding: 16,
+      backgroundColor: cardTokens.bg,
+      borderRadius: 10,
+      borderWidth: 0.5,
+      borderColor: cardTokens.border,
+      lineHeight: 18,
+    },
+  });
+}
+
+/**
+ * vocab: Animated.timing fades/slides the page in once on mount (useNativeDriver = native thread).
+ * @param {Animated.Value} fade
+ * @param {Animated.Value} rise
+ */
+function playTermsEnterAnimation(fade, rise) {
+  Animated.parallel([
+    Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+    Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+  ]).start();
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Terms of Service screen with a gradient hero and numbered legal-summary cards.
+ * vocab: useTheme / useSafeAreaInsets / useShellBottomNavInset must stay in this order.
+ * @param {{ onClose?: Function, embedShellBottomNav?: boolean }} props
+ */
+export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
+  const { colors, spacing, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
+  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, MIN_BOTTOM_INSET) + SCROLL_BOTTOM_EXTRA;
+  const supportEmail = getSupportEmail();
+  const cardTokens = getCardTokens(isDark);
+  const contactLine = `Contact: ${supportEmail}`;
+  const styles = buildTermsStyles({ isDark, cardTokens, scrollBottomPad });
+  const sections = termsSections(contactLine);
 
   const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(10)).current;
+  const rise = useRef(new Animated.Value(RISE_START)).current;
   React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: 350, useNativeDriver: true }),
-    ]).start();
+    playTermsEnterAnimation(fade, rise);
   }, [fade, rise]);
 
   return (
@@ -218,8 +265,8 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroOuter} innerStyle={styles.heroInner}>
-            <GradientCard borderColors={[CYAN, PURPLE]} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>
+          <GradientCard borderColors={HERO_BORDER} style={styles.heroOuter} innerStyle={styles.heroInner}>
+            <GradientCard borderColors={HERO_BORDER} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>
               <Ionicons name="document-text-outline" size={34} color="#FFFFFF" />
             </GradientCard>
             <Text style={styles.heroTitle}>Terms of Service</Text>
@@ -228,19 +275,19 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
 
           <Text style={styles.pageSub}>Friendly, plain-language terms for using the app.</Text>
 
-          {sections.map((s) => (
-            <View key={s.num} style={styles.sectionCard}>
+          {sections.map((section) => (
+            <View key={section.num} style={styles.sectionCard}>
               <View style={styles.sectionCardBody}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionNum}>{s.num}</Text>
-                  <Text style={styles.sectionTitle}>{s.title}</Text>
+                  <Text style={styles.sectionNum}>{section.num}</Text>
+                  <Text style={styles.sectionTitle}>{section.title}</Text>
                 </View>
-                <Text style={styles.sectionText}>{s.body}</Text>
+                <Text style={styles.sectionText}>{section.body}</Text>
               </View>
               <LinearGradient
-                colors={[CYAN, PURPLE]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                colors={SECTION_ACCENT}
+                start={GRADIENT_LEFT}
+                end={GRADIENT_RIGHT}
                 style={styles.sectionBottomAccent}
               />
             </View>

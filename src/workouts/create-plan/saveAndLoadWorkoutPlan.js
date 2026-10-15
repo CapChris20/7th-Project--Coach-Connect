@@ -1,13 +1,10 @@
-/**
- * workout Service
- *
- * Purpose: Data/service layer: workout Service. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: getCurrentWorkoutPlan, setCurrentWorkoutPlan, createWorkoutTemplate, fetchWorkoutTemplates, getWorkoutTemplate, startWorkout, getActiveWorkout, subscribeToActiveWorkout
- *
- * @file-header
- */
+// Firestore service for workout plans, templates, active sessions, and history.
+// Flow: read/write current plan → templates → start/complete active workout → history / saved plans.
+// Used by: CreateWorkoutPlanScreen, ClientAppStart, home loader, exercise-library saved plans.
+// Key exports: getCurrentWorkoutPlan, setCurrentWorkoutPlan, createWorkoutTemplate,
+//   fetchWorkoutTemplates, getWorkoutTemplate, startWorkout, getActiveWorkout,
+//   subscribeToActiveWorkout, and the history / saved-plan helpers below.
+
 import { db } from '../../app-start/cloudConnection';
 import {
   collection,
@@ -26,87 +23,313 @@ import {
 } from 'firebase/firestore';
 import { nameWorkoutPlan, looksLikeDefaultAiPlanName } from './nameWorkoutPlan';
 
-// Firestore Collections
+// ===== NAMED CONSTANTS =====
+
+// Firestore collection names — letters stay frozen (rules + other files use these).
 const WORKOUT_TEMPLATES_COLLECTION = 'workoutTemplates';
 const ACTIVE_WORKOUTS_COLLECTION = 'activeWorkouts';
 const COMPLETED_WORKOUTS_COLLECTION = 'completedWorkouts';
 const SAVED_WORKOUT_PLANS_COLLECTION = 'savedWorkoutPlans';
 
-/** Single doc path for current workout plan: users/{uid}/workoutPlan */
-export async function getCurrentWorkoutPlan(userId) {
-  if (!userId || !db) return null;
-  try {
-    const ref = doc(db, 'users', userId, 'workoutPlan', 'current');
-    const snap = await getDoc(ref);
-    return snap.exists() ? snap.data() : null;
-  } catch (e) {
-    if (e?.code !== 'permission-denied') console.error('getCurrentWorkoutPlan:', e);
-    return null;
+// Manipulate here: default sets / reps / rest when a template exercise omits them
+const DEFAULT_TEMPLATE_SETS = 3;
+const DEFAULT_TEMPLATE_REPS = 10;
+const DEFAULT_REST_SECONDS = 60;
+
+// Manipulate here: how many history / saved-plan rows to return when caller omits limit
+const DEFAULT_HISTORY_LIMIT = 50;
+
+// Manipulate here: AI plan defaults when structuredPlan lacks weeks / days / session length
+const DEFAULT_PLAN_WEEKS = 8;
+const DEFAULT_DAYS_PER_WEEK = 3;
+const DEFAULT_SESSION_MINUTES = 45;
+
+const FIRESTORE_PERMISSION_DENIED = 'permission-denied';
+const FIRESTORE_FAILED_PRECONDITION = 'failed-precondition';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Pick a display title: keep a real custom name, otherwise invent one from the plan.
+ * @param {string|undefined} title
+ * @param {object} namingInput
+ * @returns {string}
+ */
+function resolveWorkoutPlanDisplayTitle(title, namingInput) {
+  if (title && String(title).trim() && !looksLikeDefaultAiPlanName(title)) {
+    return String(title).trim();
   }
+  return nameWorkoutPlan(namingInput);
 }
 
-/** Write current plan to Firestore. Overwrites existing; mirrors into workoutPlans for library. */
-export async function setCurrentWorkoutPlan(userId, { rawPlan, generatedAt, structuredPlan, planText, title }) {
-  if (!userId || !db || rawPlan == null) return;
-  const text = String(planText || rawPlan);
-  const when = generatedAt || serverTimestamp();
-  const displayTitle =
-    (title && String(title).trim() && !looksLikeDefaultAiPlanName(title)
-      ? String(title).trim()
-      : null) ||
-    nameWorkoutPlan({
-      structuredPlan: structuredPlan || null,
-      planText: text,
-      generatedAt: typeof generatedAt === 'number' ? generatedAt : Date.now(),
-    });
-  try {
-    const ref = doc(db, 'users', userId, 'workoutPlan', 'current');
-    await setDoc(
-      ref,
-      {
-        rawPlan: String(rawPlan),
-        planText: text,
-        title: displayTitle,
-        name: displayTitle,
-        structuredPlan: structuredPlan || null,
-        generatedAt: when,
-        updatedAt: serverTimestamp(),
-        source: 'generator',
-        status: 'active',
-      },
-      { merge: true },
-    );
+/**
+ * True when Firestore says we need a composite index (or the message mentions index).
+ * @param {Error} error
+ * @returns {boolean}
+ */
+function isFirestoreMissingIndexError(error) {
+  return (
+    error?.code === FIRESTORE_FAILED_PRECONDITION ||
+    (error?.message && error.message.includes('index'))
+  );
+}
 
-    // Stable library doc so trainers + collection queries always see the latest client plan
-    const libraryRef = doc(db, 'users', userId, 'workoutPlans', 'current');
-    await setDoc(
-      libraryRef,
-      {
-        userId,
-        rawPlan: String(rawPlan),
-        planText: text,
-        title: displayTitle,
-        name: displayTitle,
-        structuredPlan: structuredPlan || null,
-        generatedAt: when,
-        updatedAt: serverTimestamp(),
-        source: 'generator',
-        status: 'active',
-      },
-      { merge: true },
-    );
-  } catch (e) {
-    if (e?.code !== 'permission-denied') console.error('setCurrentWorkoutPlan:', e);
+/**
+ * Map a Firestore query snapshot into [{ id, ...fields }, …].
+ * @param {import('firebase/firestore').QuerySnapshot} snapshot
+ * @returns {Array}
+ */
+function docsFromQuerySnapshot(snapshot) {
+  const rows = [];
+  snapshot.forEach((snapshotDoc) => {
+    rows.push({ id: snapshotDoc.id, ...snapshotDoc.data() });
+  });
+  return rows;
+}
+
+/**
+ * Timestamp millis from a completed-workout row (Firestore Timestamp or number).
+ * @param {object} workout
+ * @returns {number}
+ */
+function completedAtMillis(workout) {
+  const stamp = workout.completedAt?.toDate?.() || new Date(workout.completedAt || 0);
+  return stamp.getTime();
+}
+
+/**
+ * Sort completed workouts newest-first by completedAt.
+ * @param {Array} workouts
+ * @returns {Array}
+ */
+function sortWorkoutsNewestFirst(workouts) {
+  workouts.sort((left, right) => completedAtMillis(right) - completedAtMillis(left));
+  return workouts;
+}
+
+/**
+ * Fetch completed workouts ordered by completedAt (needs composite index).
+ * @param {string} userId
+ * @returns {Promise<Array>}
+ */
+async function fetchCompletedWorkoutsOrdered(userId) {
+  // vocab: query / where / orderBy = Firestore filters; getDocs = one-shot read
+  const completedRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
+  const orderedQuery = query(
+    completedRef,
+    where('userId', '==', userId),
+    orderBy('completedAt', 'desc'),
+  );
+  const snapshot = await getDocs(orderedQuery);
+  return docsFromQuerySnapshot(snapshot);
+}
+
+/**
+ * Fallback when the completedAt index is missing — filter/sort in memory.
+ * @param {string} userId
+ * @returns {Promise<Array>}
+ */
+async function fetchCompletedWorkoutsUnorderedThenSort(userId) {
+  console.warn(
+    '⚠️ Firestore index not found. Fetching without orderBy and sorting in memory. For better performance, create the index at the URL provided in the error.',
+  );
+  const completedRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
+  const simpleQuery = query(completedRef, where('userId', '==', userId));
+  const snapshot = await getDocs(simpleQuery);
+  return sortWorkoutsNewestFirst(docsFromQuerySnapshot(snapshot));
+}
+
+/**
+ * Ordered history, or in-memory sort when the composite index is missing.
+ * @param {string} userId
+ * @returns {Promise<Array>}
+ */
+async function fetchCompletedWorkoutsOrderedOrFallback(userId) {
+  try {
+    return await fetchCompletedWorkoutsOrdered(userId);
+  } catch (indexError) {
+    if (!isFirestoreMissingIndexError(indexError)) throw indexError;
+    return await fetchCompletedWorkoutsUnorderedThenSort(userId);
   }
 }
 
 /**
- * Create a new workout template
- * @param {string} userId - User ID
- * @param {string} name - Workout name
- * @param {string} goal - Workout goal (e.g., "strength", "cardio", "hypertrophy")
- * @param {Array} exercises - Array of exercise objects with {exerciseId, sets, reps, restSeconds}
- * @returns {Promise<Object>} Result with template ID
+ * Start-of-today and start-of-tomorrow Date bounds for "today's workouts".
+ * @returns {{ todayStart: Date, tomorrowStart: Date }}
+ */
+function todayAndTomorrowBounds() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  return { todayStart, tomorrowStart };
+}
+
+/**
+ * Fetch today's completed workouts with a ranged Firestore query (needs index).
+ * @param {string} userId
+ * @param {Date} todayStart
+ * @param {Date} tomorrowStart
+ * @returns {Promise<Array>}
+ */
+async function fetchTodaysWorkoutsOrdered(userId, todayStart, tomorrowStart) {
+  const completedRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
+  const rangedQuery = query(
+    completedRef,
+    where('userId', '==', userId),
+    where('completedAt', '>=', todayStart),
+    where('completedAt', '<', tomorrowStart),
+    orderBy('completedAt', 'desc'),
+  );
+  const snapshot = await getDocs(rangedQuery);
+  return docsFromQuerySnapshot(snapshot);
+}
+
+/**
+ * Fallback: load all user completions, keep only today's, sort newest first.
+ * @param {string} userId
+ * @param {Date} todayStart
+ * @param {Date} tomorrowStart
+ * @returns {Promise<Array>}
+ */
+async function fetchTodaysWorkoutsInMemory(userId, todayStart, tomorrowStart) {
+  console.warn(
+    '⚠️ Firestore index not found for getTodaysWorkouts. Fetching without orderBy and filtering in memory.',
+  );
+  const completedRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
+  const simpleQuery = query(completedRef, where('userId', '==', userId));
+  const snapshot = await getDocs(simpleQuery);
+  const todays = [];
+
+  snapshot.forEach((snapshotDoc) => {
+    const data = snapshotDoc.data();
+    const completedAt = data.completedAt?.toDate?.() || new Date(data.completedAt || 0);
+    if (completedAt >= todayStart && completedAt < tomorrowStart) {
+      todays.push({ id: snapshotDoc.id, ...data });
+    }
+  });
+
+  return sortWorkoutsNewestFirst(todays);
+}
+
+/**
+ * Today's workouts via ranged query, or in-memory filter when the index is missing.
+ * @param {string} userId
+ * @param {Date} todayStart
+ * @param {Date} tomorrowStart
+ * @returns {Promise<Array>}
+ */
+async function fetchTodaysWorkoutsOrderedOrFallback(userId, todayStart, tomorrowStart) {
+  try {
+    return await fetchTodaysWorkoutsOrdered(userId, todayStart, tomorrowStart);
+  } catch (indexError) {
+    if (!isFirestoreMissingIndexError(indexError)) throw indexError;
+    return await fetchTodaysWorkoutsInMemory(userId, todayStart, tomorrowStart);
+  }
+}
+
+/**
+ * Saved-plan sort key: createdAt Timestamp, else generatedAt number.
+ * @param {object} plan
+ * @returns {number}
+ */
+function savedPlanSortMillis(plan) {
+  // vocab/symbol: ?? = use right side only when left is null/undefined (0 generatedAt survives)
+  return plan.createdAt?.toDate?.()?.getTime() ?? plan.generatedAt ?? 0;
+}
+
+/**
+ * Map a template exercise into the stored sets/reps/rest shape.
+ * @param {object} exercise
+ * @returns {object}
+ */
+function normalizeTemplateExercise(exercise) {
+  return {
+    exerciseId: exercise.exerciseId,
+    sets: parseInt(exercise.sets) || DEFAULT_TEMPLATE_SETS,
+    reps: parseInt(exercise.reps) || DEFAULT_TEMPLATE_REPS,
+    restSeconds: parseInt(exercise.restSeconds) || DEFAULT_REST_SECONDS,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Read the single current workout plan doc: users/{uid}/workoutPlan/current.
+ * @param {string} userId
+ * @returns {Promise<object|null>}
+ */
+export async function getCurrentWorkoutPlan(userId) {
+  if (!userId || !db) return null;
+
+  try {
+    // vocab: doc / getDoc = one Firestore document path + one-shot read
+    const planRef = doc(db, 'users', userId, 'workoutPlan', 'current');
+    const snapshot = await getDoc(planRef);
+    return snapshot.exists() ? snapshot.data() : null;
+  } catch (error) {
+    if (error?.code !== FIRESTORE_PERMISSION_DENIED) {
+      console.error('getCurrentWorkoutPlan:', error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Write the current plan to Firestore. Overwrites existing; mirrors into workoutPlans library.
+ * @param {string} userId
+ * @param {{ rawPlan: *, generatedAt?: *, structuredPlan?: *, planText?: string, title?: string }} planFields
+ * @returns {Promise<void>}
+ */
+export async function setCurrentWorkoutPlan(
+  userId,
+  { rawPlan, generatedAt, structuredPlan, planText, title },
+) {
+  if (!userId || !db || rawPlan == null) return;
+
+  const text = String(planText || rawPlan);
+  // vocab: serverTimestamp = Firestore fills the write time on the server
+  const when = generatedAt || serverTimestamp();
+  const displayTitle = resolveWorkoutPlanDisplayTitle(title, {
+    structuredPlan: structuredPlan || null,
+    planText: text,
+    generatedAt: typeof generatedAt === 'number' ? generatedAt : Date.now(),
+  });
+
+  const planBody = {
+    rawPlan: String(rawPlan),
+    planText: text,
+    title: displayTitle,
+    name: displayTitle,
+    structuredPlan: structuredPlan || null,
+    generatedAt: when,
+    updatedAt: serverTimestamp(),
+    source: 'generator',
+    status: 'active',
+  };
+
+  try {
+    // 1. Active plan doc trainers / client home read as "the" plan.
+    const currentRef = doc(db, 'users', userId, 'workoutPlan', 'current');
+    await setDoc(currentRef, planBody, { merge: true });
+
+    // 2. Stable library doc so collection queries always see the latest client plan.
+    const libraryRef = doc(db, 'users', userId, 'workoutPlans', 'current');
+    await setDoc(libraryRef, { userId, ...planBody }, { merge: true });
+  } catch (error) {
+    if (error?.code !== FIRESTORE_PERMISSION_DENIED) {
+      console.error('setCurrentWorkoutPlan:', error);
+    }
+  }
+}
+
+/**
+ * Create a new workout template row in workoutTemplates.
+ * @param {string} userId
+ * @param {string} name
+ * @param {string} goal
+ * @param {Array} exercises
+ * @returns {Promise<{success: boolean, id?: string, template?: object, error?: string}>}
  */
 export async function createWorkoutTemplate(userId, name, goal, exercises) {
   if (!userId || !db || !name || !exercises || exercises.length === 0) {
@@ -118,12 +341,7 @@ export async function createWorkoutTemplate(userId, name, goal, exercises) {
       userId,
       name: name.trim(),
       goal: goal || 'general',
-      exercises: exercises.map(ex => ({
-        exerciseId: ex.exerciseId,
-        sets: parseInt(ex.sets) || 3,
-        reps: parseInt(ex.reps) || 10,
-        restSeconds: parseInt(ex.restSeconds) || 60,
-      })),
+      exercises: exercises.map(normalizeTemplateExercise),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -137,28 +355,22 @@ export async function createWorkoutTemplate(userId, name, goal, exercises) {
 }
 
 /**
- * Fetch all workout templates for a user
- * @param {string} userId - User ID
- * @returns {Promise<Array>} Array of workout templates
+ * Fetch all workout templates for a user (newest createdAt first).
+ * @param {string} userId
+ * @returns {Promise<Array>}
  */
 export async function fetchWorkoutTemplates(userId) {
   if (!userId || !db) return [];
 
   try {
     const templatesRef = collection(db, WORKOUT_TEMPLATES_COLLECTION);
-    const q = query(
+    const templatesQuery = query(
       templatesRef,
       where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
     );
-
-    const querySnapshot = await getDocs(q);
-    const templates = [];
-    querySnapshot.forEach((doc) => {
-      templates.push({ id: doc.id, ...doc.data() });
-    });
-
-    return templates;
+    const snapshot = await getDocs(templatesQuery);
+    return docsFromQuerySnapshot(snapshot);
   } catch (error) {
     console.error('Error fetching workout templates:', error);
     return [];
@@ -166,9 +378,9 @@ export async function fetchWorkoutTemplates(userId) {
 }
 
 /**
- * Get a single workout template by ID
- * @param {string} templateId - Template ID
- * @returns {Promise<Object|null>} Template object or null
+ * Get a single workout template by ID.
+ * @param {string} templateId
+ * @returns {Promise<object|null>}
  */
 export async function getWorkoutTemplate(templateId) {
   if (!templateId || !db) return null;
@@ -176,7 +388,6 @@ export async function getWorkoutTemplate(templateId) {
   try {
     const templateRef = doc(db, WORKOUT_TEMPLATES_COLLECTION, templateId);
     const templateSnap = await getDoc(templateRef);
-    
     if (templateSnap.exists()) {
       return { id: templateSnap.id, ...templateSnap.data() };
     }
@@ -188,10 +399,10 @@ export async function getWorkoutTemplate(templateId) {
 }
 
 /**
- * Start a new active workout from a template
- * @param {string} userId - User ID
- * @param {string} workoutId - Workout template ID
- * @returns {Promise<Object>} Result with active workout ID
+ * Start a new active workout from a template (fails if one is already active).
+ * @param {string} userId
+ * @param {string} workoutId
+ * @returns {Promise<{success: boolean, id?: string, activeWorkout?: object, error?: string}>}
  */
 export async function startWorkout(userId, workoutId) {
   if (!userId || !db || !workoutId) {
@@ -199,30 +410,38 @@ export async function startWorkout(userId, workoutId) {
   }
 
   try {
-    // Get the template
+    // 1. Load the template we are starting from.
     const template = await getWorkoutTemplate(workoutId);
     if (!template) {
       return { success: false, error: 'Workout template not found' };
     }
 
-    // Check if user has an active workout
-    const activeWorkout = await getActiveWorkout(userId);
-    if (activeWorkout) {
-      return { success: false, error: 'You already have an active workout. Please complete or cancel it first.' };
+    // 2. Block a second active session — user must complete or cancel first.
+    const alreadyActive = await getActiveWorkout(userId);
+    if (alreadyActive) {
+      return {
+        success: false,
+        error: 'You already have an active workout. Please complete or cancel it first.',
+      };
     }
 
+    // 3. Create the active row (one empty completedSets array per exercise).
     const activeWorkoutData = {
       userId,
       workoutId,
       workoutName: template.name,
       startedAt: serverTimestamp(),
       currentExerciseIndex: 0,
-      completedSets: template.exercises.map(() => []), // Array of arrays, one per exercise
+      completedSets: template.exercises.map(() => []),
       exercises: template.exercises,
     };
 
     const docRef = await addDoc(collection(db, ACTIVE_WORKOUTS_COLLECTION), activeWorkoutData);
-    return { success: true, id: docRef.id, activeWorkout: { id: docRef.id, ...activeWorkoutData } };
+    return {
+      success: true,
+      id: docRef.id,
+      activeWorkout: { id: docRef.id, ...activeWorkoutData },
+    };
   } catch (error) {
     console.error('Error starting workout:', error);
     return { success: false, error: error.message };
@@ -230,26 +449,21 @@ export async function startWorkout(userId, workoutId) {
 }
 
 /**
- * Get the current active workout for a user
- * @param {string} userId - User ID
- * @returns {Promise<Object|null>} Active workout or null
+ * Get the current active workout for a user (at most one).
+ * @param {string} userId
+ * @returns {Promise<object|null>}
  */
 export async function getActiveWorkout(userId) {
   if (!userId || !db) return null;
 
   try {
-    const activeWorkoutsRef = collection(db, ACTIVE_WORKOUTS_COLLECTION);
-    const q = query(
-      activeWorkoutsRef,
-      where('userId', '==', userId)
-    );
+    const activeRef = collection(db, ACTIVE_WORKOUTS_COLLECTION);
+    const activeQuery = query(activeRef, where('userId', '==', userId));
+    const snapshot = await getDocs(activeQuery);
+    if (snapshot.empty) return null;
 
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) return null;
-
-    // Should only be one active workout per user
-    const doc = querySnapshot.docs[0];
-    return { id: doc.id, ...doc.data() };
+    const firstDoc = snapshot.docs[0];
+    return { id: firstDoc.id, ...firstDoc.data() };
   } catch (error) {
     console.error('Error getting active workout:', error);
     return null;
@@ -257,28 +471,26 @@ export async function getActiveWorkout(userId) {
 }
 
 /**
- * Subscribe to active workout changes (real-time)
- * @param {string} userId - User ID
- * @param {Function} callback - Callback function
- * @returns {Function} Unsubscribe function
+ * Subscribe to active workout changes (real-time). Returns unsubscribe.
+ * @param {string} userId
+ * @param {Function} callback
+ * @returns {Function}
  */
 export function subscribeToActiveWorkout(userId, callback) {
   if (!userId || !db) return () => {};
 
   try {
-    const activeWorkoutsRef = collection(db, ACTIVE_WORKOUTS_COLLECTION);
-    const q = query(
-      activeWorkoutsRef,
-      where('userId', '==', userId)
-    );
+    // vocab: onSnapshot = live listener; return value unsubscribes
+    const activeRef = collection(db, ACTIVE_WORKOUTS_COLLECTION);
+    const activeQuery = query(activeRef, where('userId', '==', userId));
 
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(activeQuery, (snapshot) => {
       if (snapshot.empty) {
         callback(null);
         return;
       }
-      const doc = snapshot.docs[0];
-      callback({ id: doc.id, ...doc.data() });
+      const firstDoc = snapshot.docs[0];
+      callback({ id: firstDoc.id, ...firstDoc.data() });
     });
   } catch (error) {
     console.error('Error subscribing to active workout:', error);
@@ -287,10 +499,10 @@ export function subscribeToActiveWorkout(userId, callback) {
 }
 
 /**
- * Update active workout (sets, exercise index, etc.)
- * @param {string} activeWorkoutId - Active workout ID
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object>} Result object
+ * Update active workout fields (sets, exercise index, etc.).
+ * @param {string} activeWorkoutId
+ * @param {object} updates
+ * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function updateActiveWorkout(activeWorkoutId, updates) {
   if (!activeWorkoutId || !db) {
@@ -298,8 +510,8 @@ export async function updateActiveWorkout(activeWorkoutId, updates) {
   }
 
   try {
-    const activeWorkoutRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
-    await updateDoc(activeWorkoutRef, {
+    const activeRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
+    await updateDoc(activeRef, {
       ...updates,
       updatedAt: serverTimestamp(),
     });
@@ -311,11 +523,11 @@ export async function updateActiveWorkout(activeWorkoutId, updates) {
 }
 
 /**
- * Complete a workout and save to history
- * @param {string} activeWorkoutId - Active workout ID
+ * Complete a workout: copy to history, then delete the active row.
+ * @param {string} activeWorkoutId
  * @param {number} duration - Duration in seconds
  * @param {number} totalVolume - Total volume (weight × reps × sets)
- * @returns {Promise<Object>} Result object
+ * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function completeWorkout(activeWorkoutId, duration, totalVolume = 0) {
   if (!activeWorkoutId || !db) {
@@ -323,32 +535,30 @@ export async function completeWorkout(activeWorkoutId, duration, totalVolume = 0
   }
 
   try {
-    // Get active workout data
-    const activeWorkoutRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
-    const activeWorkoutSnap = await getDoc(activeWorkoutRef);
-    
-    if (!activeWorkoutSnap.exists()) {
+    // 1. Load the active session.
+    const activeRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
+    const activeSnap = await getDoc(activeRef);
+    if (!activeSnap.exists()) {
       return { success: false, error: 'Active workout not found' };
     }
 
-    const activeWorkout = activeWorkoutSnap.data();
+    const activeWorkout = activeSnap.data();
 
-    // Create completed workout
+    // 2. Write a completed history row.
     const completedWorkoutData = {
       userId: activeWorkout.userId,
       workoutId: activeWorkout.workoutId,
       workoutName: activeWorkout.workoutName,
       completedAt: serverTimestamp(),
-      duration, // in seconds
+      duration,
       totalVolume,
       exercises: activeWorkout.exercises,
       completedSets: activeWorkout.completedSets,
     };
-
     await addDoc(collection(db, COMPLETED_WORKOUTS_COLLECTION), completedWorkoutData);
 
-    // Delete active workout
-    await deleteDoc(activeWorkoutRef);
+    // 3. Remove the active session so a new one can start.
+    await deleteDoc(activeRef);
 
     return { success: true };
   } catch (error) {
@@ -358,9 +568,9 @@ export async function completeWorkout(activeWorkoutId, duration, totalVolume = 0
 }
 
 /**
- * Cancel/delete an active workout
- * @param {string} activeWorkoutId - Active workout ID
- * @returns {Promise<Object>} Result object
+ * Cancel / delete an active workout without saving history.
+ * @param {string} activeWorkoutId
+ * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function cancelWorkout(activeWorkoutId) {
   if (!activeWorkoutId || !db) {
@@ -368,8 +578,8 @@ export async function cancelWorkout(activeWorkoutId) {
   }
 
   try {
-    const activeWorkoutRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
-    await deleteDoc(activeWorkoutRef);
+    const activeRef = doc(db, ACTIVE_WORKOUTS_COLLECTION, activeWorkoutId);
+    await deleteDoc(activeRef);
     return { success: true };
   } catch (error) {
     console.error('Error canceling workout:', error);
@@ -378,72 +588,27 @@ export async function cancelWorkout(activeWorkoutId) {
 }
 
 /**
- * Fetch workout history for a user
- * @param {string} userId - User ID
- * @param {number} limit - Maximum number of workouts to fetch
- * @returns {Promise<Array>} Array of completed workouts
+ * Fetch workout history for a user (newest first). Falls back if index is missing.
+ * @param {string} userId
+ * @param {number} [limit]
+ * @returns {Promise<Array>}
  */
-export async function fetchWorkoutHistory(userId, limit = 50) {
+export async function fetchWorkoutHistory(userId, limit = DEFAULT_HISTORY_LIMIT) {
   if (!userId || !db) return [];
 
   try {
-    const completedWorkoutsRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
-    
-    // Try query with orderBy first (requires index)
-    try {
-      const q = query(
-        completedWorkoutsRef,
-        where('userId', '==', userId),
-        orderBy('completedAt', 'desc')
-      );
-
-      const querySnapshot = await getDocs(q);
-      const workouts = [];
-      querySnapshot.forEach((doc) => {
-        workouts.push({ id: doc.id, ...doc.data() });
-      });
-
-      return workouts.slice(0, limit);
-    } catch (indexError) {
-      // If index error, fall back to query without orderBy and sort in memory
-      if (indexError.code === 'failed-precondition' || indexError.message?.includes('index')) {
-        console.warn('⚠️ Firestore index not found. Fetching without orderBy and sorting in memory. For better performance, create the index at the URL provided in the error.');
-        
-        const q = query(
-          completedWorkoutsRef,
-          where('userId', '==', userId)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const workouts = [];
-        querySnapshot.forEach((doc) => {
-          workouts.push({ id: doc.id, ...doc.data() });
-        });
-
-        // Sort by completedAt in memory (descending - most recent first)
-        workouts.sort((a, b) => {
-          const aTime = a.completedAt?.toDate?.() || new Date(a.completedAt || 0);
-          const bTime = b.completedAt?.toDate?.() || new Date(b.completedAt || 0);
-          return bTime.getTime() - aTime.getTime(); // Descending order
-        });
-
-        return workouts.slice(0, limit);
-      } else {
-        // Re-throw if it's a different error
-        throw indexError;
-      }
-    }
+    const workouts = await fetchCompletedWorkoutsOrderedOrFallback(userId);
+    return workouts.slice(0, limit);
   } catch (error) {
     console.error('Error fetching workout history:', error);
-    // Return empty array on error to prevent app crash
     return [];
   }
 }
 
 /**
- * Delete a workout template
- * @param {string} templateId - Template ID
- * @returns {Promise<Object>} Result object
+ * Delete a workout template by ID.
+ * @param {string} templateId
+ * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function deleteWorkoutTemplate(templateId) {
   if (!templateId || !db) {
@@ -461,85 +626,28 @@ export async function deleteWorkoutTemplate(templateId) {
 }
 
 /**
- * Get today's workouts for a user (from completed workouts)
- * @param {string} userId - User ID
- * @returns {Promise<Array>} Array of today's completed workouts
+ * Get today's completed workouts for a user.
+ * @param {string} userId
+ * @returns {Promise<Array>}
  */
 export async function getTodaysWorkouts(userId) {
   if (!userId || !db) return [];
 
+  const { todayStart, tomorrowStart } = todayAndTomorrowBounds();
+
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const completedWorkoutsRef = collection(db, COMPLETED_WORKOUTS_COLLECTION);
-    
-    // Try query with orderBy first (requires index)
-    try {
-      const q = query(
-        completedWorkoutsRef,
-        where('userId', '==', userId),
-        where('completedAt', '>=', today),
-        where('completedAt', '<', tomorrow),
-        orderBy('completedAt', 'desc')
-      );
-
-      const querySnapshot = await getDocs(q);
-      const workouts = [];
-      querySnapshot.forEach((doc) => {
-        workouts.push({ id: doc.id, ...doc.data() });
-      });
-
-      return workouts;
-    } catch (indexError) {
-      // If index error, fall back to query without orderBy and filter in memory
-      if (indexError.code === 'failed-precondition' || indexError.message?.includes('index')) {
-        console.warn('⚠️ Firestore index not found for getTodaysWorkouts. Fetching without orderBy and filtering in memory.');
-        
-        const q = query(
-          completedWorkoutsRef,
-          where('userId', '==', userId)
-        );
-
-        const querySnapshot = await getDocs(q);
-        const workouts = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const completedAt = data.completedAt?.toDate?.() || new Date(data.completedAt || 0);
-          
-          // Filter for today's workouts in memory
-          if (completedAt >= today && completedAt < tomorrow) {
-            workouts.push({ id: doc.id, ...data });
-          }
-        });
-
-        // Sort by completedAt descending
-        workouts.sort((a, b) => {
-          const aTime = a.completedAt?.toDate?.() || new Date(a.completedAt || 0);
-          const bTime = b.completedAt?.toDate?.() || new Date(b.completedAt || 0);
-          return bTime.getTime() - aTime.getTime();
-        });
-
-        return workouts;
-      } else {
-        // Re-throw if it's a different error
-        throw indexError;
-      }
-    }
+    return await fetchTodaysWorkoutsOrderedOrFallback(userId, todayStart, tomorrowStart);
   } catch (error) {
-    console.error('Error getting today\'s workouts:', error);
-    // Return empty array on error to prevent app crash
+    console.error("Error getting today's workouts:", error);
     return [];
   }
 }
 
 /**
- * Add a workout for today (creates a completed workout entry)
- * @param {string} userId - User ID
- * @param {string} workoutName - Name of the workout
- * @returns {Promise<Object>} Result object with workout data
+ * Add a lightweight "done today" completed-workout entry (name only).
+ * @param {string} userId
+ * @param {string} workoutName
+ * @returns {Promise<{success: boolean, id?: string, workout?: object, error?: string}>}
  */
 export async function addTodaysWorkout(userId, workoutName) {
   if (!userId || !db || !workoutName) {
@@ -561,15 +669,15 @@ export async function addTodaysWorkout(userId, workoutName) {
     const workout = { id: docRef.id, ...completedWorkoutData };
     return { success: true, id: docRef.id, workout };
   } catch (error) {
-    console.error('Error adding today\'s workout:', error);
+    console.error("Error adding today's workout:", error);
     return { success: false, error: error.message };
   }
 }
 
 /**
- * Delete a completed workout
- * @param {string} workoutId - Completed workout ID
- * @returns {Promise<Object>} Result object
+ * Delete a completed workout history row.
+ * @param {string} workoutId
+ * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function deleteWorkout(workoutId) {
   if (!workoutId || !db) {
@@ -587,10 +695,10 @@ export async function deleteWorkout(workoutId) {
 }
 
 /**
- * Save a generated AI workout plan to the user's workout collection (saved plans)
- * @param {string} userId - User ID
- * @param {Object} planData - Plan object with planText, structuredPlan, etc.
- * @param {string} [name] - Optional display name (creative name derived from goal if omitted)
+ * Save a generated AI workout plan into users/{uid}/workoutPlans.
+ * @param {string} userId
+ * @param {object} planData
+ * @param {string} [name]
  * @returns {Promise<{ success: boolean, id?: string, error?: string }>}
  */
 export async function saveGeneratedPlanToCollection(userId, planData, name) {
@@ -599,16 +707,15 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
   }
 
   try {
-    const displayName =
-      (name && String(name).trim() && !looksLikeDefaultAiPlanName(name)
-        ? String(name).trim()
-        : null) || nameWorkoutPlan(planData);
-
+    const displayName = resolveWorkoutPlanDisplayTitle(name, planData);
     const structured = planData.structuredPlan || null;
     const goal = structured?.goal || structured?.focus || '';
-    const weeks = structured?.weeks || structured?.totalWeeks || structured?.durationWeeks || 8;
-    const daysPerWeek = structured?.daysPerWeek || structured?.trainingDays?.length || 3;
-    const sessionMinutes = structured?.sessionMinutes || structured?.sessionLength || 45;
+    const weeks =
+      structured?.weeks || structured?.totalWeeks || structured?.durationWeeks || DEFAULT_PLAN_WEEKS;
+    const daysPerWeek =
+      structured?.daysPerWeek || structured?.trainingDays?.length || DEFAULT_DAYS_PER_WEEK;
+    const sessionMinutes =
+      structured?.sessionMinutes || structured?.sessionLength || DEFAULT_SESSION_MINUTES;
 
     const docData = {
       userId,
@@ -629,6 +736,7 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
       updatedAt: serverTimestamp(),
     };
 
+    // Path letters stay: users/{uid}/workoutPlans (SAVED_WORKOUT_PLANS_COLLECTION is unused path alias)
     const colRef = collection(db, 'users', userId, 'workoutPlans');
     const docRef = await addDoc(colRef, docData);
     return { success: true, id: docRef.id };
@@ -639,43 +747,29 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
 }
 
 /**
- * Fetch saved workout plans for a user
- * @param {string} userId - User ID
- * @param {number} limit - Max number to return
- * @returns {Promise<Array>} Array of saved plans
+ * Fetch saved workout plans for a user (newest generatedAt first).
+ * @param {string} userId
+ * @param {number} [limit]
+ * @returns {Promise<Array>}
  */
-export async function fetchSavedWorkoutPlans(userId, limit = 50) {
+export async function fetchSavedWorkoutPlans(userId, limit = DEFAULT_HISTORY_LIMIT) {
   if (!userId || !db) return [];
 
   try {
-    const ref = collection(db, 'users', userId, 'workoutPlans');
-    const q = query(ref, orderBy('generatedAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const plans = [];
-    snapshot.forEach((d) => {
-      plans.push({ id: d.id, ...d.data() });
-    });
-    return plans.slice(0, limit);
-  } catch (e) {
-    if (e.code === 'failed-precondition' || (e.message && e.message.includes('index'))) {
-      const ref = collection(db, 'users', userId, 'workoutPlans');
-      const snapshot = await getDocs(ref);
-      const plans = [];
-      snapshot.forEach((d) => {
-        plans.push({ id: d.id, ...d.data() });
-      });
-      plans.sort((a, b) => {
-        const at = a.createdAt?.toDate?.()?.getTime() ?? a.generatedAt ?? 0;
-        const bt = b.createdAt?.toDate?.()?.getTime() ?? b.generatedAt ?? 0;
-        return bt - at;
-      });
-      return plans.slice(0, limit);
+    const plansRef = collection(db, 'users', userId, 'workoutPlans');
+    const orderedQuery = query(plansRef, orderBy('generatedAt', 'desc'));
+    const snapshot = await getDocs(orderedQuery);
+    return docsFromQuerySnapshot(snapshot).slice(0, limit);
+  } catch (error) {
+    if (!isFirestoreMissingIndexError(error)) {
+      console.error('Error fetching saved workout plans:', error);
+      return [];
     }
-    console.error('Error fetching saved workout plans:', e);
-    return [];
+
+    const plansRef = collection(db, 'users', userId, 'workoutPlans');
+    const snapshot = await getDocs(plansRef);
+    const plans = docsFromQuerySnapshot(snapshot);
+    plans.sort((left, right) => savedPlanSortMillis(right) - savedPlanSortMillis(left));
+    return plans.slice(0, limit);
   }
 }
-
-
-
-

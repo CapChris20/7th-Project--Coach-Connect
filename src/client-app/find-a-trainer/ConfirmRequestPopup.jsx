@@ -1,13 +1,7 @@
-/**
- * Trainer Request Confirm Modal
- *
- * Purpose: UI screen or component: Trainer Request Confirm Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/marketplace
- * Key exports: ConfirmRequestPopup
- *
- * @file-header
- */
+// Confirm-before-send sheet when a client taps Request on a trainer profile.
+// Flow: show the trainer → explain the 3–5 day trial → show the first monthly price → Cancel or Confirm.
+// Used by SearchTrainersScreen. Price is read from price, then pricing.perMonth, then rate.
+
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -27,18 +21,177 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
 
+// ===== NAMED CONSTANTS =====
+
 const { width: SCREEN_W } = Dimensions.get('window');
-const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, 400);
-
+const MODAL_MAX_WIDTH_PX = 400;
+const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, MODAL_MAX_WIDTH_PX);
 const BORDER_LOOP = ['#F06BA8', '#FB923C', '#C084FC', '#F06BA8'];
+const TRAINER_NAME_DEFAULT = 'Trainer';
+const PINK = '#FF6B9D';
+const CYAN = '#64D2FF';
+const PURPLE = '#C084FC';
+const WHITE = '#fff';
+const SCALE_HIDDEN = 0.94;
+const FADE_MS = 220;
 
-function getTrainerPrice(t) {
-  if (!t) return null;
-  if (t.price != null) return t.price;
-  const pm = t.pricing && t.pricing.perMonth != null ? t.pricing.perMonth : null;
-  if (pm != null) return pm;
-  return t.rate != null ? t.rate : null;
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Marketplace cards store the monthly rate in three different fields. First one that exists wins.
+ * @param {object} trainer
+ * @returns {*}
+ */
+function getTrainerPrice(trainer) {
+  if (!trainer) return null;
+  if (trainer.price != null) return trainer.price;
+  const perMonth = trainer.pricing && trainer.pricing.perMonth != null ? trainer.pricing.perMonth : null;
+  if (perMonth != null) return perMonth;
+  return trainer.rate != null ? trainer.rate : null;
 }
+
+/**
+ * @param {object} trainer
+ * @returns {{ name: string, firstName: string, initial: string, photoUri: string, price: *, hasPrice: boolean }}
+ */
+function trainerConfirmFields(trainer) {
+  const name = trainer.displayName || trainer.name || TRAINER_NAME_DEFAULT;
+  const firstName = name.trim().split(/\s+/)[0] || name;
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+  const photoUri = trainerPhotoUri(trainer);
+  const price = getTrainerPrice(trainer);
+  const hasPrice = price != null && price !== '' && Number.isFinite(Number(price)) && Number(price) > 0;
+  return { name, firstName, initial, photoUri, price, hasPrice };
+}
+
+/**
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function confirmTheme(isDark) {
+  return {
+    cardBackground: isDark ? '#0A0A0F' : '#F5F5F5',
+    textHi: isDark ? '#FFFFFF' : '#0A0A0F',
+    textMuted: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.6)',
+    textMuted2: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.5)',
+    borderSoft: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)',
+    glassBackground: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)',
+    washColors: isDark
+      ? ['rgba(255,107,157,0.07)', 'rgba(100,210,255,0.05)', 'rgba(192,132,252,0.07)']
+      : ['rgba(255,107,157,0.06)', 'rgba(100,210,255,0.04)', 'rgba(192,132,252,0.06)'],
+    avatarInner: isDark ? '#13131A' : '#FFFFFF',
+  };
+}
+
+function TrainerAvatar({ photoUri, initial, isDark, avatarInner }) {
+  return (
+    <View style={[styles.avatarRing, { borderColor: PINK }]}>
+      <LinearGradient colors={[PINK, PURPLE]} style={styles.avatarGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <View style={[styles.avatarInner, { backgroundColor: avatarInner }]}>
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
+          ) : (
+            <Text style={[styles.avatarInitial, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>{initial}</Text>
+          )}
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+function TrialCard({ firstName, glassBackground, borderSoft, textMuted }) {
+  return (
+    <View style={[styles.cardBlock, { backgroundColor: glassBackground, borderColor: borderSoft }]}>
+      <View style={styles.rowStart}>
+        <Ionicons name="calendar-outline" size={20} color={CYAN} style={styles.rowIcon} />
+        <View style={styles.rowBody}>
+          <Text style={[styles.sectionLabel, { color: CYAN }]}>FREE TRIAL PERIOD: 3–5 DAYS</Text>
+          <Text style={[styles.bodyText, { color: textMuted }]}>
+            You can message {firstName} and discuss your fitness goals, training style, recovery needs, and anything else
+            you want to cover. Get to know each other first — no commitment yet.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function AfterTrialCard({ hasPrice, price, glassBackground, borderSoft, textMuted }) {
+  return (
+    <View style={[styles.cardBlock, { backgroundColor: glassBackground, borderColor: borderSoft }]}>
+      <View style={styles.rowStart}>
+        <Ionicons name="card-outline" size={20} color={PINK} style={styles.rowIcon} />
+        <View style={styles.rowBody}>
+          <Text style={[styles.sectionLabel, { color: PINK }]}>AFTER YOUR TRIAL</Text>
+          {hasPrice ? (
+            <Text style={[styles.bodyText, { color: textMuted }]}>
+              Your first payment of{' '}
+              <Text style={styles.priceAccent}>${Number(price)}</Text>
+              /month will be charged. You can cancel anytime before your trial ends with no charge.
+            </Text>
+          ) : (
+            <Text style={[styles.bodyText, { color: textMuted }]}>
+              Your first payment will follow your coach's listed rate. You can cancel anytime before your trial ends
+              with no charge.
+            </Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function outlinePressOpacity(busy, pressed) {
+  if (busy) return 0.5;
+  if (pressed) return 0.92;
+  return 1;
+}
+
+function pressScale(pressed) {
+  if (pressed) return 0.98;
+  return 1;
+}
+
+function ConfirmActions({ busy, onCancel, onConfirm, borderSoft, textHi }) {
+  return (
+    <View style={[styles.actions, { borderTopColor: borderSoft }]}>
+      <Pressable
+        onPress={busy ? undefined : onCancel}
+        disabled={busy}
+        style={({ pressed }) => [
+          styles.btnOutline,
+          {
+            borderColor: borderSoft,
+            opacity: outlinePressOpacity(busy, pressed),
+            transform: [{ scale: pressScale(pressed) }],
+          },
+        ]}
+      >
+        <Text style={[styles.btnOutlineText, { color: textHi }]}>Not right now</Text>
+      </Pressable>
+      <Pressable
+        onPress={busy ? undefined : onConfirm}
+        disabled={busy}
+        style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }], opacity: busy ? 0.85 : 1 }]}
+      >
+        <LinearGradient
+          colors={['#F06BA8', '#FB923C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.btnGradient}
+        >
+          {busy ? (
+            <ActivityIndicator color={WHITE} />
+          ) : (
+            <Text style={styles.btnPrimaryText}>Yes, let's connect</Text>
+          )}
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
 
 export default function ConfirmRequestPopup({
   visible,
@@ -48,35 +201,23 @@ export default function ConfirmRequestPopup({
   isDark = true,
   busy = false,
 }) {
-  const scale = useRef(new Animated.Value(0.94)).current;
+  const scale = useRef(new Animated.Value(SCALE_HIDDEN)).current;
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (visible) {
-      fade.setValue(0);
-      scale.setValue(0.94);
-      Animated.parallel([
-        Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
-      ]).start();
-    }
+    if (!visible) return;
+    fade.setValue(0);
+    scale.setValue(SCALE_HIDDEN);
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
+    ]).start();
   }, [visible, fade, scale]);
 
   if (!trainer) return null;
 
-  const name = trainer.displayName || trainer.name || 'Trainer';
-  const first = name.trim().split(/\s+/)[0] || name;
-  const initial = name.trim().charAt(0).toUpperCase() || '?';
-  const photoUri = trainerPhotoUri(trainer);
-  const price = getTrainerPrice(trainer);
-  const hasPrice = price != null && price !== '' && Number.isFinite(Number(price)) && Number(price) > 0;
-
-  const bg = isDark ? '#0A0A0F' : '#F5F5F5';
-  const textHi = isDark ? '#FFFFFF' : '#0A0A0F';
-  const textMuted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.6)';
-  const textMuted2 = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.5)';
-  const borderSoft = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
-  const glassBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)';
+  const { name, firstName, initial, photoUri, price, hasPrice } = trainerConfirmFields(trainer);
+  const theme = confirmTheme(isDark);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel}>
@@ -92,13 +233,9 @@ export default function ConfirmRequestPopup({
             }}
           >
           <LinearGradient colors={BORDER_LOOP} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.borderRing}>
-            <View style={[styles.inner, { backgroundColor: bg }]}>
+            <View style={[styles.inner, { backgroundColor: theme.cardBackground }]}>
               <LinearGradient
-                colors={
-                  isDark
-                    ? ['rgba(255,107,157,0.07)', 'rgba(100,210,255,0.05)', 'rgba(192,132,252,0.07)']
-                    : ['rgba(255,107,157,0.06)', 'rgba(100,210,255,0.04)', 'rgba(192,132,252,0.06)']
-                }
+                colors={theme.washColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -109,93 +246,40 @@ export default function ConfirmRequestPopup({
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
-                <View style={[styles.avatarRing, { borderColor: '#FF6B9D' }]}>
-                  <LinearGradient colors={['#FF6B9D', '#C084FC']} style={styles.avatarGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                    <View style={[styles.avatarInner, { backgroundColor: isDark ? '#13131A' : '#FFFFFF' }]}>
-                      {photoUri ? (
-                        <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
-                      ) : (
-                        <Text style={[styles.avatarInitial, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>{initial}</Text>
-                      )}
-                    </View>
-                  </LinearGradient>
-                </View>
+                <TrainerAvatar photoUri={photoUri} initial={initial} isDark={isDark} avatarInner={theme.avatarInner} />
 
-                <Text style={[styles.title, { color: textHi }]}>{name}</Text>
-                <Text style={[styles.headline, { color: textHi }]}>Let's confirm your request</Text>
-                <Text style={[styles.subLead, { color: textMuted }]}>
-                  You're about to connect with {first}.
+                <Text style={[styles.title, { color: theme.textHi }]}>{name}</Text>
+                <Text style={[styles.headline, { color: theme.textHi }]}>Let's confirm your request</Text>
+                <Text style={[styles.subLead, { color: theme.textMuted }]}>
+                  You're about to connect with {firstName}.
                 </Text>
 
-                <View style={[styles.cardBlock, { backgroundColor: glassBg, borderColor: borderSoft }]}>
-                  <View style={styles.rowStart}>
-                    <Ionicons name="calendar-outline" size={20} color="#64D2FF" style={styles.rowIcon} />
-                    <View style={styles.rowBody}>
-                      <Text style={[styles.sectionLabel, { color: '#64D2FF' }]}>FREE TRIAL PERIOD: 3–5 DAYS</Text>
-                      <Text style={[styles.bodyText, { color: textMuted }]}>
-                        You can message {first} and discuss your fitness goals, training style, recovery needs, and anything else
-                        you want to cover. Get to know each other first — no commitment yet.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                <TrialCard
+                  firstName={firstName}
+                  glassBackground={theme.glassBackground}
+                  borderSoft={theme.borderSoft}
+                  textMuted={theme.textMuted}
+                />
+                <AfterTrialCard
+                  hasPrice={hasPrice}
+                  price={price}
+                  glassBackground={theme.glassBackground}
+                  borderSoft={theme.borderSoft}
+                  textMuted={theme.textMuted}
+                />
 
-                <View style={[styles.cardBlock, { backgroundColor: glassBg, borderColor: borderSoft }]}>
-                  <View style={styles.rowStart}>
-                    <Ionicons name="card-outline" size={20} color="#FF6B9D" style={styles.rowIcon} />
-                    <View style={styles.rowBody}>
-                      <Text style={[styles.sectionLabel, { color: '#FF6B9D' }]}>AFTER YOUR TRIAL</Text>
-                      {hasPrice ? (
-                        <Text style={[styles.bodyText, { color: textMuted }]}>
-                          Your first payment of{' '}
-                          <Text style={styles.priceAccent}>${Number(price)}</Text>
-                          /month will be charged. You can cancel anytime before your trial ends with no charge.
-                        </Text>
-                      ) : (
-                        <Text style={[styles.bodyText, { color: textMuted }]}>
-                          Your first payment will follow your coach's listed rate. You can cancel anytime before your trial ends
-                          with no charge.
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-
-                <Text style={[styles.trust, { color: textMuted2 }]}>
+                <Text style={[styles.trust, { color: theme.textMuted2 }]}>
                   Once you're connected, they'll help you set up your plan and get started on your fitness journey.
                 </Text>
               </ScrollView>
 
-              <View style={[styles.actions, { borderTopColor: borderSoft }]}>
-                <Pressable
-                  onPress={busy ? undefined : onCancel}
-                  disabled={busy}
-                  style={({ pressed }) => [
-                    styles.btnOutline,
-                    { borderColor: borderSoft, opacity: busy ? 0.5 : pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-                  ]}
-                >
-                  <Text style={[styles.btnOutlineText, { color: textHi }]}>Not right now</Text>
-                </Pressable>
-                <Pressable
-                  onPress={busy ? undefined : onConfirm}
-                  disabled={busy}
-                  style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }], opacity: busy ? 0.85 : 1 }]}
-                >
-                  <LinearGradient
-                    colors={['#F06BA8', '#FB923C']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.btnGradient}
-                  >
-                    {busy ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.btnPrimaryText}>Yes, let's connect</Text>
-                    )}
-                  </LinearGradient>
-                </Pressable>
-              </View>
+              <ConfirmActions
+                busy={busy}
+                onCancel={onCancel}
+                onConfirm={onConfirm}
+                borderSoft={theme.borderSoft}
+                textHi={theme.textHi}
+              />
             </View>
           </LinearGradient>
         </Animated.View>

@@ -5,11 +5,16 @@
 // ===== NAMED CONSTANTS =====
 
 // Manipulate here: add or remove a reason. The id is what gets stored. Do not rename an id that is already in Firestore.
+const REPORT_REASON_SPAM = { id: 'spam', label: 'Spam or scam' };
+const REPORT_REASON_HARASSMENT = { id: 'harassment', label: 'Harassment or bullying' };
+const REPORT_REASON_INAPPROPRIATE = { id: 'inappropriate', label: 'Inappropriate content' };
+const REPORT_REASON_OTHER = { id: 'other', label: 'Something else' };
+
 const REPORT_REASONS = [
-  { id: 'spam', label: 'Spam or scam' },
-  { id: 'harassment', label: 'Harassment or bullying' },
-  { id: 'inappropriate', label: 'Inappropriate content' },
-  { id: 'other', label: 'Something else' },
+  REPORT_REASON_SPAM,
+  REPORT_REASON_HARASSMENT,
+  REPORT_REASON_INAPPROPRIATE,
+  REPORT_REASON_OTHER,
 ];
 
 const REPORT_TYPES = {

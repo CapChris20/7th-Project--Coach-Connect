@@ -8,4 +8,8 @@
 
 // ===== MAIN FUNCTION =====
 
-export * from '../conversation/copyReplyText';
+export {
+  stripInlineWebCitations,
+  coachPlainText,
+  copyCoachText,
+} from '../conversation/copyReplyText';

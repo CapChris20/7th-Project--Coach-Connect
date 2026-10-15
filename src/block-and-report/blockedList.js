@@ -7,7 +7,17 @@ import { subscribeMyBlocks } from './blockUser';
 
 // ===== NAMED CONSTANTS =====
 
+const EMPTY_BLOCKED_SET = () => new Set();
+
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * @param {string|null|undefined} uid
+ * @returns {string}
+ */
+function normalizedSignedInUid(uid) {
+  return String(uid || '').trim();
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -18,21 +28,23 @@ import { subscribeMyBlocks } from './blockUser';
  * @returns {{ blockedIds: Set<string>, loading: boolean }}
  */
 export function blockedList(uid) {
-  const [blockedIds, setBlockedIds] = useState(() => new Set());
+  const [blockedIds, setBlockedIds] = useState(EMPTY_BLOCKED_SET);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(Boolean(uid));
 
   useEffect(() => {
-    const signedInUid = String(uid || '').trim();
+    const signedInUid = normalizedSignedInUid(uid);
     if (!signedInUid) {
-      setBlockedIds(new Set());
+      setBlockedIds(EMPTY_BLOCKED_SET());
       setIsLoadingBlocks(false);
       return undefined;
     }
+
     setIsLoadingBlocks(true);
-    const unsubscribe = subscribeMyBlocks(signedInUid, (ids) => {
-      setBlockedIds(ids);
+    const unsubscribe = subscribeMyBlocks(signedInUid, (idsFromFirestore) => {
+      setBlockedIds(idsFromFirestore);
       setIsLoadingBlocks(false);
     });
+
     return unsubscribe;
   }, [uid]);
 

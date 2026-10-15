@@ -1,16 +1,7 @@
-/**
- * tool Executor
- *
- * Purpose: tool Executor — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/ai
- * Key exports: normalizeToolCall, carryOutAction, executeToolAction, TOOL_NAME_ALIASES, TOOL_DISPLAY_NAMES
- *
- * @file-header
- */
-/**
- * AI Coach tool execution — server-first via /api/ai-coach/execute-tool, with client fallbacks.
- */
+// Runs a confirmed AI coach action: log food, water, sleep, or book a session.
+// Flow: read the action name → refuse trainer writes → log food / water / book on the phone or server.
+// Used by the confirm popup after the user taps Confirm.
+
 import { auth, db } from '../../app-start/cloudConnection';
 import { collection, addDoc, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getClientDateKey } from '../../helpers/dateStrings';
@@ -25,6 +16,25 @@ import {
 import { getAICoachApiBases } from '../../for-both/online-connection/whereToConnect';
 import { addFoodLog, deleteFoodLogsForDate } from '../../nutrition/daily-log/saveLoggedFood';
 import { sanitizeDeleteFoodQuery } from './spotDeleteRequests';
+
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_SESSION_MINUTES = 60;
+const MAX_SLEEP_HOURS = 24;
+const DEFAULT_PROTEIN_G = 150;
+const DEFAULT_CARBS_G = 200;
+const DEFAULT_FAT_G = 65;
+const KCAL_PER_PROTEIN_OR_CARB = 4;
+const KCAL_PER_FAT = 9;
+const ENERGY_RATING_MIN = 1;
+const ENERGY_RATING_MAX = 10;
+const WORKOUT_RATING_MIN = 1;
+const WORKOUT_RATING_MAX = 10;
+
+const VALID_MOODS = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
+
+const DELETE_ALL_ALIASES = ['allnutrition', 'allfood', 'allmeals', 'all'];
+const NUTRITION_DELETE_ALIASES = ['food', 'nutrition', 'foodlog', 'meal', 'meals'];
 
 /** Map prompt / legacy names → server tool names */
 export const TOOL_NAME_ALIASES = {
@@ -62,12 +72,40 @@ export const TOOL_DISPLAY_NAMES = {
   deleteLog: 'Delete log',
 };
 
+const TRAINER_READ_ONLY_TOOLS = new Set([
+  'logSleep',
+  'logWater',
+  'logNutrition',
+  'logWorkout',
+  'logRestDay',
+  'deleteLog',
+  'adjustMacroTargets',
+  'rateWorkout',
+]);
+
+const DELETE_LABELS = {
+  sleep: 'sleep log',
+  water: 'water log',
+  steps: 'step count',
+  energy: 'energy rating',
+  mood: 'mood log',
+  workout: 'workout entry',
+  restDay: 'rest day entry',
+};
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Map a raw coach tool call onto a canonical name and params.
+ * @param {object} raw
+ * @returns {object|null}
+ */
 export function normalizeToolCall(raw) {
   if (!raw) return null;
-  const nameRaw = raw.name || raw.tool || raw.action;
-  let name = TOOL_NAME_ALIASES[nameRaw] || nameRaw;
+  const nameRaw = rawToolName(raw);
+  const name = TOOL_NAME_ALIASES[nameRaw] || nameRaw;
   if (!name) return null;
-  const params = raw.params && typeof raw.params === 'object' ? { ...raw.params } : { ...raw };
+  const params = copyToolParams(raw);
   if (name === 'logNutrition' && params.name && !params.food && !params.foodName) {
     params.food = params.name;
     params.foodName = params.name;
@@ -79,43 +117,119 @@ export function normalizeToolCall(raw) {
     params.logType = 'nutrition';
   }
 
-  if (
-    name === 'updateWorkout' &&
-    (params.type === 'rest' ||
-      params.status === 'rest' ||
-      params.rest === true ||
-      params.restDay === true)
-  ) {
-    return {
-      name: 'logRestDay',
-      params: { date: params.date, planId: params.planId },
-      reasoning: raw.reasoning || params.reasoning || params.reason || 'Log a rest day on your dashboard.',
-    };
+  if (name === 'updateWorkout' && isRestDayWorkoutUpdate(params)) {
+    return restDayCall(raw, params, 'Log a rest day on your dashboard.');
   }
 
-  if (name === 'rateWorkout') {
-    const notes = String(params.notes || params.note || '').toLowerCase();
-    const rating = Number(params.rating);
-    if (
-      /\brest\s*day\b/.test(notes) ||
-      /\bno\s+workout\b/.test(notes) ||
-      rating === 0 ||
-      !Number.isFinite(rating) ||
-      rating < 1
-    ) {
-      return {
-        name: 'logRestDay',
-        params: { date: params.date },
-        reasoning:
-          raw.reasoning || params.reasoning || params.reason || 'Log a rest day on your dashboard workout card.',
-      };
-    }
+  if (name === 'rateWorkout' && isRestDayWorkoutRating(params)) {
+    return {
+      name: 'logRestDay',
+      params: { date: params.date },
+      reasoning:
+        raw.reasoning || params.reasoning || params.reason || 'Log a rest day on your dashboard workout card.',
+    };
   }
 
   return {
     name,
     params,
     reasoning: raw.reasoning || params.reasoning || params.reason || '',
+  };
+}
+
+/**
+ * Execute a confirmed AI Coach tool.
+ * Flow: 1. name the action  2. refuse trainer writes  3. need a trainer  4. log food on the phone  5. other client logs  6. server
+ * @param {object} options
+ * @returns {Promise<{ success: boolean, message: string, data?: * }>}
+ */
+export async function carryOutAction({
+  userId,
+  trainerId,
+  planId,
+  toolCall,
+  navigationHandlers = {},
+  coachMode,
+  targetClientId,
+}) {
+  const normalized = normalizeToolCall(toolCall);
+  if (!normalized?.name) return { success: false, message: 'Unknown action' };
+
+  // 1. Trainer coach mode cannot write client food, water, or sleep.
+  const trainerRefuse = refuseTrainerWrite(coachMode, normalized.name);
+  if (trainerRefuse) return trainerRefuse;
+
+  const params = buildServerParams(normalized.name, normalized.params, { trainerId, planId });
+  const serverCall = { name: normalized.name, params };
+
+  // 2. Booking and trainer alerts need a linked trainer.
+  const missingTrainer = refuseIfNeedsTrainer(normalized.name, params);
+  if (missingTrainer) return missingTrainer;
+
+  // 3. Food stays on the phone. Sleep, water, and deletes write locally first.
+  const clientFirst = await runClientFirstTools(userId, normalized.name, params, serverCall);
+  if (clientFirst) return clientFirst;
+
+  // 4. Everything else goes to the server first.
+  const serverResult = await executeToolViaServer(userId, serverCall);
+
+  // 5. Open the plan on the phone when the handler is there.
+  if (normalized.name === 'openWorkoutPlan') {
+    return handleOpenWorkoutPlan(params, serverResult, navigationHandlers);
+  }
+
+  // 6. Leftover client fallbacks only when the server could not run the action.
+  return runServerFallback(userId, normalized.name, params, serverResult);
+}
+
+/** @deprecated use carryOutAction */
+export async function executeToolAction(toolName, userId, trainerId, planId, params) {
+  return carryOutAction({
+    userId,
+    trainerId,
+    planId,
+    toolCall: { name: toolName, params },
+  });
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+function rawToolName(raw) {
+  return raw.name || raw.tool || raw.action;
+}
+
+function copyToolParams(raw) {
+  if (raw.params && typeof raw.params === 'object') return { ...raw.params };
+  return { ...raw };
+}
+
+function isRestDayWorkoutUpdate(params) {
+  return (
+    params.type === 'rest' ||
+    params.status === 'rest' ||
+    params.rest === true ||
+    params.restDay === true
+  );
+}
+
+function isRestDayWorkoutRating(params) {
+  const notes = String(params.notes || params.note || '').toLowerCase();
+  const rating = Number(params.rating);
+  return (
+    /\brest\s*day\b/.test(notes) ||
+    /\bno\s+workout\b/.test(notes) ||
+    rating === 0 ||
+    !Number.isFinite(rating) ||
+    rating < 1
+  );
+}
+
+function restDayCall(raw, params, reasoning) {
+  return {
+    name: 'logRestDay',
+    params: { date: params.date, planId: params.planId },
+    reasoning: raw.reasoning || params.reasoning || params.reason || reasoning,
   };
 }
 
@@ -132,6 +246,38 @@ async function logAiCoachAction(userId, action, details) {
   }
 }
 
+async function tryOneExecuteToolBase(url, idToken, payload) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: new Error(data?.error || data?.message || `Request failed (${res.status})`) };
+  }
+  return {
+    ok: true,
+    result: {
+      success: data.success !== false,
+      message: data.message || 'Done.',
+      data: data.data,
+    },
+  };
+}
+
+async function tryExecuteOnBase(base, idToken, payload) {
+  const url = `${String(base).replace(/\/$/, '')}/api/ai-coach/execute-tool`;
+  try {
+    return await tryOneExecuteToolBase(url, idToken, payload);
+  } catch (caught) {
+    return { ok: false, error: caught };
+  }
+}
+
 async function executeToolViaServer(userId, toolCall) {
   const idToken = await auth?.currentUser?.getIdToken?.();
   if (!idToken) return { success: false, message: 'Please sign in again.' };
@@ -144,30 +290,12 @@ async function executeToolViaServer(userId, toolCall) {
 
   let lastErr = null;
   for (const base of getAICoachApiBases()) {
-    const url = `${String(base).replace(/\/$/, '')}/api/ai-coach/execute-tool`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        lastErr = new Error(data?.error || data?.message || `Request failed (${res.status})`);
-        continue;
-      }
+    const attempt = await tryExecuteOnBase(base, idToken, payload);
+    if (attempt.ok) {
       await logAiCoachAction(userId, toolCall.name, toolCall.params);
-      return {
-        success: data.success !== false,
-        message: data.message || 'Done.',
-        data: data.data,
-      };
-    } catch (e) {
-      lastErr = e;
+      return attempt.result;
     }
+    lastErr = attempt.error;
   }
   return {
     success: false,
@@ -211,212 +339,202 @@ async function executeLogNutritionClient(userId, params) {
   };
 }
 
+function finiteOrNull(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function caloriesFromMacros(protein, carbs, fat) {
+  if (Number.isFinite(protein) && Number.isFinite(carbs) && Number.isFinite(fat)) {
+    return Math.round(protein * KCAL_PER_PROTEIN_OR_CARB + carbs * KCAL_PER_PROTEIN_OR_CARB + fat * KCAL_PER_FAT);
+  }
+  return null;
+}
+
+function paramsForAdjustMacros(params) {
+  const protein = Number(params.newProtein ?? params.protein);
+  const carbs = Number(params.newCarbs ?? params.carbs);
+  const fat = Number(params.newFats ?? params.fats ?? params.fat);
+  const calories =
+    Number(params.newCals ?? params.calories) || caloriesFromMacros(protein, carbs, fat);
+  return {
+    protein: Number.isFinite(protein) ? protein : null,
+    carbs: Number.isFinite(carbs) ? carbs : null,
+    fat: Number.isFinite(fat) ? fat : null,
+    calories: Number.isFinite(calories) ? calories : null,
+    reason: params.reason,
+  };
+}
+
+function paramsForBookSession(params, trainerId) {
+  const date = params.sessionDate || params.date;
+  const time = params.sessionTime || params.time;
+  return {
+    trainerId: params.trainerId || trainerId,
+    sessionDate: date,
+    sessionTime: time,
+    dateTime: params.dateTime,
+    durationMin: Number(params.durationMin ?? params.durationMinutes ?? params.duration ?? DEFAULT_SESSION_MINUTES) || DEFAULT_SESSION_MINUTES,
+    notes: params.notes,
+  };
+}
+
+function paramsForLogNutrition(params) {
+  const out = {
+    foodName: params.food || params.foodName,
+    mealType: params.mealType,
+    date: params.date || getClientDateKey(),
+  };
+  const cals = Number(params.cals ?? params.calories);
+  if (Number.isFinite(cals) && cals > 0) {
+    out.calories = cals;
+    out.protein = Number(params.protein ?? 0);
+    out.carbs = Number(params.carbs ?? 0);
+    out.fat = Number(params.fat ?? params.fats ?? 0);
+  } else {
+    out.quantity = params.quantity ?? 1;
+  }
+  return out;
+}
+
+function normalizeDeleteLogType(raw) {
+  const typeText = String(raw || '').toLowerCase().trim();
+  if (NUTRITION_DELETE_ALIASES.includes(typeText)) return 'nutrition';
+  if (DELETE_ALL_ALIASES.includes(typeText)) return 'nutrition';
+  if (typeText === 'sleep') return 'sleep';
+  if (['water', 'hydration'].includes(typeText)) return 'water';
+  if (['steps', 'step'].includes(typeText)) return 'steps';
+  if (['energy', 'fatigue'].includes(typeText)) return 'energy';
+  if (['mood', 'feeling'].includes(typeText)) return 'mood';
+  if (['workout', 'workoutrating'].includes(typeText)) return 'workout';
+  if (['rest', 'restday', 'rest_day'].includes(typeText)) return 'restDay';
+  return typeText || 'nutrition';
+}
+
+function isDeleteAllRequest(params) {
+  return !!(
+    params?.deleteAll ||
+    params?.all ||
+    DELETE_ALL_ALIASES.includes(String(params?.logType || '').toLowerCase())
+  );
+}
+
+function paramsForDeleteLog(params) {
+  const logType = normalizeDeleteLogType(params.logType);
+  const deleteAll = isDeleteAllRequest(params);
+  const rawFood = params.foodName || params.food;
+  const foodName = rawFood ? sanitizeDeleteFoodQuery(rawFood) || rawFood : undefined;
+  return {
+    logType,
+    date: params.date || getClientDateKey(),
+    foodName,
+    logId: params.logId,
+    deleteAll,
+  };
+}
+
 function buildServerParams(name, params, { trainerId, planId } = {}) {
-  const p = { ...params };
-  if (name === 'adjustMacroTargets') {
-    const protein = Number(p.newProtein ?? p.protein);
-    const carbs = Number(p.newCarbs ?? p.carbs);
-    const fat = Number(p.newFats ?? p.fats ?? p.fat);
-    const calories =
-      Number(p.newCals ?? p.calories) ||
-      (Number.isFinite(protein) && Number.isFinite(carbs) && Number.isFinite(fat)
-        ? Math.round(protein * 4 + carbs * 4 + fat * 9)
-        : null);
-    return {
-      protein: Number.isFinite(protein) ? protein : null,
-      carbs: Number.isFinite(carbs) ? carbs : null,
-      fat: Number.isFinite(fat) ? fat : null,
-      calories: Number.isFinite(calories) ? calories : null,
-      reason: p.reason,
-    };
-  }
-  if (name === 'bookSession') {
-    const date = p.sessionDate || p.date;
-    const time = p.sessionTime || p.time;
-    return {
-      trainerId: p.trainerId || trainerId,
-      sessionDate: date,
-      sessionTime: time,
-      dateTime: p.dateTime,
-      durationMin: Number(p.durationMin ?? p.durationMinutes ?? p.duration ?? 60) || 60,
-      notes: p.notes,
-    };
-  }
+  const copied = { ...params };
+  if (name === 'adjustMacroTargets') return paramsForAdjustMacros(copied);
+  if (name === 'bookSession') return paramsForBookSession(copied, trainerId);
   if (name === 'notifyTrainer') {
     return {
-      trainerId: p.trainerId || trainerId,
-      message: p.message,
-      issueType: p.issueType,
-      severity: p.severity,
+      trainerId: copied.trainerId || trainerId,
+      message: copied.message,
+      issueType: copied.issueType,
+      severity: copied.severity,
     };
   }
   if (name === 'updateWorkout') {
     return {
-      planId: p.planId || planId || 'current',
-      dayIndex: p.dayIndex ?? 0,
-      exerciseIndex: p.exerciseIndex ?? 0,
-      newExercise: p.newExercise,
-      exerciseName: p.exerciseName || p.exerciseId,
-      reason: p.reason,
+      planId: copied.planId || planId || 'current',
+      dayIndex: copied.dayIndex ?? 0,
+      exerciseIndex: copied.exerciseIndex ?? 0,
+      newExercise: copied.newExercise,
+      exerciseName: copied.exerciseName || copied.exerciseId,
+      reason: copied.reason,
     };
   }
   if (name === 'openWorkoutPlan') {
-    return {
-      planId: p.planId || planId || 'current',
-    };
+    return { planId: copied.planId || planId || 'current' };
   }
-  if (name === 'logNutrition') {
-    const out = {
-      foodName: p.food || p.foodName,
-      mealType: p.mealType,
-      date: p.date || getClientDateKey(),
-    };
-    const cals = Number(p.cals ?? p.calories);
-    if (Number.isFinite(cals) && cals > 0) {
-      out.calories = cals;
-      out.protein = Number(p.protein ?? 0);
-      out.carbs = Number(p.carbs ?? 0);
-      out.fat = Number(p.fat ?? p.fats ?? 0);
-    } else {
-      out.quantity = p.quantity ?? 1;
-    }
-    return out;
-  }
+  if (name === 'logNutrition') return paramsForLogNutrition(copied);
   if (name === 'logSleep') {
-    return {
-      hours: Number(p.hours ?? p.sleepHours),
-      date: p.date || getClientDateKey(),
-    };
+    return { hours: Number(copied.hours ?? copied.sleepHours), date: copied.date || getClientDateKey() };
   }
   if (name === 'logWater') {
-    return {
-      amount_oz: Number(p.amount_oz ?? p.amountOz ?? p.amount),
-      date: p.date || getClientDateKey(),
-    };
+    return { amount_oz: Number(copied.amount_oz ?? copied.amountOz ?? copied.amount), date: copied.date || getClientDateKey() };
   }
   if (name === 'logSteps') {
-    return {
-      step_count: Number(p.step_count ?? p.steps),
-      date: p.date || getClientDateKey(),
-    };
+    return { step_count: Number(copied.step_count ?? copied.steps), date: copied.date || getClientDateKey() };
   }
   if (name === 'rateEnergy') {
-    return {
-      rating: Number(p.rating ?? p.energy),
-      notes: p.notes || p.note,
-      date: p.date || getClientDateKey(),
-    };
+    return { rating: Number(copied.rating ?? copied.energy), notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
   }
   if (name === 'logMood') {
-    return {
-      mood: p.mood,
-      notes: p.notes || p.note,
-      date: p.date || getClientDateKey(),
-    };
+    return { mood: copied.mood, notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
   }
   if (name === 'rateWorkout') {
-    return {
-      rating: Number(p.rating),
-      notes: p.notes || p.note,
-      date: p.date || getClientDateKey(),
-    };
+    return { rating: Number(copied.rating), notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
   }
   if (name === 'logRestDay') {
-    return {
-      date: p.date || getClientDateKey(),
-      planId: p.planId,
-    };
+    return { date: copied.date || getClientDateKey(), planId: copied.planId };
   }
-  if (name === 'deleteLog') {
-    const logType = normalizeDeleteLogType(p.logType);
-    const deleteAll = !!(p.deleteAll || p.all || ['allnutrition', 'allfood', 'allmeals', 'all'].includes(String(p.logType || '').toLowerCase()));
-    const rawFood = p.foodName || p.food;
-    const foodName = rawFood ? sanitizeDeleteFoodQuery(rawFood) || rawFood : undefined;
-    return {
-      logType,
-      date: p.date || getClientDateKey(),
-      foodName,
-      logId: p.logId,
-      deleteAll,
-    };
-  }
-  return p;
+  if (name === 'deleteLog') return paramsForDeleteLog(copied);
+  return copied;
 }
 
-function normalizeDeleteLogType(raw) {
-  const s = String(raw || '').toLowerCase().trim();
-  if (['food', 'nutrition', 'foodlog', 'meal', 'meals'].includes(s)) return 'nutrition';
-  if (['allnutrition', 'allfood', 'allmeals', 'all'].includes(s)) return 'nutrition';
-  if (s === 'sleep') return 'sleep';
-  if (['water', 'hydration'].includes(s)) return 'water';
-  if (['steps', 'step'].includes(s)) return 'steps';
-  if (['energy', 'fatigue'].includes(s)) return 'energy';
-  if (['mood', 'feeling'].includes(s)) return 'mood';
-  if (['workout', 'workoutrating'].includes(s)) return 'workout';
-  if (['rest', 'restday', 'rest_day'].includes(s)) return 'restDay';
-  return s || 'nutrition';
+function deletedFoodLabel(deletedCount, deletedNames) {
+  if (deletedCount === 1) return deletedNames[0] || 'food entry';
+  const extra = deletedNames.length > 3 ? '…' : '';
+  return `${deletedCount} entries (${deletedNames.slice(0, 3).join(', ')}${extra})`;
+}
+
+async function deleteNutritionLogsClient(userId, params, dateKey, deleteAll) {
+  const rawFood = params?.foodName || params?.food;
+  let foodName = rawFood ? sanitizeDeleteFoodQuery(rawFood) || rawFood : undefined;
+
+  let { deletedCount, deletedNames } = await deleteFoodLogsForDate(userId, {
+    date: dateKey,
+    foodName,
+    logId: params?.logId,
+    deleteAll,
+  });
+
+  if (!deletedCount && foodName && /pizza|slice|domino/i.test(String(rawFood || foodName))) {
+    ({ deletedCount, deletedNames } = await deleteFoodLogsForDate(userId, {
+      date: dateKey,
+      foodName: 'pizza',
+      deleteAll: /\b(two|2|both)\b/i.test(String(rawFood || '')),
+    }));
+  }
+
+  if (!deletedCount) {
+    const hint = foodName ? ` matching "${foodName}"` : '';
+    return { success: false, message: `No food logs found for ${dateKey}${hint}.` };
+  }
+  await logAiCoachAction(userId, 'deleteLog', { logType: 'nutrition', date: dateKey, deletedCount, deletedNames });
+  return {
+    success: true,
+    message: `Removed ${deletedFoodLabel(deletedCount, deletedNames)} from your nutrition log.`,
+    data: { deletedCount, deletedNames, date: dateKey },
+  };
 }
 
 async function executeDeleteLogClient(userId, params) {
   const logType = normalizeDeleteLogType(params?.logType);
   const dateKey = String(params?.date || getClientDateKey()).trim();
-  const deleteAll = !!(
-    params?.deleteAll ||
-    params?.all ||
-    ['allnutrition', 'allfood', 'allmeals', 'all'].includes(String(params?.logType || '').toLowerCase())
-  );
+  const deleteAll = isDeleteAllRequest(params);
 
   if (logType === 'nutrition') {
-    const rawFood = params?.foodName || params?.food;
-    let foodName = rawFood ? sanitizeDeleteFoodQuery(rawFood) || rawFood : undefined;
-
-    let { deletedCount, deletedNames } = await deleteFoodLogsForDate(userId, {
-      date: dateKey,
-      foodName,
-      logId: params?.logId,
-      deleteAll,
-    });
-
-    if (!deletedCount && foodName && /pizza|slice|domino/i.test(String(rawFood || foodName))) {
-      ({ deletedCount, deletedNames } = await deleteFoodLogsForDate(userId, {
-        date: dateKey,
-        foodName: 'pizza',
-        deleteAll: /\b(two|2|both)\b/i.test(String(rawFood || '')),
-      }));
-    }
-
-    if (!deletedCount) {
-      const hint = foodName ? ` matching "${foodName}"` : '';
-      return { success: false, message: `No food logs found for ${dateKey}${hint}.` };
-    }
-    await logAiCoachAction(userId, 'deleteLog', { logType, date: dateKey, deletedCount, deletedNames });
-    const label =
-      deletedCount === 1
-        ? deletedNames[0] || 'food entry'
-        : `${deletedCount} entries (${deletedNames.slice(0, 3).join(', ')}${deletedNames.length > 3 ? '…' : ''})`;
-    return {
-      success: true,
-      message: `Removed ${label} from your nutrition log.`,
-      data: { deletedCount, deletedNames, date: dateKey },
-    };
+    return deleteNutritionLogsClient(userId, params, dateKey, deleteAll);
   }
 
   await clearClientDailyMetric(userId, logType, dateKey);
   await logAiCoachAction(userId, 'deleteLog', { logType, date: dateKey });
-
-  const labels = {
-    sleep: 'sleep log',
-    water: 'water log',
-    steps: 'step count',
-    energy: 'energy rating',
-    mood: 'mood log',
-    workout: 'workout entry',
-    restDay: 'rest day entry',
-  };
-
   return {
     success: true,
-    message: `Removed your ${labels[logType] || logType} for ${dateKey}.`,
+    message: `Removed your ${DELETE_LABELS[logType] || logType} for ${dateKey}.`,
     data: { logType, date: dateKey },
   };
 }
@@ -426,7 +544,7 @@ async function executeLogSleepClient(userId, params) {
     return { success: false, message: 'Could not save sleep — please sign in and try again.' };
   }
   const hours = Number(params?.hours ?? params?.sleepHours);
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+  if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_SLEEP_HOURS) {
     return { success: false, message: 'Invalid sleep hours (use 0.5–24)' };
   }
   const dateKey = String(params?.date || getClientDateKey()).trim();
@@ -450,71 +568,30 @@ async function executeLogSleepClient(userId, params) {
   }
 }
 
-async function executeAdjustMacrosClient(userId, params) {
-  // Load current macros as fallbacks (same as server does)
-  let currentMacros = {};
+async function loadCurrentMacros(userId) {
   try {
     const goalsSnap = await getDoc(doc(db, 'nutrition_goals', userId));
-    if (goalsSnap.exists()) {
-      const data = goalsSnap.data();
-      currentMacros = {
-        protein: Number(data.protein_target) || Number(data.protein),
-        carbs: Number(data.carbs_target) || Number(data.carbs),
-        fat: Number(data.fat_target) || Number(data.fat),
-        calories: Number(data.calorie_target) || Number(data.calories),
-      };
-    }
-  } catch (e) {
-    console.warn('Failed to load current macros:', e.message);
+    if (!goalsSnap.exists()) return {};
+    const data = goalsSnap.data();
+    return {
+      protein: Number(data.protein_target) || Number(data.protein),
+      carbs: Number(data.carbs_target) || Number(data.carbs),
+      fat: Number(data.fat_target) || Number(data.fat),
+      calories: Number(data.calorie_target) || Number(data.calories),
+    };
+  } catch (error) {
+    console.warn('Failed to load current macros:', error.message);
+    return {};
   }
+}
 
-  // Apply fallbacks: use params first, then current values, then defaults
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const protein = num(params?.protein ?? params?.newProtein) ?? currentMacros.protein ?? 150;
-  const carbs = num(params?.carbs ?? params?.newCarbs) ?? currentMacros.carbs ?? 200;
-  const fat = num(params?.fat ?? params?.newFats ?? params?.fats) ?? currentMacros.fat ?? 65;
-  const explicitCalories = num(params?.calories ?? params?.newCals ?? params?.calorieTarget);
-  let calories = explicitCalories ?? currentMacros.calories;
-
-  if (explicitCalories != null && explicitCalories <= 0) {
-    throw new Error(`Invalid calorie target: ${explicitCalories}`);
-  }
-
-  // Calculate calories from macros if not provided
-  if (calories == null || calories <= 0) {
-    calories = Math.round(protein * 4 + carbs * 4 + fat * 9);
-  }
-  
-  // Validate macros - don't write garbage (0) values
-  if (!Number.isFinite(calories) || calories <= 0) {
-    throw new Error(`Invalid calorie target: ${calories}`);
-  }
-  if (!Number.isFinite(protein) || !Number.isFinite(carbs) || !Number.isFinite(fat)) {
-    throw new Error(`Invalid macro targets: P=${protein}, C=${carbs}, F=${fat}`);
-  }
-  
-  const macroPayload = {
-    protein,
-    carbs,
-    fat,
-    calories,
-    updatedAt: serverTimestamp(),
-    updatedBy: 'aiCoach',
-  };
-
-  // Write to BOTH collections (matching server behavior)
+async function writeMacroTargets(userId, protein, carbs, fat, calories) {
   await Promise.all([
-    // Write to macroTargets/current
     setDoc(
       doc(db, 'users', userId, 'macroTargets', 'current'),
-      macroPayload,
-      { merge: true }
+      { protein, carbs, fat, calories, updatedAt: serverTimestamp(), updatedBy: 'aiCoach' },
+      { merge: true },
     ),
-    // Write to nutrition_goals
     setDoc(
       doc(db, 'nutrition_goals', userId),
       {
@@ -526,10 +603,33 @@ async function executeAdjustMacrosClient(userId, params) {
         calories,
         updated_at: serverTimestamp(),
       },
-      { merge: true }
+      { merge: true },
     ),
   ]);
+}
 
+async function executeAdjustMacrosClient(userId, params) {
+  const currentMacros = await loadCurrentMacros(userId);
+  const protein = finiteOrNull(params?.protein ?? params?.newProtein) ?? currentMacros.protein ?? DEFAULT_PROTEIN_G;
+  const carbs = finiteOrNull(params?.carbs ?? params?.newCarbs) ?? currentMacros.carbs ?? DEFAULT_CARBS_G;
+  const fat = finiteOrNull(params?.fat ?? params?.newFats ?? params?.fats) ?? currentMacros.fat ?? DEFAULT_FAT_G;
+  const explicitCalories = finiteOrNull(params?.calories ?? params?.newCals ?? params?.calorieTarget);
+  let calories = explicitCalories ?? currentMacros.calories;
+
+  if (explicitCalories != null && explicitCalories <= 0) {
+    throw new Error(`Invalid calorie target: ${explicitCalories}`);
+  }
+  if (calories == null || calories <= 0) {
+    calories = Math.round(protein * KCAL_PER_PROTEIN_OR_CARB + carbs * KCAL_PER_PROTEIN_OR_CARB + fat * KCAL_PER_FAT);
+  }
+  if (!Number.isFinite(calories) || calories <= 0) {
+    throw new Error(`Invalid calorie target: ${calories}`);
+  }
+  if (!Number.isFinite(protein) || !Number.isFinite(carbs) || !Number.isFinite(fat)) {
+    throw new Error(`Invalid macro targets: P=${protein}, C=${carbs}, F=${fat}`);
+  }
+
+  await writeMacroTargets(userId, protein, carbs, fat, calories);
   await logAiCoachAction(userId, 'adjustMacroTargets', params);
   return {
     success: true,
@@ -588,23 +688,23 @@ async function executeLogStepsClient(userId, params) {
 
 async function executeRateEnergyClient(userId, params) {
   const rating = Number(params?.rating);
-  if (!Number.isFinite(rating) || rating < 1 || rating > 10) {
+  if (!Number.isFinite(rating) || rating < ENERGY_RATING_MIN || rating > ENERGY_RATING_MAX) {
     throw new Error('Energy rating must be between 1 and 10');
   }
-  
+
   const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'energy_logs', dateKey),
       { rating, notes: String(params?.notes || '').trim(), date: dateKey, logged_at: serverTimestamp() },
-      { merge: true }
+      { merge: true },
     ),
     mergeClientDailyMetrics(userId, dateKey, {
       logs: { dashboard_energy: rating },
       tracking: { energyLevel: String(rating) },
     }),
   ]);
-  
+
   await logAiCoachAction(userId, 'rateEnergy', params);
   return {
     success: true,
@@ -615,24 +715,23 @@ async function executeRateEnergyClient(userId, params) {
 
 async function executeLogMoodClient(userId, params) {
   const mood = String(params?.mood || '').toLowerCase().trim();
-  const validMoods = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
-  if (!validMoods.includes(mood)) {
-    throw new Error(`Mood must be one of: ${validMoods.join(', ')}`);
+  if (!VALID_MOODS.includes(mood)) {
+    throw new Error(`Mood must be one of: ${VALID_MOODS.join(', ')}`);
   }
-  
+
   const dateKey = String(params?.date || getClientDateKey()).trim();
   await Promise.all([
     setDoc(
       doc(db, 'users', userId, 'mood_logs', dateKey),
       { mood, notes: String(params?.notes || '').trim(), date: dateKey, logged_at: serverTimestamp() },
-      { merge: true }
+      { merge: true },
     ),
     mergeClientDailyMetrics(userId, dateKey, {
       logs: { dashboard_mood: mood },
       tracking: { mood },
     }),
   ]);
-  
+
   await logAiCoachAction(userId, 'logMood', params);
   return {
     success: true,
@@ -643,17 +742,17 @@ async function executeLogMoodClient(userId, params) {
 
 async function executeRateWorkoutClient(userId, params) {
   const rating = Number(params?.rating);
-  if (!Number.isFinite(rating) || rating < 1 || rating > 10) {
+  if (!Number.isFinite(rating) || rating < WORKOUT_RATING_MIN || rating > WORKOUT_RATING_MAX) {
     throw new Error('Workout rating must be between 1 and 10');
   }
-  
+
   const dateKey = getClientDateKey();
   await setDoc(
     doc(db, 'users', userId, 'workout_ratings', dateKey),
     { rating, notes: String(params?.notes || '').trim(), date: dateKey, logged_at: serverTimestamp() },
-    { merge: true }
+    { merge: true },
   );
-  
+
   await logAiCoachAction(userId, 'rateWorkout', params);
   return {
     success: true,
@@ -681,182 +780,105 @@ async function executeLogRestDayClient(userId, params) {
   };
 }
 
-const TRAINER_READ_ONLY_TOOLS = new Set([
-  'logSleep',
-  'logWater',
-  'logNutrition',
-  'logWorkout',
-  'logRestDay',
-  'deleteLog',
-  'adjustMacroTargets',
-  'rateWorkout',
-]);
+async function runClientThenServer(userId, serverCall, clientFn, failMessage) {
+  try {
+    return await clientFn();
+  } catch (error) {
+    const serverResult = await executeToolViaServer(userId, serverCall);
+    if (serverResult.success) return serverResult;
+    return { success: false, message: error?.message || serverResult.message || failMessage };
+  }
+}
 
-/**
- * Execute a confirmed AI Coach tool.
- */
-export async function carryOutAction({
-  userId,
-  trainerId,
-  planId,
-  toolCall,
-  navigationHandlers = {},
-  coachMode,
-  targetClientId,
-}) {
-  const normalized = normalizeToolCall(toolCall);
-  if (!normalized?.name) return { success: false, message: 'Unknown action' };
+function refuseTrainerWrite(coachMode, toolName) {
+  if (coachMode !== 'trainer') return null;
+  if (!TRAINER_READ_ONLY_TOOLS.has(toolName)) return null;
+  return {
+    success: false,
+    message: 'Trainer coach mode is read-only — switch to the client profile to log data.',
+  };
+}
 
-  if (coachMode === 'trainer' && TRAINER_READ_ONLY_TOOLS.has(normalized.name)) {
+function refuseIfNeedsTrainer(toolName, params) {
+  if (toolName === 'bookSession' && !params.trainerId) {
     return {
       success: false,
-      message: 'Trainer coach mode is read-only — switch to the client profile to log data.',
+      message: 'You don\'t have a trainer linked. Connect with a trainer to book sessions.',
     };
   }
-
-  const params = buildServerParams(normalized.name, normalized.params, { trainerId, planId });
-  const serverCall = { name: normalized.name, params };
-
-  // All tools route through server first
-  if (normalized.name === 'bookSession' && !params.trainerId) {
-    return { 
-      success: false, 
-      message: 'You don\'t have a trainer linked. Connect with a trainer to book sessions.' 
+  if (toolName === 'notifyTrainer' && !params.trainerId) {
+    return {
+      success: false,
+      message: 'You don\'t have a trainer linked. Connect with a trainer to send alerts.',
     };
   }
+  return null;
+}
 
-  if (normalized.name === 'notifyTrainer' && !params.trainerId) {
-    return { 
-      success: false, 
-      message: 'You don\'t have a trainer linked. Connect with a trainer to send alerts.' 
-    };
+async function runLogNutritionOnPhone(userId, params) {
+  try {
+    return await executeLogNutritionClient(userId, params);
+  } catch (error) {
+    return { success: false, message: error?.message || 'Failed to log nutrition' };
   }
+}
 
-  // Nutrition + dashboard metrics write on-device (local date + same paths as Home / Nutrition).
-  if (normalized.name === 'logNutrition') {
-    try {
-      return await executeLogNutritionClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to log nutrition' };
-    }
+async function runClientFirstTools(userId, toolName, params, serverCall) {
+  if (toolName === 'logNutrition') return runLogNutritionOnPhone(userId, params);
+  if (toolName === 'logSleep') {
+    return runClientThenServer(userId, serverCall, () => executeLogSleepClient(userId, params), 'Failed to log sleep');
   }
-
-  if (normalized.name === 'logSleep') {
-    try {
-      return await executeLogSleepClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log sleep' };
-    }
+  if (toolName === 'logWater') {
+    return runClientThenServer(userId, serverCall, () => executeLogWaterClient(userId, params), 'Failed to log water');
   }
-
-  if (normalized.name === 'logWater') {
-    try {
-      return await executeLogWaterClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log water' };
-    }
+  if (toolName === 'logSteps') {
+    return runClientThenServer(userId, serverCall, () => executeLogStepsClient(userId, params), 'Failed to log steps');
   }
-
-  if (normalized.name === 'logSteps') {
-    try {
-      return await executeLogStepsClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log steps' };
-    }
+  if (toolName === 'rateEnergy') {
+    return runClientThenServer(userId, serverCall, () => executeRateEnergyClient(userId, params), 'Failed to log energy');
   }
-
-  if (normalized.name === 'rateEnergy') {
-    try {
-      return await executeRateEnergyClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log energy' };
-    }
+  if (toolName === 'logMood') {
+    return runClientThenServer(userId, serverCall, () => executeLogMoodClient(userId, params), 'Failed to log mood');
   }
-
-  if (normalized.name === 'logMood') {
-    try {
-      return await executeLogMoodClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log mood' };
-    }
+  if (toolName === 'logRestDay') {
+    return runClientThenServer(userId, serverCall, () => executeLogRestDayClient(userId, params), 'Failed to log rest day');
   }
-
-  if (normalized.name === 'logRestDay') {
-    try {
-      return await executeLogRestDayClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to log rest day' };
-    }
+  if (toolName === 'deleteLog') {
+    return runClientThenServer(userId, serverCall, () => executeDeleteLogClient(userId, params), 'Failed to delete log');
   }
+  return null;
+}
 
-  // Deletes run client-first so Nutrition tab + dashboard update immediately.
-  if (normalized.name === 'deleteLog') {
-    try {
-      return await executeDeleteLogClient(userId, params);
-    } catch (e) {
-      const serverResult = await executeToolViaServer(userId, serverCall);
-      if (serverResult.success) return serverResult;
-      return { success: false, message: e?.message || serverResult.message || 'Failed to delete log' };
-    }
-  }
-
-  const serverResult = await executeToolViaServer(userId, serverCall);
-
-  if (normalized.name === 'openWorkoutPlan') {
-    if (typeof navigationHandlers.onOpenWorkoutPlan === 'function') {
-      const navResult = await navigationHandlers.onOpenWorkoutPlan({
-        planId: params.planId || 'current',
-        title: serverResult.data?.title,
-        todayPreview: serverResult.data?.todayPreview,
-        summary: serverResult.data?.summary,
-      });
-      if (navResult?.success !== false) return navResult;
-    }
-    return serverResult.success
-      ? serverResult
-      : { success: false, message: serverResult.message || 'Could not open workout plan.' };
-  }
-
+async function runServerFallback(userId, toolName, params, serverResult) {
   if (serverResult.success) return serverResult;
-
-  // Client fallbacks for when server is unreachable (network issues only)
-  if (normalized.name === 'adjustMacroTargets') {
+  if (toolName === 'adjustMacroTargets') {
     try {
       return await executeAdjustMacrosClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to update nutrition targets' };
+    } catch (error) {
+      return { success: false, message: error?.message || 'Failed to update nutrition targets' };
     }
   }
-
-  if (normalized.name === 'rateWorkout') {
+  if (toolName === 'rateWorkout') {
     try {
       return await executeRateWorkoutClient(userId, params);
-    } catch (e) {
-      return { success: false, message: e?.message || 'Failed to rate workout' };
+    } catch (error) {
+      return { success: false, message: error?.message || 'Failed to rate workout' };
     }
   }
-
   return serverResult;
 }
 
-/** @deprecated use carryOutAction */
-export async function executeToolAction(toolName, userId, trainerId, planId, params) {
-  return carryOutAction({
-    userId,
-    trainerId,
-    planId,
-    toolCall: { name: toolName, params },
-  });
+async function handleOpenWorkoutPlan(params, serverResult, navigationHandlers) {
+  if (typeof navigationHandlers.onOpenWorkoutPlan === 'function') {
+    const navResult = await navigationHandlers.onOpenWorkoutPlan({
+      planId: params.planId || 'current',
+      title: serverResult.data?.title,
+      todayPreview: serverResult.data?.todayPreview,
+      summary: serverResult.data?.summary,
+    });
+    if (navResult?.success !== false) return navResult;
+  }
+  if (serverResult.success) return serverResult;
+  return { success: false, message: serverResult.message || 'Could not open workout plan.' };
 }
+

@@ -1,19 +1,121 @@
-/**
- * use Trainer Screen Navigation
- *
- * Purpose: UI screen or component: use Trainer Screen Navigation. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: goToTrainerScreen
- *
- * @file-header
- */
+// Trainer hub flags plus stack navigation for full-screen flows (profile, settings, AI, payments…).
+// Flow: hold overlay booleans → expose open* helpers → onNavigate maps a keyword to those helpers.
+// Used by: TrainerAppStart. Hook order is load-bearing — do not reorder the useState / useCallback calls.
+
 import { useCallback, useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
 import { TRAINER_ROUTES } from '../../navigation/screenNames';
 import { rootGoBack, rootNavigate, rootNavigationRef, rootResetTo } from '../../navigation/openScreenFromAnywhere';
 
-/** Trainer hub layout flags + stack navigation for full-screen flows. */
+// ===== NAMED CONSTANTS =====
+
+const AI_CHAT_HOME = 'home';
+const KEYWORD_HOME = 'home';
+const KEYWORD_CREATE = 'create';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Pop nested trainer screens back to Main when the stack actually has more than the hub.
+ * vocab: CommonActions.reset rebuilds the stack so Back cannot return to a closed overlay.
+ * @returns {void}
+ */
+function resetTrainerStackToMain() {
+  const isReady = rootNavigationRef.isReady();
+  const hasNestedRoutes = rootNavigationRef.getState()?.routes?.length > 1;
+  if (!isReady || !hasNestedRoutes) return;
+  rootNavigationRef.dispatch(
+    CommonActions.reset({ index: 0, routes: [{ name: TRAINER_ROUTES.Main }] }),
+  );
+}
+
+/**
+ * Keyword → navigation. Sequential early returns (not else-if) so nesting stays at 1.
+ * `create` is a no-op here: the plus button is handled by the shell's handlePlusPress.
+ * @param {string} screen
+ * @param {object} actions
+ */
+function runTrainerScreenKeyword(screen, actions) {
+  if (!screen) return;
+
+  if (screen === KEYWORD_HOME) {
+    actions.handleHomePress();
+    return;
+  }
+  if (screen === 'profile' || screen === 'ViewMyMyProfileScreen') {
+    actions.handleHomePress();
+    actions.openProfile();
+    return;
+  }
+  if (screen === 'settings' || screen === 'SettingsScreen') {
+    actions.handleHomePress();
+    actions.openSettings();
+    return;
+  }
+  if (screen === 'helpFaq') {
+    rootGoBack();
+    actions.openHelpFAQ();
+    return;
+  }
+  if (screen === 'terms') {
+    rootGoBack();
+    actions.openTerms();
+    return;
+  }
+  if (screen === 'privacy') {
+    rootGoBack();
+    actions.openPrivacy();
+    return;
+  }
+  if (screen === 'contactSupport') {
+    rootGoBack();
+    actions.openContactSupport();
+    return;
+  }
+  if (screen === 'bugReport') {
+    rootGoBack();
+    actions.openBugReport();
+    return;
+  }
+  if (screen === 'nutrition') {
+    actions.handleHomePress();
+    actions.openNutrition();
+    return;
+  }
+  if (screen === 'workout') {
+    actions.handleHomePress();
+    actions.openWorkoutPlan();
+    return;
+  }
+  if (screen === 'messages') {
+    actions.handleHomePress();
+    actions.setShowTrainerMessaging(false);
+    actions.setShowConversationsList(true);
+    return;
+  }
+  if (screen === 'voice' || screen === 'aiChat') {
+    actions.handleHomePress();
+    actions.openVoiceAI();
+    return;
+  }
+  if (screen === 'payments' || screen === 'EarningsScreen') {
+    rootGoBack();
+    actions.openPayments();
+    return;
+  }
+  if (screen === KEYWORD_CREATE) {
+    /* plus handled by shell handlePlusPress via navProviderProps */
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer navigation hook: overlay flags for the hub, plus stack pushes for full screens.
+ * vocab: useState holds which hub overlay is open. vocab: useCallback keeps the same function
+ * identity so child screens do not re-render on every parent paint.
+ * @returns {object}
+ */
 export function goToTrainerScreen() {
   const [showTrainerMessaging, setShowTrainerMessaging] = useState(false);
   const [showConversationsList, setShowConversationsList] = useState(false);
@@ -26,7 +128,7 @@ export function goToTrainerScreen() {
   const [showAddFilePopup, setShowAddFilePopup] = useState(false);
   const [addNotesFilesClientId, setAddNotesFilesClientId] = useState(null);
   const [weeklyReportScreen, setWeeklyReportScreen] = useState(null);
-  const [aiChatState, setAiChatState] = useState('home');
+  const [aiChatState, setAiChatState] = useState(AI_CHAT_HOME);
   const [selectedTrainer, setSelectedTrainer] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
 
@@ -41,7 +143,7 @@ export function goToTrainerScreen() {
   const openWorkoutPlan = useCallback(() => rootNavigate(TRAINER_ROUTES.WorkoutPlan), []);
   const openTrainerSearch = useCallback(() => rootNavigate(TRAINER_ROUTES.TrainerSearch), []);
   const openVoiceAI = useCallback(() => {
-    setAiChatState('home');
+    setAiChatState(AI_CHAT_HOME);
     rootNavigate(TRAINER_ROUTES.VoiceAI);
   }, []);
   const openAIChatSession = useCallback((payload) => {
@@ -64,97 +166,36 @@ export function goToTrainerScreen() {
     setShowWorkoutGenerator(false);
     setShowPlanViewer(false);
     setWeeklyReportScreen(null);
-    setAiChatState('home');
-    if (rootNavigationRef.isReady() && rootNavigationRef.getState()?.routes?.length > 1) {
-      rootNavigationRef.dispatch(
-        CommonActions.reset({ index: 0, routes: [{ name: TRAINER_ROUTES.Main }] }),
-      );
-    }
+    setAiChatState(AI_CHAT_HOME);
+    resetTrainerStackToMain();
   }, []);
 
   const handleHomePress = useCallback(() => resetMainLayout(), [resetMainLayout]);
 
-  const handlePlusPress = useCallback(
-    (clientId) => {
-      if (clientId) {
-        setAddNotesFilesClientId(clientId);
-        setShowAddFilePopup(true);
-      }
-    },
-    [],
-  );
+  const handlePlusPress = useCallback((clientId) => {
+    if (!clientId) return;
+    setAddNotesFilesClientId(clientId);
+    setShowAddFilePopup(true);
+  }, []);
 
   const onNavigate = useCallback(
     (screen) => {
-      if (!screen) return;
-      if (screen === 'home') {
-        handleHomePress();
-        return;
-      }
-      if (screen === 'profile' || screen === 'ViewMyMyProfileScreen') {
-        handleHomePress();
-        openProfile();
-        return;
-      }
-      if (screen === 'settings' || screen === 'SettingsScreen') {
-        handleHomePress();
-        openSettings();
-        return;
-      }
-      if (screen === 'helpFaq') {
-        rootGoBack();
-        openHelpFAQ();
-        return;
-      }
-      if (screen === 'terms') {
-        rootGoBack();
-        openTerms();
-        return;
-      }
-      if (screen === 'privacy') {
-        rootGoBack();
-        openPrivacy();
-        return;
-      }
-      if (screen === 'contactSupport') {
-        rootGoBack();
-        openContactSupport();
-        return;
-      }
-      if (screen === 'bugReport') {
-        rootGoBack();
-        openBugReport();
-        return;
-      }
-      if (screen === 'nutrition') {
-        handleHomePress();
-        openNutrition();
-        return;
-      }
-      if (screen === 'workout') {
-        handleHomePress();
-        openWorkoutPlan();
-        return;
-      }
-      if (screen === 'messages') {
-        handleHomePress();
-        setShowTrainerMessaging(false);
-        setShowConversationsList(true);
-        return;
-      }
-      if (screen === 'voice' || screen === 'aiChat') {
-        handleHomePress();
-        openVoiceAI();
-        return;
-      }
-      if (screen === 'payments' || screen === 'EarningsScreen') {
-        rootGoBack();
-        openPayments();
-        return;
-      }
-      if (screen === 'create') {
-        /* plus handled by shell handlePlusPress via navProviderProps */
-      }
+      runTrainerScreenKeyword(screen, {
+        handleHomePress,
+        openProfile,
+        openSettings,
+        openHelpFAQ,
+        openTerms,
+        openPrivacy,
+        openContactSupport,
+        openBugReport,
+        openNutrition,
+        openWorkoutPlan,
+        openVoiceAI,
+        openPayments,
+        setShowTrainerMessaging,
+        setShowConversationsList,
+      });
     },
     [
       handleHomePress,

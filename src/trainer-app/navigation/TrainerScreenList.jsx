@@ -28,15 +28,56 @@ import {
 // vocab: a native stack uses the phone's own navigator, so the slide is not drawn in JavaScript.
 const Stack = createNativeStackNavigator();
 
+const OVERLAY_PRESENTATION = 'card';
+const OVERLAY_ANIMATION = 'slide_from_right';
+
 const overlayScreenOptions = {
-  presentation: 'card',
-  animation: 'slide_from_right',
+  presentation: OVERLAY_PRESENTATION,
+  animation: OVERLAY_ANIMATION,
   headerShown: false,
 };
 
-const navigatorScreenOptions = { headerShown: false, animation: 'slide_from_right' };
+const navigatorScreenOptions = {
+  headerShown: false,
+  animation: OVERLAY_ANIMATION,
+};
+
+// Full-screen overlays that sit on top of Main. Voice AI and AI chat share one component.
+const TRAINER_OVERLAY_SCREENS = [
+  { routeName: TRAINER_ROUTES.Profile, ScreenComponent: TrainerViewMyMyProfileScreen },
+  { routeName: TRAINER_ROUTES.Settings, ScreenComponent: TrainerSettingsScreen },
+  { routeName: TRAINER_ROUTES.HelpFAQ, ScreenComponent: TrainerHelpFAQScreen },
+  { routeName: TRAINER_ROUTES.Terms, ScreenComponent: TrainerTermsScreen },
+  { routeName: TRAINER_ROUTES.Privacy, ScreenComponent: TrainerPrivacyScreen },
+  { routeName: TRAINER_ROUTES.ContactSupport, ScreenComponent: TrainerContactSupportScreen },
+  { routeName: TRAINER_ROUTES.BugReport, ScreenComponent: TrainerBugReportScreen },
+  { routeName: TRAINER_ROUTES.Nutrition, ScreenComponent: TrainerDailyFoodLogScreen },
+  { routeName: TRAINER_ROUTES.VoiceAI, ScreenComponent: TrainerVoiceAIScreen },
+  { routeName: TRAINER_ROUTES.AIChat, ScreenComponent: TrainerVoiceAIScreen },
+  { routeName: TRAINER_ROUTES.TrainerSearch, ScreenComponent: SearchTrainersScreenOverlay },
+  { routeName: TRAINER_ROUTES.WeeklyReport, ScreenComponent: TrainerWeeklyReportScreenOverlay },
+  { routeName: TRAINER_ROUTES.WorkoutPlan, ScreenComponent: TrainerWorkoutPlanScreen },
+  { routeName: TRAINER_ROUTES.ManualPlanBuilder, ScreenComponent: TrainerManualPlanBuilderScreen },
+  { routeName: TRAINER_ROUTES.Payments, ScreenComponent: TrainerEarningsScreen },
+];
 
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * One overlay Stack.Screen entry with the shared slide options.
+ * @param {{ routeName: string, ScreenComponent: Function }} entry
+ * @returns {import('react').ReactElement}
+ */
+function renderOverlayScreen({ routeName, ScreenComponent }) {
+  return (
+    <Stack.Screen
+      key={routeName}
+      name={routeName}
+      component={ScreenComponent}
+      options={overlayScreenOptions}
+    />
+  );
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -51,33 +92,7 @@ export default function TrainerScreenList() {
       initialRouteName={TRAINER_ROUTES.Main}
     >
       <Stack.Screen name={TRAINER_ROUTES.Main} component={TrainerMainScreen} />
-      <Stack.Screen name={TRAINER_ROUTES.Profile} component={TrainerViewMyMyProfileScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Settings} component={TrainerSettingsScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.HelpFAQ} component={TrainerHelpFAQScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Terms} component={TrainerTermsScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Privacy} component={TrainerPrivacyScreen} options={overlayScreenOptions} />
-      <Stack.Screen
-        name={TRAINER_ROUTES.ContactSupport}
-        component={TrainerContactSupportScreen}
-        options={overlayScreenOptions}
-      />
-      <Stack.Screen name={TRAINER_ROUTES.BugReport} component={TrainerBugReportScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.Nutrition} component={TrainerDailyFoodLogScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.VoiceAI} component={TrainerVoiceAIScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.AIChat} component={TrainerVoiceAIScreen} options={overlayScreenOptions} />
-      <Stack.Screen name={TRAINER_ROUTES.TrainerSearch} component={SearchTrainersScreenOverlay} options={overlayScreenOptions} />
-      <Stack.Screen
-        name={TRAINER_ROUTES.WeeklyReport}
-        component={TrainerWeeklyReportScreenOverlay}
-        options={overlayScreenOptions}
-      />
-      <Stack.Screen name={TRAINER_ROUTES.WorkoutPlan} component={TrainerWorkoutPlanScreen} options={overlayScreenOptions} />
-      <Stack.Screen
-        name={TRAINER_ROUTES.ManualPlanBuilder}
-        component={TrainerManualPlanBuilderScreen}
-        options={overlayScreenOptions}
-      />
-      <Stack.Screen name={TRAINER_ROUTES.Payments} component={TrainerEarningsScreen} options={overlayScreenOptions} />
+      {TRAINER_OVERLAY_SCREENS.map(renderOverlayScreen)}
     </Stack.Navigator>
   );
 }

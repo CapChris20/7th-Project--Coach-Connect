@@ -12,28 +12,31 @@ const STORAGE_PHOTO_FOLDER = 'profile_photos';
 
 // ===== HELPER FUNCTIONS =====
 
+function photoFromProfileObject(profileObject) {
+  if (!profileObject) return null;
+  return (
+    profileObject.photoURL
+    || profileObject.photoUrl
+    || profileObject.imageUrl
+    || null
+  );
+}
+
 /**
  * Nested copies are checked first. When both exist, the nested profile is the newer sync.
  * @param {object} trainerRecord
  * @returns {string|null}
  */
 function nestedPhotoUrl(trainerRecord) {
-  const profilePhoto = trainerRecord.profile && (
-    trainerRecord.profile.photoURL || trainerRecord.profile.photoUrl || trainerRecord.profile.imageUrl
-  );
+  const profilePhoto = photoFromProfileObject(trainerRecord.profile);
   if (profilePhoto) return profilePhoto;
 
-  const publicPhoto = trainerRecord.publicProfile && (
-    trainerRecord.publicProfile.photoURL || trainerRecord.publicProfile.photoUrl
-  );
+  const publicPhoto = photoFromProfileObject(trainerRecord.publicProfile);
   if (publicPhoto) return publicPhoto;
 
-  const marketplacePhoto = trainerRecord.marketplace && (
-    trainerRecord.marketplace.photoURL
-    || trainerRecord.marketplace.photoUrl
-    || trainerRecord.marketplace.imageUrl
-  );
-  return marketplacePhoto || null;
+  const marketplacePhoto = photoFromProfileObject(trainerRecord.marketplace);
+  if (marketplacePhoto) return marketplacePhoto;
+  return null;
 }
 
 /**
@@ -60,6 +63,18 @@ function flatPhotoUrl(trainerRecord) {
   );
 }
 
+function isUsablePhotoText(photoText) {
+  if (!photoText) return false;
+  if (photoText === EMPTY_WORD) return false;
+  if (photoText === UNDEFINED_WORD) return false;
+  return true;
+}
+
+function storagePathForTrainer(trainerId) {
+  // Manipulate here: this path has to match the upload path and the Storage rules.
+  return `${STORAGE_PHOTO_FOLDER}/${trainerId}`;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -72,7 +87,7 @@ export function trainerPhotoUri(trainerRecord) {
   const photoUrl = nestedPhotoUrl(trainerRecord) || flatPhotoUrl(trainerRecord);
   const photoText = photoUrl != null ? String(photoUrl).trim() : '';
   // Some writes stored the words "null" and "undefined". Those are not URLs.
-  if (!photoText || photoText === EMPTY_WORD || photoText === UNDEFINED_WORD) return null;
+  if (!isUsablePhotoText(photoText)) return null;
   return photoText;
 }
 
@@ -87,18 +102,18 @@ export async function resolveTrainerPhotoWithStorageFallback(trainerLike, storag
   if (trainerPhotoUri(trainerLike)) return trainerLike;
   const trainerId = trainerLike?.id || trainerLike?.uid;
   if (!storage || !trainerId) return trainerLike;
+
   try {
-    // Manipulate here: this path has to match the upload path and the Storage rules.
-    const downloadUrl = await getDownloadURL(ref(storage, `${STORAGE_PHOTO_FOLDER}/${trainerId}`));
-    if (downloadUrl && String(downloadUrl).trim()) {
-      return {
-        ...trainerLike,
-        photoURL: downloadUrl,
-        avatarUrl: trainerLike?.avatarUrl || downloadUrl,
-      };
-    }
-  } catch (_) {
+    const downloadUrl = await getDownloadURL(ref(storage, storagePathForTrainer(trainerId)));
+    const trimmedUrl = downloadUrl ? String(downloadUrl).trim() : '';
+    if (!trimmedUrl) return trainerLike;
+    return {
+      ...trainerLike,
+      photoURL: trimmedUrl,
+      avatarUrl: trainerLike?.avatarUrl || trimmedUrl,
+    };
+  } catch {
     // A missing file and a permission denial both mean there is no avatar to show.
+    return trainerLike;
   }
-  return trainerLike;
 }

@@ -11,16 +11,39 @@ import { ColorBorder } from './ColorBorder';
 // ===== NAMED CONSTANTS =====
 
 const PRO_VARIANT = 'pro';
+const CON_VARIANT = 'con';
 const DARK_MODE = 'dark';
 const DARK_CARD_COLOR = 'rgba(14,14,22,0.98)';
 const LIGHT_CARD_COLOR = '#ffffff';
+const BORDER_WIDTH = 1.5;
+const CARD_RADIUS = 18;
+const WASH_START_ALPHA = '28';
+const WASH_MID_ALPHA = '10';
 
 const VARIANT_GRADIENTS = {
-  pro: { border: GRADIENTS.g1, badge: GRADIENTS.g3 },
-  con: { border: GRADIENTS.g4, badge: GRADIENTS.g3 },
+  [PRO_VARIANT]: { border: GRADIENTS.g1, badge: GRADIENTS.g3 },
+  [CON_VARIANT]: { border: GRADIENTS.g4, badge: GRADIENTS.g3 },
 };
 
 // ===== HELPER FUNCTIONS =====
+
+function paletteForVariant(variant) {
+  if (VARIANT_GRADIENTS[variant]) return VARIANT_GRADIENTS[variant];
+  return VARIANT_GRADIENTS[PRO_VARIANT];
+}
+
+function cardBackgroundForMode(mode) {
+  if (mode === DARK_MODE) return DARK_CARD_COLOR;
+  return LIGHT_CARD_COLOR;
+}
+
+function washColors(borderGradient) {
+  return [
+    `${borderGradient[0]}${WASH_START_ALPHA}`,
+    `${borderGradient[1]}${WASH_MID_ALPHA}`,
+    'transparent',
+  ];
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -29,20 +52,19 @@ const VARIANT_GRADIENTS = {
  */
 export function TipRow({ index, text, variant = PRO_VARIANT }) {
   const { colors, mode } = useTheme();
-  const variantPalette = VARIANT_GRADIENTS[variant] || VARIANT_GRADIENTS.pro;
-  const isDarkMode = mode === DARK_MODE;
-  const innerBackground = isDarkMode ? DARK_CARD_COLOR : LIGHT_CARD_COLOR;
+  const variantPalette = paletteForVariant(variant);
+  const innerBackground = cardBackgroundForMode(mode);
 
   return (
     <ColorBorder
       colors={variantPalette.border}
-      borderWidth={1.5}
-      radius={18}
+      borderWidth={BORDER_WIDTH}
+      radius={CARD_RADIUS}
       innerBackground={innerBackground}
       style={styles.cardWrap}
     >
       <LinearGradient
-        colors={[`${variantPalette.border[0]}28`, `${variantPalette.border[1]}10`, 'transparent']}
+        colors={washColors(variantPalette.border)}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}

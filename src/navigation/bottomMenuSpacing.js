@@ -46,17 +46,14 @@ function paddingAboveDeviceEdge(bottomInset, extra) {
  */
 export function ShellBottomNavAnchor({ children }) {
   if (!children) return null;
-  return (
-    <View style={{
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: NAV_STACK_ORDER,
-    }}>
-      {children}
-    </View>
-  );
+  const anchorStyle = {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: NAV_STACK_ORDER,
+  };
+  return <View style={anchorStyle}>{children}</View>;
 }
 
 /**

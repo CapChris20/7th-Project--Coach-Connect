@@ -1,17 +1,7 @@
-/**
- * workout
- *
- * Purpose: UI screen or component: workout. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: CreateWorkoutPlanScreen
- *
- * @file-header
- */
-/**
- * Workout Plan Generator Screen
- * Review onboarding data, allow edits, and generate personalized workout plan using DeepSeek API
- */
+// Create / review / generate a personalized workout plan from onboarding answers.
+// Flow: load profile → edit cards → ask API → normalize structured plan → viewer or builder UI.
+// Used by client and trainer routes. Re-exports usage helpers and askForWorkoutPlan for other screens.
+// Key exports: CreateWorkoutPlanScreen (default), plus re-exports from countPlansCreated / askForWorkoutPlan.
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -110,32 +100,76 @@ export {
   generateWorkoutPlanWithClaude,
 } from '../create-plan/askForWorkoutPlan';
 
+// ===== NAMED CONSTANTS =====
+
 /** Survives screen unmount so ClientAppStart / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
 
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const EMPTY_DISPLAY = '—';
+const INCHES_PER_FOOT = 12;
+const MIN_HEIGHT_INCHES = 36;
+const MAX_HEIGHT_INCHES = 96;
+const MS_PER_SECOND = 1000;
+const VIEWER_ERROR_DELAY_MS = 450;
+const GENERATING_MESSAGE_ROTATE_MS = 2200;
+const AURA_PULSE_DURATION_MS = 1200;
+const DAYS_IN_WEEK = 7;
+const MAX_SITUATION_DESCRIPTION_LENGTH = 1000;
+const WORKOUT_SNIPPET_CHARS = 500;
+const WORKOUT_FALLBACK_SNIPPET_CHARS = 1000;
+const DEFAULT_PLAN_WEEKS = 4;
+const NOON_HOUR_FOR_DATE_PARSE = 12;
+const MORNING_START_HOUR = 5;
+const AFTERNOON_START_HOUR = 12;
+const EVENING_START_HOUR = 17;
+const NIGHT_START_HOUR = 22;
+const OVERVIEW_BLOCK_MIN_LENGTH = 200;
+const SECTION_HEADER_MAX_LENGTH_WARM = 30;
+const SECTION_HEADER_MAX_LENGTH_EX = 40;
+const TABLE_LINE_MAX_LENGTH = 200;
+const MIN_EXERCISE_NAME_LENGTH = 3;
+const MIN_BULLET_CONTENT_LENGTH = 2;
 
-/** Profile height: `{ feet, inches }` or legacy total inches (number). */
-function formatProfileHeightDisplay(h) {
-  if (h == null) return '—';
-  if (typeof h === 'object') {
-    const ftRaw = h.feet;
-    const inRaw = h.inches;
-    const hasFt = ftRaw != null && ftRaw !== '';
-    const hasIn = inRaw != null && inRaw !== '';
-    if (hasFt || hasIn) {
-      const ft = hasFt ? Number(ftRaw) : 0;
-      const inch = hasIn ? Number(inRaw) : 0;
-      if (Number.isFinite(ft) && Number.isFinite(inch)) return `${ft}'${inch}"`;
-    }
-    return '—';
+// ===== HELPER FUNCTIONS =====
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+/**
+ * Profile height label: `{ feet, inches }` object or legacy total inches (number).
+ * @param {*} heightValue
+ * @returns {string}
+ */
+function formatFeetInchesFromObject(heightObject) {
+  const feetRaw = heightObject.feet;
+  const inchesRaw = heightObject.inches;
+  const hasFeet = feetRaw != null && feetRaw !== '';
+  const hasInches = inchesRaw != null && inchesRaw !== '';
+  if (!hasFeet && !hasInches) return EMPTY_DISPLAY;
+  const feet = hasFeet ? Number(feetRaw) : 0;
+  const inches = hasInches ? Number(inchesRaw) : 0;
+  if (!Number.isFinite(feet) || !Number.isFinite(inches)) return EMPTY_DISPLAY;
+  return `${feet}'${inches}"`;
+}
+
+function formatFeetInchesFromTotalInches(heightValue) {
+  const totalInches =
+    typeof heightValue === 'number'
+      ? heightValue
+      : Number(String(heightValue).replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(totalInches)) return EMPTY_DISPLAY;
+  if (totalInches < MIN_HEIGHT_INCHES || totalInches > MAX_HEIGHT_INCHES) {
+    return EMPTY_DISPLAY;
   }
-  const n = typeof h === 'number' ? h : Number(String(h).replace(/[^0-9.]/g, ''));
-  if (Number.isFinite(n) && n >= 36 && n <= 96) {
-    const t = Math.round(n);
-    return `${Math.floor(t / 12)}'${t % 12}"`;
-  }
-  return '—';
+  const roundedInches = Math.round(totalInches);
+  const feet = Math.floor(roundedInches / INCHES_PER_FOOT);
+  const leftoverInches = roundedInches % INCHES_PER_FOOT;
+  return `${feet}'${leftoverInches}"`;
+}
+
+function formatProfileHeightDisplay(heightValue) {
+  if (heightValue == null) return EMPTY_DISPLAY;
+  if (typeof heightValue === 'object') return formatFeetInchesFromObject(heightValue);
+  return formatFeetInchesFromTotalInches(heightValue);
 }
 
 const MARKDOWN_STYLES = {
@@ -183,30 +217,35 @@ function cleanText(str) {
  * Robustly extract a JSON object from an API response that may contain
  * prose, markdown fences, or other noise around the JSON.
  */
-function extractJSON(str) {
-  if (!str || typeof str !== 'string') return '';
-  let s = str.trim();
-
-  // Claude often returns ```json ... ``` even when asked for raw JSON; strip any fenced block.
-  const fenceRe = /```(?:json)?\s*\n?/i;
-  const fenceHit = s.match(fenceRe);
+/**
+ * Pull the outermost JSON object out of an API reply that may wrap it in fences or prose.
+ * @param {string} rawText
+ * @returns {string}
+ */
+function stripMarkdownJsonFence(rawText) {
+  let text = rawText.trim();
+  const fencePattern = /```(?:json)?\s*\n?/i;
+  const fenceHit = text.match(fencePattern);
   if (fenceHit && fenceHit.index != null) {
-    s = s.slice(fenceHit.index + fenceHit[0].length);
-    const close = s.indexOf('```');
-    if (close !== -1) {
-      s = s.slice(0, close).trim();
-    }
-  } else {
-    s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    text = text.slice(fenceHit.index + fenceHit[0].length);
+    const closeIndex = text.indexOf('```');
+    if (closeIndex !== -1) text = text.slice(0, closeIndex).trim();
+    return text;
   }
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+}
 
-  // Outermost { ... } (handles trailing prose after valid JSON)
-  const first = s.indexOf('{');
-  const last = s.lastIndexOf('}');
-  if (first !== -1 && last !== -1 && last > first) {
-    s = s.slice(first, last + 1);
-  }
-  return s.trim();
+function sliceOutermostJsonObject(text) {
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return text;
+  return text.slice(firstBrace, lastBrace + 1);
+}
+
+function extractJSON(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  const withoutFence = stripMarkdownJsonFence(rawText);
+  return sliceOutermostJsonObject(withoutFence).trim();
 }
 
 function tryParseJsonObject(str) {
@@ -635,7 +674,7 @@ function PlanBuilderAnimatedBorderCard({
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
-        duration: duration * 1000,
+        duration: duration * MS_PER_SECOND,
         useNativeDriver: false,
       }),
     ).start();
@@ -776,89 +815,151 @@ function inferType(label) {
 }
 
 /**
+ * Fill overview from planOverview / generalNotes / summary when overview is missing.
+ * @param {object} plan
+ * @returns {void}
+ */
+function fillOverviewFromAlternateKeys(plan) {
+  if (plan.overview) return;
+  if (plan.planOverview != null) {
+    const planOverview = plan.planOverview;
+    if (typeof planOverview === 'string') {
+      plan.overview = planOverview;
+      return;
+    }
+    if (typeof planOverview === 'object') {
+      const parts = [planOverview.title, planOverview.description, planOverview.note].filter(
+        (part) => part != null && String(part).trim() !== '',
+      );
+      plan.overview = parts.map((part) => String(part).trim()).join('\n\n');
+      return;
+    }
+  }
+  if (plan.generalNotes) {
+    plan.overview = String(plan.generalNotes);
+    return;
+  }
+  if (plan.summary) plan.overview = String(plan.summary);
+}
+
+/**
+ * Turn a weeklySchedule object {trainingDays, restDays} into [{day, focus}, ...].
+ * @param {object} plan
+ * @returns {void}
+ */
+function normalizeWeeklyScheduleObject(plan) {
+  if (plan.weeklySchedule == null || Array.isArray(plan.weeklySchedule)) return;
+  const scheduleObject = plan.weeklySchedule;
+  const rows = [];
+  const trainingDays = scheduleObject.trainingDays || scheduleObject.training_days || [];
+  const restDays = scheduleObject.restDays || scheduleObject.rest_days || [];
+  if (Array.isArray(trainingDays)) {
+    for (let index = 0; index < trainingDays.length; index += 1) {
+      rows.push({ day: String(trainingDays[index]).trim(), focus: 'Training' });
+    }
+  }
+  if (Array.isArray(restDays)) {
+    for (let index = 0; index < restDays.length; index += 1) {
+      rows.push({ day: String(restDays[index]).trim(), focus: 'Rest' });
+    }
+  }
+  if (rows.length) {
+    plan.weeklySchedule = rows;
+    return;
+  }
+  if (scheduleObject.activeRecovery != null && String(scheduleObject.activeRecovery).trim()) {
+    plan.weeklySchedule = [
+      { day: 'Recovery', focus: String(scheduleObject.activeRecovery).trim() },
+    ];
+    return;
+  }
+  plan.weeklySchedule = [];
+}
+
+/**
+ * First array of workout sessions found on a workouts object map.
+ * @param {object} workoutsObject
+ * @returns {Array|null}
+ */
+function firstWorkoutArrayFromObject(workoutsObject) {
+  const keys = Object.keys(workoutsObject);
+  for (let index = 0; index < keys.length; index += 1) {
+    const maybeList = workoutsObject[keys[index]];
+    if (Array.isArray(maybeList) && maybeList.length) return maybeList;
+  }
+  return null;
+}
+
+/**
+ * Resolve Claude workouts / detailedWorkouts into a session array (or fill plan.days).
+ * @param {object} plan
+ * @returns {Array|null}
+ */
+function resolveWorkoutsArrayForViewer(plan) {
+  if (Array.isArray(plan.workouts) && plan.workouts.length) return plan.workouts;
+
+  if (!plan.detailedWorkouts) {
+    if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
+      return firstWorkoutArrayFromObject(plan.workouts);
+    }
+    return null;
+  }
+
+  if (Array.isArray(plan.detailedWorkouts) && plan.detailedWorkouts.length) {
+    return plan.detailedWorkouts;
+  }
+
+  if (
+    plan.days == null &&
+    typeof plan.detailedWorkouts === 'object' &&
+    !Array.isArray(plan.detailedWorkouts)
+  ) {
+    const derivedDays = normalizeClaudeDetailedWorkoutsToDays(plan.detailedWorkouts);
+    if (derivedDays && derivedDays.length) {
+      plan.days = derivedDays;
+      return null;
+    }
+  }
+
+  const nested =
+    plan.detailedWorkouts?.workouts ||
+    plan.detailedWorkouts?.sessions ||
+    plan.detailedWorkouts?.days ||
+    plan.detailedWorkouts?.workoutDays;
+  if (Array.isArray(nested) && nested.length) return nested;
+
+  if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
+    return firstWorkoutArrayFromObject(plan.workouts);
+  }
+  return null;
+}
+
+/**
  * Claude often returns alternate keys (planOverview, workouts[], weeklySchedule object).
  * Viewer expects overview string, weeklySchedule: {day,focus}[], days: day cards.
+ * @param {object} rawPlan
+ * @returns {object|null}
  */
-function normalizeStructuredPlanForViewer(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const out = { ...raw };
+function normalizeStructuredPlanForViewer(rawPlan) {
+  if (!rawPlan || typeof rawPlan !== 'object') return null;
+  const plan = { ...rawPlan };
 
-  if (!out.overview && out.planOverview != null) {
-    const po = out.planOverview;
-    if (typeof po === 'string') out.overview = po;
-    else if (typeof po === 'object') {
-      const parts = [po.title, po.description, po.note].filter((p) => p != null && String(p).trim() !== '');
-      out.overview = parts.map((p) => String(p).trim()).join('\n\n');
-    }
-  }
-  if (!out.overview && out.generalNotes) out.overview = String(out.generalNotes);
-  if (!out.overview && out.summary) out.overview = String(out.summary);
+  // 1. Overview string from whatever key Claude used.
+  fillOverviewFromAlternateKeys(plan);
 
-  if (out.weeklySchedule != null && !Array.isArray(out.weeklySchedule)) {
-    const ws = out.weeklySchedule;
-    const rows = [];
-    const train = ws.trainingDays || ws.training_days || [];
-    const rest = ws.restDays || ws.rest_days || [];
-    if (Array.isArray(train)) {
-      train.forEach((d) => rows.push({ day: String(d).trim(), focus: 'Training' }));
-    }
-    if (Array.isArray(rest)) {
-      rest.forEach((d) => rows.push({ day: String(d).trim(), focus: 'Rest' }));
-    }
-    if (rows.length) {
-      out.weeklySchedule = rows;
-    } else if (ws.activeRecovery != null && String(ws.activeRecovery).trim()) {
-      out.weeklySchedule = [{ day: 'Recovery', focus: String(ws.activeRecovery).trim() }];
-    } else {
-      out.weeklySchedule = [];
-    }
+  // 2. weeklySchedule object → row array.
+  normalizeWeeklyScheduleObject(plan);
+
+  // 3. Workout sessions → viewer "days".
+  const workoutsArray = resolveWorkoutsArrayForViewer(plan);
+  const daysMissing = !plan.days || !plan.days.length;
+  if (daysMissing && Array.isArray(workoutsArray) && workoutsArray.length) {
+    plan.days = workoutsArray.map((workout, index) =>
+      normalizeAiWorkoutToDay(workout, index),
+    );
   }
 
-  // Map Claude workout sessions into viewer "days".
-  // Claude sometimes uses `workouts`, sometimes nests under `detailedWorkouts`,
-  // and sometimes `detailedWorkouts` is an object map like { day1Monday: {...}, ... }.
-  const workoutsArr = (() => {
-    if (Array.isArray(out.workouts) && out.workouts.length) return out.workouts;
-
-    if (out.detailedWorkouts) {
-      // detailedWorkouts could itself be an array or an object containing workouts arrays
-      if (Array.isArray(out.detailedWorkouts) && out.detailedWorkouts.length) return out.detailedWorkouts;
-
-      // detailedWorkouts might be the object map we see in the screenshot.
-      // If we can derive days from it, do that directly.
-      if (out.days == null && typeof out.detailedWorkouts === 'object' && !Array.isArray(out.detailedWorkouts)) {
-        const derivedDays = normalizeClaudeDetailedWorkoutsToDays(out.detailedWorkouts);
-        if (derivedDays && derivedDays.length) {
-          out.days = derivedDays;
-          return null;
-        }
-      }
-
-      const nested =
-        out.detailedWorkouts?.workouts ||
-        out.detailedWorkouts?.sessions ||
-        out.detailedWorkouts?.days ||
-        out.detailedWorkouts?.workoutDays;
-      if (Array.isArray(nested) && nested.length) return nested;
-    }
-
-    // Last resort: if `workouts` is an object, scan for the first array of items
-    if (out.workouts && typeof out.workouts === 'object' && !Array.isArray(out.workouts)) {
-      const keys = Object.keys(out.workouts);
-      for (const k of keys) {
-        const v = out.workouts[k];
-        if (Array.isArray(v) && v.length) return v;
-      }
-    }
-
-    return null;
-  })();
-
-  if ((!out.days || !out.days.length) && Array.isArray(workoutsArr) && workoutsArr.length) {
-    out.days = workoutsArr.map((w, i) => normalizeAiWorkoutToDay(w, i));
-  }
-
-  return out;
+  return plan;
 }
 
 function normalizeAiWorkoutToDay(w, index) {
@@ -884,7 +985,7 @@ function normalizeAiWorkoutToDay(w, index) {
   let primaryMuscles = [];
   if (Array.isArray(rawMuscles)) primaryMuscles = rawMuscles.map((x) => String(x));
   else if (typeof rawMuscles === 'string') {
-    primaryMuscles = rawMuscles.split(/[,·/]/).map((s) => s.trim()).filter(Boolean);
+    primaryMuscles = rawMuscles.split(/[,·/]/).map((muscle) => muscle.trim()).filter(Boolean);
   }
 
   return {
@@ -899,14 +1000,14 @@ function normalizeAiWorkoutToDay(w, index) {
   };
 }
 
-function normalizeAiWarmUpBlock(wu) {
-  if (wu == null) return [];
-  if (typeof wu === 'string') {
-    const t = wu.trim();
-    return t ? [{ name: t, duration: '', description: '' }] : [];
+function normalizeAiWarmUpBlock(warmUpRaw) {
+  if (warmUpRaw == null) return [];
+  if (typeof warmUpRaw === 'string') {
+    const warmUpText = warmUpRaw.trim();
+    return warmUpText ? [{ name: warmUpText, duration: '', description: '' }] : [];
   }
-  if (!Array.isArray(wu)) return [];
-  return wu.map((item) => {
+  if (!Array.isArray(warmUpRaw)) return [];
+  return warmUpRaw.map((item) => {
     if (typeof item === 'string') return { name: item, duration: '', description: '' };
     return {
       name: String(item.name || item.exercise || item.label || '').trim(),
@@ -941,11 +1042,13 @@ function normalizeAiExerciseList(list) {
 
 function parseSetsReps(setsRepsRaw) {
   if (setsRepsRaw == null) return { sets: '', reps: '' };
-  const s = String(setsRepsRaw).trim();
+  const setsRepsText = String(setsRepsRaw).trim();
   // Examples: "4 x 8-10", "4 x 8–10", "3x5"
-  const m = s.match(/(\d+)\s*[xX]\s*([\d]+(?:\s*[-–]\s*[\d]+)?)/);
-  if (m) return { sets: m[1], reps: m[2].replace(/\s+/g, '') };
-  return { sets: '', reps: s };
+  const setsRepsMatch = setsRepsText.match(/(\d+)\s*[xX]\s*([\d]+(?:\s*[-–]\s*[\d]+)?)/);
+  if (setsRepsMatch) {
+    return { sets: setsRepsMatch[1], reps: setsRepsMatch[2].replace(/\s+/g, '') };
+  }
+  return { sets: '', reps: setsRepsText };
 }
 
 function normalizeClaudeWarmupExercises(exercisesRaw) {
@@ -955,13 +1058,13 @@ function normalizeClaudeWarmupExercises(exercisesRaw) {
     .map((x) => {
       if (x == null) return null;
       if (typeof x === 'string') {
-        const t = x.trim();
-        if (!t) return null;
-        const parts = t.split(':');
+        const warmText = x.trim();
+        if (!warmText) return null;
+        const parts = warmText.split(':');
         if (parts.length >= 2) {
           return { name: parts[0].trim(), duration: '', description: parts.slice(1).join(':').trim() };
         }
-        return { name: t, duration: '', description: '' };
+        return { name: warmText, duration: '', description: '' };
       }
       const name = String(x?.exerciseName || x?.name || x?.label || '').trim();
       if (!name) return null;
@@ -1067,12 +1170,12 @@ function normalizeClaudeDetailedWorkoutsToDays(detailedWorkouts) {
     .filter(Boolean);
 }
 
-function structuredPlanHasViewerContent(s) {
-  if (!s || typeof s !== 'object') return false;
+function structuredPlanHasViewerContent(structuredPlan) {
+  if (!structuredPlan || typeof structuredPlan !== 'object') return false;
   // We consider the plan "renderable" only when the viewer can actually map
   // sessions/days into day cards (warm-up + exercises live under `days`).
-  const days = Array.isArray(s.days) ? s.days.length : 0;
-  return days > 0;
+  const dayCount = Array.isArray(structuredPlan.days) ? structuredPlan.days.length : 0;
+  return dayCount > 0;
 }
 
 const planViewerRefStyles = StyleSheet.create({
@@ -1285,8 +1388,12 @@ function derivePlanViewerDayShort(label, index, weeklySchedule) {
   if (abbr) return abbr[0].length === 3 ? abbr[0].toUpperCase() : abbr[0].substring(0, 3).toUpperCase();
   const ws = weeklySchedule && weeklySchedule[index];
   if (ws?.day) {
-    const m = String(ws.day).match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
-    if (m) return m[0].length === 3 ? m[0].toUpperCase() : m[0].substring(0, 3).toUpperCase();
+    const weekdayMatch = String(ws.day).match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
+    if (weekdayMatch) {
+      return weekdayMatch[0].length === 3
+        ? weekdayMatch[0].toUpperCase()
+        : weekdayMatch[0].substring(0, 3).toUpperCase();
+    }
   }
   return `D${index + 1}`;
 }
@@ -1538,130 +1645,250 @@ function parseTableRow(line) {
 }
 
 /**
- * Parse raw AI plan into { overview, days: [{ label, type, isRest, warmUp, exercises, coolDown }], notes }.
- * Exercises: "A1 — Bench Press - Sets x Reps: 4 x 8-10 - Rest: 90 seconds - Form Cues: - cue1 - cue2"
+ * Detect warm-up / cool-down / exercise section headers inside a day block.
+ * @param {string} line
+ * @param {{ inWarmUp: boolean, inCoolDown: boolean, inExercises: boolean }} sectionFlags
+ * @returns {boolean} true when this line was a section header (skip content parsing)
+ */
+function applyDaySectionHeader(line, sectionFlags) {
+  const lower = line.toLowerCase();
+  if (/warm[- ]?up|warmup/.test(lower) && line.length < SECTION_HEADER_MAX_LENGTH_WARM) {
+    sectionFlags.inWarmUp = true;
+    sectionFlags.inCoolDown = false;
+    sectionFlags.inExercises = false;
+    return true;
+  }
+  if (/cool[- ]?down|cooldown/.test(lower) && line.length < SECTION_HEADER_MAX_LENGTH_WARM) {
+    sectionFlags.inCoolDown = true;
+    sectionFlags.inWarmUp = false;
+    sectionFlags.inExercises = false;
+    return true;
+  }
+  const looksLikeExerciseHeader =
+    /exercise|main\s*work|workout\s*a|workout\s*b/i.test(lower) &&
+    line.length < SECTION_HEADER_MAX_LENGTH_EX &&
+    !sectionFlags.inWarmUp &&
+    !sectionFlags.inCoolDown;
+  if (looksLikeExerciseHeader) {
+    sectionFlags.inExercises = true;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Parse a markdown table row into warm-up or cool-down when inside those sections.
+ * @param {string} line
+ * @param {{ inWarmUp: boolean, inCoolDown: boolean }} sectionFlags
+ * @param {Array} warmUp
+ * @param {Array} coolDown
+ * @returns {boolean} true when the line was a table row we handled
+ */
+function tryParseWarmCoolTableLine(line, sectionFlags, warmUp, coolDown) {
+  const looksLikeTable = /^\|/.test(line) || (/\|/.test(line) && line.length < TABLE_LINE_MAX_LENGTH);
+  if (!looksLikeTable) return false;
+  const row = parseTableRow(line);
+  if (!row || !row.name || /^[-—|]+$/.test(row.name)) return true;
+  if (sectionFlags.inCoolDown) {
+    coolDown.push({ name: row.name, duration: row.duration, notes: row.notes });
+  } else if (sectionFlags.inWarmUp) {
+    warmUp.push({ name: row.name, duration: row.duration });
+  }
+  return true;
+}
+
+/**
+ * Pull sets / reps / rest / weight from "Key: value" pieces of a bullet exercise line.
+ * @param {string[]} parts
+ * @returns {{ sets: string, reps: string, rest: string, startingWeight: string }}
+ */
+function setsAndRepsFromCrossValue(value) {
+  const crossMatch =
+    value.match(/(\d+)\s*x\s*([\d\-]+)/i) ||
+    value.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)/i);
+  if (!crossMatch) return null;
+  return { sets: crossMatch[1], reps: crossMatch[2] };
+}
+
+function applyBulletPartKey(key, value, bucket) {
+  if (/sets?\s*x\s*reps?|reps?/i.test(key)) {
+    const parsed = setsAndRepsFromCrossValue(value);
+    if (!parsed) return;
+    bucket.sets = parsed.sets;
+    bucket.reps = parsed.reps;
+    return;
+  }
+  if (/rest/i.test(key)) {
+    bucket.rest = value;
+    return;
+  }
+  if (/starting\s*weight|weight/i.test(key)) bucket.startingWeight = value;
+}
+
+function setsRepsRestFromBulletParts(parts) {
+  const bucket = { sets: '', reps: '', rest: '', startingWeight: '' };
+  for (let partIndex = 1; partIndex < parts.length; partIndex += 1) {
+    const part = parts[partIndex];
+    if (/Form\s*Cues?/i.test(part)) continue;
+    const colonIndex = part.indexOf(':');
+    if (colonIndex < 0) continue;
+    const key = part.slice(0, colonIndex).trim().toLowerCase();
+    const value = cleanText(part.slice(colonIndex + 1).trim());
+    applyBulletPartKey(key, value, bucket);
+  }
+  return bucket;
+}
+
+/**
+ * Fallback: "Name: 4 sets x 8-10 reps, 90s rest" on one colon line.
+ * @param {string} content
+ * @param {{ name: string, sets: string, reps: string, rest: string }} current
+ * @returns {void}
+ */
+function fillSetsRepsFromColonFallback(content, current) {
+  if (current.sets || current.reps || !content.includes(':')) return;
+  const colonMatch = content.match(/^(.+?):\s*(.+)$/);
+  if (!colonMatch) return;
+  current.name = colonMatch[1].replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim();
+  const afterColon = colonMatch[2];
+  const setMatch =
+    afterColon.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)\s*reps?/i) ||
+    afterColon.match(/(\d+)\s*x\s*([\d\-]+)/i);
+  if (setMatch) {
+    current.sets = setMatch[1];
+    current.reps = setMatch[2];
+  }
+  const restMatch = afterColon.match(/(\d+)\s*s\s*rest|(\d+)\s*sec|rest\s*(\d+)\s*s/i);
+  if (restMatch) {
+    current.rest = (restMatch[1] || restMatch[2] || restMatch[3] || '') + 's';
+  }
+}
+
+/**
+ * Parse one bullet exercise line into an exercise object (or null).
+ * @param {string} line
+ * @returns {object|null}
+ */
+function exerciseFromBulletLine(line) {
+  const bulletMatch = line.match(/^[\s•\d.*\-]+(.+)$/);
+  if (!bulletMatch) return null;
+  const content = bulletMatch[1].trim();
+  if (!content || content.length < MIN_BULLET_CONTENT_LENGTH) return null;
+
+  const formCuesMatch = content.match(/Form\s*Cues?:\s*(.+)$/i);
+  const parts = content.split(/\s+-\s+/);
+  const firstPart = (parts[0] || '').trim();
+  const formCues = formCuesMatch
+    ? formCuesMatch[1]
+        .split(/\s+-\s+/)
+        .map((cuePiece) => cleanText(cuePiece.trim()))
+        .filter(Boolean)
+    : [];
+
+  const current = {
+    name: firstPart.replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim(),
+    ...setsRepsRestFromBulletParts(parts),
+  };
+  fillSetsRepsFromColonFallback(content, current);
+
+  const hasEnough =
+    current.name &&
+    (current.sets ||
+      current.reps ||
+      formCues.length > 0 ||
+      current.name.length > MIN_EXERCISE_NAME_LENGTH);
+  if (!hasEnough) return null;
+
+  return {
+    name: cleanText(current.name),
+    sets: current.sets || '',
+    reps: current.reps || '',
+    rest: current.rest || '',
+    startingWeight: current.startingWeight || '',
+    formCues,
+  };
+}
+
+/**
+ * Parse one ## / ### markdown section into overview, notes, or a day card.
+ * @param {string} block
+ * @param {number} sectionIndex
+ * @param {{ overview: string, days: Array, notes: string }} result
+ * @param {{ firstOverview: string }} overviewState
+ * @returns {void}
+ */
+function parseOnePlanSection(block, sectionIndex, result, overviewState) {
+  const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] || '';
+  const lowerFirst = firstLine.toLowerCase();
+
+  const looksLikeOverview =
+    sectionIndex === 0 &&
+    (lowerFirst.includes('overview') ||
+      lowerFirst.includes('personalized') ||
+      /^1\./.test(firstLine) ||
+      block.length > OVERVIEW_BLOCK_MIN_LENGTH);
+  if (looksLikeOverview) {
+    overviewState.firstOverview = block;
+    return;
+  }
+
+  if (/important\s*notes|notes\s*$/i.test(firstLine) || /^7\./.test(firstLine)) {
+    result.notes = lines.slice(1).join('\n').trim() || firstLine;
+    return;
+  }
+
+  const label =
+    cleanText(firstLine.replace(/^[\d.]+\s*/, '').trim()) ||
+    `Day ${result.days.length + 1}`;
+  const isRest = /\b(rest|off)\b/i.test(label);
+  const type = isRest ? 'Rest' : inferType(label);
+  const warmUp = [];
+  const exercises = [];
+  const coolDown = [];
+  const sectionFlags = { inWarmUp: false, inCoolDown: false, inExercises: false };
+
+  for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    if (applyDaySectionHeader(line, sectionFlags)) continue;
+    if (tryParseWarmCoolTableLine(line, sectionFlags, warmUp, coolDown)) continue;
+    const exercise = exerciseFromBulletLine(line);
+    if (exercise) exercises.push(exercise);
+  }
+
+  result.days.push({ label, type, isRest, warmUp, exercises, coolDown });
+}
+
+/**
+ * Parse raw AI plan into { overview, days, notes }.
+ * Exercises: "A1 — Bench Press - Sets x Reps: 4 x 8-10 - Rest: 90 seconds - Form Cues: - cue1"
  * Warm-up/cool-down: table format "| Exercise | Duration | Notes |"
+ * @param {string} rawText
+ * @returns {{ overview: string, days: Array, notes: string }}
  */
 function parsePlan(rawText) {
   const result = { overview: '', days: [], notes: '' };
   if (!rawText || typeof rawText !== 'string') return result;
-  const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2');
-  const sections = normalized.split(/\n\s*#{2,3}\s*/).map((s) => s.trim()).filter(Boolean);
-  let firstOverview = '';
-  for (let i = 0; i < sections.length; i++) {
-    const block = sections[i];
-    const lines = block.split(/\n/).map((l) => l.trim()).filter(Boolean);
-    const firstLine = lines[0] || '';
-    const lowerFirst = firstLine.toLowerCase();
-    if (i === 0 && (lowerFirst.includes('overview') || lowerFirst.includes('personalized') || /^1\./.test(firstLine) || block.length > 200)) {
-      firstOverview = block;
-      continue;
-    }
-    if (/important\s*notes|notes\s*$/i.test(firstLine) || /^7\./.test(firstLine)) {
-      result.notes = lines.slice(1).join('\n').trim() || firstLine;
-      continue;
-    }
-    const label = cleanText(firstLine.replace(/^[\d.]+\s*/, '').trim()) || `Day ${result.days.length + 1}`;
-    const isRest = /\b(rest|off)\b/i.test(label);
-    const type = isRest ? 'Rest' : inferType(label);
-    const warmUp = [];
-    const exercises = [];
-    const coolDown = [];
-    let inWarmUp = false;
-    let inCoolDown = false;
-    let inExercises = false;
-    for (let j = 1; j < lines.length; j++) {
-      const line = lines[j];
-      const lower = line.toLowerCase();
-      if (/warm[- ]?up|warmup/.test(lower) && line.length < 30) {
-        inWarmUp = true;
-        inCoolDown = false;
-        inExercises = false;
-        continue;
-      }
-      if (/cool[- ]?down|cooldown/.test(lower) && line.length < 30) {
-        inCoolDown = true;
-        inWarmUp = false;
-        inExercises = false;
-        continue;
-      }
-      if (/exercise|main\s*work|workout\s*a|workout\s*b/i.test(lower) && line.length < 40 && !inWarmUp && !inCoolDown) {
-        inExercises = true;
-        continue;
-      }
-      if (/^\|/.test(line) || (/\|/.test(line) && line.length < 200)) {
-        const row = parseTableRow(line);
-        if (row && row.name && !/^[-—|]+$/.test(row.name)) {
-          if (inCoolDown) coolDown.push({ name: row.name, duration: row.duration, notes: row.notes });
-          else if (inWarmUp) warmUp.push({ name: row.name, duration: row.duration });
-        }
-        continue;
-      }
-      const bulletMatch = line.match(/^[\s•\d.*\-]+(.+)$/);
-      if (bulletMatch) {
-        const content = bulletMatch[1].trim();
-        if (!content || content.length < 2) continue;
-        const formCuesMatch = content.match(/Form\s*Cues?:\s*(.+)$/i);
-        const parts = content.split(/\s+-\s+/);
-        const firstPart = (parts[0] || '').trim();
-        let name = firstPart.replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim();
-        let sets = '';
-        let reps = '';
-        let rest = '';
-        let startingWeight = '';
-        const formCues = [];
-        if (formCuesMatch) {
-          formCuesMatch[1].split(/\s+-\s+/).forEach((c) => {
-            const cue = cleanText(c.trim());
-            if (cue) formCues.push(cue);
-          });
-        }
-        for (let k = 1; k < parts.length; k++) {
-          const p = parts[k];
-          if (/Form\s*Cues?/i.test(p)) continue;
-          const colonIdx = p.indexOf(':');
-          if (colonIdx >= 0) {
-            const key = p.slice(0, colonIdx).trim().toLowerCase();
-            const val = cleanText(p.slice(colonIdx + 1).trim());
-            if (/sets?\s*x\s*reps?|reps?/i.test(key)) {
-              const xMatch = val.match(/(\d+)\s*x\s*([\d\-]+)/i) || val.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)/i);
-              if (xMatch) {
-                sets = xMatch[1];
-                reps = xMatch[2];
-              }
-            } else if (/rest/i.test(key)) rest = val;
-            else if (/starting\s*weight|weight/i.test(key)) startingWeight = val;
-          }
-        }
-        if (!sets && !reps && content.includes(':')) {
-          const colonMatch = content.match(/^(.+?):\s*(.+)$/);
-          if (colonMatch) {
-            name = colonMatch[1].replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim();
-            const restPart = colonMatch[2];
-            const setMatch = restPart.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)\s*reps?/i) || restPart.match(/(\d+)\s*x\s*([\d\-]+)/i);
-            if (setMatch) {
-              sets = setMatch[1];
-              reps = setMatch[2];
-            }
-            const restMatch = restPart.match(/(\d+)\s*s\s*rest|(\d+)\s*sec|rest\s*(\d+)\s*s/i);
-            if (restMatch) rest = (restMatch[1] || restMatch[2] || restMatch[3] || '') + 's';
-          }
-        }
-        if (name && (sets || reps || formCues.length > 0 || name.length > 3)) {
-          exercises.push({
-            name: cleanText(name),
-            sets: sets || '',
-            reps: reps || '',
-            rest: rest || '',
-            startingWeight: startingWeight || '',
-            formCues,
-          });
-        }
-      }
-    }
-    result.days.push({ label, type, isRest, warmUp, exercises, coolDown });
+
+  // 1. Normalize newlines and force headings onto their own lines.
+  const normalized = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2');
+
+  // 2. Split on ## / ### section headers.
+  const sections = normalized
+    .split(/\n\s*#{2,3}\s*/)
+    .map((section) => section.trim())
+    .filter(Boolean);
+
+  // 3. Each section → overview, notes, or a day card.
+  const overviewState = { firstOverview: '' };
+  for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+    parseOnePlanSection(sections[sectionIndex], sectionIndex, result, overviewState);
   }
-  result.overview = firstOverview || result.overview;
+
+  result.overview = overviewState.firstOverview || result.overview;
   return result;
 }
 
@@ -1781,6 +2008,599 @@ function CoachViewContextBanner({ isDark, clientName, textColor, mutedColor }) {
   );
 }
 
+
+/**
+ * Parse stored plan text → structured plan (JSON first, then legacy markdown).
+ * @param {string} rawPlanText
+ * @returns {{ structuredPlan: object|null, planParseError: boolean }}
+ */
+function structuredPlanFromStoredText(rawPlanText) {
+  try {
+    const rawJson = extractJSON(String(rawPlanText));
+    return { structuredPlan: JSON.parse(rawJson), planParseError: false };
+  } catch (jsonError) {
+    return structuredPlanFromLegacyMarkdown(rawPlanText, jsonError);
+  }
+}
+
+/**
+ * @param {string} rawPlanText
+ * @param {Error} [jsonError]
+ * @returns {{ structuredPlan: object|null, planParseError: boolean }}
+ */
+function structuredPlanFromLegacyMarkdown(rawPlanText, jsonError) {
+  try {
+    const legacy = parsePlan(String(rawPlanText));
+    const hasContent = legacy && (legacy.overview || (legacy.days && legacy.days.length));
+    if (!hasContent) return { structuredPlan: null, planParseError: true };
+    return {
+      structuredPlan: {
+        overview: legacy.overview || '',
+        weeklySchedule: (legacy.days || []).map((day) => ({
+          day: day.label || '',
+          focus: day.type || '',
+        })),
+        days: legacy.days || [],
+        nutritionNotes: '',
+        generalNotes: legacy.notes || '',
+      },
+      planParseError: false,
+    };
+  } catch (fallbackError) {
+    console.warn(
+      'Stored plan parse failed (JSON + legacy):',
+      jsonError?.message || jsonError,
+      fallbackError?.message || fallbackError,
+    );
+    return { structuredPlan: null, planParseError: true };
+  }
+}
+
+/**
+ * If buildWorkoutPlanPayloadFromStructured yields rows, migrate to that shape.
+ * @param {object|null} structuredPlan
+ * @returns {{ structuredPlan: object|null, migratedRaw: string|null, didMigrate: boolean }}
+ */
+function maybeMigrateStructuredPlanPayload(structuredPlan) {
+  try {
+    const payload = buildWorkoutPlanPayloadFromStructured(structuredPlan);
+    const hasRows =
+      payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0;
+    if (!hasRows) {
+      return { structuredPlan, migratedRaw: null, didMigrate: false };
+    }
+    return {
+      structuredPlan: payload,
+      migratedRaw: JSON.stringify(payload),
+      didMigrate: true,
+    };
+  } catch (migrateError) {
+    console.warn('Workout plan migration failed:', migrateError?.message || migrateError);
+    return { structuredPlan, migratedRaw: null, didMigrate: false };
+  }
+}
+
+/**
+ * Persist a migrated plan to AsyncStorage (+ optional global key) and Firestore.
+ * @param {object} args
+ * @returns {Promise<object>} saved plan row for setGeneratedPlan
+ */
+async function persistMigratedPlanToCaches({
+  subjectUid,
+  isSelf,
+  loadedData,
+  firestorePlan,
+  structuredPlan,
+  migratedRaw,
+}) {
+  const generatedAtMs = firestorePlan.generatedAt?.toMillis?.() ?? Date.now();
+  const saved = {
+    id: `plan_${generatedAtMs}`,
+    generatedAt: generatedAtMs,
+    userData: loadedData,
+    planText: migratedRaw,
+    structuredPlan,
+    planParseError: false,
+  };
+  await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
+  if (isSelf) {
+    await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+  }
+  await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
+  return saved;
+}
+
+/**
+ * Load Firestore current plan, parse/migrate, return saved row or null.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadSavedPlanFromFirestore({ subjectUid, isSelf, loadedData }) {
+  const firestorePlan = await getCurrentWorkoutPlan(subjectUid);
+  if (!firestorePlan?.rawPlan) return null;
+
+  let { structuredPlan, planParseError } = structuredPlanFromStoredText(firestorePlan.rawPlan);
+  const migration = maybeMigrateStructuredPlanPayload(structuredPlan);
+  if (migration.didMigrate) {
+    firestorePlan.rawPlan = migration.migratedRaw;
+    structuredPlan = migration.structuredPlan;
+    planParseError = false;
+    return persistMigratedPlanToCaches({
+      subjectUid,
+      isSelf,
+      loadedData,
+      firestorePlan,
+      structuredPlan,
+      migratedRaw: migration.migratedRaw,
+    });
+  }
+
+  return {
+    id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
+    generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
+    userData: loadedData,
+    planText: firestorePlan.rawPlan,
+    structuredPlan,
+    planParseError,
+  };
+}
+
+/**
+ * Load plan from AsyncStorage when Firestore has none.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadSavedPlanFromAsyncStorage({ subjectUid, isSelf }) {
+  const planJson = isSelf
+    ? (await AsyncStorage.getItem('@workout_plan')) ||
+      (await AsyncStorage.getItem(`workout_plan_${subjectUid}`))
+    : await AsyncStorage.getItem(`workout_plan_${subjectUid}`);
+  if (!planJson) return null;
+
+  const saved = JSON.parse(planJson);
+  if (!saved || !(saved.planText || saved.structuredPlan)) return null;
+
+  if (!saved.structuredPlan && saved.planText) {
+    const parsed = structuredPlanFromStoredText(saved.planText);
+    saved.structuredPlan = parsed.structuredPlan;
+    saved.planParseError = parsed.planParseError;
+  }
+
+  const migration = maybeMigrateStructuredPlanPayload(
+    saved.structuredPlan || tryParseJsonObject(saved.planText),
+  );
+  if (migration.didMigrate) {
+    saved.structuredPlan = migration.structuredPlan;
+    saved.planText = migration.migratedRaw;
+    saved.planParseError = false;
+    await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
+    if (isSelf) await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+    await setCurrentWorkoutPlan(subjectUid, { rawPlan: migration.migratedRaw });
+  }
+
+  return saved;
+}
+
+/**
+ * Parse edited plan text into structured plan (JSON, then legacy).
+ * @param {string} text
+ * @returns {{ structuredPlan: object|null, planParseError: boolean }}
+ */
+function structuredPlanFromEditedText(text) {
+  try {
+    return { structuredPlan: JSON.parse(text), planParseError: false };
+  } catch (jsonError) {
+    console.warn('Edited plan JSON parse failed:', jsonError);
+    return structuredPlanFromLegacyMarkdown(text, jsonError);
+  }
+}
+
+/**
+ * Parse API workout JSON that must contain a 7-day plan array.
+ * @param {string} responseText
+ * @returns {{ success: boolean, plan: Array }}
+ */
+function parseWorkoutPlanJsonText(responseText) {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (firstError) {
+    const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON object found in response');
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (secondError) {
+      throw new Error(`Failed to parse workout plan: ${secondError.message}`);
+    }
+  }
+
+  const plan = Array.isArray(parsed?.plan) ? parsed.plan : null;
+  if (!plan) throw new Error('Invalid structure: missing or invalid "plan" array');
+  if (plan.length !== DAYS_IN_WEEK) {
+    throw new Error(`Expected 7 days, got ${plan.length}`);
+  }
+  return { parsed, plan };
+}
+
+
+
+/**
+ * AsyncStorage fallback for onboarding when Firestore has no user doc.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromAsyncStorageOrCoachEmpty({
+  storageKey,
+  isCoach,
+  cancelled,
+  setOnboardingData,
+  onBack,
+}) {
+  const data = await AsyncStorage.getItem(storageKey);
+  if (data) {
+    const loadedData = normalizeClientProfileFields(JSON.parse(data));
+    if (!cancelled) setOnboardingData(loadedData);
+    return loadedData;
+  }
+  if (isCoach) {
+    if (!cancelled) setOnboardingData({});
+    return {};
+  }
+  Alert.alert('Error', 'Onboarding data not found');
+  if (onBack) onBack();
+  return null;
+}
+
+/**
+ * @param {object} args
+ * @returns {void}
+ */
+function handleOnboardingLoadError({ isCoach, cancelled, setOnboardingData, onBack }) {
+  if (!isCoach) {
+    Alert.alert('Error', 'Failed to load onboarding data');
+    if (onBack) onBack();
+    return;
+  }
+  if (!cancelled) setOnboardingData({});
+}
+
+
+/**
+ * Load onboarding + saved plan into React state for the plan screen.
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function loadOnboardingAndPlanIntoState({
+  subjectUid,
+  isCoach,
+  isSelf,
+  cancelled,
+  setOnboardingData,
+  setGeneratedPlan,
+  onBack,
+}) {
+  const storageKey = `onboarding_data_${subjectUid}`;
+  let loadedData = await loadOnboardingFromFirestoreDoc({
+    subjectUid,
+    storageKey,
+    cancelled,
+    setOnboardingData,
+  });
+
+  if (!loadedData) {
+    loadedData = await loadOnboardingFromAsyncStorageOrCoachEmpty({
+      storageKey,
+      isCoach,
+      cancelled,
+      setOnboardingData,
+      onBack,
+    });
+  }
+
+  if (cancelled || !subjectUid) return;
+
+  const fromFirestore = await loadSavedPlanFromFirestore({
+    subjectUid,
+    isSelf,
+    loadedData,
+  });
+  if (fromFirestore && !cancelled) {
+    setGeneratedPlan(fromFirestore);
+    return;
+  }
+
+  const fromStorage = await loadSavedPlanFromAsyncStorage({ subjectUid, isSelf });
+  if (fromStorage && !cancelled) setGeneratedPlan(fromStorage);
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromFirestoreDoc({
+  subjectUid,
+  storageKey,
+  cancelled,
+  setOnboardingData,
+}) {
+  if (!db) return null;
+  const userSnap = await getDoc(doc(db, 'users', subjectUid));
+  if (!userSnap.exists()) return null;
+  const loadedData = normalizeClientProfileFields(userSnap.data());
+  if (cancelled) return loadedData;
+  await AsyncStorage.setItem(storageKey, JSON.stringify(loadedData));
+  setOnboardingData(loadedData);
+  return loadedData;
+}
+
+
+/**
+ * Shake the first invalid onboarding card and scroll to top.
+ * @param {object} args
+ * @returns {void}
+ */
+function shakeFirstValidationError({
+  validationErrors,
+  setExpandedCard,
+  triggerShake,
+  scrollViewRef,
+}) {
+  const firstErrorKey = Object.keys(validationErrors)[0];
+  if (!firstErrorKey) return;
+  setExpandedCard(firstErrorKey);
+  triggerShake(firstErrorKey);
+  setTimeout(() => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  }, 100);
+}
+
+/**
+ * Ask the API, parse, cache, and mark generation success.
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function runWorkoutPlanGeneration({
+  subjectUid,
+  onboardingData,
+  profileSubjectUid,
+  fetchWorkoutPlanFromServer,
+  parseWorkoutPlan,
+  ui,
+  setOnboardingData,
+  setGeneratedPlan,
+  setGenerationError,
+  setPdfGenerationError,
+  setShowRawPlanFallback,
+  setPdfLocalUri,
+  setPdfDownloadUrl,
+  setPlanTitleForPdf,
+  appInForegroundRef,
+  mountedRef,
+  schedulePlanReadyNotification,
+}) {
+  const profileForGen = await loadProfileForGeneration({
+    subjectUid,
+    onboardingData,
+    ui,
+    setOnboardingData,
+  });
+  const rawText = await fetchWorkoutPlanFromServer(profileForGen, subjectUid);
+
+  if (rawText) {
+    console.log(
+      'RAW WORKOUT RESPONSE length:',
+      rawText.length,
+      '| preview:',
+      JSON.stringify(String(rawText).slice(0, 600)),
+    );
+  }
+
+  if (!rawText || typeof rawText !== 'string') {
+    throw new Error('Empty response from server. Please try again.');
+  }
+
+  let planText = extractJSON(rawText);
+  if (!planText || typeof planText !== 'string') {
+    throw new Error('Empty response from Claude. Please try again.');
+  }
+
+  const structuredPlan = tryParseGeneratedWorkoutPlan({
+    planText,
+    parseWorkoutPlan,
+    subjectUid,
+    onboardingData,
+    ui,
+    setGenerationError,
+    setGeneratedPlan,
+  });
+  if (!structuredPlan) return;
+
+  const authedUid = auth.currentUser?.uid;
+  const targetUid = profileSubjectUid;
+  const planData = {
+    id: `plan_${Date.now()}`,
+    generatedAt: Date.now(),
+    userData: onboardingData,
+    planText,
+    structuredPlan,
+    planParseError: false,
+  };
+
+  await AsyncStorage.setItem(
+    `workout_plan_${targetUid || authedUid || 'unknown'}`,
+    JSON.stringify(planData),
+  );
+  if (targetUid && authedUid && targetUid === authedUid) {
+    await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
+  }
+  ui(() => setGeneratedPlan(planData));
+  if (targetUid) {
+    await setCurrentWorkoutPlan(targetUid, {
+      rawPlan: planText,
+      planText,
+      structuredPlan: planData.structuredPlan || null,
+      title: nameWorkoutPlan(planData),
+    });
+  }
+
+  ui(() => setPdfGenerationError(null));
+  ui(() => setShowRawPlanFallback(false));
+  ui(() => setPdfLocalUri(null));
+  ui(() => setPdfDownloadUrl(null));
+  ui(() => setPlanTitleForPdf(''));
+
+  const userAwayFromWorkout = !mountedRef.current || !appInForegroundRef.current;
+  if (targetUid) {
+    await markWorkoutGenerationSucceeded(targetUid, { userAwayFromWorkout });
+  }
+  if (userAwayFromWorkout) {
+    await schedulePlanReadyNotification();
+    return;
+  }
+  if (targetUid) await clearWorkoutPlanReadyBadge(targetUid);
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<object>}
+ */
+async function loadProfileForGeneration({
+  subjectUid,
+  onboardingData,
+  ui,
+  setOnboardingData,
+}) {
+  let profileForGen = onboardingData;
+  if (!db || !subjectUid) return profileForGen;
+  try {
+    const freshSnap = await getDoc(doc(db, 'users', subjectUid));
+    if (!freshSnap.exists()) return profileForGen;
+    profileForGen = normalizeClientProfileFields(freshSnap.data());
+    ui(() => setOnboardingData(profileForGen));
+    await AsyncStorage.setItem(
+      `onboarding_data_${subjectUid}`,
+      JSON.stringify(profileForGen),
+    );
+  } catch (_) {
+    /* use cached onboarding */
+  }
+  return profileForGen;
+}
+
+/**
+ * Parse generated plan text; on failure set error state and return null.
+ * @param {object} args
+ * @returns {object|null}
+ */
+function tryParseGeneratedWorkoutPlan({
+  planText,
+  parseWorkoutPlan,
+  subjectUid,
+  onboardingData,
+  ui,
+  setGenerationError,
+  setGeneratedPlan,
+}) {
+  try {
+    const parsed = parseWorkoutPlan(planText);
+    return {
+      ...parsed,
+      workoutPlan: Array.isArray(parsed?.plan) ? parsed.plan : [],
+    };
+  } catch (parseErr) {
+    console.warn('Workout plan parse failed:', parseErr);
+    const truncated =
+      typeof planText === 'string' && !planText.trimEnd().endsWith('}');
+    const parseMsg = truncated
+      ? 'The response was cut off. Tap Generate again to retry.'
+      : parseErr?.message || 'Failed to parse — please regenerate.';
+    ui(() => setGenerationError(parseMsg));
+    ui(() =>
+      setGeneratedPlan({
+        id: `plan_${Date.now()}`,
+        generatedAt: Date.now(),
+        userData: onboardingData,
+        planText,
+        structuredPlan: null,
+        planParseError: true,
+      }),
+    );
+    if (subjectUid) {
+      markWorkoutGenerationFailed(subjectUid).catch(() => {});
+    }
+    return null;
+  }
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function handleWorkoutPlanGenerationError({
+  error,
+  profileSubjectUid,
+  planGenerationLimit,
+  setWorkoutGenUsage,
+  ui,
+  setGenerationError,
+  mountedRef,
+  generateWorkoutPlan,
+}) {
+  console.error('Error generating workout plan:', error);
+  const failUid = profileSubjectUid || auth.currentUser?.uid;
+  if (failUid) await markWorkoutGenerationFailed(failUid);
+
+  if (error?.code === 'monthly_limit_reached') {
+    applyMonthlyLimitError({
+      error,
+      planGenerationLimit,
+      setWorkoutGenUsage,
+      ui,
+      setGenerationError,
+      mountedRef,
+    });
+    return;
+  }
+
+  ui(() => setGenerationError(error.message || 'Failed to generate workout plan'));
+  if (!mountedRef.current) return;
+  Alert.alert(
+    'Generation Failed',
+    error.message || "We couldn't generate your workout plan. Please try again.",
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Retry', onPress: () => generateWorkoutPlan() },
+    ],
+  );
+}
+
+/**
+ * @param {object} args
+ * @returns {void}
+ */
+function applyMonthlyLimitError({
+  error,
+  planGenerationLimit,
+  setWorkoutGenUsage,
+  ui,
+  setGenerationError,
+  mountedRef,
+}) {
+  if (error.limitPayload) {
+    setWorkoutGenUsage({
+      generations_used: Number(error.limitPayload.used) || planGenerationLimit,
+      generations_limit: Number(error.limitPayload.limit) || planGenerationLimit,
+      resets_at: error.limitPayload.resets_at || nextMonthResetsAtIso(),
+    });
+  }
+  ui(() => setGenerationError(error.message));
+  if (mountedRef.current) {
+    Alert.alert('Monthly limit reached', error.message);
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
 export default function CreateWorkoutPlanScreen({
   userId,
   /** When true (trainer app, no roster), show CTA instead of loading trainer onboarding */
@@ -1873,8 +2693,10 @@ export default function CreateWorkoutPlanScreen({
   const plansRemaining = Math.max(0, planGenerationLimit - plansUsedThisMonth);
   const nextResetDate = useMemo(() => {
     const raw = workoutGenUsage?.resets_at || nextMonthResetsAtIso();
-    const d = new Date(`${String(raw).slice(0, 10)}T12:00:00`);
-    return Number.isNaN(d.getTime()) ? nextMonthResetDate() : d;
+    const resetDate = new Date(
+      `${String(raw).slice(0, 10)}T${String(NOON_HOUR_FOR_DATE_PARSE).padStart(2, '0')}:00:00`,
+    );
+    return Number.isNaN(resetDate.getTime()) ? nextMonthResetDate() : resetDate;
   }, [workoutGenUsage?.resets_at]);
 
   useEffect(() => {
@@ -1917,8 +2739,11 @@ export default function CreateWorkoutPlanScreen({
   useEffect(() => {
     if (!(readOnly && showFullPlan)) return;
     setViewerErrorDelayElapsed(false);
-    const t = setTimeout(() => setViewerErrorDelayElapsed(true), 450);
-    return () => clearTimeout(t);
+    const viewerErrorDelayTimer = setTimeout(
+      () => setViewerErrorDelayElapsed(true),
+      VIEWER_ERROR_DELAY_MS,
+    );
+    return () => clearTimeout(viewerErrorDelayTimer);
   }, [readOnly, showFullPlan, generatedPlan?.id]);
 
   const togglePlanViewerDay = useCallback((dayShort) => {
@@ -2028,10 +2853,10 @@ export default function CreateWorkoutPlanScreen({
 
   useEffect(() => {
     if (!isGenerating) return;
-    const t = setInterval(() => {
+    const generatingMessageTimer = setInterval(() => {
       setGeneratingMessageIndex((i) => (i + 1) % GENERATING_MESSAGES.length);
-    }, 2200);
-    return () => clearInterval(t);
+    }, GENERATING_MESSAGE_ROTATE_MS);
+    return () => clearInterval(generatingMessageTimer);
   }, [isGenerating]);
 
   const fetchWorkoutPlanFromServer = async (data, subjectUserId) => {
@@ -2072,172 +2897,18 @@ export default function CreateWorkoutPlanScreen({
       const isSelf = !isCoach;
 
       try {
-        const key = `onboarding_data_${subjectUid}`;
-        let loadedData = null;
-        if (db) {
-          const userSnap = await getDoc(doc(db, 'users', subjectUid));
-          if (userSnap.exists()) {
-            loadedData = normalizeClientProfileFields(userSnap.data());
-            if (!cancelled) {
-              await AsyncStorage.setItem(key, JSON.stringify(loadedData));
-              setOnboardingData(loadedData);
-            }
-          }
-        }
-        if (!loadedData) {
-          const data = await AsyncStorage.getItem(key);
-          if (data) {
-            loadedData = normalizeClientProfileFields(JSON.parse(data));
-            if (!cancelled) setOnboardingData(loadedData);
-          } else if (isCoach) {
-            if (!cancelled) setOnboardingData({});
-          } else {
-            Alert.alert('Error', 'Onboarding data not found');
-            if (onBack) onBack();
-          }
-        }
-
-        if (cancelled || !subjectUid) return;
-
-        const firestorePlan = await getCurrentWorkoutPlan(subjectUid);
-        if (firestorePlan?.rawPlan) {
-          let structuredPlan = null;
-          let planParseError = false;
-          try {
-            const raw = extractJSON(String(firestorePlan.rawPlan));
-            structuredPlan = JSON.parse(raw);
-          } catch (e) {
-            try {
-              const legacy = parsePlan(String(firestorePlan.rawPlan));
-              if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
-                structuredPlan = {
-                  overview: legacy.overview || '',
-                  weeklySchedule: (legacy.days || []).map((d) => ({
-                    day: d.label || '',
-                    focus: d.type || '',
-                  })),
-                  days: legacy.days || [],
-                  nutritionNotes: '',
-                  generalNotes: legacy.notes || '',
-                };
-                planParseError = false;
-              } else {
-                planParseError = true;
-              }
-            } catch (fallbackErr) {
-              console.warn('Stored plan parse failed on load (JSON + legacy):', e?.message || e, fallbackErr?.message || fallbackErr);
-              planParseError = true;
-            }
-          }
-
-          try {
-            const payload = buildWorkoutPlanPayloadFromStructured(structuredPlan);
-            if (payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0) {
-              structuredPlan = payload;
-              planParseError = false;
-              const migratedRaw = JSON.stringify(payload);
-              firestorePlan.rawPlan = migratedRaw;
-              await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify({
-                id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
-                generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
-                userData: loadedData,
-                planText: migratedRaw,
-                structuredPlan: payload,
-                planParseError: false,
-              }));
-              if (isSelf) {
-                await AsyncStorage.setItem('@workout_plan', JSON.stringify({
-                  id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
-                  generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
-                  userData: loadedData,
-                  planText: migratedRaw,
-                  structuredPlan: payload,
-                  planParseError: false,
-                }));
-              }
-              await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
-            }
-          } catch (e) {
-            console.warn('Workout plan migration (Firestore) failed:', e?.message || e);
-          }
-
-          const saved = {
-            id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
-            generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
-            userData: loadedData,
-            planText: firestorePlan.rawPlan,
-            structuredPlan,
-            planParseError,
-          };
-          if (!cancelled) setGeneratedPlan(saved);
-        } else {
-          const planJson = isSelf
-            ? (await AsyncStorage.getItem('@workout_plan')) || (await AsyncStorage.getItem(`workout_plan_${subjectUid}`))
-            : await AsyncStorage.getItem(`workout_plan_${subjectUid}`);
-          if (planJson) {
-            const saved = JSON.parse(planJson);
-            if (saved && (saved.planText || saved.structuredPlan)) {
-              if (!saved.structuredPlan && saved.planText) {
-                try {
-                  const raw = extractJSON(String(saved.planText));
-                  saved.structuredPlan = JSON.parse(raw);
-                  saved.planParseError = false;
-                } catch (e) {
-                  try {
-                    const legacy = parsePlan(String(saved.planText));
-                    if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
-                      saved.structuredPlan = {
-                        overview: legacy.overview || '',
-                        weeklySchedule: (legacy.days || []).map((d) => ({
-                          day: d.label || '',
-                          focus: d.type || '',
-                        })),
-                        days: legacy.days || [],
-                        nutritionNotes: '',
-                        generalNotes: legacy.notes || '',
-                      };
-                      saved.planParseError = false;
-                    } else {
-                      saved.structuredPlan = null;
-                      saved.planParseError = true;
-                    }
-                  } catch (fallbackErr) {
-                    console.warn('Stored plan parse failed from AsyncStorage (JSON + legacy):', e?.message || e, fallbackErr?.message || fallbackErr);
-                    saved.structuredPlan = null;
-                    saved.planParseError = true;
-                  }
-                }
-              }
-
-              try {
-                const payload = buildWorkoutPlanPayloadFromStructured(saved.structuredPlan || tryParseJsonObject(saved.planText));
-                if (payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0) {
-                  const migratedRaw = JSON.stringify(payload);
-                  saved.structuredPlan = payload;
-                  saved.planText = migratedRaw;
-                  saved.planParseError = false;
-                  await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
-                  if (isSelf) {
-                    await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
-                  }
-                  await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
-                }
-              } catch (e) {
-                console.warn('Workout plan migration (AsyncStorage) failed:', e?.message || e);
-              }
-
-              if (!cancelled) setGeneratedPlan(saved);
-            }
-          }
-        }
+        await loadOnboardingAndPlanIntoState({
+          subjectUid,
+          isCoach,
+          isSelf,
+          cancelled,
+          setOnboardingData,
+          setGeneratedPlan,
+          onBack,
+        });
       } catch (error) {
         console.error('Error loading onboarding data:', error);
-        if (!isCoach) {
-          Alert.alert('Error', 'Failed to load onboarding data');
-          if (onBack) onBack();
-        } else if (!cancelled) {
-          setOnboardingData({});
-        }
+        handleOnboardingLoadError({ isCoach, cancelled, setOnboardingData, onBack });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -2273,8 +2944,8 @@ export default function CreateWorkoutPlanScreen({
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(auraAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(auraAnim, { toValue: 0, duration: 1200, useNativeDriver: true }),
+        Animated.timing(auraAnim, { toValue: 1, duration: AURA_PULSE_DURATION_MS, useNativeDriver: true }),
+        Animated.timing(auraAnim, { toValue: 0, duration: AURA_PULSE_DURATION_MS, useNativeDriver: true }),
       ])
     );
     loop.start();
@@ -2387,12 +3058,15 @@ export default function CreateWorkoutPlanScreen({
     if (!onboardingData.weight || onboardingData.weight <= 0) {
       errors.weight = 'Weight is required';
     }
-    const h = onboardingData.height;
+    const heightValue = onboardingData.height;
     const heightOk =
-      (typeof h === 'number' && Number.isFinite(h) && h >= 36 && h <= 96) ||
-      (typeof h === 'object' &&
-        h != null &&
-        (Number(h.feet) > 0 || Number(h.inches) > 0));
+      (typeof heightValue === 'number' &&
+        Number.isFinite(heightValue) &&
+        heightValue >= MIN_HEIGHT_INCHES &&
+        heightValue <= MAX_HEIGHT_INCHES) ||
+      (typeof heightValue === 'object' &&
+        heightValue != null &&
+        (Number(heightValue.feet) > 0 || Number(heightValue.inches) > 0));
     if (!heightOk) {
       errors.height = 'Height is required';
     }
@@ -2411,10 +3085,10 @@ export default function CreateWorkoutPlanScreen({
     if (!onboardingData.equipmentAccess || onboardingData.equipmentAccess.length === 0) {
       errors.equipment = 'At least one equipment option is required';
     }
-    if (!onboardingData.daysPerWeek || onboardingData.daysPerWeek < 1 || onboardingData.daysPerWeek > 7) {
+    if (!onboardingData.daysPerWeek || onboardingData.daysPerWeek < 1 || onboardingData.daysPerWeek > DAYS_IN_WEEK) {
       errors.frequency = 'Training frequency is required (1-7 days)';
     }
-    if (onboardingData.situationDescription && onboardingData.situationDescription.length > 1000) {
+    if (onboardingData.situationDescription && onboardingData.situationDescription.length > MAX_SITUATION_DESCRIPTION_LENGTH) {
       errors.situationDescription = 'Situation description must be 1000 characters or less';
     }
 
@@ -2454,15 +3128,12 @@ export default function CreateWorkoutPlanScreen({
       return;
     }
     if (!validateData()) {
-      // Scroll to first error and shake
-      const firstErrorKey = Object.keys(validationErrors)[0];
-      if (firstErrorKey) {
-        setExpandedCard(firstErrorKey);
-        triggerShake(firstErrorKey);
-        setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-        }, 100);
-      }
+      shakeFirstValidationError({
+        validationErrors,
+        setExpandedCard,
+        triggerShake,
+        scrollViewRef,
+      });
       Alert.alert('Validation Error', 'Please complete all required information');
       return;
     }
@@ -2482,146 +3153,36 @@ export default function CreateWorkoutPlanScreen({
     };
 
     try {
-      const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
-      let profileForGen = onboardingData;
-      if (db && subjectUid) {
-        try {
-          const freshSnap = await getDoc(doc(db, 'users', subjectUid));
-          if (freshSnap.exists()) {
-            profileForGen = normalizeClientProfileFields(freshSnap.data());
-            ui(() => setOnboardingData(profileForGen));
-            await AsyncStorage.setItem(`onboarding_data_${subjectUid}`, JSON.stringify(profileForGen));
-          }
-        } catch (_) {
-          /* use cached onboarding */
-        }
-      }
-      const rawText = await fetchWorkoutPlanFromServer(profileForGen, subjectUid);
-
-      if (rawText) {
-        console.log(
-          'RAW WORKOUT RESPONSE length:',
-          rawText.length,
-          '| preview:',
-          JSON.stringify(String(rawText).slice(0, 600)),
-        );
-      }
-
-      if (!rawText || typeof rawText !== 'string') throw new Error('Empty response from server. Please try again.');
-
-      let planText = rawText;
-      const stopReason = null;
-      if (!planText || typeof planText !== 'string') {
-        throw new Error('Empty response from Claude. Please try again.');
-      }
-      planText = extractJSON(planText);
-      let structuredPlan = null;
-      let planParseError = false;
-      try {
-        const parsed = parseWorkoutPlan(planText);
-        // Back-compat: also expose `workoutPlan` for existing viewer paths.
-        structuredPlan = {
-          ...parsed,
-          workoutPlan: Array.isArray(parsed?.plan) ? parsed.plan : [],
-        }; // { success, plan: DayPlan[], workoutPlan: DayPlan[] }
-        planParseError = false;
-      } catch (parseErr) {
-        console.warn('Workout plan parse failed:', parseErr);
-        const truncated =
-          stopReason === 'max_tokens' ||
-          (typeof planText === 'string' && !planText.trimEnd().endsWith('}'));
-        const parseMsg = truncated
-          ? 'The response was cut off. Tap Generate again to retry.'
-          : (parseErr?.message || 'Failed to parse — please regenerate.');
-        ui(() => setGenerationError(parseMsg));
-        ui(() =>
-          setGeneratedPlan({
-            id: `plan_${Date.now()}`,
-            generatedAt: Date.now(),
-            userData: onboardingData,
-            planText: planText,
-            structuredPlan: null,
-            planParseError: true,
-          })
-        );
-        if (subjectUid) await markWorkoutGenerationFailed(subjectUid);
-        return;
-      }
-
-      const authedUid = auth.currentUser?.uid;
-      const targetUid = profileSubjectUid;
-      const planData = {
-        id: `plan_${Date.now()}`,
-        generatedAt: Date.now(),
-        userData: onboardingData,
-        planText: planText,
-        structuredPlan: structuredPlan,
-        planParseError: false,
-      };
-
-      // Cache locally; mirror global @workout_plan only for the signed-in user's own profile.
-      await AsyncStorage.setItem(`workout_plan_${targetUid || authedUid || 'unknown'}`, JSON.stringify(planData));
-      if (targetUid && authedUid && targetUid === authedUid) {
-        await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
-      }
-      ui(() => setGeneratedPlan(planData));
-      if (targetUid) {
-        await setCurrentWorkoutPlan(targetUid, {
-          rawPlan: planText,
-          planText,
-          structuredPlan: planData.structuredPlan || null,
-          title: nameWorkoutPlan(planData),
-        });
-      }
-
-      ui(() => setPdfGenerationError(null));
-      ui(() => setShowRawPlanFallback(false));
-      ui(() => setPdfLocalUri(null));
-      ui(() => setPdfDownloadUrl(null));
-      ui(() => setPlanTitleForPdf(''));
-
-      const userNotOnGeneratorUi = !mountedRef.current;
-      const appNotActive = !appInForegroundRef.current;
-      const userAwayFromWorkout = userNotOnGeneratorUi || appNotActive;
-
-      if (targetUid) {
-        await markWorkoutGenerationSucceeded(targetUid, { userAwayFromWorkout });
-      }
-
-      if (userAwayFromWorkout) {
-        await schedulePlanReadyNotification();
-      } else if (targetUid) {
-        await clearWorkoutPlanReadyBadge(targetUid);
-      }
+      await runWorkoutPlanGeneration({
+        subjectUid,
+        onboardingData,
+        profileSubjectUid,
+        fetchWorkoutPlanFromServer,
+        parseWorkoutPlan,
+        ui,
+        setOnboardingData,
+        setGeneratedPlan,
+        setGenerationError,
+        setPdfGenerationError,
+        setShowRawPlanFallback,
+        setPdfLocalUri,
+        setPdfDownloadUrl,
+        setPlanTitleForPdf,
+        appInForegroundRef,
+        mountedRef,
+        schedulePlanReadyNotification,
+      });
     } catch (error) {
-      console.error('Error generating workout plan:', error);
-      const failUid = profileSubjectUid || auth.currentUser?.uid;
-      if (failUid) await markWorkoutGenerationFailed(failUid);
-      if (error?.code === 'monthly_limit_reached') {
-        if (error.limitPayload) {
-          setWorkoutGenUsage({
-            generations_used: Number(error.limitPayload.used) || planGenerationLimit,
-            generations_limit: Number(error.limitPayload.limit) || planGenerationLimit,
-            resets_at: error.limitPayload.resets_at || nextMonthResetsAtIso(),
-          });
-        }
-        ui(() => setGenerationError(error.message));
-        if (mountedRef.current) {
-          Alert.alert('Monthly limit reached', error.message);
-        }
-        return;
-      }
-      ui(() => setGenerationError(error.message || 'Failed to generate workout plan'));
-      if (mountedRef.current) {
-        Alert.alert(
-          'Generation Failed',
-          error.message || 'We couldn\'t generate your workout plan. Please try again.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Retry', onPress: () => generateWorkoutPlan() },
-          ]
-        );
-      }
+      await handleWorkoutPlanGenerationError({
+        error,
+        profileSubjectUid,
+        planGenerationLimit,
+        setWorkoutGenUsage,
+        ui,
+        setGenerationError,
+        mountedRef,
+        generateWorkoutPlan,
+      });
     } finally {
       workoutPlanGenerationInFlight = false;
       ui(() => setIsGenerating(false));
@@ -2691,35 +3252,7 @@ export default function CreateWorkoutPlanScreen({
     let text = (editPlanText || '').trim();
     if (!text) return;
     text = extractJSON(text);
-    let structuredPlan = null;
-    let planParseError = false;
-    try {
-      structuredPlan = JSON.parse(text);
-    } catch (e) {
-      console.warn('Edited plan JSON parse failed:', e);
-      // Fallback: legacy text plan -> structured shape
-      try {
-        const legacy = parsePlan(text);
-        if (legacy && (legacy.overview || (legacy.days && legacy.days.length))) {
-          structuredPlan = {
-            overview: legacy.overview || '',
-            weeklySchedule: (legacy.days || []).map(d => ({
-              day: d.label || '',
-              focus: d.type || '',
-            })),
-            days: legacy.days || [],
-            nutritionNotes: '',
-            generalNotes: legacy.notes || '',
-          };
-          planParseError = false;
-        } else {
-          planParseError = true;
-        }
-      } catch (fallbackErr) {
-        console.warn('Legacy text parse failed for edited plan:', fallbackErr);
-        planParseError = true;
-      }
-    }
+    const { structuredPlan, planParseError } = structuredPlanFromEditedText(text);
     const planData = {
       id: generatedPlan?.id || `plan_${Date.now()}`,
       generatedAt: generatedPlan?.generatedAt || Date.now(),
@@ -2763,30 +3296,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   };
 
   const parseWorkoutPlan = (responseText) => {
-    let parsed = null;
-
-    try {
-      parsed = JSON.parse(responseText);
-    } catch (e1) {
-      try {
-        const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No JSON object found in response');
-        }
-      } catch (e2) {
-        throw new Error(`Failed to parse workout plan: ${e2.message}`);
-      }
-    }
-
-    const plan = Array.isArray(parsed?.plan) ? parsed.plan : null;
-    if (!plan) {
-      throw new Error('Invalid structure: missing or invalid "plan" array');
-    }
-    if (plan.length !== 7) {
-      throw new Error(`Expected 7 days, got ${plan.length}`);
-    }
+    const { parsed, plan } = parseWorkoutPlanJsonText(responseText);
 
     const allowedColors = ["pink", "purple", "cyan", "orange", "green", "gray"];
 
@@ -2888,11 +3398,11 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     while ((match = workoutRegex.exec(text)) !== null) {
       workouts.push({
         day: match[1] || 'Day',
-        content: text.substring(match.index, match.index + 500), // First 500 chars
+        content: text.substring(match.index, match.index + WORKOUT_SNIPPET_CHARS), // First snippet chars
       });
     }
 
-    return workouts.length > 0 ? workouts : [{ day: 'Full Body', content: text.substring(0, 1000) }];
+    return workouts.length > 0 ? workouts : [{ day: 'Full Body', content: text.substring(0, WORKOUT_FALLBACK_SNIPPET_CHARS) }];
   };
 
   // Format display value: show "Tap to complete" for empty/placeholder values
@@ -2916,21 +3426,28 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
   const formatDisplayValue = (raw) => {
     if (raw == null || raw === undefined || raw === '') return null;
-    let s = String(raw).trim();
-    if (!s) return null;
-    if (s === 'Not set' || s === 'None selected' || s === 'None reported' || s === 'Not provided') return null;
-    if (s === 'undefined' || s.toLowerCase() === 'undefined') return null;
-    if (/^N\/A,\s*N\/Ayrs,\s*N\/Albs,\s*0'0"$/i.test(s)) return null;
-    if (/^0\s*days\s*per\s*week$/i.test(s)) return null;
-    if (s.includes('_') && (s.includes(',') || /^[a-z0-9_]+$/i.test(s))) {
-      s = s
+    let displayText = String(raw).trim();
+    if (!displayText) return null;
+    if (
+      displayText === 'Not set' ||
+      displayText === 'None selected' ||
+      displayText === 'None reported' ||
+      displayText === 'Not provided'
+    ) {
+      return null;
+    }
+    if (displayText === 'undefined' || displayText.toLowerCase() === 'undefined') return null;
+    if (/^N\/A,\s*N\/Ayrs,\s*N\/Albs,\s*0'0"$/i.test(displayText)) return null;
+    if (/^0\s*days\s*per\s*week$/i.test(displayText)) return null;
+    if (displayText.includes('_') && (displayText.includes(',') || /^[a-z0-9_]+$/i.test(displayText))) {
+      displayText = displayText
         .split(',')
         .map((part) => humanizeOnboardingToken(part))
         .join(', ');
-    } else if (/^[a-z0-9_]+$/i.test(s) && s.includes('_')) {
-      s = humanizeOnboardingToken(s);
+    } else if (/^[a-z0-9_]+$/i.test(displayText) && displayText.includes('_')) {
+      displayText = humanizeOnboardingToken(displayText);
     }
-    return s;
+    return displayText;
   };
 
   const renderWorkoutChromeHeader = (options = {}) => (
@@ -2970,43 +3487,44 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     );
   }
 
+  if (!onboardingData && !propPlan && trainerRosterEmpty) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }} edges={SHELL_SAFE_AREA_EDGES}>
+        {renderWorkoutChromeHeader()}
+        <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>
+            Add clients first
+          </Text>
+          <Text style={{ fontSize: 14, lineHeight: 21, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(17,24,39,0.75)', marginBottom: 20 }}>
+            The Workout tab uses a client's onboarding and goals as context. Accept people from Client Requests, then select them on Home — their profile appears here.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+            style={{ alignSelf: 'flex-start', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 14, backgroundColor: 'rgba(255,107,157,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,157,0.45)' }}
+          >
+            <Text style={{ color: '#FF6B9D', fontWeight: '800' }}>Go to Home</Text>
+          </TouchableOpacity>
+        </View>
+        {!hideBottomNav && (
+          <ShellBottomNavAnchor>
+            <BottomMenuBar
+              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
+              onProfilePress={() => onNavigate && onNavigate('profile')}
+              onPlusPress={() => onNavigate && onNavigate('create')}
+              onVoicePress={() => onNavigate && onNavigate('voice')}
+              onWorkoutPress={() => onNavigate && onNavigate('workout')}
+              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
+              onMessagesPress={() => onNavigate && onNavigate('messages')}
+              activeTabKey="workout"
+            />
+          </ShellBottomNavAnchor>
+        )}
+      </SafeAreaView>
+    );
+  }
+
   if (!onboardingData && !propPlan) {
-    if (trainerRosterEmpty) {
-      return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }} edges={SHELL_SAFE_AREA_EDGES}>
-          {renderWorkoutChromeHeader()}
-          <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>
-              Add clients first
-            </Text>
-            <Text style={{ fontSize: 14, lineHeight: 21, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(17,24,39,0.75)', marginBottom: 20 }}>
-              The Workout tab uses a client's onboarding and goals as context. Accept people from Client Requests, then select them on Home — their profile appears here.
-            </Text>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              style={{ alignSelf: 'flex-start', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 14, backgroundColor: 'rgba(255,107,157,0.2)', borderWidth: 1, borderColor: 'rgba(255,107,157,0.45)' }}
-            >
-              <Text style={{ color: '#FF6B9D', fontWeight: '800' }}>Go to Home</Text>
-            </TouchableOpacity>
-          </View>
-          {!hideBottomNav && (
-            <ShellBottomNavAnchor>
-              <BottomMenuBar
-                onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-                onProfilePress={() => onNavigate && onNavigate('profile')}
-                onPlusPress={() => onNavigate && onNavigate('create')}
-                onVoicePress={() => onNavigate && onNavigate('voice')}
-                onWorkoutPress={() => onNavigate && onNavigate('workout')}
-                onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-                onMessagesPress={() => onNavigate && onNavigate('messages')}
-                activeTabKey="workout"
-              />
-            </ShellBottomNavAnchor>
-          )}
-        </SafeAreaView>
-      );
-    }
     return (
       <View style={[styles.container, { backgroundColor: isDark ? '#0A0618' : '#F5F3FF' }]}>
         <Text style={{ color: isDark ? '#FFFFFF' : '#1F2937' }}>No data found</Text>
@@ -3146,6 +3664,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
   // Full-screen viewer mode (no editor UI).
   if (generatedPlan && (readOnly || showFullPlan)) {
+    return ((() => {
     const pdfUrl = generatedPlan?.url || pdfDownloadUrl || collectionViewingPlan?.url || null;
     const structuredRaw = generatedPlan?.structuredPlan || tryParseJsonObject(generatedPlan?.planText);
     const structured = normalizeStructuredPlanForViewer(structuredRaw);
@@ -3156,8 +3675,12 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       "";
 
     const planViewerWeeks = (() => {
-      const n = Number(structuredRaw?.weeksRemaining ?? structuredRaw?.durationWeeks ?? structured?.weeksRemaining);
-      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 4;
+      const weeksNumber = Number(
+        structuredRaw?.weeksRemaining ?? structuredRaw?.durationWeeks ?? structured?.weeksRemaining,
+      );
+      return Number.isFinite(weeksNumber) && weeksNumber > 0
+        ? Math.floor(weeksNumber)
+        : DEFAULT_PLAN_WEEKS;
     })();
     const planViewerFocus =
       String(structuredRaw?.programFocus ?? structuredRaw?.focus ?? structured?.focus ?? '').trim() ||
@@ -3227,17 +3750,18 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       );
     }
 
+    if (viewerStructureError && readOnly && !viewerErrorDelayElapsed) {
+      return (
+        <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
+          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={SHELL_SAFE_AREA_EDGES}>
+            <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
+            <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Loading your workout plan...</Text>
+          </SafeAreaView>
+        </View>
+      );
+    }
+
     if (viewerStructureError) {
-      if (readOnly && !viewerErrorDelayElapsed) {
-        return (
-          <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-            <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={SHELL_SAFE_AREA_EDGES}>
-              <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
-              <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Loading your workout plan...</Text>
-            </SafeAreaView>
-          </View>
-        );
-      }
       return (
         <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
           <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
@@ -3371,6 +3895,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         )}
       </View>
     );
+    })());
   }
 
   if (!onboardingData) {
@@ -3400,8 +3925,10 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   const displayForFieldKey = (fieldKey) => {
     const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
     const formatted = formatDisplayValue(raw);
-    const s = formatted != null ? String(formatted).trim() : '';
-    return s && s !== 'null' && s !== 'undefined' ? s : '—';
+    const displayText = formatted != null ? String(formatted).trim() : '';
+    return displayText && displayText !== 'null' && displayText !== 'undefined'
+      ? displayText
+      : EMPTY_DISPLAY;
   };
 
   const userNameForHero = String(
@@ -3423,10 +3950,10 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       ? profileCardSectionLabels.join(' · ')
       : 'Onboarding answers';
   const heroGreeting = (() => {
-    const h = new Date().getHours();
-    if (h >= 5 && h < 12) return 'Good morning';
-    if (h >= 12 && h < 17) return 'Good afternoon';
-    if (h >= 17 && h < 22) return 'Good evening';
+    const hourOfDay = new Date().getHours();
+    if (hourOfDay >= MORNING_START_HOUR && hourOfDay < AFTERNOON_START_HOUR) return 'Good morning';
+    if (hourOfDay >= AFTERNOON_START_HOUR && hourOfDay < EVENING_START_HOUR) return 'Good afternoon';
+    if (hourOfDay >= EVENING_START_HOUR && hourOfDay < NIGHT_START_HOUR) return 'Good evening';
     return 'Welcome back';
   })();
 
@@ -4378,9 +4905,15 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                       const fullWidth = [];
                       const wide = [];
                       for (const it of sec.items) {
-                        if (it.wide) wide.push(it);
-                        else if (it.fullWidth) fullWidth.push(it);
-                        else normal.push(it);
+                        if (it.wide) {
+                          wide.push(it);
+                          continue;
+                        }
+                        if (it.fullWidth) {
+                          fullWidth.push(it);
+                          continue;
+                        }
+                        normal.push(it);
                       }
                       const rows = [];
                       for (let i = 0; i < normal.length; i += 2) rows.push(normal.slice(i, i + 2));

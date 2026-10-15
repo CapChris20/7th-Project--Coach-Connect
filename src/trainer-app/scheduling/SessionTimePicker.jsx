@@ -1,12 +1,14 @@
 // One spinning "wheel" column (iOS date-picker style) used by the trainer's session scheduler.
-// Flow: parent passes a data list + current value → the library handles scroll/snap physics →
-// our renderItem styles each row and renderOverlay draws the pink highlight band.
+// Flow: parent passes a data list + current value → the library handles scroll/snap physics → we style each row.
 // Used side-by-side (hour / minute / AM-PM) inside the schedule-a-session form.
+
 import React, { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 // vocab: @quidone/react-native-wheel-picker = third-party wheel/spinner control. We supply the
 // data and the row rendering; it owns the snapping, momentum, and haptic feel.
 import WheelPicker from '@quidone/react-native-wheel-picker';
+
+// ===== NAMED CONSTANTS =====
 
 // Manipulate here: ITEM_HEIGHT is the pixel height of one row — the library uses it to compute
 // snap positions, so the styles below MUST reuse this constant rather than hardcode a number, or
@@ -14,7 +16,29 @@ import WheelPicker from '@quidone/react-native-wheel-picker';
 // VISIBLE_COUNT is how many rows are on screen at once; keep it odd so there's a true center row.
 const ITEM_HEIGHT = 40;
 const VISIBLE_COUNT = 5;
+const DEFAULT_FLEX = 1;
+const DEFAULT_ACTIVE_TEXT_COLOR = '#FFFFFF';
+const DEFAULT_INACTIVE_TEXT_COLOR = '#888888';
+const DEFAULT_SELECTED_BAND_COLOR = 'rgba(255, 107, 157, 0.15)';
+const ACTIVE_FONT_WEIGHT = '600';
+const INACTIVE_FONT_WEIGHT = '400';
 
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @param {{
+ *   data: Array,
+ *   value: *,
+ *   onValueChanged: Function,
+ *   flex?: number,
+ *   activeTextColor?: string,
+ *   inactiveTextColor?: string,
+ *   selectedBandColor?: string,
+ * }} props
+ * @returns {import('react').ReactElement}
+ */
 export default function SessionTimePicker({
   data,
   value,
@@ -22,10 +46,10 @@ export default function SessionTimePicker({
   // Manipulate here: these are the per-instance look knobs. flex controls how much horizontal
   // space this column takes next to its siblings; the colors default to the session-scheduling
   // pink theme, and callers override them for a different accent.
-  flex = 1,
-  activeTextColor = '#FFFFFF',
-  inactiveTextColor = '#888888',
-  selectedBandColor = 'rgba(255, 107, 157, 0.15)',
+  flex = DEFAULT_FLEX,
+  activeTextColor = DEFAULT_ACTIVE_TEXT_COLOR,
+  inactiveTextColor = DEFAULT_INACTIVE_TEXT_COLOR,
+  selectedBandColor = DEFAULT_SELECTED_BAND_COLOR,
 }) {
   // Renders one row of the wheel. Wrapped in useCallback because the picker re-renders many rows
   // during a scroll — a fresh function identity each render would defeat the library's own
@@ -35,7 +59,7 @@ export default function SessionTimePicker({
     ({ item, itemTextStyle }) => {
       // The selected row is the only one drawn bright and semibold — that contrast is what
       // communicates "this is your pick" alongside the highlight band.
-      const active = item.value === value;
+      const isSelected = item.value === value;
       return (
         // itemHit is a fixed-height box so every row occupies exactly one snap slot, even when
         // the label text is short or the font scales.
@@ -46,7 +70,10 @@ export default function SessionTimePicker({
             style={[
               itemTextStyle,
               styles.itemText,
-              { color: active ? activeTextColor : inactiveTextColor, fontWeight: active ? '600' : '400' },
+              {
+                color: isSelected ? activeTextColor : inactiveTextColor,
+                fontWeight: isSelected ? ACTIVE_FONT_WEIGHT : INACTIVE_FONT_WEIGHT,
+              },
             ]}
           >
             {item.label}

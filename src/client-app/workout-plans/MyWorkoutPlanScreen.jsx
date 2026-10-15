@@ -1,12 +1,7 @@
-/**
- * Plan Viewer Screen
- *
- * Purpose: Weekly plan viewer — gradient glass cards matching Training Agenda style.
- * Area: src/client-app/workout-plans
- * Key exports: MyWorkoutPlanScreen
- *
- * @file-header
- */
+// Weekly workout plan viewer: training-day cards, rest-day cards, and exercise popups.
+// Flow: split the plan into workout vs rest → tap a day → tap an exercise or recovery item.
+// Used when the client opens a saved plan. Day keys (short, focus, rest) stay as the plan stores them.
+
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   View,
@@ -83,6 +78,51 @@ const DAY_RIM_BY_SHORT = {
 
 const MULTI_GRAD_LOCATIONS = [0, 0.28, 0.52, 0.76, 1];
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_WEEKS_REMAINING = 4;
+const DEFAULT_FOCUS_SUMMARY = "Complete muscle building program";
+const DEFAULT_HERO_TITLE = "Your Workout Plan";
+const DEFAULT_SESSION_TITLE = "Training";
+const DEFAULT_RECOVERY_LABEL = "Recovery focus";
+const DEFAULT_RECOVERY_FALLBACK = "Light movement & rest";
+const DEFAULT_REST_SHORT = "Rest";
+const SHORT_DAY_LETTERS = 3;
+const PREVIEW_ROW_COUNT = 3;
+const LABEL_WORD_CAP = 6;
+const LABEL_CHAR_CAP = 44;
+const LABEL_CHAR_TRIM = 41;
+const LABEL_CUT_MIN_CHARS = 8;
+const STEP_MIN_CHARS = 8;
+const SHEET_HEIGHT_RATIO = 0.92;
+const SHELL_BOTTOM_INSET = 16;
+const MODAL_SCROLL_PAD = 56;
+const DETAIL_SCROLL_PAD = 48;
+const SHEET_SCROLL_PAD = 40;
+
+const RECOVERY_TYPE_RULES = [
+  { test: /walk|cardio|jog|run|hike/i, type: "Walking" },
+  { test: /yoga/i, type: "Yoga" },
+  { test: /stretch|mobil|flex/i, type: "Stretching" },
+  { test: /foam\s*roll/i, type: "Foam Roll" },
+  { test: /sleep|rest|nap/i, type: "Sleep" },
+  { test: /water|hydra|drink/i, type: "Hydration" },
+  { test: /nutri|meal|eat|food|prep/i, type: "Nutrition" },
+  { test: /breath|meditat|mindful/i, type: "Mindfulness" },
+];
+
+const RECOVERY_FOCUS_RULES = [
+  { test: /muscle|sore|blood\s*flow|circulation/i, focus: "Muscle recovery" },
+  { test: /stress|mental|mind/i, focus: "Mental health" },
+  { test: /sleep|energy/i, focus: "Energy" },
+  { test: /mobil|flex/i, focus: "Mobility" },
+];
+
+const DEFAULT_RECOVERY_TYPE = "Activity";
+const DEFAULT_RECOVERY_FOCUS = "Recovery";
+
+// ===== HELPER FUNCTIONS =====
+
 function stripeColors(rimColors) {
   if (!Array.isArray(rimColors) || rimColors.length <= 2) return rimColors;
   return [rimColors[0], rimColors[rimColors.length - 1]];
@@ -92,7 +132,7 @@ function getDayRimGradient(day, fallbackIndex = 0) {
   const short = String(day?.short || "")
     .toUpperCase()
     .replace(/[^A-Z]/g, "")
-    .slice(0, 3);
+    .slice(0, SHORT_DAY_LETTERS);
   if (short && DAY_RIM_BY_SHORT[short]) return DAY_RIM_BY_SHORT[short];
   return GRAD_CYCLE[Math.abs(Number(fallbackIndex) || 0) % GRAD_CYCLE.length];
 }
@@ -103,30 +143,36 @@ function resolveAccent(focusColor, day, dayIndex = 0) {
     return { badge: grad[0], grad };
   }
   if (focusColor && FOCUS_KEYS[focusColor]) return FOCUS_KEYS[focusColor];
-  const u = String(focusColor || "").toUpperCase();
-  if (u.includes("F97316")) return { badge: GRAD_GOLD_ORANGE[0], grad: GRAD_GOLD_ORANGE };
-  if (u.includes("64D2FF") || u.includes("06B6D4") || u.includes("22D3EE")) {
+  const focusColorUppercase = String(focusColor || "").toUpperCase();
+  if (focusColorUppercase.includes("F97316")) return { badge: GRAD_GOLD_ORANGE[0], grad: GRAD_GOLD_ORANGE };
+  if (focusColorUppercase.includes("64D2FF") || focusColorUppercase.includes("06B6D4") || focusColorUppercase.includes("22D3EE")) {
     return { badge: GRAD_PURPLE_CYAN[0], grad: GRAD_PURPLE_CYAN };
   }
-  if (u.includes("FF6B9D")) return { badge: GRAD_PINK_ORANGE[0], grad: GRAD_PINK_ORANGE };
-  if (u.includes("10B981")) return FOCUS_KEYS.green;
-  if (u.includes("C084FC")) return { badge: GRAD_PURPLE_CYAN[0], grad: GRAD_PURPLE_CYAN };
+  if (focusColorUppercase.includes("FF6B9D")) return { badge: GRAD_PINK_ORANGE[0], grad: GRAD_PINK_ORANGE };
+  if (focusColorUppercase.includes("10B981")) return FOCUS_KEYS.green;
+  if (focusColorUppercase.includes("C084FC")) return { badge: GRAD_PURPLE_CYAN[0], grad: GRAD_PURPLE_CYAN };
   return { badge: GRAD_PINK_ORANGE[0], grad: GRAD_PINK_ORANGE };
+}
+
+function dayTitleSeparator(rawDay) {
+  if (rawDay.includes("—")) return "—";
+  if (rawDay.includes("–")) return "–";
+  return null;
 }
 
 function sessionTitleLines(day) {
   const rawDay = String(day.day || "").trim();
   const focus = String(day.focus || "").trim();
-  const sep = rawDay.includes("—") ? "—" : rawDay.includes("–") ? "–" : null;
+  const sep = dayTitleSeparator(rawDay);
   if (sep) {
-    const parts = rawDay.split(sep).map((s) => s.trim()).filter(Boolean);
+    const parts = rawDay.split(sep).map((part) => part.trim()).filter(Boolean);
     return { title: parts[0] || rawDay, subtitle: parts.slice(1).join(" · ") || focus };
   }
-  const bits = focus.split(/\s*·\s*/).map((s) => s.trim()).filter(Boolean);
+  const bits = focus.split(/\s*·\s*/).map((part) => part.trim()).filter(Boolean);
   if (bits.length >= 2) {
     return { title: bits[0], subtitle: bits.slice(1).join(" · ") };
   }
-  return { title: rawDay || "Training", subtitle: focus };
+  return { title: rawDay || DEFAULT_SESSION_TITLE, subtitle: focus };
 }
 
 function parseSetsRepsRest(ex) {
@@ -148,23 +194,25 @@ function formatExerciseMeta(ex) {
   const { sets, reps, rest } = parseSetsRepsRest(ex);
   const mid = `${sets}×${reps}`;
   if (!rest || rest === "—") return mid;
-  let r = rest;
-  if (!/s$/i.test(r) && !/min/i.test(r) && /^\d+(\.\d+)?$/.test(r)) r = `${r}s`;
-  const tail = /\brest\b/i.test(r) ? r : `${r} rest`;
+  let restLabel = rest;
+  if (!/s$/i.test(restLabel) && !/min/i.test(restLabel) && /^\d+(\.\d+)?$/.test(restLabel)) {
+    restLabel = `${restLabel}s`;
+  }
+  const tail = /\brest\b/i.test(restLabel) ? restLabel : `${restLabel} rest`;
   return `${mid} · ${tail}`;
 }
 
 function splitTips(text) {
-  const t = String(text || "").trim();
-  if (!t) return [];
-  const parts = t.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
-  return parts.length ? parts : [t];
+  const tipText = String(text || "").trim();
+  if (!tipText) return [];
+  const parts = tipText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts : [tipText];
 }
 
 function splitLegacyNote(raw) {
-  const lines = raw.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (lines.length > 1) return lines;
-  const byArrow = raw.split(/\s*(?:→|➝|->)\s*/).map((s) => s.trim()).filter(Boolean);
+  const byArrow = raw.split(/\s*(?:→|➝|->)\s*/).map((line) => line.trim()).filter(Boolean);
   if (byArrow.length > 1) return byArrow;
   const sentences = splitTips(raw);
   return sentences.length ? sentences : [raw];
@@ -173,22 +221,22 @@ function splitLegacyNote(raw) {
 function toRecoveryItems(day) {
   if (Array.isArray(day?.recoveryActivities) && day.recoveryActivities.length > 0) {
     return day.recoveryActivities
-      .filter((a) => a && typeof a === "object" && typeof a.label === "string" && a.label.trim())
-      .map((a) => ({ label: extractShortLabel(a.label), detail: String(a.detail || "").trim() }));
+      .filter((activity) => activity && typeof activity === "object" && typeof activity.label === "string" && activity.label.trim())
+      .map((activity) => ({ label: extractShortLabel(activity.label), detail: String(activity.detail || "").trim() }));
   }
   const raw = String(day?.recoveryNote || day?.focus || "").trim();
-  if (!raw) return [{ label: "Light movement & rest", detail: "" }];
-  return splitLegacyNote(raw).map((seg) => ({
-    label: extractShortLabel(seg),
-    detail: seg.trim(),
+  if (!raw) return [{ label: DEFAULT_RECOVERY_FALLBACK, detail: "" }];
+  return splitLegacyNote(raw).map((segment) => ({
+    label: extractShortLabel(segment),
+    detail: segment.trim(),
   }));
 }
 
 function extractShortLabel(seg) {
-  let s = String(seg || "").trim().replace(/\s+/g, " ");
-  if (!s) return "Recovery focus";
-  s = s.replace(/^[-–—•*]\s*/, "").replace(/\.\s*$/, "");
-  s = s
+  let labelText = String(seg || "").trim().replace(/\s+/g, " ");
+  if (!labelText) return DEFAULT_RECOVERY_LABEL;
+  labelText = labelText.replace(/^[-–—•*]\s*/, "").replace(/\.\s*$/, "");
+  labelText = labelText
     .replace(/^Follow\s+with\s+/i, "")
     .replace(/^Prioritize\s+/i, "")
     .replace(/^Focus\s+on\s+/i, "")
@@ -199,25 +247,25 @@ function extractShortLabel(seg) {
     .replace(/^If\s+you\s+feel\s+\w+,\s*/i, "")
     .replace(/^Given\s+[^,]+,\s*/i, "")
     .replace(/^A\s+(?=\d)/i, "");
-  s = s.charAt(0).toUpperCase() + s.slice(1);
+  labelText = labelText.charAt(0).toUpperCase() + labelText.slice(1);
   const cutPoints = /\s+(?:—|--|to\s+(?:promote|reduce|help|improve|support|aid|maintain|prevent|enhance|avoid|ensure|allow|boost|keep|build|maximize|minimize|flush|speed|accelerate))\b|\s+(?:outdoors|indoors|especially|throughout|tonight|today|this\s+week|for\s+the\s+(?:next|rest|week|upcoming)|focus(?:ing)?\s+on|targeting|this\s+helps|which\s+helps|helps\s|if\s+you|and\s+dr)|\s*[;:]\s*/i;
-  const beforeCut = s.split(cutPoints)[0].trim();
-  if (beforeCut && beforeCut.length >= 8) s = beforeCut;
-  const words = s.split(/\s+/);
-  if (words.length > 6) s = words.slice(0, 6).join(" ");
-  if (s.length > 44) s = s.slice(0, 41).replace(/\s+\S*$/, "");
-  return s || "Recovery focus";
+  const beforeCut = labelText.split(cutPoints)[0].trim();
+  if (beforeCut && beforeCut.length >= LABEL_CUT_MIN_CHARS) labelText = beforeCut;
+  const words = labelText.split(/\s+/);
+  if (words.length > LABEL_WORD_CAP) labelText = words.slice(0, LABEL_WORD_CAP).join(" ");
+  if (labelText.length > LABEL_CHAR_CAP) labelText = labelText.slice(0, LABEL_CHAR_TRIM).replace(/\s+\S*$/, "");
+  return labelText || DEFAULT_RECOVERY_LABEL;
 }
 
 function recoveryDayDisplayName(day) {
-  return String(day?.day || "").replace(/^\?\s*/, "").trim() || String(day?.short || "Rest");
+  return String(day?.day || "").replace(/^\?\s*/, "").trim() || String(day?.short || DEFAULT_REST_SHORT);
 }
 
 function muscleToTargets(muscle) {
   if (!muscle) return [];
   return String(muscle)
     .split(/[,/|]/)
-    .map((s) => s.trim())
+    .map((part) => part.trim())
     .filter(Boolean);
 }
 
@@ -352,7 +400,7 @@ function PreviewRow({ index, title, meta, grad, isDark }) {
 function TrainingDayCard({ day, onPress, isDark, dayIndex = 0 }) {
   const accent = resolveAccent(day.focusColor, day, dayIndex);
   const { title, subtitle } = sessionTitleLines(day);
-  const preview = (day.exercises || []).slice(0, 3);
+  const preview = (day.exercises || []).slice(0, PREVIEW_ROW_COUNT);
   const remaining = (day.exercises || []).length - preview.length;
   const innerBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
@@ -400,7 +448,7 @@ function TrainingDayCard({ day, onPress, isDark, dayIndex = 0 }) {
 
 function RecoveryDayCard({ day, onPress, isDark, grad }) {
   const items = toRecoveryItems(day);
-  const preview = items.slice(0, 3);
+  const preview = items.slice(0, PREVIEW_ROW_COUNT);
   const remaining = items.length - preview.length;
   const innerBg = isDark ? TOKENS.cardDark : TOKENS.cardLight;
   const text = isDark ? TOKENS.textDark : TOKENS.textLight;
@@ -595,7 +643,7 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
             styles.sheet,
             {
               backgroundColor: isDark ? TOKENS.bgDark : TOKENS.bgLight,
-              maxHeight: Dimensions.get("window").height * 0.92,
+              maxHeight: Dimensions.get("window").height * SHEET_HEIGHT_RATIO,
             },
           ]}
         >
@@ -639,9 +687,9 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
               <View style={styles.sectionBlock}>
                 <Text style={[styles.sectionLabel, { color: tertiary }]}>TARGETS</Text>
                 <View style={styles.pillWrap}>
-                  {targets.map((t) => (
-                    <View key={t} style={[styles.targetPill, { borderColor: borderC, backgroundColor: innerBg }]}>
-                      <Text style={[styles.targetPillText, { color: muted }]}>{t}</Text>
+                  {targets.map((targetName) => (
+                    <View key={targetName} style={[styles.targetPill, { borderColor: borderC, backgroundColor: innerBg }]}>
+                      <Text style={[styles.targetPillText, { color: muted }]}>{targetName}</Text>
                     </View>
                   ))}
                 </View>
@@ -683,30 +731,66 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
   );
 }
 
+function firstMatchingType(labelText) {
+  for (const rule of RECOVERY_TYPE_RULES) {
+    if (rule.test.test(labelText)) return rule.type;
+  }
+  return DEFAULT_RECOVERY_TYPE;
+}
+
+function firstMatchingFocus(labelText) {
+  for (const rule of RECOVERY_FOCUS_RULES) {
+    if (rule.test.test(labelText)) return rule.focus;
+  }
+  return DEFAULT_RECOVERY_FOCUS;
+}
+
 function parseRecoveryMeta(label) {
-  const l = String(label).toLowerCase();
-  const durMatch = l.match(/(\d[\d–\-]*\s*(?:min(?:ute)?s?|hours?|hr))/i);
+  const labelText = String(label).toLowerCase();
+  const durMatch = labelText.match(/(\d[\d–\-]*\s*(?:min(?:ute)?s?|hours?|hr))/i);
   const duration = durMatch ? durMatch[1] : null;
-  let type = "Activity";
-  if (/walk|cardio|jog|run|hike/i.test(l)) type = "Walking";
-  else if (/yoga/i.test(l)) type = "Yoga";
-  else if (/stretch|mobil|flex/i.test(l)) type = "Stretching";
-  else if (/foam\s*roll/i.test(l)) type = "Foam Roll";
-  else if (/sleep|rest|nap/i.test(l)) type = "Sleep";
-  else if (/water|hydra|drink/i.test(l)) type = "Hydration";
-  else if (/nutri|meal|eat|food|prep/i.test(l)) type = "Nutrition";
-  else if (/breath|meditat|mindful/i.test(l)) type = "Mindfulness";
-  let focus = "Recovery";
-  if (/muscle|sore|blood\s*flow|circulation/i.test(l)) focus = "Muscle recovery";
-  else if (/stress|mental|mind/i.test(l)) focus = "Mental health";
-  else if (/sleep|energy/i.test(l)) focus = "Energy";
-  else if (/mobil|flex/i.test(l)) focus = "Mobility";
-  return { duration, type, focus };
+  return {
+    duration,
+    type: firstMatchingType(labelText),
+    focus: firstMatchingFocus(labelText),
+  };
 }
 
 function splitDetailIntoSteps(detail) {
   if (!detail) return [];
-  return detail.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 8);
+  return detail.split(/(?<=[.!?])\s+/).filter((step) => step.trim().length > STEP_MIN_CHARS);
+}
+
+function RecoveryGuidance({ steps, item, meta, tertiary, muted, borderC, grad, isDark }) {
+  const rowBackground = isDark ? TOKENS.rowDark : TOKENS.rowLight;
+  if (steps.length > 1) {
+    return (
+      <View style={styles.sectionBlock}>
+        <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
+        {steps.map((step, i) => (
+          <View key={i} style={[styles.tipRow, { backgroundColor: rowBackground, borderColor: borderC }]}>
+            <IndexBadge index={String(i + 1).padStart(2, "0")} grad={grad} />
+            <Text style={[styles.tipBody, { color: muted }]}>{step}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+  if (item.detail) {
+    return (
+      <View style={styles.sectionBlock}>
+        <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
+        <Text style={[styles.recoveryModalBody, { color: muted }]}>{item.detail}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.rcvEmptyGuidance, { borderColor: borderC }]}>
+      <Text style={[styles.rcvEmptyText, { color: tertiary }]}>
+        Focus on {meta.type.toLowerCase()} and listen to your body.
+      </Text>
+    </View>
+  );
 }
 
 function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChangeIndex, isDark, grad }) {
@@ -734,7 +818,7 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
             styles.sheet,
             {
               backgroundColor: isDark ? TOKENS.bgDark : TOKENS.bgLight,
-              maxHeight: Dimensions.get("window").height * 0.92,
+              maxHeight: Dimensions.get("window").height * SHEET_HEIGHT_RATIO,
             },
           ]}
         >
@@ -778,28 +862,16 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
               </View>
             </View>
 
-            {steps.length > 1 ? (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
-                {steps.map((step, i) => (
-                  <View key={i} style={[styles.tipRow, { backgroundColor: isDark ? TOKENS.rowDark : TOKENS.rowLight, borderColor: borderC }]}>
-                    <IndexBadge index={String(i + 1).padStart(2, "0")} grad={grad} />
-                    <Text style={[styles.tipBody, { color: muted }]}>{step}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : item.detail ? (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: tertiary }]}>GUIDANCE</Text>
-                <Text style={[styles.recoveryModalBody, { color: muted }]}>{item.detail}</Text>
-              </View>
-            ) : (
-              <View style={[styles.rcvEmptyGuidance, { borderColor: borderC }]}>
-                <Text style={[styles.rcvEmptyText, { color: tertiary }]}>
-                  Focus on {meta.type.toLowerCase()} and listen to your body.
-                </Text>
-              </View>
-            )}
+            <RecoveryGuidance
+              steps={steps}
+              item={item}
+              meta={meta}
+              tertiary={tertiary}
+              muted={muted}
+              borderC={borderC}
+              grad={grad}
+              isDark={isDark}
+            />
 
             <View style={styles.navRow}>
               <TouchableOpacity
@@ -824,10 +896,176 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
   );
 }
 
+function MyWorkoutPlanLayout({
+  isDark,
+  openDay,
+  openDayIndex,
+  onBackFromDay,
+  setExerciseModal,
+  exerciseModal,
+  openRecoveryDay,
+  recoveryItems,
+  onBackFromRecovery,
+  setRecoveryModalIndex,
+  recoveryGrad,
+  recoveryModalIndex,
+  handleRootBack,
+  scrollBottomPad,
+  heroTitle,
+  weeksRemaining,
+  focusSummary,
+  overview,
+  workoutDays,
+  setOpenDay,
+  setOpenDayIndex,
+  setOpenRecoveryDay,
+  setOpenRecoveryIndex,
+  restDays,
+}) {
+  const pageBackground = isDark ? TOKENS.bgDark : TOKENS.bgLight;
+  const text = isDark ? TOKENS.textDark : TOKENS.textLight;
+  const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
+  const backChevronColor = isDark ? TOKENS.pink : '#BE185D';
+  const hasOverview = overview.trim().length > 0;
+  const hasWorkoutDays = workoutDays.length > 0;
+  const hasRecoveryDays = restDays.length > 0;
+
+  if (openDay) {
+    return (
+      <View style={{ flex: 1, backgroundColor: pageBackground }}>
+        <DayDetailScreen day={openDay} dayIndex={openDayIndex} onBack={onBackFromDay} onOpenExercise={(idx) => setExerciseModal(idx)} isDark={isDark} />
+        <ExerciseDetailModal
+          visible={exerciseModal != null}
+          day={openDay}
+          exerciseIndex={exerciseModal}
+          onClose={() => setExerciseModal(null)}
+          onChangeIndex={setExerciseModal}
+          isDark={isDark}
+        />
+      </View>
+    );
+  }
+
+  if (openRecoveryDay) {
+    return (
+      <View style={{ flex: 1, backgroundColor: pageBackground }}>
+        <RecoveryDayDetailScreen
+          day={openRecoveryDay}
+          items={recoveryItems}
+          onBack={onBackFromRecovery}
+          onOpenSegment={(idx) => setRecoveryModalIndex(idx)}
+          isDark={isDark}
+          grad={recoveryGrad}
+        />
+        <RecoveryFocusModal
+          visible={recoveryModalIndex != null}
+          day={openRecoveryDay}
+          items={recoveryItems}
+          segmentIndex={recoveryModalIndex}
+          onClose={() => setRecoveryModalIndex(null)}
+          onChangeIndex={setRecoveryModalIndex}
+          isDark={isDark}
+          grad={recoveryGrad}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: pageBackground }]}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+        <TouchableOpacity
+          onPress={handleRootBack}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            gap: 4,
+            paddingVertical: 8,
+            paddingRight: 12,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={24} color={backChevronColor} />
+          <Text style={{ color: backChevronColor, fontWeight: "700", fontSize: 16 }}>Back</Text>
+        </TouchableOpacity>
+      </View>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
+        <PlanSummaryCard title={heroTitle} weeksRemaining={weeksRemaining} focus={focusSummary} isDark={isDark} />
+
+        {hasOverview && (
+          <View style={styles.overviewBlock}>
+            <SectionHead label="Overview" isDark={isDark} />
+            <Text style={[styles.overviewBody, { color: text }]}>{overview.trim()}</Text>
+          </View>
+        )}
+
+        {hasWorkoutDays && (
+          <View style={styles.trainSection}>
+            <SectionHead label="Training days" isDark={isDark} />
+            <View style={{ gap: 14 }}>
+              {workoutDays.map((day, idx) => (
+                <TrainingDayCard
+                  key={`${day.short}-${idx}`}
+                  day={day}
+                  dayIndex={idx}
+                  isDark={isDark}
+                  onPress={() => {
+                    setOpenDay(day);
+                    setOpenDayIndex(idx);
+                    setOpenRecoveryDay(null);
+                    setOpenRecoveryIndex(null);
+                    setRecoveryModalIndex(null);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {hasRecoveryDays && (
+          <View style={styles.trainSection}>
+            <SectionHead label="Recovery days" isDark={isDark} />
+            <View style={{ gap: 14 }}>
+              {restDays.map((day, idx) => (
+                <RecoveryDayCard
+                  key={`${day.short}-${idx}`}
+                  day={day}
+                  isDark={isDark}
+                  grad={getDayRimGradient(day, idx)}
+                  onPress={() => {
+                    setOpenRecoveryDay(day);
+                    setOpenRecoveryIndex(idx);
+                    setOpenDay(null);
+                    setExerciseModal(null);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Weekly plan: summary card, training days, recovery days, then day/exercise sheets.
+ * @param {object} props
+ * @param {object} [props.route]
+ * @param {object} [props.navigation]
+ * @param {Function} [props.onBack]
+ */
 export default function MyWorkoutPlanScreen({ route, navigation, onBack }) {
-  const shellBottomPad = useShellBottomNavInset(16);
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET);
   const reserveShellBottomNav = route?.params?.reserveShellBottomNav === true;
-  const modalScrollBottomPad = useModalScrollBottomPad(56);
+  const modalScrollBottomPad = useModalScrollBottomPad(MODAL_SCROLL_PAD);
   const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : modalScrollBottomPad;
   const colorScheme = useColorScheme();
   const systemIsDark = colorScheme === "dark";
@@ -835,14 +1073,17 @@ export default function MyWorkoutPlanScreen({ route, navigation, onBack }) {
   const isDark = typeof isDarkOverride === "boolean" ? isDarkOverride : systemIsDark;
 
   const handleRootBack = useCallback(() => {
+    // 1. Explicit onBack prop wins.
     if (typeof onBack === "function") {
       onBack();
       return;
     }
+    // 2. Then the route param (stack screens pass it that way).
     if (typeof route?.params?.onBack === "function") {
       route.params.onBack();
       return;
     }
+    // 3. Last, the navigator itself.
     if (navigation?.canGoBack?.()) navigation.goBack();
   }, [onBack, route?.params, navigation]);
 
@@ -851,10 +1092,10 @@ export default function MyWorkoutPlanScreen({ route, navigation, onBack }) {
 
   const workoutPlan = route?.params?.workoutPlan || [];
   const overview = route?.params?.overview ? String(route.params.overview) : "";
-  const weeksRemaining = route?.params?.weeksRemaining ?? 4;
+  const weeksRemaining = route?.params?.weeksRemaining ?? DEFAULT_WEEKS_REMAINING;
   const focusSummary =
-    route?.params?.focusSummary != null ? String(route.params.focusSummary) : "Complete muscle building program";
-  const heroTitle = route?.params?.planHeroTitle != null ? String(route.params.planHeroTitle) : "Your Workout Plan";
+    route?.params?.focusSummary != null ? String(route.params.focusSummary) : DEFAULT_FOCUS_SUMMARY;
+  const heroTitle = route?.params?.planHeroTitle != null ? String(route.params.planHeroTitle) : DEFAULT_HERO_TITLE;
 
   const { workoutDays, restDays } = useMemo(
     () => ({
@@ -916,132 +1157,36 @@ export default function MyWorkoutPlanScreen({ route, navigation, onBack }) {
     };
   }, [openDay, openRecoveryDay, onBackFromDay, onBackFromRecovery, subViewBackRef]);
 
-  const bg = isDark ? TOKENS.bgDark : TOKENS.bgLight;
-  const text = isDark ? TOKENS.textDark : TOKENS.textLight;
-  const tertiary = isDark ? TOKENS.tertiaryDark : TOKENS.tertiaryLight;
-
-  if (openDay) {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg }}>
-        <DayDetailScreen day={openDay} dayIndex={openDayIndex} onBack={onBackFromDay} onOpenExercise={(idx) => setExerciseModal(idx)} isDark={isDark} />
-        <ExerciseDetailModal
-          visible={exerciseModal != null}
-          day={openDay}
-          exerciseIndex={exerciseModal}
-          onClose={() => setExerciseModal(null)}
-          onChangeIndex={setExerciseModal}
-          isDark={isDark}
-        />
-      </View>
-    );
-  }
-
-  if (openRecoveryDay) {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg }}>
-        <RecoveryDayDetailScreen
-          day={openRecoveryDay}
-          items={recoveryItems}
-          onBack={onBackFromRecovery}
-          onOpenSegment={(idx) => setRecoveryModalIndex(idx)}
-          isDark={isDark}
-          grad={recoveryGrad}
-        />
-        <RecoveryFocusModal
-          visible={recoveryModalIndex != null}
-          day={openRecoveryDay}
-          items={recoveryItems}
-          segmentIndex={recoveryModalIndex}
-          onClose={() => setRecoveryModalIndex(null)}
-          onChangeIndex={setRecoveryModalIndex}
-          isDark={isDark}
-          grad={recoveryGrad}
-        />
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.container, { backgroundColor: bg }]}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
-        <TouchableOpacity
-          onPress={handleRootBack}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            alignSelf: "flex-start",
-            gap: 4,
-            paddingVertical: 8,
-            paddingRight: 12,
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color={isDark ? TOKENS.pink : "#BE185D"} />
-          <Text style={{ color: isDark ? TOKENS.pink : "#BE185D", fontWeight: "700", fontSize: 16 }}>Back</Text>
-        </TouchableOpacity>
-      </View>
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
-        {...FORM_SCROLL_PROPS}
-      >
-        <PlanSummaryCard title={heroTitle} weeksRemaining={weeksRemaining} focus={focusSummary} isDark={isDark} />
-
-        {!!overview.trim() && (
-          <View style={styles.overviewBlock}>
-            <SectionHead label="Overview" isDark={isDark} />
-            <Text style={[styles.overviewBody, { color: text }]}>{overview.trim()}</Text>
-          </View>
-        )}
-
-        {workoutDays.length > 0 && (
-          <View style={styles.trainSection}>
-            <SectionHead label="Training days" isDark={isDark} />
-            <View style={{ gap: 14 }}>
-              {workoutDays.map((day, idx) => (
-                <TrainingDayCard
-                  key={`${day.short}-${idx}`}
-                  day={day}
-                  dayIndex={idx}
-                  isDark={isDark}
-                  onPress={() => {
-                    setOpenDay(day);
-                    setOpenDayIndex(idx);
-                    setOpenRecoveryDay(null);
-                    setOpenRecoveryIndex(null);
-                    setRecoveryModalIndex(null);
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {restDays.length > 0 && (
-          <View style={styles.trainSection}>
-            <SectionHead label="Recovery days" isDark={isDark} />
-            <View style={{ gap: 14 }}>
-              {restDays.map((day, idx) => (
-                <RecoveryDayCard
-                  key={`${day.short}-${idx}`}
-                  day={day}
-                  isDark={isDark}
-                  grad={getDayRimGradient(day, idx)}
-                  onPress={() => {
-                    setOpenRecoveryDay(day);
-                    setOpenRecoveryIndex(idx);
-                    setOpenDay(null);
-                    setExerciseModal(null);
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-      </ScrollView>
-    </View>
+    <MyWorkoutPlanLayout
+      isDark={isDark}
+      openDay={openDay}
+      openDayIndex={openDayIndex}
+      onBackFromDay={onBackFromDay}
+      setExerciseModal={setExerciseModal}
+      exerciseModal={exerciseModal}
+      openRecoveryDay={openRecoveryDay}
+      recoveryItems={recoveryItems}
+      onBackFromRecovery={onBackFromRecovery}
+      setRecoveryModalIndex={setRecoveryModalIndex}
+      recoveryGrad={recoveryGrad}
+      recoveryModalIndex={recoveryModalIndex}
+      handleRootBack={handleRootBack}
+      scrollBottomPad={scrollBottomPad}
+      heroTitle={heroTitle}
+      weeksRemaining={weeksRemaining}
+      focusSummary={focusSummary}
+      overview={overview}
+      workoutDays={workoutDays}
+      setOpenDay={setOpenDay}
+      setOpenDayIndex={setOpenDayIndex}
+      setOpenRecoveryDay={setOpenRecoveryDay}
+      setOpenRecoveryIndex={setOpenRecoveryIndex}
+      restDays={restDays}
+    />
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

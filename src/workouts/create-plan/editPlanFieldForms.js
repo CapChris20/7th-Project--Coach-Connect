@@ -1,16 +1,20 @@
-/**
- * workout Plan Builder Field Edit Body
- *
- * Purpose: UI screen or component: workout Plan Builder Field Edit Body. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: WorkoutPlanBuilderFieldEditBody
- *
- * @file-header
- */
+// Inline edit bodies for one workout-plan builder row (days, injuries, situation).
+// Flow: look at fieldKey → show that field’s inputs → write back into onboardingData.
+// Used by CreateWorkoutPlanScreen and the manual plan builder.
+
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import DislikedExercisesPicker from '../exercise-videos/DislikedExercisesPicker';
+
+// ===== NAMED CONSTANTS =====
+
+const MAX_TRAINING_DAYS_PER_WEEK = 7;
+const DAYS_PER_WEEK_CHOICES = [1, 2, 3, 4, 5, 6, MAX_TRAINING_DAYS_PER_WEEK];
+const SITUATION_MAX_CHARS = 1000;
+
+// ===== HELPER FUNCTIONS =====
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Inline edit bodies for workout plan builder rows — logic copied from CreateWorkoutPlanScreen.
@@ -287,7 +291,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
     case 'frequency':
       return (
         <View style={styles.editFields}>
-          {[1, 2, 3, 4, 5, 6, 7].map((days) => (
+          {DAYS_PER_WEEK_CHOICES.map((days) => (
             <TouchableOpacity
               key={days}
               onPress={() => {
@@ -528,7 +532,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
             ]}
             value={onboardingData.situationDescription || ''}
             onChangeText={(text) => {
-              if (text.length <= 1000) {
+              if (text.length <= SITUATION_MAX_CHARS) {
                 setOnboardingData((prev) => ({ ...prev, situationDescription: text }));
                 if (validationErrors.situationDescription) {
                   setValidationErrors((prev) => ({ ...prev, situationDescription: null }));
@@ -549,7 +553,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
               },
             ]}
           >
-            {onboardingData.situationDescription?.length || 0}/1000 (min 50)
+            {onboardingData.situationDescription?.length || 0}/{SITUATION_MAX_CHARS} (min 50)
           </Text>
         </View>
       );

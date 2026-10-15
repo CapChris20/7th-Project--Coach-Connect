@@ -1,27 +1,23 @@
-/**
- * Dashboard Hero Card
- *
- * Purpose: UI screen or component: Dashboard Hero Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: TopBannerCard
- *
- * @file-header
- */
+// Client-home hero that opens the full dashboard (workouts, stats, progress, history).
+// Flow: pick dark/light colors → paint the gradient card → show an unread badge on Explore if needed.
+// Used by the client home screen. Tapping Explore Dashboard runs the `onPress` the parent passed in.
+
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
 const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
 const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
-/** Matches Aurora hero + Settings: dark pink → dark orange */
+// Manipulate here: same pink → orange as the Aurora hero and Settings pills.
 const TOP_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
-/** Same as Settings pills / header profile: dark pink → dark orange */
 const CTA_GRADIENT = ['#BE185D', '#C2410C'];
 
 const CYAN = '#64D2FF';
 const INK = '#0A0A0F';
+const UNREAD_BADGE_CAP = 99;
 
 const FEATURES = [
   { icon: 'fitness-outline', label: 'Workouts' },
@@ -30,17 +26,117 @@ const FEATURES = [
   { icon: 'calendar-outline', label: 'History' },
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Dark vs light text/fill for every label on the card.
+ * Why a helper: the JSX only paints; it should not re-decide rgba strings in five places.
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function bannerPalette(isDark) {
+  if (isDark) {
+    return {
+      backgroundGradient: BG_GRADIENT_DARK,
+      labelColor: 'rgba(255,255,255,0.45)',
+      headlineColor: '#FFFFFF',
+      subheadColor: 'rgba(255,255,255,0.6)',
+      pillBackground: 'rgba(255,255,255,0.08)',
+      pillText: '#FFFFFF',
+      badgeBorder: '#1a0a2e',
+    };
+  }
+  return {
+    backgroundGradient: BG_GRADIENT_LIGHT,
+    labelColor: 'rgba(10,10,15,0.55)',
+    headlineColor: INK,
+    subheadColor: 'rgba(10,10,15,0.6)',
+    pillBackground: 'rgba(10,10,15,0.06)',
+    pillText: INK,
+    badgeBorder: '#FFFFFF',
+  };
+}
+
+/**
+ * Badge copy. 100+ unread would overflow the circle, so we cap the digits.
+ * @param {number} unreadMessageCount
+ * @returns {string|number}
+ */
+function unreadBadgeLabel(unreadMessageCount) {
+  if (unreadMessageCount > UNREAD_BADGE_CAP) return '99+';
+  return unreadMessageCount;
+}
+
+/**
+ * Four feature chips under the subhead. Keys are labels so a duplicate icon still stays unique.
+ * @param {object} palette
+ */
+function FeaturePills({ palette }) {
+  return (
+    <View style={styles.pillsRow}>
+      {FEATURES.map((feature) => (
+        <View key={feature.label} style={[styles.pill, { backgroundColor: palette.pillBackground }]}>
+          <Ionicons name={feature.icon} size={12} color={CYAN} style={styles.pillIcon} />
+          <Text style={[styles.pillText, { color: palette.pillText }]} numberOfLines={1}>
+            {feature.label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Explore button plus the unread bubble sitting on its top-right corner.
+ * The bubble uses pointerEvents="none" so it never steals the tap meant for Explore.
+ * @param {object} props
+ */
+function ExploreDashboardButton({ onPress, unreadMessageCount, palette }) {
+  const hasUnread = unreadMessageCount > 0;
+  return (
+    <View style={styles.ctaWrap}>
+      {hasUnread ? (
+        <View style={[styles.badge, { borderColor: palette.badgeBorder }]} pointerEvents="none">
+          <Text style={styles.badgeText}>{unreadBadgeLabel(unreadMessageCount)}</Text>
+        </View>
+      ) : null}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Explore Dashboard"
+        disabled={typeof onPress !== 'function'}
+        style={({ pressed, hovered }) => [
+          styles.ctaPressable,
+          pressed && styles.ctaPressablePressed,
+          hovered && styles.ctaPressableHovered,
+        ]}
+        android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+      >
+        <LinearGradient
+          colors={CTA_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.ctaGradient}
+        >
+          <View style={styles.ctaInner}>
+            <Text style={styles.ctaText}>Explore Dashboard</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+          </View>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Premium hero for the client home “full dashboard” entry — matches FindTrainerBanner hierarchy.
+ * @param {{ onPress?: function, unreadMessageCount?: number, isDark?: boolean }} props
  */
 export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark = true }) {
-  const bgGradient = isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT;
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.55)';
-  const headlineColor = isDark ? '#FFFFFF' : INK;
-  const subheadColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.6)';
-  const pillBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)';
-  const pillText = isDark ? '#FFFFFF' : INK;
-  const badgeBorder = isDark ? '#1a0a2e' : '#FFFFFF';
+  const palette = bannerPalette(isDark);
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.cardShadow}>
@@ -52,66 +148,29 @@ export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark 
             style={styles.topBorder}
           />
           <LinearGradient
-            colors={bgGradient}
+            colors={palette.backgroundGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={styles.inner}
           >
             <View style={styles.headerRow}>
-              <Text style={[styles.label, { color: labelColor }]}>Your Complete Dashboard</Text>
+              <Text style={[styles.label, { color: palette.labelColor }]}>Your Complete Dashboard</Text>
               <Ionicons name="grid-outline" size={24} color={CYAN} />
             </View>
 
-            <Text style={[styles.headline, { color: headlineColor }]}>Everything You Need in One Place</Text>
+            <Text style={[styles.headline, { color: palette.headlineColor }]}>Everything You Need in One Place</Text>
 
-            <Text style={[styles.subhead, { color: subheadColor }]}>
+            <Text style={[styles.subhead, { color: palette.subheadColor }]}>
               Log workouts, view stats, track progress, and more
             </Text>
 
-            <View style={styles.pillsRow}>
-              {FEATURES.map(({ icon, label }) => (
-                <View key={label} style={[styles.pill, { backgroundColor: pillBg }]}>
-                  <Ionicons name={icon} size={12} color={CYAN} style={styles.pillIcon} />
-                  <Text style={[styles.pillText, { color: pillText }]} numberOfLines={1}>
-                    {label}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            <FeaturePills palette={palette} />
 
-            <View style={styles.ctaWrap}>
-              {unreadMessageCount > 0 && (
-                <View style={[styles.badge, { borderColor: badgeBorder }]} pointerEvents="none">
-                  <Text style={styles.badgeText}>
-                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                  </Text>
-                </View>
-              )}
-              <Pressable
-                onPress={onPress}
-                accessibilityRole="button"
-                accessibilityLabel="Explore Dashboard"
-                disabled={typeof onPress !== 'function'}
-                style={({ pressed, hovered }) => [
-                  styles.ctaPressable,
-                  pressed && styles.ctaPressablePressed,
-                  hovered && styles.ctaPressableHovered,
-                ]}
-                android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
-              >
-                <LinearGradient
-                  colors={CTA_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.ctaGradient}
-                >
-                  <View style={styles.ctaInner}>
-                    <Text style={styles.ctaText}>Explore Dashboard</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                  </View>
-                </LinearGradient>
-              </Pressable>
-            </View>
+            <ExploreDashboardButton
+              onPress={onPress}
+              unreadMessageCount={unreadMessageCount}
+              palette={palette}
+            />
           </LinearGradient>
         </View>
       </View>
@@ -210,7 +269,7 @@ const styles = StyleSheet.create({
   pillIcon: {
     marginTop: 0,
   },
-  pillText: { 
+  pillText: {
     fontSize: 10,
     fontWeight: '600',
     color: '#FFFFFF',

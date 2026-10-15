@@ -1,22 +1,70 @@
-/**
- * use You Tube API
- *
- * Purpose: Data/service layer: use You Tube API. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/workouts
- * Key exports: getExerciseLibraryJourneyHint, findExerciseVideos
- *
- * @file-header
- */
+// Build YouTube search queries from onboarding + filters, then fetch videos for the Exercise Library.
+// Flow: onboarding keywords → recommended/search `q` → cache → server /api/youtube/search → long-form + Shorts.
+// Used by: ExerciseVideosTab.jsx (recommended feed + typed search).
+// Key exports: getExerciseLibraryJourneyHint, findExerciseVideos
+
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Constants from 'expo-constants';
 import { getResilientApiBases } from '../../for-both/online-connection/whereToConnect';
 import { getApiAuthHeaders } from '../../for-both/online-connection/attachLoginProof';
 
-const cache = new Map();
-const CACHE_MS = 25 * 60 * 1000;
+// ===== NAMED CONSTANTS =====
+
 /** Bust in-memory cache when search/filter logic changes. */
-const CACHE_VER = 'v21';
+const CACHE_VERSION = 'v21';
+
+// Manipulate here: how long a query’s results stay in the in-memory Map
+const MS_PER_MINUTE = 60000;
+const CACHE_TTL_MINUTES = 25;
+const CACHE_TTL_MS = CACHE_TTL_MINUTES * MS_PER_MINUTE;
+
+// Manipulate here: delay before a new search fires (lets typing settle)
+const SEARCH_DEBOUNCE_MS = 380;
+
+/** Soft target for recommended-feed size before we run broad fallback queries. */
+const RECOMMENDED_MIN_RESULTS = 22;
+
+const MAX_SEARCH_QUERY_CHARS = 180;
+const QUERY_TAIL = 'form tutorial';
+
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_NOT_IMPLEMENTED = 501;
+
+const MAX_MERGED_YOUTUBE_ITEMS = 50;
+const MAX_YOUTUBE_RESULTS_PARAM = '50';
+
+/** Shorts heuristic: treat as Short when duration is this many seconds or less. */
+const SHORTS_MAX_DURATION_SECONDS = 75;
+
+const MAX_JOURNEY_HINT_PARTS = 4;
+const MAX_ONBOARDING_KEYWORDS = 16;
+const MAX_GOAL_SLUGS_SCANNED = 3;
+const MAX_KEYWORD_PUSH_FROM_GOALS = 24;
+const MAX_RESIDUAL_WORDS = 6;
+const MAX_RECOMMENDED_JOURNEY_KEYWORDS = 8;
+
+const COMPACT_EQUIP_CHARS_TYPED = 42;
+const COMPACT_EQUIP_CHARS_EMPTY = 28;
+const COMPACT_EQUIP_CHARS_RECOMMENDED = 26;
+const GOALS_CHARS_TYPED = 36;
+const GOALS_CHARS_EMPTY = 28;
+const GOALS_CHARS_RECOMMENDED = 40;
+const JOURNEY_FALLBACK_MAX_CHARS = 80;
+const JOURNEY_FALLBACK_MIN_HEAD = 40;
+const JOURNEY_FALLBACK_TAIL_PAD = 8;
+
+const SITUATION_SIG_CHARS = 200;
+const SUPPLEMENTS_SIG_CHARS = 120;
+const SANITIZE_JOURNEY_MAX_WORDS = 400;
+const SANITIZE_JOURNEY_MAX_CHARS = 2800;
+const SANITIZE_INTENT_DEFAULT_WORDS = 10;
+const SANITIZE_INTENT_DEFAULT_CHARS = 160;
+const SANITIZE_RESIDUAL_MAX_WORDS = 22;
+const SANITIZE_RESIDUAL_MAX_CHARS = 200;
+const MIN_KEYWORD_LENGTH = 2;
+const MIN_RESIDUAL_WORD_LENGTH = 3;
+const MAX_SINGLE_WORD_LENGTH = 36;
+const MIN_TRAINING_DAYS_PER_WEEK = 1;
+const MAX_TRAINING_DAYS_PER_WEEK = 7;
 
 /** Goal slugs → short YouTube-friendly tokens. */
 const GOAL_QUERY_CHUNK = {
@@ -47,167 +95,6 @@ const FILTER_EQUIP_HINT = {
   Cable: 'cable',
   Machine: 'machine gym',
 };
-
-const MAX_SEARCH_Q = 180;
-const QUERY_TAIL = 'form tutorial';
-
-function isoNow() {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return null;
-  }
-}
-
-function cacheGet(key) {
-  const e = cache.get(`${key}::${CACHE_VER}`);
-  if (!e) return null;
-  if (Date.now() - e.t > CACHE_MS) {
-    cache.delete(`${key}::${CACHE_VER}`);
-    return null;
-  }
-  return e.v;
-}
-
-function cacheSet(key, v) {
-  cache.set(`${key}::${CACHE_VER}`, { t: Date.now(), v });
-}
-
-function equipmentFromOnboarding(data) {
-  const arr = Array.isArray(data?.equipmentAccess) ? data.equipmentAccess : [];
-  const parts = arr.map((e) => ONBOARDING_EQUIP_EXPAND[e] || String(e).replace(/_/g, ' '));
-  return parts.join(' ').trim();
-}
-
-/** Shorter equipment string when combining with a typed search (full gym line dilutes YouTube). */
-function equipmentFromOnboardingCompact(data, maxChars = 42) {
-  const full = equipmentFromOnboarding(data);
-  return takeCharsByWords(full, maxChars);
-}
-
-/** Onboarding fitnessLevel → query tokens (skipped when Difficulty pill overrides). */
-function fitnessLevelQueryChunk(level) {
-  if (level == null || level === '') return '';
-  const s = String(level).toLowerCase();
-  if (s.includes('begin')) return 'beginner friendly basics';
-  if (s.includes('adv')) return 'advanced intensity technique';
-  return 'intermediate progression';
-}
-
-/** Single-word level for broad empty-tab queries (full phrase over-narrows YouTube). */
-function fitnessLevelOneWord(level) {
-  if (level == null || level === '') return '';
-  const s = String(level).toLowerCase();
-  if (s.includes('begin')) return 'beginner';
-  if (s.includes('adv')) return 'advanced';
-  return 'intermediate';
-}
-
-/** Library Difficulty pill → same tokens as onboarding level (overrides profile level in `q`). */
-function difficultyPillQueryChunk(pill) {
-  if (!pill) return '';
-  const p = String(pill);
-  if (p === 'Beginner') return 'beginner friendly basics';
-  if (p === 'Advanced') return 'advanced intensity technique';
-  if (p === 'Intermediate') return 'intermediate progression';
-  return '';
-}
-
-function takeCharsByWords(text, maxChars) {
-  const s = String(text || '').trim();
-  if (!s || maxChars <= 0) return '';
-  if (s.length <= maxChars) return s;
-  let acc = '';
-  for (const w of s.split(/\s+/)) {
-    if (!w) continue;
-    const next = acc ? `${acc} ${w}` : w;
-    if (next.length > maxChars) break;
-    acc = next;
-  }
-  return acc;
-}
-
-/** Strip emails/URLs from free text used in `q`. */
-function sanitizeIntentText(raw, maxWords = 10, maxChars = 160) {
-  if (!raw || typeof raw !== 'string') return '';
-  const cleaned = String(raw)
-    .replace(/\b[\w.-]+@[\w.-]+\.\w+\b/g, ' ')
-    .replace(/https?:\/\/\S+/gi, ' ')
-    .replace(/[^\w\s'-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleaned) return '';
-  const words = cleaned.split(/\s+/).filter((w) => w.length > 1 && w.length < 36);
-  return words.slice(0, maxWords).join(' ').slice(0, maxChars).trim();
-}
-
-/**
- * Normalize Journey / search text so shorthand typos match dictionary + regex intent.
- * e.g. "body recon" → "body recomp"
- */
-function normalizeJourneyTextForKeywords(raw) {
-  let d = String(raw || '').toLowerCase().replace(/\s+/g, ' ');
-  d = d.replace(/\bbody\s*recon\b/g, 'body recomp');
-  return d;
-}
-
-/** Labels for Exercise Library section subtitles (matches recommended-query intent). */
-export function getExerciseLibraryJourneyHint(onboardingData) {
-  const d = normalizeJourneyTextForKeywords(onboardingData?.situationDescription || '');
-  const parts = [];
-  if (/\b(body\s*)?recomp(ositions?)?\b|\bbody\s*recomp\b|\bbody\s*recomposition\b|\bmaingain\b/.test(d)) {
-    parts.push('Body recomp');
-  }
-  if (/\bskinny[-\s]?fat\b|\bthin\s*fat\b|\bskinnyfat\b/.test(d)) {
-    parts.push('Skinny-fat');
-  }
-  const goals = Array.isArray(onboardingData?.goals) ? onboardingData.goals : [];
-  if (goals.some((g) => /recomp/i.test(String(g)))) {
-    if (!parts.includes('Body recomp')) parts.push('Body recomp');
-  }
-  return parts.slice(0, 4).join(' · ');
-}
-
-/**
- * Map casual training phrases → extra tokens (typed search + first words of situation).
- * Injuries/limitations are intentionally not used in `q`.
- */
-function expandFreestyleSearchQuery(raw) {
-  const q = normalizeJourneyTextForKeywords(String(raw || '').trim());
-  if (!q) return '';
-  const lower = q.toLowerCase();
-  const boosts = [];
-  if (/\b(body\s*)?recomp(ositions?)?\b|\bbody\s*recomposition\b|\bmaingain\b/i.test(lower)) {
-    boosts.push('body recomposition recomp lean bulk');
-  }
-  // Common shorthand typo: "body recon" → recomp keywords
-  if (/\bbody\s*recon\b|\bbody\s*recon(p)?\b/i.test(lower)) {
-    boosts.push('body recomposition recomp lean bulk');
-  }
-  if (/\bskinny[-\s]?fat\b|\bthin\s*fat\b|\bskinnyfat\b/i.test(lower)) {
-    boosts.push('skinny fat recomposition lean bulk');
-  }
-  if (/\bcutting\b|^cut\b|\bcut\s+phase\b|\bshred/i.test(lower)) {
-    boosts.push('cutting fat loss lean');
-  }
-  if (/\bbulk(?:ing)?\b|\bmass\s*gain\b|\bsurplus\b/i.test(lower)) {
-    boosts.push('bulking muscle hypertrophy strength');
-  }
-  if (/\bhiit\b/i.test(lower)) {
-    boosts.push('HIIT interval high intensity');
-  }
-  if (/\bcardio\b|\bconditioning\b/i.test(lower)) {
-    boosts.push('cardio conditioning endurance');
-  }
-  if (/\bmobility\b|\bflexibility\b|\bstretch/i.test(lower)) {
-    boosts.push('mobility flexibility stretching');
-  }
-  if (boosts.length) {
-    const merged = `${q} ${boosts.join(' ')}`;
-    return [...new Set(merged.split(/\s+/).filter(Boolean))].join(' ');
-  }
-  return q;
-}
 
 /** Longest-first so "body recomp" wins before "recomp". */
 const SITUATION_DICTIONARY = [
@@ -310,111 +197,212 @@ const SITUATION_DICTIONARY = [
 ];
 
 const SITUATION_STOPWORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'are',
-  'but',
-  'not',
-  'you',
-  'all',
-  'can',
-  'was',
-  'our',
-  'out',
-  'get',
-  'has',
-  'how',
-  'its',
-  'may',
-  'new',
-  'now',
-  'old',
-  'see',
-  'who',
-  'did',
-  'what',
-  'with',
-  'have',
-  'this',
-  'that',
-  'from',
-  'they',
-  'into',
-  'just',
-  'like',
-  'also',
-  'only',
-  'know',
-  'take',
-  'each',
-  'want',
-  'work',
-  'well',
-  'year',
-  'your',
-  'when',
-  'will',
-  'come',
-  'about',
-  'after',
-  'again',
-  'there',
-  'their',
-  'would',
-  'could',
-  'been',
-  'being',
-  'than',
-  'then',
-  'them',
-  'very',
-  'some',
-  'such',
-  'into',
-  'just',
-  'over',
-  'more',
-  'most',
-  'much',
-  'make',
-  'many',
-  'need',
-  'help',
-  'goal',
-  'goals',
-  'want',
-  'really',
-  'trying',
-  'looking',
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'was', 'our', 'out',
+  'get', 'has', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'who', 'did', 'what',
+  'with', 'have', 'this', 'that', 'from', 'they', 'into', 'just', 'like', 'also', 'only',
+  'know', 'take', 'each', 'want', 'work', 'well', 'year', 'your', 'when', 'will', 'come',
+  'about', 'after', 'again', 'there', 'their', 'would', 'could', 'been', 'being', 'than',
+  'then', 'them', 'very', 'some', 'such', 'over', 'more', 'most', 'much', 'make', 'many',
+  'need', 'help', 'goal', 'goals', 'really', 'trying', 'looking',
 ]);
 
-/**
- * Pull fitness-relevant tokens from onboarding (Journey text first), goals, supplements,
- * recovery, environment, frequency. Used for recommended `q` and optional empty-tab merges.
- * Injuries are not auto-added to `q`.
- * @returns {string[]} deduped keywords in priority order
- */
-function extractKeywordsFromOnboarding(onboardingData) {
-  if (!onboardingData || typeof onboardingData !== 'object') return [];
+const youtubeResultCache = new Map();
 
-  const out = [];
+// ===== HELPER FUNCTIONS =====
+
+function isoTimestampNow() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function cacheKeyWithVersion(key) {
+  return `${key}::${CACHE_VERSION}`;
+}
+
+function cacheGet(key) {
+  const fullKey = cacheKeyWithVersion(key);
+  const entry = youtubeResultCache.get(fullKey);
+  if (!entry) return null;
+  if (Date.now() - entry.savedAt > CACHE_TTL_MS) {
+    youtubeResultCache.delete(fullKey);
+    return null;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value) {
+  youtubeResultCache.set(cacheKeyWithVersion(key), { savedAt: Date.now(), value });
+}
+
+function equipmentFromOnboarding(data) {
+  const accessList = Array.isArray(data?.equipmentAccess) ? data.equipmentAccess : [];
+  const parts = accessList.map(
+    (equipSlug) => ONBOARDING_EQUIP_EXPAND[equipSlug] || String(equipSlug).replace(/_/g, ' '),
+  );
+  return parts.join(' ').trim();
+}
+
+/** Keep whole words until we hit maxChars (YouTube `q` has a length budget). */
+function takeCharsByWords(text, maxChars) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed || maxChars <= 0) return '';
+  if (trimmed.length <= maxChars) return trimmed;
+
+  let kept = '';
+  for (const word of trimmed.split(/\s+/)) {
+    if (!word) continue;
+    const next = kept ? `${kept} ${word}` : word;
+    if (next.length > maxChars) break;
+    kept = next;
+  }
+  return kept;
+}
+
+/** Shorter equipment string when combining with typed search (full gym line dilutes YouTube). */
+function equipmentFromOnboardingCompact(data, maxChars = COMPACT_EQUIP_CHARS_TYPED) {
+  return takeCharsByWords(equipmentFromOnboarding(data), maxChars);
+}
+
+/** Onboarding fitnessLevel → query tokens (skipped when Difficulty pill overrides). */
+function fitnessLevelQueryChunk(level) {
+  if (level == null || level === '') return '';
+  const lower = String(level).toLowerCase();
+  if (lower.includes('begin')) return 'beginner friendly basics';
+  if (lower.includes('adv')) return 'advanced intensity technique';
+  return 'intermediate progression';
+}
+
+/** Single-word level for broad empty-tab queries (full phrase over-narrows YouTube). */
+function fitnessLevelOneWord(level) {
+  if (level == null || level === '') return '';
+  const lower = String(level).toLowerCase();
+  if (lower.includes('begin')) return 'beginner';
+  if (lower.includes('adv')) return 'advanced';
+  return 'intermediate';
+}
+
+/** Library Difficulty pill → same tokens as onboarding level (overrides profile level in `q`). */
+function difficultyPillQueryChunk(pill) {
+  if (!pill) return '';
+  const label = String(pill);
+  if (label === 'Beginner') return 'beginner friendly basics';
+  if (label === 'Advanced') return 'advanced intensity technique';
+  if (label === 'Intermediate') return 'intermediate progression';
+  return '';
+}
+
+/** Strip emails/URLs from free text used in `q`. */
+function sanitizeIntentText(
+  raw,
+  maxWords = SANITIZE_INTENT_DEFAULT_WORDS,
+  maxChars = SANITIZE_INTENT_DEFAULT_CHARS,
+) {
+  if (!raw || typeof raw !== 'string') return '';
+
+  const cleaned = String(raw)
+    .replace(/\b[\w.-]+@[\w.-]+\.\w+\b/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/[^\w\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+
+  const words = cleaned
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && word.length < MAX_SINGLE_WORD_LENGTH);
+  return words.slice(0, maxWords).join(' ').slice(0, maxChars).trim();
+}
+
+/**
+ * Normalize Journey / search text so shorthand typos match dictionary + regex intent.
+ * e.g. "body recon" → "body recomp"
+ */
+function normalizeJourneyTextForKeywords(raw) {
+  let text = String(raw || '').toLowerCase().replace(/\s+/g, ' ');
+  text = text.replace(/\bbody\s*recon\b/g, 'body recomp');
+  return text;
+}
+
+/**
+ * Map casual training phrases → extra tokens (typed search + first words of situation).
+ * Injuries/limitations are intentionally not used in `q`.
+ */
+function expandFreestyleSearchQuery(raw) {
+  const queryText = normalizeJourneyTextForKeywords(String(raw || '').trim());
+  if (!queryText) return '';
+
+  const lower = queryText.toLowerCase();
+  const boosts = [];
+
+  if (/\b(body\s*)?recomp(ositions?)?\b|\bbody\s*recomposition\b|\bmaingain\b/i.test(lower)) {
+    boosts.push('body recomposition recomp lean bulk');
+  }
+  if (/\bbody\s*recon\b|\bbody\s*recon(p)?\b/i.test(lower)) {
+    boosts.push('body recomposition recomp lean bulk');
+  }
+  if (/\bskinny[-\s]?fat\b|\bthin\s*fat\b|\bskinnyfat\b/i.test(lower)) {
+    boosts.push('skinny fat recomposition lean bulk');
+  }
+  if (/\bcutting\b|^cut\b|\bcut\s+phase\b|\bshred/i.test(lower)) {
+    boosts.push('cutting fat loss lean');
+  }
+  if (/\bbulk(?:ing)?\b|\bmass\s*gain\b|\bsurplus\b/i.test(lower)) {
+    boosts.push('bulking muscle hypertrophy strength');
+  }
+  if (/\bhiit\b/i.test(lower)) {
+    boosts.push('HIIT interval high intensity');
+  }
+  if (/\bcardio\b|\bconditioning\b/i.test(lower)) {
+    boosts.push('cardio conditioning endurance');
+  }
+  if (/\bmobility\b|\bflexibility\b|\bstretch/i.test(lower)) {
+    boosts.push('mobility flexibility stretching');
+  }
+
+  if (!boosts.length) return queryText;
+
+  const merged = `${queryText} ${boosts.join(' ')}`;
+  return [...new Set(merged.split(/\s+/).filter(Boolean))].join(' ');
+}
+
+/**
+ * Expand a goal slug (or free text) into YouTube tokens.
+ * @param {string} slug
+ * @returns {string}
+ */
+function expandGoalSlug(slug) {
+  return GOAL_QUERY_CHUNK[slug] || String(slug).replace(/_/g, ' ');
+}
+
+/**
+ * Mutable keyword bag used while scanning onboarding fields.
+ * @returns {{ list: string[], push: (kw: string) => void, has: (kw: string) => boolean }}
+ */
+function makeKeywordBag() {
+  const list = [];
   const seen = new Set();
 
-  const push = (kw) => {
-    const k = String(kw || '')
+  function push(keyword) {
+    const normalized = String(keyword || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    if (k.length < 2 || seen.has(k)) return;
-    seen.add(k);
-    out.push(k);
+    if (normalized.length < MIN_KEYWORD_LENGTH || seen.has(normalized)) return;
+    seen.add(normalized);
+    list.push(normalized);
+  }
+
+  return {
+    list,
+    push,
+    has: (keyword) => seen.has(keyword),
   };
+}
 
-  const descRaw = String(onboardingData.situationDescription || '');
-  const description = normalizeJourneyTextForKeywords(descRaw);
-
-  // High-intent phrases first so they survive the ~8-token cap in recommended queries.
+function pushHighIntentJourneyPhrases(description, push) {
   if (/\b(body\s*)?recomp(ositions?)?\b|\bbody\s*recomp\b|\bbody\s*recomposition\b|\bmaingain\b/.test(description)) {
     push('body recomposition');
     push('recomp');
@@ -423,48 +411,77 @@ function extractKeywordsFromOnboarding(onboardingData) {
     push('skinny fat');
     push('recomposition');
   }
+}
 
-  for (const term of [...SITUATION_DICTIONARY].sort((a, b) => b.length - a.length)) {
+function pushDictionaryMatches(description, push) {
+  const termsLongestFirst = [...SITUATION_DICTIONARY].sort(
+    (left, right) => right.length - left.length,
+  );
+  for (const term of termsLongestFirst) {
     if (description.includes(term)) push(term);
   }
+}
 
-  // Full journey scan (not just first N words) — "body recon" often appears mid-paragraph.
-  const journeyForBoost = sanitizeIntentText(descRaw, 400, 2800);
+function pushBoostedJourneyWords(descRaw, push) {
+  const journeyForBoost = sanitizeIntentText(
+    descRaw,
+    SANITIZE_JOURNEY_MAX_WORDS,
+    SANITIZE_JOURNEY_MAX_CHARS,
+  );
   const boosted = journeyForBoost ? expandFreestyleSearchQuery(journeyForBoost) : '';
-  if (boosted && boosted !== journeyForBoost) {
-    for (const w of boosted.split(/\s+/)) {
-      if (w.length > 1 && !SITUATION_STOPWORDS.has(w.toLowerCase())) push(w.toLowerCase());
+  if (!boosted || boosted === journeyForBoost) return;
+
+  for (const word of boosted.split(/\s+/)) {
+    if (word.length > 1 && !SITUATION_STOPWORDS.has(word.toLowerCase())) {
+      push(word.toLowerCase());
     }
   }
+}
 
-  const nx = descRaw.match(/\b(\d)\s*x\b/i);
-  if (nx) push(`${nx[1]}x week`);
-
-  // Goals: compact tokens (deduped); phrase-level goals also added in `buildRecommendedQuery` via `topGoalsQueryChunk`
-  const goalArr = Array.isArray(onboardingData.goals) ? onboardingData.goals.filter(Boolean).map((g) => String(g).trim()) : [];
-  for (const g of goalArr.slice(0, 3)) {
-    const expanded = GOAL_QUERY_CHUNK[g] || String(g).replace(/_/g, ' ');
-    for (const tok of String(expanded).split(/\s+/).filter(Boolean)) {
-      push(tok);
-      if (out.length >= 24) break;
-    }
+/**
+ * Push space-split tokens from one expanded goal string; stop when bag is full.
+ * @param {string} expanded
+ * @param {{ push: Function, list: string[] }} bag
+ * @returns {boolean} true when the bag hit its cap
+ */
+function pushExpandedGoalTokens(expanded, bag) {
+  const tokens = String(expanded).split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    bag.push(token);
+    if (bag.list.length >= MAX_KEYWORD_PUSH_FROM_GOALS) return true;
   }
-  const pg = onboardingData.primaryGoal || onboardingData.goal;
-  if (pg && !goalArr.length) {
-    const expanded = GOAL_QUERY_CHUNK[String(pg).trim()] || String(pg).replace(/_/g, ' ');
-    for (const tok of String(expanded).split(/\s+/).filter(Boolean)) {
-      push(tok);
-    }
+  return false;
+}
+
+function pushGoalTokens(onboardingData, bag) {
+  const goalArr = Array.isArray(onboardingData.goals)
+    ? onboardingData.goals.filter(Boolean).map((goal) => String(goal).trim())
+    : [];
+
+  for (const goalSlug of goalArr.slice(0, MAX_GOAL_SLUGS_SCANNED)) {
+    const bagIsFull = pushExpandedGoalTokens(expandGoalSlug(goalSlug), bag);
+    if (bagIsFull) return;
   }
 
-  const sup = String(onboardingData.supplementsCurrentlyTaking || '').toLowerCase();
-  if (sup.includes('creatine')) push('creatine');
-  if (sup.includes('protein')) push('protein');
-  if (sup.includes('whey')) push('whey');
-  if (sup.includes('vitamin')) push('vitamins');
-  if (sup.includes('pre workout') || sup.includes('preworkout')) push('pre workout');
-  if (sup.includes('bcaa')) push('bcaa');
+  const primaryGoal = onboardingData.primaryGoal || onboardingData.goal;
+  if (primaryGoal && !goalArr.length) {
+    pushExpandedGoalTokens(expandGoalSlug(String(primaryGoal).trim()), bag);
+  }
+}
 
+function pushSupplementTokens(onboardingData, push) {
+  const supplements = String(onboardingData.supplementsCurrentlyTaking || '').toLowerCase();
+  if (supplements.includes('creatine')) push('creatine');
+  if (supplements.includes('protein')) push('protein');
+  if (supplements.includes('whey')) push('whey');
+  if (supplements.includes('vitamin')) push('vitamins');
+  if (supplements.includes('pre workout') || supplements.includes('preworkout')) {
+    push('pre workout');
+  }
+  if (supplements.includes('bcaa')) push('bcaa');
+}
+
+function pushRecoveryTokens(onboardingData, push) {
   if (String(onboardingData.currentStressLevel || '').toLowerCase() === 'high') {
     push('stress');
     push('recovery');
@@ -476,98 +493,152 @@ function extractKeywordsFromOnboarding(onboardingData) {
   if (String(onboardingData.energyLevels || '').toLowerCase() === 'low') {
     push('low energy');
   }
+}
 
-  const te = String(onboardingData.trainingEnvironment || '').toLowerCase();
-  if (te && te !== 'both') push(te);
+function pushFrequencyAndEnvironment(onboardingData, push) {
+  const environment = String(onboardingData.trainingEnvironment || '').toLowerCase();
+  if (environment && environment !== 'both') push(environment);
 
-  // equipmentAccess is applied separately in buildSearchQuery (pill or full join) — omit here to avoid duplicate tokens.
-
-  const rawDays = onboardingData.daysPerWeek ?? onboardingData.frequency ?? onboardingData.workoutsPerWeek;
-  const n = Number(rawDays);
-  if (Number.isFinite(n) && n >= 1 && n <= 7) push(`${n} day`);
-
-  const residual = sanitizeIntentText(descRaw, 22, 200).toLowerCase();
-  if (residual) {
-    let added = 0;
-    for (const w of residual.split(/\s+/)) {
-      if (w.length < 3 || SITUATION_STOPWORDS.has(w) || seen.has(w)) continue;
-      if (/^\d+$/.test(w) && w.length > 2) continue;
-      push(w);
-      added += 1;
-      if (added >= 6) break;
-    }
+  // equipmentAccess is applied separately in buildSearchQuery — omit here to avoid duplicate tokens.
+  const rawDays =
+    onboardingData.daysPerWeek ?? onboardingData.frequency ?? onboardingData.workoutsPerWeek;
+  const daysNumber = Number(rawDays);
+  if (
+    Number.isFinite(daysNumber) &&
+    daysNumber >= MIN_TRAINING_DAYS_PER_WEEK &&
+    daysNumber <= MAX_TRAINING_DAYS_PER_WEEK
+  ) {
+    push(`${daysNumber} day`);
   }
+}
 
-  return out.slice(0, 16);
+function pushResidualJourneyWords(descRaw, bag) {
+  const residual = sanitizeIntentText(
+    descRaw,
+    SANITIZE_RESIDUAL_MAX_WORDS,
+    SANITIZE_RESIDUAL_MAX_CHARS,
+  ).toLowerCase();
+  if (!residual) return;
+
+  let added = 0;
+  for (const word of residual.split(/\s+/)) {
+    if (word.length < MIN_RESIDUAL_WORD_LENGTH) continue;
+    if (SITUATION_STOPWORDS.has(word) || bag.has(word)) continue;
+    if (/^\d+$/.test(word) && word.length > 2) continue;
+    bag.push(word);
+    added += 1;
+    if (added >= MAX_RESIDUAL_WORDS) break;
+  }
+}
+
+/**
+ * Pull fitness-relevant tokens from onboarding (Journey text first), goals, supplements,
+ * recovery, environment, frequency. Used for recommended `q` and optional empty-tab merges.
+ * Injuries are not auto-added to `q`.
+ * @returns {string[]} deduped keywords in priority order
+ */
+function extractKeywordsFromOnboarding(onboardingData) {
+  if (!onboardingData || typeof onboardingData !== 'object') return [];
+
+  const bag = makeKeywordBag();
+  const descRaw = String(onboardingData.situationDescription || '');
+  const description = normalizeJourneyTextForKeywords(descRaw);
+
+  // High-intent phrases first so they survive the token cap in recommended queries.
+  pushHighIntentJourneyPhrases(description, bag.push);
+  pushDictionaryMatches(description, bag.push);
+  pushBoostedJourneyWords(descRaw, bag.push);
+
+  const timesPerWeek = descRaw.match(/\b(\d)\s*x\b/i);
+  if (timesPerWeek) bag.push(`${timesPerWeek[1]}x week`);
+
+  pushGoalTokens(onboardingData, bag);
+  pushSupplementTokens(onboardingData, bag.push);
+  pushRecoveryTokens(onboardingData, bag.push);
+  pushFrequencyAndEnvironment(onboardingData, bag.push);
+  pushResidualJourneyWords(descRaw, bag);
+
+  return bag.list.slice(0, MAX_ONBOARDING_KEYWORDS);
 }
 
 /** Join extracted keywords with a char budget (caps bloat for YouTube). */
 function keywordsChunkForQuery(onboardingData, maxChars) {
-  const arr = extractKeywordsFromOnboarding(onboardingData);
-  if (!arr.length) return '';
-  return takeCharsByWords(arr.join(' '), maxChars);
+  const keywords = extractKeywordsFromOnboarding(onboardingData);
+  if (!keywords.length) return '';
+  return takeCharsByWords(keywords.join(' '), maxChars);
 }
 
 /** Goals only (expanded slugs) — kept separate from Journey keyword scan. */
 function topGoalsQueryChunk(data, maxChars) {
   if (!data || typeof data !== 'object') return '';
-  const arr = Array.isArray(data.goals) ? data.goals.filter(Boolean).map((g) => String(g).trim()) : [];
-  const expand = (slug) => GOAL_QUERY_CHUNK[slug] || String(slug).replace(/_/g, ' ');
-  if (arr.length >= 2) {
-    return takeCharsByWords(`${expand(arr[0])} ${expand(arr[1])}`, maxChars);
+
+  const goals = Array.isArray(data.goals)
+    ? data.goals.filter(Boolean).map((goal) => String(goal).trim())
+    : [];
+
+  if (goals.length >= 2) {
+    return takeCharsByWords(`${expandGoalSlug(goals[0])} ${expandGoalSlug(goals[1])}`, maxChars);
   }
-  if (arr.length === 1) {
-    return takeCharsByWords(expand(arr[0]), maxChars);
+  if (goals.length === 1) {
+    return takeCharsByWords(expandGoalSlug(goals[0]), maxChars);
   }
-  const pg = data.primaryGoal || data.goal;
-  if (pg) return takeCharsByWords(expand(String(pg).trim()), maxChars);
+
+  const primaryGoal = data.primaryGoal || data.goal;
+  if (primaryGoal) return takeCharsByWords(expandGoalSlug(String(primaryGoal).trim()), maxChars);
   return '';
 }
 
 /**
  * Builds YouTube `q`.
- * - Empty tab: very broad base + short goals + compact equip + one-word level (Journey keywords
- *   are merged in via extra searches in the hook so we still get volume + personalization).
+ * - Empty tab: broad base + short goals + compact equip + one-word level.
  * - Typed search: user text + pills + level phrase + Journey keyword tail.
  */
-function buildSearchQuery({ debouncedQuery, muscleGroup, equipmentHint, difficultyHint, onboardingData }) {
+function buildSearchQuery({
+  debouncedQuery,
+  muscleGroup,
+  equipmentHint,
+  difficultyHint,
+  onboardingData,
+}) {
   const data = onboardingData && typeof onboardingData === 'object' ? onboardingData : null;
-  const maxHead = Math.max(0, MAX_SEARCH_Q - QUERY_TAIL.length - 1);
+  const maxHead = Math.max(0, MAX_SEARCH_QUERY_CHARS - QUERY_TAIL.length - 1);
 
   const rawSearch = String(debouncedQuery || '').trim();
   const hasTypedSearch = rawSearch.length > 0;
-
   const searchText = expandFreestyleSearchQuery(rawSearch).trim();
   const muscle = String(muscleGroup || '').trim();
 
-  // IMPORTANT: Typed searches should stay broad.
-  // Only apply onboarding-derived equipment/level when the tab is empty.
+  // Typed searches stay broad — only apply onboarding equipment/level when the tab is empty.
   const equip = equipmentHint
     ? (FILTER_EQUIP_HINT[equipmentHint] || String(equipmentHint).toLowerCase()).trim()
     : hasTypedSearch
       ? ''
-      : equipmentFromOnboardingCompact(data, 28);
+      : equipmentFromOnboardingCompact(data, COMPACT_EQUIP_CHARS_EMPTY);
 
   const levelPhrase = difficultyHint
     ? difficultyPillQueryChunk(difficultyHint)
     : hasTypedSearch
       ? ''
       : fitnessLevelQueryChunk(data?.fitnessLevel).trim();
+
   const levelWord = difficultyHint
     ? fitnessLevelOneWord(
-        difficultyHint === 'Beginner' ? 'beginner' : difficultyHint === 'Advanced' ? 'advanced' : 'intermediate',
+        difficultyHint === 'Beginner'
+          ? 'beginner'
+          : difficultyHint === 'Advanced'
+            ? 'advanced'
+            : 'intermediate',
       )
     : fitnessLevelOneWord(data?.fitnessLevel);
 
-  const extracted = hasTypedSearch ? '' : keywordsChunkForQuery(data, 0);
-  const goalsLine = topGoalsQueryChunk(data, hasTypedSearch ? 36 : 28);
+  const goalsLine = topGoalsQueryChunk(
+    data,
+    hasTypedSearch ? GOALS_CHARS_TYPED : GOALS_CHARS_EMPTY,
+  );
 
-  let parts;
-  if (hasTypedSearch) {
-    parts = [searchText, muscle, equip, levelPhrase].filter(Boolean);
-  } else {
-    parts = ['workout', 'exercise', 'strength', goalsLine, equip, levelWord].filter(Boolean);
-  }
+  const parts = hasTypedSearch
+    ? [searchText, muscle, equip, levelPhrase].filter(Boolean)
+    : ['workout', 'exercise', 'strength', goalsLine, equip, levelWord].filter(Boolean);
 
   const headJoined = parts.join(' ').replace(/\s+/g, ' ').trim();
   const headCapped = takeCharsByWords(headJoined, maxHead);
@@ -580,18 +651,18 @@ function buildSearchQuery({ debouncedQuery, muscleGroup, equipmentHint, difficul
 
 /**
  * Recommended feed query: onboarding-only (journey keywords + goals + equip + full level phrase).
- * No typed user input. Caps total `q` at MAX_SEARCH_Q via head budget before `form tutorial`.
+ * No typed user input. Caps total `q` at MAX_SEARCH_QUERY_CHARS via head budget before `form tutorial`.
  */
 function buildRecommendedQuery({ onboardingData }) {
   const data = onboardingData && typeof onboardingData === 'object' ? onboardingData : null;
-  const maxHead = Math.max(0, MAX_SEARCH_Q - QUERY_TAIL.length - 1);
+  const maxHead = Math.max(0, MAX_SEARCH_QUERY_CHARS - QUERY_TAIL.length - 1);
 
-  const goalsLine = topGoalsQueryChunk(data, 40);
+  const goalsLine = topGoalsQueryChunk(data, GOALS_CHARS_RECOMMENDED);
   const journeyKeywords = extractKeywordsFromOnboarding(data)
-    .slice(0, 8)
+    .slice(0, MAX_RECOMMENDED_JOURNEY_KEYWORDS)
     .join(' ')
     .trim();
-  const equip = equipmentFromOnboardingCompact(data, 26);
+  const equip = equipmentFromOnboardingCompact(data, COMPACT_EQUIP_CHARS_RECOMMENDED);
   const levelPhrase = fitnessLevelQueryChunk(data?.fitnessLevel).trim();
 
   const headJoined = ['workout', 'exercise', goalsLine, journeyKeywords, equip, levelPhrase]
@@ -604,56 +675,81 @@ function buildRecommendedQuery({ onboardingData }) {
   return `${headCapped || 'workout exercise'} ${QUERY_TAIL}`.trim();
 }
 
-function mergeYoutubeLists(a, b, max = 50) {
-  const m = new Map();
-  for (const it of [...(a || []), ...(b || [])]) {
-    if (it?.videoId && !m.has(it.videoId)) m.set(it.videoId, it);
+function mergeYoutubeLists(listA, listB, max = MAX_MERGED_YOUTUBE_ITEMS) {
+  const byVideoId = new Map();
+  for (const item of [...(listA || []), ...(listB || [])]) {
+    if (item?.videoId && !byVideoId.has(item.videoId)) {
+      byVideoId.set(item.videoId, item);
+    }
   }
-  return [...m.values()].slice(0, max);
+  return [...byVideoId.values()].slice(0, max);
 }
 
-async function fetchYoutubeItemsMerged(qStr, signal) {
-  let m = await fetchYoutubeItemsViaServer(qStr, signal);
-  let apiSource = Array.isArray(m) && m.length ? 'server' : 'unknown';
-  if (!m?.length) {
-    m = await fetchYoutubeItemsDirect(qStr, signal);
-    if (m?.length) apiSource = 'direct';
-  }
-
-  // Split merged list into Shorts vs long-form using durationSeconds / isShort.
+/**
+ * Split raw YouTube items into long-form vs Shorts using duration / isShort / title tags.
+ * @param {Array} items
+ * @returns {{ longForm: Array, shorts: Array }}
+ */
+function splitLongFormAndShorts(items) {
   const shorts = [];
   const longForm = [];
-  for (const it of m || []) {
-    const dur = typeof it.durationSeconds === 'number' ? it.durationSeconds : undefined;
-    const explicitShort = it.isShort === true;
+
+  for (const item of items || []) {
+    const durationSeconds =
+      typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined;
+    const explicitShort = item.isShort === true;
     const isShortByTag =
-      /\bshorts?\b|#shorts\b/i.test(String(it?.title || '')) || /\bshorts?\b|#shorts\b/i.test(String(it?.description || ''));
-    const isShort = explicitShort || (dur != null && dur > 0 && dur <= 75) || (dur == null && isShortByTag); // fallback tag heuristic
+      /\bshorts?\b|#shorts\b/i.test(String(item?.title || '')) ||
+      /\bshorts?\b|#shorts\b/i.test(String(item?.description || ''));
+    const isShort =
+      explicitShort ||
+      (durationSeconds != null &&
+        durationSeconds > 0 &&
+        durationSeconds <= SHORTS_MAX_DURATION_SECONDS) ||
+      (durationSeconds == null && isShortByTag);
+
     const base = {
-      videoId: it.videoId,
-      title: it.title,
-      channel: it.channel,
-      description: it.description,
-      publishedAt: it.publishedAt,
-      durationSeconds: dur,
+      videoId: item.videoId,
+      title: item.title,
+      channel: item.channel,
+      description: item.description,
+      publishedAt: item.publishedAt,
+      durationSeconds,
     };
+
     if (isShort) shorts.push(base);
     else longForm.push(base);
   }
 
+  return { longForm, shorts };
+}
+
+async function fetchYoutubeItemsMerged(queryString, signal) {
+  let items = await fetchYoutubeItemsViaServer(queryString, signal);
+  let apiSource = Array.isArray(items) && items.length ? 'server' : 'unknown';
+
+  if (!items?.length) {
+    items = await fetchYoutubeItemsDirect(queryString, signal);
+    if (items?.length) apiSource = 'direct';
+  }
+
+  const { longForm, shorts } = splitLongFormAndShorts(items);
   return { items: longForm, shorts, apiSource };
 }
 
 /** Cache fingerprint when onboarding fields that affect `q` change. */
 function onboardingSearchRelevanceKey(data) {
   if (!data || typeof data !== 'object') return '';
+
   try {
     return JSON.stringify({
       goals: Array.isArray(data.goals) ? [...data.goals].sort() : [],
       primaryGoal: data.primaryGoal || '',
       goal: data.goal || '',
       fitnessLevel: data.fitnessLevel || '',
-      equipmentAccess: Array.isArray(data.equipmentAccess) ? [...data.equipmentAccess].sort() : [],
+      equipmentAccess: Array.isArray(data.equipmentAccess)
+        ? [...data.equipmentAccess].sort()
+        : [],
       trainingEnvironment: data.trainingEnvironment || '',
       daysPerWeek: data.daysPerWeek ?? data.frequency ?? data.workoutsPerWeek ?? '',
       currentStressLevel: data.currentStressLevel || '',
@@ -661,11 +757,11 @@ function onboardingSearchRelevanceKey(data) {
       energyLevels: data.energyLevels || '',
       situationSig: String(data.situationDescription || '')
         .trim()
-        .slice(0, 200)
+        .slice(0, SITUATION_SIG_CHARS)
         .replace(/\s+/g, ' '),
       supplementsSig: String(data.supplementsCurrentlyTaking || '')
         .trim()
-        .slice(0, 120)
+        .slice(0, SUPPLEMENTS_SIG_CHARS)
         .replace(/\s+/g, ' '),
     });
   } catch {
@@ -679,36 +775,94 @@ function readYoutubeApiKeyFallback() {
 }
 
 /** Deprecated direct path — always returns null; kept for call-site stability. */
-async function fetchYoutubeItemsDirect(q, signal) {
-  const key = readYoutubeApiKeyFallback();
-  if (!key) return null;
+async function fetchYoutubeItemsDirect(queryString, signal) {
+  const apiKey = readYoutubeApiKeyFallback();
+  if (!apiKey) return null;
+
   try {
-    const u = new URL('https://www.googleapis.com/youtube/v3/search');
-    u.searchParams.set('part', 'snippet');
-    u.searchParams.set('type', 'video');
-    u.searchParams.set('maxResults', '50');
-    u.searchParams.set('order', 'relevance');
-    u.searchParams.set('q', q);
-    u.searchParams.set('key', key);
-    const res = await fetch(u.toString(), { signal, headers: { Accept: 'application/json' } });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.error) return null;
+    const requestUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+    requestUrl.searchParams.set('part', 'snippet');
+    requestUrl.searchParams.set('type', 'video');
+    requestUrl.searchParams.set('maxResults', MAX_YOUTUBE_RESULTS_PARAM);
+    requestUrl.searchParams.set('order', 'relevance');
+    requestUrl.searchParams.set('q', queryString);
+    requestUrl.searchParams.set('key', apiKey);
+
+    const response = await fetch(requestUrl.toString(), {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.error) return null;
+
     return (data.items || [])
-      .map((it) => ({
-        videoId: it.id?.videoId,
-        title: it.snippet?.title || '',
-        channel: it.snippet?.channelTitle || '',
-        description: it.snippet?.description || '',
-        publishedAt: it.snippet?.publishedAt || '',
+      .map((item) => ({
+        videoId: item.id?.videoId,
+        title: item.snippet?.title || '',
+        channel: item.snippet?.channelTitle || '',
+        description: item.snippet?.description || '',
+        publishedAt: item.snippet?.publishedAt || '',
       }))
-      .filter((it) => it.videoId);
-  } catch (e) {
-    if (e?.name === 'AbortError') throw e;
+      .filter((item) => item.videoId);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     return null;
   }
 }
 
-async function fetchYoutubeItemsViaServer(q, signal) {
+/**
+ * Try one API base for /api/youtube/search. Returns items or null.
+ * @param {string} baseNorm
+ * @param {string} queryString
+ * @param {AbortSignal} signal
+ * @param {object} authHeaders
+ * @returns {Promise<Array|null>}
+ */
+async function fetchYoutubeItemsFromOneBase(baseNorm, queryString, signal, authHeaders) {
+  const requestUrl = new URL('/api/youtube/search', `${baseNorm}/`);
+  requestUrl.searchParams.set('q', queryString);
+  requestUrl.searchParams.set('maxResults', MAX_YOUTUBE_RESULTS_PARAM);
+
+  const response = await fetch(requestUrl.toString(), { signal, headers: authHeaders });
+  const json = await response.json().catch(() => ({}));
+
+  if (response.status === HTTP_NOT_IMPLEMENTED) return null;
+  if (response.status === HTTP_UNAUTHORIZED) return null;
+  if (!response.ok) return null;
+  if (!Array.isArray(json.items)) return null;
+
+  return json.items
+    .map((item) => ({
+      videoId: item.videoId,
+      title: item.title || '',
+      channel: item.channel || '',
+      description: item.description || '',
+      publishedAt: item.publishedAt || '',
+      durationSeconds:
+        typeof item.durationSeconds === 'number' ? item.durationSeconds : undefined,
+      isShort: typeof item.isShort === 'boolean' ? item.isShort : undefined,
+    }))
+    .filter((item) => item.videoId);
+}
+
+/**
+ * Try one API base; return items, or null to try the next base.
+ * Re-throws AbortError so the hook can cancel cleanly.
+ * @returns {Promise<Array|null>}
+ */
+async function tryYoutubeSearchOnBase(base, queryString, signal, authHeaders) {
+  const baseNorm = String(base || '').replace(/\/+$/, '');
+  if (!baseNorm) return null;
+
+  try {
+    return await fetchYoutubeItemsFromOneBase(baseNorm, queryString, signal, authHeaders);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    return null;
+  }
+}
+
+async function fetchYoutubeItemsViaServer(queryString, signal) {
   const bases = getResilientApiBases();
   let authHeaders = { Accept: 'application/json' };
   try {
@@ -718,58 +872,112 @@ async function fetchYoutubeItemsViaServer(q, signal) {
   }
 
   for (const base of bases) {
-    const baseNorm = String(base || '').replace(/\/+$/, '');
-    if (!baseNorm) continue;
-    try {
-      const u = new URL('/api/youtube/search', `${baseNorm}/`);
-      u.searchParams.set('q', q);
-      u.searchParams.set('maxResults', '50');
-      const res = await fetch(u.toString(), { signal, headers: authHeaders });
-      const json = await res.json().catch(() => ({}));
-      if (res.status === 501) continue;
-      if (res.status === 401) continue;
-      if (!res.ok) continue;
-      if (Array.isArray(json.items)) {
-        return json.items
-          .map((it) => ({
-            videoId: it.videoId,
-            title: it.title || '',
-            channel: it.channel || '',
-            description: it.description || '',
-            publishedAt: it.publishedAt || '',
-            // server can optionally attach durationSeconds and isShort flags
-            durationSeconds: typeof it.durationSeconds === 'number' ? it.durationSeconds : undefined,
-            isShort: typeof it.isShort === 'boolean' ? it.isShort : undefined,
-          }))
-          .filter((it) => it.videoId);
-      }
-    } catch (e) {
-      if (e?.name === 'AbortError') throw e;
-    }
+    const items = await tryYoutubeSearchOnBase(base, queryString, signal, authHeaders);
+    if (items) return items;
   }
+
   return null;
 }
 
+/**
+ * Top up a thin recommended feed with broad fallback YouTube queries.
+ * @param {Array} mapped
+ * @param {string} usedSource
+ * @param {object|null} onboardingData
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ mapped: Array, usedSource: string }>}
+ */
+async function topUpRecommendedFeed(mapped, usedSource, onboardingData, signal) {
+  let nextMapped = mapped;
+  let nextSource = usedSource;
 
-// ============================================================================
-// Note: Direct YouTube API calls have been removed for security.
-// All YouTube searches now route through the authenticated server endpoint:
-// POST /api/youtube/search
-// ============================================================================
+  if (nextMapped.length >= RECOMMENDED_MIN_RESULTS) {
+    return { mapped: nextMapped, usedSource: nextSource };
+  }
+
+  const broad = await fetchYoutubeItemsMerged(
+    'workout full body strength training exercises form tutorial',
+    signal,
+  );
+  nextMapped = mergeYoutubeLists(nextMapped, broad.items || []);
+  if (nextSource === 'unknown') nextSource = broad.apiSource || 'unknown';
+
+  if (nextMapped.length >= RECOMMENDED_MIN_RESULTS) {
+    return { mapped: nextMapped, usedSource: nextSource };
+  }
+
+  const journey = keywordsChunkForQuery(onboardingData, JOURNEY_FALLBACK_MAX_CHARS);
+  if (journey) {
+    const journeyQuery = `${takeCharsByWords(
+      `${journey} workout fitness`,
+      Math.max(
+        JOURNEY_FALLBACK_MIN_HEAD,
+        MAX_SEARCH_QUERY_CHARS - QUERY_TAIL.length - JOURNEY_FALLBACK_TAIL_PAD,
+      ),
+    )} ${QUERY_TAIL}`.trim();
+    const journeyResults = await fetchYoutubeItemsMerged(journeyQuery, signal);
+    nextMapped = mergeYoutubeLists(nextMapped, journeyResults.items || []);
+    if (nextSource === 'unknown') nextSource = journeyResults.apiSource || 'unknown';
+  }
+
+  if (nextMapped.length >= RECOMMENDED_MIN_RESULTS) {
+    return { mapped: nextMapped, usedSource: nextSource };
+  }
+
+  const hypertrophy = await fetchYoutubeItemsMerged(
+    'hypertrophy dumbbell gym workout tutorial',
+    signal,
+  );
+  nextMapped = mergeYoutubeLists(nextMapped, hypertrophy.items || []);
+  if (nextSource === 'unknown') nextSource = hypertrophy.apiSource || 'unknown';
+
+  return { mapped: nextMapped, usedSource: nextSource };
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
- * Fetches YouTube search results (search.list), caches by query key.
+ * Labels for Exercise Library section subtitles (matches recommended-query intent).
+ * @param {object|null} onboardingData
+ * @returns {string}
+ */
+export function getExerciseLibraryJourneyHint(onboardingData) {
+  const description = normalizeJourneyTextForKeywords(
+    onboardingData?.situationDescription || '',
+  );
+  const parts = [];
+
+  if (/\b(body\s*)?recomp(ositions?)?\b|\bbody\s*recomp\b|\bbody\s*recomposition\b|\bmaingain\b/.test(description)) {
+    parts.push('Body recomp');
+  }
+  if (/\bskinny[-\s]?fat\b|\bthin\s*fat\b|\bskinnyfat\b/.test(description)) {
+    parts.push('Skinny-fat');
+  }
+
+  const goals = Array.isArray(onboardingData?.goals) ? onboardingData.goals : [];
+  if (goals.some((goal) => /recomp/i.test(String(goal)))) {
+    if (!parts.includes('Body recomp')) parts.push('Body recomp');
+  }
+
+  return parts.slice(0, MAX_JOURNEY_HINT_PARTS).join(' · ');
+}
+
+/**
+ * Fetches YouTube search results, caches by query key.
+ * Routes through the authenticated server endpoint (no client API key).
  *
  * @param {object} opts
- * @param {string} opts.debouncedQuery - search text (already debounced by caller)
+ * @param {'recommended'|'search'} [opts.mode]
+ * @param {string} opts.debouncedQuery
  * @param {string|null} opts.muscleGroup
- * @param {string|null} opts.equipmentHint - equipment pill label or null (onboarding equipment used if null)
- * @param {'Beginner'|'Intermediate'|'Advanced'|null|undefined} opts.difficultyHint - difficulty pill; overrides onboarding fitnessLevel in `q`
+ * @param {string|null} opts.equipmentHint
+ * @param {'Beginner'|'Intermediate'|'Advanced'|null|undefined} opts.difficultyHint
  * @param {object|null} opts.onboardingData
  * @param {boolean} [opts.enabled]
+ * @returns {{ items: Array, shorts: Array, loading: boolean, error: string|null, debugInfo: object }}
  */
 export function findExerciseVideos({
-  mode = 'search', // 'recommended' | 'search'
+  mode = 'search',
   debouncedQuery,
   muscleGroup,
   equipmentHint,
@@ -777,6 +985,7 @@ export function findExerciseVideos({
   onboardingData,
   enabled = true,
 }) {
+  // vocab: useState = React state that re-renders when we set it
   const [items, setItems] = useState([]);
   const [shorts, setShorts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -785,12 +994,14 @@ export function findExerciseVideos({
     mode,
     query: '',
     resultCount: 0,
-    apiSource: 'unknown', // 'server' | 'direct' | 'unknown'
+    apiSource: 'unknown',
     timestamp: null,
     cacheHit: false,
   });
+  // vocab: useRef = mutable box that survives re-renders without causing them
   const mounted = useRef(true);
 
+  // vocab: useEffect = run after paint; cleanup when deps change or unmount
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -798,7 +1009,11 @@ export function findExerciseVideos({
     };
   }, []);
 
-  const onboardFinger = useMemo(() => onboardingSearchRelevanceKey(onboardingData), [onboardingData]);
+  // vocab: useMemo = remember a value until deps change
+  const onboardFinger = useMemo(
+    () => onboardingSearchRelevanceKey(onboardingData),
+    [onboardingData],
+  );
 
   const cacheKey = useMemo(() => {
     return [
@@ -814,117 +1029,126 @@ export function findExerciseVideos({
   useEffect(() => {
     if (!enabled) return undefined;
 
-    const q =
+    const searchQuery =
       mode === 'recommended'
         ? buildRecommendedQuery({ onboardingData })
-        : buildSearchQuery({ debouncedQuery, muscleGroup, equipmentHint, difficultyHint, onboardingData });
+        : buildSearchQuery({
+            debouncedQuery,
+            muscleGroup,
+            equipmentHint,
+            difficultyHint,
+            onboardingData,
+          });
 
-    const hit = cacheGet(cacheKey);
-    if (hit && Array.isArray(hit.items)) {
-      setItems(hit.items);
-      setShorts(Array.isArray(hit.shorts) ? hit.shorts : []);
+    const cacheHit = cacheGet(cacheKey);
+    if (cacheHit && Array.isArray(cacheHit.items)) {
+      setItems(cacheHit.items);
+      setShorts(Array.isArray(cacheHit.shorts) ? cacheHit.shorts : []);
       setError(null);
       setLoading(false);
       setDebugInfo({
         mode,
-        query: q,
-        resultCount: hit.items.length,
-        apiSource: hit.apiSource || 'unknown',
-        timestamp: hit.timestamp || null,
+        query: searchQuery,
+        resultCount: cacheHit.items.length,
+        apiSource: cacheHit.apiSource || 'unknown',
+        timestamp: cacheHit.timestamp || null,
         cacheHit: true,
-        shortsCount: hit.shorts ? hit.shorts.length : 0,
+        shortsCount: cacheHit.shorts ? cacheHit.shorts.length : 0,
       });
       return undefined;
     }
 
-    const ac = new AbortController();
+    // vocab: AbortController = cancel in-flight fetch when the effect cleans up
+    const abortController = new AbortController();
     let cancelled = false;
 
-    const run = async () => {
+    const runSearch = async () => {
       setLoading(true);
       setError(null);
+
       try {
-        let usedSource = 'unknown';
-        let mergedRes = await fetchYoutubeItemsMerged(q, ac.signal);
-        let mapped = mergedRes.items || [];
-        const shortsList = mergedRes.shorts || [];
-        usedSource = mergedRes.apiSource || 'unknown';
+        const merged = await fetchYoutubeItemsMerged(searchQuery, abortController.signal);
+        let mapped = merged.items || [];
+        const shortsList = merged.shorts || [];
+        let usedSource = merged.apiSource || 'unknown';
 
-        const isRecommended = mode === 'recommended';
-
-        // Top up recommended feed with a couple broad fallbacks if results are too small.
-        if (isRecommended && mapped.length < 22) {
-          const m2 = await fetchYoutubeItemsMerged('workout full body strength training exercises form tutorial', ac.signal);
-          mapped = mergeYoutubeLists(mapped, m2.items || []);
-          if (usedSource === 'unknown') usedSource = m2.apiSource || 'unknown';
-        }
-        if (isRecommended && mapped.length < 22) {
-          const journey = keywordsChunkForQuery(onboardingData, 80);
-          if (journey) {
-            const qJ = `${takeCharsByWords(
-              `${journey} workout fitness`,
-              Math.max(40, MAX_SEARCH_Q - QUERY_TAIL.length - 8),
-            )} ${QUERY_TAIL}`.trim();
-            const m3 = await fetchYoutubeItemsMerged(qJ, ac.signal);
-            mapped = mergeYoutubeLists(mapped, m3.items || []);
-            if (usedSource === 'unknown') usedSource = m3.apiSource || 'unknown';
-          }
-        }
-        if (isRecommended && mapped.length < 22) {
-          const m4 = await fetchYoutubeItemsMerged('hypertrophy dumbbell gym workout tutorial', ac.signal);
-          mapped = mergeYoutubeLists(mapped, m4.items || []);
-          if (usedSource === 'unknown') usedSource = m4.apiSource || 'unknown';
+        if (mode === 'recommended') {
+          const topped = await topUpRecommendedFeed(
+            mapped,
+            usedSource,
+            onboardingData,
+            abortController.signal,
+          );
+          mapped = topped.mapped;
+          usedSource = topped.usedSource;
         }
 
-        cacheSet(cacheKey, { items: mapped, shorts: shortsList, apiSource: usedSource, timestamp: isoNow() });
-        if (!cancelled && mounted.current) {
-          setItems(mapped);
-          setShorts(shortsList);
-          setDebugInfo({
-            mode,
-            query: q,
-            resultCount: mapped.length,
-            apiSource: usedSource,
-            timestamp: isoNow(),
-            cacheHit: false,
-            shortsCount: shortsList.length,
-          });
-          if (mapped.length === 0) {
-            setError(
-              'No YouTube videos loaded. Sign in, enable YouTube Data API v3 on your Google key, and run ./scripts/syncCloudRunEnv.sh once (uses REACT_NATIVE_YOUTUBE_API_KEY from .env).',
-            );
-          } else {
-            setError(null);
-          }
+        cacheSet(cacheKey, {
+          items: mapped,
+          shorts: shortsList,
+          apiSource: usedSource,
+          timestamp: isoTimestampNow(),
+        });
+
+        if (cancelled || !mounted.current) return;
+
+        setItems(mapped);
+        setShorts(shortsList);
+        setDebugInfo({
+          mode,
+          query: searchQuery,
+          resultCount: mapped.length,
+          apiSource: usedSource,
+          timestamp: isoTimestampNow(),
+          cacheHit: false,
+          shortsCount: shortsList.length,
+        });
+
+        if (mapped.length === 0) {
+          setError(
+            'No YouTube videos loaded. Sign in, enable YouTube Data API v3 on your Google key, and run ./scripts/syncCloudRunEnv.sh once (uses REACT_NATIVE_YOUTUBE_API_KEY from .env).',
+          );
+        } else {
+          setError(null);
         }
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-        if (!cancelled && mounted.current) {
-          setError(e?.message || 'fetch_failed');
-          setItems([]);
-          setShorts([]);
-          setDebugInfo({
-            mode,
-            query: q,
-            resultCount: 0,
-            apiSource: 'unknown',
-            timestamp: isoNow(),
-            cacheHit: false,
-            shortsCount: 0,
-          });
-        }
+      } catch (fetchError) {
+        if (fetchError?.name === 'AbortError') return;
+        if (cancelled || !mounted.current) return;
+
+        setError(fetchError?.message || 'fetch_failed');
+        setItems([]);
+        setShorts([]);
+        setDebugInfo({
+          mode,
+          query: searchQuery,
+          resultCount: 0,
+          apiSource: 'unknown',
+          timestamp: isoTimestampNow(),
+          cacheHit: false,
+          shortsCount: 0,
+        });
       } finally {
         if (!cancelled && mounted.current) setLoading(false);
       }
     };
 
-    const t = setTimeout(run, 380);
+    // Manipulate here: SEARCH_DEBOUNCE_MS — lower = snappier, higher = fewer API calls
+    const debounceTimer = setTimeout(runSearch, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
-      clearTimeout(t);
-      ac.abort();
+      clearTimeout(debounceTimer);
+      abortController.abort();
     };
-  }, [cacheKey, enabled, mode, debouncedQuery, muscleGroup, equipmentHint, difficultyHint, onboardingData]);
+  }, [
+    cacheKey,
+    enabled,
+    mode,
+    debouncedQuery,
+    muscleGroup,
+    equipmentHint,
+    difficultyHint,
+    onboardingData,
+  ]);
 
   return { items, shorts, loading, error, debugInfo };
 }

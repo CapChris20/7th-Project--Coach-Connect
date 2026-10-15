@@ -33,12 +33,8 @@ const TRAINER_PATH_SETTINGS = 'settings';
  * @returns {{ prefixes: string[], config: { screens: object } }}
  */
 function linkingConfig(prefixes, screens) {
-  return {
-    prefixes,
-    config: {
-      screens,
-    },
-  };
+  const config = { screens };
+  return { prefixes, config };
 }
 
 // ===== MAIN FUNCTION =====

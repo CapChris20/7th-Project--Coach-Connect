@@ -69,6 +69,24 @@ function paymentDocToRow(paymentDoc) {
   };
 }
 
+function newestFirstByCreatedAt(paymentRows) {
+  const sortedRows = [...paymentRows];
+  sortedRows.sort((leftRow, rightRow) => rightRow.createdAtMs - leftRow.createdAtMs);
+  return sortedRows;
+}
+
+async function loadTrainerPaymentRows(trainerId) {
+  // vocab: query + where + limit = a capped Firestore read, not the whole payments collection.
+  const paymentQuery = query(
+    collection(db, PAYMENTS_COLLECTION),
+    where(TRAINER_ID_FIELD, '==', trainerId),
+    limit(HISTORY_QUERY_LIMIT),
+  );
+  const paymentSnapshot = await getDocs(paymentQuery);
+  const paymentRows = paymentSnapshot.docs.map(paymentDocToRow);
+  return newestFirstByCreatedAt(paymentRows).slice(0, HISTORY_ROW_LIMIT);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -82,25 +100,21 @@ export function trainerPaymentHistory(trainerId) {
 
   useEffect(() => {
     let isCancelled = false;
+
+    // 1. No trainer or no Firestore → empty list, not a hang.
     if (!trainerId || !db) {
       setRows([]);
       setLoading(false);
       return undefined;
     }
 
+    // 2. Load newest-first rows. Ignore the result if the trainer changed while we were reading.
     const loadPaymentRows = async () => {
       setLoading(true);
       try {
-        const paymentQuery = query(
-          collection(db, PAYMENTS_COLLECTION),
-          where(TRAINER_ID_FIELD, '==', trainerId),
-          limit(HISTORY_QUERY_LIMIT),
-        );
-        const paymentSnapshot = await getDocs(paymentQuery);
+        const paymentRows = await loadTrainerPaymentRows(trainerId);
         if (isCancelled) return;
-        const paymentRows = paymentSnapshot.docs.map(paymentDocToRow);
-        paymentRows.sort((leftRow, rightRow) => rightRow.createdAtMs - leftRow.createdAtMs);
-        setRows(paymentRows.slice(0, HISTORY_ROW_LIMIT));
+        setRows(paymentRows);
       } catch (loadError) {
         console.warn('Trainer payment history load failed:', loadError?.message || loadError);
         if (!isCancelled) setRows([]);

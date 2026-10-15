@@ -19,6 +19,12 @@ const ALERT_TONE = 'alert';
 const COACH_NOTE_SOURCE = 'coach';
 const DARK_CARD_BACKGROUND = 'rgba(14,14,22,0.98)';
 const LIGHT_CARD_BACKGROUND = '#ffffff';
+const DARK_FLAGS_SHELL = 'rgba(20,20,30,0.55)';
+const LIGHT_FLAGS_SHELL = 'rgba(255,255,255,0.7)';
+const FLAGS_BLUR_INTENSITY = 20;
+const SECTION_LABEL = 'TRAINER SNAPSHOT';
+const SECTION_TITLE = 'At a glance';
+const FLAGS_TITLE = 'NEEDS ATTENTION';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -29,6 +35,18 @@ function isDarkMode(mode) {
 function cardInnerBackground(mode) {
   if (isDarkMode(mode)) return DARK_CARD_BACKGROUND;
   return LIGHT_CARD_BACKGROUND;
+}
+
+function flagsShellBackground(mode) {
+  if (isDarkMode(mode)) return DARK_FLAGS_SHELL;
+  return LIGHT_FLAGS_SHELL;
+}
+
+function hasAnyTrainerInsight(showAdherence, showFlags, showNote) {
+  if (showAdherence) return true;
+  if (showFlags) return true;
+  if (showNote) return true;
+  return false;
 }
 
 function isAlertFlag(flag) {
@@ -157,13 +175,13 @@ export function TrainerTipsForWeek({ week }) {
   const showFlags = hasRedFlags(redFlags);
   const showNote = hasTrainerNote(trainerNote);
 
-  if (!showAdherence && !showFlags && !showNote) return null;
+  if (!hasAnyTrainerInsight(showAdherence, showFlags, showNote)) return null;
 
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>TRAINER SNAPSHOT</Text>
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>At a glance</Text>
+        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>{SECTION_LABEL}</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{SECTION_TITLE}</Text>
       </View>
 
       <View style={styles.stack}>
@@ -174,12 +192,12 @@ export function TrainerTipsForWeek({ week }) {
             style={[
               styles.flagsShell,
               {
-                backgroundColor: isDarkMode(mode) ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)',
+                backgroundColor: flagsShellBackground(mode),
               },
             ]}
           >
-            <BlurView intensity={20} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
-            <Text style={[styles.flagsTitle, { color: colors.textMuted }]}>NEEDS ATTENTION</Text>
+            <BlurView intensity={FLAGS_BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+            <Text style={[styles.flagsTitle, { color: colors.textMuted }]}>{FLAGS_TITLE}</Text>
             <View style={styles.flagsGrid}>
               {redFlags.map((flag) => (
                 <RedFlagChip key={flag.id} flag={flag} colors={colors} mode={mode} />

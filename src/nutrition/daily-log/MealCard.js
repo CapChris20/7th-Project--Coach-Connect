@@ -1,13 +1,7 @@
-/**
- * Meal Card
- *
- * Purpose: UI screen or component: Meal Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: MealCard
- *
- * @file-header
- */
+// One meal section on the daily food log: title, items, Scan/Log buttons.
+// Flow: sum calories → list FoodItems (or empty copy) → Scan (optional) + Log.
+// Used by the daily nutrition log. mealKey is what the parent uses to know which meal was tapped.
+
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
@@ -15,13 +9,51 @@ import { LinearGradient } from 'expo-linear-gradient';
 import FoodItem from '../food-details/FoodItem';
 import GlassPanel from '../../look-and-feel/GlassPanel';
 
-const ACCENT = '#7C3AED';
+// ===== NAMED CONSTANTS =====
 
+const ACCENT = '#7C3AED';
+const EMPTY_CALORIES = 0;
+const DEFAULT_SERVING_SIZE = 1;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Add every item's calories. Missing calories count as 0 so a bad row cannot NaN the header.
+ * @param {Array} items
+ * @returns {number}
+ */
+function totalMealCalories(items) {
+  return items.reduce((sum, item) => sum + (item.calories || EMPTY_CALORIES), 0);
+}
+
+/**
+ * FoodItem wants a flat card shape. Logs store macros on the row and/or in metadata.
+ * @param {object} item
+ * @returns {object}
+ */
+function foodCardFromLogItem(item) {
+  return {
+    name: item.food_name || item.metadata?.name,
+    calories: Number(item.calories) || Number(item.metadata?.calories) || 0,
+    protein: Number(item.protein) || Number(item.metadata?.protein) || 0,
+    carbs: Number(item.carbs) || Number(item.metadata?.carbs) || 0,
+    fat: Number(item.fat) || Number(item.metadata?.fat) || 0,
+    servingSize: Number(item.serving_size) || DEFAULT_SERVING_SIZE,
+    ...item.metadata,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Glass meal card with a calorie total, logged foods, and Scan/Log actions.
+ * @param {{ mealType: string, mealKey: string, items?: Array, onAddPress: Function, onDeleteItem: Function, onAddScanner?: Function }} props
+ */
 export default function MealCard({ mealType, mealKey, items = [], onAddPress, onDeleteItem, onAddScanner }) {
   const { colors, spacing, isDark } = useTheme();
   const styles = createStyles(spacing, colors, isDark);
-
-  const mealTotal = items.reduce((sum, item) => sum + (item.calories || 0), 0);
+  const hasItems = items.length > 0;
+  const mealTotal = totalMealCalories(items);
 
   return (
     <GlassPanel
@@ -32,25 +64,17 @@ export default function MealCard({ mealType, mealKey, items = [], onAddPress, on
     >
       <View style={styles.cardHeader}>
         <Text style={styles.mealTitle} selectable={true}>{mealType}</Text>
-        {items.length > 0 && (
+        {hasItems && (
           <Text style={styles.mealTotal} selectable={true}>{Math.round(mealTotal)} kcal</Text>
         )}
       </View>
 
-      {items.length > 0 ? (
+      {hasItems ? (
         <View style={styles.itemsList}>
           {items.map((item, index) => (
             <FoodItem
               key={item.id || index}
-              food={{
-                name: item.food_name || item.metadata?.name,
-                calories: Number(item.calories) || Number(item.metadata?.calories) || 0,
-                protein: Number(item.protein) || Number(item.metadata?.protein) || 0,
-                carbs: Number(item.carbs) || Number(item.metadata?.carbs) || 0,
-                fat: Number(item.fat) || Number(item.metadata?.fat) || 0,
-                servingSize: Number(item.serving_size) || 1,
-                ...item.metadata,
-              }}
+              food={foodCardFromLogItem(item)}
               onDelete={() => onDeleteItem(item)}
               showDelete
             />
@@ -168,4 +192,3 @@ const createStyles = (spacing, colors, isDark) =>
       borderRadius: 14,
     },
   });
-

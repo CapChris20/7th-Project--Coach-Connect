@@ -114,7 +114,24 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
     opacity: backdropOpacity.value,
   }));
 
-  const themeLabel = isDarkMode(mode) ? 'Dark mode' : 'Light mode';
+  let themeLabel = 'Light mode';
+  let themeIconName = 'sunny';
+  let switchTrackColor = '#d4d4dc';
+  let switchThumbOffset = 0;
+  if (isDarkMode(mode)) {
+    themeLabel = 'Dark mode';
+    themeIconName = 'moon';
+    switchTrackColor = '#3a3a4a';
+    switchThumbOffset = 20;
+  }
+  const sheetSurface = {
+    backgroundColor: sheetBackgroundColor(mode),
+    borderColor: colors.border,
+  };
+  const themeRowSurface = {
+    backgroundColor: rowSurfaceColor(mode),
+    borderColor: colors.border,
+  };
 
   return (
     <Modal transparent visible={visible} statusBarTranslucent animationType="none" onRequestClose={onClose}>
@@ -123,16 +140,7 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} testID="sheet-backdrop" />
         </Animated.View>
 
-        <Animated.View
-          style={[
-            styles.sheet,
-            sheetStyle,
-            {
-              backgroundColor: sheetBackgroundColor(mode),
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        <Animated.View style={[styles.sheet, sheetStyle, sheetSurface]}>
           <View style={[styles.handle, { backgroundColor: colors.textMuted, opacity: 0.4 }]} />
           <Text style={[styles.title, { color: colors.textPrimary }]}>Report Settings</Text>
 
@@ -142,28 +150,22 @@ export function ReportOptionsPopup({ visible, onClose, onExport }) {
               playSelectionHaptic();
               toggle();
             }}
-            style={[
-              styles.row,
-              {
-                backgroundColor: rowSurfaceColor(mode),
-                borderColor: colors.border,
-              },
-            ]}
+            style={[styles.row, themeRowSurface]}
           >
             <View style={styles.rowLeft}>
               <View style={[styles.iconWrap, { backgroundColor: iconSurfaceColor(mode) }]}>
-                <Ionicons name={isDarkMode(mode) ? 'moon' : 'sunny'} size={18} color={colors.textPrimary} />
+                <Ionicons name={themeIconName} size={18} color={colors.textPrimary} />
               </View>
               <View>
                 <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>Appearance</Text>
                 <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{themeLabel}</Text>
               </View>
             </View>
-            <View style={[styles.switchTrack, { backgroundColor: isDarkMode(mode) ? '#3a3a4a' : '#d4d4dc' }]}>
+            <View style={[styles.switchTrack, { backgroundColor: switchTrackColor }]}>
               <View
                 style={[
                   styles.switchThumb,
-                  { backgroundColor: '#fff', transform: [{ translateX: isDarkMode(mode) ? 20 : 0 }] },
+                  { backgroundColor: '#fff', transform: [{ translateX: switchThumbOffset }] },
                 ]}
               />
             </View>

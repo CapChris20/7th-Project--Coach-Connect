@@ -1,13 +1,7 @@
-/**
- * Filter Modal
- *
- * Purpose: UI screen or component: Filter Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/marketplace
- * Key exports: FilterPopup
- *
- * @file-header
- */
+// Bottom sheet for marketplace filters: sort, specialty, experience, price, session type.
+// Flow: copy current filters into a draft → edit the draft → Apply writes it back, Reset restores defaults.
+// Used by SearchTrainersScreen. The parent owns the live filters; this sheet only edits a copy.
+
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -38,32 +32,85 @@ import { Pill, PrimaryButton, SecondaryButton, SectionLabel } from './FindTraine
 import BlurredBackground from '../../look-and-feel/BlurredBackground';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const THUMB_SIZE = 18;
+// ===== NAMED CONSTANTS =====
 
+const THUMB_SIZE = 18;
+const PRICE_SLIDER_STEP = 10;
+const SHEET_SCROLL_EXTRA_PAD = 20;
+const MIN_SHEET_BOTTOM_PAD = 16;
+const ANY_PRICE_LABEL = 'Any';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * How far the custom thumb sits on the track. 0 = floor, 1 = ceiling.
+ * @param {number} value
+ * @returns {number}
+ */
+function priceSliderRatio(value) {
+  return (value - PRICE_FLOOR) / (PRICE_CEILING - PRICE_FLOOR);
+}
+
+/**
+ * @param {object} draft
+ * @returns {number}
+ */
+function draftMaxPrice(draft) {
+  if (!draft.priceMax.trim()) return PRICE_CEILING;
+  return Math.min(PRICE_CEILING, Math.max(PRICE_FLOOR, Number(draft.priceMax) || PRICE_CEILING));
+}
+
+/**
+ * At the ceiling we show "Any" so a blank max-price field and the slider match.
+ * @param {number} sliderMax
+ * @returns {string}
+ */
+function maxPriceLabel(sliderMax) {
+  if (sliderMax >= PRICE_CEILING) return ANY_PRICE_LABEL;
+  return `$${sliderMax}`;
+}
+
+/**
+ * @param {string[]} specialties
+ * @param {string} specialty
+ * @returns {string[]}
+ */
+function specialtiesAfterToggle(specialties, specialty) {
+  if (specialties.includes(specialty)) {
+    return specialties.filter((entry) => entry !== specialty);
+  }
+  return [...specialties, specialty];
+}
+
+/**
+ * Painted track + invisible native slider. The OS thumb is hidden so we can draw a branded one.
+ */
 function PriceSlider({ value, onValueChange, isDark, mutedColor }) {
   const [trackWidth, setTrackWidth] = useState(0);
-  const ratio = (value - PRICE_FLOOR) / (PRICE_CEILING - PRICE_FLOOR);
+  const ratio = priceSliderRatio(value);
   const fillPct = Math.min(100, Math.max(0, ratio * 100));
-  const thumbLeft = trackWidth > 0 ? Math.min(trackWidth - THUMB_SIZE, Math.max(0, ratio * trackWidth - THUMB_SIZE / 2)) : 0;
+  const thumbLeft = trackWidth > 0
+    ? Math.min(trackWidth - THUMB_SIZE, Math.max(0, ratio * trackWidth - THUMB_SIZE / 2))
+    : 0;
 
   return (
     <View
-      style={s.sliderHost}
-      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+      style={styles.sliderHost}
+      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
     >
-      <View style={[s.sliderTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : mutedColor }]}>
+      <View style={[styles.sliderTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : mutedColor }]}>
         <LinearGradient
           colors={[BRAND.pink, BRAND.orange]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={[s.sliderFill, { width: `${fillPct}%` }]}
+          style={[styles.sliderFill, { width: `${fillPct}%` }]}
         />
       </View>
       <Slider
-        style={s.sliderNative}
+        style={styles.sliderNative}
         minimumValue={PRICE_FLOOR}
         maximumValue={PRICE_CEILING}
-        step={10}
+        step={PRICE_SLIDER_STEP}
         value={value}
         onValueChange={onValueChange}
         minimumTrackTintColor="transparent"
@@ -71,8 +118,8 @@ function PriceSlider({ value, onValueChange, isDark, mutedColor }) {
         thumbTintColor="transparent"
       />
       {trackWidth > 0 ? (
-        <View pointerEvents="none" style={[s.sliderThumb, { left: thumbLeft }]}>
-          <View style={s.sliderThumbInner} />
+        <View pointerEvents="none" style={[styles.sliderThumb, { left: thumbLeft }]}>
+          <View style={styles.sliderThumbInner} />
         </View>
       ) : null}
     </View>
@@ -81,15 +128,23 @@ function PriceSlider({ value, onValueChange, isDark, mutedColor }) {
 
 function FilterSection({ label, children }) {
   return (
-    <View style={s.filterSection}>
+    <View style={styles.filterSection}>
       <SectionLabel>{label}</SectionLabel>
       {children}
     </View>
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Marketplace filter sheet. Edits a draft copy; Apply is the only write back to the parent.
+ * vocab: useSafeAreaInsets = notch / home-indicator padding so the footer is not hidden.
+ * vocab: useEffect recopies `filters` whenever the sheet opens so Cancel-by-backdrop never leaks edits.
+ * @param {{ visible: boolean, filters: object, onClose: Function, onApply: Function, isDark?: boolean }} props
+ */
 export function FilterPopup({ visible, filters, onClose, onApply, isDark = true }) {
-  const t = getTheme(isDark);
+  const theme = getTheme(isDark);
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(filters);
 
@@ -97,18 +152,21 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
     if (visible) setDraft(filters);
   }, [visible, filters]);
 
-  const sliderMax = draft.priceMax.trim()
-    ? Math.min(PRICE_CEILING, Math.max(PRICE_FLOOR, Number(draft.priceMax) || PRICE_CEILING))
-    : PRICE_CEILING;
-  const maxLabel = sliderMax >= PRICE_CEILING ? 'Any' : `$${sliderMax}`;
+  const sliderMax = draftMaxPrice(draft);
+  const maxLabel = maxPriceLabel(sliderMax);
 
-  const toggleSpec = (spec) =>
-    setDraft((d) => ({
-      ...d,
-      specialties: d.specialties.includes(spec)
-        ? d.specialties.filter((x) => x !== spec)
-        : [...d.specialties, spec],
+  const toggleSpecialty = (specialty) => {
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      specialties: specialtiesAfterToggle(currentDraft.specialties, specialty),
     }));
+  };
+
+  const applyDraftAndClose = () => {
+    // 1. Write the draft to the parent, then close. Closing first would lose the edits.
+    onApply(draft);
+    onClose();
+  };
 
   return (
     <Modal
@@ -119,8 +177,8 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={s.filterSheetWrap}>
-        <View style={s.modalOverlay} pointerEvents="box-none">
+      <View style={styles.filterSheetWrap}>
+        <View style={styles.modalOverlay} pointerEvents="box-none">
           <BlurredBackground
             intensity={isDark ? 32 : 24}
             tint={isDark ? 'dark' : 'light'}
@@ -136,38 +194,38 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
             />
           </BlurredBackground>
         </View>
-        <View style={[s.filterSheet, { backgroundColor: t.card }]}>
+        <View style={[styles.filterSheet, { backgroundColor: theme.card }]}>
           <ScrollView
-            style={s.filterScrollView}
+            style={styles.filterScrollView}
             contentContainerStyle={[
-              s.filterScroll,
-              { paddingBottom: Math.max(insets.bottom, 16) + 20 },
+              styles.filterScroll,
+              { paddingBottom: Math.max(insets.bottom, MIN_SHEET_BOTTOM_PAD) + SHEET_SCROLL_EXTRA_PAD },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             bounces
           >
-            <View style={s.filterHeader}>
+            <View style={styles.filterHeader}>
               <View>
                 <SectionLabel>Refine</SectionLabel>
-                <Text style={[s.filterTitle, { color: t.foreground, fontFamily: MP_FONT.displayBold }]}>
+                <Text style={[styles.filterTitle, { color: theme.foreground, fontFamily: MP_FONT.displayBold }]}>
                   Filters
                 </Text>
               </View>
-              <Pressable onPress={onClose} style={[s.iconBtn, { borderColor: t.border }]}>
-                <Text style={{ color: t.foreground, fontSize: 18 }}>✕</Text>
+              <Pressable onPress={onClose} style={[styles.iconBtn, { borderColor: theme.border }]}>
+                <Text style={{ color: theme.foreground, fontSize: 18 }}>✕</Text>
               </Pressable>
             </View>
 
             <FilterSection label="Sort by">
-              <View style={[s.pillWrap, s.pillWrapCenter]}>
-                {SORT_OPTIONS.map((o) => (
+              <View style={[styles.pillWrap, styles.pillWrapCenter]}>
+                {SORT_OPTIONS.map((option) => (
                   <Pill
-                    key={o}
-                    label={o}
-                    active={draft.sort === o}
-                    onPress={() => setDraft({ ...draft, sort: o })}
-                    t={t}
+                    key={option}
+                    label={option}
+                    active={draft.sort === option}
+                    onPress={() => setDraft({ ...draft, sort: option })}
+                    t={theme}
                     isDark={isDark}
                   />
                 ))}
@@ -175,14 +233,14 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
             </FilterSection>
 
             <FilterSection label="Specialty">
-              <View style={[s.pillWrap, s.pillWrapCenter]}>
-                {FILTER_SPECIALTIES.map((o) => (
+              <View style={[styles.pillWrap, styles.pillWrapCenter]}>
+                {FILTER_SPECIALTIES.map((option) => (
                   <Pill
-                    key={o}
-                    label={o}
-                    active={draft.specialties.includes(o)}
-                    onPress={() => toggleSpec(o)}
-                    t={t}
+                    key={option}
+                    label={option}
+                    active={draft.specialties.includes(option)}
+                    onPress={() => toggleSpecialty(option)}
+                    t={theme}
                     isDark={isDark}
                   />
                 ))}
@@ -190,14 +248,14 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
             </FilterSection>
 
             <FilterSection label="Experience">
-              <View style={s.pillWrap}>
-                {EXPERIENCE_OPTIONS.map((o) => (
+              <View style={styles.pillWrap}>
+                {EXPERIENCE_OPTIONS.map((option) => (
                   <Pill
-                    key={o}
-                    label={o}
-                    active={draft.experience === o}
-                    onPress={() => setDraft({ ...draft, experience: o })}
-                    t={t}
+                    key={option}
+                    label={option}
+                    active={draft.experience === option}
+                    onPress={() => setDraft({ ...draft, experience: option })}
+                    t={theme}
                     isDark={isDark}
                   />
                 ))}
@@ -207,18 +265,18 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
             <FilterSection label="Availability">
               <View
                 style={[
-                  s.toggleRow,
+                  styles.toggleRow,
                   {
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : t.border,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : t.muted,
+                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : theme.border,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : theme.muted,
                   },
                 ]}
               >
-                <Text style={{ color: t.foreground, fontWeight: '600' }}>Available only</Text>
+                <Text style={{ color: theme.foreground, fontWeight: '600' }}>Available only</Text>
                 <Switch
                   value={draft.availableOnly}
-                  onValueChange={(v) => setDraft({ ...draft, availableOnly: v })}
-                  trackColor={{ false: t.border, true: BRAND.pink }}
+                  onValueChange={(isAvailableOnly) => setDraft({ ...draft, availableOnly: isAvailableOnly })}
+                  trackColor={{ false: theme.border, true: BRAND.pink }}
                   thumbColor="#fff"
                 />
               </View>
@@ -228,43 +286,43 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
               <PriceSlider
                 value={sliderMax}
                 isDark={isDark}
-                mutedColor={t.muted}
-                onValueChange={(v) =>
-                  setDraft({ ...draft, priceMax: v >= PRICE_CEILING ? '' : String(Math.round(v)) })
+                mutedColor={theme.muted}
+                onValueChange={(nextPrice) =>
+                  setDraft({ ...draft, priceMax: nextPrice >= PRICE_CEILING ? '' : String(Math.round(nextPrice)) })
                 }
               />
-              <View style={s.sliderLabels}>
-                <Text style={{ color: t.mutedForeground, fontSize: 12 }}>${PRICE_FLOOR}</Text>
-                <Text style={{ color: t.mutedForeground, fontSize: 12 }}>${PRICE_CEILING}</Text>
+              <View style={styles.sliderLabels}>
+                <Text style={{ color: theme.mutedForeground, fontSize: 12 }}>${PRICE_FLOOR}</Text>
+                <Text style={{ color: theme.mutedForeground, fontSize: 12 }}>${PRICE_CEILING}</Text>
               </View>
-              <View style={s.priceInputs}>
+              <View style={styles.priceInputs}>
                 <TextInput
                   placeholder="Min $/mo"
-                  placeholderTextColor={t.mutedForeground}
+                  placeholderTextColor={theme.mutedForeground}
                   keyboardType="number-pad"
                   value={draft.priceMin}
-                  onChangeText={(v) => setDraft({ ...draft, priceMin: v })}
+                  onChangeText={(typedPrice) => setDraft({ ...draft, priceMin: typedPrice })}
                   style={[
-                    s.input,
+                    styles.input,
                     {
-                      color: t.foreground,
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : t.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : t.muted,
+                      color: theme.foreground,
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.muted,
                     },
                   ]}
                 />
                 <TextInput
                   placeholder="Max $/mo"
-                  placeholderTextColor={t.mutedForeground}
+                  placeholderTextColor={theme.mutedForeground}
                   keyboardType="number-pad"
                   value={draft.priceMax}
-                  onChangeText={(v) => setDraft({ ...draft, priceMax: v })}
+                  onChangeText={(typedPrice) => setDraft({ ...draft, priceMax: typedPrice })}
                   style={[
-                    s.input,
+                    styles.input,
                     {
-                      color: t.foreground,
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : t.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : t.muted,
+                      color: theme.foreground,
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.muted,
                     },
                   ]}
                 />
@@ -272,14 +330,14 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
             </FilterSection>
 
             <FilterSection label="Session type">
-              <View style={s.pillWrap}>
-                {SESSION_TYPES.map((o) => (
+              <View style={styles.pillWrap}>
+                {SESSION_TYPES.map((option) => (
                   <Pill
-                    key={o}
-                    label={o}
-                    active={draft.sessionType === o}
-                    onPress={() => setDraft({ ...draft, sessionType: o })}
-                    t={t}
+                    key={option}
+                    label={option}
+                    active={draft.sessionType === option}
+                    onPress={() => setDraft({ ...draft, sessionType: option })}
+                    t={theme}
                     isDark={isDark}
                   />
                 ))}
@@ -288,25 +346,19 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
 
             <View
               style={[
-                s.filterFooter,
-                { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : t.border },
+                styles.filterFooter,
+                { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border },
               ]}
             >
               <SecondaryButton
                 onPress={() => setDraft(DEFAULT_FILTERS)}
                 style={{ flex: 1 }}
-                textColor={t.foreground}
+                textColor={theme.foreground}
                 isDark={isDark}
               >
                 Reset
               </SecondaryButton>
-              <PrimaryButton
-                onPress={() => {
-                  onApply(draft);
-                  onClose();
-                }}
-                style={{ flex: 2 }}
-              >
+              <PrimaryButton onPress={applyDraftAndClose} style={{ flex: 2 }}>
                 Apply filters
               </PrimaryButton>
             </View>
@@ -319,7 +371,7 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
 
 export default FilterPopup;
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   filterSheetWrap: { flex: 1, justifyContent: 'flex-end' },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,

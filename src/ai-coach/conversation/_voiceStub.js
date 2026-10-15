@@ -12,7 +12,24 @@ const SILENT_SPEECH_STATE = {
 
 // ===== HELPER FUNCTIONS =====
 
-async function doNothing() {}
+async function ignoreRemovedVoiceAction() {}
+
+/**
+ * Build the object screens destructure from useCoachSpeech.
+ * Keeping keys identical avoids touching every caller when voice was removed.
+ * @returns {object}
+ */
+function buildSilentCoachSpeechControls() {
+  return {
+    listening: SILENT_SPEECH_STATE.listening,
+    speaking: SILENT_SPEECH_STATE.speaking,
+    partial: SILENT_SPEECH_STATE.partial,
+    startListening: ignoreRemovedVoiceAction,
+    stopListening: ignoreRemovedVoiceAction,
+    speak: ignoreRemovedVoiceAction,
+    stopSpeaking: ignoreRemovedVoiceAction,
+  };
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -22,13 +39,7 @@ async function doNothing() {}
  * @returns {object}
  */
 export function useCoachSpeech() {
-  return {
-    ...SILENT_SPEECH_STATE,
-    startListening: doNothing,
-    stopListening: doNothing,
-    speak: doNothing,
-    stopSpeaking: doNothing,
-  };
+  return buildSilentCoachSpeechControls();
 }
 
 export default useCoachSpeech;

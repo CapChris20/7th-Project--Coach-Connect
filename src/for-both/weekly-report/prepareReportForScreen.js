@@ -1,31 +1,51 @@
+// Turns raw weekly-report Firestore docs into the shape WeeklyReportBody/Screen expect.
+// Flow: parse each day line → merge nutrition + daily logs → compute stats/trends → attach trainer tips.
+// Used by WeeklyReportScreen after it loads reports and food totals.
+
 import { pickBestTips } from './pickBestTips';
 import { writeTrainerTips } from './writeTrainerTips';
 
-function textForReport(v) {
-  if (v == null) return '';
-  if (typeof v === 'string') return v;
-  if (typeof v === 'object' && v.text) return String(v.text);
-  return String(v);
+// ===== NAMED CONSTANTS =====
+
+const EMPTY_DISPLAY = '—';
+const STEPS_THOUSAND = 1000;
+const WATER_GOAL_OZ = 64;
+const DAYS_IN_WEEK = 7;
+const ENERGY_SCALE_MAX = 8;
+const NOON_ISO_SUFFIX = 'T12:00:00';
+const DATE_KEY_LENGTH = 10;
+const TIP_LIMIT = 5;
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const SHORT_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const EMPTY_CHECK_IN_LINE = (dayName) => `${dayName} (): No check-in for this day.`;
+
+// ===== HELPER FUNCTIONS =====
+
+function textForReport(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value.text) return String(value.text);
+  return String(value);
 }
 
-function parseNum(v) {
-  if (v == null || v === '' || v === 'N/A') return null;
-  const n = parseFloat(String(v).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : null;
+function parseNum(value) {
+  if (value == null || value === '' || value === 'N/A') return null;
+  const parsed = parseFloat(String(value).replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function mean(values) {
-  const nums = (values || []).filter((n) => Number.isFinite(n) && n > 0);
-  if (!nums.length) return null;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
+  const numbers = (values || []).filter((number) => Number.isFinite(number) && number > 0);
+  if (!numbers.length) return null;
+  return numbers.reduce((sum, number) => sum + number, 0) / numbers.length;
 }
 
-function round1(n) {
-  return Math.round(n * 10) / 10;
+function round1(number) {
+  return Math.round(number * 10) / 10;
 }
 
-function round0(n) {
-  return Math.round(n);
+function round0(number) {
+  return Math.round(number);
 }
 
 function pctTrend(current, previous) {
@@ -34,49 +54,51 @@ function pctTrend(current, previous) {
   return Math.round(((current - previous) / Math.abs(previous)) * 100);
 }
 
-function formatSteps(n) {
-  if (n == null) return null;
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(round0(n));
+function formatSteps(stepCount) {
+  if (stepCount == null) return null;
+  if (stepCount >= STEPS_THOUSAND) {
+    return `${(stepCount / STEPS_THOUSAND).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return String(round0(stepCount));
 }
 
 function isEmptyCheckIn(note) {
-  const n = String(note || '').toLowerCase().trim();
-  return !n || n.includes('no check-in');
+  const noteText = String(note || '').toLowerCase().trim();
+  return !noteText || noteText.includes('no check-in');
 }
 
 function isRecoveryDay(note) {
-  const n = String(note || '').toLowerCase();
-  return /\brest\b|recovery|no workout|skipped|rest day|take a rest/i.test(n);
+  const noteText = String(note || '').toLowerCase();
+  return /\brest\b|recovery|no workout|skipped|rest day|take a rest/i.test(noteText);
 }
 
-function addDays(isoDate, days) {
-  const d = new Date(`${isoDate}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+function addDays(isoDate, daysToAdd) {
+  const noonDate = new Date(`${isoDate}${NOON_ISO_SUFFIX}`);
+  noonDate.setDate(noonDate.getDate() + daysToAdd);
+  return noonDate.toISOString().slice(0, DATE_KEY_LENGTH);
 }
 
-function uniqueStrings(arr) {
+function uniqueStrings(values) {
   const seen = new Set();
-  const out = [];
-  for (const raw of arr) {
-    const s = String(raw || '').trim();
-    if (!s) continue;
-    const key = s.toLowerCase();
+  const unique = [];
+  for (const raw of values) {
+    const text = String(raw || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(s);
+    unique.push(text);
   }
-  return out;
+  return unique;
 }
 
 function parseExerciseLine(line) {
-  const m = String(line || '').match(/^(.+?)\s*\((\d+)\s*sets?:\s*(.+)\)\s*$/i);
-  if (m) {
+  const match = String(line || '').match(/^(.+?)\s*\((\d+)\s*sets?:\s*(.+)\)\s*$/i);
+  if (match) {
     return {
-      name: m[1].trim(),
-      setsCount: m[2],
-      setsDetail: m[3].trim(),
+      name: match[1].trim(),
+      setsCount: match[2],
+      setsDetail: match[3].trim(),
     };
   }
   return { name: String(line || '').trim(), setsCount: null, setsDetail: null };
@@ -84,21 +106,21 @@ function parseExerciseLine(line) {
 
 /** Fallback when structured parser misses inline Workout: chunks. */
 function extractWorkoutsFromNote(note) {
-  const n = String(note || '');
-  const match = n.match(/\bWorkout:\s*(.+?)(?:\.\s*Note:|\.\s*$|$)/i);
+  const noteText = String(note || '');
+  const match = noteText.match(/\bWorkout:\s*(.+?)(?:\.\s*Note:|\.\s*$|$)/i);
   if (!match) return [];
   return match[1]
     .replace(/\.\s*$/, '')
     .split(';')
-    .map((s) => parseExerciseLine(s.trim()))
-    .filter((w) => w.name);
+    .map((chunk) => parseExerciseLine(chunk.trim()))
+    .filter((workout) => workout.name);
 }
 
 function pillNum(pills, key) {
-  const pill = pills.find((p) => p.key === key);
+  const pill = pills.find((entry) => entry.key === key);
   if (!pill?.value) return null;
-  const m = String(pill.value).match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : null;
+  const match = String(pill.value).match(/([\d.]+)/);
+  return match ? parseFloat(match[1]) : null;
 }
 
 function dayHasData(day) {
@@ -129,12 +151,9 @@ function buildCoachingSections(report) {
   );
   const summary = textForReport(report?.summary);
 
-  const pros = pickBestTips(rawPros, 5);
-  const cons = pickBestTips(rawCons, 5);
-
   return {
-    pros,
-    cons,
+    pros: pickBestTips(rawPros, TIP_LIMIT),
+    cons: pickBestTips(rawCons, TIP_LIMIT),
     focus,
     trends,
     summary,
@@ -142,10 +161,52 @@ function buildCoachingSections(report) {
   };
 }
 
-function parseDayLine(line, index, weekStart, parseDayNote, parseStructuredDayNote, nutritionByDay) {
-  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const SHORT_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+function emptyCheckInDay(isoDate, fullDayName, shortDayName, shortLabel, nutrition) {
+  return {
+    date: isoDate,
+    dayName: shortDayName,
+    fullDayName,
+    shortLabel,
+    sleepHours: 0,
+    waterOz: 0,
+    steps: 0,
+    calories: round0(nutrition.calories),
+    protein: round1(nutrition.protein),
+    carbs: round1(nutrition.carbs),
+    fat: round1(nutrition.fat),
+    energy: null,
+    mood: null,
+    stress: null,
+    soreness: null,
+    weight: null,
+    bodyFat: null,
+    workoutRating: null,
+    pills: [],
+    workouts: [],
+    workoutName: null,
+    isRecovery: false,
+    hasCheckIn: false,
+    notes: undefined,
+    summaryFallback: undefined,
+  };
+}
 
+function parseStepsFromPill(stepsPill) {
+  const stepsRaw = stepsPill?.value?.replace(/k$/i, '');
+  const stepsMatch = stepsRaw?.match(/([\d.]+)/);
+  if (!stepsMatch) return 0;
+  const parsed = parseFloat(stepsMatch[1]);
+  if (stepsPill?.value?.toLowerCase().includes('k')) return Math.round(parsed * STEPS_THOUSAND);
+  return Math.round(parsed);
+}
+
+function workoutsForDay(structured, note) {
+  let workouts = (structured.workoutExercises || []).map(parseExerciseLine).filter((workout) => workout.name);
+  if (!workouts.length) workouts = extractWorkoutsFromNote(note);
+  return workouts;
+}
+
+function parseDayLine(line, index, weekStart, parseDayNote, parseStructuredDayNote, nutritionByDay) {
   const copy = textForReport(line);
   const { day, date, note } = parseDayNote(copy);
   const structured = parseStructuredDayNote(note);
@@ -153,62 +214,26 @@ function parseDayLine(line, index, weekStart, parseDayNote, parseStructuredDayNo
   const nutrition = nutritionByDay[isoDate] || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const fullDayName = (day || DAY_NAMES[index] || 'Day').trim();
   const shortDayName = fullDayName.slice(0, 3);
+  const shortLabel = SHORT_LABELS[index] || 'D';
 
   if (isEmptyCheckIn(note)) {
-    return {
-      date: isoDate,
-      dayName: shortDayName,
-      fullDayName,
-      shortLabel: SHORT_LABELS[index] || 'D',
-      sleepHours: 0,
-      waterOz: 0,
-      steps: 0,
-      calories: round0(nutrition.calories),
-      protein: round1(nutrition.protein),
-      carbs: round1(nutrition.carbs),
-      fat: round1(nutrition.fat),
-      energy: null,
-      mood: null,
-      stress: null,
-      soreness: null,
-      weight: null,
-      bodyFat: null,
-      workoutRating: null,
-      pills: [],
-      workouts: [],
-      workoutName: null,
-      isRecovery: false,
-      hasCheckIn: false,
-      notes: undefined,
-      summaryFallback: undefined,
-    };
+    return emptyCheckInDay(isoDate, fullDayName, shortDayName, shortLabel, nutrition);
   }
 
-  const sleepPill = structured.pills.find((p) => p.key === 'sleep');
-  const waterPill = structured.pills.find((p) => p.key === 'water');
-  const stepsPill = structured.pills.find((p) => p.key === 'steps');
+  const sleepPill = structured.pills.find((pill) => pill.key === 'sleep');
+  const waterPill = structured.pills.find((pill) => pill.key === 'water');
+  const stepsPill = structured.pills.find((pill) => pill.key === 'steps');
 
   const sleepMatch = sleepPill?.value?.match(/([\d.]+)/);
   const waterMatch = waterPill?.value?.match(/([\d.]+)/);
-  const stepsRaw = stepsPill?.value?.replace(/k$/i, '');
-  const stepsMatch = stepsRaw?.match(/([\d.]+)/);
-
-  let steps = 0;
-  if (stepsMatch) {
-    const n = parseFloat(stepsMatch[1]);
-    steps = stepsPill?.value?.toLowerCase().includes('k') ? Math.round(n * 1000) : Math.round(n);
-  }
-
-  let workouts = (structured.workoutExercises || []).map(parseExerciseLine).filter((w) => w.name);
-  if (!workouts.length) {
-    workouts = extractWorkoutsFromNote(note);
-  }
+  const steps = parseStepsFromPill(stepsPill);
+  const workouts = workoutsForDay(structured, note);
 
   return {
     date: isoDate,
     dayName: shortDayName,
     fullDayName,
-    shortLabel: SHORT_LABELS[index] || 'D',
+    shortLabel,
     sleepHours: sleepMatch ? parseFloat(sleepMatch[1]) : 0,
     waterOz: waterMatch ? parseFloat(waterMatch[1]) : 0,
     steps,
@@ -254,13 +279,13 @@ function enrichDaysWithDailyLogs(days, dailyLogsByDay, workoutsFromDailyLog) {
 
 function buildWeekWorkoutDays(days) {
   return days
-    .filter((d) => d.workouts?.length > 0)
-    .map((d) => ({
-      date: d.date,
-      dayName: d.fullDayName,
-      workoutName: d.workoutName,
-      workouts: d.workouts,
-      exerciseSummary: d.workouts.map((w) => w.name).join(', '),
+    .filter((day) => day.workouts?.length > 0)
+    .map((day) => ({
+      date: day.date,
+      dayName: day.fullDayName,
+      workoutName: day.workoutName,
+      workouts: day.workouts,
+      exerciseSummary: day.workouts.map((workout) => workout.name).join(', '),
     }));
 }
 
@@ -269,7 +294,7 @@ function buildOverviewHighlights(stats, days, report) {
     {
       icon: 'checkmark-circle',
       label: 'Check-ins',
-      value: `${stats.checkInDays}/7`,
+      value: `${stats.checkInDays}/${DAYS_IN_WEEK}`,
       gradient: ['#BE185D', '#C2410C'],
     },
   ];
@@ -283,18 +308,23 @@ function buildOverviewHighlights(stats, days, report) {
     });
   }
 
-  const sleepDays = days.filter((d) => d.sleepHours > 0);
+  const sleepDays = days.filter((day) => day.sleepHours > 0);
   if (sleepDays.length >= 1) {
-    const vals = sleepDays.map((d) => d.sleepHours);
+    const sleepValues = sleepDays.map((day) => day.sleepHours);
+    const sleepLabel = sleepDays.length >= 2 ? 'Sleep range' : 'Sleep logged';
+    const sleepValue =
+      sleepDays.length >= 2
+        ? `${Math.min(...sleepValues)}–${Math.max(...sleepValues)}h`
+        : `${sleepValues[0]}h`;
     highlights.push({
       icon: 'moon',
-      label: sleepDays.length >= 2 ? 'Sleep range' : 'Sleep logged',
-      value: sleepDays.length >= 2 ? `${Math.min(...vals)}–${Math.max(...vals)}h` : `${vals[0]}h`,
+      label: sleepLabel,
+      value: sleepValue,
       gradient: ['#6D28D9', '#4C1D95'],
     });
   }
 
-  const waterGoalDays = days.filter((d) => d.waterOz >= 64).length;
+  const waterGoalDays = days.filter((day) => day.waterOz >= WATER_GOAL_OZ).length;
   if (waterGoalDays > 0) {
     highlights.push({
       icon: 'water',
@@ -309,7 +339,7 @@ function buildOverviewHighlights(stats, days, report) {
     highlights.push({
       icon: 'flash',
       label: 'Avg energy',
-      value: `${round1(avgEnergy)}/8`,
+      value: `${round1(avgEnergy)}/${ENERGY_SCALE_MAX}`,
       gradient: ['#DB2777', '#BE185D'],
     });
   }
@@ -328,17 +358,16 @@ function buildOverviewHighlights(stats, days, report) {
 }
 
 function parseWeekDays(report, parseDayNote, parseStructuredDayNote, nutritionByDay, dailyLogsByDay, workoutsFromDailyLog) {
-  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const weekStart = report.weekStart || report.weekId || '';
   const rawDays = Array.isArray(report.dayBreakdown) ? report.dayBreakdown : [];
 
-  const days = Array.from({ length: 7 }, (_, i) => {
-    if (rawDays[i]) {
-      return parseDayLine(rawDays[i], i, weekStart, parseDayNote, parseStructuredDayNote, nutritionByDay);
+  const days = Array.from({ length: DAYS_IN_WEEK }, (_, dayIndex) => {
+    if (rawDays[dayIndex]) {
+      return parseDayLine(rawDays[dayIndex], dayIndex, weekStart, parseDayNote, parseStructuredDayNote, nutritionByDay);
     }
     return parseDayLine(
-      `${DAY_NAMES[i]} (): No check-in for this day.`,
-      i,
+      EMPTY_CHECK_IN_LINE(DAY_NAMES[dayIndex]),
+      dayIndex,
       weekStart,
       parseDayNote,
       parseStructuredDayNote,
@@ -350,12 +379,12 @@ function parseWeekDays(report, parseDayNote, parseStructuredDayNote, nutritionBy
 }
 
 function computeStats(days, report) {
-  const sleepVals = days.map((d) => d.sleepHours).filter((v) => v > 0);
-  const waterVals = days.map((d) => d.waterOz).filter((v) => v > 0);
-  const stepVals = days.map((d) => d.steps).filter((v) => v > 0);
-  const calVals = days.map((d) => d.calories).filter((v) => v > 0);
-  const proteinVals = days.map((d) => d.protein).filter((v) => v > 0);
-  const workoutDays = days.filter((d) => d.workouts?.length > 0).length;
+  const sleepVals = days.map((day) => day.sleepHours).filter((value) => value > 0);
+  const waterVals = days.map((day) => day.waterOz).filter((value) => value > 0);
+  const stepVals = days.map((day) => day.steps).filter((value) => value > 0);
+  const calVals = days.map((day) => day.calories).filter((value) => value > 0);
+  const proteinVals = days.map((day) => day.protein).filter((value) => value > 0);
+  const workoutDays = days.filter((day) => day.workouts?.length > 0).length;
 
   const avgSleep = parseNum(report?.avgSleep) ?? mean(sleepVals);
   const avgWater = parseNum(report?.avgWater) ?? mean(waterVals);
@@ -370,14 +399,14 @@ function computeStats(days, report) {
     avgCalories: avgCalories != null ? round0(avgCalories) : null,
     avgProtein: avgProtein != null ? round1(avgProtein) : null,
     nutritionDaysLogged: calVals.length,
-    checkInDays: days.filter((d) => d.hasCheckIn).length,
+    checkInDays: days.filter((day) => day.hasCheckIn).length,
     workoutDaysLogged: workoutDays,
     display: {
-      sleep: avgSleep != null ? String(round1(avgSleep)) : '—',
-      water: avgWater != null ? String(round1(avgWater)) : '—',
-      steps: avgSteps != null ? formatSteps(avgSteps) : '—',
-      calories: avgCalories != null ? String(round0(avgCalories)) : '—',
-      protein: avgProtein != null ? String(round1(avgProtein)) : '—',
+      sleep: avgSleep != null ? String(round1(avgSleep)) : EMPTY_DISPLAY,
+      water: avgWater != null ? String(round1(avgWater)) : EMPTY_DISPLAY,
+      steps: avgSteps != null ? formatSteps(avgSteps) : EMPTY_DISPLAY,
+      calories: avgCalories != null ? String(round0(avgCalories)) : EMPTY_DISPLAY,
+      protein: avgProtein != null ? String(round1(avgProtein)) : EMPTY_DISPLAY,
     },
   };
 }
@@ -401,6 +430,19 @@ function addTrends(stats, prevStats) {
   };
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Build one screen-ready week from a raw report + optional previous week for trends.
+ * @param {object} report
+ * @param {object|null} prevReport
+ * @param {{ parseDayNote: Function, parseStructuredDayNote: Function, formatDateRange: Function }} parsers
+ * @param {object} [nutritionByDay]
+ * @param {object} [dailyLogsByDay]
+ * @param {Function|null} [workoutsFromDailyLog]
+ * @param {object} [clientMeta]
+ * @returns {object|null}
+ */
 export function prepareReportForScreenToWeekReport(
   report,
   prevReport,
@@ -450,7 +492,7 @@ export function prepareReportForScreenToWeekReport(
     weekWorkoutDays,
     overviewHighlights,
     loggedDays: days.filter(dayHasData),
-    skippedDays: days.filter((d) => !dayHasData(d)),
+    skippedDays: days.filter((day) => !dayHasData(day)),
     trainerInsights: writeTrainerTips(stats, days, report, clientMeta),
     ...coaching,
     signOff: textForReport(report.signOff),
@@ -460,6 +502,16 @@ export function prepareReportForScreenToWeekReport(
   };
 }
 
+/**
+ * Map a newest-first report list into screen weeks (each entry trends against the next older one).
+ * @param {Array<object>} reports
+ * @param {{ parseDayNote: Function, parseStructuredDayNote: Function, formatDateRange: Function }} parsers
+ * @param {object} [nutritionByDay]
+ * @param {object} [dailyLogsByDay]
+ * @param {Function|null} [workoutsFromDailyLog]
+ * @param {object} [clientMeta]
+ * @returns {Array<object>}
+ */
 export function prepareReportForScreensToWeeks(
   reports,
   parsers,
@@ -468,22 +520,27 @@ export function prepareReportForScreensToWeeks(
   workoutsFromDailyLog = null,
   clientMeta = {},
 ) {
-  return reports
-    .map((r, i) =>
-      prepareReportForScreenToWeekReport(
-        r,
-        reports[i + 1] || null,
-        parsers,
-        nutritionByDay,
-        dailyLogsByDay,
-        workoutsFromDailyLog,
-        clientMeta,
-      ),
-    )
-    .filter(Boolean);
+  const weeks = [];
+  for (let reportIndex = 0; reportIndex < reports.length; reportIndex += 1) {
+    const week = prepareReportForScreenToWeekReport(
+      reports[reportIndex],
+      reports[reportIndex + 1] || null,
+      parsers,
+      nutritionByDay,
+      dailyLogsByDay,
+      workoutsFromDailyLog,
+      clientMeta,
+    );
+    if (week) weeks.push(week);
+  }
+  return weeks;
 }
 
-/** Plain-text day line for share / export. */
+/**
+ * Plain-text day line for share / export.
+ * @param {object} day
+ * @returns {string}
+ */
 export function formatDayForShare(day) {
   const parts = [`${day.fullDayName} (${day.date})`];
   if (!day.hasCheckIn && !dayHasData(day)) {
@@ -495,7 +552,7 @@ export function formatDayForShare(day) {
   if (day.sleepHours > 0) metrics.push(`Sleep ${day.sleepHours}h`);
   if (day.waterOz > 0) metrics.push(`Water ${day.waterOz}oz`);
   if (day.steps > 0) metrics.push(`${day.steps} steps`);
-  if (day.energy != null) metrics.push(`Energy ${day.energy}/8`);
+  if (day.energy != null) metrics.push(`Energy ${day.energy}/${ENERGY_SCALE_MAX}`);
   if (day.mood != null) metrics.push(`Mood ${day.mood}/4`);
   if (day.stress != null) metrics.push(`Stress ${day.stress}/8`);
   if (day.soreness != null) metrics.push(`Soreness ${day.soreness}/8`);
@@ -508,11 +565,11 @@ export function formatDayForShare(day) {
   if (metrics.length) parts.push(metrics.join('. '));
 
   if (day.workouts?.length) {
-    const workoutLines = day.workouts.map((w) => {
-      if (w.setsDetail) {
-        return `${w.name} (${w.setsCount || '?'} sets: ${w.setsDetail})`;
+    const workoutLines = day.workouts.map((workout) => {
+      if (workout.setsDetail) {
+        return `${workout.name} (${workout.setsCount || '?'} sets: ${workout.setsDetail})`;
       }
-      return w.name;
+      return workout.name;
     });
     parts.push(`Workout: ${workoutLines.join('; ')}`);
   } else if (day.isRecovery) {

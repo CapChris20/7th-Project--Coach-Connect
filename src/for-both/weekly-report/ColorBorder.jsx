@@ -32,22 +32,15 @@ export function ColorBorder({
   children,
 }) {
   const innerRadius = radius - borderWidth;
+  const outerRingStyle = [{ borderRadius: radius, padding: borderWidth }, style];
+  const fillStyle = [
+    styles.inner,
+    { borderRadius: innerRadius, backgroundColor: innerBackground },
+    innerStyle,
+  ];
   return (
-    <LinearGradient
-      colors={colors}
-      start={start}
-      end={end}
-      style={[{ borderRadius: radius, padding: borderWidth }, style]}
-    >
-      <View
-        style={[
-          styles.inner,
-          { borderRadius: innerRadius, backgroundColor: innerBackground },
-          innerStyle,
-        ]}
-      >
-        {children}
-      </View>
+    <LinearGradient colors={colors} start={start} end={end} style={outerRingStyle}>
+      <View style={fillStyle}>{children}</View>
     </LinearGradient>
   );
 }

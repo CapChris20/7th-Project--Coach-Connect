@@ -15,6 +15,8 @@ const SAVE_STATUS_UNSAVED = 'unsaved';
 const SAVE_STATUS_OFFLINE = 'offline';
 // Amber stays fixed so "offline" reads as a warning in both light and dark themes.
 const OFFLINE_DOT_COLOR = '#f59e0b';
+// Manipulate here: gradient-dot size when the doc has unsaved edits.
+const UNSAVED_GRADIENT_DOT_SIZE = 6;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -37,6 +39,27 @@ function appearanceForSaveStatus(status, theme) {
   return appearanceByStatus[status] || appearanceByStatus[SAVE_STATUS_IDLE];
 }
 
+/**
+ * Flat colored dot for quiet states (draft / saved / saving / offline).
+ * @param {string|null} color
+ * @returns {JSX.Element}
+ */
+function flatStatusDot(color) {
+  return <View style={[styles.dot, { backgroundColor: color }]} />;
+}
+
+/**
+ * Pick gradient vs flat dot from the appearance row.
+ * @param {{ shouldUseGradientDot: boolean, color: string|null }} appearance
+ * @returns {JSX.Element}
+ */
+function statusDotForAppearance(appearance) {
+  if (appearance.shouldUseGradientDot) {
+    return <EditorGradientDot size={UNSAVED_GRADIENT_DOT_SIZE} />;
+  }
+  return flatStatusDot(appearance.color);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -47,17 +70,15 @@ function appearanceForSaveStatus(status, theme) {
  * @returns {JSX.Element}
  */
 export default function SaveStatusLabel({ status, theme }) {
-  const { label, color, shouldUseGradientDot } = appearanceForSaveStatus(status, theme);
+  // 1. Resolve label + which kind of dot this status uses.
+  const appearance = appearanceForSaveStatus(status, theme);
+  const statusDot = statusDotForAppearance(appearance);
+
+  // 2. Render the pill — muted words so the header does not shout.
   return (
     <View style={styles.pill}>
-      {/* Unsaved edits use the gradient dot. Every other state is a flat dot in the status color. */}
-      {shouldUseGradientDot ? (
-        <EditorGradientDot size={6} />
-      ) : (
-        <View style={[styles.dot, { backgroundColor: color }]} />
-      )}
-      {/* The dot carries the urgency. The words stay muted so the header does not shout. */}
-      <Text style={[styles.text, { color: theme.textMuted }]}>{label}</Text>
+      {statusDot}
+      <Text style={[styles.text, { color: theme.textMuted }]}>{appearance.label}</Text>
     </View>
   );
 }

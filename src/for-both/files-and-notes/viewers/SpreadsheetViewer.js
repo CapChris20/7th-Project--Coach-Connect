@@ -1,32 +1,6 @@
-/**
- * Spreadsheet Viewer Modal
- *
- * Purpose: UI screen or component: Spreadsheet Viewer Modal. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: SpreadsheetViewer
- *
- * @file-header
- */
-/**
- * SpreadsheetViewer — read-only viewer for uploaded .csv / .xlsx files.
- *
- * NOTE: This is NOT SpreadsheetEditor (trainer edit UI lives at
- * src/trainer-app/documents/SpreadsheetEditor.js). Clients and trainers
- * use this modal to preview file attachments from a download URL.
- *
- * Flow:
- *   1. Parent passes visible + url + filename
- *   2. fetch(url) → parse CSV text OR XLSX binary
- *   3. Render rows in a scrollable table (horizontal + vertical ScrollViews)
- *
- * Props:
- *   visible — show/hide modal
- *   url     — Firebase Storage or HTTPS URL to the file
- *   name    — filename (used to detect .csv vs .xlsx)
- *   isDark  — light/dark chrome for header and cells
- *   onClose — back button / Android back
- */
+// Read-only viewer for an uploaded CSV or XLSX attachment.
+// Flow: parent passes a url (or inline rows) → fetch and parse → scrollable table.
+// Used by client and trainer Notes & Files. Trainer editing lives in SpreadsheetEditor.
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -45,107 +19,232 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import XLSX from '../../../spreadsheet-support/spreadsheetReader'; // SheetJS build for React Native
+import XLSX from '../../../spreadsheet-support/spreadsheetReader';
+
+// ===== NAMED CONSTANTS =====
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_PADDING = 10;
-const MIN_CELL_WIDTH = 80; // each column at least this wide for readability
+const MIN_CELL_WIDTH = 80;
+const TABLE_SIDE_INSET = 32;
+const LOAD_FAILED_MESSAGE = 'Could not load spreadsheet';
+const DEFAULT_SHEET_TITLE = 'Spreadsheet';
 
-/**
- * parseCSV — turn raw CSV/TSV text into a 2D array of strings.
- * Handles quoted fields and escaped quotes ("" inside quotes).
- */
-function parseCSV(text) {
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let inQuotes = false;
+// ===== HELPER FUNCTIONS =====
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+function emptyCsvParseState() {
+  return { rows: [], row: [], cell: '', inQuotes: false };
+}
 
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cell += '"'; // escaped quote
-          i++;
-        } else {
-          inQuotes = false; // end of quoted field
-        }
-      } else {
-        cell += ch;
-      }
-      continue;
-    }
+function pushFinishedCell(state) {
+  state.row.push(state.cell.trim());
+  state.cell = '';
+}
 
-    if (ch === '"') {
-      inQuotes = true;
-      continue;
-    }
+function rowHasAnyText(row) {
+  return row.some((cellText) => cellText !== '');
+}
 
-    if (ch === ',' || ch === '\t') {
-      row.push(cell.trim());
-      cell = '';
-      if (ch === '\t' && row.length === 1 && !cell) continue;
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++; // Windows CRLF
-      row.push(cell.trim());
-      cell = '';
-      if (row.some((c) => c !== '')) rows.push(row); // skip blank lines
-      row = [];
-    } else {
-      cell += ch;
-    }
+function pushFinishedRowIfNotBlank(state) {
+  if (rowHasAnyText(state.row)) state.rows.push(state.row);
+  state.row = [];
+}
+
+function applyQuotedCsvChar(state, text, i) {
+  const character = text[i];
+  if (character !== '"') {
+    state.cell += character;
+    return i;
   }
-
-  // Last row if file doesn't end with newline
-  if (cell !== '' || row.length > 0) {
-    row.push(cell.trim());
-    rows.push(row);
+  if (text[i + 1] === '"') {
+    state.cell += '"';
+    return i + 1;
   }
-  return rows;
+  state.inQuotes = false;
+  return i;
+}
+
+function applyUnquotedCsvChar(state, text, i) {
+  const character = text[i];
+  if (character === '"') {
+    state.inQuotes = true;
+    return i;
+  }
+  if (character === ',' || character === '\t') {
+    pushFinishedCell(state);
+    if (character === '\t' && state.row.length === 1 && !state.cell) return i;
+    return i;
+  }
+  if (character === '\n' || character === '\r') {
+    let nextIndex = i;
+    if (character === '\r' && text[i + 1] === '\n') nextIndex = i + 1;
+    pushFinishedCell(state);
+    pushFinishedRowIfNotBlank(state);
+    return nextIndex;
+  }
+  state.cell += character;
+  return i;
+}
+
+function finishLastCsvRow(state) {
+  if (state.cell === '' && state.row.length === 0) return state.rows;
+  pushFinishedCell(state);
+  state.rows.push(state.row);
+  return state.rows;
 }
 
 /**
- * fetchSpreadsheetData — download file and return rows[][].
- * CSV → text + parseCSV. XLSX → arrayBuffer + SheetJS.
+ * Turn raw CSV/TSV text into a 2D array of strings.
+ * Handles quoted fields and escaped quotes ("" inside quotes).
+ * @param {string} text
+ * @returns {string[][]}
+ */
+function parseCSV(text) {
+  const state = emptyCsvParseState();
+  for (let i = 0; i < text.length; i++) {
+    if (state.inQuotes) {
+      i = applyQuotedCsvChar(state, text, i);
+      continue;
+    }
+    i = applyUnquotedCsvChar(state, text, i);
+  }
+  return finishLastCsvRow(state);
+}
+
+function rowsFromXlsxBuffer(arrayBuffer) {
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return [];
+  const worksheet = workbook.Sheets[firstSheetName];
+  // vocab: header: 1 = array of rows, not array of objects.
+  return XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+}
+
+/**
+ * Download the file and return rows[][]. CSV → text. XLSX → SheetJS.
+ * @param {string} url
+ * @param {string} filename
+ * @returns {Promise<unknown[][]>}
  */
 async function fetchSpreadsheetData(url, filename) {
   const isCsv = (filename || '').toLowerCase().endsWith('.csv');
   const res = await fetch(url, { method: 'GET' });
   if (!res.ok) throw new Error('Failed to load file');
-
   if (isCsv) {
     const text = await res.text();
     return parseCSV(text);
   }
-
-  const ab = await res.arrayBuffer();
-  const wb = XLSX.read(ab, { type: 'array' });
-  const firstSheetName = wb.SheetNames[0];
-  if (!firstSheetName) return [];
-  const ws = wb.Sheets[firstSheetName];
-  // header: 1 → array of rows (not array of objects)
-  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  return data;
+  const arrayBuffer = await res.arrayBuffer();
+  return rowsFromXlsxBuffer(arrayBuffer);
 }
 
+function padRowToColumnCount(row, columnCount) {
+  const cells = Array.isArray(row) ? [...row] : [row];
+  while (cells.length < columnCount) cells.push('');
+  return cells.slice(0, columnCount);
+}
+
+function normalizeRows(raw) {
+  const list = Array.isArray(raw) && raw.length ? raw : [];
+  const columnCount = Math.max(0, ...list.map((row) => (Array.isArray(row) ? row.length : 1)));
+  return list.map((row) => padRowToColumnCount(row, columnCount));
+}
+
+function rowHasVisibleText(row) {
+  return row.some((cell) => String(cell ?? '').trim() !== '');
+}
+
+function csvCellText(cell) {
+  const cellText = String(cell ?? '');
+  if (/[",\n]/.test(cellText)) return `"${cellText.replace(/"/g, '""')}"`;
+  return cellText;
+}
+
+function csvLineFromRow(row) {
+  const cells = Array.isArray(row) ? row : [row];
+  return cells.map(csvCellText).join(',');
+}
+
+function rowsToCsv(data) {
+  return (data || []).map(csvLineFromRow).join('\n');
+}
+
+function compareSortValues(leftCell, rightCell) {
+  const leftText = String(leftCell ?? '');
+  const rightText = String(rightCell ?? '');
+  const leftNumber = Number(leftText);
+  const rightNumber = Number(rightText);
+  const bothAreNumbers =
+    Number.isFinite(leftNumber) &&
+    Number.isFinite(rightNumber) &&
+    leftText.trim() !== '' &&
+    rightText.trim() !== '';
+  if (bothAreNumbers) return leftNumber - rightNumber;
+  return leftText.localeCompare(rightText, undefined, { sensitivity: 'base' });
+}
+
+function sortedSpreadsheetRows(rows, sortCol, sortAsc) {
+  if (!rows.length || sortCol == null || sortCol < 0) return rows;
+  const header = rows[0];
+  const body = rows.slice(1);
+  const sorted = [...body].sort((leftRow, rightRow) => {
+    const comparison = compareSortValues(leftRow[sortCol], rightRow[sortCol]);
+    return sortAsc ? comparison : -comparison;
+  });
+  return [header, ...sorted];
+}
+
+function viewerColors(isDark) {
+  return {
+    pageBackground: isDark ? '#0A0A0A' : '#F9FAFB',
+    textColor: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)',
+    titleColor: isDark ? '#fff' : '#1a1040',
+    mutedColor: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+    errorColor: isDark ? 'rgba(255,255,255,0.8)' : '#1a1040',
+    headerBackground: 'rgba(255,255,255,0.08)',
+    tableBackground: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    rowAlt: 'rgba(255,255,255,0.02)',
+  };
+}
+
+function applyFetchedSpreadsheet(data, hasInlineRows, inlineRows, rowsProp, setters) {
+  let raw = Array.isArray(data) && data.length ? data : [];
+  if (!raw.length && hasInlineRows) {
+    raw = rowsProp;
+  }
+  const normalized = normalizeRows(raw);
+  if (!normalized.length) {
+    setters.setError(LOAD_FAILED_MESSAGE);
+  }
+  setters.setRows(normalized);
+  setters.setLoading(false);
+}
+
+function applyFetchFailure(error, hasInlineRows, inlineRows, setters) {
+  if (hasInlineRows) {
+    setters.setRows(inlineRows);
+    setters.setError(null);
+  } else {
+    setters.setError(error?.message || LOAD_FAILED_MESSAGE);
+    setters.setRows([]);
+  }
+  setters.setLoading(false);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full-screen read-only table for a CSV/XLSX url or inline rows.
+ * Hooks stay in this order: rows, loading, error, sort column, sort direction, then the load effect.
+ * @param {object} props
+ */
 export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp = null, isDark = true, onClose }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
-
-  const normalizeRows = (raw) => {
-    const list = Array.isArray(raw) && raw.length ? raw : [];
-    const maxCols = Math.max(0, ...list.map((r) => (Array.isArray(r) ? r.length : 1)));
-    return list.map((r) => {
-      const arr = Array.isArray(r) ? [...r] : [r];
-      while (arr.length < maxCols) arr.push('');
-      return arr.slice(0, maxCols);
-    });
-  };
 
   useEffect(() => {
     if (!visible) {
@@ -157,13 +256,11 @@ export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp =
     }
 
     const inlineRows = normalizeRows(rowsProp);
-    const hasInlineRows = inlineRows.some((row) =>
-      row.some((cell) => String(cell ?? '').trim() !== ''),
-    );
+    const hasInlineRows = inlineRows.some(rowHasVisibleText);
 
     if (!url) {
       setRows(hasInlineRows ? inlineRows : []);
-      setError(hasInlineRows ? null : 'Could not load spreadsheet');
+      setError(hasInlineRows ? null : LOAD_FAILED_MESSAGE);
       setLoading(false);
       return;
     }
@@ -171,129 +268,86 @@ export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp =
     let cancelled = false;
     setLoading(true);
     setError(null);
+    const setters = { setRows, setError, setLoading };
 
     fetchSpreadsheetData(url, name)
       .then((data) => {
-        if (!cancelled) {
-          let raw = Array.isArray(data) && data.length ? data : [];
-          if (
-            !raw.length &&
-            hasInlineRows
-          ) {
-            raw = rowsProp;
-          }
-          const normalized = normalizeRows(raw);
-          if (!normalized.length) {
-            setError('Could not load spreadsheet');
-          }
-          setRows(normalized);
-          setLoading(false);
-        }
+        if (cancelled) return;
+        applyFetchedSpreadsheet(data, hasInlineRows, inlineRows, rowsProp, setters);
       })
-      .catch((e) => {
-        if (!cancelled) {
-          if (hasInlineRows) {
-            setRows(inlineRows);
-            setError(null);
-          } else {
-            setError(e?.message || 'Could not load spreadsheet');
-            setRows([]);
-          }
-          setLoading(false);
-        }
+      .catch((caughtError) => {
+        if (cancelled) return;
+        applyFetchFailure(caughtError, hasInlineRows, inlineRows, setters);
       });
 
     return () => { cancelled = true; };
   }, [visible, url, name, rowsProp]);
 
-  const displayRows = useMemo(() => {
-    if (!rows.length || sortCol == null || sortCol < 0) return rows;
-    const header = rows[0];
-    const body = rows.slice(1);
-    const sorted = [...body].sort((a, b) => {
-      const av = String(a[sortCol] ?? '');
-      const bv = String(b[sortCol] ?? '');
-      const an = Number(av);
-      const bn = Number(bv);
-      let cmp;
-      if (Number.isFinite(an) && Number.isFinite(bn) && av.trim() !== '' && bv.trim() !== '') {
-        cmp = an - bn;
-      } else {
-        cmp = av.localeCompare(bv, undefined, { sensitivity: 'base' });
-      }
-      return sortAsc ? cmp : -cmp;
-    });
-    return [header, ...sorted];
-  }, [rows, sortCol, sortAsc]);
-
-  const rowsToCsv = (data) =>
-    (data || [])
-      .map((row) =>
-        (Array.isArray(row) ? row : [row])
-          .map((cell) => {
-            const s = String(cell ?? '');
-            if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-            return s;
-          })
-          .join(','),
-      )
-      .join('\n');
+  const displayRows = useMemo(
+    () => sortedSpreadsheetRows(rows, sortCol, sortAsc),
+    [rows, sortCol, sortAsc],
+  );
 
   const handleCopy = async () => {
+    // 1. Copy the visible table as CSV text.
     try {
       await Clipboard.setStringAsync(rowsToCsv(displayRows));
       Alert.alert('Copied', 'Table copied to clipboard as CSV.');
-    } catch (e) {
-      Alert.alert('Copy failed', e?.message || 'Could not copy');
+    } catch (caughtError) {
+      Alert.alert('Copy failed', caughtError?.message || 'Could not copy');
     }
   };
 
   const handleShareCsv = async () => {
+    // 1. Hand the CSV to the OS share sheet. Ignore a user-cancelled share.
     try {
       const csv = rowsToCsv(displayRows);
       await Share.share({
         message: csv,
-        title: name || 'Spreadsheet',
+        title: name || DEFAULT_SHEET_TITLE,
       });
-    } catch (e) {
-      if (e?.message && !/User did not share/i.test(e.message)) {
-        Alert.alert('Share failed', e.message);
+    } catch (caughtError) {
+      if (caughtError?.message && !/User did not share/i.test(caughtError.message)) {
+        Alert.alert('Share failed', caughtError.message);
       }
     }
   };
 
-  const bg = isDark ? '#0A0A0A' : '#F9FAFB';
-  const textColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)';
-  const headerBg = 'rgba(255,255,255,0.08)';
-  const tableBg = 'rgba(255,255,255,0.04)';
-  const borderColor = 'rgba(255,255,255,0.08)';
-  const rowAlt = 'rgba(255,255,255,0.02)';
+  const handleHeaderSort = (columnIndex) => {
+    if (sortCol === columnIndex) {
+      setSortAsc((wasAscending) => !wasAscending);
+      return;
+    }
+    setSortCol(columnIndex);
+    setSortAsc(true);
+  };
 
+  const colors = viewerColors(isDark);
   const colCount = (displayRows[0] || []).length || 1;
-  const tableWidth = Math.max(SCREEN_WIDTH - 32, colCount * MIN_CELL_WIDTH);
+  const tableWidth = Math.max(SCREEN_WIDTH - TABLE_SIDE_INSET, colCount * MIN_CELL_WIDTH);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.pageBackground }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={12}>
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1040'} />
+            <Ionicons name="arrow-back" size={24} color={colors.titleColor} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? '#fff' : '#1a1040' }]} numberOfLines={1}>
-            {name || 'Spreadsheet'}
+          <Text style={[styles.title, { color: colors.titleColor }]} numberOfLines={1}>
+            {name || DEFAULT_SHEET_TITLE}
           </Text>
           <View style={{ flexDirection: 'row', gap: 4 }}>
             <TouchableOpacity onPress={handleCopy} style={styles.backBtn} hitSlop={8} accessibilityLabel="Copy CSV">
-              <Ionicons name="copy-outline" size={22} color={isDark ? '#fff' : '#1a1040'} />
+              <Ionicons name="copy-outline" size={22} color={colors.titleColor} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleShareCsv} style={styles.backBtn} hitSlop={8} accessibilityLabel="Share CSV">
-              <Ionicons name="share-outline" size={22} color={isDark ? '#fff' : '#1a1040'} />
+              <Ionicons name="share-outline" size={22} color={colors.titleColor} />
             </TouchableOpacity>
           </View>
         </View>
 
         {!loading && !error && displayRows.length > 0 ? (
-          <Text style={{ paddingHorizontal: 16, paddingBottom: 8, color: textColor, fontSize: 12 }}>
+          <Text style={{ paddingHorizontal: 16, paddingBottom: 8, color: colors.textColor, fontSize: 12 }}>
             Viewing in-app · tap a header cell to sort · copy or share as CSV
           </Text>
         ) : null}
@@ -302,14 +356,14 @@ export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp =
           {loading && (
             <View style={styles.loadingBlock}>
               <ActivityIndicator size="large" color="#10B981" />
-              <Text style={[styles.loadingText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)' }]}>
+              <Text style={[styles.loadingText, { color: colors.mutedColor }]}>
                 Loading…
               </Text>
             </View>
           )}
           {error && (
             <View style={styles.errorBlock}>
-              <Text style={[styles.errorText, { color: isDark ? 'rgba(255,255,255,0.8)' : '#1a1040' }]}>{error}</Text>
+              <Text style={[styles.errorText, { color: colors.errorColor }]}>{error}</Text>
             </View>
           )}
           {!loading && !error && displayRows.length > 0 && (
@@ -324,33 +378,27 @@ export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp =
                 contentContainerStyle={[styles.scrollContentVertical, { width: tableWidth }]}
                 showsVerticalScrollIndicator={true}
               >
-                <View style={[styles.table, { backgroundColor: tableBg, borderColor }]}>
+                <View style={[styles.table, { backgroundColor: colors.tableBackground, borderColor: colors.borderColor }]}>
                   {displayRows.map((row, rIndex) => (
                     <View
                       key={rIndex}
                       style={[
                         styles.row,
-                        rIndex === 0 && { backgroundColor: headerBg },
-                        rIndex > 0 && rIndex % 2 === 0 && { backgroundColor: rowAlt },
+                        rIndex === 0 && { backgroundColor: colors.headerBackground },
+                        rIndex > 0 && rIndex % 2 === 0 && { backgroundColor: colors.rowAlt },
                       ]}
                     >
                       {(Array.isArray(row) ? row : [row]).map((cell, cIndex) => (
                         <TouchableOpacity
                           key={cIndex}
                           disabled={rIndex !== 0}
-                          onPress={() => {
-                            if (sortCol === cIndex) setSortAsc((v) => !v);
-                            else {
-                              setSortCol(cIndex);
-                              setSortAsc(true);
-                            }
-                          }}
-                          style={[styles.cell, { borderColor }]}
+                          onPress={() => handleHeaderSort(cIndex)}
+                          style={[styles.cell, { borderColor: colors.borderColor }]}
                         >
                           <Text
                             style={[
                               styles.cellText,
-                              { color: rIndex === 0 ? (isDark ? '#fff' : '#1a1040') : textColor },
+                              { color: rIndex === 0 ? colors.titleColor : colors.textColor },
                               rIndex === 0 && styles.headerText,
                             ]}
                             numberOfLines={2}

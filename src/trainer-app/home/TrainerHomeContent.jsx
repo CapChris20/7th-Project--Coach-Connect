@@ -1,14 +1,7 @@
-/**
- * Trainer Dashboard Content
- *
- * Purpose: UI screen or component: Trainer Dashboard Content. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/trainer
- * Key exports: (see file)
- *
- * @file-header
- */
-/** Trainer home dashboard (client roster + tabs) */
+// Trainer home: client roster, live dashboard tabs, unread badge, and payout setup nudges.
+// Flow: load clients → pick one → subscribe to user/progress/nutrition → render tab content.
+// Used by TrainerAppStart. Shared cards live in trainerHomePieces.jsx.
+
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -63,6 +56,258 @@ import {
 import { PayoutSetupReminderPopup } from '../../for-both/payments/PayoutSetupReminderPopup';
 import { shouldShowPayoutSetupReminderPopup } from '../../for-both/payments/whenToAskForPayoutSetup';
 
+// ===== NAMED CONSTANTS =====
+
+const PAYOUT_REMINDER_DELAY_MS = 2000;
+const HEARTBEAT_INTERVAL_MS = 30000;
+const DEFAULT_CALORIE_GOAL = 2000;
+const DEFAULT_PROTEIN_GOAL = 150;
+const DEFAULT_CARBS_GOAL = 250;
+const DEFAULT_FAT_GOAL = 70;
+const MORNING_HOUR_END = 12;
+const AFTERNOON_HOUR_END = 17;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * CRM-only dashboard shape when the client has no users/{id} row yet.
+ * Same letters as TrainerAppStart's local helper of this name.
+ * @param {object} currentClient
+ * @param {Array} [notesAndFiles]
+ * @returns {object}
+ */
+function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = []) {
+  return {
+    beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
+    currentWeight: currentClient?.weight ?? null,
+    trainingDays: [],
+    programName: currentClient?.programName || 'Custom Program',
+    nutrition: {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sugar: 0,
+      sodium: 0,
+      potassium: 0,
+      proteinGoal: 200,
+      carbsGoal: 300,
+      fatGoal: 80,
+      micros: currentClient?.micros || [],
+      foods: [],
+    },
+    calendar: {
+      completed: currentClient?.completedDays || [],
+      upcoming: currentClient?.upcomingDays || [],
+      missed: currentClient?.missedDays || [],
+      upcomingSessions: currentClient?.upcomingSessions || [],
+    },
+    notesAndFiles,
+  };
+}
+
+/**
+ * Best-effort notes load — empty list on failure so the dashboard still paints.
+ * @param {string} ownerUid
+ * @returns {Promise<Array>}
+ */
+async function loadNotesAndFilesQuietly(ownerUid) {
+  try {
+    return await getNotesAndFiles(ownerUid);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function loadProgressSummary(trainerId, ownerUid) {
+  try {
+    const progressSnap = await getDocs(
+      collection(db, `trainer_clients/${trainerId}/clients/${ownerUid}/progress`),
+    );
+    const progressDocs = progressSnap.docs.map((progressDoc) => progressDoc.data());
+    if (progressDocs.length === 0) return { trainingDays: [], programName: null };
+    const latest = progressDocs[progressDocs.length - 1];
+    return {
+      trainingDays: latest.trainingDays || [],
+      programName: latest.programName || null,
+    };
+  } catch (_) {
+    return { trainingDays: [], programName: null };
+  }
+}
+
+async function loadNutritionBundle(ownerUid, todayKey) {
+  const defaults = {
+    nutritionLogs: [],
+    nutritionTotals: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    nutritionGoals: {
+      proteinTarget: DEFAULT_PROTEIN_GOAL,
+      carbsTarget: DEFAULT_CARBS_GOAL,
+      fatTarget: DEFAULT_FAT_GOAL,
+      calories: DEFAULT_CALORIE_GOAL,
+    },
+  };
+  try {
+    const nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
+    const nutritionTotals = calculateMacroTotals(nutritionLogs);
+    const nutritionGoals = { ...defaults.nutritionGoals };
+    const goalsData = await getDailyGoals(ownerUid);
+    if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
+    if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
+    if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
+    if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
+    return { nutritionLogs, nutritionTotals, nutritionGoals };
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function buildDashboardClientData({
+  userData,
+  currentClient,
+  trainingDays,
+  programName,
+  nutritionLogs,
+  nutritionTotals,
+  nutritionGoals,
+  notesAndFiles,
+}) {
+  const foodNames = nutritionLogs
+    .map((logRow) => logRow.food_name || logRow.foodName || 'Food')
+    .filter(Boolean);
+  const calorieGoal =
+    userData.calorieTarget ??
+    userData.calorie_target ??
+    userData.dailyCalories ??
+    nutritionGoals.calories ??
+    DEFAULT_CALORIE_GOAL;
+  const normalized = normalizeClientProfileFields(userData);
+  const mergedProfile = combineTraineeProfile(currentClient, normalized);
+  const profileWeight = mergedProfile.weight ?? normalized.weight ?? null;
+  return {
+    profileTimezone:
+      userData.timezone || userData.timeZone || userData?.workoutReminder?.timeZone || null,
+    beforeWeight: resolveTrainerProgressBeforeWeight({
+      startingWeight: mergedProfile.startingWeight ?? normalized.startingWeight,
+      profileWeight,
+      crmStartingWeight: currentClient.startingWeight,
+      crmWeight: currentClient.weight,
+    }),
+    currentWeight: profileWeight,
+    profileWeight,
+    trainingDays,
+    programName,
+    nutrition: {
+      calories: nutritionTotals.calories || 0,
+      protein: nutritionTotals.protein || 0,
+      carbs: nutritionTotals.carbs || 0,
+      fat: nutritionTotals.fat || 0,
+      fiber: nutritionTotals.fiber || 0,
+      sugar: nutritionTotals.sugar || 0,
+      sodium: nutritionTotals.sodium || 0,
+      potassium: nutritionTotals.potassium || 0,
+      proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? DEFAULT_PROTEIN_GOAL,
+      carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? DEFAULT_CARBS_GOAL,
+      fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? DEFAULT_FAT_GOAL,
+      caloriesGoal: calorieGoal,
+      micros: currentClient.micros || [],
+      foods: foodNames,
+    },
+    calendar: {
+      completed: currentClient.completedDays || [],
+      upcoming: currentClient.upcomingDays || [],
+      missed: currentClient.missedDays || [],
+      upcomingSessions: currentClient.upcomingSessions || [],
+    },
+    notesAndFiles,
+  };
+}
+
+async function applyMissingUserDocFallback(ownerUid, currentClient, effectCancelled, setClientData) {
+  // Client may be in CRM (trainer_clients) but have no users/{id} row yet — still show notes & CRM fields.
+  const notesAndFiles = await loadNotesAndFilesQuietly(ownerUid);
+  if (effectCancelled) return;
+  setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles));
+}
+
+async function applyExistingUserDocData({
+  userData,
+  ownerUid,
+  trainerId,
+  currentClient,
+  clientTodayKey,
+  effectCancelled,
+  setClientData,
+}) {
+  const notesAndFiles = await loadNotesAndFilesQuietly(ownerUid);
+  const { trainingDays, programName } = await loadProgressSummary(trainerId, ownerUid);
+  const { nutritionLogs, nutritionTotals, nutritionGoals } = await loadNutritionBundle(
+    ownerUid,
+    clientTodayKey,
+  );
+  if (effectCancelled) return;
+  setClientData(
+    buildDashboardClientData({
+      userData,
+      currentClient,
+      trainingDays,
+      programName,
+      nutritionLogs,
+      nutritionTotals,
+      nutritionGoals,
+      notesAndFiles,
+    }),
+  );
+}
+
+function logNonBenignTrainerError(label, error) {
+  if (isBenignTrainerClientFirestoreError(error)) return;
+  console.error(label, error);
+}
+
+async function applyUserDocToClientData({
+  userDoc,
+  ownerUid,
+  trainerId,
+  currentClient,
+  clientTodayKey,
+  effectCancelled,
+  setClientData,
+}) {
+  if (!userDoc.exists()) {
+    try {
+      await applyMissingUserDocFallback(ownerUid, currentClient, effectCancelled, setClientData);
+      return;
+    } catch (error) {
+      logNonBenignTrainerError('Error building client data without user doc:', error);
+    }
+    if (effectCancelled) return;
+    setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, []));
+    return;
+  }
+
+  try {
+    await applyExistingUserDocData({
+      userData: userDoc.data(),
+      ownerUid,
+      trainerId,
+      currentClient,
+      clientTodayKey,
+      effectCancelled,
+      setClientData,
+    });
+  } catch (error) {
+    logNonBenignTrainerError('Error updating client data:', error);
+  }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer home dashboard for one trainer shell.
+ * @param {object} props
+ */
 const DashboardContent = ({
   isDark,
   clients,
@@ -131,7 +376,7 @@ const DashboardContent = ({
       } catch (e) {
         console.warn('PayoutSetupReminderPopup eligibility check failed:', e?.message || e);
       }
-    }, 2000);
+    }, PAYOUT_REMINDER_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -211,8 +456,8 @@ const DashboardContent = ({
     let cancelled = false;
 
     const run = async () => {
-      const w = await fetchLatestLoggedWeight(clientId);
-      if (!cancelled) setLatestLoggedWeight(w);
+      const latestWeight = await fetchLatestLoggedWeight(clientId);
+      if (!cancelled) setLatestLoggedWeight(latestWeight);
     };
     run();
 
@@ -237,14 +482,14 @@ const DashboardContent = ({
     }
     const conversationId = `conv_${currentClient.id}_${trainerId}`;
     const messagesRef = collection(db, 'messages');
-    const q = query(messagesRef, where('conversationId', '==', conversationId));
+    const messagesQuery = query(messagesRef, where('conversationId', '==', conversationId));
     const unsubscribe = onSnapshot(
-      q,
+      messagesQuery,
       (snap) => {
         let count = 0;
         snap.forEach((docSnap) => {
-          const d = docSnap.data();
-          if (d.senderId !== trainerId && d.read === false) {
+          const messageData = docSnap.data();
+          if (messageData.senderId !== trainerId && messageData.read === false) {
             count += 1;
           }
         });
@@ -357,7 +602,7 @@ const DashboardContent = ({
     };
 
     tick();
-    const id = setInterval(tick, 30000);
+    const id = setInterval(tick, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(id);
   }, [currentClient?.id, clientTodayKey]);
 
@@ -406,119 +651,28 @@ const DashboardContent = ({
     // Listen to user document changes (weight, profile updates)
     const userUnsub = onSnapshot(
       doc(db, 'users', ownerUid),
-      async (userDoc) => {
-        // Client may be in CRM (trainer_clients) but have no users/{id} row yet — still show notes & CRM fields.
-        if (!userDoc.exists()) {
-          try {
-            let notesAndFiles = [];
-            try {
-              notesAndFiles = await getNotesAndFiles(ownerUid);
-            } catch (_) {}
-            if (effectCancelled) return;
-            setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles));
-          } catch (e) {
-            if (!isBenignTrainerClientFirestoreError(e)) {
-              console.error('Error building client data without user doc:', e);
-            }
-            if (!effectCancelled) setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, []));
-          }
-          return;
-        }
-
-        const userData = userDoc.data();
-        
-        // Fetch other related data
-        try {
-          let notesAndFiles = [];
-          try { notesAndFiles = await getNotesAndFiles(ownerUid); } catch (_) {}
-          
-          let trainingDays = [], programName = null;
-          try {
-            const progressSnap = await getDocs(collection(db, `trainer_clients/${trainerId}/clients/${ownerUid}/progress`));
-            const progressDocs = progressSnap.docs.map((d) => d.data());
-            if (progressDocs.length > 0) {
-              const latest = progressDocs[progressDocs.length - 1];
-              trainingDays = latest.trainingDays || [];
-              programName = latest.programName || null;
-            }
-          } catch (_) {}
-          
-          const todayKey = clientTodayKey;
-          let nutritionLogs = [], nutritionTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-          let nutritionGoals = { proteinTarget: 150, carbsTarget: 250, fatTarget: 70, calories: 2000 };
-          try {
-            nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
-            nutritionTotals = calculateMacroTotals(nutritionLogs);
-            const goalsData = await getDailyGoals(ownerUid);
-            if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
-            if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
-            if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
-            if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
-          } catch (_) {}
-          
-          if (effectCancelled) return;
-
-          const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
-          const calorieGoal =
-            userData.calorieTarget ??
-            userData.calorie_target ??
-            userData.dailyCalories ??
-            nutritionGoals.calories ??
-            2000;
-          
-          const normalized = normalizeClientProfileFields(userData);
-          const mergedProfile = combineTraineeProfile(currentClient, normalized);
-          const profileWeight = mergedProfile.weight ?? normalized.weight ?? null;
-
-          setClientData({
-            profileTimezone: userData.timezone || userData.timeZone || userData?.workoutReminder?.timeZone || null,
-            beforeWeight: resolveTrainerProgressBeforeWeight({
-              startingWeight: mergedProfile.startingWeight ?? normalized.startingWeight,
-              profileWeight,
-              crmStartingWeight: currentClient.startingWeight,
-              crmWeight: currentClient.weight,
-            }),
-            currentWeight: profileWeight,
-            profileWeight,
-            trainingDays, programName,
-            nutrition: {
-              calories: nutritionTotals.calories || 0, protein: nutritionTotals.protein || 0,
-              carbs: nutritionTotals.carbs || 0, fat: nutritionTotals.fat || 0,
-              fiber: nutritionTotals.fiber || 0, sugar: nutritionTotals.sugar || 0,
-              sodium: nutritionTotals.sodium || 0, potassium: nutritionTotals.potassium || 0,
-              proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? 150,
-              carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? 250,
-              fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? 70,
-              caloriesGoal: calorieGoal,
-              micros: currentClient.micros || [], foods: foodNames,
-            },
-            calendar: {
-              completed: currentClient.completedDays || [], upcoming: currentClient.upcomingDays || [],
-              missed: currentClient.missedDays || [], upcomingSessions: currentClient.upcomingSessions || [],
-            },
-            notesAndFiles,
-          });
-        } catch (e) {
-          if (!isBenignTrainerClientFirestoreError(e)) {
-            console.error('Error updating client data:', e);
-          }
-        }
+      (userDoc) => {
+        applyUserDocToClientData({
+          userDoc,
+          ownerUid,
+          trainerId,
+          currentClient,
+          clientTodayKey,
+          effectCancelled,
+          setClientData,
+        });
       },
       (error) => {
         if (isBenignTrainerClientFirestoreError(error)) {
-          (async () => {
-            let notesAndFiles = [];
-            try {
-              notesAndFiles = await getNotesAndFiles(ownerUid);
-            } catch (_) {}
+          loadNotesAndFilesQuietly(ownerUid).then((notesAndFiles) => {
             if (effectCancelled) return;
             setClientData(buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles));
-          })();
+          });
           return;
         }
         console.error('User document listener error:', error);
         if (!effectCancelled) setClientData(null);
-      }
+      },
     );
     
     unsubscribers.push(userUnsub);
@@ -606,7 +760,7 @@ const DashboardContent = ({
                 proteinGoal: 150,
                 carbsGoal: 250,
                 fatGoal: 70,
-                caloriesGoal: 2000,
+                caloriesGoal: DEFAULT_CALORIE_GOAL,
                 micros: currentClient?.micros || [],
                 foods: [],
               },
@@ -667,7 +821,7 @@ const DashboardContent = ({
               proteinGoal: 150,
               carbsGoal: 250,
               fatGoal: 70,
-              caloriesGoal: 2000,
+              caloriesGoal: DEFAULT_CALORIE_GOAL,
               micros: currentClient?.micros || [],
               foods: [],
             },
@@ -700,9 +854,9 @@ const DashboardContent = ({
 
 
   const timeOfDay = useMemo(() => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Morning';
-    if (h < 17) return 'Afternoon';
+    const hour = new Date().getHours();
+    if (hour < MORNING_HOUR_END) return 'Morning';
+    if (hour < AFTERNOON_HOUR_END) return 'Afternoon';
     return 'Evening';
   }, []);
 

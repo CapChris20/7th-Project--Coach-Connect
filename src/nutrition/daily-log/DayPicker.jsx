@@ -14,6 +14,11 @@ import { NUT_ACTION_GRADIENT } from '../nutritionColors';
 // vocab: date keys are YYYY-MM-DD. Noon avoids a timezone shifting the day backward.
 const DATE_KEY_NOON_SUFFIX = 'T12:00:00';
 const DAYS_IN_A_WEEK = 7;
+const CIRCLE = 40;
+const TODAY_LABEL = 'Today';
+const WEEKDAY_NARROW = { weekday: 'narrow' };
+const MONTH_YEAR = { month: 'long', year: 'numeric' };
+const ACTIVE_WEEKDAY_COLOR = '#FF6B9D';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -52,10 +57,115 @@ function weekStartKey(dateKey) {
  * @returns {string}
  */
 function formatMonthLabel(weekStart) {
-  return dateAtNoon(weekStart).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return dateAtNoon(weekStart).toLocaleDateString(undefined, MONTH_YEAR);
 }
 
-/** Week calendar — circular day buttons with prev/next week navigation. */
+/**
+ * Seven date keys starting at Sunday.
+ * @param {string} weekStart
+ * @returns {string[]}
+ */
+function dateKeysForWeek(weekStart) {
+  const list = [];
+  for (let dayIndex = 0; dayIndex < DAYS_IN_A_WEEK; dayIndex += 1) {
+    list.push(addDays(weekStart, dayIndex));
+  }
+  return list;
+}
+
+/**
+ * @param {boolean} isDark
+ */
+function dayPickerColors(isDark) {
+  if (isDark) {
+    return {
+      text: '#FFFFFF',
+      muted: 'rgba(255,255,255,0.42)',
+      circle: 'rgba(255,255,255,0.06)',
+      chevron: 'rgba(255,255,255,0.55)',
+      chevronDisabled: 'rgba(255,255,255,0.18)',
+      dot: '#34D399',
+    };
+  }
+  return {
+    text: '#0A0A0F',
+    muted: 'rgba(10,10,15,0.42)',
+    circle: 'rgba(0,0,0,0.04)',
+    chevron: 'rgba(10,10,15,0.55)',
+    chevronDisabled: 'rgba(10,10,15,0.18)',
+    dot: '#16A34A',
+  };
+}
+
+/**
+ * Future days are visible but not tappable so a client cannot log food that has not happened yet.
+ */
+function FutureDayCell({ dateKey, weekday, dayNumber, colors }) {
+  return (
+    <View key={dateKey} style={styles.dayCol}>
+      <Text style={[styles.weekday, { color: colors.muted }]}>{weekday}</Text>
+      <View style={[styles.circleGhost, { backgroundColor: colors.circle }]}>
+        <Text style={[styles.dayNum, { color: colors.muted }]}>{dayNumber}</Text>
+      </View>
+      <View style={styles.dotSlot} />
+    </View>
+  );
+}
+
+/**
+ * Tappable day. The selected day gets the nutrition gradient ring; days with logs get a green dot.
+ */
+function LogDayCell({
+  dateKey,
+  weekdayLabel,
+  dayNumber,
+  isActive,
+  hasLogs,
+  isDark,
+  colors,
+  onSelectDate,
+}) {
+  return (
+    <TouchableOpacity
+      key={dateKey}
+      onPress={() => onSelectDate(dateKey)}
+      activeOpacity={0.82}
+      style={styles.dayCol}
+    >
+      <Text style={[styles.weekday, { color: isActive ? ACTIVE_WEEKDAY_COLOR : colors.muted }]}>
+        {weekdayLabel}
+      </Text>
+      {isActive ? (
+        <LinearGradient
+          colors={NUT_ACTION_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.circleActiveRing}
+        >
+          <View style={[styles.circleActiveInner, { backgroundColor: isDark ? '#121018' : '#FFFFFF' }]}>
+            <Text style={[styles.dayNum, { color: colors.text, fontWeight: '800' }]}>{dayNumber}</Text>
+          </View>
+        </LinearGradient>
+      ) : (
+        <View style={[styles.circle, { backgroundColor: colors.circle }]}>
+          <Text style={[styles.dayNum, { color: colors.text }]}>{dayNumber}</Text>
+        </View>
+      )}
+      <View style={styles.dotSlot}>
+        {hasLogs ? <View style={[styles.dot, { backgroundColor: colors.dot }]} /> : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Week calendar — circular day buttons with prev/next week navigation.
+ * vocab: useState holds which Sunday the strip is showing; selecting a date in another week
+ * snaps it via useEffect.
+ * @param {{ selectedDate: string, onSelectDate: Function, todayKey?: string, isDark?: boolean, datesWithLogs?: string[] }} props
+ */
 export default function DayPicker({
   selectedDate,
   onSelectDate,
@@ -73,36 +183,13 @@ export default function DayPicker({
   const todayWeekStart = weekStartKey(todayKey);
   const canGoForward = weekStart !== todayWeekStart && addDays(weekStart, DAYS_IN_A_WEEK) <= todayWeekStart;
 
-  const weekDays = useMemo(() => {
-    const list = [];
-    for (let dayIndex = 0; dayIndex < DAYS_IN_A_WEEK; dayIndex += 1) {
-      list.push(addDays(weekStart, dayIndex));
-    }
-    return list;
-  }, [weekStart]);
-
-  const colors = isDark
-    ? {
-        text: '#FFFFFF',
-        muted: 'rgba(255,255,255,0.42)',
-        circle: 'rgba(255,255,255,0.06)',
-        chevron: 'rgba(255,255,255,0.55)',
-        chevronDisabled: 'rgba(255,255,255,0.18)',
-        dot: '#34D399',
-      }
-    : {
-        text: '#0A0A0F',
-        muted: 'rgba(10,10,15,0.42)',
-        circle: 'rgba(0,0,0,0.04)',
-        chevron: 'rgba(10,10,15,0.55)',
-        chevronDisabled: 'rgba(10,10,15,0.18)',
-        dot: '#16A34A',
-      };
+  const weekDays = useMemo(() => dateKeysForWeek(weekStart), [weekStart]);
+  const colors = dayPickerColors(isDark);
 
   const shiftWeek = (delta) => {
-    const next = addDays(weekStart, delta * DAYS_IN_A_WEEK);
-    if (delta > 0 && next > todayWeekStart) return;
-    setWeekStart(next);
+    const nextWeekStart = addDays(weekStart, delta * DAYS_IN_A_WEEK);
+    if (delta > 0 && nextWeekStart > todayWeekStart) return;
+    setWeekStart(nextWeekStart);
   };
 
   return (
@@ -128,63 +215,44 @@ export default function DayPicker({
 
       <View style={styles.daysRow}>
         {weekDays.map((dateKey) => {
-          const active = dateKey === selectedDate;
+          const isActive = dateKey === selectedDate;
           const isToday = dateKey === todayKey;
           const isFuture = dateKey > todayKey;
           const hasLogs = logSet.has(dateKey);
           const dayDate = dateAtNoon(dateKey);
-          const weekday = dayDate.toLocaleDateString(undefined, { weekday: 'narrow' });
+          const weekday = dayDate.toLocaleDateString(undefined, WEEKDAY_NARROW);
+          const dayNumber = dayDate.getDate();
 
           if (isFuture) {
             return (
-              <View key={dateKey} style={styles.dayCol}>
-                <Text style={[styles.weekday, { color: colors.muted }]}>{weekday}</Text>
-                <View style={[styles.circleGhost, { backgroundColor: colors.circle }]}>
-                  <Text style={[styles.dayNum, { color: colors.muted }]}>{dayDate.getDate()}</Text>
-                </View>
-                <View style={styles.dotSlot} />
-              </View>
+              <FutureDayCell
+                key={dateKey}
+                dateKey={dateKey}
+                weekday={weekday}
+                dayNumber={dayNumber}
+                colors={colors}
+              />
             );
           }
 
           return (
-            <TouchableOpacity
+            <LogDayCell
               key={dateKey}
-              onPress={() => onSelectDate(dateKey)}
-              activeOpacity={0.82}
-              style={styles.dayCol}
-            >
-              <Text style={[styles.weekday, { color: active ? '#FF6B9D' : colors.muted }]}>
-                {isToday ? 'Today' : weekday}
-              </Text>
-              {active ? (
-                <LinearGradient
-                  colors={NUT_ACTION_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.circleActiveRing}
-                >
-                  <View style={[styles.circleActiveInner, { backgroundColor: isDark ? '#121018' : '#FFFFFF' }]}>
-                    <Text style={[styles.dayNum, { color: colors.text, fontWeight: '800' }]}>{dayDate.getDate()}</Text>
-                  </View>
-                </LinearGradient>
-              ) : (
-                <View style={[styles.circle, { backgroundColor: colors.circle }]}>
-                  <Text style={[styles.dayNum, { color: colors.text }]}>{dayDate.getDate()}</Text>
-                </View>
-              )}
-              <View style={styles.dotSlot}>
-                {hasLogs ? <View style={[styles.dot, { backgroundColor: colors.dot }]} /> : null}
-              </View>
-            </TouchableOpacity>
+              dateKey={dateKey}
+              weekdayLabel={isToday ? TODAY_LABEL : weekday}
+              dayNumber={dayNumber}
+              isActive={isActive}
+              hasLogs={hasLogs}
+              isDark={isDark}
+              colors={colors}
+              onSelectDate={onSelectDate}
+            />
           );
         })}
       </View>
     </View>
   );
 }
-
-const CIRCLE = 40;
 
 const styles = StyleSheet.create({
   wrap: { width: '100%' },

@@ -1,18 +1,14 @@
-/**
- * Files Notes Section Premium
- *
- * Purpose: UI screen or component: Files Notes Section Premium. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/shared
- * Key exports: FilesSection
- *
- * @file-header
- */
+// Premium Notes & Files workspace: coach files, my files, notes, and an upload button.
+// Flow: split items by who added them → section grids → long-press for open / download / delete.
+// Used by the client home workspace and the trainer client workspace.
+
 import React, { useMemo } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../helpers/fileSizeAndDateText';
+
+// ===== NAMED CONSTANTS =====
 
 /** Dark orange → dark purple accent gradient */
 const ORANGE_PURPLE_GRAD = ['#C2410C', '#4C1D95'];
@@ -37,6 +33,16 @@ const CARD_GRADIENT_MY    = ['rgba(190,24,93,0.20)', 'rgba(255,107,157,0.12)', '
 const CARD_GRADIENT_COACH_LIGHT = ['rgba(194,65,12,0.10)', 'rgba(76,29,149,0.08)', 'rgba(248,249,252,0.95)'];
 const CARD_GRADIENT_MY_LIGHT    = ['rgba(255,107,157,0.12)', 'rgba(190,24,93,0.06)', 'rgba(248,249,252,0.95)'];
 
+const AUDIENCE_TRAINER = 'trainer';
+const ADDED_BY_TRAINER = 'trainer';
+const ADDED_BY_CLIENT = 'client';
+const TYPE_NOTE = 'note';
+const TYPE_DOCUMENT = 'document';
+const VARIANT_COACH = 'coach';
+const VARIANT_MY = 'my';
+
+// ===== HELPER FUNCTIONS =====
+
 function GradientPill({ colors, style, children }) {
   return (
     <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={style}>
@@ -45,9 +51,177 @@ function GradientPill({ colors, style, children }) {
   );
 }
 
+function filesSectionTheme(isDark) {
+  if (isDark) {
+    return {
+      background: '#0A0A0F',
+      card: '#141419',
+      text: '#FFF',
+      text70: 'rgba(255,255,255,0.7)',
+      text50: 'rgba(255,255,255,0.5)',
+      text30: 'rgba(255,255,255,0.3)',
+      border: 'rgba(255,255,255,0.08)',
+    };
+  }
+  return {
+    background: '#F7F7FA',
+    card: '#FFFFFF',
+    text: '#1A1A2E',
+    text70: 'rgba(0,0,0,0.65)',
+    text50: 'rgba(0,0,0,0.45)',
+    text30: 'rgba(0,0,0,0.25)',
+    border: 'rgba(0,0,0,0.06)',
+  };
+}
+
+function cardsFromTrainerDocuments(trainerDocuments) {
+  const list = Array.isArray(trainerDocuments) ? trainerDocuments : [];
+  return list.map((documentRecord) => {
+    const isShared = Array.isArray(documentRecord.sharedWith) && documentRecord.sharedWith.length > 0;
+    const title = documentRecord.title || 'Untitled';
+    return {
+      id: documentRecord.id,
+      type: TYPE_DOCUMENT,
+      name: isShared ? `${title} · Shared` : title,
+      title,
+      createdAt: documentRecord.updatedAt || documentRecord.createdAt,
+      addedBy: ADDED_BY_TRAINER,
+      documentId: documentRecord.id,
+    };
+  });
+}
+
+function isClientFile(item) {
+  return (item?.addedBy || ADDED_BY_CLIENT) === ADDED_BY_CLIENT && item?.type !== TYPE_NOTE;
+}
+
+function isTrainerFile(item) {
+  return item?.addedBy === ADDED_BY_TRAINER && item?.type !== TYPE_NOTE;
+}
+
+function isCoachFileForClient(item) {
+  const fromTrainer = item?.addedBy === ADDED_BY_TRAINER || (item?.type === TYPE_DOCUMENT && item?.trainerId);
+  return fromTrainer && item?.type !== TYPE_NOTE;
+}
+
+function isTrainerNoteForClient(item) {
+  return item?.type === TYPE_NOTE && item?.addedBy === ADDED_BY_TRAINER;
+}
+
+function groupNotesAndFiles(items, isTrainer, trainerDocuments) {
+  const list = Array.isArray(items) ? items : [];
+  if (isTrainer) {
+    return {
+      coachFiles: list.filter(isTrainerFile),
+      myFiles: list.filter(isClientFile),
+      notes: list.filter((item) => item?.type === TYPE_NOTE),
+      yourDocuments: cardsFromTrainerDocuments(trainerDocuments),
+    };
+  }
+  return {
+    coachFiles: list.filter(isCoachFileForClient),
+    myFiles: list.filter(isClientFile),
+    notes: list.filter(isTrainerNoteForClient),
+    yourDocuments: [],
+  };
+}
+
+function heroCopyForAudience(isTrainer, clientName) {
+  if (isTrainer) {
+    return {
+      title: clientName ? String(clientName).trim() : 'Client files',
+      kicker: 'Notes & Files',
+      brand: null,
+      tagline: 'Shared uploads and documents for this client',
+    };
+  }
+  return {
+    title: 'Files & Notes',
+    kicker: 'Shared with your coach',
+    brand: null,
+    tagline: 'Photos, videos, and documents in one place',
+  };
+}
+
+function labelsForAudience(isTrainer) {
+  if (isTrainer) {
+    return {
+      coachSection: 'From you',
+      mySection: 'From client',
+      notesSection: 'Notes',
+      docsSection: 'Your documents',
+      myEmpty: 'No client uploads yet',
+      coachEmpty: 'Nothing from you yet — add a note or file below',
+    };
+  }
+  return {
+    coachSection: 'FROM YOUR COACH',
+    mySection: 'MY FILES',
+    notesSection: 'COACHING NOTES',
+    docsSection: null,
+    myEmpty: 'No files yet — tap + Add file below',
+    coachEmpty: null,
+  };
+}
+
+function getFileMeta(file) {
+  const fileType = getFileTypeFromItem(file);
+  const meta = FILE_TYPE_META[fileType] || FILE_TYPE_META.file;
+  const name = file?.name || file?.title || 'File';
+  const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
+  const when = createdAt ? formatDateShort(createdAt) : '';
+  const size = file?.size ? formatFileSize(file.size) : '';
+  const datePart = when ? when.replace(/,?\s*\d{4}$/, '').toUpperCase() : '';
+  return { ...meta, name, when: datePart, size, fileType };
+}
+
+function canDeleteFile(file, isTrainer, onDeleteItem) {
+  if (!onDeleteItem || !file) return false;
+  if (isTrainer) return file?.addedBy === ADDED_BY_TRAINER;
+  return file?.addedBy !== ADDED_BY_TRAINER;
+}
+
+function longPressActionsForFile(file, name, isTrainer, callbacks) {
+  const actions = [
+    { text: 'Open', onPress: () => callbacks.onOpenItem?.(file) },
+    { text: 'Download', onPress: () => callbacks.onDownloadItem?.(file) },
+    { text: 'Share', onPress: () => callbacks.onShareItem?.(file) },
+  ];
+  if (canDeleteFile(file, isTrainer, callbacks.onDeleteItem)) {
+    actions.push({ text: 'Delete', style: 'destructive', onPress: () => callbacks.onDeleteItem?.(file) });
+  }
+  actions.push({ text: 'Cancel', style: 'cancel' });
+  Alert.alert(name, '', actions);
+}
+
+function cardGradientsForVariant(variant, isDark) {
+  if (variant === VARIANT_COACH) {
+    return isDark ? CARD_GRADIENT_COACH : CARD_GRADIENT_COACH_LIGHT;
+  }
+  return isDark ? CARD_GRADIENT_MY : CARD_GRADIENT_MY_LIGHT;
+}
+
+function cardBorderForVariant(variant, isDark) {
+  if (variant === VARIANT_COACH) {
+    return isDark ? 'rgba(194,65,12,0.28)' : 'rgba(194,65,12,0.16)';
+  }
+  return isDark ? 'rgba(255,107,157,0.28)' : 'rgba(255,107,157,0.16)';
+}
+
+function noteTitleForAudience(isTrainer, note) {
+  if (isTrainer) {
+    return note?.addedBy === ADDED_BY_TRAINER ? 'Your note' : 'From client';
+  }
+  return 'From your coach';
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Premium files grid — client home Notes & Files workspace and trainer client workspace.
- * @param {'client'|'trainer'} audience
+ * Hooks stay in this order: one useMemo that splits items, then the section cards.
+ * @param {object} props
+ * @param {'client'|'trainer'} [props.audience]
  */
 export default function FilesSection({
   items = [],
@@ -63,137 +237,52 @@ export default function FilesSection({
   onUploadPress,
   uploadLabel = 'Add note or file',
 }) {
-  const th = isDark
-    ? { bg: '#0A0A0F', card: '#141419', text: '#FFF', text70: 'rgba(255,255,255,0.7)', text50: 'rgba(255,255,255,0.5)', text30: 'rgba(255,255,255,0.3)', border: 'rgba(255,255,255,0.08)' }
-    : { bg: '#F7F7FA', card: '#FFFFFF', text: '#1A1A2E', text70: 'rgba(0,0,0,0.65)', text50: 'rgba(0,0,0,0.45)', text30: 'rgba(0,0,0,0.25)', border: 'rgba(0,0,0,0.06)' };
-
-  const isTrainer = audience === 'trainer';
+  const theme = filesSectionTheme(isDark);
+  const isTrainer = audience === AUDIENCE_TRAINER;
 
   const {
     coachFiles,
     myFiles,
     notes,
     yourDocuments,
-  } = useMemo(() => {
-    const list = Array.isArray(items) ? items : [];
-    if (isTrainer) {
-      const fromClient = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note');
-      const fromYou = list.filter((x) => x?.addedBy === 'trainer' && x?.type !== 'note');
-      const allNotes = list.filter((x) => x?.type === 'note');
-      const docs = (Array.isArray(trainerDocuments) ? trainerDocuments : []).map((doc) => {
-        const isShared = Array.isArray(doc.sharedWith) && doc.sharedWith.length > 0;
-        const title = doc.title || 'Untitled';
-        return {
-          id: doc.id,
-          type: 'document',
-          name: isShared ? `${title} · Shared` : title,
-          title,
-          createdAt: doc.updatedAt || doc.createdAt,
-          addedBy: 'trainer',
-          documentId: doc.id,
-        };
-      });
-      return {
-        coachFiles: fromYou,
-        myFiles: fromClient,
-        notes: allNotes,
-        yourDocuments: docs,
-      };
-    }
-    const coach = list.filter((x) => (x?.addedBy === 'trainer' || (x?.type === 'document' && x?.trainerId)) && x?.type !== 'note');
-    const mine = list.filter((x) => (x?.addedBy || 'client') === 'client' && x?.type !== 'note');
-    const n = list.filter((x) => x?.type === 'note' && x?.addedBy === 'trainer');
-    return { coachFiles: coach, myFiles: mine, notes: n, yourDocuments: [] };
-  }, [items, isTrainer, trainerDocuments]);
+  } = useMemo(
+    () => groupNotesAndFiles(items, isTrainer, trainerDocuments),
+    [items, isTrainer, trainerDocuments],
+  );
 
-  const heroCopy = isTrainer
-    ? {
-        title: clientName ? String(clientName).trim() : 'Client files',
-        kicker: 'Notes & Files',
-        brand: null,
-        tagline: 'Shared uploads and documents for this client',
-      }
-    : {
-        title: 'Files & Notes',
-        kicker: 'Shared with your coach',
-        brand: null,
-        tagline: 'Photos, videos, and documents in one place',
-      };
+  const heroCopy = heroCopyForAudience(isTrainer, clientName);
+  const labels = labelsForAudience(isTrainer);
 
-  const labels = isTrainer
-    ? {
-        coachSection: 'From you',
-        mySection: 'From client',
-        notesSection: 'Notes',
-        docsSection: 'Your documents',
-        myEmpty: 'No client uploads yet',
-        coachEmpty: 'Nothing from you yet — add a note or file below',
-      }
-    : {
-        coachSection: 'FROM YOUR COACH',
-        mySection: 'MY FILES',
-        notesSection: 'COACHING NOTES',
-        docsSection: null,
-        myEmpty: 'No files yet — tap + Add file below',
-        coachEmpty: null,
-      };
-
-  const getFileMeta = (file) => {
-    const fType = getFileTypeFromItem(file);
-    const meta = FILE_TYPE_META[fType] || FILE_TYPE_META.file;
-    const name = file?.name || file?.title || 'File';
-    const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
-    const when = createdAt ? formatDateShort(createdAt) : '';
-    const size = file?.size ? formatFileSize(file.size) : '';
-    const datePart = when ? when.replace(/,?\s*\d{4}$/, '').toUpperCase() : '';
-    return { ...meta, name, when: datePart, size, fType };
-  };
-
-  const canDeleteFile = (file) => {
-    if (!onDeleteItem || !file) return false;
-    if (isTrainer) return file?.addedBy === 'trainer';
-    return file?.addedBy !== 'trainer';
-  };
-
-  const FileCard = ({ file, variant = 'coach' }) => {
-    const { label, icon, gradient, name, when, size, fType } = getFileMeta(file);
-    const accentGrad = variant === 'coach' ? GRAD_COACH : GRAD_MY;
+  const FileCard = ({ file, variant = VARIANT_COACH }) => {
+    const { label, icon, gradient, name, when, size, fileType } = getFileMeta(file);
+    const accentGrad = variant === VARIANT_COACH ? GRAD_COACH : GRAD_MY;
     const badgeGrad = gradient || accentGrad;
     const accent = badgeGrad[0];
-    const cardGrad = variant === 'coach'
-      ? (isDark ? CARD_GRADIENT_COACH : CARD_GRADIENT_COACH_LIGHT)
-      : (isDark ? CARD_GRADIENT_MY : CARD_GRADIENT_MY_LIGHT);
-    const borderCol = variant === 'coach'
-      ? (isDark ? 'rgba(194,65,12,0.28)' : 'rgba(194,65,12,0.16)')
-      : (isDark ? 'rgba(255,107,157,0.28)' : 'rgba(255,107,157,0.16)');
+    const cardGrad = cardGradientsForVariant(variant, isDark);
+    const borderCol = cardBorderForVariant(variant, isDark);
+    const imageUri = file?.thumbnailUrl || file?.url;
+
+    const openFile = async () => {
+      try { await onMarkRead?.(file); } catch (_e) { /* mark-read is best-effort */ }
+      onOpenItem?.(file);
+    };
 
     return (
       <TouchableOpacity
-        style={[s.fileCard, { borderColor: borderCol }]}
+        style={[styles.fileCard, { borderColor: borderCol }]}
         activeOpacity={0.88}
-        onPress={async () => { try { await onMarkRead?.(file); } catch (_e) {} onOpenItem?.(file); }}
-        onLongPress={() => {
-          const actions = [
-            { text: 'Open', onPress: () => onOpenItem?.(file) },
-            { text: 'Download', onPress: () => onDownloadItem?.(file) },
-            { text: 'Share', onPress: () => onShareItem?.(file) },
-          ];
-          if (canDeleteFile(file)) {
-            actions.push({ text: 'Delete', style: 'destructive', onPress: () => onDeleteItem?.(file) });
-          }
-          actions.push({ text: 'Cancel', style: 'cancel' });
-          Alert.alert(name, '', actions);
-        }}
+        onPress={openFile}
+        onLongPress={() => longPressActionsForFile(file, name, isTrainer, { onOpenItem, onDownloadItem, onShareItem, onDeleteItem })}
         delayLongPress={380}
       >
-        {fType === 'image' && (file?.thumbnailUrl || file?.url) ? (
-          <View style={s.fileCardGradient}>
-            <Image source={{ uri: file.thumbnailUrl || file.url }} style={s.fileCardThumb} resizeMode="cover" />
-            <GradientPill colors={badgeGrad} style={s.typeBadge}>
-              <Text style={s.typeBadgeText}>{label}</Text>
+        {fileType === 'image' && imageUri ? (
+          <View style={styles.fileCardGradient}>
+            <Image source={{ uri: imageUri }} style={styles.fileCardThumb} resizeMode="cover" />
+            <GradientPill colors={badgeGrad} style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>{label}</Text>
             </GradientPill>
             <TouchableOpacity
-              style={[s.dlBtn, { borderColor: 'rgba(255,255,255,0.4)' }]}
+              style={[styles.dlBtn, { borderColor: 'rgba(255,255,255,0.4)' }]}
               onPress={() => onDownloadItem?.(file)}
               hitSlop={12}
               activeOpacity={0.7}
@@ -202,15 +291,15 @@ export default function FilesSection({
             </TouchableOpacity>
           </View>
         ) : (
-          <LinearGradient colors={cardGrad} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={s.fileCardGradient}>
-            <GradientPill colors={badgeGrad} style={s.typeBadge}>
-              <Text style={s.typeBadgeText}>{label}</Text>
+          <LinearGradient colors={cardGrad} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.fileCardGradient}>
+            <GradientPill colors={badgeGrad} style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>{label}</Text>
             </GradientPill>
-            <View style={s.fileCardIconWrap}>
+            <View style={styles.fileCardIconWrap}>
               <Feather name={icon} size={40} color={accent} />
             </View>
             <TouchableOpacity
-              style={[s.dlBtn, { borderColor: `${accent}55` }]}
+              style={[styles.dlBtn, { borderColor: `${accent}55` }]}
               onPress={() => onDownloadItem?.(file)}
               hitSlop={12}
               activeOpacity={0.7}
@@ -219,9 +308,9 @@ export default function FilesSection({
             </TouchableOpacity>
           </LinearGradient>
         )}
-        <View style={s.fileCardInfo}>
-          <Text style={[s.fileCardName, { color: th.text }]} numberOfLines={1}>{name}</Text>
-          <Text style={[s.fileCardMeta, { color: th.text50 }]} numberOfLines={1}>
+        <View style={styles.fileCardInfo}>
+          <Text style={[styles.fileCardName, { color: theme.text }]} numberOfLines={1}>{name}</Text>
+          <Text style={[styles.fileCardMeta, { color: theme.text50 }]} numberOfLines={1}>
             {when}{size ? ` \u00B7 ${size}` : ''}
           </Text>
         </View>
@@ -230,18 +319,18 @@ export default function FilesSection({
   };
 
   const SectionHead = ({ title, count, gradient }) => (
-    <View style={s.sectionHead}>
-      <Text style={[s.sectionTitle, { color: th.text }]}>{title}</Text>
+    <View style={styles.sectionHead}>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
       {count != null && count > 0 && (
-        <GradientPill colors={gradient} style={s.sectionBadge}>
-          <Text style={s.sectionBadgeText}>{count}</Text>
+        <GradientPill colors={gradient} style={styles.sectionBadge}>
+          <Text style={styles.sectionBadgeText}>{count}</Text>
         </GradientPill>
       )}
       <LinearGradient
         colors={gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={s.sectionLine}
+        style={styles.sectionLine}
       />
     </View>
   );
@@ -250,31 +339,31 @@ export default function FilesSection({
     const preview = String(note?.content || note?.preview || '').trim();
     const createdAt = note?.createdAt?.toDate?.() || note?.createdAt;
     const when = createdAt ? formatDateShort(createdAt) : null;
-    const noteTitle = isTrainer
-      ? (note?.addedBy === 'trainer' ? 'Your note' : 'From client')
-      : 'From your coach';
+    const noteTitle = noteTitleForAudience(isTrainer, note);
+
+    const openNote = async () => {
+      try { await onMarkRead?.(note); } catch (_e) { /* mark-read is best-effort */ }
+      Alert.alert(noteTitle, preview || '—');
+    };
 
     return (
       <TouchableOpacity
         activeOpacity={0.88}
-        onPress={async () => {
-          try { await onMarkRead?.(note); } catch (_e) {}
-          Alert.alert(noteTitle, preview || '—');
-        }}
+        onPress={openNote}
         style={[
-          s.noteCard,
+          styles.noteCard,
           {
             backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
             borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
           },
         ]}
       >
-        <View style={s.noteContent}>
-          <View style={s.noteHeaderRow}>
-            <Text style={[s.noteTitle, { color: th.text }]}>{noteTitle}</Text>
-            {when ? <Text style={[s.noteDate, { color: th.text50 }]}>{when}</Text> : null}
+        <View style={styles.noteContent}>
+          <View style={styles.noteHeaderRow}>
+            <Text style={[styles.noteTitle, { color: theme.text }]}>{noteTitle}</Text>
+            {when ? <Text style={[styles.noteDate, { color: theme.text50 }]}>{when}</Text> : null}
           </View>
-          <Text style={[s.noteText, { color: th.text70 }]} numberOfLines={3}>
+          <Text style={[styles.noteText, { color: theme.text70 }]} numberOfLines={3}>
             {preview || '—'}
           </Text>
         </View>
@@ -283,16 +372,16 @@ export default function FilesSection({
   };
 
   const EmptyCard = ({ message, gradient = GRAD_MY }) => (
-    <View style={[s.emptyCard, { borderColor: isDark ? 'rgba(219,39,119,0.15)' : 'rgba(219,39,119,0.10)' }]}>
+    <View style={[styles.emptyCard, { borderColor: isDark ? 'rgba(219,39,119,0.15)' : 'rgba(219,39,119,0.10)' }]}>
       <Feather name="upload-cloud" size={28} color={gradient[0]} />
-      <Text style={[s.emptyText, { color: th.text50 }]}>{message}</Text>
+      <Text style={[styles.emptyText, { color: theme.text50 }]}>{message}</Text>
     </View>
   );
 
   const renderGrid = (files, variant) => (
-    <View style={s.grid}>
-      {files.map((f) => (
-        <FileCard key={f.id || f.url || f.name} file={f} variant={variant} />
+    <View style={styles.grid}>
+      {files.map((file) => (
+        <FileCard key={file.id || file.url || file.name} file={file} variant={variant} />
       ))}
     </View>
   );
@@ -303,73 +392,83 @@ export default function FilesSection({
     notes.length > 0 ||
     yourDocuments.length > 0;
 
+  const primaryFiles = isTrainer ? coachFiles : myFiles;
+  const primaryVariant = isTrainer ? VARIANT_COACH : VARIANT_MY;
+  const primaryGradient = isTrainer ? GRAD_COACH : GRAD_MY;
+  const primaryTitle = isTrainer ? labels.coachSection : labels.mySection;
+  const primaryEmpty = isTrainer ? labels.coachEmpty : labels.myEmpty;
+
   return (
     <View style={{ flex: 1 }}>
-      <View style={s.heroOuter}>
-        <View style={[s.heroInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: th.border }]}>
-          <Text style={[s.heroKicker, { color: th.text50 }]}>{heroCopy.kicker}</Text>
-          <Text style={[s.heroTitle, { color: th.text }]}>{heroCopy.title}</Text>
-          <Text style={[s.heroTagline, { color: th.text50 }]}>{heroCopy.tagline}</Text>
+      {/* 1. Hero copy for trainer (this client) or client (my files). */}
+      <View style={styles.heroOuter}>
+        <View style={[styles.heroInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderColor: theme.border }]}>
+          <Text style={[styles.heroKicker, { color: theme.text50 }]}>{heroCopy.kicker}</Text>
+          <Text style={[styles.heroTitle, { color: theme.text }]}>{heroCopy.title}</Text>
+          <Text style={[styles.heroTagline, { color: theme.text50 }]}>{heroCopy.tagline}</Text>
         </View>
       </View>
 
+      {/* 2. Trainer empty state when this client has nothing yet. */}
       {!hasAnyContent && isTrainer ? (
-        <View style={s.sectionWrap}>
+        <View style={styles.sectionWrap}>
           <EmptyCard message="No notes or files yet — add something for your client below" gradient={GRAD_COACH} />
         </View>
       ) : null}
 
+      {/* 3. Trainer sees "from client" first. Client sees "from coach" only when that list has files. */}
       {isTrainer ? (
-        <View style={s.sectionWrap}>
+        <View style={styles.sectionWrap}>
           <SectionHead title={labels.mySection} count={myFiles.length} gradient={GRAD_MY} />
-          {myFiles.length > 0 ? renderGrid(myFiles, 'my') : (
+          {myFiles.length > 0 ? renderGrid(myFiles, VARIANT_MY) : (
             <EmptyCard message={labels.myEmpty} gradient={GRAD_MY} />
           )}
         </View>
       ) : coachFiles.length > 0 ? (
-        <View style={s.sectionWrap}>
+        <View style={styles.sectionWrap}>
           <SectionHead title={labels.coachSection} count={coachFiles.length} gradient={GRAD_COACH} />
-          {renderGrid(coachFiles, 'coach')}
+          {renderGrid(coachFiles, VARIANT_COACH)}
         </View>
       ) : null}
 
-      <View style={s.sectionWrap}>
+      {/* 4. The other person's files (or "from you" for the trainer), then docs, notes, upload. */}
+      <View style={styles.sectionWrap}>
         <SectionHead
-          title={isTrainer ? labels.coachSection : labels.mySection}
-          count={isTrainer ? coachFiles.length : myFiles.length}
-          gradient={isTrainer ? GRAD_COACH : GRAD_MY}
+          title={primaryTitle}
+          count={primaryFiles.length}
+          gradient={primaryGradient}
         />
-        {(isTrainer ? coachFiles : myFiles).length > 0 ? (
-          renderGrid(isTrainer ? coachFiles : myFiles, isTrainer ? 'coach' : 'my')
+        {primaryFiles.length > 0 ? (
+          renderGrid(primaryFiles, primaryVariant)
         ) : (
-          <EmptyCard message={isTrainer ? labels.coachEmpty : labels.myEmpty} gradient={isTrainer ? GRAD_COACH : GRAD_MY} />
+          <EmptyCard message={primaryEmpty} gradient={primaryGradient} />
         )}
       </View>
 
       {yourDocuments.length > 0 ? (
-        <View style={s.sectionWrap}>
+        <View style={styles.sectionWrap}>
           <SectionHead title={labels.docsSection} count={yourDocuments.length} gradient={GRAD_COACH} />
-          {renderGrid(yourDocuments, 'coach')}
+          {renderGrid(yourDocuments, VARIANT_COACH)}
         </View>
       ) : null}
 
       {notes.length > 0 ? (
-        <View style={s.sectionWrap}>
+        <View style={styles.sectionWrap}>
           <SectionHead title={labels.notesSection} count={notes.length} gradient={GRAD_COACH} />
           <View style={{ gap: 12, paddingHorizontal: 16 }}>
-            {notes.map((n) => (
-              <NoteCard key={n.id || String(n.createdAt)} note={n} />
+            {notes.map((note) => (
+              <NoteCard key={note.id || String(note.createdAt)} note={note} />
             ))}
           </View>
         </View>
       ) : null}
 
       {onUploadPress ? (
-        <View style={s.uploadWrap}>
+        <View style={styles.uploadWrap}>
           <TouchableOpacity onPress={onUploadPress} activeOpacity={0.88}>
-            <LinearGradient colors={UPLOAD_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.uploadBtn}>
+            <LinearGradient colors={UPLOAD_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.uploadBtn}>
               <Feather name="upload" size={16} color="#fff" />
-              <Text style={s.uploadText}>{uploadLabel}</Text>
+              <Text style={styles.uploadText}>{uploadLabel}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -378,7 +477,7 @@ export default function FilesSection({
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   heroOuter: { paddingHorizontal: 16, marginTop: 4, marginBottom: 16 },
   heroInner: {
     borderRadius: 16,

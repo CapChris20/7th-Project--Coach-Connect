@@ -15,14 +15,26 @@ const MISSING_ID_TOKEN_MESSAGE = 'Missing ID token';
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * @param {string} uid
+ * @returns {string}
+ */
 function pendingSyncStorageKey(uid) {
   return `${PENDING_SYNC_KEY_PREFIX}${uid}`;
 }
 
+/**
+ * @param {string} uid
+ * @returns {string}
+ */
 function pendingCompleteStorageKey(uid) {
   return `${PENDING_COMPLETE_KEY_PREFIX}${uid}`;
 }
 
+/**
+ * @param {string} storageKey
+ * @returns {Promise<string|null>}
+ */
 async function readStoredText(storageKey) {
   try {
     return await AsyncStorage.getItem(storageKey);
@@ -31,6 +43,10 @@ async function readStoredText(storageKey) {
   }
 }
 
+/**
+ * @param {string} storageKey
+ * @returns {Promise<void>}
+ */
 async function removeStoredItem(storageKey) {
   try {
     await AsyncStorage.removeItem(storageKey);
@@ -39,6 +55,10 @@ async function removeStoredItem(storageKey) {
   }
 }
 
+/**
+ * @param {string} rawText
+ * @returns {{ storedValue: object|null, isCorrupt: boolean }}
+ */
 function parseStoredJson(rawText) {
   try {
     return { storedValue: JSON.parse(rawText), isCorrupt: false };
@@ -50,34 +70,69 @@ function parseStoredJson(rawText) {
 // vocab: getIdToken(true) = force a fresh Firebase ID token. A cached one may already be expired
 // after the app sat in the background through onboarding.
 // Each base is a full attempt: reload, new token, POST. A non-OK response tries the next base.
+/**
+ * @param {object} firebaseUser
+ * @param {string} apiBase
+ * @param {string} path
+ * @param {object} body
+ * @returns {Promise<boolean>}
+ */
+async function tryPostToBase(firebaseUser, apiBase, path, body) {
+  await firebaseUser.reload();
+  const idToken = await firebaseUser.getIdToken(true);
+  if (!idToken) throw new Error(MISSING_ID_TOKEN_MESSAGE);
+
+  const response = await fetch(`${apiBase}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  return response.ok;
+}
+
+/**
+ * Unreachable bases return false so the walker can try the next candidate.
+ * @param {object} firebaseUser
+ * @param {string} apiBase
+ * @param {string} path
+ * @param {object} body
+ * @returns {Promise<boolean>}
+ */
+async function tryPostToBaseCatching(firebaseUser, apiBase, path, body) {
+  try {
+    return await tryPostToBase(firebaseUser, apiBase, path, body);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * @param {object} firebaseUser
+ * @param {string} path
+ * @param {object} body
+ * @returns {Promise<boolean>}
+ */
 async function postWithAuth(firebaseUser, path, body) {
   const apiBases = getApiBaseCandidates();
   for (const apiBase of apiBases) {
-    try {
-      await firebaseUser.reload();
-      const idToken = await firebaseUser.getIdToken(true);
-      if (!idToken) throw new Error(MISSING_ID_TOKEN_MESSAGE);
-
-      const response = await fetch(`${apiBase}${path}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body ?? {}),
-      });
-
-      if (response.ok) return true;
-    } catch (_) {
-      // This base was unreachable. The loop tries the next candidate.
-    }
+    const didPostSucceed = await tryPostToBaseCatching(firebaseUser, apiBase, path, body);
+    if (didPostSucceed) return true;
   }
   return false;
 }
 
 // Wizard queue shape: { queuedAt, payload: { path, body } }.
 // Corrupt JSON is deleted so it cannot block every future launch. A valid row with no path is left alone.
+/**
+ * @param {object} firebaseUser
+ * @param {string} uid
+ * @returns {Promise<boolean>}
+ */
 async function flushQueuedSyncPayload(firebaseUser, uid) {
   const storageKey = pendingSyncStorageKey(uid);
   const rawText = await readStoredText(storageKey);
@@ -104,6 +159,11 @@ async function flushQueuedSyncPayload(firebaseUser, uid) {
 
 // finishSetup writes a different key: { finalRole, onboardingData, displayName }.
 // Without finalRole or onboardingData there is nothing the complete endpoint can save.
+/**
+ * @param {object} firebaseUser
+ * @param {string} uid
+ * @returns {Promise<boolean>}
+ */
 async function flushQueuedCompletePayload(firebaseUser, uid) {
   const storageKey = pendingCompleteStorageKey(uid);
   const rawText = await readStoredText(storageKey);

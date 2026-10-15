@@ -1,21 +1,20 @@
-/**
- * client App Styles
- *
- * Purpose: client App Styles — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: CARD_GAP, SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP
- *
- * @file-header
- */
+// Shared look of the client home: spacing, the hero, cards, and skeleton blocks.
+// Flow: a few spacing numbers, then one style sheet the home screen imports.
+// Used by the training home and the cards on it.
+
 import { StyleSheet, Dimensions, Platform } from 'react-native';
+
+// ===== NAMED CONSTANTS =====
 
 export const CARD_GAP = 16;
 export const SCREEN_WIDTH = Dimensions.get('window').width;
 export const STATS_ROW_PAD_H = 40;
 export const STATS_ROW_CARD_GAP = 12;
 
-const homeLooks = StyleSheet.create({
+// ===== HELPER FUNCTIONS =====
+
+function buildHomeLooks() {
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
   },
@@ -1794,7 +1793,11 @@ const homeLooks = StyleSheet.create({
     borderRadius: 16,
     opacity: 0.7,
   },
-});
+  });
+}
 
+// ===== MAIN FUNCTION =====
+
+const homeLooks = buildHomeLooks();
 
 export default homeLooks;

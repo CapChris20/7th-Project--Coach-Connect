@@ -18,6 +18,7 @@ const ASSISTANT_TOPIC_USER_MAX_LENGTH = 40;
 // Manipulate here: step counts at or above this become a "NK-Step Day" or "N-Step Day" title.
 const STEP_COUNT_MIN = 1000;
 const STEP_COUNT_THOUSANDS = 10000;
+const STEPS_PER_THOUSAND = 1000;
 
 // Manipulate here: known topics and the title they should show in history.
 const TOPIC_TITLES = [
@@ -66,135 +67,42 @@ const QUESTION_LEAD_PATTERNS = [
   /^should i\s+(.+)\??$/i,
 ];
 
-// ===== HELPER FUNCTIONS =====
+const JUNK_TITLE_PATTERNS = [
+  /live search wasn'?t available/i,
+  /here'?s what i know from coaching/i,
+  /not cited web results/i,
+  /^as an ai\b/i,
+  /i (can|could) help you with/i,
+  /\btool_call\b|```|\{"name":/i,
+  /^(new chat|chat|untitled)$/i,
+  /^(calories|protein|macro|macros|fitness|sleep|recovery|workout|hypertrophy|cutting|bulking|recomp|steps|cardio)\s+chat$/i,
+];
 
-/**
- * @param {string} text
- * @returns {string}
- */
-function toTitleCase(text) {
-  return String(text || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
+const CREATIVE_KEYWORD_TITLES = [
+  { pattern: /\bashwagandha\b/i, title: 'Ashwagandha & Sleep Science' },
+  { pattern: /\bprotein\b/i, title: 'Protein Playbook' },
+  { pattern: /\bcalorie|calories|kcal\b/i, title: 'Calorie Strategy' },
+  { pattern: /\bmacro/i, title: 'Macro Math Night' },
+];
 
-/**
- * "What is creatine?" → "Creatine". Null when the sentence is not one of those leads.
- * @param {string} originalText
- * @returns {string|null}
- */
-function titleFromQuestionLead(originalText) {
-  for (const pattern of QUESTION_LEAD_PATTERNS) {
-    const match = originalText.match(pattern);
-    if (match && (match[2] || match[1])) {
-      const topic = (match[2] || match[1] || '').trim();
-      const cleaned = topic
-        .replace(/^go on the web and\s+/i, '')
-        .replace(/^google\s+/i, '')
-        .replace(/^(about|for)\s+/i, '')
-        .replace(/\s+/g, ' ')
-        .replace(/["'.!?]+$/g, '')
-        .slice(0, TITLE_TOPIC_MAX_LENGTH);
-      if (cleaned) return toTitleCase(cleaned);
-    }
-  }
-  return null;
-}
+const LOG_REQUEST_TITLES = [
+  { pattern: /\bprotein\b/i, title: 'Protein Log Drop' },
+  { pattern: /\bcalorie|calories|kcal\b/i, title: 'Calorie Log Drop' },
+  { pattern: /\bfood|meal|ate|breakfast|lunch|dinner\b/i, title: 'Meal Log Drop' },
+  { pattern: /\bwater|hydrat/i, title: 'Hydration Check-In' },
+  { pattern: /\bweight\b/i, title: 'Scale Check-In' },
+];
 
-/**
- * First known topic found in the lowercased message.
- * Order matters: "recomp" is listed before broader words so it wins.
- * @param {string} lowerText
- * @returns {string|null}
- */
-function titleFromTopicKeyword(lowerText) {
-  for (const topic of TOPIC_TITLES) {
-    if (lowerText.includes(topic.key)) return topic.title;
-  }
-  return null;
-}
-
-/**
- * @param {string} originalText
- * @returns {string|null}
- */
-function titleFromStepCount(originalText) {
-  const stepsMatch = originalText.match(/(\d[\d,]*)\s*steps?/i);
-  const mentionsLoggingSteps =
-    stepsMatch || (/\b(log|track|record)\b/i.test(originalText) && /\bsteps?\b/i.test(originalText));
-  if (!mentionsLoggingSteps) return null;
-  const stepCount = stepsMatch ? Number(stepsMatch[1].replace(/,/g, '')) : null;
-  if (stepCount && stepCount >= STEP_COUNT_MIN) {
-    const label = stepCount >= STEP_COUNT_THOUSANDS
-      ? `${Math.round(stepCount / 1000)}K`
-      : stepCount.toLocaleString();
-    return `${label}-Step Day`;
-  }
-  return 'Step Streak Check';
-}
-
-/**
- * @param {string} originalText
- * @param {string} lowerText
- * @returns {string|null}
- */
-function titleFromSleepHours(originalText, lowerText) {
-  const sleepMatch = originalText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i);
-  if (!(sleepMatch && /\b(sleep|slept|log|nap)\b/i.test(lowerText))) return null;
-  const hoursLabel = sleepMatch[1].replace(/\.0$/, '');
-  return `${hoursLabel}h Sleep Debrief`;
-}
-
-/**
- * @param {string} originalText
- * @returns {string|null}
- */
-function titleFromLogRequest(originalText) {
-  if (!/\b(log|track|record)\b/i.test(originalText)) return null;
-  if (/\bprotein\b/i.test(originalText)) return 'Protein Log Drop';
-  if (/\bcalorie|calories|kcal\b/i.test(originalText)) return 'Calorie Log Drop';
-  if (/\bfood|meal|ate|breakfast|lunch|dinner\b/i.test(originalText)) return 'Meal Log Drop';
-  if (/\bwater|hydrat/i.test(originalText)) return 'Hydration Check-In';
-  if (/\bweight\b/i.test(originalText)) return 'Scale Check-In';
-  return 'Daily Metrics Drop';
-}
-
-/**
- * @param {string} originalText
- * @returns {string|null}
- */
-function titleFromTrainingTopic(originalText) {
-  if (/\bdirty cut\b/i.test(originalText)) return 'Dirty Cut Debate';
-  if (/\brecomp|recomposition\b/i.test(originalText)) return 'Recomp Roadmap';
-  if (/\bcreatinee?\b/i.test(originalText)) return 'Creatine Clarity';
-  if (/\bpre[- ]?workout\b/i.test(originalText)) return 'Pre-Workout Playbook';
-  if (/\bsleep\b/i.test(originalText)) return 'Sleep Recovery Tactics';
-  if (/\bworkout|training|lift|gym\b/i.test(originalText)) return 'Training Tune-Up';
-  if (/\bcut(ting)?\b/i.test(originalText)) return 'Cutting Game Plan';
-  if (/\bbulk(ing)?\b/i.test(originalText)) return 'Bulking Blueprint';
-  return null;
-}
-
-/**
- * When the user message is short, borrow a topic word from the coach reply.
- * @param {string} originalText
- * @param {string} assistantText
- * @returns {string|null}
- */
-function titleFromAssistantReply(originalText, assistantText) {
-  const assistant = String(assistantText || '').trim();
-  if (!assistant || isJunkChatTitle(assistant) || originalText.length >= ASSISTANT_TOPIC_USER_MAX_LENGTH) {
-    return null;
-  }
-  const topicMatch = assistant.match(
-    /\b(protein|macros|calories|sleep|recovery|workout|hypertrophy|cutting|bulking|recomp|steps|cardio|creatine|ashwagandha)\b/i,
-  );
-  if (!topicMatch) return null;
-  const topicWord = topicMatch[0].toLowerCase();
-  return ASSISTANT_TOPIC_TITLES[topicWord] || `${toTitleCase(topicMatch[0])} Focus`;
-}
+const TRAINING_TOPIC_TITLES = [
+  { pattern: /\bdirty cut\b/i, title: 'Dirty Cut Debate' },
+  { pattern: /\brecomp|recomposition\b/i, title: 'Recomp Roadmap' },
+  { pattern: /\bcreatinee?\b/i, title: 'Creatine Clarity' },
+  { pattern: /\bpre[- ]?workout\b/i, title: 'Pre-Workout Playbook' },
+  { pattern: /\bsleep\b/i, title: 'Sleep Recovery Tactics' },
+  { pattern: /\bworkout|training|lift|gym\b/i, title: 'Training Tune-Up' },
+  { pattern: /\bcut(ting)?\b/i, title: 'Cutting Game Plan' },
+  { pattern: /\bbulk(ing)?\b/i, title: 'Bulking Blueprint' },
+];
 
 // ===== MAIN FUNCTION =====
 
@@ -220,17 +128,7 @@ export function normalizeTitleKey(text) {
 export function isJunkChatTitle(title) {
   const titleText = String(title || '').trim();
   if (!titleText) return true;
-  if (/live search wasn'?t available/i.test(titleText)) return true;
-  if (/here'?s what i know from coaching/i.test(titleText)) return true;
-  if (/not cited web results/i.test(titleText)) return true;
-  if (/^as an ai\b/i.test(titleText)) return true;
-  if (/i (can|could) help you with/i.test(titleText)) return true;
-  if (/\btool_call\b|```|\{"name":/i.test(titleText)) return true;
-  if (/^(new chat|chat|untitled)$/i.test(titleText)) return true;
-  if (/^(calories|protein|macro|macros|fitness|sleep|recovery|workout|hypertrophy|cutting|bulking|recomp|steps|cardio)\s+chat$/i.test(titleText)) {
-    return true;
-  }
-  return false;
+  return JUNK_TITLE_PATTERNS.some((pattern) => pattern.test(titleText));
 }
 
 /**
@@ -248,12 +146,7 @@ export function deriveChatTitle(firstUserText) {
   const topicTitle = titleFromTopicKeyword(originalText.toLowerCase());
   if (topicTitle) return topicTitle;
 
-  const cleaned = originalText
-    .replace(/[^\w\s%-]/g, ' ')
-    .replace(/\b(please|pls|hey|hi|hello|ok|okay|so|like|just|really|actually|basically|google|web|search)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, TITLE_TOPIC_MAX_LENGTH);
+  const cleaned = cleanedSnippetTitle(originalText);
   return cleaned ? toTitleCase(cleaned) : FALLBACK_TITLE;
 }
 
@@ -268,11 +161,7 @@ export function needsCreativeTitle(title, firstUserText = '') {
   if (isJunkChatTitle(titleText)) return true;
 
   const userText = String(firstUserText || '').trim();
-  if (userText) {
-    if (normalizeTitleKey(titleText) === normalizeTitleKey(userText)) return true;
-    if (normalizeTitleKey(titleText) === normalizeTitleKey(deriveChatTitle(userText))) return true;
-    if (normalizeTitleKey(titleText) === normalizeTitleKey(userText.slice(0, TITLE_TOPIC_MAX_LENGTH))) return true;
-  }
+  if (titleLooksLikeRawMessage(titleText, userText)) return true;
 
   if (/^(can u|can you|what do u|what do you|hey |please |log i|log that|check the)\b/i.test(titleText)) {
     return true;
@@ -296,10 +185,8 @@ export function buildCreativeTitleLocal(userText = '', assistantText = '') {
   const lowerText = originalText.toLowerCase();
   if (!originalText) return null;
 
-  if (/\bashwagandha\b/i.test(lowerText)) return 'Ashwagandha & Sleep Science';
-  if (/\bprotein\b/i.test(lowerText)) return 'Protein Playbook';
-  if (/\bcalorie|calories|kcal\b/i.test(lowerText)) return 'Calorie Strategy';
-  if (/\bmacro/i.test(lowerText)) return 'Macro Math Night';
+  const keywordTitle = firstMatchingTitle(CREATIVE_KEYWORD_TITLES, lowerText);
+  if (keywordTitle) return keywordTitle;
 
   const stepTitle = titleFromStepCount(originalText);
   if (stepTitle) return stepTitle;
@@ -322,4 +209,121 @@ export function buildCreativeTitleLocal(userText = '', assistantText = '') {
   if (assistantTitle) return assistantTitle;
 
   return null;
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+function toTitleCase(text) {
+  return String(text || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function cleanedQuestionTopic(topic) {
+  return topic
+    .replace(/^go on the web and\s+/i, '')
+    .replace(/^google\s+/i, '')
+    .replace(/^(about|for)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/["'.!?]+$/g, '')
+    .slice(0, TITLE_TOPIC_MAX_LENGTH);
+}
+
+function titleIfQuestionPatternMatches(originalText, pattern) {
+  const match = originalText.match(pattern);
+  if (!match || !(match[2] || match[1])) return null;
+  const topic = (match[2] || match[1] || '').trim();
+  const cleaned = cleanedQuestionTopic(topic);
+  if (!cleaned) return null;
+  return toTitleCase(cleaned);
+}
+
+function titleFromQuestionLead(originalText) {
+  for (const pattern of QUESTION_LEAD_PATTERNS) {
+    const questionTitle = titleIfQuestionPatternMatches(originalText, pattern);
+    if (questionTitle) return questionTitle;
+  }
+  return null;
+}
+
+function titleFromTopicKeyword(lowerText) {
+  for (const topic of TOPIC_TITLES) {
+    if (lowerText.includes(topic.key)) return topic.title;
+  }
+  return null;
+}
+
+function firstMatchingTitle(rows, text) {
+  for (const row of rows) {
+    if (row.pattern.test(text)) return row.title;
+  }
+  return null;
+}
+
+function stepCountLabel(stepCount) {
+  if (stepCount >= STEP_COUNT_THOUSANDS) {
+    return `${Math.round(stepCount / STEPS_PER_THOUSAND)}K`;
+  }
+  return stepCount.toLocaleString();
+}
+
+function titleFromStepCount(originalText) {
+  const stepsMatch = originalText.match(/(\d[\d,]*)\s*steps?/i);
+  const mentionsLoggingSteps =
+    stepsMatch || (/\b(log|track|record)\b/i.test(originalText) && /\bsteps?\b/i.test(originalText));
+  if (!mentionsLoggingSteps) return null;
+  const stepCount = stepsMatch ? Number(stepsMatch[1].replace(/,/g, '')) : null;
+  if (stepCount && stepCount >= STEP_COUNT_MIN) {
+    return `${stepCountLabel(stepCount)}-Step Day`;
+  }
+  return 'Step Streak Check';
+}
+
+function titleFromSleepHours(originalText, lowerText) {
+  const sleepMatch = originalText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i);
+  if (!(sleepMatch && /\b(sleep|slept|log|nap)\b/i.test(lowerText))) return null;
+  const hoursLabel = sleepMatch[1].replace(/\.0$/, '');
+  return `${hoursLabel}h Sleep Debrief`;
+}
+
+function titleFromLogRequest(originalText) {
+  if (!/\b(log|track|record)\b/i.test(originalText)) return null;
+  return firstMatchingTitle(LOG_REQUEST_TITLES, originalText) || 'Daily Metrics Drop';
+}
+
+function titleFromTrainingTopic(originalText) {
+  return firstMatchingTitle(TRAINING_TOPIC_TITLES, originalText);
+}
+
+function titleFromAssistantReply(originalText, assistantText) {
+  const assistant = String(assistantText || '').trim();
+  if (!assistant || isJunkChatTitle(assistant) || originalText.length >= ASSISTANT_TOPIC_USER_MAX_LENGTH) {
+    return null;
+  }
+  const topicMatch = assistant.match(
+    /\b(protein|macros|calories|sleep|recovery|workout|hypertrophy|cutting|bulking|recomp|steps|cardio|creatine|ashwagandha)\b/i,
+  );
+  if (!topicMatch) return null;
+  const topicWord = topicMatch[0].toLowerCase();
+  return ASSISTANT_TOPIC_TITLES[topicWord] || `${toTitleCase(topicMatch[0])} Focus`;
+}
+
+function cleanedSnippetTitle(originalText) {
+  return originalText
+    .replace(/[^\w\s%-]/g, ' ')
+    .replace(/\b(please|pls|hey|hi|hello|ok|okay|so|like|just|really|actually|basically|google|web|search)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, TITLE_TOPIC_MAX_LENGTH);
+}
+
+function titleLooksLikeRawMessage(titleText, userText) {
+  if (!userText) return false;
+  if (normalizeTitleKey(titleText) === normalizeTitleKey(userText)) return true;
+  if (normalizeTitleKey(titleText) === normalizeTitleKey(deriveChatTitle(userText))) return true;
+  if (normalizeTitleKey(titleText) === normalizeTitleKey(userText.slice(0, TITLE_TOPIC_MAX_LENGTH))) return true;
+  return false;
 }

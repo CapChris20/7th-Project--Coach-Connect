@@ -13,9 +13,19 @@ const DEFAULT_ACCESSIBILITY_LABEL = 'Coach Connect';
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * Height follows the stored brand aspect so Logo.PNG does not stretch.
+ * @param {number} width
+ * @returns {number}
+ */
+function logoHeightFromWidth(width) {
+  return Math.round(width / BRAND_LOGO_ASPECT);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
+ * Official Coach Connect mark at the given width.
  * @param {{ width?: number, style?: object, accessibilityLabel?: string }} props
  */
 export default function AppLogo({
@@ -23,7 +33,11 @@ export default function AppLogo({
   style,
   accessibilityLabel = DEFAULT_ACCESSIBILITY_LABEL,
 }) {
-  const height = Math.round(width / BRAND_LOGO_ASPECT);
+  const height = logoHeightFromWidth(width);
+
+  // 1. Height follows the brand aspect so the PNG does not stretch.
+  // 2. Draw Logo.PNG at that size.
+  // vocab: contentFit contain = scale the PNG down to fit, no crop.
   return (
     <Image
       source={BRAND_LOGO_SOURCE}

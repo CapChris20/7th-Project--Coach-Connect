@@ -38,7 +38,9 @@ function unitIndexForByteCount(byteCount) {
   // log(n) / log(1024) is "how many times 1024 fits into n", which is the unit slot.
   // The cap keeps a huge file on TB instead of reading past the end of the label list.
   const rawIndex = Math.floor(Math.log(byteCount) / Math.log(BYTES_PER_UNIT));
-  return Math.min(BYTE_UNIT_LABELS.length - 1, rawIndex);
+  const maxIndex = BYTE_UNIT_LABELS.length - 1;
+  if (rawIndex > maxIndex) return maxIndex;
+  return rawIndex;
 }
 
 // Bytes need no decimals ("512 B"). Small values get two ("1.25 MB"). 10 and up get one ("24.3 MB").
@@ -48,9 +50,13 @@ function decimalPlacesForSize(unitIndex, unitValue) {
   return SMALL_SIZE_DECIMAL_PLACES;
 }
 
-function fileTypeFromExtension(fileName) {
+function extensionFromFileName(fileName) {
   // vocab: ?. after pop() covers a name with no dot (pop is still a string here, but a missing name is not).
-  const fileExtension = fileName.split('.').pop()?.toLowerCase();
+  return fileName.split('.').pop()?.toLowerCase();
+}
+
+function fileTypeFromExtension(fileName) {
+  const fileExtension = extensionFromFileName(fileName);
   if (IMAGE_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_IMAGE;
   if (DOCUMENT_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_DOCUMENT;
   if (SPREADSHEET_EXTENSIONS.includes(fileExtension)) return FILE_TYPE_SPREADSHEET;
@@ -91,14 +97,31 @@ function labelWithOptionalDate(label, dateLabel) {
  * @param {number|string} bytes
  * @returns {string}
  */
+function parseByteCount(bytes) {
+  if (typeof bytes === 'number') return bytes;
+  return Number(bytes);
+}
+
+function isMissingByteCount(byteCount) {
+  if (!Number.isFinite(byteCount)) return true;
+  if (byteCount <= 0) return true;
+  return false;
+}
+
+/**
+ * Human file size like "12.4 KB". Missing or zero bytes become "—".
+ * @param {number|string} bytes
+ * @returns {string}
+ */
 export function formatFileSize(bytes) {
-  const byteCount = typeof bytes === 'number' ? bytes : Number(bytes);
-  if (!Number.isFinite(byteCount) || byteCount <= 0) return MISSING_SIZE_LABEL;
+  const byteCount = parseByteCount(bytes);
+  if (isMissingByteCount(byteCount)) return MISSING_SIZE_LABEL;
 
   const unitIndex = unitIndexForByteCount(byteCount);
   const unitValue = byteCount / Math.pow(BYTES_PER_UNIT, unitIndex);
   const decimalPlaces = decimalPlacesForSize(unitIndex, unitValue);
-  return `${unitValue.toFixed(decimalPlaces)} ${BYTE_UNIT_LABELS[unitIndex]}`;
+  const unitLabel = BYTE_UNIT_LABELS[unitIndex];
+  return `${unitValue.toFixed(decimalPlaces)} ${unitLabel}`;
 }
 
 /**

@@ -1,69 +1,51 @@
-/**
- * Macro Bar
- *
- * Purpose: Macro Bar — Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/nutrition
- * Key exports: MacroBar
- *
- * @file-header
- */
+// One protein / carb / fat bar on the daily food log.
+// Flow: turn current vs target into a percent → animate the fill if a shared Animated.Value was passed → paint the bar.
+// Used by: the client's daily food log screen.
+
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
-export default function MacroBar({ label, current, target, color = '#10B981', animatedValue }) {
-  const { colors, spacing, isDark } = useTheme();
-  const styles = createStyles(spacing, colors, isDark);
-  
-  const percentage = target > 0 ? Math.min((current / target) * 100, 100) : 0;
-  const widthAnim = animatedValue || new Animated.Value(0);
+// ===== NAMED CONSTANTS =====
 
-  useEffect(() => {
-    if (animatedValue) {
-      Animated.timing(animatedValue, {
-        toValue: percentage / 100,
-        duration: 800,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [current, target, animatedValue]);
+const DEFAULT_BAR_COLOR = '#10B981';
+const COMPLETE_BAR_COLOR = '#10B981';
+const PERCENT_MAX = 100;
+// Manipulate here: higher = slower fill animation when the parent passes animatedValue.
+const FILL_ANIMATION_MS = 800;
 
-  const animatedWidth = animatedValue
-    ? animatedValue.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['0%', `${percentage}%`],
-      })
-    : `${percentage}%`;
+// ===== HELPER FUNCTIONS =====
 
-  const isComplete = current >= target;
-  const barColor = isComplete ? '#10B981' : color;
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.labelRow}>
-        <Text style={styles.label} selectable={true}>{label}</Text>
-        <Text style={styles.value} selectable={true}>
-          {current.toFixed(1)}/{target.toFixed(1)}g
-        </Text>
-      </View>
-      <View style={styles.barContainer}>
-        <Animated.View
-          style={[
-            styles.bar,
-            {
-              width: animatedWidth,
-              backgroundColor: barColor,
-            },
-          ]}
-        />
-      </View>
-    </View>
-  );
+/**
+ * How full the bar should be. Target 0 would divide by zero, so that reads as 0%.
+ * @param {number} current
+ * @param {number} target
+ * @returns {number}
+ */
+function macroFillPercent(current, target) {
+  if (target > 0) return Math.min((current / target) * PERCENT_MAX, PERCENT_MAX);
+  return 0;
 }
 
-const createStyles = (spacing, colors, isDark) =>
-  StyleSheet.create({
+/**
+ * Hitting the target turns the bar green even when the caller passed a different color.
+ * @param {number} current
+ * @param {number} target
+ * @param {string} color
+ * @returns {string}
+ */
+function barColorForFill(current, target, color) {
+  const isComplete = current >= target;
+  return isComplete ? COMPLETE_BAR_COLOR : color;
+}
+
+/**
+ * @param {object} spacing
+ * @param {object} colors
+ * @param {boolean} isDark
+ */
+function createStyles(spacing, colors, isDark) {
+  return StyleSheet.create({
     container: {
       marginBottom: 16,
     },
@@ -94,4 +76,67 @@ const createStyles = (spacing, colors, isDark) =>
       borderRadius: 4,
     },
   });
+}
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Food-log macro bar (grams current / grams target) with an optional shared fill animation.
+ * @param {{ label: string, current: number, target: number, color?: string, animatedValue?: object }} props
+ */
+export default function MacroBar({
+  label,
+  current,
+  target,
+  color = DEFAULT_BAR_COLOR,
+  animatedValue,
+}) {
+  const { colors, spacing, isDark } = useTheme();
+  const styles = createStyles(spacing, colors, isDark);
+
+  const percentage = macroFillPercent(current, target);
+  // Keep a local Animated.Value when the parent did not pass one, matching the original render path.
+  const widthAnim = animatedValue || new Animated.Value(0);
+
+  useEffect(() => {
+    if (animatedValue) {
+      // vocab: useNativeDriver false because width is a layout property, not transform/opacity.
+      Animated.timing(animatedValue, {
+        toValue: percentage / PERCENT_MAX,
+        duration: FILL_ANIMATION_MS,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [current, target, animatedValue]);
+
+  const animatedWidth = animatedValue
+    ? animatedValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0%', `${percentage}%`],
+      })
+    : `${percentage}%`;
+
+  const barColor = barColorForFill(current, target, color);
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.labelRow}>
+        <Text style={styles.label} selectable={true}>{label}</Text>
+        <Text style={styles.value} selectable={true}>
+          {current.toFixed(1)}/{target.toFixed(1)}g
+        </Text>
+      </View>
+      <View style={styles.barContainer}>
+        <Animated.View
+          style={[
+            styles.bar,
+            {
+              width: animatedWidth,
+              backgroundColor: barColor,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}

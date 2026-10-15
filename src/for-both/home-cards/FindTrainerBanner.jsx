@@ -1,23 +1,34 @@
-/**
- * Marketplace Hero Card
- *
- * Purpose: UI screen or component: Marketplace Hero Card. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/client
- * Key exports: FindTrainerBanner
- *
- * @file-header
- */
+// Premium hero for the trainer marketplace on the client home screen.
+// Flow: paint the gradient rim → label, headline, benefits → optional CTA with a notification badge.
+// Used by: client home. Optional props reuse the same shell (e.g. trainer session form).
+
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
+// ===== NAMED CONSTANTS =====
+
 /** Cohesive accent rim (pink → purple). Not full-spectrum / rainbow. */
 const ACCENT_BORDER_GRADIENT = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF6B9D'];
-
+const CTA_GRADIENT = ['#FF6B9D', '#C084FC'];
 const CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
+// Manipulate here: badge digits stop at 99+.
+const BADGE_CAP = 99;
+const BADGE_OVERFLOW_LABEL = '99+';
+const DEFAULT_LABEL = 'Trainer Marketplace';
+const DEFAULT_HEADLINE = 'Find Your Perfect Coach';
+const DEFAULT_SUBHEAD =
+  'Search the marketplace, compare trainers, and connect with the coach who fits your goals and style.';
+const DEFAULT_CTA_LABEL = 'Browse Trainers';
+const DEFAULT_CTA_ICON = 'search';
+const DEFAULT_ACCESSIBILITY_LABEL = 'Trainer marketplace';
+const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
+const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
+const GRADIENT_LEFT = { x: 0, y: 0 };
+const GRADIENT_RIGHT = { x: 1, y: 0 };
 
+// Manipulate here: the four benefit lines under the subhead.
 const DEFAULT_BENEFITS = [
   'Custom Workout Plans',
   'Live Coaching Support',
@@ -25,92 +36,167 @@ const DEFAULT_BENEFITS = [
   'Message & Schedule Sessions',
 ];
 
+// ===== HELPER FUNCTIONS =====
+
 /**
- * Premium hero for the trainer marketplace on the client home screen.
- * Optional props reuse the same shell elsewhere (e.g. trainer session form).
- *
- * @param {string} [subheadColor] — override subhead text color
- * @param {string} [benefitTextColor] — override bullet line color
+ * Dark-first palette. Optional color props override only the two text slots callers restyle.
+ * vocab/symbol: ?? keeps a parent-supplied color even if it is an empty-looking but defined string.
+ * @param {boolean} isDark
+ * @param {string} [subheadColorProp]
+ * @param {string} [benefitTextColorProp]
+ */
+function bannerTextColors(isDark, subheadColorProp, benefitTextColorProp) {
+  return {
+    innerBackground: isDark ? '#0A0A0F' : '#F8F9FC',
+    headlineColor: isDark ? '#FFFFFF' : '#0A0A0F',
+    subheadColor: subheadColorProp ?? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)'),
+    benefitTextColor:
+      benefitTextColorProp ?? (isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)'),
+    labelColor: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
+    washColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent',
+  };
+}
+
+/**
+ * Badge shows the raw count until 99, then "99+".
+ * @param {number} notificationCount
+ * @returns {string|number}
+ */
+function marketplaceBadgeLabel(notificationCount) {
+  if (notificationCount > BADGE_CAP) return BADGE_OVERFLOW_LABEL;
+  return notificationCount;
+}
+
+/**
+ * One benefit row. Color cycles through CHECK_COLORS so four lines never share one hue.
+ */
+function BenefitRow({ line, index, textColor }) {
+  const checkColor = CHECK_COLORS[index % CHECK_COLORS.length];
+  return (
+    <View style={styles.benefitRow}>
+      <Ionicons
+        name="checkmark-circle"
+        size={18}
+        color={checkColor}
+        style={styles.checkIcon}
+      />
+      <Text style={[styles.benefitText, { color: textColor }]}>{line}</Text>
+    </View>
+  );
+}
+
+/**
+ * Browse CTA. Hidden when hideCta is set or the parent passed no onPress.
+ */
+function MarketplaceCta({
+  onPress,
+  hideCta,
+  ctaLabel,
+  ctaIcon,
+  notificationCount,
+}) {
+  if (hideCta || !onPress) return null;
+  return (
+    <LinearGradient
+      colors={CTA_GRADIENT}
+      start={GRADIENT_LEFT}
+      end={GRADIENT_RIGHT}
+      style={styles.ctaGradient}
+    >
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.88}
+        style={styles.ctaTouchable}
+        accessibilityRole="button"
+        accessibilityLabel={ctaLabel}
+      >
+        <Ionicons name={ctaIcon} size={20} color="#FFFFFF" />
+        <Text style={styles.ctaText}>{ctaLabel}</Text>
+        {notificationCount > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{marketplaceBadgeLabel(notificationCount)}</Text>
+          </View>
+        ) : null}
+        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+      </TouchableOpacity>
+    </LinearGradient>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Marketplace hero card. Optional copy/color props reuse the same shell elsewhere.
+ * @param {{ onPress?: Function, notificationCount?: number, isDark?: boolean, label?: string, headline?: string, subhead?: string, benefits?: string[], ctaLabel?: string, ctaIcon?: string, children?: *, hideCta?: boolean, accessibilityLabel?: string, outerStyle?: object, subheadColor?: string, benefitTextColor?: string }} props
  */
 export default function FindTrainerBanner({
   onPress,
   notificationCount = 0,
-  isDark = true /* design is dark-first */,
-  label = 'Trainer Marketplace',
-  headline = 'Find Your Perfect Coach',
-  subhead = 'Search the marketplace, compare trainers, and connect with the coach who fits your goals and style.',
+  isDark = true,
+  label = DEFAULT_LABEL,
+  headline = DEFAULT_HEADLINE,
+  subhead = DEFAULT_SUBHEAD,
   benefits = DEFAULT_BENEFITS,
-  ctaLabel = 'Browse Trainers',
-  ctaIcon = 'search',
+  ctaLabel = DEFAULT_CTA_LABEL,
+  ctaIcon = DEFAULT_CTA_ICON,
   children = null,
   hideCta = false,
-  accessibilityLabel = 'Trainer marketplace',
+  accessibilityLabel = DEFAULT_ACCESSIBILITY_LABEL,
   outerStyle = null,
   subheadColor: subheadColorProp,
   benefitTextColor: benefitTextColorProp,
 }) {
-  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor =
-    subheadColorProp ?? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)');
-  const benefitTextColor =
-    benefitTextColorProp ?? (isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)');
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  const colors = bannerTextColors(isDark, subheadColorProp, benefitTextColorProp);
+  const benefitLines = benefits || [];
 
+  // 1. Dark-first paint. Optional color props only restyle the two text slots.
+  // 2. Paint the rim, copy, benefits, and the Browse CTA (hidden when hideCta or no onPress).
   return (
-    <View style={[styles.outer, outerStyle]} accessibilityRole="summary" accessibilityLabel={accessibilityLabel}>
+    <View
+      style={[styles.outer, outerStyle]}
+      accessibilityRole="summary"
+      accessibilityLabel={accessibilityLabel}
+    >
       <LinearGradient
         colors={ACCENT_BORDER_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={GRADIENT_TOP_LEFT}
+        end={GRADIENT_BOTTOM_RIGHT}
         style={[styles.borderRing, isDark ? styles.borderRingShadowDark : styles.borderRingShadowLight]}
       >
-        <View style={[styles.innerCard, { backgroundColor: innerBg }]}>
+        <View style={[styles.innerCard, { backgroundColor: colors.innerBackground }]}>
           <View
             style={[
               StyleSheet.absoluteFill,
               styles.innerWash,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' },
+              { backgroundColor: colors.washColor },
             ]}
             pointerEvents="none"
           />
           <View style={styles.content}>
-            <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
-
-            <Text style={[styles.headline, { color: headlineColor }]}>{headline}</Text>
-
-            <Text style={[styles.subhead, { color: subColor }]}>{subhead}</Text>
+            <Text style={[styles.label, { color: colors.labelColor }]}>{label}</Text>
+            <Text style={[styles.headline, { color: colors.headlineColor }]}>{headline}</Text>
+            <Text style={[styles.subhead, { color: colors.subheadColor }]}>{subhead}</Text>
 
             {children ? <View style={styles.childrenSlot}>{children}</View> : null}
 
             <View style={styles.benefits}>
-              {(benefits || []).map((line, i) => (
-                <View key={`${line}_${i}`} style={styles.benefitRow}>
-                  <Ionicons name="checkmark-circle" size={18} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={styles.checkIcon} />
-                  <Text style={[styles.benefitText, { color: benefitTextColor }]}>{line}</Text>
-                </View>
+              {benefitLines.map((line, index) => (
+                <BenefitRow
+                  key={`${line}_${index}`}
+                  line={line}
+                  index={index}
+                  textColor={colors.benefitTextColor}
+                />
               ))}
             </View>
 
-            {!hideCta && onPress ? (
-              <LinearGradient
-                colors={['#FF6B9D', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.ctaGradient}
-              >
-                <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.ctaTouchable} accessibilityRole="button" accessibilityLabel={ctaLabel}>
-                  <Ionicons name={ctaIcon} size={20} color="#FFFFFF" />
-                  <Text style={styles.ctaText}>{ctaLabel}</Text>
-                  {notificationCount > 0 ? (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-                    </View>
-                  ) : null}
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              </LinearGradient>
-            ) : null}
+            <MarketplaceCta
+              onPress={onPress}
+              hideCta={hideCta}
+              ctaLabel={ctaLabel}
+              ctaIcon={ctaIcon}
+              notificationCount={notificationCount}
+            />
           </View>
         </View>
       </LinearGradient>

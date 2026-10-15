@@ -45,10 +45,12 @@ export function isFirestoreIndexError(firestoreError) {
  */
 export async function getDocsWithIndexFallback(primaryQuery, buildFallback, label = 'query') {
   try {
+    // 1. The indexed query is the happy path.
     return await getDocs(primaryQuery);
   } catch (firestoreError) {
-    const canFallBack = isFirestoreIndexError(firestoreError) && buildFallback;
-    if (!canFallBack) throw firestoreError;
+    // 2. While the index is building, run the smaller fallback. Anything else still throws.
+    if (!isFirestoreIndexError(firestoreError)) throw firestoreError;
+    if (!buildFallback) throw firestoreError;
     logger.warn(`Firestore index missing for ${label}; using capped fallback`, firestoreError?.message || firestoreError);
     return getDocs(buildFallback());
   }
@@ -62,7 +64,7 @@ export async function getDocsWithIndexFallback(primaryQuery, buildFallback, labe
 export function capQuery(baseQuery, max = FALLBACK_READ_LIMIT) {
   try {
     return firestoreLimit(baseQuery, max);
-  } catch (_) {
+  } catch (limitError) {
     return baseQuery;
   }
 }

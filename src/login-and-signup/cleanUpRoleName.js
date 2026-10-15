@@ -9,6 +9,22 @@ const CLIENT_ROLE = 'client';
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * Lowercase + trim so " Trainer " and "TRAINER" both match.
+ * vocab/symbol: ?? keeps an empty string. || would skip it and fall through to the route role.
+ * @param {string} [roleProp]
+ * @param {string} [routeRole]
+ * @returns {string}
+ */
+function normalizedRoleText(roleProp, routeRole) {
+  return String(roleProp ?? routeRole ?? '').toLowerCase().trim();
+}
+
+function isTrainerRoleText(roleText) {
+  // Manipulate here: only the exact word trainer unlocks trainer onboarding. Anything else is a client.
+  return roleText === TRAINER_ROLE;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -17,10 +33,7 @@ const CLIENT_ROLE = 'client';
  * @returns {'trainer'|'client'}
  */
 export function cleanUpRoleName(roleProp, routeRole) {
-  // vocab: ?? keeps an empty string. || would skip it and fall through to the route role.
-  const normalizedRole = String(roleProp ?? routeRole ?? '').toLowerCase().trim();
-
-  // Manipulate here: only the exact word trainer unlocks trainer onboarding. Anything else is a client.
-  if (normalizedRole === TRAINER_ROLE) return TRAINER_ROLE;
+  const roleText = normalizedRoleText(roleProp, routeRole);
+  if (isTrainerRoleText(roleText)) return TRAINER_ROLE;
   return CLIENT_ROLE;
 }

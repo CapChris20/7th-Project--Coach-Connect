@@ -42,6 +42,13 @@ const CALORIE_METRIC_KEY = 'calories';
 const STEPS_METRIC_KEY = 'steps';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const DARK_MODE = 'dark';
+const DARK_POINT_FILL = '#12121c';
+const LIGHT_POINT_FILL = '#ffffff';
+const ACTIVE_POINT_RADIUS = 8;
+const IDLE_POINT_RADIUS = 5;
+const ACTIVE_POINT_STROKE = 3;
+const IDLE_POINT_STROKE = 2;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -50,6 +57,21 @@ function mapDaysToChartValues(days, metricKey) {
     ...day,
     chartValue: Number(day[metricKey]) || 0,
   }));
+}
+
+function pointFillColor(mode) {
+  if (mode === DARK_MODE) return DARK_POINT_FILL;
+  return LIGHT_POINT_FILL;
+}
+
+function pointRadius(isActivePoint) {
+  if (isActivePoint) return ACTIVE_POINT_RADIUS;
+  return IDLE_POINT_RADIUS;
+}
+
+function pointStrokeWidth(isActivePoint) {
+  if (isActivePoint) return ACTIVE_POINT_STROKE;
+  return IDLE_POINT_STROKE;
 }
 
 function resolveChartMaxValue(metricKey, chartDays, maxValueProp) {
@@ -231,10 +253,10 @@ export function WeeklyChart({
                 key={pointIndex}
                 cx={point.x}
                 cy={point.y}
-                r={isActivePoint ? 8 : 5}
-                fill={mode === 'dark' ? '#12121c' : '#ffffff'}
+                r={pointRadius(isActivePoint)}
+                fill={pointFillColor(mode)}
                 stroke={isActivePoint ? GRADIENTS.g1[1] : GRADIENTS.g1[0]}
-                strokeWidth={isActivePoint ? 3 : 2}
+                strokeWidth={pointStrokeWidth(isActivePoint)}
               />
             );
           })}

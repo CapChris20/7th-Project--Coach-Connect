@@ -38,6 +38,7 @@ function borderColorsForTheme(isDark) {
  */
 export default function ColorFieldFrame({ isDark, style, children }) {
   const borderGradientColors = borderColorsForTheme(isDark);
+  const ringStyle = [styles.ring, style];
   return (
     // vocab: LinearGradient = a view painted with color stops instead of one flat background.
     <LinearGradient
@@ -45,7 +46,7 @@ export default function ColorFieldFrame({ isDark, style, children }) {
       start={GRADIENT_START}
       end={GRADIENT_END}
       locations={GRADIENT_LOCATIONS}
-      style={[styles.ring, style]}
+      style={ringStyle}
     >
       <View style={styles.inner}>{children}</View>
     </LinearGradient>

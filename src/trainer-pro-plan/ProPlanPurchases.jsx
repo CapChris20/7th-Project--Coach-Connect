@@ -1,3 +1,7 @@
+// Trainer Pro in-app purchases: load StoreKit products, buy, restore, and mirror status from Firestore.
+// Flow: listen to users/{uid}.subscription → fetch App Store SKUs → purchase → verify on the server → finish the transaction.
+// Used by ProPlanSetup. Product ids stay in proPlanSwitches (com.coachconnect.month / com.coachconnect.year).
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -19,29 +23,224 @@ import {
 } from './verifyProPurchase';
 import { SubscriptionContext } from './proPlanStatus';
 
+// ===== NAMED CONSTANTS =====
+
+const USERS_COLLECTION = 'users';
+const IOS_PLATFORM = 'ios';
+const SUBSCRIPTION_TYPE = 'subs';
+const ERROR_VERIFICATION_FAILED = 'verification_failed';
+const ERROR_NETWORK = 'network_error';
+const ERROR_NOT_FOUND = 'not_found';
+const ERROR_USER_CANCELLED_LEGACY = 'E_USER_CANCELLED';
+const UNAVAILABLE_TITLE = 'Unavailable';
+const RESTORED_TITLE = 'Restored';
+const NO_SUBSCRIPTION_TITLE = 'No subscription found';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * StoreKit sometimes puts the SKU on `id`, sometimes on `productId`.
+ * @param {object} product
+ * @returns {string}
+ */
 function productSku(product) {
   return String(product?.id || product?.productId || '').trim();
 }
 
+/**
+ * @param {object} purchase
+ * @returns {string}
+ */
 function purchaseSku(purchase) {
   return String(purchase?.productId || purchase?.id || '').trim();
 }
 
 /**
+ * Dedup key so a StoreKit double-callback does not verify the same receipt twice.
+ * @param {object} purchase
+ * @returns {string}
+ */
+function purchaseProcessingKey(purchase) {
+  return purchase?.transactionId || purchase?.purchaseToken || purchaseSku(purchase);
+}
+
+/**
+ * Server verify first, then tell Apple the transaction is done. Finish failures are logged, not fatal.
  * @param {import('expo-iap').Purchase} purchase
+ * @param {Function} finishTransaction
  */
 async function processVerifiedPurchase(purchase, finishTransaction) {
   await verifyAppleSubscriptionOnServer(purchase);
   try {
     await finishTransaction({ purchase, isConsumable: false });
   } catch (finishErr) {
-    // Verification already succeeded — don't fail the whole flow if finish is flaky.
     if (__DEV__) {
       console.warn('[ProPlanSetup] finishTransaction:', finishErr?.message || finishErr);
     }
   }
 }
 
+/**
+ * @param {object} error
+ * @returns {{ type: string, message: string }}
+ */
+function purchaseErrorState(error) {
+  const code = error?.code || 'purchase_failed';
+  if (code === ERROR_VERIFICATION_FAILED) {
+    return {
+      type: 'verification',
+      message: 'Purchase verification failed. Contact support if this continues.',
+    };
+  }
+  if (code === ERROR_NETWORK) {
+    return { type: 'network', message: error.message || 'Network error' };
+  }
+  return { type: 'generic', message: error?.message || 'Purchase failed' };
+}
+
+/**
+ * @param {object} error
+ * @returns {{ type: string, message: string }}
+ */
+function restoreErrorState(error) {
+  const code = error?.code || 'restore_failed';
+  if (code === ERROR_VERIFICATION_FAILED) {
+    return {
+      type: 'verification',
+      message: 'Could not verify restored purchases. Contact support.',
+    };
+  }
+  if (code === ERROR_NETWORK) {
+    return { type: 'network', message: error.message || 'Network error' };
+  }
+  return { type: 'generic', message: error?.message || 'Restore failed' };
+}
+
+/**
+ * @param {object} error
+ * @returns {boolean}
+ */
+function isUserCancelledPurchase(error) {
+  const code = error?.code;
+  return code === ErrorCode.UserCancelled || String(code || '') === ERROR_USER_CANCELLED_LEGACY;
+}
+
+/**
+ * @param {object} error
+ * @returns {boolean}
+ */
+function isNetworkPurchaseError(error) {
+  return (
+    error?.code === ErrorCode.NetworkError ||
+    String(error?.code || '').includes('NETWORK')
+  );
+}
+
+/**
+ * @param {object} error
+ * @returns {boolean}
+ */
+function isSkuNotFoundMessage(error) {
+  const messageText = String(error?.message || '');
+  return /sku not found/i.test(messageText) || /product.*(not found|invalid)/i.test(messageText);
+}
+
+/**
+ * @param {string} sku
+ * @returns {{ type: string, message: string }}
+ */
+function skuNotFoundError(sku) {
+  return {
+    type: 'generic',
+    message:
+      `SKU not found: "${sku}". In App Store Connect → your app → Subscriptions, create/open the subscription whose Product ID is exactly "${sku}" (and "${TRAINER_SUBSCRIPTION_PRODUCT_IDS.join('" / "')}"). Status must not be Missing Metadata. Paid Apps Agreement must be Active.`,
+  };
+}
+
+/**
+ * @param {string} sku
+ * @returns {{ type: string, message: string }}
+ */
+function skuMissingInConnectError(sku) {
+  return {
+    type: 'generic',
+    message:
+      `SKU not found: "${sku}". Open App Store Connect → Monetization → Subscriptions and confirm a Product ID of exactly "${sku}" exists.`,
+  };
+}
+
+/**
+ * @param {Array} subscriptions
+ * @returns {object}
+ */
+function storeProductMap(subscriptions) {
+  const map = {};
+  for (const subscription of subscriptions || []) {
+    const sku = productSku(subscription);
+    if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(sku)) {
+      map[sku] = subscription;
+    }
+  }
+  return map;
+}
+
+/**
+ * @param {Array} purchases
+ * @returns {Array}
+ */
+function relevantSubscriptionPurchases(purchases) {
+  return (purchases || []).filter((purchase) =>
+    TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(purchaseSku(purchase)),
+  );
+}
+
+/**
+ * @param {string} productId
+ * @returns {string}
+ */
+function skuForPurchaseRequest(productId) {
+  if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(productId)) return productId;
+  return TRAINER_PRO_MONTHLY_PRODUCT_ID;
+}
+
+/**
+ * @param {object} storeProducts
+ * @param {Array} subscriptions
+ * @param {string} sku
+ * @returns {boolean}
+ */
+function isSkuMissingFromStore(storeProducts, subscriptions, sku) {
+  if (storeProducts[sku]) return false;
+  return !subscriptions?.some((subscription) => productSku(subscription) === sku);
+}
+
+/**
+ * Some StoreKit builds throw even when purchases exist — still query local entitlements after this.
+ */
+async function tryRestorePurchasesIap() {
+  try {
+    await restorePurchasesIap();
+  } catch (restoreHookErr) {
+    warnRestoreHookError(restoreHookErr);
+  }
+}
+
+/**
+ * @param {object} restoreHookErr
+ */
+function warnRestoreHookError(restoreHookErr) {
+  if (!__DEV__) return;
+  console.warn('[ProPlanSetup] restorePurchasesIap:', restoreHookErr?.message || restoreHookErr);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Provides subscription state to trainer screens. Children read it through SubscriptionContext.
+ * vocab: onSnapshot = live Firestore listener. The function it returns is the unsubscribe — keep that cleanup.
+ * vocab: useIAP = expo-iap hook. Purchase success/error callbacks live in this options object.
+ * @param {{ userId?: string, children: import('react').ReactNode }} props
+ */
 export function IapProPlanSetup({ userId, children }) {
   const [firestoreSubscription, setFirestoreSubscription] = useState(null);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
@@ -58,7 +257,7 @@ export function IapProPlanSetup({ userId, children }) {
     finishTransaction,
   } = useIAP({
     onPurchaseSuccess: async (purchase) => {
-      const key = purchase?.transactionId || purchase?.purchaseToken || purchaseSku(purchase);
+      const key = purchaseProcessingKey(purchase);
       if (key && processingRef.current.has(key)) return;
       if (key) processingRef.current.add(key);
 
@@ -66,31 +265,17 @@ export function IapProPlanSetup({ userId, children }) {
         setActionLoading(true);
         setLastError(null);
         await processVerifiedPurchase(purchase, finishTransaction);
-      } catch (e) {
-        const code = e?.code || 'purchase_failed';
-        if (code === 'verification_failed') {
-          setLastError({
-            type: 'verification',
-            message: 'Purchase verification failed. Contact support if this continues.',
-          });
-        } else if (code === 'network_error') {
-          setLastError({ type: 'network', message: e.message || 'Network error' });
-        } else {
-          setLastError({ type: 'generic', message: e?.message || 'Purchase failed' });
-        }
+      } catch (error) {
+        setLastError(purchaseErrorState(error));
       } finally {
         setActionLoading(false);
         if (key) processingRef.current.delete(key);
       }
     },
     onPurchaseError: (error) => {
-      if (error?.code === ErrorCode.UserCancelled) return;
-      if (String(error?.code || '') === 'E_USER_CANCELLED') return;
-      const isNetwork =
-        error?.code === ErrorCode.NetworkError ||
-        String(error?.code || '').includes('NETWORK');
+      if (isUserCancelledPurchase(error)) return;
       setLastError({
-        type: isNetwork ? 'network' : 'generic',
+        type: isNetworkPurchaseError(error) ? 'network' : 'generic',
         message: error?.message || 'Purchase failed',
       });
     },
@@ -110,7 +295,7 @@ export function IapProPlanSetup({ userId, children }) {
 
     setFirestoreLoading(true);
     const unsub = onSnapshot(
-      doc(db, 'users', userId),
+      doc(db, USERS_COLLECTION, userId),
       (snap) => {
         const data = snap.exists() ? snap.data() : null;
         setFirestoreSubscription(data?.subscription || null);
@@ -125,7 +310,7 @@ export function IapProPlanSetup({ userId, children }) {
   }, [userId]);
 
   const loadStoreProducts = useCallback(async () => {
-    if (Platform.OS !== 'ios') return;
+    if (Platform.OS !== IOS_PLATFORM) return;
     if (!connected) {
       setLastError({
         type: 'network',
@@ -137,7 +322,7 @@ export function IapProPlanSetup({ userId, children }) {
     try {
       await fetchProducts({
         skus: TRAINER_SUBSCRIPTION_PRODUCT_IDS,
-        type: 'subs',
+        type: SUBSCRIPTION_TYPE,
       });
       setLastError(null);
     } catch (error) {
@@ -153,7 +338,7 @@ export function IapProPlanSetup({ userId, children }) {
   }, [connected, fetchProducts]);
 
   useEffect(() => {
-    if (!connected || Platform.OS !== 'ios') return;
+    if (!connected || Platform.OS !== IOS_PLATFORM) return;
     loadStoreProducts();
   }, [connected, loadStoreProducts]);
 
@@ -162,16 +347,10 @@ export function IapProPlanSetup({ userId, children }) {
     [firestoreSubscription],
   );
 
-  const storeProducts = useMemo(() => {
-    const map = {};
-    for (const sub of subscriptions || []) {
-      const sku = productSku(sub);
-      if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(sku)) {
-        map[sku] = sub;
-      }
-    }
-    return map;
-  }, [subscriptions]);
+  const storeProducts = useMemo(
+    () => storeProductMap(subscriptions),
+    [subscriptions],
+  );
 
   const storeProduct = useMemo(
     () => storeProducts[TRAINER_PRO_MONTHLY_PRODUCT_ID] || null,
@@ -179,11 +358,9 @@ export function IapProPlanSetup({ userId, children }) {
   );
 
   const startFreeTrial = useCallback(async (productId) => {
-    const sku = TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(productId)
-      ? productId
-      : TRAINER_PRO_MONTHLY_PRODUCT_ID;
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Unavailable', 'Subscriptions are available on iOS.');
+    const sku = skuForPurchaseRequest(productId);
+    if (Platform.OS !== IOS_PLATFORM) {
+      Alert.alert(UNAVAILABLE_TITLE, 'Subscriptions are available on iOS.');
       return;
     }
     if (!connected) {
@@ -194,21 +371,16 @@ export function IapProPlanSetup({ userId, children }) {
       return;
     }
 
-    // Best-effort refresh products before purchase (fixes stale StoreKit cache).
     if (!storeProducts[sku]) {
       try {
         await loadStoreProducts();
-      } catch (_) {
+      } catch (ignoredError) {
         /* lastError already set */
       }
     }
 
-    if (!storeProducts[sku] && !subscriptions?.some((s) => productSku(s) === sku)) {
-      setLastError({
-        type: 'generic',
-        message:
-          `SKU not found: "${sku}". In App Store Connect → your app → Subscriptions, create/open the subscription whose Product ID is exactly "${sku}" (and "${TRAINER_SUBSCRIPTION_PRODUCT_IDS.join('" / "')}"). Status must not be Missing Metadata. Paid Apps Agreement must be Active.`,
-      });
+    if (isSkuMissingFromStore(storeProducts, subscriptions, sku)) {
+      setLastError(skuNotFoundError(sku));
       return;
     }
 
@@ -220,25 +392,17 @@ export function IapProPlanSetup({ userId, children }) {
           apple: { sku },
           ios: { sku },
         },
-        type: 'subs',
+        type: SUBSCRIPTION_TYPE,
       });
-    } catch (e) {
-      const code = e?.code;
-      if (code === ErrorCode.UserCancelled || String(code || '') === 'E_USER_CANCELLED') {
-        return;
-      }
-      const msg = String(e?.message || '');
-      if (/sku not found/i.test(msg) || /product.*(not found|invalid)/i.test(msg)) {
-        setLastError({
-          type: 'generic',
-          message:
-            `SKU not found: "${sku}". Open App Store Connect → Monetization → Subscriptions and confirm a Product ID of exactly "${sku}" exists.`,
-        });
+    } catch (error) {
+      if (isUserCancelledPurchase(error)) return;
+      if (isSkuNotFoundMessage(error)) {
+        setLastError(skuMissingInConnectError(sku));
         return;
       }
       setLastError({
-        type: code === ErrorCode.NetworkError ? 'network' : 'generic',
-        message: e?.message || 'Could not start purchase',
+        type: error?.code === ErrorCode.NetworkError ? 'network' : 'generic',
+        message: error?.message || 'Could not start purchase',
       });
     } finally {
       setActionLoading(false);
@@ -246,52 +410,35 @@ export function IapProPlanSetup({ userId, children }) {
   }, [connected, requestPurchase, storeProducts, loadStoreProducts, subscriptions]);
 
   const restorePurchases = useCallback(async () => {
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Unavailable', 'Restore is available on iOS.');
+    if (Platform.OS !== IOS_PLATFORM) {
+      Alert.alert(UNAVAILABLE_TITLE, 'Restore is available on iOS.');
       return false;
     }
 
     setActionLoading(true);
     setLastError(null);
     try {
-      try {
-        await restorePurchasesIap();
-      } catch (restoreHookErr) {
-        // Some StoreKit builds throw even when purchases exist — still query local entitlements.
-        if (__DEV__) {
-          console.warn('[ProPlanSetup] restorePurchasesIap:', restoreHookErr?.message || restoreHookErr);
-        }
-      }
+      await tryRestorePurchasesIap();
       const purchases = await getAvailablePurchasesDirect({
         onlyIncludeActiveItemsIOS: true,
       });
-      const relevant = (purchases || []).filter((p) =>
-        TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(purchaseSku(p)),
-      );
+      const relevant = relevantSubscriptionPurchases(purchases);
       if (!relevant.length) {
         Alert.alert(
-          'No subscription found',
+          NO_SUBSCRIPTION_TITLE,
           'We could not find an active Coach Connect Pro subscription for this Apple ID.',
         );
         return false;
       }
       await restoreAppleSubscriptionOnServer(relevant);
-      Alert.alert('Restored', 'Your subscription has been restored.');
+      Alert.alert(RESTORED_TITLE, 'Your subscription has been restored.');
       return true;
-    } catch (e) {
-      const code = e?.code || 'restore_failed';
-      if (code === 'verification_failed') {
-        setLastError({
-          type: 'verification',
-          message: 'Could not verify restored purchases. Contact support.',
-        });
-      } else if (code === 'network_error') {
-        setLastError({ type: 'network', message: e.message || 'Network error' });
-      } else if (code === 'not_found') {
-        Alert.alert('No subscription found', e.message || 'No active subscription to restore.');
-      } else {
-        setLastError({ type: 'generic', message: e?.message || 'Restore failed' });
+    } catch (error) {
+      if (error?.code === ERROR_NOT_FOUND) {
+        Alert.alert(NO_SUBSCRIPTION_TITLE, error.message || 'No active subscription to restore.');
+        return false;
       }
+      setLastError(restoreErrorState(error));
       return false;
     } finally {
       setActionLoading(false);

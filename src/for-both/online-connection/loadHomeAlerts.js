@@ -26,7 +26,7 @@ async function signedInJsonHeaders() {
     const isSignedIn = Boolean(authHeaders.Authorization);
     if (!isSignedIn) return null;
     return authHeaders;
-  } catch (_) {
+  } catch (authLookupError) {
     return null;
   }
 }

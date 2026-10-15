@@ -1,6 +1,6 @@
 // Sends a thrown value to the console and to monitoring, without ever throwing itself.
-// Flow: turn the value into an Error → log it → capture it. The async function is the same work, so callers can await it.
-// Used by: catch blocks across the app.
+// Flow: turn the value into an Error → log it → capture it. The async function is the same work.
+// Used by catch blocks across the app.
 
 import { captureException } from '../for-both/online-connection/checkConnectionHealth';
 
@@ -11,21 +11,21 @@ const UNKNOWN_CONTEXT = 'unknown';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Callers throw strings, Firebase objects, and real Errors. This picks a message.
- * @param {unknown} error
- * @returns {string}
- */
 function messageFromThrownValue(error) {
   if (error && error.message) return error.message;
   if (error && error.toString) return error.toString();
   return UNKNOWN_ERROR_MESSAGE;
 }
 
+function errorObjectForMonitoring(error, message) {
+  if (error instanceof Error) return error;
+  return new Error(message);
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * The logger must not throw. A throw here would hide the original bug.
+ * Log a thrown value and send it to monitoring. Never throws.
  * @param {unknown} error
  * @param {string} [context]
  * @returns {void}
@@ -36,15 +36,15 @@ export function reportCrashAutomaticallySync(error, context) {
     const contextLabel = context || UNKNOWN_CONTEXT;
     // eslint-disable-next-line no-console
     console.log(`🧾 reportCrashAutomaticallySync [${contextLabel}]:`, message);
-    const errorObject = error instanceof Error ? error : new Error(message);
+    const errorObject = errorObjectForMonitoring(error, message);
     captureException(errorObject, { context: contextLabel });
-  } catch (_) {
-    // Swallow on purpose. See the note above.
+  } catch (ignoredError) {
+    // A throw here would hide the original bug.
   }
 }
 
 /**
- * Same work as the sync reporter. The Promise lets a catch block await it.
+ * Same work as the sync reporter, so a catch block can await it.
  * @param {unknown} error
  * @param {string} [context]
  * @returns {Promise<void>}

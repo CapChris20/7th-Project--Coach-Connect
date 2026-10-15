@@ -30,6 +30,14 @@ const REPEAT_FOREVER = -1;
 
 // The frame math stays inside the animated style. That callback runs off the JavaScript thread.
 
+function barHeightFromWidth(width) {
+  return Math.round(width * (FRAME_HEIGHT / FRAME_WIDTH));
+}
+
+function sheetScaleFromWidth(width) {
+  return width / FRAME_WIDTH;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -38,12 +46,14 @@ const REPEAT_FOREVER = -1;
  * @returns {import('react').ReactElement}
  */
 export default function LoadingBarAnimation({ width = DEFAULT_BAR_WIDTH }) {
-  const height = Math.round(width * (FRAME_HEIGHT / FRAME_WIDTH));
-  const scale = width / FRAME_WIDTH;
+  const height = barHeightFromWidth(width);
+  const scale = sheetScaleFromWidth(width);
+  // vocab: useSharedValue = a number Reanimated can animate on the UI thread
   const progress = useSharedValue(0);
 
   useEffect(() => {
     progress.value = 0;
+    // vocab: withRepeat(..., -1) = loop forever. withTiming walks 0 → FRAME_COUNT in LOOP_MS.
     progress.value = withRepeat(
       withTiming(FRAME_COUNT, { duration: LOOP_MS, easing: Easing.linear }),
       REPEAT_FOREVER,
@@ -52,6 +62,7 @@ export default function LoadingBarAnimation({ width = DEFAULT_BAR_WIDTH }) {
     return () => cancelAnimation(progress);
   }, [progress]);
 
+  // vocab: useAnimatedStyle = this callback runs off the JS thread. Keep the frame math here.
   const sheetStyle = useAnimatedStyle(() => {
     const frameIndex = Math.min(FRAME_COUNT - 1, Math.max(0, Math.floor(progress.value)));
     const columnIndex = frameIndex % SHEET_COLUMNS;
@@ -64,6 +75,9 @@ export default function LoadingBarAnimation({ width = DEFAULT_BAR_WIDTH }) {
     };
   }, [scale]);
 
+  // 1. Size the window from the caller's width.
+  // 2. Loop the frame counter after paint; cancel it when we leave.
+  // 3. Clip the sheet so one frame shows, and slide that window.
   return (
     <View style={[styles.viewport, { width, height }]} accessibilityLabel="Loading" collapsable={false}>
       <Animated.Image

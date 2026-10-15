@@ -105,7 +105,8 @@ export function hexToRgba(hex, alpha) {
  * @returns {string[]}
  */
 export function pillBackgroundGradient(stops, { strong = false } = {}) {
-  const isStrongPill = strong;
-  const { startAlpha, endAlpha } = pillAlphas(isStrongPill);
-  return [hexToRgba(stops[0], startAlpha), hexToRgba(stops[1], endAlpha)];
+  const { startAlpha, endAlpha } = pillAlphas(strong);
+  const startColor = hexToRgba(stops[0], startAlpha);
+  const endColor = hexToRgba(stops[1], endAlpha);
+  return [startColor, endColor];
 }

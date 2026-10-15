@@ -2,6 +2,15 @@
 // Flow: 'lose_fat' → lookup table → "Lose Fat"; unknown tokens fall back to auto Title Case.
 // Used by profile screens and trainer client cards, which must never show raw ids like "full_gym".
 
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: placeholder shown for missing / "no answer" values.
+const EMPTY_ANSWER_PLACEHOLDER = '—';
+// Older writes stored these literal strings as "no answer". Treat them as empty so the
+// UI shows one consistent placeholder instead of three different phrasings.
+// Manipulate here: add any other legacy "no answer" sentinel string to this list.
+const LEGACY_EMPTY_SENTINELS = ['Not set', 'None selected', 'None reported'];
+
 // The curated dictionary. It exists because auto-casing gets these wrong:
 // "1_2" would become "1 2" instead of "1–2 years", and "bands" should read "Resistance Bands".
 // Manipulate here: every user-visible onboarding label lives here. Add a key for any new
@@ -40,79 +49,121 @@ const TOKEN_LABELS = {
   no_preference: 'No preference',
 };
 
-// Single token → label. Dictionary first, generic Title Case as the safety net so a
-// brand-new onboarding option still renders acceptably instead of leaking the raw id.
+// ===== HELPER FUNCTIONS =====
+
+// Fallback: underscores → spaces, then uppercase the first letter of each word.
+function titleCaseUnknownToken(tokenKey) {
+  // vocab: /\b\w/g = the first word character after each word boundary
+  return tokenKey.replace(/_/g, ' ').replace(/\b\w/g, (firstLetter) => firstLetter.toUpperCase());
+}
+
+function isLegacyEmptySentinel(trimmedText) {
+  return (
+    trimmedText === LEGACY_EMPTY_SENTINELS[0] ||
+    trimmedText === LEGACY_EMPTY_SENTINELS[1] ||
+    trimmedText === LEGACY_EMPTY_SENTINELS[2]
+  );
+}
+
+// The regex guard restricts the split to strings that look like tokens
+// (lowercase/digits/underscores), so real prose a user typed is left alone.
+function shouldSplitAsTokenList(trimmedText) {
+  if (trimmedText.includes(',')) return true;
+  return trimmedText.includes('_') && /^[a-z0-9_,\s-]+$/i.test(trimmedText);
+}
+
+function isSingleSnakeCaseToken(trimmedText) {
+  return /^[a-z0-9_]+$/i.test(trimmedText) && trimmedText.includes('_');
+}
+
+function formatTokenList(tokens, emptyFallback) {
+  const labels = tokens.map((token) => humanizeOnboardingToken(token)).filter(Boolean);
+  return labels.length ? labels.join(', ') : emptyFallback;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Single token → label. Dictionary first, generic Title Case as the safety net so a
+ * brand-new onboarding option still renders acceptably instead of leaking the raw id.
+ * @param {string|number|null|undefined} token
+ * @returns {string}
+ */
 export function humanizeOnboardingToken(token) {
   // vocab/symbol: ?? = nullish coalescing — use '' only when token is null/undefined
   //               (unlike ||, this would preserve a legit 0)
-  const key = String(token ?? '').trim().toLowerCase();
-  if (!key) return '';
-  if (TOKEN_LABELS[key]) return TOKEN_LABELS[key];
-  // Fallback: underscores → spaces, then uppercase the first letter of each word.
-  // vocab: /\b\w/g = the first word character after each word boundary
-  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const tokenKey = String(token ?? '').trim().toLowerCase();
+  if (!tokenKey) return '';
+  if (TOKEN_LABELS[tokenKey]) return TOKEN_LABELS[tokenKey];
+  return titleCaseUnknownToken(tokenKey);
 }
 
 /**
+ * The public formatter. Handles every shape onboarding answers get stored in over the years:
+ * null, number, single token, array of tokens, or a comma-joined string of tokens.
  * @param {string|string[]|number|null|undefined} raw
  * @param {string} [emptyFallback='—']
+ * @returns {string}
  */
-// The public formatter. Handles every shape onboarding answers get stored in over the years:
-// null, number, single token, array of tokens, or a comma-joined string of tokens.
-// Manipulate here: emptyFallback is the placeholder shown for missing answers
-export function showSetupAnswers(raw, emptyFallback = '—') {
+export function showSetupAnswers(raw, emptyFallback = EMPTY_ANSWER_PLACEHOLDER) {
   if (raw == null || raw === '') return emptyFallback;
+
   // Shape A — array (multi-select answers). filter(Boolean) drops blanks so we never
   // render a dangling ", " between items.
   if (Array.isArray(raw)) {
-    const parts = raw.map((p) => humanizeOnboardingToken(p)).filter(Boolean);
-    return parts.length ? parts.join(', ') : emptyFallback;
+    return formatTokenList(raw, emptyFallback);
   }
+
   // Shape B — plain number (e.g. daysPerWeek). Nothing to humanize.
   if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
 
-  let s = String(raw).trim();
-  if (!s || s === '—') return emptyFallback;
-  // Older writes stored these literal strings as "no answer". Treat them as empty so the
-  // UI shows one consistent placeholder instead of three different phrasings.
-  // Manipulate here: add any other legacy "no answer" sentinel string to this list
-  if (s === 'Not set' || s === 'None selected' || s === 'None reported') return emptyFallback;
+  const trimmedText = String(raw).trim();
+  if (!trimmedText || trimmedText === EMPTY_ANSWER_PLACEHOLDER) return emptyFallback;
+  if (isLegacyEmptySentinel(trimmedText)) return emptyFallback;
 
   // Shape C — a comma-joined token string like "dumbbells,pull_up_bar".
-  // The regex guard is the important part: it restricts the split to strings that look
-  // like tokens (lowercase/digits/underscores), so real prose a user typed —
-  // "I have bands, and a bench" — is left alone instead of being mangled.
-  if (s.includes(',') || (s.includes('_') && /^[a-z0-9_,\s-]+$/i.test(s))) {
-    const parts = s.split(',').map((p) => humanizeOnboardingToken(p.trim())).filter(Boolean);
-    if (parts.length) return parts.join(', ');
+  if (shouldSplitAsTokenList(trimmedText)) {
+    const labels = trimmedText
+      .split(',')
+      .map((token) => humanizeOnboardingToken(token.trim()))
+      .filter(Boolean);
+    if (labels.length) return labels.join(', ');
   }
 
   // Shape D — a lone token. Requires an underscore, so a normal word the user typed
   // ("Bench") passes through untouched at the bottom rather than being re-cased.
-  if (/^[a-z0-9_]+$/i.test(s) && s.includes('_')) {
-    return humanizeOnboardingToken(s);
+  if (isSingleSnakeCaseToken(trimmedText)) {
+    return humanizeOnboardingToken(trimmedText);
   }
 
   // Free-text the user wrote — show it exactly as they entered it.
-  return s;
+  return trimmedText;
 }
 
-// Equipment lives under two different keys depending on when the profile was created:
-// the newer array `equipmentAccess`, or the older string `equipment`. Prefer the array.
+/**
+ * Equipment lives under two different keys depending on when the profile was created:
+ * the newer array `equipmentAccess`, or the older string `equipment`. Prefer the array.
+ * @param {object|null|undefined} data
+ * @returns {string}
+ */
 export function formatEquipmentFromProfile(data) {
-  if (!data) return '—';
+  if (!data) return EMPTY_ANSWER_PLACEHOLDER;
   if (Array.isArray(data.equipmentAccess) && data.equipmentAccess.length > 0) {
     return showSetupAnswers(data.equipmentAccess);
   }
   return showSetupAnswers(data.equipment);
 }
 
-// "3 days per week", with correct singular for 1.
-// `n <= 0` is treated as unset, since zero training days isn't a real answer.
+/**
+ * "3 days per week", with correct singular for 1.
+ * Zero (or less) is treated as unset, since zero training days isn't a real answer.
+ * @param {string|number|null|undefined} value
+ * @returns {string}
+ */
 export function formatDaysPerWeek(value) {
-  if (value == null || value === '') return '—';
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (value == null || value === '') return EMPTY_ANSWER_PLACEHOLDER;
+  const daysCount = Number(value);
+  if (!Number.isFinite(daysCount) || daysCount <= 0) return EMPTY_ANSWER_PLACEHOLDER;
   // Manipulate here: change the "day(s) per week" copy; the ternary handles pluralization
-  return `${n} day${n === 1 ? '' : 's'} per week`;
+  return `${daysCount} day${daysCount === 1 ? '' : 's'} per week`;
 }

@@ -13,6 +13,13 @@ const MISSING_PROVIDER_MESSAGE = 'useTrainerAppStartShell must be used within Tr
 // vocab: createContext broadcasts a value down the tree. Null means no provider is above this screen.
 const TrainerOpenScreenTracker = createContext(null);
 
+function requireTrainerShell(shellValue) {
+  if (!shellValue) {
+    throw new Error(MISSING_PROVIDER_MESSAGE);
+  }
+  return shellValue;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -31,11 +38,7 @@ export function TrainerAppStartShellProvider({ value, children }) {
  * @returns {object}
  */
 export function useTrainerAppStartShell() {
-  const shellValue = useContext(TrainerOpenScreenTracker);
-  if (!shellValue) {
-    throw new Error(MISSING_PROVIDER_MESSAGE);
-  }
-  return shellValue;
+  return requireTrainerShell(useContext(TrainerOpenScreenTracker));
 }
 
 export { TrainerOpenScreenTracker };
