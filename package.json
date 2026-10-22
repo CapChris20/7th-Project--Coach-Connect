@@ -217,7 +217,7 @@
       "**/*.test.js"
     ],
     "setupFilesAfterEnv": [
-      "<rootDir>/test/jest.setup.js"
+      "<rootDir>/tests/jest.setup.js"
     ],
     "transform": {
       "^.+\\.[jt]sx?$": "babel-jest"

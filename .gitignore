@@ -31,6 +31,9 @@ test-results.txt
 TEST_RESULTS.md
 FOLDER_STRUCTURE.txt
 FOLDER_STRUCTURE_SRC.txt
+readability-audit.json
+readability-file-lists.txt
+FILES_STILL_TO_REWRITE.md
 pglite-debug.log
 firestore-debug.log
 functions/pglite-debug.log
