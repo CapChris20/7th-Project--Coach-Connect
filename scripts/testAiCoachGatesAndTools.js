@@ -58,11 +58,12 @@ const GATE_CASES = [
     'Here is the plan.\n' +
     '{"toolCalls":[{"name":"adjustMacroTargets","params":{"calories":2200,"protein":180,"carbs":200,"fat":60},"reasoning":"Test macro bump."}]}';
 
-  const { parseCoachToolCalls, stripCoachToolJsonFromReply } = require(path.join(
+  // Export was renamed parseCoachToolCalls → readActionsFromReply (gold file, frozen name).
+  const { readActionsFromReply, stripCoachToolJsonFromReply } = require(path.join(
     ROOT,
     'src/ai-coach/coach-actions/readActionsFromReply.js',
   ));
-  const localCalls = parseCoachToolCalls(fakeReply);
+  const localCalls = readActionsFromReply(fakeReply);
   const localReply = stripCoachToolJsonFromReply(fakeReply);
   t.assert('Local tool parse finds adjustMacroTargets', localCalls?.[0]?.name === 'adjustMacroTargets');
   t.assert('Local tool JSON stripped from reply', !String(localReply).includes('"toolCalls"'));

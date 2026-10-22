@@ -526,6 +526,25 @@ service cloud.firestore {
         );
         allow update, delete: if request.auth != null && request.auth.uid == trainerUid;
       }
+      // Tasks subcollection (trainer-assigned to-dos from TrainerAppStart createTask/getTasks)
+      // This match was missing entirely, so every task read/write hit the default deny and
+      // getTasks had to swallow permission-denied. Trainer manages; client may only tick
+      // a task complete/incomplete (plus the updatedAt stamp updateTrainerClientSubdoc adds).
+      match /tasks/{taskId} {
+        allow read, list: if request.auth != null && (
+          request.auth.uid == trainerUid ||
+          request.auth.uid == clientUid
+        );
+        allow create: if request.auth != null && request.auth.uid == trainerUid;
+        allow update: if request.auth != null && (
+          request.auth.uid == trainerUid ||
+          (
+            request.auth.uid == clientUid
+            && request.resource.data.diff(resource.data).changedKeys().hasOnly(['completed', 'updatedAt'])
+          )
+        );
+        allow delete: if request.auth != null && request.auth.uid == trainerUid;
+      }
     }
 
     // Trainer CRM calendar — scheduled sessions (trainer_clients/{trainerUid}/sessions)
@@ -599,6 +618,18 @@ service cloud.firestore {
         request.auth != null &&
         resource.data.trainerId == request.auth.uid
       );
+
+      // Legacy subcollections under clients/{clientId} (progress / tasks / notes fallbacks in
+      // traineeDatabaseLocations). The doc rule above does not cover children, so legacy-only
+      // clients lost these reads/writes to the default deny. Ownership comes from the parent doc.
+      match /{subcollection}/{docId} {
+        allow read, list: if request.auth != null && (
+          request.auth.uid == clientId ||
+          get(/databases/$(database)/documents/clients/$(clientId)).data.trainerId == request.auth.uid
+        );
+        allow create, update, delete: if request.auth != null &&
+          get(/databases/$(database)/documents/clients/$(clientId)).data.trainerId == request.auth.uid;
+      }
     }
     
     // Workouts (trainer-client specific) - NEW
@@ -797,18 +828,71 @@ service cloud.firestore {
     }
 
     // User daily tracking subcollection (water, etc.) - NEW
+    // Legacy mirror of dailyLogs. Trainer reads it when archiving a client's day
+    // (TrainerHomeContent), so reads mirror the dailyLogs rule; writes stay owner-only.
     match /users/{userId}/daily_tracking/{dateId} {
-      // Read: User can read their own daily tracking
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow list queries - user can query their own tracking
-      allow list: if request.auth != null && request.auth.uid == userId;
+      // Read: owner, or their linked trainer (same access as dailyLogs above)
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        isLinkedTrainer(userId)
+      );
+
+      // Allow list queries - owner or linked trainer
+      allow list: if request.auth != null && (
+        request.auth.uid == userId ||
+        isLinkedTrainer(userId)
+      );
       
       // Create/Update: User can create/update their own daily tracking
       allow create, update: if request.auth != null && request.auth.uid == userId;
       
       // Delete: User can delete their own daily tracking
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Profile header doc (users/{uid}/profile/current) — read by the AI coach context loader.
+    // Without this match Firestore default-denies it and the coach silently loses profile data.
+    match /users/{userId}/profile/{docId} {
+      allow read, list: if request.auth != null && (
+        request.auth.uid == userId ||
+        isLinkedTrainer(userId)
+      );
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Streak header doc (users/{uid}/streaks/current) — same coach-context reader as profile.
+    match /users/{userId}/streaks/{docId} {
+      allow read, list: if request.auth != null && (
+        request.auth.uid == userId ||
+        isLinkedTrainer(userId)
+      );
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Legacy per-food subcollection (users/{uid}/nutritionLogs) — weekly totals still read it
+    // as a fallback next to the top-level nutrition_logs collection.
+    match /users/{userId}/nutritionLogs/{logId} {
+      allow read, list: if request.auth != null && (
+        request.auth.uid == userId ||
+        isLinkedTrainer(userId)
+      );
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Frozen day archive (daily_logs/{uid}_{date}) — written by the client rollover and by
+    // the trainer dashboard when archiving a client's day. Doc carries userId = the client.
+    match /daily_logs/{archiveId} {
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        isLinkedTrainer(resource.data.userId)
+      );
+      // Allow list queries; per-document reads are still enforced above.
+      allow list: if request.auth != null;
+      allow create, update: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid ||
+        isLinkedTrainer(request.resource.data.userId)
+      );
+      allow delete: if false;
     }
 
     // Server-tracked API usage counters (read-only for clients)
