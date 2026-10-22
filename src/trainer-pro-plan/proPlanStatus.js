@@ -7,7 +7,7 @@ import { createContext } from 'react';
 // ===== NAMED CONSTANTS =====
 
 // Null until a provider higher in the tree supplies the real subscription.
-const NO_SUBSCRIPTION_YET = null;
+const DEFAULT_SUBSCRIPTION_CONTEXT_VALUE = null;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -17,4 +17,4 @@ const NO_SUBSCRIPTION_YET = null;
  * React context for the signed-in trainer's subscription.
  * The default is null until a provider supplies the real status.
  */
-export const SubscriptionContext = createContext(NO_SUBSCRIPTION_YET);
+export const SubscriptionContext = createContext(DEFAULT_SUBSCRIPTION_CONTEXT_VALUE);

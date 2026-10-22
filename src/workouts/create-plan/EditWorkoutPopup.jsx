@@ -18,9 +18,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_CARD_BG = '#0D1117';
-const DEFAULT_TEXT_COLOR = '#FFFFFF';
-const DEFAULT_MUTED_COLOR = 'rgba(255,255,255,0.55)';
+const EDIT_POPUP_CARD_BG = '#0D1117';
+const EDIT_POPUP_TEXT_COLOR = '#FFFFFF';
+const EDIT_POPUP_MUTED_COLOR = 'rgba(255,255,255,0.55)';
 const DEFAULT_BORDER_COLOR = 'rgba(255,255,255,0.12)';
 const DEFAULT_DONE_GRADIENT = ['#C084FC', '#FF4D8D'];
 const FALLBACK_TITLE = 'Field';
@@ -61,9 +61,9 @@ export function EditModalForm({
   visible,
   fieldKey,
   title,
-  cardBg = DEFAULT_CARD_BG,
-  textColor = DEFAULT_TEXT_COLOR,
-  mutedColor = DEFAULT_MUTED_COLOR,
+  cardBg = EDIT_POPUP_CARD_BG,
+  textColor = EDIT_POPUP_TEXT_COLOR,
+  mutedColor = EDIT_POPUP_MUTED_COLOR,
   borderColor = DEFAULT_BORDER_COLOR,
   doneGradient = DEFAULT_DONE_GRADIENT,
   /** When false, sheet chrome (handle, cancel fill) uses light-mode neutrals */

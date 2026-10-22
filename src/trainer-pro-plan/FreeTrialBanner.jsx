@@ -34,6 +34,15 @@ function isFreeTrialAccess(access) {
 }
 
 /**
+ * @param {string} access
+ * @param {number|null|undefined} trialCountdownMs
+ * @returns {boolean}
+ */
+function shouldShowFreeTrialBanner(access, trialCountdownMs) {
+  return isFreeTrialAccess(access) && trialCountdownMs != null;
+}
+
+/**
  * Start the once-a-minute clock. The returned function is the effect cleanup, so the timer dies with the screen.
  * @param {Function} setCurrentTimeMs
  * @returns {Function}
@@ -71,11 +80,12 @@ export default function FreeTrialBanner() {
   const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
 
   useEffect(() => {
-    if (!isFreeTrialAccess(accessState.access)) return undefined;
+    if (!shouldShowFreeTrialBanner(accessState.access, 1)) return undefined;
     return startTrialCountdownTicker(setCurrentTimeMs);
   }, [accessState.access]);
 
-  if (!isFreeTrialAccess(accessState.access)) return null;
+  const bannerVisible = shouldShowFreeTrialBanner(accessState.access, accessState.trialEndsAt || currentTimeMs);
+  if (!bannerVisible) return null;
 
   const countdown = trialCountdownText(accessState, currentTimeMs);
 

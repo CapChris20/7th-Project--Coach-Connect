@@ -11,7 +11,7 @@ import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWork
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT_PINK = '#FF6B9D';
+const GENERATE_SCREEN_ACCENT_PINK = '#FF6B9D';
 const SCREEN_DARK = '#0A0A0F';
 const SCREEN_LIGHT = '#F5F5F5';
 const SURFACE_DARK = '#13131A';
@@ -22,7 +22,7 @@ const MUTED_DARK = 'rgba(255,255,255,0.6)';
 const MUTED_LIGHT = 'rgba(0,0,0,0.55)';
 const BUTTON_LABEL_COLOR = '#fff';
 
-const MONTHLY_LIMIT_CODE = 'monthly_limit_reached';
+const WORKOUT_MONTHLY_LIMIT_ERROR_CODE = 'monthly_limit_reached';
 
 const MISSING_ONBOARDING_TITLE = 'Missing data';
 const MISSING_ONBOARDING_MESSAGE = 'Onboarding data is required to generate a plan.';
@@ -58,7 +58,7 @@ function applyGeneratedPlan(plan, setGenUsage, setGeneratedPlan) {
 }
 
 function applyGenerationFailure(error, setGenUsage) {
-  if (error?.code === MONTHLY_LIMIT_CODE) {
+  if (error?.code === WORKOUT_MONTHLY_LIMIT_ERROR_CODE) {
     if (error.limitPayload) setGenUsage(usageFromLimitPayload(error.limitPayload));
     Alert.alert(MONTHLY_LIMIT_TITLE, error.message);
     return;
@@ -93,7 +93,7 @@ function savedPlanCaption(generatedPlan) {
 function LoadingBody({ screenBackground, textColor }) {
   return (
     <View style={{ flex: 1, backgroundColor: screenBackground, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color={ACCENT_PINK} />
+      <ActivityIndicator size="large" color={GENERATE_SCREEN_ACCENT_PINK} />
       <Text style={{ color: textColor, marginTop: 10 }}>Loading…</Text>
     </View>
   );
@@ -135,7 +135,7 @@ function GeneratePlanButton({ isGenerating, onPress }) {
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: ACCENT_PINK,
+        backgroundColor: GENERATE_SCREEN_ACCENT_PINK,
         opacity: isGenerating ? 0.7 : 1,
       }}
     >

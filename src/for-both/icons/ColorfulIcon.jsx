@@ -1,131 +1,113 @@
-// Brand-colored icons drawn as SVG paths, so we do not need MaskedView.
-// Flow: look up the path → build a gradient from the brand stops → stroke or fill each path.
-// Used by nav and brand marks. MaskedView plus icon fonts flickered on iOS dev builds.
+// Brand-colored tab/header icons: Ionicon shape as a mask, filled with the brand gradient.
+// Flow: pick the ionicon for this name → MaskedView keeps the gradient only inside that shape.
+// Used by the bottom nav and ChatIcon. SVG stroke+url(#gradient) painted black on device — this path matches AI Coach.
 
 import React from 'react';
-import Svg, { Defs, LinearGradient, Stop, Path } from 'react-native-svg';
+import { View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   BRAND_NAV_ICON_GRADIENT,
+  BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   BRAND_ICON_GRADIENT_START,
   BRAND_ICON_GRADIENT_END,
 } from '../../look-and-feel/brandColors';
-import { iconShapeForName } from './iconShapes';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: every path in iconShapes was drawn on a 24 by 24 grid.
-const ICON_VIEWBOX_SIZE = 24;
+// Mask must be opaque. MaskedView uses the drawn pixels as the shape, not this as a tint.
+const MASK_COLOR = '#FFFFFF';
 const DEFAULT_ICON_SIZE = 36;
-const DEFAULT_STROKE_WIDTH = 2.1;
 
-const GRADIENT_FALLBACK_X = 0.5;
-const GRADIENT_FALLBACK_START_Y = 0;
-const GRADIENT_FALLBACK_END_Y = 1;
+// Our friendly names → Ionicons glyph names (outline reads better on the frosted bar).
+const IONICON_BY_NAME = {
+  home: 'home-outline',
+  barbell: 'barbell-outline',
+  restaurant: 'restaurant-outline',
+  'document-text': 'document-text-outline',
+  gemini: 'sparkles',
+  chatbubbles: 'chatbubbles-outline',
+  people: 'people-outline',
+  settings: 'settings-outline',
+  sparkles: 'sparkles',
+};
 
 // ===== HELPER FUNCTIONS =====
 
-// vocab/symbol: ?? = keep 0 as a real coordinate. || would treat 0 as missing and jump to the fallback.
-function toSvgCoord(fraction, fallback) {
-  const fractionOrFallback = fraction ?? fallback;
-  return String(fractionOrFallback * ICON_VIEWBOX_SIZE);
+/**
+ * @param {string} name
+ * @returns {string|null}
+ */
+function ioniconNameFor(name) {
+  return IONICON_BY_NAME[name] || null;
 }
 
-// One color sits at the start. Two or more are spaced evenly from 0 to 1.
-function gradientStopOffset(colorIndex, colorCount) {
-  if (colorCount === 1) return '0';
-  return String(colorIndex / (colorCount - 1));
+function iconBoxStyle(iconSize) {
+  return { width: iconSize, height: iconSize };
 }
 
-function isStrokeIcon(icon) {
-  return icon.style !== 'fill';
-}
-
-function hasIconPaths(icon) {
-  return Boolean(icon?.paths?.length);
+function maskWrapStyle(iconSize) {
+  return {
+    width: iconSize,
+    height: iconSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  };
 }
 
 /**
- * Evenly spaced gradient stops. One color sits at the start.
- * @param {string[]} colors
+ * Opaque ionicon used as the mask shape.
+ * @param {string} ioniconName
+ * @param {number} iconSize
+ * @returns {JSX.Element}
  */
-function BrandGradientStops({ colors }) {
-  return colors.map((color, colorIndex) => (
-    <Stop
-      key={`${color}-${colorIndex}`}
-      offset={gradientStopOffset(colorIndex, colors.length)}
-      stopColor={color}
-    />
-  ));
-}
-
-/**
- * Stroke or fill each stored path with the same paint.
- * @param {{ paths: string[] }} icon
- * @param {string} paint
- * @param {boolean} isStroke
- * @param {number} strokeWidth
- */
-function IconPaths({ icon, paint, isStroke, strokeWidth }) {
-  return icon.paths.map((pathData) => (
-    <Path
-      key={pathData}
-      d={pathData}
-      fill={isStroke ? 'none' : paint}
-      stroke={isStroke ? paint : 'none'}
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  ));
+function iconMaskElement(ioniconName, iconSize) {
+  return (
+    <View style={maskWrapStyle(iconSize)}>
+      <Ionicons name={ioniconName} size={iconSize} color={MASK_COLOR} />
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Draw one brand icon by name. Returns null when that name has no paths.
- * @param {{ name: string, size?: number, colors?: string[], start?: { x?: number, y?: number }, end?: { x?: number, y?: number }, strokeWidth?: number }} props
+ * Draw one brand icon by name. Returns null when that name has no ionicon mapping.
+ * @param {{ name: string, size?: number, colors?: string[], locations?: number[], start?: object, end?: object, strokeWidth?: number }} props
  * @returns {import('react').ReactElement|null}
  */
 export default function ColorfulIcon({
   name,
   size = DEFAULT_ICON_SIZE,
   colors = BRAND_NAV_ICON_GRADIENT,
+  locations = BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   start = BRAND_ICON_GRADIENT_START,
   end = BRAND_ICON_GRADIENT_END,
-  strokeWidth = DEFAULT_STROKE_WIDTH,
+  // Kept so old call sites (strokeWidth={2.35}) do not crash — unused with MaskedView.
+  strokeWidth: _strokeWidth,
 }) {
-  const icon = iconShapeForName(name);
+  const ioniconName = ioniconNameFor(name);
+  if (!ioniconName) return null;
 
-  // 1. Unknown name → draw nothing.
-  if (!hasIconPaths(icon)) return null;
+  const boxStyle = iconBoxStyle(size);
 
-  // 2. Stroke or fill each path with the brand gradient.
-  const gradientId = `cc-brand-${name}`;
-  const paint = `url(#${gradientId})`;
-  const isStroke = isStrokeIcon(icon);
-
+  // vocab: MaskedView = show the gradient only where the ionicon is opaque.
+  // collapsable={false} stops Android from flattening the mask away (icons went blank).
   return (
-    // vocab: collapsable={false} keeps Android from merging this SVG away. Merged icons disappeared.
-    <Svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${ICON_VIEWBOX_SIZE} ${ICON_VIEWBOX_SIZE}`}
+    <MaskedView
+      style={boxStyle}
       collapsable={false}
+      maskElement={iconMaskElement(ioniconName, size)}
     >
-      <Defs>
-        <LinearGradient
-          id={gradientId}
-          x1={toSvgCoord(start?.x, GRADIENT_FALLBACK_X)}
-          y1={toSvgCoord(start?.y, GRADIENT_FALLBACK_START_Y)}
-          x2={toSvgCoord(end?.x, GRADIENT_FALLBACK_X)}
-          y2={toSvgCoord(end?.y, GRADIENT_FALLBACK_END_Y)}
-          // vocab: userSpaceOnUse = the gradient is measured in the 24px viewBox, not a 0–1 box.
-          gradientUnits="userSpaceOnUse"
-        >
-          <BrandGradientStops colors={colors} />
-        </LinearGradient>
-      </Defs>
-      <IconPaths icon={icon} paint={paint} isStroke={isStroke} strokeWidth={strokeWidth} />
-    </Svg>
+      <LinearGradient
+        colors={colors}
+        locations={locations}
+        start={start}
+        end={end}
+        style={boxStyle}
+      />
+    </MaskedView>
   );
 }

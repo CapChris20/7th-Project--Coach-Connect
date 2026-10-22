@@ -16,10 +16,10 @@ const ACCESS_FREE_TRIAL = 'free_trial';
 const ACCESS_ACTIVE = 'active';
 const ACCESS_EXPIRED = 'expired';
 
-const MS_PER_MINUTE = 60000;
-const MINUTES_PER_HOUR = 60;
-const HOURS_PER_DAY = 24;
-const MINUTES_PER_DAY = MINUTES_PER_HOUR * HOURS_PER_DAY;
+const MILLISECONDS_PER_MINUTE = 60000;
+const MINUTES_IN_ONE_HOUR = 60;
+const HOURS_IN_ONE_DAY = 24;
+const MINUTES_IN_ONE_DAY = MINUTES_IN_ONE_HOUR * HOURS_IN_ONE_DAY;
 
 /** @typedef {'no_subscription' | 'free_trial' | 'active' | 'expired'} SubscriptionAccess */
 
@@ -170,10 +170,10 @@ export function resolveSubscriptionAccess(subscription, now = new Date()) {
  */
 export function formatTrialCountdown(remainingMs) {
   if (remainingMs == null || remainingMs <= 0) return 'Trial ended';
-  const totalMinutes = Math.ceil(remainingMs / MS_PER_MINUTE);
-  const days = Math.floor(totalMinutes / MINUTES_PER_DAY);
-  const hours = Math.floor((totalMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR);
-  const minutes = totalMinutes % MINUTES_PER_HOUR;
+  const totalMinutes = Math.ceil(remainingMs / MILLISECONDS_PER_MINUTE);
+  const days = Math.floor(totalMinutes / MINUTES_IN_ONE_DAY);
+  const hours = Math.floor((totalMinutes % MINUTES_IN_ONE_DAY) / MINUTES_IN_ONE_HOUR);
+  const minutes = totalMinutes % MINUTES_IN_ONE_HOUR;
   if (days > 0) return `${days}d ${hours}h left in trial`;
   if (hours > 0) return `${hours}h ${minutes}m left in trial`;
   return `${minutes}m left in trial`;

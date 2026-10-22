@@ -4,7 +4,7 @@
 
 import Constants from 'expo-constants';
 
-// ===== NAMED CONSTANTS =====
+// ===== NAMED CONSTANTS ===== 
 
 let stripeModule = null;
 // The require error is kept so a missing native module is still visible in a debugger.

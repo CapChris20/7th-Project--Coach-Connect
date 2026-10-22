@@ -13,21 +13,30 @@ import ColorfulIcon from '../icons/ColorfulIcon';
 
 // ===== NAMED CONSTANTS =====
 
-/** Matches Settings screen pill gradient (dark pink → dark orange). */
-const HEADER_PROFILE_GRADIENT = ['#BE185D', '#C2410C'];
+// Bright brand ramp so the people mark reads on the dark frosted header
+// (dark #BE185D looked almost invisible next to the light settings gear).
+const HEADER_PROFILE_GRADIENT = ['#FF6B9D', '#E94EAD', '#A348D0'];
+const HEADER_PROFILE_GRADIENT_LOCATIONS = [0, 0.5, 1];
+const HEADER_PROFILE_GRADIENT_START = { x: 0.5, y: 0 };
+const HEADER_PROFILE_GRADIENT_END = { x: 0.5, y: 1 };
 const DEFAULT_PROFILE_ICON_SIZE = 36;
 const HEADER_TOP_GAP = 8;
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * People ionicon with the bright brand gradient — same MaskedView pattern as the tab icons.
+ * @param {{ size?: number }} props
+ */
 function GradientProfileHeaderIcon({ size = DEFAULT_PROFILE_ICON_SIZE }) {
   return (
     <ColorfulIcon
       name="people"
       size={size}
       colors={HEADER_PROFILE_GRADIENT}
-      start={{ x: 0, y: 0.5 }}
-      end={{ x: 1, y: 0.5 }}
+      locations={HEADER_PROFILE_GRADIENT_LOCATIONS}
+      start={HEADER_PROFILE_GRADIENT_START}
+      end={HEADER_PROFILE_GRADIENT_END}
     />
   );
 }

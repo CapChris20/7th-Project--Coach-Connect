@@ -33,6 +33,11 @@ const ALLOWED_TAB_KEYS = new Set(['home', 'workout', 'files', 'nutrition', 'ai']
 const DEFAULT_ACTIVE_TAB = 'home';
 const BAR_VISUAL_HEIGHT = 80;
 
+// Active-tab sheen — brand pink (not indigo). Matches the pink→orange CTA language.
+// Manipulate here: first stop alpha = how loud the pill glow is.
+const ACTIVE_TAB_SHINE_DARK = ['rgba(255,107,157,0.22)', 'rgba(255,107,157,0.06)', 'transparent'];
+const ACTIVE_TAB_SHINE_LIGHT = ['rgba(190,24,93,0.16)', 'rgba(194,65,12,0.06)', 'transparent'];
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -47,6 +52,15 @@ function navThemeColors(isDark, colors) {
     labelActive: isDark ? '#FFFFFF' : colors.primary,
     inactiveIcon: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
   };
+}
+
+/**
+ * Diagonal sheen colors for the active tab pill.
+ * @param {boolean} isDark
+ * @returns {string[]}
+ */
+function activeTabShineColors(isDark) {
+  return isDark ? ACTIVE_TAB_SHINE_DARK : ACTIVE_TAB_SHINE_LIGHT;
 }
 
 /**
@@ -383,9 +397,9 @@ export default function BottomMenuBar({
             <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             {/* Diagonal indigo sheen: start/end are 0–1 coordinates across the box, so {0,0}→{1,1}
                 runs top-left to bottom-right. Fading to 'transparent' keeps it a soft glow.
-                Manipulate here: rgba(88,86,214,…) is the indigo; the 0.18/0.04 stops are its strength. */}
+                Manipulate here: ACTIVE_TAB_SHINE_* alphas control how loud the pink pill glow is. */}
             <LinearGradient
-              colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+              colors={activeTabShineColors(isDark)}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.activeShine}
@@ -424,7 +438,7 @@ export default function BottomMenuBar({
           <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]} pointerEvents="none">
             <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
-              colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+              colors={activeTabShineColors(isDark)}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.activeShine}
@@ -464,7 +478,7 @@ export default function BottomMenuBar({
           <Animated.View style={[styles.activeBgWrap, { opacity: filesAnim }]} pointerEvents="none">
             <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
-              colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+              colors={activeTabShineColors(isDark)}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.activeShine}
@@ -498,7 +512,7 @@ export default function BottomMenuBar({
           <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]} pointerEvents="none">
             <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
             <LinearGradient
-              colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+              colors={activeTabShineColors(isDark)}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.activeShine}
@@ -553,7 +567,7 @@ export default function BottomMenuBar({
         <Animated.View style={[styles.activeBgWrap, { opacity: homeAnim }]} pointerEvents="none">
           <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
-            colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+            colors={activeTabShineColors(isDark)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.activeShine}
@@ -587,7 +601,7 @@ export default function BottomMenuBar({
         <Animated.View style={[styles.activeBgWrap, { opacity: workoutAnim }]} pointerEvents="none">
           <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
-            colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+            colors={activeTabShineColors(isDark)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.activeShine}
@@ -630,7 +644,7 @@ export default function BottomMenuBar({
         <Animated.View style={[styles.activeBgWrap, { opacity: aiAnim }]} pointerEvents="none">
           <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
-            colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+            colors={activeTabShineColors(isDark)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.activeShine}
@@ -666,7 +680,7 @@ export default function BottomMenuBar({
         <Animated.View style={[styles.activeBgWrap, { opacity: nutritionAnim }]} pointerEvents="none">
           <BlurView intensity={isDark ? 58 : 44} tint={containerTint} style={styles.activeBg} pointerEvents="none" />
           <LinearGradient
-            colors={isDark ? ['rgba(88,86,214,0.18)', 'rgba(88,86,214,0.04)', 'transparent'] : ['rgba(88,86,214,0.14)', 'rgba(88,86,214,0.03)', 'transparent']}
+            colors={activeTabShineColors(isDark)}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.activeShine}

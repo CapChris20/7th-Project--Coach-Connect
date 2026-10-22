@@ -13,7 +13,7 @@ import { IapProPlanSetup } from './ProPlanPurchases';
 // ===== NAMED CONSTANTS =====
 
 const USERS_COLLECTION = 'users';
-const OPEN_ACCESS_STATE = {
+const OPEN_ACCESS_WHEN_BILLING_OFF = {
   access: 'active',
   hasFullAccess: true,
   status: 'active',
@@ -73,7 +73,7 @@ function DisabledProPlanSetup({ userId, children }) {
       actionLoading: false,
       lastError: null,
       clearError,
-      accessState: OPEN_ACCESS_STATE,
+      accessState: OPEN_ACCESS_WHEN_BILLING_OFF,
       storeProduct: null,
       storeProducts: {},
       connected: false,

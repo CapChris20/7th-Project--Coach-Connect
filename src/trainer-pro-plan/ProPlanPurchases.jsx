@@ -25,7 +25,7 @@ import { SubscriptionContext } from './proPlanStatus';
 
 // ===== NAMED CONSTANTS =====
 
-const USERS_COLLECTION = 'users';
+const FIRESTORE_USERS_COLLECTION = 'users';
 const IOS_PLATFORM = 'ios';
 const SUBSCRIPTION_TYPE = 'subs';
 const ERROR_VERIFICATION_FAILED = 'verification_failed';
@@ -295,7 +295,7 @@ export function IapProPlanSetup({ userId, children }) {
 
     setFirestoreLoading(true);
     const unsub = onSnapshot(
-      doc(db, USERS_COLLECTION, userId),
+      doc(db, FIRESTORE_USERS_COLLECTION, userId),
       (snap) => {
         const data = snap.exists() ? snap.data() : null;
         setFirestoreSubscription(data?.subscription || null);

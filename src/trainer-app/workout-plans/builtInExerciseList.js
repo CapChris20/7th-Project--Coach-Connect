@@ -4,8 +4,8 @@
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_SEARCH_LIMIT = 24;
-const EXACT_NAME_SCORE = 100;
+const MANUAL_LIBRARY_SEARCH_LIMIT_DEFAULT = 24;
+const SCORE_EXACT_NAME_MATCH = 100;
 const NAME_PREFIX_SCORE = 40;
 const NAME_CONTAINS_SCORE = 20;
 const MUSCLE_GROUP_SCORE = 8;
@@ -101,7 +101,7 @@ function searchScoreForExercise(exercise, searchText) {
   // the query, so it collects 100 + 40 + 20 = 160 and lands far above a mid-word hit at 20.
   // That gap is what makes typing "bench" surface "Bench Press" above "Incline Bench Press".
   // Manipulate here: these weights are the whole ranking policy.
-  if (name === searchText) score += EXACT_NAME_SCORE;
+  if (name === searchText) score += SCORE_EXACT_NAME_MATCH;
   if (name.startsWith(searchText)) score += NAME_PREFIX_SCORE;
   if (name.includes(searchText)) score += NAME_CONTAINS_SCORE;
   // Joined into one string so a single includes() covers every group on the exercise.
@@ -128,7 +128,7 @@ function highestScoreThenName(leftMatch, rightMatch) {
  * @param {number} [limit=24]
  * @returns {Array}
  */
-export function searchManualExerciseLibrary(query, limit = DEFAULT_SEARCH_LIMIT) {
+export function searchManualExerciseLibrary(query, limit = MANUAL_LIBRARY_SEARCH_LIMIT_DEFAULT) {
   const searchText = String(query || '').trim().toLowerCase();
   if (!searchText) return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
   const scored = MANUAL_EXERCISE_LIBRARY.map((exercise) => searchScoreForExercise(exercise, searchText))

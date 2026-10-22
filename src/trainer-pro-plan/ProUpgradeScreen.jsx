@@ -21,7 +21,7 @@ const SUPPORT_MAIL_URL =
 // ===== HELPER FUNCTIONS =====
 
 // The store price wins when the native product has loaded. Otherwise show the label we ship in the app.
-function priceLineForStore(storeProduct) {
+function storePriceLineOrFallback(storeProduct) {
   const hasStorePrice = storeProduct?.displayPrice != null;
   if (hasStorePrice) {
     return `${storeProduct.displayPrice}/month · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
@@ -58,7 +58,7 @@ export default function ProUpgradeScreen({ onOpenSettings, onOpenTerms, onOpenPr
     connected: isStoreConnected,
   } = useSubscription();
 
-  const priceLine = priceLineForStore(storeProduct);
+  const priceLine = storePriceLineOrFallback(storeProduct);
 
   const handleCta = async () => {
     clearError();

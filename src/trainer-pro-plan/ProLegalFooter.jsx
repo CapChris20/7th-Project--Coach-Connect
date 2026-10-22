@@ -20,7 +20,7 @@ const DEFAULT_LINK_COLOR = '#FF6B9D';
 // ===== HELPER FUNCTIONS =====
 
 // Apple's guideline wants the title, the price, the length, and that a trial is for new subscribers.
-function subscriptionDisclosure(priceLine, durationLabel) {
+function buildSubscriptionDisclosureLine(priceLine, durationLabel) {
   if (priceLine) {
     return `${TRAINER_SUBSCRIPTION_TITLE}: ${priceLine} for ${durationLabel}. ${TRAINER_SUBSCRIPTION_TRIAL_LABEL} for new subscribers where offered by Apple.`;
   }
@@ -55,7 +55,7 @@ export default function ProLegalFooter({
   onOpenTerms,
   onOpenPrivacy,
 }) {
-  const disclosure = subscriptionDisclosure(priceLine, durationLabel);
+  const disclosure = buildSubscriptionDisclosureLine(priceLine, durationLabel);
   const isIos = Platform.OS === 'ios';
   const canOpenTerms = typeof onOpenTerms === 'function';
   const canOpenPrivacy = typeof onOpenPrivacy === 'function';

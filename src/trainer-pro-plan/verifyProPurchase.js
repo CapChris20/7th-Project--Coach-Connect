@@ -92,7 +92,7 @@ async function attemptPost(base, action, token, body) {
  * @param {object} purchase
  * @returns {object}
  */
-function purchaseBody(purchase) {
+function applePurchaseRequestBody(purchase) {
   return {
     productId: purchase?.productId,
     transactionId: purchase?.transactionId,
@@ -132,7 +132,7 @@ async function postSubscription(action, body) {
  * @returns {Promise<object>}
  */
 export async function verifyAppleSubscriptionOnServer(purchase) {
-  return postSubscription(VERIFY_ACTION, purchaseBody(purchase));
+  return postSubscription(VERIFY_ACTION, applePurchaseRequestBody(purchase));
 }
 
 /**
@@ -141,6 +141,6 @@ export async function verifyAppleSubscriptionOnServer(purchase) {
  */
 export async function restoreAppleSubscriptionOnServer(purchases = []) {
   return postSubscription(RESTORE_ACTION, {
-    purchases: purchases.map((purchase) => purchaseBody(purchase)),
+    purchases: purchases.map((purchase) => applePurchaseRequestBody(purchase)),
   });
 }

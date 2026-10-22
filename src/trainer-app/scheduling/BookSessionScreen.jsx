@@ -456,14 +456,16 @@ export const BookSessionScreen = ({ theme = 'dark', embedded = true, onNavigate,
     embedded ? SCROLL_BOTTOM_PAD_EMBEDDED : SCROLL_BOTTOM_PAD_STANDALONE,
   );
 
-  const clientLabel = clientName || 'this client';
+  // Standalone Sessions tab has no single client — label the list as "all clients".
+  const clientLabel = clientName || (clientId ? 'this client' : 'all clients');
 
   // When embedded on a client's detail page, only that client's sessions should show.
   // When this screen is the trainer's main "Sessions" tab (no clientId), show everyone's.
   const sessionsForClient = useMemo(() => {
-    if (!clientId) return [];
+    const allSessions = sessions || [];
+    if (!clientId) return allSessions;
     const clientIdText = String(clientId);
-    return (sessions || []).filter(
+    return allSessions.filter(
       (session) => session?.clientId != null && String(session.clientId) === clientIdText,
     );
   }, [sessions, clientId]);

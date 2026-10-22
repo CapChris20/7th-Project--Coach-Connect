@@ -229,7 +229,7 @@ function structuredDayFromDraft(dayDraft, dayIndex, planType) {
  * @param {string[]|undefined} assignedClients
  * @returns {string[]}
  */
-function uniqueClientIds(assignedClients) {
+function uniqueAssignedClientIds(assignedClients) {
   if (!Array.isArray(assignedClients)) return [];
   return [...new Set(assignedClients.filter(Boolean))];
 }
@@ -240,7 +240,7 @@ function uniqueClientIds(assignedClients) {
  * @param {number} chunkSize
  * @returns {Array[]}
  */
-function splitIntoChunks(items, chunkSize) {
+function splitIdsIntoFirestoreBatches(items, chunkSize) {
   const chunks = [];
   for (let start = 0; start < items.length; start += chunkSize) {
     chunks.push(items.slice(start, start + chunkSize));
@@ -293,7 +293,7 @@ async function listManualPlansWithoutCompoundIndex(trainerId, max) {
  * @returns {Promise<void>}
  */
 async function deleteClientPlanCopiesInBatches(clientIds, planId) {
-  const groups = splitIntoChunks(clientIds, FIRESTORE_BATCH_LIMIT);
+  const groups = splitIdsIntoFirestoreBatches(clientIds, FIRESTORE_BATCH_LIMIT);
   for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
     const batch = writeBatch(db);
     const group = groups[groupIndex];
@@ -314,7 +314,7 @@ async function deleteClientPlanCopiesInBatches(clientIds, planId) {
  * @returns {Promise<void>}
  */
 async function writeClientPlanCopiesInBatches(clientIds, trainerPayload, trainerId, planId) {
-  const groups = splitIntoChunks(clientIds, FIRESTORE_BATCH_LIMIT);
+  const groups = splitIdsIntoFirestoreBatches(clientIds, FIRESTORE_BATCH_LIMIT);
   for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
     const batch = writeBatch(db);
     const group = groups[groupIndex];
@@ -469,7 +469,7 @@ export function buildTrainerPlanFirestorePayload(draft, trainerId, planId) {
   const trainingDays = inferTrainingDayFlags(dayNames);
   const structuredPlan = buildStructuredWorkoutPlanFromManualDraft(draft);
   const planText = JSON.stringify(structuredPlan);
-  const assignedClients = uniqueClientIds(draft.assignedClients);
+  const assignedClients = uniqueAssignedClientIds(draft.assignedClients);
   const planName = String(draft.planName || '').trim();
   const planType = String(draft.planType || DEFAULT_PLAN_TYPE).trim();
 
@@ -668,7 +668,7 @@ export async function syncManualPlanAssignments(trainerId, planId, draft) {
   }
 
   // 1. Refresh the trainer-owned plan doc.
-  const clientIds = uniqueClientIds(draft.assignedClients);
+  const clientIds = uniqueAssignedClientIds(draft.assignedClients);
   const payload = buildTrainerPlanFirestorePayload(
     { ...draft, assignedClients: clientIds },
     trainerId,

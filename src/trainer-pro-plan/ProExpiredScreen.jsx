@@ -15,7 +15,7 @@ const SUPPORT_MAIL_URL = 'mailto:coachconnect0@gmail.com';
 
 // ===== HELPER FUNCTIONS =====
 
-function openSupportMail() {
+function openProExpiredSupportMail() {
   Linking.openURL(SUPPORT_MAIL_URL);
 }
 

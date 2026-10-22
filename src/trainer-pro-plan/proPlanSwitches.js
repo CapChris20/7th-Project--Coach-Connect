@@ -4,8 +4,8 @@
 
 // ===== NAMED CONSTANTS =====
 
-const IAP_FLAG_ON = 'true';
-const IAP_FLAG_OFF = 'false';
+const ENV_IAP_FLAG_ENABLED = 'true';
+const ENV_IAP_FLAG_DISABLED = 'false';
 const PRODUCTION_PROFILE = 'production';
 const PREVIEW_PROFILE = 'preview';
 
@@ -76,8 +76,8 @@ const TRAINER_SUBSCRIPTION_TIERS = [
  */
 function resolveTrainerIapEnabled() {
   const flagValue = process.env.EXPO_PUBLIC_TRAINER_IAP_ENABLED;
-  if (flagValue === IAP_FLAG_ON) return true;
-  if (flagValue === IAP_FLAG_OFF) return false;
+  if (flagValue === ENV_IAP_FLAG_ENABLED) return true;
+  if (flagValue === ENV_IAP_FLAG_DISABLED) return false;
   const buildProfile = process.env.EAS_BUILD_PROFILE;
   return buildProfile === PRODUCTION_PROFILE || buildProfile === PREVIEW_PROFILE;
 }

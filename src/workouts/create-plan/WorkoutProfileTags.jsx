@@ -18,11 +18,11 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-const SIDE_PAD = 20;
-const GRID_GAP = 14;
+const PROFILE_TAGS_SIDE_PAD = 20;
+const PROFILE_TAGS_GRID_GAP = 14;
 const FALLBACK_SCREEN_WIDTH = 390;
 const MIN_USABLE_WIDTH = 280;
-const EMPTY_VALUE = '—';
+const PROFILE_TAG_EMPTY_VALUE = '—';
 const JOURNEY_PLACEHOLDER = 'Tap to add your journey text…';
 const PILL_EDITABLE_COLORS = ['#6D28D9', '#C2410C'];
 const PILL_READONLY_COLORS = ['rgba(148,163,184,0.45)', 'rgba(148,163,184,0.35)'];
@@ -37,8 +37,8 @@ const PILL_TEXT_COLOR = '#FFFFFF';
  */
 function profileGridMetrics() {
   const screenW = Dimensions.get('window')?.width || FALLBACK_SCREEN_WIDTH;
-  const usableW = Math.max(MIN_USABLE_WIDTH, screenW - SIDE_PAD * 2);
-  const gridCardW = Math.floor((usableW - GRID_GAP) / 2);
+  const usableW = Math.max(MIN_USABLE_WIDTH, screenW - PROFILE_TAGS_SIDE_PAD * 2);
+  const gridCardW = Math.floor((usableW - PROFILE_TAGS_GRID_GAP) / 2);
   return { usableW, gridCardW };
 }
 
@@ -48,7 +48,7 @@ function profileGridMetrics() {
  */
 function formatWeightText(weight) {
   if (weight != null && weight !== '') return `${weight} lbs`;
-  return EMPTY_VALUE;
+  return PROFILE_TAG_EMPTY_VALUE;
 }
 
 /**
@@ -57,7 +57,7 @@ function formatWeightText(weight) {
  */
 function formatAgeText(age) {
   if (age != null && age !== '') return String(age);
-  return EMPTY_VALUE;
+  return PROFILE_TAG_EMPTY_VALUE;
 }
 
 /**
@@ -84,7 +84,7 @@ function buildProfileSections(onboardingData) {
       title: 'Personal Info',
       items: [
         { id: 'age', label: 'Age', helper: 'personal info', icon: 'person-outline', value: formatAgeText(onboardingData?.age), editKey: 'personalInfo' },
-        { id: 'gender', label: 'Gender', helper: 'profile', icon: 'person-outline', value: onboardingData?.gender ? String(onboardingData.gender) : EMPTY_VALUE, editKey: 'personalInfo' },
+        { id: 'gender', label: 'Gender', helper: 'profile', icon: 'person-outline', value: onboardingData?.gender ? String(onboardingData.gender) : PROFILE_TAG_EMPTY_VALUE, editKey: 'personalInfo' },
         { id: 'height', label: 'Height', helper: 'personal info', icon: 'stats-chart-outline', value: formatProfileHeightDisplay(onboardingData?.height), editKey: 'personalInfo' },
         { id: 'weight', label: 'Weight', helper: 'current weight', icon: 'stats-chart-outline', value: formatWeightText(onboardingData?.weight), editKey: 'personalInfo' },
       ],
@@ -399,7 +399,7 @@ function SectionGrid({ section, layout, theme, onEditField, nextAccentIndex }) {
               width: layout.usableW,
               alignSelf: 'center',
               justifyContent: pair.length === 2 ? 'space-between' : 'center',
-              marginBottom: GRID_GAP,
+              marginBottom: PROFILE_TAGS_GRID_GAP,
             }}
           >
             {pair.map((item) => renderCard(item))}

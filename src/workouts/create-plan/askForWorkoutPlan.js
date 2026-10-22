@@ -15,10 +15,10 @@ import { normalizeClientProfileFields } from '../../helpers/fillTraineeProfile';
 
 // ===== NAMED CONSTANTS =====
 
-const WORKOUT_PLAN_FETCH_TIMEOUT_MS = 180000;
+const WORKOUT_GENERATE_FETCH_TIMEOUT_MS = 180000;
 const JSON_CONTENT_TYPE = 'application/json';
 const WORKOUT_GENERATE_PATH = '/api/workout/generate';
-const API_LOG_LABEL = 'workout/generate';
+const WORKOUT_GENERATE_API_LOG_LABEL = 'workout/generate';
 const USERS_COLLECTION = 'users';
 const HTTP_STATUS_TOO_MANY_REQUESTS = 429;
 const HTTP_STATUS_NOT_FOUND = 404;
@@ -66,11 +66,11 @@ function buildHttpFailureError(payload, httpStatus) {
 
 async function tryOneWorkoutApiBase(url, requestBody, headers) {
   try {
-    const res = await postJsonWithTimeout(url, requestBody, headers, WORKOUT_PLAN_FETCH_TIMEOUT_MS);
+    const res = await postJsonWithTimeout(url, requestBody, headers, WORKOUT_GENERATE_FETCH_TIMEOUT_MS);
     const payload = await res.json().catch(() => ({}));
     const outcome = interpretWorkoutApiResponse(res, payload);
     if (outcome.shouldRetry) {
-      logApiAttempt(API_LOG_LABEL, url, outcome.error);
+      logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, outcome.error);
       return { didSucceed: false, error: outcome.error };
     }
     if (__DEV__) {
@@ -78,7 +78,7 @@ async function tryOneWorkoutApiBase(url, requestBody, headers) {
     }
     return { didSucceed: true, plan: outcome.plan };
   } catch (caughtError) {
-    logApiAttempt(API_LOG_LABEL, url, caughtError);
+    logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, caughtError);
     if (shouldRethrowWorkoutError(caughtError)) throw caughtError;
     return { didSucceed: false, error: caughtError };
   }

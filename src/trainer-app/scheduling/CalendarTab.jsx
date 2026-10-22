@@ -226,10 +226,12 @@ const CalendarTab = ({ clientId, clientName }) => {
   const clientLabel = clientName || CLIENT_NAME_DEFAULT;
   const onNavigate = (path) => setRoute(path || HOME_ROUTE);
 
+  // No clientId → show every session (trainer Sessions tab). With clientId → filter to that trainee.
   const sessionsForClient = useMemo(() => {
-    if (!clientId) return [];
+    const allSessions = sessions || [];
+    if (!clientId) return allSessions;
     const clientIdText = String(clientId);
-    return (sessions || []).filter((session) => session?.clientId != null && String(session.clientId) === clientIdText);
+    return allSessions.filter((session) => session?.clientId != null && String(session.clientId) === clientIdText);
   }, [sessions, clientId]);
 
   const todayKey = new Date().toISOString().slice(0, ISO_DATE_LENGTH);

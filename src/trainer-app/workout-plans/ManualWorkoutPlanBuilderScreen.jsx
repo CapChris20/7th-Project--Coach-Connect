@@ -45,7 +45,7 @@ const EMBEDDED_SCROLL_PAD = 32;
 // ===== HELPER FUNCTIONS =====
 
 
-function buildDefaultSetDetails(ex) {
+function buildSetDetailRowsForExercise(ex) {
   const setCount = Math.max(1, parseInt(String(ex?.sets), 10) || DEFAULT_SET_COUNT);
   if (Array.isArray(ex?.setDetails) && ex.setDetails.length === setCount) {
     return ex.setDetails.map((setRow, i) => ({
@@ -343,7 +343,7 @@ const defaultWorkoutDays = () => [
   { id: newLocalId('day'), dayName: 'Friday', dayNumber: 3, exercises: [] },
 ];
 
-function sanitizeDraftForSave(state) {
+function sanitizeManualDraftForFirestore(state) {
   const workoutDays = (state.workoutDays || []).map((d, idx) => ({
     dayId: d.id,
     dayName: String(d.dayName || `Day ${idx + 1}`).trim(),
@@ -386,7 +386,7 @@ function sanitizeDraftForSave(state) {
   };
 }
 
-function exerciseCounts(days) {
+function countExercisesAcrossDays(days) {
   return (days || []).reduce((acc, d) => acc + (d.exercises?.length || 0), 0);
 }
 
@@ -448,7 +448,7 @@ export default function ManualWorkoutPlanBuilderScreen({
   const [setEditRest, setSetEditRest] = useState('120');
 
   const openSetEdit = (ex, setIndex) => {
-    const rows = buildDefaultSetDetails(ex);
+    const rows = buildSetDetailRowsForExercise(ex);
     const row = rows[setIndex] || rows[0];
     setSetEditExId(ex.id);
     setSetEditIndex(setIndex);
@@ -467,7 +467,7 @@ export default function ManualWorkoutPlanBuilderScreen({
           ...d,
           exercises: (d.exercises || []).map((ex) => {
             if (ex.id !== setEditExId) return ex;
-            const rows = buildDefaultSetDetails(ex);
+            const rows = buildSetDetailRowsForExercise(ex);
             rows[setEditIndex] = {
               setNumber: setEditIndex + 1,
               reps: setEditReps,
@@ -607,7 +607,7 @@ export default function ManualWorkoutPlanBuilderScreen({
       weight,
       progression,
     };
-    ex.setDetails = buildDefaultSetDetails(ex);
+    ex.setDetails = buildSetDetailRowsForExercise(ex);
     applyExerciseToDay(ex);
     setModalOpen(false);
     resetModal();
@@ -719,7 +719,7 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   const persist = useCallback(
     async (doAssign) => {
-      const draft = sanitizeDraftForSave({
+      const draft = sanitizeManualDraftForFirestore({
         planName,
         planType,
         duration,
@@ -727,7 +727,7 @@ export default function ManualWorkoutPlanBuilderScreen({
         workoutDays,
         assignedClients: doAssign ? assignedClients : [],
       });
-      const totalEx = exerciseCounts(draft.workoutDays);
+      const totalEx = countExercisesAcrossDays(draft.workoutDays);
       if (totalEx < 1) {
         Alert.alert('Add exercises', 'Add at least one exercise before saving.');
         return;
@@ -813,7 +813,7 @@ export default function ManualWorkoutPlanBuilderScreen({
         : step === 3
           ? `Day ${dayIndex + 1} of ${workoutDays.length}`
           : step === 4
-            ? `${exerciseCounts(workoutDays)} exercises total`
+            ? `${countExercisesAcrossDays(workoutDays)} exercises total`
             : null;
 
   const renderStepActions = () => {
@@ -1001,7 +1001,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <EmptyExerciseState onAdd={openAddModal} />
               ) : (
                 (workoutDays[dayIndex]?.exercises || []).map((ex, idx) => {
-                  const setRows = buildDefaultSetDetails(ex);
+                  const setRows = buildSetDetailRowsForExercise(ex);
                   return (
                   <GradientCard key={ex.id} borderColors={GRAD_BORDER} style={{ marginBottom: 10 }}>
                     <View style={styles.exHeader}>

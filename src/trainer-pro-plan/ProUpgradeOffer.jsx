@@ -62,17 +62,26 @@ function featureCardsFromBenefits() {
 }
 
 /**
+ * @param {string} variant
+ * @returns {boolean}
+ */
+function isExpiredOfferVariant(variant) {
+  return variant === VARIANT_EXPIRED;
+}
+
+/**
  * Expired vs first-subscribe headlines. Price line from the parent wins on the paywall variant.
  * @param {object} args
  */
-function offerCopy({ variant, priceLine, primaryLabel }) {
-  const isExpired = variant === VARIANT_EXPIRED;
+function buildOfferCopy({ variant, priceLine, primaryLabel }) {
+  const isExpired = isExpiredOfferVariant(variant);
   const defaultSubtitle = `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
   const expiredSubtitle = `Renew Pro (${TRAINER_SUBSCRIPTION_PRICE_LABEL}) to keep managing clients, AI tools, and your dashboard.`;
   const defaultCta = isExpired ? 'Re-subscribe' : 'Start free trial';
+  const paywallSubtitle = priceLine || defaultSubtitle;
   return {
     title: isExpired ? 'Subscription expired' : 'Coach Connect Pro',
-    subtitle: isExpired ? expiredSubtitle : (priceLine || defaultSubtitle),
+    subtitle: isExpired ? expiredSubtitle : paywallSubtitle,
     ctaLabel: primaryLabel || defaultCta,
     showPaywallHint: variant === VARIANT_PAYWALL,
   };
@@ -213,7 +222,7 @@ export default function ProUpgradeOffer({
   const tokens = getOnboardingUiTokens(isDark);
 
   const features = useMemo(() => featureCardsFromBenefits(), []);
-  const copy = offerCopy({ variant, priceLine, primaryLabel });
+  const copy = buildOfferCopy({ variant, priceLine, primaryLabel });
   // Don't hard-disable when StoreKit is still connecting — user can retry and see lastError.
   const ctaDisabled = actionLoading;
 

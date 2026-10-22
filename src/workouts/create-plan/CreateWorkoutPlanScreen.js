@@ -819,7 +819,7 @@ function inferType(label) {
  * @param {object} plan
  * @returns {void}
  */
-function fillOverviewFromAlternateKeys(plan) {
+function fillPlanOverviewFromAlternateKeys(plan) {
   if (plan.overview) return;
   if (plan.planOverview != null) {
     const planOverview = plan.planOverview;
@@ -847,7 +847,7 @@ function fillOverviewFromAlternateKeys(plan) {
  * @param {object} plan
  * @returns {void}
  */
-function normalizeWeeklyScheduleObject(plan) {
+function normalizeWeeklyScheduleObjectToRows(plan) {
   if (plan.weeklySchedule == null || Array.isArray(plan.weeklySchedule)) return;
   const scheduleObject = plan.weeklySchedule;
   const rows = [];
@@ -881,7 +881,7 @@ function normalizeWeeklyScheduleObject(plan) {
  * @param {object} workoutsObject
  * @returns {Array|null}
  */
-function firstWorkoutArrayFromObject(workoutsObject) {
+function firstWorkoutSessionArrayFromObject(workoutsObject) {
   const keys = Object.keys(workoutsObject);
   for (let index = 0; index < keys.length; index += 1) {
     const maybeList = workoutsObject[keys[index]];
@@ -900,7 +900,7 @@ function resolveWorkoutsArrayForViewer(plan) {
 
   if (!plan.detailedWorkouts) {
     if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
-      return firstWorkoutArrayFromObject(plan.workouts);
+      return firstWorkoutSessionArrayFromObject(plan.workouts);
     }
     return null;
   }
@@ -929,7 +929,7 @@ function resolveWorkoutsArrayForViewer(plan) {
   if (Array.isArray(nested) && nested.length) return nested;
 
   if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
-    return firstWorkoutArrayFromObject(plan.workouts);
+    return firstWorkoutSessionArrayFromObject(plan.workouts);
   }
   return null;
 }
@@ -945,10 +945,10 @@ function normalizeStructuredPlanForViewer(rawPlan) {
   const plan = { ...rawPlan };
 
   // 1. Overview string from whatever key Claude used.
-  fillOverviewFromAlternateKeys(plan);
+  fillPlanOverviewFromAlternateKeys(plan);
 
   // 2. weeklySchedule object → row array.
-  normalizeWeeklyScheduleObject(plan);
+  normalizeWeeklyScheduleObjectToRows(plan);
 
   // 3. Workout sessions → viewer "days".
   const workoutsArray = resolveWorkoutsArrayForViewer(plan);

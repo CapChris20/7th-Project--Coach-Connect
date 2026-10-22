@@ -34,6 +34,17 @@ function isExpiredProAccess(accessState) {
   return accessState.access === ACCESS_EXPIRED;
 }
 
+/**
+ * @returns {JSX.Element}
+ */
+function renderProGateLoading() {
+  return (
+    <View style={styles.loading}>
+      <ActivityIndicator size={LOADING_SPINNER_SIZE} color={LOADING_SPINNER_COLOR} />
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -53,11 +64,7 @@ export default function ProAccessCheck({ children, onOpenSettings, onOpenTerms, 
   }
 
   if (firestoreLoading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size={LOADING_SPINNER_SIZE} color={LOADING_SPINNER_COLOR} />
-      </View>
-    );
+    return renderProGateLoading();
   }
 
   // Trainers who never subscribed still get in. The lock runs only after a paid Pro period has ended.
