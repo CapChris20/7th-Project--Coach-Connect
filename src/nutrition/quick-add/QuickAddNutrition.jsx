@@ -210,7 +210,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
             placeholder="e.g. Almond milk"
             value={foodName}
             onChangeText={setFoodName}
-            t={t}
+            palette={palette}
           />
         </View>
 
@@ -248,7 +248,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
             value={calories}
             onChangeText={setCalories}
             keyboardType="number-pad"
-            t={t}
+            palette={palette}
           />
         </View>
 
@@ -270,12 +270,12 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
         {/* Macros Grid */}
         {showMacros && (
           <View style={styles.macrosGrid}>
-          <MacroField label="Protein (g)" value={macros.protein} onChange={(v) => updateMacro('protein', v)} t={t} />
-          <MacroField label="Carbs (g)" value={macros.carbs} onChange={(v) => updateMacro('carbs', v)} t={t} />
-          <MacroField label="Fat (g)" value={macros.fat} onChange={(v) => updateMacro('fat', v)} t={t} />
-          <MacroField label="Sodium (mg)" value={macros.sodium} onChange={(v) => updateMacro('sodium', v)} t={t} />
-          <MacroField label="Fiber (g)" value={macros.fiber} onChange={(v) => updateMacro('fiber', v)} t={t} />
-          <MacroField label="Sugar (g)" value={macros.sugar} onChange={(v) => updateMacro('sugar', v)} t={t} />
+          <MacroField label="Protein (g)" value={macros.protein} onChange={(v) => updateMacro('protein', v)} palette={palette} />
+          <MacroField label="Carbs (g)" value={macros.carbs} onChange={(v) => updateMacro('carbs', v)} palette={palette} />
+          <MacroField label="Fat (g)" value={macros.fat} onChange={(v) => updateMacro('fat', v)} palette={palette} />
+          <MacroField label="Sodium (mg)" value={macros.sodium} onChange={(v) => updateMacro('sodium', v)} palette={palette} />
+          <MacroField label="Fiber (g)" value={macros.fiber} onChange={(v) => updateMacro('fiber', v)} palette={palette} />
+          <MacroField label="Sugar (g)" value={macros.sugar} onChange={(v) => updateMacro('sugar', v)} palette={palette} />
 
             {/* Serving Size */}
             <View style={styles.inputGroup}>
@@ -285,7 +285,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
                 value={macros.servingSize}
                 onChangeText={(v) => updateMacro('servingSize', v)}
                 keyboardType="number-pad"
-                t={t}
+                palette={palette}
               />
             </View>
 
@@ -296,7 +296,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
                 placeholder="g, ml, cup..."
                 value={macros.servingUnit}
                 onChangeText={(v) => updateMacro('servingUnit', v)}
-                t={t}
+                palette={palette}
               />
             </View>
           </View>
@@ -325,7 +325,7 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
 
 /* ============ COMPONENTS ============ */
 
-function FieldInput({ t, style, ...rest }) {
+function FieldInput({ palette, style, ...rest }) {
   return (
     <TextInput
       {...rest}
@@ -343,11 +343,11 @@ function FieldInput({ t, style, ...rest }) {
   );
 }
 
-function MacroField({ label, value, onChange, t }) {
+function MacroField({ label, value, onChange, palette }) {
   return (
     <View style={styles.macroField}>
       <Text style={[styles.macroLabelText, { color: palette.textMuted }]}>{label}</Text>
-      <FieldInput t={t} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
+      <FieldInput palette={palette} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
     </View>
   );
 }

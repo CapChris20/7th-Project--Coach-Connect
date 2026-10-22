@@ -44,7 +44,7 @@ export default function ProExpiredScreen({ onOpenSettings, onOpenTerms, onOpenPr
       onOpenSettings={onOpenSettings}
       onOpenTerms={onOpenTerms}
       onOpenPrivacy={onOpenPrivacy}
-      onContactSupport={openSupportMail}
+      onContactSupport={openProExpiredSupportMail}
     />
   );
 }

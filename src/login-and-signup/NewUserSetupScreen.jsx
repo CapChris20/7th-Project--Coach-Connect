@@ -2190,6 +2190,16 @@ export default function NewUserSetupScreen({
     );
   };
 
+  // Which steps may be skipped from the footer Skip button.
+  // Client: step 6 (injuries) and step 7 (trainer invite code) — steps 8-9 are required.
+  // Trainer: step 4 (training philosophy) and step 8 (Pro offer) are optional.
+  const isOptionalStep = () => {
+    if (role === 'client') {
+      return currentStep === 6 || currentStep === CLIENT_INVITE_STEP;
+    }
+    return currentStep === 4 || currentStep === 8;
+  };
+
   const handleSkip = () => {
     if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
     else handleFinish();

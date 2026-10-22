@@ -66,6 +66,9 @@ const DEFAULT_CARBS_GOAL = 250;
 const DEFAULT_FAT_GOAL = 70;
 const MORNING_HOUR_END = 12;
 const AFTERNOON_HOUR_END = 17;
+// Brand pink used for loading spinners on this screen.
+// Manipulate here: one hex changes every spinner accent here.
+const ICON_ACCENT = '#FF6B9D';
 
 // ===== HELPER FUNCTIONS =====
 

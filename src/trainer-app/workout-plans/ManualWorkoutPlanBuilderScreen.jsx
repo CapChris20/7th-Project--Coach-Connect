@@ -518,7 +518,7 @@ export default function ManualWorkoutPlanBuilderScreen({
             })),
           })),
         );
-        setAssignedClients(d.assignedClients?.length ? d.assignedClients : [...(defaultAssignedClientIds || [])]);
+        setAssignedClients(draft.assignedClients?.length ? draft.assignedClients : [...(defaultAssignedClientIds || [])]);
         setSavedPlanId(editPlanId);
       } catch (e) {
         Alert.alert('Could not load plan', e?.message || 'Unknown error');
@@ -763,9 +763,9 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   const formatRest = (sec) => {
     const seconds = Number(sec);
-    if (!Number.isFinite(s) || s <= 0) return '—';
+    if (!Number.isFinite(seconds) || seconds <= 0) return '—';
     if (seconds >= SECONDS_PER_MINUTE && seconds % SECONDS_PER_MINUTE === 0) return `${seconds / SECONDS_PER_MINUTE} min`;
-    return `${s}s`;
+    return `${seconds}s`;
   };
 
   const renderCoachHeader = () =>
@@ -783,11 +783,11 @@ export default function ManualWorkoutPlanBuilderScreen({
   if (loadingPlan) {
     return (
       <BuilderlightDarkMode.Provider value={themeValue}>
-        <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
+        <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]}>
           {renderCoachHeader()}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={c.pink} />
-            <Text style={{ color: c.textSecondary, marginTop: 12 }}>Loading plan…</Text>
+            <ActivityIndicator size="large" color={palette.pink} />
+            <Text style={{ color: palette.textSecondary, marginTop: 12 }}>Loading plan…</Text>
           </View>
         </SafeAreaView>
       </BuilderlightDarkMode.Provider>
@@ -869,13 +869,13 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   return (
     <BuilderlightDarkMode.Provider value={themeValue}>
-    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={80}
       >
-        <LinearGradient colors={c.topGlow} style={styles.topGlow} pointerEvents="none" />
+        <LinearGradient colors={palette.topGlow} style={styles.topGlow} pointerEvents="none" />
         {renderCoachHeader()}
         <View style={styles.stepHeading}>
           <Text style={styles.topTitle} numberOfLines={1}>
@@ -900,7 +900,7 @@ export default function ManualWorkoutPlanBuilderScreen({
               <GradientCard borderColors={GRAD_CTA_ALT} style={styles.setupHeroCard} innerStyle={styles.setupHeroInner}>
                 <View style={styles.tipRow}>
                   <View style={styles.tipIcon}>
-                    <Ionicons name="sparkles-outline" size={18} color={c.cyan} />
+                    <Ionicons name="sparkles-outline" size={18} color={palette.cyan} />
                   </View>
                   <Text style={styles.tipText}>
                     You’ll add training days next, then stack exercises with sets, reps, and rest — like building a real session.
@@ -912,7 +912,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                   <TextInput
                     style={styles.setupInput}
                     placeholder="e.g. Upper Body Strength · Week 1"
-                    placeholderTextColor={c.textTertiary}
+                    placeholderTextColor={palette.textTertiary}
                     value={planName}
                     onChangeText={setPlanName}
                   />
@@ -934,7 +934,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                   <TextInput
                     style={[styles.setupInput, styles.setupInputMulti]}
                     placeholder="Focus, equipment, coaching intent…"
-                    placeholderTextColor={c.textTertiary}
+                    placeholderTextColor={palette.textTertiary}
                     value={description}
                     onChangeText={setDescription}
                     multiline
@@ -961,15 +961,15 @@ export default function ManualWorkoutPlanBuilderScreen({
                           setWorkoutDays((rows) => rows.map((r) => (r.id === d.id ? { ...r, dayName: t } : r)))
                         }
                         placeholder="Day name"
-                        placeholderTextColor={c.textTertiary}
+                        placeholderTextColor={palette.textTertiary}
                       />
                     </View>
                     <TouchableOpacity onPress={() => removeDay(d.id)} hitSlop={10} style={styles.dayRemove}>
-                      <Ionicons name="trash-outline" size={20} color={c.pink} />
+                      <Ionicons name="trash-outline" size={20} color={palette.pink} />
                     </TouchableOpacity>
                   </View>
                   <View style={styles.dayMetaRow}>
-                    <Ionicons name="barbell-outline" size={14} color={c.cyan} />
+                    <Ionicons name="barbell-outline" size={14} color={palette.cyan} />
                     <Text style={styles.dayMetaText}>
                       {(d.exercises || []).length} exercise{(d.exercises || []).length !== 1 ? 's' : ''} · added in next step
                     </Text>
@@ -979,7 +979,7 @@ export default function ManualWorkoutPlanBuilderScreen({
               <TouchableOpacity onPress={addDay} activeOpacity={0.88} style={{ marginTop: 4 }}>
                 <LinearGradient colors={['rgba(255,107,157,0.35)', 'rgba(6,182,212,0.25)']} style={styles.addDayBorder}>
                   <View style={styles.addDayInner}>
-                    <Ionicons name="add-circle-outline" size={20} color={c.pink} />
+                    <Ionicons name="add-circle-outline" size={20} color={palette.pink} />
                     <Text style={styles.addDayText}>Add workout day</Text>
                   </View>
                 </LinearGradient>
@@ -1018,16 +1018,16 @@ export default function ManualWorkoutPlanBuilderScreen({
                       </View>
                       <View style={styles.exActions}>
                         <TouchableOpacity onPress={() => moveExercise(ex.id, -1)} style={styles.exIconBtn}>
-                          <Ionicons name="chevron-up" size={18} color={c.textSecondary} />
+                          <Ionicons name="chevron-up" size={18} color={palette.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => moveExercise(ex.id, 1)} style={styles.exIconBtn}>
-                          <Ionicons name="chevron-down" size={18} color={c.textSecondary} />
+                          <Ionicons name="chevron-down" size={18} color={palette.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => openEditModal(ex)} style={styles.exIconBtn}>
-                          <Ionicons name="create-outline" size={18} color={c.pink} />
+                          <Ionicons name="create-outline" size={18} color={palette.pink} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => removeExercise(ex.id)} style={styles.exIconBtn}>
-                          <Ionicons name="trash-outline" size={18} color={c.pink} />
+                          <Ionicons name="trash-outline" size={18} color={palette.pink} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1042,15 +1042,15 @@ export default function ManualWorkoutPlanBuilderScreen({
                           paddingVertical: 8,
                           paddingHorizontal: 4,
                           borderTopWidth: StyleSheet.hairlineWidth,
-                          borderTopColor: c.border || 'rgba(255,255,255,0.08)',
+                          borderTopColor: palette.border || 'rgba(255,255,255,0.08)',
                         }}
                         activeOpacity={0.75}
                       >
-                        <Text style={{ color: c.textSecondary, fontSize: 13, flex: 1 }}>
+                        <Text style={{ color: palette.textSecondary, fontSize: 13, flex: 1 }}>
                           Set {row.setNumber}: {row.reps} reps
                           {row.weight ? ` @ ${row.weight}` : ''} · Rest {formatRest(row.restSeconds)}
                         </Text>
-                        <Ionicons name="pencil" size={16} color={c.pink} />
+                        <Ionicons name="pencil" size={16} color={palette.pink} />
                       </TouchableOpacity>
                     ))}
                     {!!ex.notes ? <Text style={styles.exNotes}>{ex.notes}</Text> : null}
@@ -1067,7 +1067,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 </TouchableOpacity>
                 {dayIndex > 0 ? (
                   <TouchableOpacity onPress={copyFromFirstDay} style={styles.copyDayBtn} activeOpacity={0.85}>
-                    <Ionicons name="copy-outline" size={16} color={c.cyan} />
+                    <Ionicons name="copy-outline" size={16} color={palette.cyan} />
                     <Text style={styles.copyDayText}>Copy day 1</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -1092,7 +1092,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                   style={styles.summaryEdit}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="pencil" size={14} color={c.pink} />
+                  <Ionicons name="pencil" size={14} color={palette.pink} />
                   <Text style={styles.summaryEditText}>Edit plan</Text>
                 </TouchableOpacity>
               </GradientCard>
@@ -1167,7 +1167,7 @@ export default function ManualWorkoutPlanBuilderScreen({
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editExerciseId ? 'Edit exercise' : 'Add exercise'}</Text>
               <TouchableOpacity onPress={() => { setModalOpen(false); resetModal(); }} style={styles.modalClose}>
-                <Ionicons name="close" size={22} color={c.textPrimary} />
+                <Ionicons name="close" size={22} color={palette.textPrimary} />
               </TouchableOpacity>
             </View>
             <ScrollView
@@ -1180,11 +1180,11 @@ export default function ManualWorkoutPlanBuilderScreen({
             <FieldLabel>Search library</FieldLabel>
             <FormField style={{ marginBottom: 8 }}>
               <View style={styles.searchRow}>
-                <Ionicons name="search" size={18} color={c.textTertiary} />
+                <Ionicons name="search" size={18} color={palette.textTertiary} />
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Bench press, RDL, curls…"
-                  placeholderTextColor={c.textTertiary}
+                  placeholderTextColor={palette.textTertiary}
                   value={searchQ}
                   onChangeText={setSearchQ}
                 />
@@ -1212,7 +1212,7 @@ export default function ManualWorkoutPlanBuilderScreen({
               <TextInput
                 style={styles.inputBare}
                 placeholder="Type any exercise name"
-                placeholderTextColor={c.textTertiary}
+                placeholderTextColor={palette.textTertiary}
                 value={customName}
                 onChangeText={(t) => {
                   setCustomName(t);
@@ -1285,7 +1285,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <TextInput
                   style={styles.input}
                   placeholder="e.g., 3-1-1-1"
-                  placeholderTextColor={c.textTertiary}
+                  placeholderTextColor={palette.textTertiary}
                   value={tempo}
                   onChangeText={setTempo}
                 />
@@ -1293,7 +1293,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <TextInput
                   style={styles.input}
                   placeholder="e.g., 185 lb"
-                  placeholderTextColor={c.textTertiary}
+                  placeholderTextColor={palette.textTertiary}
                   value={weight}
                   onChangeText={setWeight}
                 />
@@ -1301,7 +1301,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <TextInput
                   style={styles.input}
                   placeholder="e.g., +5 lb when all sets hit top of range"
-                  placeholderTextColor={c.textTertiary}
+                  placeholderTextColor={palette.textTertiary}
                   value={progression}
                   onChangeText={setProgression}
                 />
@@ -1309,7 +1309,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <TextInput
                   style={[styles.input, styles.inputMulti]}
                   placeholder="Coaching cues…"
-                  placeholderTextColor={c.textTertiary}
+                  placeholderTextColor={palette.textTertiary}
                   value={notes}
                   onChangeText={setNotes}
                   multiline
@@ -1343,7 +1343,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 value={setEditReps}
                 onChangeText={setSetEditReps}
                 placeholder="10"
-                placeholderTextColor={c.textTertiary}
+                placeholderTextColor={palette.textTertiary}
               />
             </FormField>
             <FieldLabel>Weight</FieldLabel>
@@ -1353,7 +1353,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 value={setEditWeight}
                 onChangeText={setSetEditWeight}
                 placeholder="e.g. 185 lbs"
-                placeholderTextColor={c.textTertiary}
+                placeholderTextColor={palette.textTertiary}
               />
             </FormField>
             <FieldLabel>Rest (seconds)</FieldLabel>
@@ -1364,7 +1364,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 value={setEditRest}
                 onChangeText={setSetEditRest}
                 placeholder="120"
-                placeholderTextColor={c.textTertiary}
+                placeholderTextColor={palette.textTertiary}
               />
             </FormField>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>

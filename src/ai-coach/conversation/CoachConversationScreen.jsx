@@ -770,9 +770,9 @@ const buildFeatureCards = ({ userText, userProfile }) => {
 };
 
 // One "what I'm doing" panel: colored left edge + icon title + up to 4 label/value rows.
-// Note: prop is historically named `t` but callers pass `palette={palette}` — keep the name.
-function FeatureCard({ t, icon, title, color, items }) {
-  // vocab: palette (via `t`) = DARK or LIGHT token bag for card chrome
+// Callers pass palette={palette} — the prop must be named palette or the body below crashes.
+function FeatureCard({ palette, icon, title, color, items }) {
+  // vocab: palette = DARK or LIGHT token bag for card chrome
   return (
     <View
       style={{
@@ -844,7 +844,7 @@ function coachLoadingBubbleStyle(t, isDark) {
 // ─── Loading bubble only (thinking / web search / drafting) ───────────────────
 // Footer under FlatList while typing=true or a tool is executing.
 // phase drives COACH_WAIT_LABELS + whether dots are cyan (web) or pink (normal).
-function TypingIndicator({ t, phase = 'thinking', isDark = true }) {
+function TypingIndicator({ palette, phase = 'thinking', isDark = true }) {
   // vocab: useRef = mutable box that survives re-renders without triggering them
   // vocab: Animated.Value = opacity driver for each bouncing dot (0.35 rest → 1 peak)
   const dot1 = useRef(new Animated.Value(0.35)).current;
@@ -878,7 +878,7 @@ function TypingIndicator({ t, phase = 'thinking', isDark = true }) {
 
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 16 }}>
-      <View style={coachLoadingBubbleStyle(t, isDark)}>
+      <View style={coachLoadingBubbleStyle(palette, isDark)}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {/* Mini sparkles tile — same warm gradient as CoachReplyHeader */}
           <LinearGradient
@@ -920,7 +920,7 @@ function TypingIndicator({ t, phase = 'thinking', isDark = true }) {
 }
 
 // Top of every AI bubble: sparkles badge + "Coach" label + optional compact copy button.
-function CoachReplyHeader({ t, copyText }) {
+function CoachReplyHeader({ palette, copyText }) {
   return (
     <View
       style={{
@@ -957,7 +957,7 @@ function CoachReplyHeader({ t, copyText }) {
 }
 
 // Clipboard control for a bubble. compact=true = icon-only (used in headers / under user bubbles).
-function CoachMessageCopyButton({ text, t, align = 'flex-end', compact = false }) {
+function CoachMessageCopyButton({ text, palette, align = 'flex-end', compact = false }) {
   // Flash "Copied" / green check for COPY_FEEDBACK_MS, then revert.
   const [copied, setCopied] = useState(false);
   // Hold the timeout id so we can clear it on remount / rapid re-taps.
@@ -1054,7 +1054,7 @@ function CoachSelectableMessageText({ text, color, isDark }) {
 // lastUserText + threadMessages exist so web-status + tool-chip gating can see the prior turn.
 function MessageBubble({
   message,
-  t,
+  palette,
   onToolPress,
   isDark = true,
   lastUserText = '',

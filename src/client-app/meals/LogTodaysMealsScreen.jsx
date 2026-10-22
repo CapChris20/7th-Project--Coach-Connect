@@ -25,6 +25,9 @@ import {
   getFoodLogsForDate,
   addFoodLog,
   deleteFoodLog,
+  getDailyGoals,
+  splitLogsByMeal,
+  calculateMacroTotals,
 } from '../../nutrition/daily-log/saveLoggedFood';
 import FoodSearchScreen from '../../nutrition/food-search/FoodSearchScreen';
 import { reportCrashAutomaticallySync } from '../../crash-reports/reportCrashAutomatically';
@@ -156,6 +159,18 @@ function initialsFromName(name) {
 
 function foodIsMissingCalories(food) {
   return !food || (!food.calories && food.calories !== 0);
+}
+
+// FatSecret foods carry their own food_id / source tags.
+// The plain addFoodLog writer stores whatever is on the food object,
+// so we fold those two tags onto the food and reuse the same write path.
+async function addFoodLogWithFatSecret(userId, { mealType, food, date, servingSize, foodId, source }) {
+  return addFoodLog(userId, {
+    mealType,
+    date,
+    servingSize,
+    food: { ...food, food_id: foodId, source: source || 'fatsecret' },
+  });
 }
 
 function foodIsFromFatSecret(food) {
@@ -871,6 +886,27 @@ export default function LogTodaysMealsScreen({ onClose, onNavigate, onProfilePre
 }
 
 
+// Row styles for NutritionFactRow below. This little component lives outside
+// the main screen, so it cannot see the screen's theme-built `styles` sheet —
+// it gets its own small sheet (label/value colors are passed in as props).
+const nutritionFactStyles = StyleSheet.create({
+  nutritionFactRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  nutritionFactLabel: {
+    fontSize: 14,
+    flex: 1,
+  },
+  nutritionFactValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
+
 function NutritionFactRow({ label, value }) {
   const { isDark } = useTheme();
   let labelColor = '#6B7280';
@@ -880,11 +916,11 @@ function NutritionFactRow({ label, value }) {
     valueColor = '#FFFFFF';
   }
   return (
-    <View style={styles.nutritionFactRow}>
-      <Text style={[styles.nutritionFactLabel, { color: labelColor }]} selectable={true}>
+    <View style={nutritionFactStyles.nutritionFactRow}>
+      <Text style={[nutritionFactStyles.nutritionFactLabel, { color: labelColor }]} selectable={true}>
         {label}
       </Text>
-      <Text style={[styles.nutritionFactValue, { color: valueColor }]} selectable={true}>
+      <Text style={[nutritionFactStyles.nutritionFactValue, { color: valueColor }]} selectable={true}>
         {value}
       </Text>
     </View>

@@ -45,6 +45,12 @@ import EditServingPopup from '../food-details/EditServingPopup';
 const DEDUP_CLEAR_MS = 3000;
 const DEFAULT_CALORIE_GOAL = 2000;
 const FALLBACK_CALORIE_GOAL = 2200;
+// Fallback macro goals when the user has no saved targets yet (same defaults as saveLoggedFood).
+const DEFAULT_PROTEIN_GOAL = 150;
+const DEFAULT_CARBS_GOAL = 220;
+const DEFAULT_FAT_GOAL = 70;
+// Manipulate here: how many frequent-food names to preload for search suggestions.
+const TOP_FOOD_NAMES_LIMIT = 3;
 const DEFAULT_SERVING_GRAMS = 100;
 const MACRO_ROUND_TENTHS = 10;
 const flexScrollHost = { flex: 1, minHeight: 0 };
@@ -59,6 +65,14 @@ function numberOrZero(value) {
 
 function roundTenths(value) {
   return Math.round(numberOrZero(value) * MACRO_ROUND_TENTHS) / MACRO_ROUND_TENTHS;
+}
+
+// Blank text in an edit field means "not entered" (null), not zero.
+// Used by the edit-amount save so untouched fields keep the old serving.
+function parseOptionalNumber(text) {
+  if (text == null || String(text).trim() === '') return null;
+  const parsed = Number(text);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function mapLogDocToRow(logDoc) {
@@ -438,14 +452,14 @@ export const DailyLogContent = ({
     try {
       await updateFoodLog(editingLog.id, {
         serving_grams: newAmount,
-        serving_size: roundMacro(finalQty),
-        calories: roundMacro((Number(editingLog.calories) || 0) * ratio),
-        protein: roundMacro((Number(editingLog.protein) || 0) * ratio),
-        carbs: roundMacro((Number(editingLog.carbs) || 0) * ratio),
-        fat: roundMacro((Number(editingLog.fat) || 0) * ratio),
-        fiber: roundMacro((Number(editingLog.fiber) || 0) * ratio),
-        sugar: roundMacro((Number(editingLog.sugar) || 0) * ratio),
-        sodium: roundMacro((Number(editingLog.sodium) || 0) * ratio),
+        serving_size: roundTenths(finalQty),
+        calories: roundTenths((Number(editingLog.calories) || 0) * ratio),
+        protein: roundTenths((Number(editingLog.protein) || 0) * ratio),
+        carbs: roundTenths((Number(editingLog.carbs) || 0) * ratio),
+        fat: roundTenths((Number(editingLog.fat) || 0) * ratio),
+        fiber: roundTenths((Number(editingLog.fiber) || 0) * ratio),
+        sugar: roundTenths((Number(editingLog.sugar) || 0) * ratio),
+        sodium: roundTenths((Number(editingLog.sodium) || 0) * ratio),
       });
       const updated = await getFoodLogsForDate(uid, today);
       setLogs(updated);

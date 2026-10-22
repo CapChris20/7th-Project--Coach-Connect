@@ -27,11 +27,17 @@ import BottomMenuBar from '../../navigation/BottomMenuBar';
 import {
   getClientInitials,
   getClientRosterStats,
+  getClientSubtext,
 } from '../home/trainerHomePieces';
 
 // ===== NAMED CONSTANTS =====
 
 const SHELL_NAV_INSET_FALLBACK = 24;
+
+// Full-screen background wash behind the roster (dark plum → light lavender).
+// Manipulate here: change these two stops to re-tint the whole Clients screen.
+const GRADIENT_BG_DARK = ['#0A0618', '#120A24'];
+const GRADIENT_BG_LIGHT = ['#F5F3FF', '#FFFFFF'];
 
 const CLIENT_LIST_DELETE_GRADIENT = ['#BE185D', '#C2410C'];
 const ROSTER_LIST_AVATAR_GRADIENT = ['#9F1239', '#C2410C'];
