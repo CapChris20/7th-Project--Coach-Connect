@@ -77,7 +77,7 @@ import { carryOutAction, normalizeToolCall, TOOL_DISPLAY_NAMES } from '../coach-
 // vocab: normalizeToolCall = coerce weird AI shapes into one canonical object
 // vocab: carryOutAction = actually write the log / open plan / notify trainer
 import { inferToolCallFromCoachMessage } from '../coach-actions/findActionsInReply';
-import { useCoachSpeech } from './_voiceStub';
+import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from './_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from './keyboardBehavior';
 import { shouldShowWebSearchUI } from '../internet-lookup/shouldLookUpOnInternet';
 import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../for-both/screenReaderLabels';
@@ -156,6 +156,11 @@ function serializeChatMessage(m) {
   }
   // Tool flags: chip still pending (toolCall), already ran (toolConfirmed), or system result bubble.
   if (m.toolCall) payload.toolCall = m.toolCall;
+  // Multi-action replies: the full queue + which of them already ran.
+  if (Array.isArray(m.toolCalls) && m.toolCalls.length) payload.toolCalls = m.toolCalls;
+  if (Array.isArray(m.completedToolCalls) && m.completedToolCalls.length) {
+    payload.completedToolCalls = m.completedToolCalls;
+  }
   if (m.toolConfirmed) payload.toolConfirmed = true;
   if (m.isToolResult) payload.isToolResult = true;
   return stripUndefinedDeep(payload);
@@ -184,10 +189,53 @@ function resolveIncomingCoachTool(coachResponse, userText = '') {
   return inferred && isValidCoachToolProposal(inferred, user) ? inferred : null;
 }
 
+// Identity for one tool call in a multi-action reply ("logSleep:{...}").
+// Used to track which of a message's several actions have already run.
+function coachToolCallKey(toolCall) {
+  const normalized = normalizeToolCall(toolCall);
+  if (!normalized) return '';
+  return `${normalized.name}:${JSON.stringify(normalized.params || {})}`;
+}
+
+// Every valid tool this brand-new reply should offer, in order.
+// A reply can carry several actions ("log 8h sleep and 20oz water") — before
+// this, only the first survived and the rest were silently dropped.
+function resolveIncomingCoachTools(coachResponse, userText = '') {
+  const user = String(userText || '').trim();
+  const rawReply = coachResponse?.message || '';
+  const rawTools = Array.isArray(coachResponse?.toolCalls) && coachResponse.toolCalls.length
+    ? coachResponse.toolCalls
+    : [coachResponse?.toolCall || readActionsFromReply(rawReply)[0] || null];
+  const resolved = [];
+  const seen = new Set();
+  for (const rawTool of rawTools) {
+    const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
+    if (!coerced || !isValidCoachToolProposal(coerced, user)) continue;
+    const key = coachToolCallKey(coerced);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    resolved.push(guardCoachToolProposal(normalizeToolCall(coerced)));
+  }
+  if (resolved.length) return resolved.filter(Boolean);
+  const single = resolveIncomingCoachTool(coachResponse, userText);
+  return single ? [single] : [];
+}
+
 // For an already-rendered AI bubble: return a safe toolCall to show the chip, or null.
 // Skips confirmed / result bubbles so we never re-offer an action that already ran.
 function resolveMessageToolCall(message, userMessage = '') {
   if (!message || message.toolConfirmed || message.isToolResult) return null;
+  // Multi-action reply: offer the first action that has not run yet, so the
+  // chips appear one at a time until every action is confirmed.
+  if (Array.isArray(message.toolCalls) && message.toolCalls.length) {
+    const completed = new Set(Array.isArray(message.completedToolCalls) ? message.completedToolCalls : []);
+    for (const candidate of message.toolCalls) {
+      if (completed.has(coachToolCallKey(candidate))) continue;
+      const guarded = guardCoachToolProposal(normalizeToolCall(candidate));
+      if (guarded && isValidCoachToolProposal(guarded, userMessage)) return guarded;
+    }
+    return null;
+  }
   if (message.toolCall) {
     // Re-guard on render in case stored JSON drifted or was hand-edited.
     const guarded = guardCoachToolProposal(normalizeToolCall(message.toolCall));
@@ -364,8 +412,12 @@ const TOOL_SUMMARY_BY_NAME = {
   logMood: (params) => ({
     icon: 'happy-outline',
     title: 'Log mood',
+    // Emoji matches LogMoodPopup so the chip and the popup read as one action.
+    // Manipulate here: mood → emoji shown on the Confirm chip.
     detail: joinSummaryParts(
-      params.mood ? `Feeling ${params.mood}` : null,
+      params.mood
+        ? `Feeling ${{ happy: '😊', okay: '😐', stressed: '😖', tired: '😴', anxious: '😰' }[String(params.mood).toLowerCase()] || ''} ${params.mood}`.trim()
+        : null,
       params.notes ? String(params.notes) : null,
     ),
   }),
@@ -1269,11 +1321,23 @@ function messagesAfterToolRun(prevMessages, {
   // Mark the source bubble confirmed (and stash the merged toolCall if it was inferred-only).
   const marked = prevMessages.map((message) => {
     if (!targetId || message.id !== targetId) return message;
+    // Multi-action reply: record THIS action as done and only flip
+    // toolConfirmed when the whole queue has run — otherwise the chip
+    // re-renders for the next pending action instead of disappearing.
+    const queue = Array.isArray(message.toolCalls) && message.toolCalls.length
+      ? message.toolCalls
+      : [message.toolCall || merged];
+    const completedToolCalls = result.success
+      ? [...new Set([...(message.completedToolCalls || []), coachToolCallKey(merged)])]
+      : message.completedToolCalls || [];
+    const allDone = queue.every((queued) => completedToolCalls.includes(coachToolCallKey(queued)));
     return {
       ...message,
       // vocab/symbol: ...spread = copy message then override tool fields
-      toolConfirmed: result.success,
+      toolConfirmed: result.success ? allDone : false,
       toolCall: message.toolCall || merged,
+      toolCalls: queue,
+      completedToolCalls,
     };
   });
 
@@ -1483,8 +1547,10 @@ async function finishCoachSendSuccess({
   persistSession,
   sessionId,
 }) {
-  // Decide which Confirm Action (if any) this reply should carry.
-  const resolvedTool = resolveIncomingCoachTool(coachResponse, text.trim());
+  // Decide which Confirm Actions (if any) this reply should carry — plural:
+  // one reply can hold several queued actions, confirmed one chip at a time.
+  const resolvedTools = resolveIncomingCoachTools(coachResponse, text.trim());
+  const resolvedTool = resolvedTools[0] || null;
   // Strip tool JSON + build follow-up prompt chips for the UI.
   const prepared = prepareCoachReplyForDisplay(coachResponse.message || '', {
     userMessage: text.trim(),
@@ -1501,6 +1567,8 @@ async function finishCoachSendSuccess({
     time: now(),
     source: coachResponse.source,
     toolCall: resolvedTool,
+    toolCalls: resolvedTools,
+    completedToolCalls: [],
     searchedWeb: coachResponse.searchedWeb === true,
     webProvider: coachResponse.webProvider || null,
     route: coachResponse.route || null,
@@ -2514,7 +2582,8 @@ export default function CoachConversationScreen({
               // Keep focus on Enter so multiline doesn't dismiss the keyboard.
               blurOnSubmit={false}
             />
-            {/* Mic — highlights while listening; toggleListen starts/stops speech */}
+            {/* Mic — only rendered when voice input actually exists (see _voiceStub). */}
+            {COACH_VOICE_INPUT_AVAILABLE ? (
             <TouchableOpacity
               onPress={toggleListen}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2537,6 +2606,7 @@ export default function CoachConversationScreen({
                 color={isDark ? AI_COACH_UI.composer.iconMic : AI_COACH_UI.composer.iconMicLight}
               />
             </TouchableOpacity>
+            ) : null}
             {/* Send — disabled (faded) until canSend; gradient matches theme */}
             <TouchableOpacity
               onPress={() => sendMessage(input, attachments)}

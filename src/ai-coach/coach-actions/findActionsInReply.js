@@ -16,6 +16,8 @@ import {
   isInformationalUserMessage,
   userExplicitlyRequestsAction,
   userWantsExplicitDashboardLog,
+  // vocab: findMoodInText = first canonical mood word/emoji in a sentence (shared with the server)
+  findMoodInText,
 } from './shouldAskFirst';
 
 // ===== NAMED CONSTANTS =====
@@ -40,6 +42,8 @@ const LOG_WATER_TOOL = 'logWater';
 const LOG_NUTRITION_TOOL = 'logNutrition';
 const ADJUST_MACROS_TOOL = 'adjustMacroTargets';
 const RATE_ENERGY_TOOL = 'rateEnergy';
+const LOG_MOOD_TOOL = 'logMood';
+const RATE_WORKOUT_TOOL = 'rateWorkout';
 const OPEN_WORKOUT_PLAN_TOOL = 'openWorkoutPlan';
 const LOG_REST_DAY_TOOL = 'logRestDay';
 const DELETE_LOG_TOOL = 'deleteLog';
@@ -303,8 +307,10 @@ function inferWaterLog(userText, combinedLower) {
   if (!userWantsExplicitDashboardLog(userText, 'water')) return null;
   const waterMatch = combinedLower.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i);
   if (!(waterMatch || /\blog\s*water/i.test(combinedLower))) return null;
-  // waterMatch[1] is read even when the "log water" phrase matched without ounces.
-  // That matches the previous behavior (it throws if the ounces group is missing).
+  // "log water" with no ounces: no number to confirm, so offer nothing here.
+  // (The old code read waterMatch[1] anyway and threw a TypeError, which
+  // killed the whole guess pipeline for that reply.)
+  if (!waterMatch) return null;
   return normalizeToolCall({
     name: LOG_WATER_TOOL,
     params: { amount_oz: Number(waterMatch[1]) },
@@ -331,6 +337,48 @@ function inferEnergyRating(userText, combinedLower) {
     name: RATE_ENERGY_TOOL,
     params: { rating },
     reasoning: 'Log your energy level on the dashboard.',
+  });
+}
+
+/**
+ * Mood was missing from this client pipeline entirely (server-only before):
+ * when the model forgot its JSON and the server inferrer missed a phrasing,
+ * the phone could never recover — the coach said "Tap Confirm" and no chip
+ * existed. Any explicit log verb + a mood word ("Log that I'm happy",
+ * "log my mood: happy") is enough; findMoodInText normalizes the spelling.
+ * @param {string} userText
+ * @returns {object|null}
+ */
+function inferMoodLog(userText) {
+  if (!userText) return null;
+  if (!/\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(userText)) return null;
+  const mood = findMoodInText(userText);
+  if (!mood) return null;
+  return normalizeToolCall({
+    name: LOG_MOOD_TOOL,
+    params: { mood },
+    reasoning: 'Log your mood on the dashboard.',
+  });
+}
+
+/**
+ * Workout rating had the same hole as mood: server-only, no client fallback.
+ * @param {string} userText
+ * @param {string} combinedLower
+ * @returns {object|null}
+ */
+function inferWorkoutRating(userText, combinedLower) {
+  if (!userText) return null;
+  if (!userWantsExplicitDashboardLog(userText, 'workout')) return null;
+  const ratingMatch =
+    combinedLower.match(/(?:workout|session)\s*(?:was|is|rate[sd]?|as)?\s*(\d+)\s*(?:\/\s*10|out of 10)?/i) ||
+    combinedLower.match(/(?:rate|log)\s*(?:my\s*|today'?s\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i);
+  const rating = Number(ratingMatch?.[1]);
+  if (!Number.isFinite(rating) || rating < ENERGY_RATING_MIN || rating > ENERGY_RATING_MAX) return null;
+  return normalizeToolCall({
+    name: RATE_WORKOUT_TOOL,
+    params: { rating },
+    reasoning: 'Log your workout rating on the dashboard.',
   });
 }
 
@@ -416,6 +464,8 @@ function buildWordGuessPipeline(replyText, userText, combinedLower) {
     () => inferStepsLog(userText, combinedLower),
     () => inferWaterLog(userText, combinedLower),
     () => inferEnergyRating(userText, combinedLower),
+    () => inferMoodLog(userText),
+    () => inferWorkoutRating(userText, combinedLower),
     () => inferOpenWorkoutPlan(userText),
     () => inferRestDayLog(userText, combinedLower),
     () => inferDeleteFromUserText(userText, replyText),

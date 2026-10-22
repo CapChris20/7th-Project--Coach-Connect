@@ -35,7 +35,7 @@ function read(relPath) {
   const chatScreen = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
   assert(
     'FIX 1: ChatWithCoachScreen imports logger',
-    /import\s+logger\s+from\s+['"]\.\.\/\.\.\/shared\/services\/logger['"]/.test(chatScreen),
+    /import\s+logger\s+from\s+['"](?:\.\.\/\.\.\/shared\/services\/logger|\.\.\/\.\.\/for-both\/online-connection\/sendCrashReport)['"]/.test(chatScreen),
   );
   assert(
     'FIX 1: ChatWithCoachScreen uses logger (not bare global)',
@@ -58,12 +58,14 @@ function read(relPath) {
     voice.COACH_DATA_INTEGRITY_RULE.includes('Never estimate, approximate, or invent numbers'),
   );
 
+  const promptSrc = read('server/lib/coachPrompt/coachPromptBuilders.js');
   const indexSrc = read('server/index.js');
+  const combined = promptSrc + indexSrc;
   assert(
     'FIX 5: base prompt includes DATA INTEGRITY',
-    indexSrc.includes('${COACH_DATA_INTEGRITY_RULE}') && indexSrc.includes('COACH_DATA_INTEGRITY_RULE'),
+    combined.includes('${COACH_DATA_INTEGRITY_RULE}') && combined.includes('COACH_DATA_INTEGRITY_RULE'),
   );
-  const integrityRefs = indexSrc.match(/\$\{COACH_DATA_INTEGRITY_RULE\}/g) || [];
+  const integrityRefs = combined.match(/\$\{COACH_DATA_INTEGRITY_RULE\}/g) || [];
   assert(
     'FIX 5: weekly + base prompts include DATA INTEGRITY',
     integrityRefs.length >= 2,
@@ -73,26 +75,30 @@ function read(relPath) {
 
 // ─── FIX 8: no 400-calorie fallback ────────────────────────────────────────
 (function testLogNutritionNoFallback() {
+  const executeSrc = read('server/lib/coachTools/executeTool.js');
   const indexSrc = read('server/index.js');
-  assert('FIX 8: no cals = 400 fallback', !/cals\s*=\s*400/.test(indexSrc));
+  const combined = executeSrc + indexSrc;
+  assert('FIX 8: no cals = 400 fallback', !/cals\s*=\s*400/.test(combined));
   assert(
     'FIX 8: returns error when USDA missing',
-    indexSrc.includes("I couldn't look up nutrition data for") &&
-      indexSrc.includes('Please log this manually in the nutrition tab'),
+    combined.includes("I couldn't look up nutrition data for") &&
+      combined.includes('Please log this manually in the nutrition tab'),
   );
 })();
 
 // ─── FIX 3: options.includePersonalData ────────────────────────────────────
 (function testIncludePersonalDataRouting() {
+  const handlerSrc = read('server/lib/aiCoach/coachRequestHandler.js');
   const indexSrc = read('server/index.js');
+  const combined = handlerSrc + indexSrc;
   assert(
     'FIX 3: buildCoachPromptForUser reads options.includePersonalData',
-    indexSrc.includes('coachOptions.includePersonalData === true') &&
-      indexSrc.includes('coachOptions.includePersonalData === false'),
+    combined.includes('coachOptions.includePersonalData === true') &&
+      combined.includes('coachOptions.includePersonalData === false'),
   );
   assert(
     'FIX 3: handleAICoachRequest passes options to buildCoachPromptForUser',
-    /buildCoachPromptForUser\(\s*targetUid,\s*userProfile,\s*lastUserMsg,\s*options/.test(indexSrc),
+    /buildCoachPromptForUser\(\s*targetUid,\s*userProfile,\s*lastUserMsg,\s*(?:options|promptOptions)/.test(combined),
   );
 
   const clientRouting = require(path.join(ROOT, 'src/ai-coach/coach-knowledge/decideWhatCoachShouldKnow.js'));
@@ -109,14 +115,17 @@ function read(relPath) {
 
 // ─── FIX 6: weekly fetch failure note + logger ─────────────────────────────
 (function testWeeklyFetchFailure() {
+  const handlerSrc = read('server/lib/aiCoach/coachRequestHandler.js');
   const indexSrc = read('server/index.js');
+  const combined = handlerSrc + indexSrc;
   assert(
     'FIX 6: WEEKLY_FETCH_FAILURE_NOTE present',
-    indexSrc.includes('Weekly data failed to load for this request'),
+    combined.includes('Weekly data failed to load for this request') ||
+      combined.includes('WEEKLY_FETCH_FAILURE_NOTE'),
   );
   assert(
     'FIX 6: uses logger.error on fetch failure',
-    indexSrc.includes('logger.error') && indexSrc.includes('Weekly context fetch failed'),
+    combined.includes('logger.error') && combined.includes('Weekly context fetch failed'),
   );
 })();
 
@@ -282,10 +291,12 @@ async function testAggregateCoachWeeklyData() {
 
 // ─── FIX 7: streak omitted when zero in weekly prompt logic ────────────────
 (function testStreakLineOmission() {
+  const promptSrc = read('server/lib/coachPrompt/coachPromptBuilders.js');
   const indexSrc = read('server/index.js');
+  const combined = promptSrc + indexSrc;
   assert(
     'FIX 7: streak line only when streak > 0',
-    indexSrc.includes('streak > 0 ?') && indexSrc.includes('Streak ${streak} days'),
+    combined.includes('streak > 0 ?') && combined.includes('Streak ${streak} days'),
   );
 })();
 

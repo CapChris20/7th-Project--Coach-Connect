@@ -3,7 +3,7 @@
 // Used by: the coach conversation when a tool wants to log water.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, DetailRow, ConfirmCancelRow, logDateLabel } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
@@ -65,6 +65,7 @@ export default function LogWaterPopup({ params, reasoning, onConfirm, onCancel, 
   return (
     <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={AMOUNT_ROW_LABEL} value={ounceLabel} />
+      <DetailRow label="Date" value={logDateLabel(params)} />
       <ConfirmCancelRow
         onConfirm={handleConfirmLogWater}
         onCancel={onCancel}

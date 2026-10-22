@@ -91,9 +91,26 @@ function markdownTitleOrHost(titleFromMarkdown, url) {
  * @param {string} url
  * @param {string} title
  */
+/**
+ * Dedupe key for a source URL: ignores protocol, "www.", trailing slash, and
+ * case, so the same page cited twice (once as a markdown link, once bare)
+ * does not produce two near-identical rows in the Sources list.
+ * @param {string} url
+ * @returns {string}
+ */
+function normalizedSourceKey(url) {
+  return String(url || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '');
+}
+
 function pushUniqueSource(sources, urlsAlreadyListed, url, title) {
-  if (urlsAlreadyListed.has(url)) return;
-  urlsAlreadyListed.add(url);
+  const key = normalizedSourceKey(url);
+  if (!key || urlsAlreadyListed.has(key)) return;
+  urlsAlreadyListed.add(key);
   sources.push({ url, title });
 }
 
@@ -165,9 +182,15 @@ function sourcesForMessage(message) {
  */
 function nonJunkSourcesCapped(fromMessage) {
   const filtered = [];
+  const seenKeys = new Set();
   for (let index = 0; index < fromMessage.length; index += 1) {
     const source = fromMessage[index];
-    if (!isJunkSource(source)) filtered.push(source);
+    if (isJunkSource(source)) continue;
+    // Structured sources can also repeat a page (provider + scraped copy).
+    const key = normalizedSourceKey(source?.url || source?.link);
+    if (!key || seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    filtered.push(source);
   }
   return filtered.slice(0, MAX_SOURCE_CARDS);
 }
@@ -255,23 +278,20 @@ function SourcesTogglePill({ expanded, sourceCount, colors, onToggle }) {
       accessibilityState={{ expanded }}
       accessibilityLabel={accessibilityLabel}
     >
-      <LinearGradient
-        colors={AI_COACH_UI.gradient.borderWarm}
-        start={PILL_GRADIENT_START}
-        end={PILL_GRADIENT_END}
-        style={styles.pillBorder}
+      {/* Flat chip, deliberately quiet: the old gradient border + filled icon
+          circle + orange count badge stacked three decorations on one small
+          button and read as visual noise under an answer. */}
+      <View
+        style={[
+          styles.pillInner,
+          { backgroundColor: colors.panelBackground, borderColor: colors.rowDivider, borderWidth: 1 },
+        ]}
       >
-        <View style={[styles.pillInner, { backgroundColor: colors.panelBackground }]}>
-          <View style={[styles.pillIcon, { backgroundColor: colors.pillIconFill }]}>
-            <Ionicons name={GLOBE_ICON_NAME} size={14} color={colors.accent} />
-          </View>
-          <Text style={[styles.pillText, { color: colors.textPrimary }]}>{SOURCES_PILL_LABEL}</Text>
-          <View style={[styles.countBadge, { backgroundColor: colors.countBadgeFill }]}>
-            <Text style={[styles.countText, { color: colors.accentSecondary }]}>{sourceCount}</Text>
-          </View>
-          <Ionicons name={chevronName} size={16} color={colors.textMuted} />
-        </View>
-      </LinearGradient>
+        <Ionicons name={GLOBE_ICON_NAME} size={14} color={colors.accent} />
+        <Text style={[styles.pillText, { color: colors.textPrimary }]}>{SOURCES_PILL_LABEL}</Text>
+        <Text style={[styles.countText, { color: colors.textMuted }]}>{sourceCount}</Text>
+        <Ionicons name={chevronName} size={16} color={colors.textMuted} />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -293,16 +313,6 @@ function snippetFromSource(source) {
   return String(source.snippet).trim();
 }
 
-function hostAndSnippetLine(host, snippet) {
-  if (!snippet) return host;
-  return `${host}${HOST_SNIPPET_SEPARATOR}${snippet}`;
-}
-
-function hostLineCount(snippet) {
-  if (snippet) return SNIPPET_LINE_COUNT;
-  return HOST_ONLY_LINE_COUNT;
-}
-
 function rowBorderStyle(isLastRow, colors) {
   if (isLastRow) return null;
   return { borderBottomWidth: ROW_DIVIDER_WIDTH, borderBottomColor: colors.rowDivider };
@@ -314,8 +324,11 @@ function sourceRowKey(source, index) {
 }
 
 function SourceFavicon({ favicon, colors }) {
-  if (favicon) {
-    return <Image source={{ uri: favicon }} style={styles.favicon} />;
+  // vocab: a failed favicon request used to leave a blank/broken square —
+  // track the error and swap in the link-icon tile instead.
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (favicon && !loadFailed) {
+    return <Image source={{ uri: favicon }} style={styles.favicon} onError={() => setLoadFailed(true)} />;
   }
   return (
     <View style={[styles.faviconFallback, { backgroundColor: colors.faviconFallback }]}>
@@ -336,8 +349,6 @@ function SourceLinkRow({ source, colors, isLastRow }) {
   const host = hostLabel(url);
   const favicon = faviconUrl(url);
   const snippet = snippetFromSource(source);
-  const hostLine = hostAndSnippetLine(host, snippet);
-  const snippetLines = hostLineCount(snippet);
   const openSourceLabel = `Open source ${title}`;
 
   return (
@@ -348,21 +359,21 @@ function SourceLinkRow({ source, colors, isLastRow }) {
       accessibilityRole="link"
       accessibilityLabel={openSourceLabel}
     >
-      <LinearGradient
-        colors={AI_COACH_UI.gradient.borderWarmSubtle}
-        start={PILL_GRADIENT_START}
-        end={PILL_GRADIENT_END}
-        style={styles.faviconRing}
-      >
-        <SourceFavicon favicon={favicon} colors={colors} />
-      </LinearGradient>
+      <SourceFavicon favicon={favicon} colors={colors} />
       <View style={styles.textCol}>
         <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={2}>
           {title}
         </Text>
-        <Text style={[styles.host, { color: colors.textMuted }]} numberOfLines={snippetLines}>
-          {hostLine}
+        {/* Host on its own line, snippet below it — the old "host · snippet"
+            single line truncated mid-sentence and read as one long URL. */}
+        <Text style={[styles.host, { color: colors.textMuted }]} numberOfLines={1}>
+          {host}
         </Text>
+        {snippet ? (
+          <Text style={[styles.host, { color: colors.textMuted }]} numberOfLines={2}>
+            {snippet}
+          </Text>
+        ) : null}
       </View>
       <Ionicons name={OPEN_ICON_NAME} size={16} color={colors.accentSecondary} />
     </TouchableOpacity>
@@ -434,35 +445,16 @@ export default function SourceLinkCards({ message, isDark = true }) {
 
 const styles = StyleSheet.create({
   wrap: { marginTop: 12, maxWidth: '100%' },
-  pillBorder: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    padding: 1,
-  },
   pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
   },
-  pillIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
-  countBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   countText: { fontSize: 12, fontWeight: '800' },
   listBorder: {
     marginTop: 10,
@@ -479,14 +471,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  faviconRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    padding: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   favicon: { width: 30, height: 30, borderRadius: 8 },
   faviconFallback: {

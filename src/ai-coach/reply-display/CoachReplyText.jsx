@@ -7,6 +7,7 @@ import Markdown from 'react-native-markdown-display';
 import { stripCoachToolJsonFromReply } from '../coach-actions/readActionsFromReply';
 import { stripInlineWebCitations } from '../reply-display/copyableReplyText';
 import { buildCoachMarkdownStyles } from '../reply-display/replyTextStyles';
+import { buildCoachMarkdownRules } from './coachMarkdownRules';
 import InternetAnswerReply from './InternetAnswerReply';
 
 // ===== NAMED CONSTANTS =====
@@ -29,20 +30,23 @@ function blockExternalLinkOpen(linkUrl) {
 // ===== MAIN FUNCTION =====
 
 /**
- * One reply bubble. Hook order: early web branch, then useMemo for plain markdown.
+ * One reply bubble: memos (markdown + theme + rules) → web branch → plain Markdown.
  * @param {{ text?: string, isDark?: boolean, isWebSearch?: boolean }} props
  * @returns {import('react').ReactElement}
  */
 export default function CoachReplyText({ text, isDark = true, isWebSearch = false }) {
+  // Hooks first, branch second — React requires the same hook order every render.
+  const displayMarkdown = useMemo(() => cleanedCoachReplyMarkdown(text), [text]);
+  const markdownTheme = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
+  // Custom rules: tables get a horizontal ScrollView (coachMarkdownRules).
+  const markdownRules = useMemo(() => buildCoachMarkdownRules(), []);
+
   if (isWebSearch) {
     return <InternetAnswerReply text={text} isDark={isDark} />;
   }
 
-  const displayMarkdown = useMemo(() => cleanedCoachReplyMarkdown(text), [text]);
-  const markdownTheme = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
-
   return (
-    <Markdown style={markdownTheme} onLinkPress={blockExternalLinkOpen}>
+    <Markdown style={markdownTheme} rules={markdownRules} onLinkPress={blockExternalLinkOpen}>
       {displayMarkdown}
     </Markdown>
   );

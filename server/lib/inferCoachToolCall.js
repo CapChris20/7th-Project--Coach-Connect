@@ -48,6 +48,8 @@ const {
   isInformationalUserMessage,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
+  // vocab: findMoodInText = first canonical mood word/emoji anywhere in a sentence
+  findMoodInText,
 } = require('../../src/ai-coach/coach-actions/shouldAskFirst');
 
 function wantsFoodLog(text) {
@@ -140,19 +142,23 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // logMood: "My mood is happy/okay/stressed/tired/anxious"
-  const moodKeywords = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
-  for (const mood of moodKeywords) {
-    if (
-      userWantsExplicitDashboardLog(raw, 'mood') &&
-      new RegExp(`\\b(?:mood|feel|feeling)\\s+(?:is\\s+|as\\s+)?${mood}\\b`, 'i').test(t)
-    ) {
-      return {
-        name: 'logMood',
-        params: { mood },
-        reasoning: `Log your mood as ${mood}.`,
-      };
-    }
+  // logMood: any explicit log verb + any mood word, in any order.
+  // The old regex required the literal pattern "mood/feel/feeling is|as <mood>",
+  // so Chris's real phrasing "Log that I'm Happy" (no word "mood" at all) and
+  // "Log my mood: happy" (colon) both fell through → the coach said
+  // "Tap Confirm" but no Confirm chip ever existed. A log verb plus a mood
+  // word is the intent; findMoodInText normalizes Happy/great/😊 → canonical.
+  const moodFromText = findMoodInText(raw);
+  if (
+    moodFromText &&
+    (userWantsExplicitDashboardLog(raw, 'mood') ||
+      /\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(t))
+  ) {
+    return {
+      name: 'logMood',
+      params: { mood: moodFromText },
+      reasoning: `Log your mood as ${moodFromText}.`,
+    };
   }
 
   // logRestDay: rest day on dashboard workout card
@@ -436,7 +442,7 @@ function serverNormalizeToolCall(raw) {
   return remapRestDayToolCall({ ...raw, params }) || { ...raw, params };
 }
 
-function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
+function mergeCoachToolCalls(modelText, userMessage, weeklyContext, nativeToolCalls = []) {
   const user = String(userMessage || '').trim();
   if (isInformationalUserMessage(user)) return [];
 
@@ -453,6 +459,13 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext) {
     parsed.push(guarded);
   };
 
+  // 1. Native tool calls first — structured data from the provider, most
+  //    trustworthy. They still pass the same guard as every other path.
+  for (const c of Array.isArray(nativeToolCalls) ? nativeToolCalls : []) {
+    add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));
+  }
+
+  // 2. JSON hidden in the prose — fallback for providers without tool calling.
   const { readActionsFromReply } = require('../../src/ai-coach/coach-actions/readActionsFromReply');
   for (const c of readActionsFromReply(modelText)) {
     add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));

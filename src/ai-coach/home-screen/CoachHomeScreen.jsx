@@ -38,7 +38,7 @@ import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { useCoachSpeech } from '../conversation/_voiceStub';
+import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from '../conversation/_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../conversation/keyboardBehavior';
 import { AI_COACH_UI } from '../coachColors';
 import ColorText from '../../look-and-feel/ColorText';
@@ -1484,6 +1484,8 @@ function ComposerBar({
           blurOnSubmit={false}
           accessibilityLabel="Message input"
         />
+        {/* Mic — only rendered when voice input actually exists (see _voiceStub). */}
+        {COACH_VOICE_INPUT_AVAILABLE ? (
         <TouchableOpacity
           onPress={toggleListen}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1504,6 +1506,7 @@ function ComposerBar({
             color={micIconColor(isDark)}
           />
         </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={handleSend}
           disabled={!canSend}

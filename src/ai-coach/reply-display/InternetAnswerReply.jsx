@@ -10,6 +10,7 @@ import {
   buildCoachMarkdownStyles,
   preprocessWebSearchLayout,
 } from '../reply-display/replyTextStyles';
+import { buildCoachMarkdownRules } from './coachMarkdownRules';
 
 // ===== NAMED CONSTANTS =====
 
@@ -58,9 +59,11 @@ function prepareInternetReply(replyText) {
 export default function InternetAnswerReply({ text, isDark = true }) {
   const replyMarkdown = useMemo(() => prepareInternetReply(text), [text]);
   const markdownStyles = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
+  // Same scrolling-table rule as normal coach replies.
+  const markdownRules = useMemo(() => buildCoachMarkdownRules(), []);
 
   return (
-    <Markdown style={markdownStyles} onLinkPress={IGNORE_MARKDOWN_LINK_PRESS}>
+    <Markdown style={markdownStyles} rules={markdownRules} onLinkPress={IGNORE_MARKDOWN_LINK_PRESS}>
       {replyMarkdown}
     </Markdown>
   );

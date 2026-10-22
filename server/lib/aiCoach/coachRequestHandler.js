@@ -69,9 +69,9 @@ function parseToolCalls(aiResponse) {
   return readActionsFromReply(aiResponse);
 }
 
-function resolveCoachToolCalls(aiText, userMessage, weeklyContext) {
+function resolveCoachToolCalls(aiText, userMessage, weeklyContext, nativeToolCalls = []) {
   return filterValidCoachToolProposals(
-    mergeCoachToolCalls(aiText, userMessage, weeklyContext || {}),
+    mergeCoachToolCalls(aiText, userMessage, weeklyContext || {}, nativeToolCalls),
     userMessage,
   );
 }
@@ -85,6 +85,8 @@ async function buildCoachPromptForUser(
   let includeWeekly;
   if (coachOptions.includePersonalData === true && targetUid) {
     includeWeekly = true;
+  } else if (coachOptions.includePersonalData === false) {
+    includeWeekly = false;
   } else {
     includeWeekly = targetUid
       ? shouldIncludeWeeklyContextInCoachPrompt(
@@ -496,13 +498,22 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
 
   if (deepSeekKey) {
     try {
+      const { COACH_FUNCTION_TOOLS } = require('../coachTools/coachToolSchemas');
       const response = await callDeepSeek({
         apiKey: deepSeekKey,
         systemPrompt,
         messages: coachMessagesForLlm(normalized),
+        // Native tool calling: the model returns structured tool_calls
+        // instead of (only) hiding JSON in its prose. See coachToolSchemas.
+        tools: COACH_FUNCTION_TOOLS,
       });
-      const toolCalls = resolveCoachToolCalls(response.text, lastUserMsg, weeklyContext);
+      const toolCalls = resolveCoachToolCalls(response.text, lastUserMsg, weeklyContext, response.toolCalls);
       let reply = stripToolJsonFromReply(response.text);
+      // Tool-only reply (model called a tool with no prose): give the chip
+      // a sentence to sit under instead of an empty/"sorry" bubble.
+      if (!reply && toolCalls.length) {
+        reply = 'Got it — tap Confirm in the app to save it.';
+      }
       if ((userWantsWeb || webSearchFailed) && !answerFollowUp) {
         reply = stripFakeWebSearchClaims(reply);
         if (reply && !/live search (?:wasn't|was not|isn't|is not) available/i.test(reply)) {

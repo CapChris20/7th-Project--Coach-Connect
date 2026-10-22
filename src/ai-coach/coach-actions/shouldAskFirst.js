@@ -99,6 +99,53 @@ const EXERCISE_INDEX_MAX = 50;
 const DEFAULT_DELETE_LOG_TYPE = 'nutrition';
 const DEFAULT_PLAN_ID = 'current';
 
+// The only mood values Firestore / the dashboard understand. Everything the
+// model or the user says ("great", "😊", "Happy!") must land on one of these
+// BEFORE a Confirm chip is shown — otherwise the chip confirms, then the
+// writer rejects it with "Mood must be one of: …" (Chris's Oct 21 bug).
+// Manipulate here: add a synonym word → the canonical mood it should save as.
+const VALID_MOODS = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
+const MOOD_ALIASES = {
+  happy: 'happy',
+  joyful: 'happy',
+  glad: 'happy',
+  great: 'happy',
+  upbeat: 'happy',
+  good: 'happy',
+  okay: 'okay',
+  ok: 'okay',
+  fine: 'okay',
+  alright: 'okay',
+  neutral: 'okay',
+  stressed: 'stressed',
+  stress: 'stressed',
+  overwhelmed: 'stressed',
+  tense: 'stressed',
+  tired: 'tired',
+  exhausted: 'tired',
+  sleepy: 'tired',
+  fatigued: 'tired',
+  anxious: 'anxious',
+  anxiety: 'anxious',
+  nervous: 'anxious',
+  worried: 'anxious',
+};
+// Manipulate here: emoji the model sometimes sends instead of a mood word.
+const MOOD_EMOJI = {
+  '😊': 'happy',
+  '😀': 'happy',
+  '😄': 'happy',
+  '🙂': 'happy',
+  '😐': 'okay',
+  '😑': 'okay',
+  '😖': 'stressed',
+  '😫': 'stressed',
+  '😴': 'tired',
+  '🥱': 'tired',
+  '😰': 'anxious',
+  '😟': 'anxious',
+};
+
 const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put|mark|rate)\b/i;
 
 const DASHBOARD_METRIC_PATTERNS = {
@@ -121,7 +168,9 @@ const TOOL_ALIGNMENT_PATTERNS = {
   logRestDay: /\b(rest)\b/,
   logSteps: /\b(steps?|walked)\b/,
   rateEnergy: /\b(energy|fatigue)\b/,
-  logMood: /\b(mood|feel|feeling)\b/,
+  // Mood words count too: "Log that I'm happy" aligns with logMood even
+  // though the user never said the word "mood" (Oct 21 screenshot bug).
+  logMood: /\b(mood|feel|feeling|felt|happy|okay|stressed|tired|anxious|exhausted|nervous|worried|overwhelmed)\b/,
   updateGoal: /\b(goal|goals|bulk|cut|recomp|fat|muscle)\b/,
   updateWorkout: /\b(swap|replace|substitute|exercise|press|lift|workout|bench)\b/,
   openWorkoutPlan: /\b(workout|plan|program)\b/,
@@ -286,6 +335,10 @@ module.exports = {
   guardCoachToolProposals,
   isValidCoachToolProposal,
   filterValidCoachToolProposals,
+  // Mood spelling lives here so server + client + writers never disagree.
+  normalizeMoodValue,
+  findMoodInText,
+  VALID_MOODS,
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
   isInformationalUserMessage,
@@ -438,8 +491,12 @@ function sanitizeDeleteLogParams(params) {
  * @returns {object}
  */
 function sanitizeLogNutritionParams(params) {
+  // No food named → nothing the popup could ever confirm. Drop it here
+  // (same rule as mood above) instead of showing a "Log meal / —" chip.
+  const foodName = sanitizeString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH);
+  if (!foodName) return null;
   return {
-    foodName: sanitizeString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH),
+    foodName,
     food: sanitizeString(params.food || params.foodName, FOOD_NAME_MAX_LENGTH),
     mealType: sanitizeString(params.mealType, MEAL_TYPE_MAX_LENGTH),
     date: sanitizeString(params.date, DATE_MAX_LENGTH),
@@ -473,9 +530,70 @@ function sanitizeLogRestDayParams(params) {
  * @param {object} params
  * @returns {object}
  */
+/**
+ * One raw mood value → a canonical VALID_MOODS entry, or undefined.
+ * Handles case ("Happy"), punctuation ("happy!"), emoji ("happy 😊", "😊"),
+ * synonyms ("great"), and the alias keys models invent (feeling / value).
+ * Why here: the guard, both inferrers, and both writers all share this file,
+ * so mood spelling is decided in exactly one place.
+ * @param {*} value
+ * @returns {string|undefined}
+ */
+function normalizeMoodValue(value) {
+  if (value == null) return undefined;
+  const rawText = String(value).trim();
+  if (!rawText) return undefined;
+  // Emoji first — a lone "😊" has no letters for the word scan below to find.
+  for (const [emoji, mood] of Object.entries(MOOD_EMOJI)) {
+    if (rawText.includes(emoji)) return mood;
+  }
+  // vocab: replace(/[^a-z]/g, ' ') = keep letters only, so "happy!" → "happy "
+  const words = rawText.toLowerCase().replace(/[^a-z]/g, ' ').split(/\s+/).filter(Boolean);
+  for (const word of words) {
+    if (MOOD_ALIASES[word]) return MOOD_ALIASES[word];
+  }
+  return undefined;
+}
+
+/**
+ * First mood (canonical) mentioned anywhere in a sentence, or undefined.
+ * Used by the inferrers: "Log that I'm happy" never says the word "mood",
+ * but it does say "happy" next to a log verb — that is enough.
+ * @param {*} text
+ * @returns {string|undefined}
+ */
+// "good / great / fine / ok" describe workouts and meals too ("log a good
+// workout"), so in free text they only count as mood next to mood/feel words.
+const AMBIGUOUS_MOOD_WORDS = new Set(['good', 'great', 'fine', 'ok']);
+
+function findMoodInText(text) {
+  const rawText = String(text || '');
+  if (!rawText.trim()) return undefined;
+  for (const [emoji, mood] of Object.entries(MOOD_EMOJI)) {
+    if (rawText.includes(emoji)) return mood;
+  }
+  const lowerText = rawText.toLowerCase();
+  const hasMoodContext = /\b(mood|feel|feeling|felt)\b/.test(lowerText);
+  // vocab: replace(/[^a-z']/g, ' ') = words only (keeps "i'm" as one token)
+  const words = lowerText.replace(/[^a-z']/g, ' ').split(/\s+/).filter(Boolean);
+  // Earliest mood word wins ("tired but happy" logs tired — spoken first).
+  for (const word of words) {
+    if (!MOOD_ALIASES[word]) continue;
+    if (AMBIGUOUS_MOOD_WORDS.has(word) && !hasMoodContext) continue;
+    return MOOD_ALIASES[word];
+  }
+  return undefined;
+}
+
 function sanitizeLogMoodParams(params) {
+  // Models have sent the mood as mood / feeling / value / emotion — read them all.
+  const mood = normalizeMoodValue(params.mood ?? params.feeling ?? params.value ?? params.emotion);
+  // No usable mood → null, like sleep with no hours. Before this, an empty
+  // mood passed the guard, showed a "Log mood / —" chip, and only failed
+  // AFTER the user tapped Confirm ("Mood must be one of: …").
+  if (!mood) return null;
   return {
-    mood: sanitizeString(params.mood, MOOD_MAX_LENGTH),
+    mood,
     date: sanitizeString(params.date, DATE_MAX_LENGTH),
     notes: sanitizeString(params.notes || params.note, NOTES_MAX_LENGTH),
   };
@@ -486,7 +604,9 @@ function sanitizeLogMoodParams(params) {
  * @returns {object}
  */
 function sanitizeUpdateGoalParams(params) {
-  return { newGoal: sanitizeString(params.newGoal, GOAL_MAX_LENGTH) };
+  const newGoal = sanitizeString(params.newGoal || params.goal, GOAL_MAX_LENGTH);
+  // No goal text → the popup would show "—" and confirm would fail. Drop it.
+  return newGoal ? { newGoal } : null;
 }
 
 /**
@@ -494,9 +614,12 @@ function sanitizeUpdateGoalParams(params) {
  * @returns {object}
  */
 function sanitizeNotifyTrainerParams(params) {
+  const message = sanitizeString(params.message, NOTIFY_MESSAGE_MAX_LENGTH);
+  // No message → nothing to send the trainer. Drop it instead of a blank popup.
+  if (!message) return null;
   return {
     trainerId: sanitizeString(params.trainerId, TRAINER_ID_MAX_LENGTH),
-    message: sanitizeString(params.message, NOTIFY_MESSAGE_MAX_LENGTH),
+    message,
     issueType: sanitizeString(params.issueType, ISSUE_TYPE_MAX_LENGTH),
     severity: sanitizeString(params.severity, SEVERITY_MAX_LENGTH),
   };
@@ -507,9 +630,16 @@ function sanitizeNotifyTrainerParams(params) {
  * @returns {object}
  */
 function sanitizeBookSessionParams(params) {
+  const sessionDate = sanitizeString(params.sessionDate || params.date, DATE_MAX_LENGTH);
+  // vocab: dateTime = one combined string ("next Tuesday at 10am" or ISO).
+  // The server parser can split it, so keep it — dropping it used to turn a
+  // valid booking into a popup showing Date "—" / Time "—".
+  const dateTime = sanitizeString(params.dateTime, SESSION_NOTES_MAX_LENGTH);
+  if (!sessionDate && !dateTime) return null;
   return {
     trainerId: sanitizeString(params.trainerId, TRAINER_ID_MAX_LENGTH),
-    sessionDate: sanitizeString(params.sessionDate || params.date, DATE_MAX_LENGTH),
+    sessionDate,
+    dateTime,
     sessionTime: sanitizeString(params.sessionTime || params.time, SESSION_TIME_MAX_LENGTH),
     durationMin: clamp(
       params.durationMin ?? params.durationMinutes ?? params.duration,
@@ -526,11 +656,19 @@ function sanitizeBookSessionParams(params) {
  * @returns {object}
  */
 function sanitizeUpdateWorkoutParams(params) {
+  // newExercise arrives as a string, as { name }, or under exerciseName.
+  const exerciseName =
+    typeof params.newExercise === 'string'
+      ? params.newExercise
+      : params.newExercise?.name || params.exerciseName || params.exerciseId;
+  // No replacement exercise named → the swap popup has nothing to confirm.
+  if (!sanitizeString(exerciseName, FOOD_NAME_MAX_LENGTH)) return null;
   return {
     planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH),
     dayIndex: clamp(params.dayIndex, DAY_INDEX_MIN, DAY_INDEX_MAX),
     exerciseIndex: clamp(params.exerciseIndex, EXERCISE_INDEX_MIN, EXERCISE_INDEX_MAX),
     newExercise: params.newExercise,
+    exerciseName: sanitizeString(exerciseName, FOOD_NAME_MAX_LENGTH),
     reason: sanitizeString(params.reason, REASON_MAX_LENGTH),
   };
 }

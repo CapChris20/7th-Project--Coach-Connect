@@ -40,6 +40,9 @@ function coachReplyColorPalette(isDark) {
       bullet: AI_COACH_UI.pink,
       link: AI_COACH_UI.purple,
       rule: 'rgba(255,255,255,0.08)',
+      // Tables (Oct 2026 reply format): hairline borders + a tinted header row.
+      tableBorder: 'rgba(255,255,255,0.18)',
+      tableHeaderBg: 'rgba(255,255,255,0.07)',
     };
   }
   return {
@@ -49,6 +52,8 @@ function coachReplyColorPalette(isDark) {
     bullet: '#BE185D',
     link: '#9333EA',
     rule: 'rgba(0,0,0,0.08)',
+    tableBorder: 'rgba(0,0,0,0.16)',
+    tableHeaderBg: 'rgba(0,0,0,0.05)',
   };
 }
 
@@ -130,6 +135,27 @@ export function buildCoachMarkdownStyles(isDark) {
       height: 1,
       marginVertical: 12,
     },
+    // Markdown tables: themed frame + wrapped sentence cells. The horizontal
+    // scrolling itself lives in coachMarkdownRules.jsx (custom table rule);
+    // these keys only paint. th/td flex:1 keeps columns equal inside the
+    // fixed-width table that rule creates.
+    // Manipulate here: cell padding and header tint.
+    table: {
+      borderWidth: 1,
+      borderColor: palette.tableBorder,
+      borderRadius: 8,
+      marginBottom: 12,
+      overflow: 'hidden',
+    },
+    thead: { backgroundColor: palette.tableHeaderBg },
+    tbody: {},
+    tr: {
+      borderBottomWidth: 1,
+      borderColor: palette.tableBorder,
+      flexDirection: 'row',
+    },
+    th: { flex: 1, padding: 8 },
+    td: { flex: 1, padding: 8 },
   };
 }
 

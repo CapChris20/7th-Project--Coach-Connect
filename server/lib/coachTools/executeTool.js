@@ -195,7 +195,10 @@ async function executeTool(userId, toolCall) {
     }
 
     if (name === 'logMood') {
-      const mood = String(params?.mood || '').toLowerCase().trim();
+      // Normalize with the shared guard helper ("Happy"/"great"/"😊" → canonical)
+      // instead of a raw lowercase compare that rejected them after Confirm.
+      const { normalizeMoodValue } = require('../../../src/ai-coach/coach-actions/shouldAskFirst');
+      const mood = normalizeMoodValue(params?.mood ?? params?.feeling ?? params?.value ?? params?.emotion) || '';
       const validMoods = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
       if (!validMoods.includes(mood)) {
         return { success: false, message: `Mood must be one of: ${validMoods.join(', ')}` };

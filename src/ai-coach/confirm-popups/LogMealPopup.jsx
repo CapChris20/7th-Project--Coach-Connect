@@ -11,6 +11,8 @@ const POPUP_TITLE = 'Log this meal?';
 const FOOD_ROW_LABEL = 'Food';
 const CALORIES_ROW_LABEL = 'Calories';
 const PROTEIN_ROW_LABEL = 'Protein';
+const CARBS_ROW_LABEL = 'Carbs';
+const FAT_ROW_LABEL = 'Fat';
 const MEAL_ROW_LABEL = 'Meal';
 const CONFIRM_BUTTON_LABEL = 'Log';
 const DEFAULT_FOOD_NAME = 'Food item';
@@ -57,8 +59,26 @@ function valueWasProvided(value) {
  */
 function readCalorieLabel(params) {
   if (!params) return MISSING_VALUE;
-  if (valueWasProvided(params.cals)) return params.cals;
-  if (valueWasProvided(params.calories)) return params.calories;
+  // Show the unit — a bare "410" on a confirm card does not read as kcal.
+  if (valueWasProvided(params.cals)) return `${params.cals} kcal`;
+  if (valueWasProvided(params.calories)) return `${params.calories} kcal`;
+  return MISSING_VALUE;
+}
+
+/**
+ * One macro row value ("45g"), or "—" when the model did not send it.
+ * Carbs/fat used to be executed but never shown, so the user confirmed a
+ * meal without seeing two of the numbers being saved.
+ * @param {object|undefined} params
+ * @param {string[]} keyNames
+ * @returns {string}
+ */
+function readMacroLabel(params, keyNames) {
+  if (!params) return MISSING_VALUE;
+  for (let index = 0; index < keyNames.length; index += 1) {
+    const candidate = params[keyNames[index]];
+    if (valueWasProvided(candidate)) return `${candidate}g`;
+  }
   return MISSING_VALUE;
 }
 
@@ -86,6 +106,8 @@ function readMealDetails(params) {
     foodName: readFoodName(params),
     calorieLabel: readCalorieLabel(params),
     proteinLabel: readProteinLabel(params),
+    carbsLabel: readMacroLabel(params, ['carbs']),
+    fatLabel: readMacroLabel(params, ['fat', 'fats']),
     mealType: readMealType(params),
   };
 }
@@ -115,6 +137,8 @@ export default function LogMealPopup({ params, reasoning, onConfirm, onCancel, l
       <DetailRow label={FOOD_ROW_LABEL} value={mealDetails.foodName} />
       <DetailRow label={CALORIES_ROW_LABEL} value={mealDetails.calorieLabel} />
       <DetailRow label={PROTEIN_ROW_LABEL} value={mealDetails.proteinLabel} />
+      <DetailRow label={CARBS_ROW_LABEL} value={mealDetails.carbsLabel} />
+      <DetailRow label={FAT_ROW_LABEL} value={mealDetails.fatLabel} />
       <MealTypeRow mealType={mealDetails.mealType} />
       <ConfirmCancelRow
         onConfirm={handleConfirmLogMeal}

@@ -201,6 +201,8 @@ function serializeOneWebSource(source) {
   return omitUndefined({
     url: source?.url || source?.link,
     title: source?.title || source?.name,
+    // Snippet was dropped here, so a restored source row lost its preview text.
+    snippet: source?.snippet || undefined,
     image: source?.image || source?.thumbnail || source?.ogImage,
   });
 }
@@ -235,6 +237,13 @@ function serializeMessage(msg) {
     attachments: sanitizeAttachments(msg.attachments),
     source: msg.source ?? undefined,
     toolCall: msg.toolCall ? omitUndefined(msg.toolCall) : undefined,
+    // Multi-action queue + progress, so a half-finished "log sleep + water"
+    // reply still shows the remaining chip after the chat is reopened.
+    toolCalls: Array.isArray(msg.toolCalls) && msg.toolCalls.length ? msg.toolCalls : undefined,
+    completedToolCalls:
+      Array.isArray(msg.completedToolCalls) && msg.completedToolCalls.length
+        ? msg.completedToolCalls
+        : undefined,
     toolConfirmed: msg.toolConfirmed === true ? true : undefined,
     isToolResult: msg.isToolResult === true ? true : undefined,
     isError: msg.isError === true ? true : undefined,
@@ -259,8 +268,18 @@ function restoredMessageFromSaved(savedMessage, index) {
     source: savedMessage.source || null,
     attachments: Array.isArray(savedMessage.attachments) ? savedMessage.attachments : undefined,
     toolCall: savedMessage.toolCall || null,
+    toolCalls: Array.isArray(savedMessage.toolCalls) ? savedMessage.toolCalls : [],
+    completedToolCalls: Array.isArray(savedMessage.completedToolCalls)
+      ? savedMessage.completedToolCalls
+      : [],
     toolConfirmed: savedMessage.toolConfirmed === true,
     isToolResult: savedMessage.isToolResult === true,
+    // Web-search fields were saved above but never restored, so reopening a
+    // past chat made the Sources pill (and web formatting) silently vanish.
+    searchedWeb: savedMessage.searchedWeb === true,
+    webProvider: savedMessage.webProvider || null,
+    route: savedMessage.route || null,
+    webSources: Array.isArray(savedMessage.webSources) ? savedMessage.webSources : [],
   };
 }
 

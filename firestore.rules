@@ -176,9 +176,14 @@ service cloud.firestore {
     
     // Conversations - only participants can read/update/delete; creators must include themselves
     match /conversations/{conversationId} {
-      // Only participants can read
+      // Only participants can read an existing conversation.
+      // resource == null: getOrCreateConversation probes conv_{clientId}_{trainerId} inside a
+      // transaction before the doc exists. Without this guard, resource.data.participants errors
+      // on the missing doc and Firestore denies the probe with "Missing or insufficient
+      // permissions" — so every first-time marketplace Connect/Continue failed before the
+      // create rule below could ever run. A missing doc returns no data, so this leaks nothing.
       allow read: if request.auth != null
-        && request.auth.uid in resource.data.participants;
+        && (resource == null || request.auth.uid in resource.data.participants);
 
       // Allow list queries for conversations where user is participant
       allow list: if request.auth != null;

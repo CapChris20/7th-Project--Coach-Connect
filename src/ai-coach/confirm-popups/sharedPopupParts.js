@@ -116,6 +116,18 @@ function ConfirmToolButton({ onConfirm, loading, confirmLabel }) {
 // ===== MAIN FUNCTION =====
 
 /**
+ * Date row text for a log popup: the tool's date, or "Today" when it omits
+ * one (every log writer defaults to today). Popups that skip this row leave
+ * the user guessing which day they are about to write to.
+ * @param {object|undefined} params
+ * @returns {string}
+ */
+export function logDateLabel(params) {
+  const date = params?.date;
+  return date ? String(date) : 'Today';
+}
+
+/**
  * One labeled value. Hidden when the value is empty so the popup does not show blank rows.
  * @param {{ label?: string, value?: * }} props
  */

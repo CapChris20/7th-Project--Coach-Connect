@@ -11,6 +11,21 @@ const { filterFitnessWebSources, stripWebSearchPrefix, stripWebMetaInstructions 
 const { removeEmojiFromAlerts: pushStripNotificationEmoji } = require('../../pushHelpers');
 const logger = require('../logger');
 
+// Manipulate here: the coach's DeepSeek model. 'deepseek-chat' (the old
+// default) was deprecated 2026-07-24 and retired after — requests to it fail.
+// deepseek-flash is the current cheap/fast tier (DeepSeek-V4-Flash, supports
+// native tool calls + JSON output). Set DEEPSEEK_MODEL on Cloud Run to override.
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-flash';
+function getDeepSeekModel() {
+  return process.env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL;
+}
+// Manipulate here: coach temperature. 0.7 (chatty) made tool JSON/args drift;
+// 0.3 keeps prose human but arguments literal. Override with DEEPSEEK_TEMPERATURE.
+function getDeepSeekCoachTemperature() {
+  const fromEnv = Number(process.env.DEEPSEEK_TEMPERATURE);
+  return Number.isFinite(fromEnv) ? fromEnv : 0.3;
+}
+
 function resolveDeepSeekKey() {
   return process.env.DEEPSEEK_API_KEY || null;
 }
@@ -54,14 +69,29 @@ async function callPerplexity({ apiKey, systemPrompt, messages }) {
 // ─────────────────────────────────────────────
 // Providers: DeepSeek + Claude
 // ─────────────────────────────────────────────
-async function callDeepSeek({ apiKey, systemPrompt, messages }) {
-  const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
+/**
+ * Build the DeepSeek chat payload. Split out so tests can assert the model,
+ * temperature, and native tools without a network call.
+ * vocab: tools / tool_choice = the provider's native function-calling fields
+ * (the model returns structured tool_calls instead of hiding JSON in prose).
+ */
+function buildDeepSeekChatPayload({ systemPrompt, messages, tools, temperature, maxTokens = 900 }) {
   const payload = {
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    model: getDeepSeekModel(),
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
-    temperature: 0.7,
-    max_tokens: 900,
+    temperature: temperature ?? getDeepSeekCoachTemperature(),
+    max_tokens: maxTokens,
   };
+  if (Array.isArray(tools) && tools.length) {
+    payload.tools = tools;
+    payload.tool_choice = 'auto';
+  }
+  return payload;
+}
+
+async function callDeepSeek({ apiKey, systemPrompt, messages, tools }) {
+  const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
+  const payload = buildDeepSeekChatPayload({ systemPrompt, messages, tools });
   const resp = await axios.post(url, payload, {
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     timeout: 20000,
@@ -74,9 +104,16 @@ async function callDeepSeek({ apiKey, systemPrompt, messages }) {
       (typeof resp?.data === 'string' ? resp.data.slice(0, 300) : null);
     throw new Error(`DeepSeek HTTP ${resp.status}${msg ? `: ${msg}` : ''}`);
   }
-  const text = resp?.data?.choices?.[0]?.message?.content;
-  if (!text || String(text).trim().length === 0) throw new Error('DeepSeek returned empty response');
-  return { text: String(text), raw: resp.data || null };
+  const message = resp?.data?.choices?.[0]?.message;
+  const { parseNativeToolCalls } = require('../coachTools/coachToolSchemas');
+  const toolCalls = parseNativeToolCalls(message);
+  const text = message?.content;
+  // A tool-only reply (no prose) is valid now — the handler supplies fallback
+  // copy. Only a reply with neither text nor a tool call is a real failure.
+  if ((!text || String(text).trim().length === 0) && !toolCalls.length) {
+    throw new Error('DeepSeek returned empty response');
+  }
+  return { text: text ? String(text) : '', raw: resp.data || null, toolCalls };
 }
 
 async function callClaude({ systemPrompt, messages }) {
@@ -520,7 +557,7 @@ END WEB SEARCH RESULTS`,
 async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
   const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
   const payload = {
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    model: getDeepSeekModel(),
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     temperature: 0.7,
     max_tokens: 1200,
@@ -555,7 +592,7 @@ async function callDeepSeekCoach({ apiKey, systemPrompt, messages }) {
 async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 600 }) {
   const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
   const payload = {
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    model: getDeepSeekModel(),
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
     temperature: 0.7,
     max_tokens: maxTokens,
@@ -720,6 +757,8 @@ module.exports = {
   resolveDeepSeekKey,
   resolveAnthropicKey,
   resolvePerplexityKey,
+  getDeepSeekModel,
+  buildDeepSeekChatPayload,
   callPerplexity,
   callDeepSeek,
   callClaude,

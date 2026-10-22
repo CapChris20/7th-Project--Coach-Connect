@@ -243,8 +243,12 @@ export async function sendToAI(userMessage, coachContext, userId, userProfile = 
     );
     const replyRaw = (data && data.reply) || '';
     const { message, toolCall: parsedTool } = parseToolCallFromReply(replyRaw);
-    const toolCalls = Array.isArray(data.toolCalls) ? data.toolCalls : null;
-    const toolCall = normalizeToolCall(toolCalls?.[0] || parsedTool);
+    // Keep EVERY tool call, normalized — a reply can ask for two logs at once
+    // ("log 8h sleep and 20oz water"). Picking only [0] silently dropped the rest.
+    const toolCalls = Array.isArray(data.toolCalls)
+      ? data.toolCalls.map((call) => normalizeToolCall(call)).filter(Boolean)
+      : null;
+    const toolCall = toolCalls?.[0] || normalizeToolCall(parsedTool);
     return {
       message:
         stripCoachToolJsonFromReply(message) ||
@@ -642,8 +646,10 @@ function messageWantsWebSearch(hasImages, web, trimmedMessage, effectiveMessage,
 function coachReplyFromServerData(data) {
   const replyRaw = (data && data.reply) || '';
   const { message, toolCall: parsedTool } = parseToolCallFromReply(replyRaw);
-  const toolCalls = Array.isArray(data.toolCalls) ? data.toolCalls : null;
-  const toolCall = normalizeToolCall(toolCalls?.[0] || parsedTool);
+  const toolCalls = Array.isArray(data.toolCalls)
+    ? data.toolCalls.map((call) => normalizeToolCall(call)).filter(Boolean)
+    : null;
+  const toolCall = toolCalls?.[0] || normalizeToolCall(parsedTool);
   return {
     message:
       stripCoachToolJsonFromReply(message) ||

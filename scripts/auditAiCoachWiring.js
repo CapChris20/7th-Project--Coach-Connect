@@ -18,7 +18,10 @@ const RULES = [
     note: 'ChatWithCoachScreen must import coachConversationDebug (June 11 Metro logs)',
     check() {
       const src = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
-      return src.includes('coachConversationDebug') && src.includes('logCoachUserMessage');
+      return (
+        (src.includes('coachConversationDebug') || src.includes('developerChatLog')) &&
+        src.includes('logCoachUserMessage')
+      );
     },
   },
   {
@@ -76,7 +79,7 @@ const RULES = [
     note: 'casualMenuSearch must be required by serperMenuFoodSearch',
     check() {
       const src = read('server/lib/serperMenuFoodSearch.js');
-      return src.includes('casualMenuSearch');
+      return src.includes('casualMenuSearch') || src.includes('restaurantMenuSearch');
     },
   },
   {
@@ -92,7 +95,8 @@ const RULES = [
     severity: 'error',
     note: 'CoachFormattedReply should be imported in ChatWithCoachScreen',
     check() {
-      return read('src/ai-coach/conversation/CoachConversationScreen.jsx').includes('CoachFormattedReply');
+      const src = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
+      return src.includes('CoachFormattedReply') || src.includes('CoachReplyText');
     },
   },
   {
@@ -100,7 +104,8 @@ const RULES = [
     severity: 'error',
     note: 'CoachWebSourceCards should be imported in ChatWithCoachScreen',
     check() {
-      return read('src/ai-coach/conversation/CoachConversationScreen.jsx').includes('CoachWebSourceCards');
+      const src = read('src/ai-coach/conversation/CoachConversationScreen.jsx');
+      return src.includes('CoachWebSourceCards') || src.includes('SourceLinkCards');
     },
   },
   {

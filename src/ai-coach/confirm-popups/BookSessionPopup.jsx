@@ -24,7 +24,15 @@ function buildSessionDisplayFields(params) {
   let durationLabel = MISSING_VALUE;
   if (durationRaw !== MISSING_VALUE) durationLabel = `${durationRaw} min`;
   const notes = params?.notes;
-  return { sessionDate, sessionTime, durationLabel, notes };
+  // The model often sends one combined phrase ("next Tuesday at 10am") as
+  // dateTime. Before this, Date/Time both showed "—" even though the server
+  // could parse it. Show the phrase as "When" whenever the split fields are
+  // missing, so the user confirms something they can actually read.
+  const combinedWhen =
+    sessionDate === MISSING_VALUE && sessionTime === MISSING_VALUE && params?.dateTime
+      ? String(params.dateTime)
+      : undefined;
+  return { sessionDate, sessionTime, durationLabel, notes, combinedWhen };
 }
 
 // ===== MAIN FUNCTION =====
@@ -43,8 +51,15 @@ export default function BookSessionPopup({ params, reasoning, onConfirm, onCance
 
   return (
     <ToolModalBody title="Book session?" reasoning={reasoning}>
-      <DetailRow label="Date" value={displayFields.sessionDate} />
-      <DetailRow label="Time" value={displayFields.sessionTime} />
+      {/* Combined phrase wins when present; otherwise the split date/time rows. */}
+      {displayFields.combinedWhen ? (
+        <DetailRow label="When" value={displayFields.combinedWhen} />
+      ) : (
+        <>
+          <DetailRow label="Date" value={displayFields.sessionDate} />
+          <DetailRow label="Time" value={displayFields.sessionTime} />
+        </>
+      )}
       <DetailRow label="Duration" value={displayFields.durationLabel} />
       <DetailRow label="Notes" value={displayFields.notes} />
       <ConfirmCancelRow

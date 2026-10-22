@@ -68,6 +68,24 @@ function readSwapReason(params) {
   return params.reason;
 }
 
+/**
+ * Where in the plan the swap lands ("Day 2 · Exercise 3"), 1-based for humans.
+ * The model usually identifies the old exercise only by dayIndex/exerciseIndex
+ * — without this row the popup said Remove: "Current exercise" and the user
+ * could not tell WHICH exercise was about to be replaced.
+ * @param {object|undefined} params
+ * @returns {string|undefined}
+ */
+function readSwapPosition(params) {
+  if (!params) return undefined;
+  const dayIndex = Number(params.dayIndex);
+  const exerciseIndex = Number(params.exerciseIndex);
+  const parts = [];
+  if (Number.isFinite(dayIndex)) parts.push(`Day ${dayIndex + 1}`);
+  if (Number.isFinite(exerciseIndex)) parts.push(`Exercise ${exerciseIndex + 1}`);
+  return parts.length ? parts.join(' · ') : undefined;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -79,6 +97,7 @@ export default function EditWorkoutPopup({ params, reasoning, onConfirm, onCance
   const removedExercise = readRemovedExercise(params);
   const addedExercise = readAddedExercise(params);
   const swapReason = readSwapReason(params);
+  const swapPosition = readSwapPosition(params);
 
   // 2. Confirm swaps them. onConfirm still gets the original params.
   function handleConfirmSwap() {
@@ -88,6 +107,8 @@ export default function EditWorkoutPopup({ params, reasoning, onConfirm, onCance
   return (
     <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={REMOVE_ROW_LABEL} value={removedExercise} />
+      {/* Position row hides itself when the model sent no indexes. */}
+      <DetailRow label="Position" value={swapPosition} />
       <DetailRow label={ADD_ROW_LABEL} value={addedExercise} />
       <DetailRow label={REASON_ROW_LABEL} value={swapReason} />
       <ConfirmCancelRow onConfirm={handleConfirmSwap} onCancel={onCancel} loading={loading} />

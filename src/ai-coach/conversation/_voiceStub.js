@@ -4,6 +4,12 @@
 
 // ===== NAMED CONSTANTS =====
 
+// Voice input does not exist in the app right now. Composers must hide their
+// mic button while this is false — a visible mic that silently does nothing
+// is worse than no mic (found in the Oct 2026 trust-bug pass).
+// Manipulate here: flip to true only when a real speech hook replaces this stub.
+export const COACH_VOICE_INPUT_AVAILABLE = false;
+
 const SILENT_SPEECH_STATE = {
   listening: false,
   speaking: false,
@@ -26,6 +32,9 @@ function buildSilentCoachSpeechControls() {
     partial: SILENT_SPEECH_STATE.partial,
     startListening: ignoreRemovedVoiceAction,
     stopListening: ignoreRemovedVoiceAction,
+    // Screens destructure toggleListen — it must exist (as a no-op) even
+    // though the mic button itself is hidden while voice is unavailable.
+    toggleListen: ignoreRemovedVoiceAction,
     speak: ignoreRemovedVoiceAction,
     stopSpeaking: ignoreRemovedVoiceAction,
   };

@@ -152,6 +152,70 @@ describe('Firestore security rules — users locked fields', () => {
   });
 });
 
+describe('Firestore security rules — marketplace connection request', () => {
+  // Mirrors getOrCreateConversation + sendClientRequest in alertTrainer.js:
+  // probe conv_{clientId}_{trainerId} in a transaction, create it if missing,
+  // then batch the pending request message + conversation preview bump.
+  const CONVERSATION_ID = `conv_${CLIENT_ID}_${TRAINER_ID}`;
+
+  test('client can probe a missing conversation, create it, and send a connection request', async () => {
+    const db = testEnv.authenticatedContext(CLIENT_ID).firestore();
+    const conversationRef = db.collection('conversations').doc(CONVERSATION_ID);
+
+    // The probe that used to fail permission-denied (resource == null regression).
+    await assertSucceeds(conversationRef.get());
+
+    await assertSucceeds(
+      conversationRef.set({
+        id: CONVERSATION_ID,
+        participants: [CLIENT_ID, TRAINER_ID],
+        clientId: CLIENT_ID,
+        trainerId: TRAINER_ID,
+        type: 'client-trainer',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastMessage: null,
+        lastMessageTime: null,
+      }),
+    );
+
+    const batch = db.batch();
+    batch.set(db.collection('messages').doc('msg_connect_1'), {
+      id: 'msg_connect_1',
+      conversationId: CONVERSATION_ID,
+      senderId: CLIENT_ID,
+      text: "Hi! I'd like to work with you as my trainer.",
+      timestamp: new Date(),
+      read: false,
+      status: 'pending',
+      requestType: 'connection',
+    });
+    batch.update(conversationRef, {
+      lastMessage: "Hi! I'd like to work with you as my trainer.",
+      lastMessageTime: new Date(),
+      updatedAt: new Date(),
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  test('non-participant cannot read an existing conversation', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx
+        .firestore()
+        .collection('conversations')
+        .doc(CONVERSATION_ID)
+        .set({ participants: [CLIENT_ID, TRAINER_ID] });
+    });
+    const db = testEnv.authenticatedContext(OTHER_CLIENT_ID).firestore();
+    await assertFails(db.collection('conversations').doc(CONVERSATION_ID).get());
+  });
+
+  test('unauthenticated user cannot probe a missing conversation', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(db.collection('conversations').doc(CONVERSATION_ID).get());
+  });
+});
+
 describe('Firestore security rules — AI coach chat', () => {
   const SESSION_ID = 'aiChat_test_session';
 

@@ -13,6 +13,18 @@ const NOTES_ROW_LABEL = 'Notes';
 const CONFIRM_BUTTON_LABEL = 'Log mood';
 const MISSING_VALUE = '—';
 
+// What the user actually sees for each mood: emoji + capitalized word.
+// Before this the popup showed only the raw lowercase word (or "—" when the
+// model forgot the field) — no emoji, which read as a broken/empty popup.
+// Manipulate here: swap any emoji or label wording.
+const MOOD_DISPLAY = {
+  happy: { emoji: '😊', label: 'Happy' },
+  okay: { emoji: '😐', label: 'Okay' },
+  stressed: { emoji: '😖', label: 'Stressed' },
+  tired: { emoji: '😴', label: 'Tired' },
+  anxious: { emoji: '😰', label: 'Anxious' },
+};
+
 // ===== HELPER FUNCTIONS =====
 
 function valueWasProvided(value) {
@@ -27,9 +39,15 @@ function valueWasProvided(value) {
  */
 function readMoodLabel(params) {
   if (!params) return MISSING_VALUE;
-  if (valueWasProvided(params.mood)) return String(params.mood);
-  if (valueWasProvided(params.feeling)) return String(params.feeling);
-  return MISSING_VALUE;
+  const rawMood = valueWasProvided(params.mood)
+    ? params.mood
+    : valueWasProvided(params.feeling)
+      ? params.feeling
+      : null;
+  if (rawMood == null) return MISSING_VALUE;
+  // Known mood → "😊 Happy". Unknown text still shows as-is so nothing is hidden.
+  const display = MOOD_DISPLAY[String(rawMood).toLowerCase().trim()];
+  return display ? `${display.emoji} ${display.label}` : String(rawMood);
 }
 
 /**

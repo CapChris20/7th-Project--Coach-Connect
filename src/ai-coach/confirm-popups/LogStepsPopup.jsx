@@ -3,7 +3,7 @@
 // Used by: the coach conversation when a tool wants to log steps.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, DetailRow, ConfirmCancelRow, logDateLabel } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
@@ -66,6 +66,7 @@ export default function LogStepsPopup({ params, reasoning, onConfirm, onCancel, 
   return (
     <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={STEPS_ROW_LABEL} value={stepLabel} />
+      <DetailRow label="Date" value={logDateLabel(params)} />
       <ConfirmCancelRow
         onConfirm={handleConfirmLogSteps}
         onCancel={onCancel}

@@ -1,7 +1,7 @@
 /**
  * AI Coach vision — OpenAI sees the image, DeepSeek writes coach voice.
  *
- * api.deepseek.com (deepseek-chat / v4-flash) is TEXT-ONLY — it rejects image_url.
+ * api.deepseek.com chat models are TEXT-ONLY on this path — it rejects image_url.
  *
  * Preferred setup:
  *   OPENAI_API_KEY + DEEPSEEK_API_KEY
@@ -154,7 +154,7 @@ function buildVLAnalysisPrompt(userText) {
 
 async function callDeepSeekChat({ apiKey, systemPrompt, messages, maxTokens = 900 }) {
   const url = process.env.DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
   const payload = {
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...(Array.isArray(messages) ? messages : [])],
@@ -352,7 +352,7 @@ async function polishVisionWithDeepSeekCoach({ apiKey, systemPrompt, messages, v
     systemPrompt: `${systemPrompt}${VISION_SYSTEM_ADDENDUM}`,
     messages: coachMessages,
   });
-  return { text, source: 'deepseek-vision', model: process.env.DEEPSEEK_MODEL || 'deepseek-chat' };
+  return { text, source: 'deepseek-vision', model: process.env.DEEPSEEK_MODEL || 'deepseek-flash' };
 }
 
 /**

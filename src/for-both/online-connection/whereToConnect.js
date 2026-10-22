@@ -278,7 +278,8 @@ export function getAICoachApiBases() {
   const seenBases = new Set();
 
   // Step 1: Cloud Run first — it's the one guaranteed to have the web-search keys.
-  appendUniqueReachableApiBase(apiBaseList, seenBases, PRODUCTION_API_BASE_URL);
+  apiBaseList.push(PRODUCTION_API_BASE_URL);
+  seenBases.add(PRODUCTION_API_BASE_URL.replace(/\/$/, ''));
 
   // Step 2: A non-Cloud-Run override (e.g. testing against a local server) comes next.
   const explicitBase = readExplicitApiBaseString();

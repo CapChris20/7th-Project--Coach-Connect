@@ -16,6 +16,8 @@ import {
 import { getAICoachApiBases } from '../../for-both/online-connection/whereToConnect';
 import { addFoodLog, deleteFoodLogsForDate } from '../../nutrition/daily-log/saveLoggedFood';
 import { sanitizeDeleteFoodQuery } from './spotDeleteRequests';
+// vocab: normalizeMoodValue = shared mood spelling ("Happy"/"great"/"😊" → canonical) from the guard file
+import { normalizeMoodValue } from './shouldAskFirst';
 
 // ===== NAMED CONSTANTS =====
 
@@ -472,7 +474,13 @@ function buildServerParams(name, params, { trainerId, planId } = {}) {
     return { rating: Number(copied.rating ?? copied.energy), notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
   }
   if (name === 'logMood') {
-    return { mood: copied.mood, notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
+    // Normalize here too (defense in depth): callers that skip the guard
+    // still send the server a canonical mood, never "Happy 😊" / "great".
+    return {
+      mood: normalizeMoodValue(copied.mood ?? copied.feeling ?? copied.value ?? copied.emotion),
+      notes: copied.notes || copied.note,
+      date: copied.date || getClientDateKey(),
+    };
   }
   if (name === 'rateWorkout') {
     return { rating: Number(copied.rating), notes: copied.notes || copied.note, date: copied.date || getClientDateKey() };
@@ -714,7 +722,9 @@ async function executeRateEnergyClient(userId, params) {
 }
 
 async function executeLogMoodClient(userId, params) {
-  const mood = String(params?.mood || '').toLowerCase().trim();
+  // Normalize (not just lowercase): "happy 😊" / "great" used to reach this
+  // check raw and fail with "Mood must be one of: …" after Confirm was tapped.
+  const mood = normalizeMoodValue(params?.mood ?? params?.feeling ?? params?.value ?? params?.emotion) || '';
   if (!VALID_MOODS.includes(mood)) {
     throw new Error(`Mood must be one of: ${VALID_MOODS.join(', ')}`);
   }
