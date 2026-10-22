@@ -1,6 +1,6 @@
-/**
- * When coach tools should interrupt with a modal vs inline chip vs auto-run.
- */
+// AI Coach tool UX policy — decide when to auto-run vs show a confirm modal vs show a chip.
+// Flow: classify the tool (destructive vs logging vs navigation) → check param completeness → use the user’s wording to decide friction.
+// Used by `CoachConversationScreen` to make tool actions feel reliable (no “hallucinated” logs).
 import { normalizeToolCall } from './carryOutAction';
 import { isValidCoachToolProposal } from './shouldAskFirst';
 
@@ -127,6 +127,16 @@ export function shouldAutoExecuteCoachTool(toolCall, { userText = '' } = {}) {
   const name = normalized?.name;
   if (!name) return false;
   if (COACH_TOOL_AUTO_EXECUTE.has(name)) return true;
+  // Auto-run simple dashboard logging when:
+  // - params are complete (so we won't prompt for missing numbers), and
+  // - the user explicitly asked to log it (so the coach isn't writing unprompted).
+  if (
+    COACH_TOOL_CHIP_ONLY.has(name) &&
+    hasCompleteLogToolParams(normalized) &&
+    userExplicitlyRequestsLog(userText, name)
+  ) {
+    return true;
+  }
   return false;
 }
 

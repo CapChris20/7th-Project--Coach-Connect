@@ -5,16 +5,18 @@ const mockRunTransaction = jest.fn();
 const mockGetDoc = jest.fn();
 const mockGetDocs = jest.fn();
 const mockUpdateDoc = jest.fn();
+const mockSetDoc = jest.fn();
 const mockOnSnapshot = jest.fn();
 const mockPostRemotePushNotify = jest.fn();
 const mockGetDocsWithIndexFallback = jest.fn();
+const mockMarkConversationMessagesReadPaginated = jest.fn();
 
 jest.mock('../../app-start/cloudConnection', () => ({ db: {} }));
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn((...s) => ({ kind: 'collection', path: s.join('/') })),
   doc: jest.fn((...s) => ({ kind: 'doc', path: s.join('/') })),
-  setDoc: jest.fn(),
+  setDoc: (...args) => mockSetDoc(...args),
   getDoc: (...args) => mockGetDoc(...args),
   getDocs: (...args) => mockGetDocs(...args),
   query: jest.fn((...args) => args),
@@ -27,6 +29,10 @@ jest.mock('firebase/firestore', () => ({
   updateDoc: (...args) => mockUpdateDoc(...args),
   runTransaction: (...args) => mockRunTransaction(...args),
   deleteField: jest.fn(),
+}));
+
+jest.mock('../../messaging/markMessagesRead', () => ({
+  markConversationMessagesReadPaginated: (...args) => mockMarkConversationMessagesReadPaginated(...args),
 }));
 
 jest.mock('../../for-both/cloud-database/loadInPages', () => ({
@@ -50,6 +56,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPostRemotePushNotify.mockResolvedValue({ ok: true });
   mockGetDocsWithIndexFallback.mockResolvedValue({ docs: [] });
+  mockMarkConversationMessagesReadPaginated.mockResolvedValue(0);
 });
 
 describe('filterChatMessages', () => {
@@ -82,41 +89,33 @@ describe('filterChatMessages', () => {
 
 describe('getOrCreateConversation', () => {
   it('Existing conversation → returns existing doc id', async () => {
-    mockRunTransaction.mockImplementation(async (_db, fn) => {
-      const tx = {
-        get: jest.fn().mockResolvedValue({ exists: () => true }),
-        set: jest.fn(),
-      };
-      return fn(tx);
-    });
-
+    mockUpdateDoc.mockResolvedValue(undefined);
     const id = await getOrCreateConversation('client-a', 'trainer-b');
     expect(id).toBe('conv_client-a_trainer-b');
+    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
   });
 
   it('No existing conversation → creates new doc', async () => {
-    const txSet = jest.fn();
-    mockRunTransaction.mockImplementation(async (_db, fn) => {
-      const tx = {
-        get: jest.fn().mockResolvedValue({ exists: () => false }),
-        set: txSet,
-      };
-      return fn(tx);
-    });
+    mockUpdateDoc.mockRejectedValue({ code: 'not-found', message: 'not found' });
+    mockSetDoc.mockResolvedValue(undefined);
 
     const id = await getOrCreateConversation('client-a', 'trainer-b');
     expect(id).toBe('conv_client-a_trainer-b');
-    expect(txSet).toHaveBeenCalled();
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringContaining('conversations/conv_client-a_trainer-b') }),
+      expect.objectContaining({
+        id: 'conv_client-a_trainer-b',
+        clientId: 'client-a',
+        trainerId: 'trainer-b',
+      }),
+      { merge: false },
+    );
   });
 
   it('Missing trainerId or clientId → throws clear error', async () => {
-    mockRunTransaction.mockImplementation(async (_db, fn) => {
-      const tx = {
-        get: jest.fn().mockResolvedValue({ exists: () => false }),
-        set: jest.fn(),
-      };
-      return fn(tx);
-    });
+    mockUpdateDoc.mockRejectedValue({ code: 'not-found', message: 'not found' });
+    mockSetDoc.mockResolvedValue(undefined);
 
     // Current implementation does not validate ids — documents actual behavior.
     const id = await getOrCreateConversation(undefined, 'trainer-b');
@@ -124,8 +123,10 @@ describe('getOrCreateConversation', () => {
   });
 
   it('Firestore error → caught, does not return undefined', async () => {
-    mockRunTransaction.mockRejectedValue(new Error('transaction failed'));
-    await expect(getOrCreateConversation('c', 't')).rejects.toThrow('transaction failed');
+    mockUpdateDoc.mockRejectedValue(
+      Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }),
+    );
+    await expect(getOrCreateConversation('c', 't')).rejects.toThrow();
   });
 });
 
@@ -204,35 +205,18 @@ describe('sendMessage', () => {
 
 describe('markMessagesAsRead', () => {
   it('Marks all unread messages for correct uid', async () => {
-    mockGetDocs.mockResolvedValue({
-      forEach: (fn) => {
-        fn({ id: 'm1', data: () => ({ senderId: 'trainer-b', read: false, conversationId: 'conv_1' }) });
-        fn({ id: 'm2', data: () => ({ senderId: 'client-a', read: false, conversationId: 'conv_1' }) });
-      },
-    });
-    mockUpdateDoc.mockResolvedValue(undefined);
-
     await markMessagesAsRead('conv_1', 'client-a');
-    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: expect.stringContaining('messages/m1') }),
-      { read: true },
-    );
+    expect(mockMarkConversationMessagesReadPaginated).toHaveBeenCalledTimes(1);
+    expect(mockMarkConversationMessagesReadPaginated).toHaveBeenCalledWith('conv_1', 'client-a');
   });
 
   it('Already read messages → no error on double-mark', async () => {
-    mockGetDocs.mockResolvedValue({
-      forEach: (fn) => {
-        fn({ id: 'm1', data: () => ({ senderId: 'trainer-b', read: true }) });
-      },
-    });
-
     await expect(markMessagesAsRead('conv_1', 'client-a')).resolves.toBeUndefined();
-    expect(mockUpdateDoc).not.toHaveBeenCalled();
+    expect(mockMarkConversationMessagesReadPaginated).toHaveBeenCalledTimes(1);
   });
 
   it('Firestore error → caught, unread badge may stay but does not crash', async () => {
-    mockGetDocs.mockRejectedValue(new Error('index missing'));
+    mockMarkConversationMessagesReadPaginated.mockRejectedValueOnce(new Error('index missing'));
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(markMessagesAsRead('conv_1', 'client-a')).resolves.toBeUndefined();

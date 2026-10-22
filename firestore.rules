@@ -176,9 +176,13 @@ service cloud.firestore {
     
     // Conversations - only participants can read/update/delete; creators must include themselves
     match /conversations/{conversationId} {
-      // Only participants can read
-      allow read: if request.auth != null
-        && request.auth.uid in resource.data.participants;
+      // Only participants can read existing conversations.
+      // IMPORTANT: reads against a *non-existent* doc still evaluate rules with `resource == null`.
+      // We allow those reads so clients can "check then create" without a permission-denied trap.
+      allow get: if request.auth != null && (
+        resource == null ||
+        request.auth.uid in resource.data.participants
+      );
 
       // Allow list queries for conversations where user is participant
       allow list: if request.auth != null;
@@ -189,6 +193,7 @@ service cloud.firestore {
 
       // Participants may update message preview / typing only — not membership or ownership
       allow update: if request.auth != null
+        && resource != null
         && request.auth.uid in resource.data.participants
         && request.resource.data.participants == resource.data.participants
         && (
@@ -208,6 +213,7 @@ service cloud.firestore {
 
       // Only participants can delete
       allow delete: if request.auth != null
+        && resource != null
         && request.auth.uid in resource.data.participants;
     }
 

@@ -1,15 +1,6 @@
-/**
- * trainer Messaging
- *
- * Purpose: Data/service layer: trainer Messaging. Feature module for Coach Connect.
- * Why it matters: Keeps feature logic out of screens so auth, nutrition, and trainer rules stay consistent.
- * Area: src/ai
- * Key exports: clientRequestTypeLabel, isPendingClientRequestMessage, filterChatMessages, getOrCreateConversation, sendMessage, sendAttachmentMessage, sendClientRequest, updateMessageStatus
- *
- * @file-header
- */
-// Trainer Messaging Service
-// Handles real-time messaging between clients and trainers
+// Trainer messaging service — conversations + messages between clients and trainers.
+// Flow: ensure a `conversations/conv_<client>_<trainer>` doc exists → write `messages/*` → update conversation preview/unread.
+// Used by Marketplace “Connect”, Inbox/Chat, and trainer “pending requests” flows.
 import { db } from '../../app-start/cloudConnection';
 import {
   collection,
@@ -107,40 +98,46 @@ async function notifyRecipientMessagePush({
 export async function getOrCreateConversation(clientId, trainerId) {
   try {
     console.log('🔍 getOrCreateConversation:', { clientId, trainerId });
-    
-    // Generate a consistent conversation ID (same for same client-trainer pair)
+
+    // Generate a consistent conversation ID (same for the same client-trainer pair).
     const conversationId = `conv_${clientId}_${trainerId}`;
-    
-    // Use transaction to prevent race conditions
     const conversationRef = doc(db, 'conversations', conversationId);
-    
-    const result = await runTransaction(db, async (transaction) => {
-      const conversationDoc = await transaction.get(conversationRef);
-      
-      if (conversationDoc.exists()) {
-        console.log('✅ Found existing conversation:', conversationId);
-        return conversationId;
-      }
 
-      // Create new conversation within transaction
-      const conversationData = {
-        id: conversationId,
-        participants: [clientId, trainerId],
-        clientId,
-        trainerId,
-        type: 'client-trainer',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastMessage: null,
-        lastMessageTime: null,
-      };
-
-      transaction.set(conversationRef, conversationData);
-      console.log('✅ Conversation created successfully:', conversationId);
+    // Avoid a "read-before-create" transaction.
+    // Why: some deployed Firestore rules deny reading a NON-EXISTENT conversation doc because the
+    // rule checks `resource.data.participants` without guarding `resource == null`.
+    // That shows up as "Missing or insufficient permissions" on the first attempt to connect.
+    //
+    // Strategy:
+    // - First try a minimal update that is allowed by our conversation update rules.
+    // - If it fails with not-found, create the conversation doc.
+    try {
+      // vocab: updateDoc = patch an existing doc; throws `code: 'not-found'` if it doesn't exist
+      await updateDoc(conversationRef, { updatedAt: serverTimestamp() });
       return conversationId;
-    });
+    } catch (e) {
+      const code = e?.code;
+      const msg = String(e?.message || '').toLowerCase();
+      const notFound =
+        code === 'not-found' || msg.includes('no document to update') || msg.includes('not found');
+      if (!notFound) throw e;
+    }
 
-    return result;
+    const conversationData = {
+      id: conversationId,
+      participants: [clientId, trainerId],
+      clientId,
+      trainerId,
+      type: 'client-trainer',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      lastMessage: null,
+      lastMessageTime: null,
+    };
+
+    await setDoc(conversationRef, conversationData, { merge: false });
+    console.log('✅ Conversation created successfully:', conversationId);
+    return conversationId;
   } catch (error) {
     console.error('❌ Error getting/creating conversation:', error);
     throw error;
