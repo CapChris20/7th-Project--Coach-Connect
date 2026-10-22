@@ -69,7 +69,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.coachconnect',
-      buildNumber: '20',
+      buildNumber: '27',
       /** Apple Developer Team — required for device builds & IAP. */
       appleTeamId: 'PFTT3AW4H3',
       icon: './assets/icon.png',
@@ -104,7 +104,7 @@ module.exports = {
     newArchEnabled: true,
     android: {
       package: 'com.coachconnect',
-      versionCode: 20,
+      versionCode: 27,
       icon: './assets/icon.png',
       adaptiveIcon: {
         foregroundImage: './assets/icon.png',
