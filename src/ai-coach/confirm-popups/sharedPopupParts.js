@@ -73,7 +73,7 @@ function CancelToolButton({ onCancel, loading }) {
       onPress={onCancel}
       disabled={loading}
       accessibilityRole="button"
-      accessibilityLabel={CANCEL_LABEL}
+      accessibilityLabel="Cancel"
       accessibilityState={{ disabled: loading }}
     >
       <Text style={sharedStyles.cancelText}>{CANCEL_LABEL}</Text>
@@ -97,7 +97,7 @@ function ConfirmToolButton({ onConfirm, loading, confirmLabel }) {
         buildPressedFeedbackStyle(pressed, loading, PRESSED_CONFIRM_OPACITY),
       ]}
       accessibilityRole="button"
-      accessibilityLabel={DEFAULT_CONFIRM_LABEL}
+      accessibilityLabel="Confirm"
       accessibilityHint={CONFIRM_ACCESSIBILITY_HINT}
       accessibilityState={{ disabled: loading }}
     >

@@ -83,10 +83,10 @@ function WelcomeHero({ isDark }) {
             />
           </View>
 
-          <Text style={styles.heroTitle}>Trainer Marketplace</Text>
+          <Text style={styles.heroTitle}>Find a Trainer</Text>
 
           <Text style={[styles.heroTagline, { color: taglineColor }]}>
-            FIND TRAINERS · COMPARE · CONNECT WITH YOUR COACH
+            FIND A TRAINER · COMPARE · CONNECT WITH YOUR TRAINER
           </Text>
         </View>
       </LinearGradient>

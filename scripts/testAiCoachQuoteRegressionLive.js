@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Live regression — the quote/research failures Chris hit in-app.
+ * Live regression — quote and research regression suite.
  * Hits production Cloud Run with Firebase auth.
  *
  * Run: node scripts/testAiCoachQuoteRegressionLive.js

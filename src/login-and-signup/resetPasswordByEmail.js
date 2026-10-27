@@ -44,7 +44,7 @@ const FIREBASE_RESET_ERROR_COPY = {
 
 /**
  * Logs go to dev consoles and crash reports, so never print a full address.
- * 'chris@gmail.com' → 'c***@gmail.com'.
+ * 'user@example.com' → 'u***@example.com'.
  * @param {string} email
  * @returns {string}
  */

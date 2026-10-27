@@ -56,7 +56,7 @@ const TAB_SESSIONS = 'Sessions';
 const TAB_NOTES_FILES = 'Notes & Files';
 
 const SCROLL_BOTTOM_PAD = 48;
-const DEFAULT_PROGRAM_NAME = 'Custom Program';
+const DEFAULT_PROGRAM_NAME = 'Custom Workout Plan';
 const DEFAULT_CLIENT_LABEL = 'Client';
 const DEFAULT_TRAINER_LABEL = 'Trainer';
 const NO_NAME_LABEL = 'No Name';

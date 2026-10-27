@@ -1,4 +1,4 @@
-// Regression test for the Oct 21 mood bug (Chris's screenshots):
+// Regression test for the Oct 21 mood bug:
 //   1. "Log that I'm Happy" → coach said "Tap Confirm" but NO chip existed.
 //   2. "Can u pls log my mood as happy" → chip showed "Log mood" with no mood,
 //      tapping Confirm failed with "Mood must be one of: happy, okay, …".

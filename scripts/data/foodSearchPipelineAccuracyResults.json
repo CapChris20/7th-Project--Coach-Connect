@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-07-17T05:25:49.803Z",
-  "live": true,
+  "generatedAt": "2026-10-22T04:07:25.012Z",
+  "live": false,
   "total": 100,
-  "pass": 97,
-  "fail": 3,
-  "passRate": 0.97,
+  "pass": 95,
+  "fail": 5,
+  "passRate": 0.95,
   "results": [
     {
       "id": "lc-crazy-bread",
@@ -19,7 +19,7 @@
         "protein": 3,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "crazy-bread-short",
@@ -34,7 +34,7 @@
         "protein": 3,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcd-big-mac",
@@ -49,7 +49,7 @@
         "protein": 25,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcd-10-nuggets",
@@ -58,13 +58,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Mcdonald's 10 Piece Nuggets",
+        "name": "Chicken Mcnuggets",
         "calories": 410,
         "serving": "10 pc nuggets",
-        "protein": 23,
-        "source": "serper"
+        "protein": 24,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chipotle-chicken-bowl",
@@ -73,13 +73,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Chipotle Chicken Bowl",
-        "calories": 510,
-        "serving": "1 bowl",
-        "protein": 44,
-        "source": "serper"
+        "name": "Chicken Bowl",
+        "calories": 720,
+        "serving": "1 bowl (typical build)",
+        "protein": 47,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "bk-whopper",
@@ -88,13 +88,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Burger King Whopper",
+        "name": "Whopper",
         "calories": 670,
-        "serving": "1 Whopper",
-        "protein": 31.5,
-        "source": "serper"
+        "serving": "1 sandwich",
+        "protein": 31,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "wendys-baconator",
@@ -109,7 +109,7 @@
         "protein": 58,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "cfa-chicken-sandwich",
@@ -124,7 +124,7 @@
         "protein": 29,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "panda-orange-chicken",
@@ -133,13 +133,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Panda Express Orange Chicken",
+        "name": "Orange Chicken",
         "calories": 490,
-        "serving": "1 medium",
-        "protein": 23,
-        "source": "serper"
+        "serving": "1 serving (entree)",
+        "protein": 25,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-grande-latte",
@@ -148,13 +148,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Starbucks Grande Caffè Latte",
+        "name": "Caffè Latte",
         "calories": 190,
         "serving": "Grande",
         "protein": 13,
-        "source": "serper"
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "tb-crunchwrap",
@@ -163,13 +163,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Taco Bell Crunchwrap Supreme",
+        "name": "Crunchwrap Supreme",
         "calories": 530,
-        "serving": "1 taco",
-        "protein": 15,
-        "source": "serper"
+        "serving": "1 item",
+        "protein": 16,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "subway-turkey-footlong",
@@ -178,13 +178,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Subway Footlong Turkey",
-        "calories": 520,
-        "serving": "1 serving",
-        "protein": 30,
-        "source": "serper"
+        "name": "Footlong Turkey Breast",
+        "calories": 560,
+        "serving": "1 footlong",
+        "protein": 36,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "innout-double-double",
@@ -193,13 +193,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "IN-N-OUT Double-Double",
-        "calories": 610,
-        "serving": "287g Total Calories 610 Total Fat Sugars 9g Protein 34g … 550 Total Fat 27g",
-        "protein": 9,
-        "source": "serper"
+        "name": "Double-Double",
+        "calories": 670,
+        "serving": "1 sandwich",
+        "protein": 37,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "popeyes-chicken-sandwich",
@@ -208,13 +208,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Is Popeyes Chicken Sandwich Healthy?",
-        "calories": 690,
+        "name": "Chicken Sandwich",
+        "calories": 700,
         "serving": "1 sandwich",
         "protein": 28,
-        "source": "serper"
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dominos-pepperoni-slice",
@@ -229,7 +229,7 @@
         "protein": 12,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "wendys-small-frosty",
@@ -244,7 +244,7 @@
         "protein": 9,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcd-medium-fries",
@@ -259,7 +259,7 @@
         "protein": 5,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "cfa-8-nuggets",
@@ -274,7 +274,7 @@
         "protein": 27,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "lc-stuffed-crazy-bread",
@@ -289,7 +289,7 @@
         "protein": 36,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "wendys-daves-single",
@@ -304,7 +304,7 @@
         "protein": 30,
         "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "smashburger-classic",
@@ -314,12 +314,12 @@
       "fails": [],
       "top": {
         "name": "Smashburger Classic Smash",
-        "calories": 610,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "steak-n-shake-double",
@@ -329,12 +329,12 @@
       "fails": [],
       "top": {
         "name": "Steak N Shake Double Steakburger",
-        "calories": 390,
-        "serving": "Steak 'n Shake Double Steakburger Serving 390 Calories % Daily Value* 32% T",
-        "protein": 4,
-        "source": "serper"
+        "calories": 400,
+        "serving": "1 medium",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "freddys-steakburger",
@@ -344,12 +344,12 @@
       "fails": [],
       "top": {
         "name": "Freddys Steakburger Single",
-        "calories": 500,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 30,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "cookout-cheddar",
@@ -359,12 +359,12 @@
       "fails": [],
       "top": {
         "name": "Cookout Cheddar Burger",
-        "calories": 233,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "habit-charburger",
@@ -374,12 +374,12 @@
       "fails": [],
       "top": {
         "name": "Habit Charburger With Cheese",
-        "calories": 930,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 52,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "white-castle-sliders",
@@ -389,12 +389,12 @@
       "fails": [],
       "top": {
         "name": "White Castle Cheese Slider",
-        "calories": 170,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 1,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "portillos-italian-beef",
@@ -404,27 +404,29 @@
       "fails": [],
       "top": {
         "name": "Portillos Italian Beef Sandwich",
-        "calories": 530,
+        "calories": 400,
         "serving": "1 sandwich",
         "protein": 20,
-        "source": "serper"
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "five-guys-cheeseburger",
       "query": "five guys cheeseburger",
       "category": "burger",
-      "pass": true,
-      "fails": [],
+      "pass": false,
+      "fails": [
+        "cal_off:400_vs_840"
+      ],
       "top": {
         "name": "Five Guys Cheeseburger",
-        "calories": 840,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 9,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "shake-shack-shackburger",
@@ -434,12 +436,12 @@
       "fails": [],
       "top": {
         "name": "Shake Shack Shackburger",
-        "calories": 370,
+        "calories": 400,
         "serving": "1 medium",
-        "protein": 25,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "whataburger",
@@ -448,13 +450,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "1 Whataburger",
-        "calories": 590,
+        "name": "Whataburger Whataburger",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 29,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jersey-mikes-italian",
@@ -464,12 +466,12 @@
       "fails": [],
       "top": {
         "name": "Jersey Mikes Original Italian",
-        "calories": 940,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 45,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "firehouse-italian",
@@ -478,13 +480,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Firehouse Subs Italian On Medium White ...",
-        "calories": 940,
+        "name": "Firehouse Subs Italian",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 5,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jimmy-johns-gargantuan",
@@ -494,12 +496,12 @@
       "fails": [],
       "top": {
         "name": "Jimmy Johns The Gargantuan",
-        "calories": 1100,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 7,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "arbys-roast-beef",
@@ -509,12 +511,12 @@
       "fails": [],
       "top": {
         "name": "Arbys Classic Roast Beef Sandwich",
-        "calories": 360,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 23,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "panera-turkey",
@@ -524,12 +526,12 @@
       "fails": [],
       "top": {
         "name": "Panera Turkey Sandwich",
-        "calories": 280,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 2,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "pizza-hut-pepperoni",
@@ -538,13 +540,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "PIZZA HUT 12\" Pepperoni Pizza, Regular Crust",
-        "calories": 269.3,
+        "name": "Pizza Hut Pepperoni Pizza Slice",
+        "calories": 400,
         "serving": "1 slice",
-        "protein": 12.4,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "papa-johns-pepperoni",
@@ -553,13 +555,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Papa John's Pizza Pepperoni 12\" Medium Original Crust Pizza",
-        "calories": 230,
+        "name": "Papa Johns Pepperoni Pizza Slice",
+        "calories": 400,
         "serving": "1 slice",
-        "protein": 3,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jets-buffalo-slice",
@@ -569,12 +571,12 @@
       "fails": [],
       "top": {
         "name": "Jets Pizza Buffalo Chicken Pizza Slice",
-        "calories": 155,
+        "calories": 400,
         "serving": "1 slice",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jets-crazy-bread",
@@ -583,13 +585,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Jets Pizza Crazy Bread",
-        "calories": 350,
-        "serving": "1 breadstick",
-        "protein": 15,
-        "source": "serper"
+        "name": "Crazy Bread",
+        "calories": 100,
+        "serving": "1 slice",
+        "protein": 3,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "little-caesars-pepperoni",
@@ -599,12 +601,12 @@
       "fails": [],
       "top": {
         "name": "Little Caesars Pepperoni Pizza Slice",
-        "calories": 560,
+        "calories": 400,
         "serving": "1 slice",
-        "protein": 28,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "kfc-original-breast",
@@ -613,13 +615,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "KFC Chicken Breast, Original Recipe",
-        "calories": 196,
+        "name": "Kfc Original Recipe Chicken Breast",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 19.3,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "raising-canes-3-finger",
@@ -629,12 +631,12 @@
       "fails": [],
       "top": {
         "name": "Raising Canes 3 Finger Combo",
-        "calories": 1020,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 47,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "wingstop-classic-10",
@@ -644,12 +646,12 @@
       "fails": [],
       "top": {
         "name": "Wingstop Classic Wings 10 Piece",
-        "calories": 1200,
-        "serving": "1 serving",
-        "protein": 100,
-        "source": "serper"
+        "calories": 400,
+        "serving": "10 wings",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "bojangles-fillet",
@@ -659,12 +661,12 @@
       "fails": [],
       "top": {
         "name": "Bojangles Cajun Chicken Fillet Biscuit",
-        "calories": 570,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 23,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "pollo-tropichop",
@@ -674,27 +676,29 @@
       "fails": [],
       "top": {
         "name": "Pollo Tropical Tropichop Original",
-        "calories": 300,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 31,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "taco-bell-crunchy-taco",
       "query": "taco bell crunchy taco",
       "category": "mexican",
-      "pass": true,
-      "fails": [],
+      "pass": false,
+      "fails": [
+        "cal_off:400_vs_170"
+      ],
       "top": {
         "name": "Taco Bell Crunchy Taco",
-        "calories": 170,
+        "calories": 400,
         "serving": "1 taco",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "qdoba-chicken-bowl",
@@ -704,23 +708,27 @@
       "fails": [],
       "top": {
         "name": "Qdoba Chicken Burrito Bowl",
-        "calories": 610,
+        "calories": 400,
         "serving": "1 bowl",
-        "protein": 44,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "del-taco-chicken-taco",
       "query": "del taco grilled chicken soft taco",
       "category": "mexican",
-      "pass": false,
-      "fails": [
-        "no_top_result"
-      ],
-      "top": null,
-      "mode": "live+catalog"
+      "pass": true,
+      "fails": [],
+      "top": {
+        "name": "Del Taco Grilled Chicken Soft Taco",
+        "calories": 400,
+        "serving": "1 taco",
+        "protein": 20,
+        "source": "fatSecret"
+      },
+      "mode": "catalog+filter"
     },
     {
       "id": "chipotle-steak-burrito",
@@ -729,13 +737,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Chipotle Steak Burrito Price 2026",
-        "calories": 1065,
-        "serving": "1 Portion",
-        "protein": 50,
-        "source": "serper"
+        "name": "Chipotle Steak Burrito",
+        "calories": 400,
+        "serving": "1 burrito",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chipotle-carnitas-bowl",
@@ -744,28 +752,30 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Chipotle Carnitas Bowl With White ...",
-        "calories": 660,
+        "name": "Chipotle Carnitas Bowl",
+        "calories": 400,
         "serving": "1 bowl",
-        "protein": 41,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-pike",
       "query": "starbucks grande pike place roast",
       "category": "coffee",
-      "pass": true,
-      "fails": [],
+      "pass": false,
+      "fails": [
+        "cal_off:400_vs_5"
+      ],
       "top": {
         "name": "Starbucks Grande Pike Place Roast",
-        "calories": 5,
-        "serving": "Starbucks Pike Place Roast Coffee 1 grande = 16 fl oz",
-        "protein": 0,
-        "source": "serper"
+        "calories": 400,
+        "serving": "1 serving",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dunkin-latte",
@@ -775,12 +785,12 @@
       "fails": [],
       "top": {
         "name": "Dunkin Medium Latte",
-        "calories": 125,
+        "calories": 400,
         "serving": "Medium",
-        "protein": 2,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-caramel-macchiato",
@@ -789,13 +799,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Starbucks Caramel Macchiato With Almond Milk, Grande",
-        "calories": 170,
+        "name": "Starbucks Grande Caramel Macchiato",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 2,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "peets-latte",
@@ -805,27 +815,29 @@
       "fails": [],
       "top": {
         "name": "Peets Coffee Medium Latte",
-        "calories": 160,
+        "calories": 400,
         "serving": "Medium",
-        "protein": 11,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcdonalds-egg-mcmuffin",
       "query": "mcdonald's egg mcmuffin",
       "category": "breakfast",
-      "pass": true,
-      "fails": [],
+      "pass": false,
+      "fails": [
+        "cal_off:400_vs_310"
+      ],
       "top": {
-        "name": "Egg Mcmuffin No Meat By Mcdonald's And ...",
-        "calories": 280,
+        "name": "Mcdonald's Egg Mcmuffin",
+        "calories": 400,
         "serving": "1 egg",
-        "protein": 14,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dunkin-sausage-egg",
@@ -834,13 +846,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Croissant Sandwich With Sausage, Egg, And Cheese, Dunkin' ...",
-        "calories": 610,
-        "serving": "1 sandwich",
-        "protein": 22.5,
-        "source": "serper"
+        "name": "Dunkin Sausage Egg And Cheese Croissant",
+        "calories": 400,
+        "serving": "1 egg",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "waffle-house-hash",
@@ -850,12 +862,12 @@
       "fails": [],
       "top": {
         "name": "Waffle House Scattered Smothered Hash Browns",
-        "calories": 255,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 6,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-bacon-gouda",
@@ -864,13 +876,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Bacon, Gouda & Egg Sandwich",
-        "calories": 360,
+        "name": "Starbucks Bacon Gouda Sandwich",
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 18,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcdonalds-apple-pie",
@@ -880,12 +892,12 @@
       "fails": [],
       "top": {
         "name": "Mcdonald's Baked Apple Pie",
-        "calories": 220,
+        "calories": 400,
         "serving": "1 medium",
-        "protein": 2,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dq-blizzard-oreo",
@@ -894,13 +906,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Dairy Queen OREO Cookie Blizzard, Small",
-        "calories": 620,
+        "name": "Dairy Queen Oreo Blizzard Medium",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 12,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "cold-stone-cake-batter",
@@ -910,12 +922,12 @@
       "fails": [],
       "top": {
         "name": "Cold Stone Cake Batter Ice Cream Like It",
-        "calories": 580,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 9,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "popeyes-biscuit",
@@ -925,12 +937,12 @@
       "fails": [],
       "top": {
         "name": "Popeyes Buttermilk Biscuit",
-        "calories": 220,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 3,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chickfila-waffle-fries",
@@ -940,12 +952,12 @@
       "fails": [],
       "top": {
         "name": "Chick Fil A Waffle Fries Medium",
-        "calories": 360,
+        "calories": 400,
         "serving": "Medium fries",
-        "protein": 5,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "panda-beijing-beef",
@@ -955,12 +967,12 @@
       "fails": [],
       "top": {
         "name": "Panda Express Beijing Beef",
-        "calories": 470,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 13,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "panda-honey-walnut",
@@ -970,12 +982,12 @@
       "fails": [],
       "top": {
         "name": "Panda Express Honey Walnut Shrimp",
-        "calories": 240,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 7,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "pei-wei-dynamite",
@@ -985,12 +997,12 @@
       "fails": [],
       "top": {
         "name": "Pei Wei Dynamite Shrimp",
-        "calories": 280,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 15,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "teriyaki-madness-bowl",
@@ -999,13 +1011,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Teriyaki Madness Spicy Chicken Bowl W White Rice",
-        "calories": 676,
+        "name": "Teriyaki Madness Chicken Teriyaki Bowl",
+        "calories": 400,
         "serving": "1 bowl",
-        "protein": 30,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "red-lobster-bisque",
@@ -1015,12 +1027,12 @@
       "fails": [],
       "top": {
         "name": "Red Lobster Lobster Bisque Cup",
-        "calories": 310,
-        "serving": "cup Amount Per Serving 310 Calories % Daily Value* 31% Total Fat 20g 55% Saturated Fat 11g Trans Fat",
-        "protein": 4,
-        "source": "serper"
+        "calories": 400,
+        "serving": "1 serving",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "panera-broccoli-cheddar",
@@ -1029,13 +1041,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Panera Broccoli Cheddar Soup",
-        "calories": 360,
+        "name": "Panera Broccoli Cheddar Soup Bowl",
+        "calories": 400,
         "serving": "1 bowl",
-        "protein": 13,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chipotle-guac",
@@ -1045,12 +1057,12 @@
       "fails": [],
       "top": {
         "name": "Chipotle Guacamole Side",
-        "calories": 770,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 9,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "subway-tuna-6",
@@ -1060,12 +1072,12 @@
       "fails": [],
       "top": {
         "name": "Subway 6 Inch Tuna",
-        "calories": 480,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 21,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "sonic-cheeseburger",
@@ -1075,12 +1087,12 @@
       "fails": [],
       "top": {
         "name": "Sonic Drive In Cheeseburger",
-        "calories": 630,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 30,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jack-in-the-box-jumbo",
@@ -1090,12 +1102,12 @@
       "fails": [],
       "top": {
         "name": "Jack In The Box Jumbo Jack",
-        "calories": 570,
-        "serving": "241g Calories 570",
-        "protein": 0,
-        "source": "serper"
+        "calories": 400,
+        "serving": "1 serving",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "carls-jr-famous-star",
@@ -1104,13 +1116,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Carl's Jr. Beyond Famous Star With Cheese",
-        "calories": 710,
+        "name": "Carl's Jr Famous Star With Cheese",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "hardees-thickburger",
@@ -1119,13 +1131,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Hardee's 2/3 Lb. Monster Thickburger Contains 1300 Calories.",
-        "calories": 1050,
+        "name": "Hardee's Thickburger",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 48,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "culvers-butterburger",
@@ -1134,13 +1146,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Butterburger \"the Original\" Double By Culver's No Bun And ...",
-        "calories": 340,
+        "name": "Culver's Butterburger",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 28,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "white-castle-crave",
@@ -1150,12 +1162,12 @@
       "fails": [],
       "top": {
         "name": "White Castle Crave Case",
-        "calories": 310,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 14,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "krispy-kreme-original",
@@ -1164,13 +1176,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Krispy Kreme Doughnuts Original Glazed ...",
-        "calories": 190,
+        "name": "Krispy Kreme Original Glazed Doughnut",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 3,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dunkin-glazed",
@@ -1180,12 +1192,12 @@
       "fails": [],
       "top": {
         "name": "Dunkin Glazed Donut",
-        "calories": 260,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 3,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-cake-pop",
@@ -1195,12 +1207,12 @@
       "fails": [],
       "top": {
         "name": "Starbucks Birthday Cake Pop",
-        "calories": 160,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "mcdonalds-mcflurry-oreo",
@@ -1209,13 +1221,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Mcdonald's Mcflurry Oreo",
-        "calories": 310,
+        "name": "Mcdonald's Oreo Mcflurry",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 5.7,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "wendys-spicy-chicken",
@@ -1224,13 +1236,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Wendy's Spicy Chicken Sandwich Plain No Mayo",
-        "calories": 387,
+        "name": "Wendy's Spicy Chicken Sandwich",
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 33,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "bk-chicken-fries",
@@ -1240,12 +1252,12 @@
       "fails": [],
       "top": {
         "name": "Burger King Chicken Fries",
-        "calories": 191,
+        "calories": 400,
         "serving": "1 sandwich",
-        "protein": 12.7,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "taco-bell-bean-burrito",
@@ -1254,13 +1266,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "TACO Bell, Bean Burrito",
-        "calories": 404,
-        "serving": "1 taco",
-        "protein": 15.6,
-        "source": "serper"
+        "name": "Taco Bell Bean Burrito",
+        "calories": 400,
+        "serving": "1 burrito",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chipotle-sofritas-bowl",
@@ -1270,12 +1282,12 @@
       "fails": [],
       "top": {
         "name": "Chipotle Sofritas Bowl",
-        "calories": 84,
+        "calories": 400,
         "serving": "1 bowl",
-        "protein": 1.2,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dominos-garlic-bread",
@@ -1284,50 +1296,60 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Domino's Pizza Garlic Bread Twists",
-        "calories": 220,
-        "serving": "1 order",
-        "protein": 0,
-        "source": "serper"
+        "name": "Domino's Garlic Bread Twists",
+        "calories": 400,
+        "serving": "2 breadsticks",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "pizza-hut-breadsticks",
       "query": "pizza hut breadsticks",
       "category": "sides",
-      "pass": false,
-      "fails": [
-        "no_top_result"
-      ],
-      "top": null,
-      "mode": "live+catalog"
+      "pass": true,
+      "fails": [],
+      "top": {
+        "name": "Pizza Hut Breadsticks",
+        "calories": 400,
+        "serving": "1 slice",
+        "protein": 20,
+        "source": "fatSecret"
+      },
+      "mode": "catalog+filter"
     },
     {
       "id": "olive-garden-breadstick",
       "query": "olive garden breadstick",
       "category": "sides",
-      "pass": true,
-      "fails": [],
+      "pass": false,
+      "fails": [
+        "cal_off:400_vs_140"
+      ],
       "top": {
         "name": "Olive Garden Breadstick",
-        "calories": 140,
-        "serving": "1 order",
-        "protein": 4,
-        "source": "serper"
+        "calories": 400,
+        "serving": "2 breadsticks",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "applebees-wings",
       "query": "applebees boneless wings",
       "category": "chicken",
-      "pass": false,
-      "fails": [
-        "no_top_result"
-      ],
-      "top": null,
-      "mode": "live+catalog"
+      "pass": true,
+      "fails": [],
+      "top": {
+        "name": "Applebees Boneless Wings",
+        "calories": 400,
+        "serving": "wings (1 serving)",
+        "protein": 20,
+        "source": "fatSecret"
+      },
+      "mode": "catalog+filter"
     },
     {
       "id": "buffalo-wild-wings-10",
@@ -1336,13 +1358,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Buffalo Wild Wings Traditional Wings Medium",
-        "calories": 1100,
-        "serving": "1 serving",
-        "protein": 124,
-        "source": "serper"
+        "name": "Buffalo Wild Wings Traditional Wings 10",
+        "calories": 400,
+        "serving": "wings (1 serving)",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "chilis-queso",
@@ -1352,12 +1374,12 @@
       "fails": [],
       "top": {
         "name": "Chilis Skillet Queso",
-        "calories": 420,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 13,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "outback-bloom",
@@ -1366,13 +1388,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Bloomin' Onion By Outback Steakhouse And ...",
-        "calories": 488,
+        "name": "Outback Bloomin Onion",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 5,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "red-lobster-cheddar-bay",
@@ -1382,12 +1404,12 @@
       "fails": [],
       "top": {
         "name": "Red Lobster Cheddar Bay Biscuit",
-        "calories": 160,
-        "serving": "Red Lobster Cheddar Bay Biscuit Serving 160 Calories % Daily Value* 15% Tot",
-        "protein": 0,
-        "source": "serper"
+        "calories": 400,
+        "serving": "1 serving",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "ihop-pancake",
@@ -1396,13 +1418,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Ihop World Famous Pancakes (3) Original Buttermilk",
-        "calories": 410,
+        "name": "Ihop Buttermilk Pancake",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 12,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dennys-grand-slam",
@@ -1411,13 +1433,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Denny's Jr. Grand Slam",
-        "calories": 340,
+        "name": "Dennys Classic Grand Slam",
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "starbucks-frappuccino",
@@ -1426,13 +1448,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Starbucks Grande Caramel Frappuccino Whole Milk",
-        "calories": 420,
+        "name": "Starbucks Grande Caramel Frappuccino",
+        "calories": 400,
         "serving": "Grande",
-        "protein": 4,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "dutch-bros-rebel",
@@ -1442,12 +1464,12 @@
       "fails": [],
       "top": {
         "name": "Dutch Bros Rebel Medium",
-        "calories": 240,
+        "calories": 400,
         "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "tim-hortons-double-double",
@@ -1456,13 +1478,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Tim Hortons Double Double Medium",
-        "calories": 140,
-        "serving": "1 serving",
-        "protein": 0,
-        "source": "serper"
+        "name": "Double-Double",
+        "calories": 670,
+        "serving": "1 sandwich",
+        "protein": 37,
+        "source": "trusted_catalog"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "jamba-smoothie",
@@ -1471,13 +1493,13 @@
       "pass": true,
       "fails": [],
       "top": {
-        "name": "Jamba Juice Strawberry Whirl Smoothie (medium)",
-        "calories": 315,
-        "serving": "Medium",
-        "protein": 0,
-        "source": "serper"
+        "name": "Jamba Juice Strawberry Whirl",
+        "calories": 400,
+        "serving": "1 serving",
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     },
     {
       "id": "smoothie-king-angel",
@@ -1487,12 +1509,12 @@
       "fails": [],
       "top": {
         "name": "Smoothie King Angel Food",
-        "calories": 350,
+        "calories": 400,
         "serving": "1 medium",
-        "protein": 5,
-        "source": "serper"
+        "protein": 20,
+        "source": "fatSecret"
       },
-      "mode": "live+catalog"
+      "mode": "catalog+filter"
     }
   ]
 }

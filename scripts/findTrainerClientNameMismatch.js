@@ -1,11 +1,11 @@
 /**
- * Find client users whose profile contains a real name (e.g. "Cade") but TrainerApp
+ * Find client users whose profile contains a real name (e.g. "Dakota") but TrainerApp
  * would show "cc", "Client", or another wrong label.
  *
  * Usage:
  *   node scripts/findTrainerClientNameMismatch.js
- *   node scripts/findTrainerClientNameMismatch.js --search cade
- *   node scripts/findTrainerClientNameMismatch.js --email cc@gmail.com
+ *   node scripts/findTrainerClientNameMismatch.js --search dakota
+ *   node scripts/findTrainerClientNameMismatch.js --email demo.client@example.com
  *   node scripts/findTrainerClientNameMismatch.js --uid <firebaseUid>
  *   node scripts/findTrainerClientNameMismatch.js --json
  *   node scripts/findTrainerClientNameMismatch.js --fix   # writes healed name to users + CRM (dry-run unless --fix)
@@ -49,7 +49,7 @@ const NAME_KEYS = [
 function parseArgs() {
   const argv = process.argv.slice(2);
   const flags = {
-    search: 'cade',
+    search: 'dakota',
     email: null,
     uid: null,
     json: argv.includes('--json'),
@@ -258,7 +258,7 @@ async function main() {
     }
   }
 
-  // Also scan users collection for "cade" not on any roster (informational)
+  // Also scan users collection for "dakota" not on any roster (informational)
   if (!flags.uid && !flags.email) {
     const usersSnap = await db.collection('users').get();
     const extra = [];
@@ -291,8 +291,8 @@ async function main() {
   if (flags.json) {
     console.log(JSON.stringify({ projectId, matches }, null, 2));
   } else if (!matches.length) {
-    console.log(`No rows matched. Try: node scripts/findTrainerClientNameMismatch.js --search cade --all-roster`);
-    console.log(`Or:     node scripts/findTrainerClientNameMismatch.js --email cc@gmail.com`);
+    console.log(`No rows matched. Try: node scripts/findTrainerClientNameMismatch.js --search dakota --all-roster`);
+    console.log(`Or:     node scripts/findTrainerClientNameMismatch.js --email demo.client@example.com`);
   }
 }
 

@@ -2848,7 +2848,7 @@ export default function CreateWorkoutPlanScreen({
     'Balancing volume & recovery…',
     'Selecting exercises for your equipment…',
     'Tuning intensity & progression…',
-    'Finalizing your program…',
+    'Finalizing your workout plan…',
   ];
 
   useEffect(() => {
@@ -3872,7 +3872,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
                     <Ionicons name={addedToCollection ? 'checkmark-circle' : 'bookmark-outline'} size={18} color="#FFFFFF" />
                   )}
                   <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
-                    {addedToCollection ? 'Saved to Library' : 'Save to Library'}
+                    {addedToCollection ? 'Saved to My Plans' : 'Save to My Plans'}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>

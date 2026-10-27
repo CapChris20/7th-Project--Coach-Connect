@@ -51,7 +51,7 @@ const GRADIENT_START = { x: 0, y: 0 };
 const GRADIENT_END = { x: 1, y: 1 };
 
 const WORKOUT_PLAN_ACK_TEXT =
-  "Got your workout plan request — I'll build your program and follow up soon.";
+  "Got your workout plan request — I'll build your workout plan and follow up soon.";
 const GENERIC_ACK_TEXT = "Got your request — I'll follow up soon.";
 const WELCOME_NEW_CLIENT_TEXT =
   "Welcome! I've added you as a client. Your personalized dashboard is ready!";

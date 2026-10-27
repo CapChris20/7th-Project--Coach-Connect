@@ -81,6 +81,8 @@ import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from './_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from './keyboardBehavior';
 import { shouldShowWebSearchUI } from '../internet-lookup/shouldLookUpOnInternet';
 import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../for-both/screenReaderLabels';
+// vocab: a11yProps helper for accessibility standards
+const a11yProps = a11yButton;
 import { AI_COACH_UI } from '../coachColors';
 import CoachGlassCard from '../reply-display/CoachGlassCard';
 import { stripCoachToolJsonFromReply, readActionsFromReply } from '../coach-actions/readActionsFromReply';
@@ -2370,6 +2372,17 @@ export default function CoachConversationScreen({
         onBack={onBack}
         onProfilePress={onProfilePress}
         onSettingsPress={onSettingsPress}
+        headerRight={
+          <TouchableOpacity
+            onPress={() => refreshCoachContext()}
+            activeOpacity={0.88}
+            accessibilityLabel="Refresh coach context"
+            hitSlop={MIN_TOUCH_HIT_SLOP}
+            style={{ padding: 4 }}
+          >
+            <Ionicons name="refresh-outline" size={20} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
+          </TouchableOpacity>
+        }
         headerLeft={
           !enableHistorySidebar ? (
             <TouchableOpacity

@@ -556,7 +556,7 @@ const ProgressTab = ({ isDark, clientData, todayDailyLog, latestLoggedWeight = n
                 <Icon name="MessageSquare" size={16} color="#fff" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginBottom: 4 }}>From Coach</Text>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800', marginBottom: 4 }}>From Trainer</Text>
                 <Text style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
                   {note?.content || ''}
                 </Text>

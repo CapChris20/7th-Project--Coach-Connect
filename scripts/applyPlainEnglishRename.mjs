@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Apply Chris's plain-English rename plan (whole src/).
+ * Apply plain-English rename plan (whole src/).
  *
  *   node scripts/applyPlainEnglishRename.mjs --dry-run
  *   node scripts/applyPlainEnglishRename.mjs --apply

@@ -27,7 +27,7 @@ function firebaseTrainer(uiTrainer) {
 }
 
 /**
- * First name only, for "Sarah received your request".
+ * First name only, for "Morgan received your request".
  * @param {object} trainer
  * @returns {string}
  */

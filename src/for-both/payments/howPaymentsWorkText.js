@@ -78,8 +78,8 @@ export const EARNINGS_MOCK = {
   pendingLabel: '$450 pending',
   nextPayout: 'Monday',
   transactions: [
-    { date: 'Oct 22', name: 'Sarah M.', amount: 100, status: 'Completed' },
-    { date: 'Oct 18', name: 'Mike T.', amount: 150, status: 'Completed' },
+    { date: 'Oct 22', name: 'Morgan T.', amount: 100, status: 'Completed' },
+    { date: 'Oct 18', name: 'Taylor B.', amount: 150, status: 'Completed' },
     { date: 'Oct 15', name: 'Alex R.', amount: 100, status: 'Pending' },
   ],
 };

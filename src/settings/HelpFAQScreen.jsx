@@ -52,7 +52,7 @@ const FAQ_SECTIONS = [
       'No. Client coaching payments are one-time charges from clients to you. Coach Connect Pro is a separate monthly trainer subscription for platform features.',
   },
   {
-    question: 'How do clients pay their coach?',
+    question: 'How do clients pay their trainer?',
     answer:
       'Linked clients tap Pay on the dashboard or use Settings → Billing → Add payment method. Payments are processed securely by Stripe and saved in payment history.',
   },
@@ -103,22 +103,22 @@ const FAQ_SECTIONS = [
   {
     question: 'Can trainers set their own prices?',
     answer:
-      'Trainer profiles can show a listed monthly-style price in Find trainers, and search can sort or filter by price when that info exists. The app displays what the trainer entered; it doesn’t negotiate or charge for you.',
+      'Trainer profiles can show a listed monthly-style price in Find a Trainer, and search can sort or filter by price when that info exists. The app displays what the trainer entered; it doesn’t negotiate or charge for you.',
   },
   {
-    question: 'How do athletes find trainers in their area?',
+    question: 'How do clients find trainers in their area?',
     answer:
-      'Use Find trainers: browse, search, and filter (specialty, session type, experience, price when listed). Location is what the trainer put on their profile, not automatic GPS matching.',
+      'Use Find a Trainer: browse, search, and filter (specialty, session type, experience, price when listed). Location is what the trainer put on their profile, not automatic GPS matching.',
   },
   {
     question: 'What happens when I request a trainer?',
     answer:
-      'Your request goes to their pending requests. They accept or decline. After you’re linked, messaging, shared files, and scheduling work the way your coach uses the app.',
+      'Your request goes to their pending requests. They accept or decline. After you’re linked, messaging, shared files, and scheduling work the way your trainer uses the app.',
   },
   {
     question: 'What’s the difference between a real trainer and AI Coach?',
     answer:
-      'Your trainer is a person: messages, sessions, files, photos they review. AI Coach is the in-app assistant for training and nutrition habits, with daily limits and a focused scope. Your coach does not automatically see AI Coach chats.',
+      'Your trainer is a person: messages, sessions, files, photos they review. AI Coach is the in-app assistant for training and nutrition habits, with daily limits and a focused scope. Your trainer does not automatically see AI Coach chats.',
   },
   {
     question: 'How does progress tracking actually work?',

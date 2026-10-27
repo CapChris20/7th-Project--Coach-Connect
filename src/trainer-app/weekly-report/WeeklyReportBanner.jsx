@@ -99,7 +99,7 @@ export default function WeeklyReportBanner({
   const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
   const ctaDisabled = loading || !hasReport;
   const benefits = audience === 'trainer' ? BENEFITS_TRAINER : BENEFITS_CLIENT;
-  const label = audience === 'trainer' ? 'Weekly report' : 'Weekly intelligence';
+  const label = 'Weekly report';
   const headline =
     audience === 'trainer'
       ? `${firstNameFromDisplay(clientDisplayName)}'s weekly reports`
@@ -111,7 +111,7 @@ export default function WeeklyReportBanner({
         : 'No report stored for this client yet. After they log check-ins and the weekly job runs, reports will show up here.'
       : hasReport && weekRangeLabel
         ? `Latest saved report: ${weekRangeLabel}. Open for trends, daily notes, and coaching takeaways.`
-        : 'When your coach’s weekly job runs (after you’ve logged check-ins), your recap lands here — open it anytime from this card.';
+        : 'When your trainer’s weekly job runs (after you’ve logged check-ins), your recap lands here — open it anytime from this card.';
   const ctaLabel = loading
     ? 'Loading…'
     : hasReport

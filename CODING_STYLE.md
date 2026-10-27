@@ -36,7 +36,7 @@ Use this when redoing existing files (the ~433-file pass). Mechanical checker PA
 | Recipe | Main only | Main + screen handlers that orchestrate work (`// 1.`–`// 6.`) |
 | JSX | Left dense | Named locals above JSX; small in-file subcomponents when needed |
 | Strip vs git HEAD | Ignored | Comment-stripped body must **differ** from HEAD — **SAME-CODE = not done** |
-| Human read | Skipped | Full file: “Could Chris change behavior from names/comments alone?” |
+| Human read | Skipped | Full file: “Could a developer change behavior from names/comments alone?” |
 
 Run `node scripts/stripBatchGate.mjs scripts/full-rewrite/batch1a.txt scripts/full-rewrite/batch1b.txt` (or any batch list) before treating a batch as done.
 
@@ -226,7 +226,7 @@ Every exported function gets JSDoc: what it does, what it takes, what it returns
 - `// vocab:` the first time a weird API shows up (`getDocs`, `array-contains`, `??` vs `||`).
 - `// Manipulate here:` on tweakable numbers, copy, flags.
 - No baby comments (`// add one`, `// return the list`).
-- Pass test: Chris can change the rule from the comments and names without asking what a line means.
+- Pass test: A developer can change the rule from the comments and names without asking what a line means.
 
 See `docs/INLINE_COMMENT_STYLE.md` for comment depth.
 
@@ -291,7 +291,7 @@ Live gold files (syntax-first bar):
 - Frontend: `src/for-both/weekly-report/WeeklyReportBody.jsx`
 - Full stack: `src/for-both/weekly-report/WeeklyReportScreen.jsx` and `src/trainer-app/scheduling/BookSessionScreen.jsx`
 - Backend main: `src/nutrition/food-search/searchFoods.js` (`searchFoods` is the recipe; helpers under PLUMBING are not the template)
-- Story-at-top parsing: `src/ai-coach/coach-actions/readActionsFromReply.js` (top only, until Chris signs off)
+- Story-at-top parsing: `src/ai-coach/coach-actions/readActionsFromReply.js` (top only, until engineering signs off)
 
 **Not gold:** batch 1 files rewritten before this bar (see `scripts/full-rewrite/batch1a.txt` and `batch1b.txt`), including `homeScreenPieces.jsx`. Redo those. Do not copy them.
 

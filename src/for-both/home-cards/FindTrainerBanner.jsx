@@ -16,13 +16,13 @@ const CHECK_COLORS = ['#FF6B9D', '#64D2FF', '#F97316', '#C084FC'];
 // Manipulate here: badge digits stop at 99+.
 const BADGE_CAP = 99;
 const BADGE_OVERFLOW_LABEL = '99+';
-const DEFAULT_LABEL = 'Trainer Marketplace';
-const DEFAULT_HEADLINE = 'Find Your Perfect Coach';
+const DEFAULT_LABEL = 'Find a Trainer';
+const DEFAULT_HEADLINE = 'Find Your Perfect Trainer';
 const DEFAULT_SUBHEAD =
-  'Search the marketplace, compare trainers, and connect with the coach who fits your goals and style.';
-const DEFAULT_CTA_LABEL = 'Browse Trainers';
+  'Search the directory, compare trainers, and connect with the trainer who fits your goals and style.';
+const DEFAULT_CTA_LABEL = 'Find a Trainer';
 const DEFAULT_CTA_ICON = 'search';
-const DEFAULT_ACCESSIBILITY_LABEL = 'Trainer marketplace';
+const DEFAULT_ACCESSIBILITY_LABEL = 'Find a trainer';
 const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
 const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
 const GRADIENT_LEFT = { x: 0, y: 0 };

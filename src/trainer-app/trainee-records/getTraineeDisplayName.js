@@ -37,7 +37,7 @@ function isUsableDisplayName(value) {
 }
 
 /**
- * Join name parts, skipping the missing ones so "Jane" + missing last does not become "Jane ".
+ * Join name parts, skipping the missing ones so "Taylor" + missing last does not become "Taylor ".
  * @param {...*} parts
  * @returns {string}
  */
@@ -50,7 +50,7 @@ function trimJoin(...parts) {
 }
 
 /**
- * Prefer real profile names before handles / usernames (which are often email locals like "cc").
+ * Prefer real profile names before handles / usernames (which are often email locals like "alex").
  * The ORDER of this array is the entire preference policy — firstUsableName takes the first that passes.
  * @param {object} record
  * @returns {Array}
@@ -109,7 +109,7 @@ function emailLocalParts(...emails) {
 }
 
 /**
- * Last-resort name: "jane.doe" → "Jane Doe", "janedoe" → "Janedoe".
+ * Last-resort name: "taylor.brooks" → "Taylor Brooks", "taylorbrooks" → "Taylorbrooks".
  * @param {string} local
  * @returns {string}
  */

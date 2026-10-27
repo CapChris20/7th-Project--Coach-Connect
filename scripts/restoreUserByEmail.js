@@ -20,10 +20,10 @@
  *     (Project ID is taken from .env EXPO_PUBLIC_FIREBASE_PROJECT_ID or defaults to anatrox-auth.)
  *
  * Usage:
- *   node scripts/restoreUserByEmail.js cc@gmail.com
- *   node scripts/restoreUserByEmail.js cc@gmail.com client
- *   node scripts/restoreUserByEmail.js cc@gmail.com trainer
- *   node scripts/restoreUserByEmail.js cc@gmail.com client --fresh-onboarding
+ *   node scripts/restoreUserByEmail.js demo.client@example.com
+ *   node scripts/restoreUserByEmail.js demo.client@example.com client
+ *   node scripts/restoreUserByEmail.js demo.client@example.com trainer
+ *   node scripts/restoreUserByEmail.js demo.client@example.com client --fresh-onboarding
  */
 
 const path = require('path');

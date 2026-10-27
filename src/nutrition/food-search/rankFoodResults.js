@@ -68,7 +68,7 @@ const OPTIONAL_CATEGORY_TOKENS = new Set([
 ]);
 
 const MENU_STYLE_PATTERN =
-  /\b(pizza|burger|sandwich|wrap|bowl|salad|taco|burrito|wing|wings|nugget|nuggets|combo|meal|latte|mocha|frappuccino|sub\b|hoagie|calzone|pasta|entree|appetizer|deep\s*dish|corner|slice|cheeseburger|hamburger|quesadilla|nachos|fries|chicken\s+fingers|crazy\s*bread|breadstick|garlic\s+bread|cheesy\s+bread|big\s*mac|whopper|baconator|frosty)\b/i;
+  /\b(pizza|burger|sandwich|wrap|bowl|salad|taco|burrito|wing|wings|nugget|nuggets|nugg|nuggs|nug|nugs|mcnugget|mcnuggets|tendie|tendies|tender|tenders|combo|meal|latte|mocha|frappuccino|sub\b|hoagie|calzone|pasta|entree|appetizer|deep\s*dish|corner|slice|cheeseburger|hamburger|quesadilla|nachos|fries|chicken\s+fingers|crazy\s*bread|breadstick|garlic\s+bread|cheesy\s+bread|big\s*mac|whopper|baconator|frosty)\b/i;
 
 const GROCERY_INGREDIENT_PATTERN =
   /\b(chicken breast|boneless\s+skinless|skinless\s+boneless|ground beef|ground turkey|pork chop|salmon fillet|tilapia|shrimp|turkey breast|brown rice|white rice|olive oil|greek yogurt|almond milk|protein powder|raw\s+chicken)\b/i;
@@ -112,7 +112,7 @@ const PRODUCT_GENERIC_WORDS = new Set([
 
 const CHAIN_TOKEN_PATTERNS = [
   /\blittle\s*caesars?\b/i,
-  /\bmcdonald'?s?\b/i,
+  /\b(mcdonald'?s?|mcds?)\b/i,
   /\bchipotle\b/i,
   /\bwendy'?s?\b/i,
   /\bdomino'?s?\b/i,
@@ -229,11 +229,40 @@ function quantityTokenAliases(token) {
   return [tokenText, count, `${count}pc`, `${count}pcs`, `${count} piece`, `${count} pieces`, `${count}-piece`, `${count}-pc`];
 }
 
+const FOOD_TOKEN_SYNONYMS = {
+  nugg: ['nugget', 'nuggets', 'mcnugget', 'mcnuggets', 'nuggs', 'nug', 'nugs'],
+  nuggs: ['nugget', 'nuggets', 'mcnugget', 'mcnuggets', 'nugg', 'nug', 'nugs'],
+  nug: ['nugget', 'nuggets', 'mcnugget', 'mcnuggets', 'nugg', 'nuggs', 'nugs'],
+  nugs: ['nugget', 'nuggets', 'mcnugget', 'mcnuggets', 'nugg', 'nuggs', 'nug'],
+  nugget: ['nuggets', 'nugg', 'nuggs', 'nug', 'nugs', 'mcnugget', 'mcnuggets'],
+  nuggets: ['nugget', 'nugg', 'nuggs', 'nug', 'nugs', 'mcnugget', 'mcnuggets'],
+  mcnugget: ['mcnuggets', 'nugget', 'nuggets', 'nugg', 'nuggs', 'nugs'],
+  mcnuggets: ['mcnugget', 'nugget', 'nuggets', 'nugg', 'nuggs', 'nugs'],
+  tendie: ['tender', 'tenders', 'tendies'],
+  tendies: ['tender', 'tenders', 'tendie'],
+  tender: ['tenders', 'tendie', 'tendies'],
+  tenders: ['tender', 'tendie', 'tendies'],
+  chkn: ['chicken'],
+  chx: ['chicken'],
+  chix: ['chicken'],
+  burg: ['burger', 'burgers'],
+  burgs: ['burger', 'burgers'],
+  mcd: ['mcdonald', 'mcdonalds'],
+  mcds: ['mcdonald', 'mcdonalds'],
+  mcdonald: ['mcd', 'mcds', 'mcdonalds'],
+  mcdonalds: ['mcd', 'mcds', 'mcdonald'],
+};
+
 function tokenHitsInHay(hay, token) {
   const variants = new Set(quantityTokenAliases(token));
   const tokenText = String(token || '').toLowerCase();
   if (tokenText.endsWith('s') && tokenText.length > 3) variants.add(tokenText.slice(0, -1));
   if (tokenText.length > 2 && !tokenText.endsWith('s')) variants.add(`${tokenText}s`);
+
+  const syns = FOOD_TOKEN_SYNONYMS[tokenText];
+  if (syns) {
+    for (const syn of syns) variants.add(syn);
+  }
 
   for (const variant of variants) {
     if (hayHasWord(hay, variant)) return true;
@@ -354,6 +383,8 @@ function firstPieceCount(text, extraDashPiece) {
   const hay = normalizeQueryText(text);
   const spaced = hay.match(/\b(\d+)\s*(pc|pcs|piece|pieces)\b/);
   if (spaced) return Number(spaced[1]);
+  const itemPiece = hay.match(/\b(\d+)\s*(nugget|nuggets|nugg|nuggs|nug|nugs|tender|tenders|tendie|tendies|wing|wings)\b/);
+  if (itemPiece) return Number(itemPiece[1]);
   const glued = hay.match(/\b(\d+)(pc|pcs)\b/);
   if (glued) return Number(glued[1]);
   if (extraDashPiece) {

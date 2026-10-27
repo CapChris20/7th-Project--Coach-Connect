@@ -20,7 +20,7 @@ Do **not** put teaching in a separate explanations dump — keep it inline.
 Do **not** leave the old boilerplate-only `@file-header` block when rewriting a file top;
 replace it with the plain `//` summary (optionally keep a short `Key exports:` line if useful).
 
-Pass/fail: could Chris manipulate this file from comments alone without asking what a weird line means?
+Pass/fail: could a developer manipulate this file from comments alone without asking what a weird line means?
 When in doubt → denser. Under-commenting is the failure mode.
 
 Folder renames may still land later — prefer job-based descriptions over brittle path claims when unsure.

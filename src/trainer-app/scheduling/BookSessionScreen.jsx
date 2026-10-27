@@ -103,7 +103,7 @@ const StandaloneHeaderBrand = ({ colors, title }) => (
         <CalendarDays color="white" size={20} />
       </LinearGradient>
       <View>
-        <Text style={[styles.appTitle, { color: colors.text }]}>CoachConnect</Text>
+        <Text style={[styles.appTitle, { color: colors.text }]}>Coach Connect</Text>
         <Text style={[styles.appSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
           {title}
         </Text>

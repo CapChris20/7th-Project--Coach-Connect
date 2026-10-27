@@ -16,7 +16,7 @@ import {
 // vocab: Expo's hosted push relay. You POST a token + message here and Expo forwards it to APNs / FCM.
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const USERS_COLLECTION = 'users';
-const FALLBACK_TRAINER_NAME = 'Your coach';
+const FALLBACK_TRAINER_NAME = 'Your trainer';
 const NOON_ANCHOR = 'T12:00:00';
 const HOURS_PER_HALF_DAY = 12;
 const NOON_HOUR = 12;

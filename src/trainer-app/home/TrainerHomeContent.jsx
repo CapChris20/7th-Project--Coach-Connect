@@ -865,7 +865,7 @@ const DashboardContent = ({
 
   const actions = [
     { label: 'Messages', icon: 'MessageSquare', action: 'messages' },
-    { label: 'Photo Gallery', imageSource: require('../../assets/icons/picture.png'), action: 'photos' },
+    { label: 'Progress Photos', imageSource: require('../../assets/icons/picture.png'), action: 'photos' },
     { label: 'Workout Plans', imageSource: require('../../assets/ai_workouts.png'), action: 'aiPlans' },
     { label: 'Document Maker', action: 'document' },
     { label: 'Spreadsheet Creator', action: 'spreadsheet' },
@@ -882,7 +882,7 @@ const DashboardContent = ({
 
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'CoachConnect',
+          title: 'Coach Connect',
           body: 'New client message received! Check your messages.',
           data: { type: 'trainer_notification', logo: 'coachconnect' },
           sound: 'default',
@@ -1338,7 +1338,7 @@ const DashboardContent = ({
             action === 'messages'
               ? (count > 0 ? `${count > 99 ? '99+' : count} unread` : 'No unread')
               : action === 'photos'
-                ? 'Client photos'
+                ? 'Progress photos'
                 : action === 'document'
                   ? 'Rich-text editor'
                   : action === 'spreadsheet'

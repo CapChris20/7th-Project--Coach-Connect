@@ -124,7 +124,7 @@ const LOGIC_BODY_SIGNS = [
 const RAW_ASSET_SIGNS = [/<svg[\s>]/i, /<path[\s>]/i, /xmlns=/i];
 
 // Hand-read calls for the files the auto-signals couldn't confidently place
-// (checked one by one on 2026-10-10 per Chris's "just read the code" rule).
+// (checked one by one on 2026-10-10 per the "just read the code" rule).
 // BACKEND = Firestore-adjacent hooks, pure business logic/parsing, no render.
 // FRONTEND = UI behavior hooks, navigation glue, style/asset/constant tables.
 // BARREL = re-exports a mix of both; stays put, only its imports get fixed.

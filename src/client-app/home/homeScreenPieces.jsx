@@ -881,7 +881,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
   );
 };
 
-const GreetingSection = ({ userName = "User", theme, isDark }) => {
+const GreetingSection = ({ userName = "Client", theme, isDark }) => {
   const dark = isDark ?? (theme === 'dark');
   return (
     <View style={styles.greetingSection}>

@@ -17,10 +17,10 @@ const seedData = async () => {
     const testTrainers = [
       {
         uid: 'trainer1',
-        firstName: 'Chris',
-        lastName: 'Shina',
-        email: 'chris@coachconnect.test',
-        displayName: 'Chris Shina',
+        firstName: 'Jordan',
+        lastName: 'Miller',
+        email: 'jordan@coachconnect.example',
+        displayName: 'Jordan Miller',
         role: 'trainer',
         specialties: ['Fat Loss', 'Strength Training', 'Nutrition'],
         experience: '8+ years',
@@ -36,10 +36,10 @@ const seedData = async () => {
       },
       {
         uid: 'trainer2',
-        firstName: 'Sarah',
-        lastName: 'Johnson',
-        email: 'sarah@coachconnect.test',
-        displayName: 'Sarah Johnson',
+        firstName: 'Morgan',
+        lastName: 'Taylor',
+        email: 'morgan@coachconnect.example',
+        displayName: 'Morgan Taylor',
         role: 'trainer',
         specialties: ['Muscle Gain', 'Competition Prep', 'HIIT'],
         experience: '5+ years',
@@ -59,10 +59,10 @@ const seedData = async () => {
     const testClients = [
       {
         uid: 'client1',
-        firstName: 'Mike',
-        lastName: 'Wilson',
-        email: 'mike@coachconnect.test',
-        displayName: 'Mike Wilson',
+        firstName: 'Taylor',
+        lastName: 'Brooks',
+        email: 'taylor@coachconnect.example',
+        displayName: 'Taylor Brooks',
         role: 'client',
         goals: 'Fat loss and strength building',
         experienceLevel: 'Beginner',
@@ -78,10 +78,10 @@ const seedData = async () => {
       },
       {
         uid: 'client2',
-        firstName: 'Emily',
-        lastName: 'Chen',
-        email: 'emily@coachconnect.test',
-        displayName: 'Emily Chen',
+        firstName: 'Riley',
+        lastName: 'Harper',
+        email: 'riley@coachconnect.example',
+        displayName: 'Riley Harper',
         role: 'client',
         goals: 'Muscle gain and toning',
         experienceLevel: 'Intermediate',
@@ -97,10 +97,10 @@ const seedData = async () => {
       },
       {
         uid: 'client3',
-        firstName: 'David',
-        lastName: 'Brown',
-        email: 'david@coachconnect.test',
-        displayName: 'David Brown',
+        firstName: 'Avery',
+        lastName: 'Quinn',
+        email: 'avery@coachconnect.example',
+        displayName: 'Avery Quinn',
         role: 'client',
         goals: 'Competition preparation',
         experienceLevel: 'Advanced',
@@ -126,9 +126,9 @@ const seedData = async () => {
     // Create some existing trainer-client relationships
     console.log('🤝 Creating existing trainer-client relationships...');
     
-    // Chris Shina has 2 existing clients
+    // Jordan Miller has 2 existing clients
     await db.collection('trainer_clients/trainer1/clients').doc('client1').set({
-      name: 'Mike Wilson',
+      name: 'Taylor Brooks',
       joinedAt: admin.firestore.Timestamp.fromDate(new Date('2024-01-15')),
       status: 'active',
       goals: 'Fat loss and strength building',
@@ -137,9 +137,9 @@ const seedData = async () => {
       limitations: 'None',
     });
 
-    // Sarah Johnson has 1 existing client
+    // Morgan Taylor has 1 existing client
     await db.collection('trainer_clients/trainer2/clients').doc('client2').set({
-      name: 'Emily Chen',
+      name: 'Riley Harper',
       joinedAt: admin.firestore.Timestamp.fromDate(new Date('2024-02-01')),
       status: 'active',
       goals: 'Muscle gain and toning',
@@ -151,8 +151,8 @@ const seedData = async () => {
     // Create sample workouts for existing relationships
     console.log('💪 Creating sample workouts...');
     
-    // Workouts for Chris & Mike
-    const workoutsForMike = [
+    // Workouts for Jordan & Taylor
+    const workoutsForTaylor = [
       {
         name: 'Upper Body Strength',
         exercises: ['Bench Press', 'Rows', 'Shoulder Press', 'Bicep Curls'],
@@ -175,15 +175,15 @@ const seedData = async () => {
       },
     ];
 
-    for (const workout of workoutsForMike) {
+    for (const workout of workoutsForTaylor) {
       await db.collection('workouts/trainer1/clients/client1/workouts').add({
         ...workout,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
 
-    // Workouts for Sarah & Emily
-    const workoutsForEmily = [
+    // Workouts for Morgan & Riley
+    const workoutsForRiley = [
       {
         name: 'Full Body HIIT',
         exercises: ['Burpees', 'Mountain Climbers', 'Kettlebell Swings', 'Box Jumps'],
@@ -196,7 +196,7 @@ const seedData = async () => {
       },
     ];
 
-    for (const workout of workoutsForEmily) {
+    for (const workout of workoutsForRiley) {
       await db.collection('workouts/trainer2/clients/client2/workouts').add({
         ...workout,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -206,39 +206,39 @@ const seedData = async () => {
     // Create sample messages
     console.log('💬 Creating sample messages...');
     
-    // Messages between Chris & Mike (Path A: top-level messages)
-    const convChrisMike = 'conv_client1_trainer1';
-    const messagesChrisMike = [
-      { conversationId: convChrisMike, text: 'Hi Mike! Welcome aboard. I\'ve created your first workout program.', senderId: 'trainer1', read: false },
-      { conversationId: convChrisMike, text: 'Thanks Chris! Really excited to get started.', senderId: 'client1', read: false },
-      { conversationId: convChrisMike, text: 'How did today\'s workout go? Remember to focus on form over weight.', senderId: 'trainer1', read: false },
+    // Messages between Jordan & Taylor (Path A: top-level messages)
+    const convJordanTaylor = 'conv_client1_trainer1';
+    const messagesJordanTaylor = [
+      { conversationId: convJordanTaylor, text: 'Hi Taylor! Welcome aboard. I\'ve created your first workout program.', senderId: 'trainer1', read: false },
+      { conversationId: convJordanTaylor, text: 'Thanks Jordan! Really excited to get started.', senderId: 'client1', read: false },
+      { conversationId: convJordanTaylor, text: 'How did today\'s workout go? Remember to focus on form over weight.', senderId: 'trainer1', read: false },
     ];
-    const timestampsChrisMike = [
+    const timestampsJordanTaylor = [
       admin.firestore.Timestamp.fromDate(new Date('2024-01-15T10:00:00')),
       admin.firestore.Timestamp.fromDate(new Date('2024-01-15T10:30:00')),
       admin.firestore.Timestamp.fromDate(new Date('2024-03-01T18:00:00')),
     ];
-    for (let i = 0; i < messagesChrisMike.length; i++) {
+    for (let i = 0; i < messagesJordanTaylor.length; i++) {
       await db.collection('messages').add({
-        ...messagesChrisMike[i],
-        timestamp: timestampsChrisMike[i],
+        ...messagesJordanTaylor[i],
+        timestamp: timestampsJordanTaylor[i],
       });
     }
 
-    // Messages between Sarah & Emily (Path A)
-    const convSarahEmily = 'conv_client2_trainer2';
-    const messagesSarahEmily = [
-      { conversationId: convSarahEmily, text: 'Emily! Great to have you. Let\'s crush those muscle goals!', senderId: 'trainer2', read: false },
-      { conversationId: convSarahEmily, text: 'Thanks Sarah! Ready to work hard!', senderId: 'client2', read: false },
+    // Messages between Morgan & Riley (Path A)
+    const convMorganRiley = 'conv_client2_trainer2';
+    const messagesMorganRiley = [
+      { conversationId: convMorganRiley, text: 'Riley! Great to have you. Let\'s crush those muscle goals!', senderId: 'trainer2', read: false },
+      { conversationId: convMorganRiley, text: 'Thanks Morgan! Ready to work hard!', senderId: 'client2', read: false },
     ];
-    const timestampsSarahEmily = [
+    const timestampsMorganRiley = [
       admin.firestore.Timestamp.fromDate(new Date('2024-02-01T09:00:00')),
       admin.firestore.Timestamp.fromDate(new Date('2024-02-01T09:15:00')),
     ];
-    for (let i = 0; i < messagesSarahEmily.length; i++) {
+    for (let i = 0; i < messagesMorganRiley.length; i++) {
       await db.collection('messages').add({
-        ...messagesSarahEmily[i],
-        timestamp: timestampsSarahEmily[i],
+        ...messagesMorganRiley[i],
+        timestamp: timestampsMorganRiley[i],
       });
     }
 
@@ -250,7 +250,7 @@ const seedData = async () => {
         type: 'new_client_request',
         trainerUid: 'trainer1',
         clientUid: 'client3',
-        clientName: 'David Brown',
+        clientName: 'Avery Quinn',
         messageId: 'pending_msg_1',
         messageText: 'Hi! I\'m looking for competition prep coaching. Available?',
         timestamp: admin.firestore.Timestamp.fromDate(new Date('2024-03-05T14:00:00')),
@@ -260,7 +260,7 @@ const seedData = async () => {
         type: 'workout_completed',
         trainerUid: 'trainer1',
         clientUid: 'client1',
-        clientName: 'Mike Wilson',
+        clientName: 'Taylor Brooks',
         workoutName: 'Upper Body Strength',
         timestamp: admin.firestore.Timestamp.fromDate(new Date('2024-03-01T19:00:00')),
         read: true,
@@ -310,11 +310,11 @@ const seedData = async () => {
     console.log(`   Notifications: 2`);
     console.log(`   Events: 3`);
     console.log('\n🔑 Test Credentials:');
-    console.log('   Trainer 1: chris@coachconnect.test');
-    console.log('   Trainer 2: sarah@coachconnect.test');
-    console.log('   Client 1: mike@coachconnect.test');
-    console.log('   Client 2: emily@coachconnect.test');
-    console.log('   Client 3: david@coachconnect.test');
+    console.log('   Trainer 1: jordan@coachconnect.example');
+    console.log('   Trainer 2: morgan@coachconnect.example');
+    console.log('   Client 1: taylor@coachconnect.example');
+    console.log('   Client 2: riley@coachconnect.example');
+    console.log('   Client 3: avery@coachconnect.example');
 
   } catch (error) {
     console.error('❌ Error seeding data:', error);

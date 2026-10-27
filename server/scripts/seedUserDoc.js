@@ -5,7 +5,7 @@
  *   node server/scripts/seedUserDoc.js <uid> [displayName]
  *
  * Example:
- *   node server/scripts/seedUserDoc.js SPHkiuTpEbX85ek8rgzLODpuF0r1 "Cade Cunnignham"
+ *   node server/scripts/seedUserDoc.js SPHkiuTpEbX85ek8rgzLODpuF0r1 "Dakota Reese"
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });

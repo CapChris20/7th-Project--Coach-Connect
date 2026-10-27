@@ -97,9 +97,9 @@ function termsSections(contactLine) {
     },
     {
       num: '05',
-      title: 'Human coaches',
+      title: 'Human trainers',
       body:
-        'If you work with a coach, your relationship with them is between you and them unless we say otherwise elsewhere. We don’t control how they coach or bill you outside what the product explicitly supports.',
+        'If you work with a trainer, your relationship with them is between you and them unless we say otherwise elsewhere. We don’t control how they train or bill you outside what the product explicitly supports.',
     },
     {
       num: '06',

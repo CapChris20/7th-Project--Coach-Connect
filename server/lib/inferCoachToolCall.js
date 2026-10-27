@@ -144,7 +144,7 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
 
   // logMood: any explicit log verb + any mood word, in any order.
   // The old regex required the literal pattern "mood/feel/feeling is|as <mood>",
-  // so Chris's real phrasing "Log that I'm Happy" (no word "mood" at all) and
+  // so real user phrasing "Log that I'm Happy" (no word "mood" at all) and
   // "Log my mood: happy" (colon) both fell through → the coach said
   // "Tap Confirm" but no Confirm chip ever existed. A log verb plus a mood
   // word is the intent; findMoodInText normalizes Happy/great/😊 → canonical.

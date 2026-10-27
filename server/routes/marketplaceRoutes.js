@@ -18,7 +18,7 @@ function registerMarketplaceRoutes(app, deps = {}) {
       trainers: [
         {
           id: 'sample1',
-          name: 'John Smith',
+          name: 'Alex Rivera',
           location: 'Detroit, MI',
           specialties: ['strength', 'weight_loss'],
           bio: '10 years experience helping clients reach their fitness goals through personalized training programs.',
@@ -35,7 +35,7 @@ function registerMarketplaceRoutes(app, deps = {}) {
         },
         {
           id: 'sample2',
-          name: 'Sarah Johnson',
+          name: 'Morgan Taylor',
           location: 'Los Angeles, CA',
           specialties: ['yoga', 'rehabilitation', 'senior'],
           bio: 'Specializing in gentle yoga and rehabilitation exercises for all ages and fitness levels.',
@@ -52,7 +52,7 @@ function registerMarketplaceRoutes(app, deps = {}) {
         },
         {
           id: 'sample3',
-          name: 'Mike Chen',
+          name: 'Sam Casey',
           location: 'New York, NY',
           specialties: ['crossfit', 'powerlifting', 'athletic'],
           bio: 'Former competitive athlete helping clients achieve peak performance through strength and conditioning.',

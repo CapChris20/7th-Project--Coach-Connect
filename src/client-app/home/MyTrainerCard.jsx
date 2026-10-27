@@ -44,7 +44,7 @@ function glass(isDark) {
 }
 
 /**
- * Initials from the first two words. "Alex Kim" → "AK".
+ * Initials from the first two words. "Jordan Miller" → "JM".
  * @param {string} name
  * @returns {string}
  */

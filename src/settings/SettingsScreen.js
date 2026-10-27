@@ -1157,7 +1157,7 @@ export default function SettingsScreen({
           </SettingsRow>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <SettingsRow label="Version" colors={colors}>
-            <Text style={[styles.rowValue, { color: colors.textSecondary }]}>CoachConnect v1.0.0</Text>
+            <Text style={[styles.rowValue, { color: colors.textSecondary }]}>Coach Connect v1.0.0</Text>
           </SettingsRow>
         </View>
       </ScrollView>

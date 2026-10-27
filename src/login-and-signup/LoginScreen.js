@@ -2633,7 +2633,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                   setName(text);
                   if (signupErrors.name) setSignupErrors({ ...signupErrors, name: '' });
                 }}
-                placeholder="John Doe"
+                placeholder="Alex Rivera"
                 isDark={isDarkLanding}
               />
               <FloatingInput
@@ -3001,7 +3001,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 placeholder="name@example.com"
                 keyboardType="email-address"
                 isDark={isDarkLanding}
-                accessibilityLabel="Login email"
+                accessibilityLabel="Sign in email"
               />
               {loginErrors.email ? (
                 <Text
@@ -3026,7 +3026,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 placeholder="••••••••"
                 secureTextEntry
                 isDark={isDarkLanding}
-                accessibilityLabel="Login password"
+                accessibilityLabel="Sign in password"
               />
               {loginErrors.password ? (
                 <Text
@@ -3088,7 +3088,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
                 onPress={handleLogin}
                 activeOpacity={0.88}
                 disabled={loginLoading}
-                accessibilityLabel="Submit login"
+                accessibilityLabel="Submit sign in"
                 style={{
                   borderRadius: 14,
                   height: 52,

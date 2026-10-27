@@ -2,7 +2,7 @@
  * Restore user document from trainers collection (and any other sources).
  * Run: node scripts/restoreUserDocument.js
  *
- * Restores: users/KdtVuFxsxXRSD9NLSHBTx0zVo8l2 (pissdick@gmail.com)
+ * Restores: users/KdtVuFxsxXRSD9NLSHBTx0zVo8l2 (demo.trainer@example.com)
  * - Pulls profile from trainers/{uid} if it exists (name, bio, certifications, pricing, etc.)
  * - Your client list in trainer_clients/{uid}/clients was never deleted and is still there.
  */
@@ -11,7 +11,7 @@ const admin = require('firebase-admin');
 const path = require('path');
 
 const UID = 'KdtVuFxsxXRSD9NLSHBTx0zVo8l2';
-const EMAIL = 'pissdick@gmail.com';
+const EMAIL = 'demo.trainer@example.com';
 
 async function main() {
   let serviceAccount;

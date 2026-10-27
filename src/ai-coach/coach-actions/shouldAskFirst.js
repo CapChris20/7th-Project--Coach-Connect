@@ -102,7 +102,7 @@ const DEFAULT_PLAN_ID = 'current';
 // The only mood values Firestore / the dashboard understand. Everything the
 // model or the user says ("great", "😊", "Happy!") must land on one of these
 // BEFORE a Confirm chip is shown — otherwise the chip confirms, then the
-// writer rejects it with "Mood must be one of: …" (Chris's Oct 21 bug).
+// writer rejects it with "Mood must be one of: …" (Oct 21 regression bug).
 // Manipulate here: add a synonym word → the canonical mood it should save as.
 const VALID_MOODS = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
 const MOOD_ALIASES = {

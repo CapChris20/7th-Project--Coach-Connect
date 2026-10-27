@@ -1,6 +1,6 @@
 # Inline Comment Style Guide
 
-**Owner:** Chris Shina  
+**Owner:** Engineering Team  
 **Purpose:** Drop this file into any project (and point Cursor / teammates at it) so every new file is written at the same teaching depth.
 
 This is **not** “comment every if.” It is: explain the confusing layer so you can **read and manipulate** the app without asking someone what a line means.

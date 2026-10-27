@@ -1760,7 +1760,7 @@ function TrainingHomeScreenLayout({
 
                   <Text style={{ fontSize: 26, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', marginTop: 10 }}>
                     {'Welcome back, '}
-                    <Text style={{ color: '#FF6B9D' }}>{String(currentUser?.displayName || '').trim().split(' ')[0] || 'Athlete'}</Text>
+                    <Text style={{ color: '#FF6B9D' }}>{String(currentUser?.displayName || '').trim().split(' ')[0] || 'Client'}</Text>
                   </Text>
 
                   <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.5)', marginTop: 6, lineHeight: 17 }}>
@@ -2022,7 +2022,7 @@ function TrainingHomeScreenLayout({
                 >
                   <View style={emptyTrainerStyles.ctaInner}>
                     <Ionicons name="search" size={18} color="#FFFFFF" />
-                    <Text style={emptyTrainerStyles.ctaText}>Browse Trainers</Text>
+                    <Text style={emptyTrainerStyles.ctaText}>Find a Trainer</Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
                   </View>
                 </LinearGradient>
@@ -2060,10 +2060,10 @@ function TrainingHomeScreenLayout({
                 badgeCount: Number(unreadMessageCount) || 0,
               },
               {
-                label: 'Photo Gallery',
+                label: 'Progress Photos',
                 onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
                 icon: 'images-outline',
-                subtitle: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Your photos'),
+                subtitle: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Progress photos'),
               },
               {
                 label: 'Workout Plans',

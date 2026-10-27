@@ -16,8 +16,8 @@ const path = require('path');
 
 // Only these will ever be deleted. Add test emails or UIDs here after reviewing --list.
 const TEST_EMAILS = [
-  'chris@coachconnect.test',
-  'sarah@coachconnect.test',
+  'jordan@coachconnect.example',
+  'morgan@coachconnect.example',
   // 'test@example.com',
 ];
 

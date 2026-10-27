@@ -804,7 +804,7 @@ Copies: \`src/SRC_FILE_CATALOG.md\` and \`docs/SRC_FILE_CATALOG.md\`
 - Prefer fewer subfolders; kill jargon folders (\`persistence\`, \`logic\`, \`chat-api\`, \`voice\` if unused, fake \`screens/\` stubs).
 - Prefer short everyday names over long technical ones.
 - **Never** change Firebase production project id \`anatrox-auth\` or live \`EXPO_PUBLIC_FIREBASE_*\` / \`.env\` project identity.
-- Leave \`Suggested name:\` blank in this catalog — fill names in a separate rename plan Chris approves.
+- Leave \`Suggested name:\` blank in this catalog — fill names in an approved rename plan.
 
 **Flags you will see:**
 

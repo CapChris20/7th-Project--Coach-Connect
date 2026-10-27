@@ -210,7 +210,6 @@
   "jest": {
     "testEnvironment": "node",
     "roots": [
-      "<rootDir>/src/__tests__",
       "<rootDir>/server/__tests__"
     ],
     "testMatch": [

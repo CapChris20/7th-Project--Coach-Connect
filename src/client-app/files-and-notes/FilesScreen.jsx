@@ -450,7 +450,7 @@ function FilesScreenLayout({
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {showDocs && (lists.trainerShared || []).length > 0 && (
-          <SectionBlock sectionKey="trainer" title="FROM YOUR COACH" count={lists.trainerShared.length} theme={theme}>
+          <SectionBlock sectionKey="trainer" title="FROM YOUR TRAINER" count={lists.trainerShared.length} theme={theme}>
             <View style={{ gap: 8 }}>
               {lists.trainerShared.map((file) => (
                 <FileRow
@@ -516,7 +516,7 @@ function FilesScreenLayout({
         )}
 
         {showNotes && (lists.notes || []).length > 0 && (
-          <SectionBlock sectionKey="notes" title="COACHING NOTES" count={lists.notes.length} theme={theme}>
+          <SectionBlock sectionKey="notes" title="TRAINER NOTES" count={lists.notes.length} theme={theme}>
             <View style={{ gap: 10 }}>
               {lists.notes.map((note) => (
                 <NoteCard
