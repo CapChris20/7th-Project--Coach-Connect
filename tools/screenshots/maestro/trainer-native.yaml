@@ -1,0 +1,23 @@
+# Captures native-only trainer surfaces. Requires simulator + SCREENSHOT_TRAINER_* env.
+appId: ${APP_ID}
+---
+- launchApp
+- tapOn: "Sign In"
+- tapOn:
+    text: "Trainer"
+    optional: true
+- inputText: ${SCREENSHOT_TRAINER_EMAIL}
+- inputText: ${SCREENSHOT_TRAINER_PASSWORD}
+- tapOn: "Submit login"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 30000
+    optional: true
+- takeScreenshot: trainer-home-native-probe
+- tapOn:
+    text: "Notes"
+    optional: true
+- tapOn:
+    text: "Add"
+    optional: true
+- takeScreenshot: trainer-add-file

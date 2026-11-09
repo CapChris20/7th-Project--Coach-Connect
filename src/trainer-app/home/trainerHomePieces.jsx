@@ -129,6 +129,12 @@ const GRADIENT_BG_DARK = ['#0c0c0e', '#0f0f12', '#0c0c0e'];
 const GRADIENT_BG_LIGHT = ['#f5f5f7', '#f0f0f2', '#ebebed'];
 
 // Each section gets its own 2-color combo from your palette
+// Soft progress palette — declared before GRADIENT_TABS (web TDZ crash if referenced first).
+const S_P = '#A78BFA';   // soft purple
+const S_K = '#E8799A';   // soft pink
+const S_O = '#FB923C';   // soft orange
+const S_C = '#0D9488';   // soft teal
+
 const GRADIENT_HERO = [PURPLE, PINK];
 const GRADIENT_AVATAR = [PURPLE, CYAN];
 const GRADIENT_USERNAME = [PURPLE, PINK];
@@ -153,10 +159,6 @@ const BADGE_COLOR = PINK;
 const ICON_ACCENT = PURPLE;
 
 // Progress tab VALUE text only — soft combos (not neon), one per card
-const S_P = '#A78BFA';   // soft purple
-const S_K = '#E8799A';   // soft pink
-const S_O = '#FB923C';   // soft orange
-const S_C = '#0D9488';   // soft teal
 // Daily metric big numbers — distinct combos (dark pink / dark orange / gray); avoid one hue for all
 const D_PINK_DEEP = '#9F1239';
 const D_PINK_MID = '#BE185D';

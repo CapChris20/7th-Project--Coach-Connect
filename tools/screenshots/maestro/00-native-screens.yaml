@@ -1,0 +1,8 @@
+# Native-only screenshot flows (iOS/Android simulator required).
+# Credentials via env only — never commit passwords.
+# APP_ID defaults to com.coachconnect (see .maestro/config.yaml).
+
+appId: ${APP_ID}
+---
+- launchApp
+- assertVisible: "Sign In"
