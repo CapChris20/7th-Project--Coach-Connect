@@ -1,0 +1,2637 @@
+{
+  "generatedAt": "2026-11-08T09:11:18.327Z",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "deviceScaleFactor": 2
+  },
+  "notes": [
+    "Passwords never stored in files — use SCREENSHOT_*_PASSWORD env vars.",
+    "No app source changes. Tooling lives under tools/screenshots.",
+    "After 3 failed attempts a screen is recorded as failed and not retried."
+  ],
+  "entries": [
+    {
+      "screen": "login-welcome",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/both/login-welcome.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "login-form",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/both/login-form.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "login-form",
+      "role": "both",
+      "state": "error",
+      "route": null,
+      "file": "src/screenshots/error/both/login-form.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "signup-form",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/both/signup-form.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "forgot-password",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/both/forgot-password.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 2,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "forgot-password",
+      "role": "both",
+      "state": "error",
+      "route": null,
+      "file": "src/screenshots/error/both/forgot-password.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "forgot-password",
+      "role": "both",
+      "state": "loading",
+      "route": null,
+      "file": "src/screenshots/loading/both/forgot-password.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": null,
+      "group": "auth",
+      "step": null
+    },
+    {
+      "screen": "client-onboarding-01",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 1
+    },
+    {
+      "screen": "client-onboarding-02",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 2
+    },
+    {
+      "screen": "client-onboarding-03",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 3
+    },
+    {
+      "screen": "client-onboarding-04",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 4
+    },
+    {
+      "screen": "client-onboarding-05",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 5
+    },
+    {
+      "screen": "client-onboarding-06",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 6
+    },
+    {
+      "screen": "client-onboarding-07",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 7
+    },
+    {
+      "screen": "client-onboarding-08",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 8
+    },
+    {
+      "screen": "client-onboarding-09",
+      "role": "client",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 9
+    },
+    {
+      "screen": "trainer-onboarding-01",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 1
+    },
+    {
+      "screen": "trainer-onboarding-02",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 2
+    },
+    {
+      "screen": "trainer-onboarding-03",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 3
+    },
+    {
+      "screen": "trainer-onboarding-04",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 4
+    },
+    {
+      "screen": "trainer-onboarding-05",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 5
+    },
+    {
+      "screen": "trainer-onboarding-06",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": null,
+      "group": "onboarding",
+      "step": 6
+    },
+    {
+      "screen": "trainer-onboarding-07",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 7
+    },
+    {
+      "screen": "trainer-onboarding-08",
+      "role": "trainer",
+      "state": "empty",
+      "route": "NewUserSetup",
+      "file": null,
+      "status": "unreachable",
+      "reason": "Onboarding requires users with onboardingCompleted=false; screenshot seed accounts are completed. Capture via SetupScreenshotTool or incomplete-user seed in a follow-up.",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0,
+      "nav": null,
+      "group": "onboarding",
+      "step": 8
+    },
+    {
+      "screen": "client-home",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientMainTabs",
+      "file": "src/screenshots/empty/client/client-home.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-home",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientMainTabs",
+      "file": "src/screenshots/with-food/client/client-home.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-home",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientMainTabs",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-dashboard",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientDashboard",
+      "file": "src/screenshots/empty/client/client-dashboard.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "dashboard"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-dashboard",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientDashboard",
+      "file": "src/screenshots/with-food/client/client-dashboard.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "dashboard"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-dashboard",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientDashboard",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "dashboard"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-files",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientFiles",
+      "file": "src/screenshots/empty/client/client-files.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "files"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-files",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientFiles",
+      "file": "src/screenshots/with-food/client/client-files.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "files"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-inbox",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "inbox"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-inbox",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "inbox"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-chat",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-chat",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientNutrition",
+      "file": "src/screenshots/empty/client/client-nutrition.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "nutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientNutrition",
+      "file": "src/screenshots/with-food/client/client-nutrition.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "nutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientNutrition",
+      "file": "src/screenshots/loading/client/client-nutrition.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "nutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-food-search",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/client/client-food-search.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "food-search"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-food-search",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": "src/screenshots/with-food/client/client-food-search.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "food-search"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-confirm-food",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "confirm-food"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition-facts",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "daily-facts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition-facts",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "daily-facts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition-goals",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "goals"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition-goals",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "goals"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-nutrition-setup",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "setup"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-quick-add",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "quick-add"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-edit-serving",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "nutrition",
+        "action": "edit-serving"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-barcode-scanner",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "from": "nutrition",
+        "action": "barcode"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-workout",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientWorkoutPlan",
+      "file": "src/screenshots/empty/client/client-workout.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "workout"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-workout",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientWorkoutPlan",
+      "file": "src/screenshots/with-food/client/client-workout.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "workout"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-workout",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientWorkoutPlan",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "workout"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-exercise-library",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "workout",
+        "action": "library"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-exercise-library",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "workout",
+        "action": "library"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-video-player",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "workout",
+        "action": "video"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientAI",
+      "file": "src/screenshots/empty/client/client-ai.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "ai"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientAI",
+      "file": "src/screenshots/with-food/client/client-ai.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "ai"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientAI",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "ai"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-chat",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientAIChat",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "ai",
+        "action": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-chat",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientAIChat",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "ai",
+        "action": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-chat",
+      "role": "client",
+      "state": "error",
+      "route": "ClientAIChat",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "ai",
+        "action": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-profile",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientProfile",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientProfile"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-profile",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientProfile",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientProfile"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-settings",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientSettings",
+      "file": "src/screenshots/empty/client/client-settings.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientSettings"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-settings",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientSettings",
+      "file": "src/screenshots/with-food/client/client-settings.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientSettings"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-blocked-users",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "settings",
+        "action": "blocked-users"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-blocked-users",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "settings",
+        "action": "blocked-users"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-help-faq",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientHelpFAQ",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientHelpFAQ"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-terms",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientTerms",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientTerms"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-privacy",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientPrivacy",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientPrivacy"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-contact-support",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientContactSupport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientContactSupport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-bug-report",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientBugReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientBugReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-trainer-search",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientTrainerSearch",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientTrainerSearch"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-trainer-search",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientTrainerSearch",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientTrainerSearch"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-trainer-search",
+      "role": "client",
+      "state": "loading",
+      "route": "ClientTrainerSearch",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientTrainerSearch"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-trainer-profile",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientTrainerProfile",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientTrainerProfile"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-weekly-report",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientWeeklyReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientWeeklyReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-weekly-report",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientWeeklyReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientWeeklyReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-photo-gallery",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientPhotoGallery",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientPhotoGallery"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-photo-gallery",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientPhotoGallery",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientPhotoGallery"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-workouts",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientAIWorkouts",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientAIWorkouts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-workouts",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientAIWorkouts",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientAIWorkouts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-plan-viewer",
+      "role": "client",
+      "state": "with-food",
+      "route": "ClientPlanViewer",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "ClientPlanViewer"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-pay-trainer",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "action": "pay-trainer"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-add-file",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "action": "add-file"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-trainer-shared-files",
+      "role": "client",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "action": "trainer-shared-files"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "client-ai-coach-tests",
+      "role": "client",
+      "state": "empty",
+      "route": "ClientAICoachTests",
+      "file": null,
+      "status": "skipped",
+      "reason": "dev-only",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 0
+    },
+    {
+      "screen": "trainer-home",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerMain",
+      "file": "src/screenshots/empty/trainer/trainer-home.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "hub": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-home",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerMain",
+      "file": "src/screenshots/with-food/trainer/trainer-home.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "hub": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-home",
+      "role": "trainer",
+      "state": "loading",
+      "route": "TrainerMain",
+      "file": null,
+      "status": "failed",
+      "reason": "Screenshot too small (21038 bytes) — likely blank/loading",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "hub": "home"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-progress",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/trainer/trainer-progress.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "Progress"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-progress",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": "src/screenshots/with-food/trainer/trainer-progress.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "Progress"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-nutrition-tab",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Nutrition tab missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "tab": "Nutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-nutrition-tab",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": "src/screenshots/with-food/trainer/trainer-nutrition-tab.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "Nutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-sessions",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Sessions missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "tab": "Sessions"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-sessions",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": "src/screenshots/with-food/trainer/trainer-sessions.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "tab": "Sessions"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-schedule-session",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "sessions",
+        "action": "schedule"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-schedule-session",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "from": "sessions",
+        "action": "schedule"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-notes-files",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Notes missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "tab": "Notes & Files"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-notes-files",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Notes missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "tab": "Notes & Files"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-inbox",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "inbox"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-inbox",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "inbox"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-chat",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-chat",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "chat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-requests",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Requests control missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "overlay": "requests"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-requests",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Requests control missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "overlay": "requests"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-clients",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": "src/screenshots/empty/trainer/trainer-clients.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "clients"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-clients",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": "src/screenshots/with-food/trainer/trainer-clients.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "clients"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-photo-gallery",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerPhotoGallery",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "photos"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-photo-gallery",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerPhotoGallery",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "photos"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-ai-workouts",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerAIWorkouts",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "ai-workouts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-ai-workouts",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerAIWorkouts",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "ai-workouts"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-workout-generator",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerWorkoutGenerator",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "generator"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-workout-generator",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerWorkoutGenerator",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "generator"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-plan-viewer",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerPlanViewer",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "overlay": "plan-viewer"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-document-editor",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "action": "document-editor"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-spreadsheet-editor",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "action": "spreadsheet-editor"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-profile",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerProfile",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerProfile"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-profile",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerProfile",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerProfile"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-settings",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerSettings",
+      "file": "src/screenshots/empty/trainer/trainer-settings.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerSettings"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-settings",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerSettings",
+      "file": "src/screenshots/with-food/trainer/trainer-settings.png",
+      "status": "ok",
+      "reason": null,
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerSettings"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-help-faq",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerHelpFAQ",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerHelpFAQ"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-terms",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerTerms",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerTerms"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-privacy",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerPrivacy",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerPrivacy"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-contact-support",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerContactSupport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerContactSupport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-bug-report",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerBugReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerBugReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-nutrition",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerNutrition",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerNutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-nutrition",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerNutrition",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerNutrition"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-voice-ai",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerVoiceAI",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerVoiceAI"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-voice-ai",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerVoiceAI",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerVoiceAI"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-ai-chat",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerAIChat",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerAIChat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-ai-chat",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerAIChat",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerAIChat"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-search",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerSearch",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerSearch"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-search",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerSearch",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerSearch"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-weekly-report",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerWeeklyReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Weekly report missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "stack": "TrainerWeeklyReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-weekly-report",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerWeeklyReport",
+      "file": null,
+      "status": "failed",
+      "reason": "Weekly report missing",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 3,
+      "nav": {
+        "stack": "TrainerWeeklyReport"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-workout-plan",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerWorkoutPlan",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerWorkoutPlan"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-workout-plan",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerWorkoutPlan",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerWorkoutPlan"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-manual-plan-builder",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerManualPlanBuilder",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerManualPlanBuilder"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-manual-plan-builder",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerManualPlanBuilder",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerManualPlanBuilder"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-payments",
+      "role": "trainer",
+      "state": "empty",
+      "route": "TrainerPayments",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerPayments"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-payments",
+      "role": "trainer",
+      "state": "with-food",
+      "route": "TrainerPayments",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerPayments"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-payments",
+      "role": "trainer",
+      "state": "error",
+      "route": "TrainerPayments",
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "stack": "TrainerPayments"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-payout-setup",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "action": "payout-setup"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-payout-reminder",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "Not covered by focused live capture path; needs deeper nav or Maestro",
+      "nativeOnly": false,
+      "captureMethod": "playwright-web",
+      "attempts": 1,
+      "nav": {
+        "action": "payout-reminder"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-pro-expired",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "action": "pro-expired"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-free-trial-banner",
+      "role": "trainer",
+      "state": "with-food",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "action": "free-trial"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "trainer-add-file",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "failed",
+      "reason": "maestro CLI not installed in this environment; native-only screens require iOS/Android simulator + Maestro",
+      "nativeOnly": true,
+      "captureMethod": "maestro",
+      "attempts": 3,
+      "nav": {
+        "action": "add-file"
+      },
+      "group": null,
+      "step": null
+    },
+    {
+      "screen": "pro-upgrade-screen",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "book-session-screen",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "manage-trainee-screen",
+      "role": "trainer",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "log-todays-meals-screen",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "files-screen-legacy",
+      "role": "client",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "setup-preview-screen",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "generate-my-workout-plan-screen",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "food-list-screen",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "app-loading-screen",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    },
+    {
+      "screen": "plan-pdf-viewer",
+      "role": "both",
+      "state": "empty",
+      "route": null,
+      "file": null,
+      "status": "skipped",
+      "reason": "not-mounted",
+      "nativeOnly": false,
+      "captureMethod": null,
+      "attempts": 0
+    }
+  ],
+  "updatedAt": "2026-11-08T10:34:06.466Z"
+}
