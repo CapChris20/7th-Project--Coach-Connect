@@ -1,0 +1,7 @@
+{
+  "version": "12.0.0",
+  "kind": "coachconnect-screenshot-seed",
+  "scenario": "with-food",
+  "projectId": "anatrox-auth",
+  "notes": "Not a binary Firestore LevelDB export. import-seed.js applies seed.json via Admin SDK. Expo app has no emulator hook."
+}

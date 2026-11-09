@@ -1,0 +1,96 @@
+{
+  "documents": [
+    {
+      "path": "users/screenshot_client_001",
+      "data": {
+        "uid": "screenshot_client_001",
+        "email": "cc-screenshot-client@example.com",
+        "role": "client",
+        "firstName": "Screenshot",
+        "lastName": "Client",
+        "name": "Screenshot Client",
+        "displayName": "Screenshot Client",
+        "onboardingCompleted": true,
+        "onboardingCompletedAt": "2026-11-08T09:11:18.277Z",
+        "createdAt": "2026-11-08T09:11:18.277Z",
+        "updatedAt": "2026-11-08T09:11:18.277Z",
+        "favoriteFoods": []
+      }
+    },
+    {
+      "path": "users/screenshot_trainer_001",
+      "data": {
+        "uid": "screenshot_trainer_001",
+        "email": "cc-screenshot-trainer@example.com",
+        "role": "trainer",
+        "firstName": "Screenshot",
+        "lastName": "Trainer",
+        "name": "Screenshot Trainer",
+        "displayName": "Screenshot Trainer",
+        "onboardingCompleted": true,
+        "onboardingCompletedAt": "2026-11-08T09:11:18.277Z",
+        "createdAt": "2026-11-08T09:11:18.277Z",
+        "updatedAt": "2026-11-08T09:11:18.277Z",
+        "specialties": [
+          "Strength",
+          "Nutrition"
+        ],
+        "certifications": [
+          "NASM-CPT"
+        ],
+        "inviteCode": "SHOT01",
+        "trainerProfileBio": "Screenshot trainer profile for UI redesign captures.",
+        "yearsExperience": "3-5"
+      }
+    },
+    {
+      "path": "trainers/screenshot_trainer_001",
+      "data": {
+        "uid": "screenshot_trainer_001",
+        "name": "Screenshot Trainer",
+        "displayName": "Screenshot Trainer",
+        "photoURL": "",
+        "specialties": [
+          "Strength",
+          "Nutrition"
+        ],
+        "bio": "Screenshot trainer profile for UI redesign captures.",
+        "certifications": [
+          "NASM-CPT"
+        ],
+        "inviteCode": "SHOT01",
+        "onboardingCompleted": true,
+        "available": true,
+        "rating": 0,
+        "reviewCount": 0,
+        "createdAt": "2026-11-08T09:11:18.277Z",
+        "updatedAt": "2026-11-08T09:11:18.277Z"
+      }
+    },
+    {
+      "path": "nutrition_goals/screenshot_client_001",
+      "data": {
+        "user_id": "screenshot_client_001",
+        "calories": 2200,
+        "calorie_target": 2200,
+        "proteinTarget": 150,
+        "protein_target": 150,
+        "carbsTarget": 220,
+        "carbs_target": 220,
+        "fatTarget": 70,
+        "fat_target": 70,
+        "macroSplit": {
+          "protein": 0.3,
+          "carbs": 0.4,
+          "fat": 0.3
+        },
+        "macro_split": {
+          "protein": 0.3,
+          "carbs": 0.4,
+          "fat": 0.3
+        },
+        "updated_at": "2026-11-08T09:11:18.277Z"
+      }
+    }
+  ]
+}

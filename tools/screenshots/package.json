@@ -1,0 +1,20 @@
+{
+  "name": "coachconnect-screenshots",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Seed + capture tooling for UI redesign screenshots. Does not modify app source.",
+  "type": "commonjs",
+  "scripts": {
+    "install-browsers": "npx playwright install chromium",
+    "seed": "node import-seed.js",
+    "seed:empty": "node import-seed.js --scenario empty",
+    "seed:with-food": "node import-seed.js --scenario with-food",
+    "capture": "node run-all.mjs",
+    "capture:playwright": "node playwright/capture.mjs",
+    "manifest:init": "node lib/write-manifest-skeleton.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.7.0",
+    "playwright": "^1.65.0"
+  }
+}

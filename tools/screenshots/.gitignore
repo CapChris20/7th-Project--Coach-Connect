@@ -1,0 +1,6 @@
+node_modules/
+.metro.config.js.screenshot-bak
+playwright-report/
+test-results/
+.env
+*.password

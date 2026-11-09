@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-11-08T10:34:06.517Z",
+  "counts": {
+    "ok": 34,
+    "unreachable": 16,
+    "failed": 98,
+    "skipped": 11
+  },
+  "okFiles": [
+    "src/screenshots/empty/both/login-welcome.png",
+    "src/screenshots/empty/both/login-form.png",
+    "src/screenshots/error/both/login-form.png",
+    "src/screenshots/empty/both/signup-form.png",
+    "src/screenshots/empty/both/forgot-password.png",
+    "src/screenshots/error/both/forgot-password.png",
+    "src/screenshots/loading/both/forgot-password.png",
+    "src/screenshots/empty/client/client-home.png",
+    "src/screenshots/with-food/client/client-home.png",
+    "src/screenshots/empty/client/client-dashboard.png",
+    "src/screenshots/with-food/client/client-dashboard.png",
+    "src/screenshots/empty/client/client-files.png",
+    "src/screenshots/with-food/client/client-files.png",
+    "src/screenshots/empty/client/client-nutrition.png",
+    "src/screenshots/with-food/client/client-nutrition.png",
+    "src/screenshots/loading/client/client-nutrition.png",
+    "src/screenshots/empty/client/client-food-search.png",
+    "src/screenshots/with-food/client/client-food-search.png",
+    "src/screenshots/empty/client/client-workout.png",
+    "src/screenshots/with-food/client/client-workout.png",
+    "src/screenshots/empty/client/client-ai.png",
+    "src/screenshots/with-food/client/client-ai.png",
+    "src/screenshots/empty/client/client-settings.png",
+    "src/screenshots/with-food/client/client-settings.png",
+    "src/screenshots/empty/trainer/trainer-home.png",
+    "src/screenshots/with-food/trainer/trainer-home.png",
+    "src/screenshots/empty/trainer/trainer-progress.png",
+    "src/screenshots/with-food/trainer/trainer-progress.png",
+    "src/screenshots/with-food/trainer/trainer-nutrition-tab.png",
+    "src/screenshots/with-food/trainer/trainer-sessions.png",
+    "src/screenshots/empty/trainer/trainer-clients.png",
+    "src/screenshots/with-food/trainer/trainer-clients.png",
+    "src/screenshots/empty/trainer/trainer-settings.png",
+    "src/screenshots/with-food/trainer/trainer-settings.png"
+  ],
+  "notes": [
+    "Used provided trainer/client accounts for login capture (no Firestore wipe of production data).",
+    "empty and with-food logged-in shots may look similar because live account data was not cleared.",
+    "Auth screens previously captured remain ok.",
+    "Native-only screens still require Maestro/simulator."
+  ]
+}

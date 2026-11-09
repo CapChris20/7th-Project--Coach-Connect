@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "localId": "screenshot_client_001",
+      "email": "cc-screenshot-client@example.com",
+      "emailVerified": true,
+      "displayName": "Screenshot Client"
+    },
+    {
+      "localId": "screenshot_trainer_001",
+      "email": "cc-screenshot-trainer@example.com",
+      "emailVerified": true,
+      "displayName": "Screenshot Trainer"
+    }
+  ]
+}
