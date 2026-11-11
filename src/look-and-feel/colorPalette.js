@@ -1,6 +1,9 @@
 // Shared color, type, spacing, and shadow tokens for light and dark mode.
 // Flow: screens pick lightColors or darkColors → typography / spacing / shadows style the same components.
 // Used by: screens across the app. Short keys like `xs` and `h1` are the names other files already import — do not rename them.
+//
+// vocab: Neobrutalist tokens added for redesign — thick outlines, hard shadows, gradient accents.
+// See docs/design/DESIGN.md for the full design system.
 
 // ===== NAMED CONSTANTS =====
 
@@ -152,6 +155,15 @@ export const lightColors = {
   black: '#000000',
   indigo: indigoRamp(LIGHT_INDIGO_HEX),
   gray: grayRamp(LIGHT_GRAY_HEX),
+  
+  // Neobrutalist tokens (light mode)
+  nbBackground: '#F3EEFF',
+  nbSurface: '#FFFFFF',
+  nbSurfaceChip: '#FFFFFF',
+  nbInk: '#0A0A0F',
+  nbMuted: '#55506B',
+  nbBorder: '#0A0A0F',
+  nbShadow: '#0A0A0F',
 };
 
 /** Dark mode colors. Gray is flipped so 50 is the darkest step. */
@@ -174,6 +186,15 @@ export const darkColors = {
   black: '#000000',
   indigo: indigoRamp(DARK_INDIGO_HEX),
   gray: grayRamp(DARK_GRAY_HEX),
+  
+  // Neobrutalist tokens (dark mode)
+  nbBackground: '#0A0A0F',
+  nbSurface: '#17171F',
+  nbSurfaceChip: '#1F1F2A',
+  nbInk: '#F3EEFF',
+  nbMuted: '#A7A1BE',
+  nbBorder: '#F3EEFF',
+  nbShadow: '#6B3AD9',
 };
 
 export const typography = {
@@ -231,6 +252,13 @@ export const borderRadius = {
   xl: 16,
   xxl: 20,
   round: BORDER_RADIUS_PILL,
+  
+  // Neobrutalist radii by role
+  nbChip: 12,
+  nbCard: 14,
+  nbHero: 18,
+  nbSheet: 20,
+  nbPhone: 34,
 };
 
 export const fontSize = {
@@ -259,4 +287,79 @@ export const shadows = {
   md: buildDropShadow(2, 0.1, 4, 3),
   lg: buildDropShadow(4, 0.15, 8, 6),
   xl: buildDropShadow(8, 0.2, 16, 10),
+};
+
+// Neobrutalist design tokens
+export const nb = {
+  // Border width for all neobrutalist components
+  borderWidth: 2.5,
+  
+  // Hard shadow config (offset 4/4, no blur)
+  // iOS: use shadowRadius: 0
+  // Android: use a duplicated offset View because elevation can't do hard shadows
+  shadowOffset: 4,
+  
+  // Minimum touch target
+  minTouchTarget: 44,
+  
+  // Chip/button horizontal padding
+  chipPadding: 16,
+};
+
+// Gradient definitions for expo-linear-gradient
+// All use 115deg diagonal, start {x:0,y:0} end {x:1,y:1}
+export const gradients = {
+  // Primary buttons, plus button, active chips, progress rings, avatars
+  // Text on brand gradient is always nbInk (#0A0A0F)
+  brand: {
+    colors: ['#FF6B9D', '#FB923C'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+  
+  // Secondary buttons, selected segments, selected checkboxes
+  // Text on ink gradient is white
+  ink: {
+    colors: ['#6B3AD9', '#BE185D'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+  
+  // Hero titles only (masked text) - changes by theme
+  title: {
+    light: {
+      colors: ['#BE185D', '#C2410C'],
+      start: { x: 0, y: 0 },
+      end: { x: 1, y: 1 },
+    },
+    dark: {
+      colors: ['#FF6B9D', '#FB923C'],
+      start: { x: 0, y: 0 },
+      end: { x: 1, y: 1 },
+    },
+  },
+  
+  // Status tiles and option icons - text is always nbInk (#0A0A0F)
+  water: {
+    colors: ['#67E8F9', '#60A5FA'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+  sleep: {
+    colors: ['#E9D5FF', '#A78BFA'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+  energy: {
+    colors: ['#BBF7D0', '#5EEAD4'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+  
+  // Selected option rows, lottie frames, sheet cards - text is nbInk (#0A0A0F)
+  soft: {
+    colors: ['#FFF1F7', '#EDE4FF'],
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
 };

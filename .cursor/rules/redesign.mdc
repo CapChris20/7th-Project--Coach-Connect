@@ -1,0 +1,12 @@
+---
+description: Coach Connect neobrutalist redesign. Apply when editing UI screens or components.
+alwaysApply: false
+globs: ["src/**/*.jsx", "src/**/*.js"]
+---
+Follow docs/design/DESIGN.md for every UI change. Visual STYLE reference only: docs/design/mockups/index.html (source-screens.js, source-styles.css). Do not copy its layouts. Keep each screen's existing structure, sections, order, content and navigation, and apply the look to what is already there.
+- Use the shared Nb* components in src/look-and-feel. Never hand-roll buttons, chips, cards or segmented controls.
+- Colors and gradients come from tokens only. No raw hex in screens. No solid accent fills.
+- Keep behavior, data, navigation and screen structure unchanged. Visual pass only (the wheel scheduler replacement is the one requested structural change).
+- Keep existing icons and the items listed under "Keep as they are".
+- Text must never clip: chips and buttons are single line with 16 horizontal padding; touch targets 44 minimum.
+- Check light and dark for every screen you touch.

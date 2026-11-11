@@ -26,6 +26,7 @@ import {
   ClientCoachConversationScreen,
   ClientAICoachTestScreen,
 } from './clientExtraScreens';
+import NbComponentsPreview from '../../look-and-feel/NbComponentsPreview';
 
 // ===== NAMED CONSTANTS =====
 
@@ -34,6 +35,7 @@ const Stack = createNativeStackNavigator();
 const STACK_PRESENTATION_CARD = 'card';
 const STACK_ANIMATION_SLIDE_FROM_RIGHT = 'slide_from_right';
 const QA_COACH_TEST_ROUTE = 'ClientAICoachTests';
+const QA_NB_PREVIEW_ROUTE = 'ClientNbComponentsPreview';
 
 const modalOptions = {
   presentation: STACK_PRESENTATION_CARD,
@@ -74,6 +76,7 @@ export default function ClientScreenList() {
       {pushedClientScreen(CLIENT_ROUTES.AI, ClientCoachHomeScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIChat, ClientCoachConversationScreen)}
       {pushedClientScreen(QA_COACH_TEST_ROUTE, ClientAICoachTestScreen)}
+      {pushedClientScreen(QA_NB_PREVIEW_ROUTE, NbComponentsPreview)}
     </Stack.Navigator>
   );
 }
