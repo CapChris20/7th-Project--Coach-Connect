@@ -1,6 +1,6 @@
-// The basic neobrutalist box: thick outline, hard offset shadow, optional gradient fill.
+// The basic neobrutalist box: thick solid outline, hard offset shadow, optional small gradient fill.
 // Flow: paint the shadow layer behind → paint the outlined box on top → render the children inside.
-// Used by NbButton, NbChip, NbField and by screens that need a card.
+// Used by NbButton, NbChip, NbField, NbPill and by screens that need a card.
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -8,7 +8,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../lightDarkMode';
 import {
   NB_BORDER_WIDTH,
-  NB_GRADIENTS,
   NB_GRADIENT_END,
   NB_GRADIENT_START,
   NB_RADIUS,
@@ -20,20 +19,12 @@ import {
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {string|undefined} gradientName One of the names in NB_GRADIENTS.
- * @returns {boolean}
- */
-function hasGradient(gradientName) {
-  return Boolean(gradientName && NB_GRADIENTS[gradientName]);
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
  * @param {object} props
  * @param {React.ReactNode} props.children
- * @param {string} [props.gradient] Name from NB_GRADIENTS. Leave empty for a plain surface.
+ * @param {string[]} [props.accent] Two gradient colors for the fill. Use only on small things.
  * @param {string} [props.fillColor] Overrides the plain surface color.
  * @param {number} [props.radius]
  * @param {boolean} [props.hasShadow]
@@ -43,7 +34,7 @@ function hasGradient(gradientName) {
  */
 export function NbSurface({
   children,
-  gradient,
+  accent,
   fillColor,
   radius = NB_RADIUS.card,
   hasShadow = true,
@@ -72,14 +63,14 @@ export function NbSurface({
     overflow: 'hidden',
   };
 
-  // 3. Shadow layer first, outlined box on top, gradient filling the box behind the children.
+  // 3. Shadow layer first, outlined box on top, optional gradient behind the children.
   return (
     <View style={[wrapperStyle, style]}>
       {hasShadow ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, shadowStyle]} /> : null}
       <View style={[boxStyle, innerStyle]}>
-        {hasGradient(gradient) ? (
+        {accent ? (
           <LinearGradient
-            colors={NB_GRADIENTS[gradient]}
+            colors={accent}
             start={NB_GRADIENT_START}
             end={NB_GRADIENT_END}
             style={StyleSheet.absoluteFill}

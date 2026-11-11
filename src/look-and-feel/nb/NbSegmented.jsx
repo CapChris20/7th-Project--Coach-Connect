@@ -1,20 +1,15 @@
-// Segmented control: one outlined bar split into equal choices, the chosen one filled with the ink gradient.
-// Flow: draw the outlined bar → one equal-width segment per choice → selected segment gets the gradient.
-// Used for short single-choice sets such as AM/PM, minutes, In person/Video.
+// Segmented control: one outlined bar split into equal choices, the chosen one filled solid black (white in dark mode).
+// Flow: draw the outlined bar → one equal-width segment per choice → selected segment gets the ink fill.
+// Used for short single-choice sets such as AM/PM, minutes, tabs, In person/Video.
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../lightDarkMode';
 import {
   MINIMUM_TOUCH_SIZE,
   NB_BORDER_WIDTH,
-  NB_GRADIENTS,
-  NB_GRADIENT_END,
-  NB_GRADIENT_START,
   NB_RADIUS,
   NB_SPACING,
-  NB_TEXT_ON_INK_GRADIENT,
   getNbColors,
 } from './nbTokens';
 
@@ -48,6 +43,7 @@ export function NbSegmented({ choices, value, onChange, style }) {
       {choices.map((choice, position) => {
         const isSelected = choice.value === value;
         const dividerStyle = position > 0 ? { borderLeftWidth: NB_BORDER_WIDTH, borderLeftColor: colors.border } : null;
+        const fillStyle = isSelected ? { backgroundColor: colors.ink } : null;
         return (
           <Pressable
             key={String(choice.value)}
@@ -55,20 +51,9 @@ export function NbSegmented({ choices, value, onChange, style }) {
             accessibilityRole="radio"
             accessibilityLabel={choice.label}
             accessibilityState={{ selected: isSelected }}
-            style={[styles.segment, dividerStyle]}
+            style={[styles.segment, dividerStyle, fillStyle]}
           >
-            {isSelected ? (
-              <LinearGradient
-                colors={NB_GRADIENTS.ink}
-                start={NB_GRADIENT_START}
-                end={NB_GRADIENT_END}
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null}
-            <Text
-              numberOfLines={1}
-              style={[styles.segmentLabel, { color: isSelected ? NB_TEXT_ON_INK_GRADIENT : colors.ink }]}
-            >
+            <Text numberOfLines={1} style={[styles.segmentLabel, { color: isSelected ? colors.onInk : colors.ink }]}>
               {choice.label}
             </Text>
           </Pressable>

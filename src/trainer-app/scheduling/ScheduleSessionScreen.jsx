@@ -15,10 +15,10 @@ import { NbSegmented } from '../../look-and-feel/nb/NbSegmented';
 import { NbSurface } from '../../look-and-feel/nb/NbSurface';
 import {
   MINIMUM_TOUCH_SIZE,
-  NB_MUTED_TEXT_ON_LIGHT_GRADIENT,
   NB_RADIUS,
   NB_SPACING,
-  NB_TEXT_ON_LIGHT_GRADIENT,
+  NB_TEXT_ON_ACCENT,
+  getNbAccent,
   getNbColors,
 } from '../../look-and-feel/nb/nbTokens';
 import { FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomMenuSpacing';
@@ -41,6 +41,7 @@ const DAY_CHIP_GAP = 8;
 const DAYS_SHOWN_BEFORE_SELECTED = 2;
 const HOUR_CHIP_WIDTH = 52;
 const AVATAR_SIZE = 48;
+const AVATAR_ACCENT_POSITION = 2;
 const TITLE_FONT_SIZE = 24;
 const SECTION_LABEL_FONT_SIZE = 12;
 
@@ -151,20 +152,21 @@ function IconSquare({ onPress, label, children }) {
  * Who the session is with: a round initial and the name.
  * @param {object} props
  * @param {string} props.clientName
+ * @param {object} props.colors
  * @returns {JSX.Element}
  */
-function ClientBanner({ clientName }) {
+function ClientBanner({ clientName, colors }) {
   const initial = String(clientName || 'C').trim().charAt(0).toUpperCase();
   return (
-    <NbSurface gradient="soft" innerStyle={styles.bannerInner}>
-      <NbSurface gradient="brand" radius={AVATAR_SIZE / 2} hasShadow={false} innerStyle={styles.avatar}>
+    <NbSurface innerStyle={styles.bannerInner}>
+      <NbSurface accent={getNbAccent(AVATAR_ACCENT_POSITION)} radius={AVATAR_SIZE / 2} hasShadow={false} innerStyle={styles.avatar}>
         <Text style={styles.avatarLetter}>{initial}</Text>
       </NbSurface>
       <View style={styles.bannerText}>
-        <Text numberOfLines={1} style={[styles.clientName, { color: NB_TEXT_ON_LIGHT_GRADIENT }]}>
+        <Text numberOfLines={1} style={[styles.clientName, { color: colors.ink }]}>
           {clientName}
         </Text>
-        <Text style={[styles.bannerSub, { color: NB_MUTED_TEXT_ON_LIGHT_GRADIENT }]}>Training session</Text>
+        <Text style={[styles.bannerSub, { color: colors.muted }]}>Training session</Text>
       </View>
     </NbSurface>
   );
@@ -419,7 +421,7 @@ export function ScheduleSessionScreen(props = {}) {
         <Text style={[styles.screenTitle, { color: colors.ink }]}>{isEdit ? 'Edit session' : 'New session'}</Text>
       </View>
 
-      <ClientBanner clientName={clientName} />
+      <ClientBanner clientName={clientName} colors={colors} />
 
       <View style={styles.sectionGap}>
         <SectionLabel text="Date" color={colors.ink} />
@@ -478,9 +480,9 @@ export function ScheduleSessionScreen(props = {}) {
         onChangeText={setVideoLink}
       />
 
-      <NbSurface gradient="soft" innerStyle={styles.summaryInner}>
-        <Text style={[styles.summaryEyebrow, { color: NB_TEXT_ON_LIGHT_GRADIENT }]}>Your session</Text>
-        <Text style={[styles.summaryText, { color: NB_TEXT_ON_LIGHT_GRADIENT }]}>{summaryLine}</Text>
+      <NbSurface innerStyle={styles.summaryInner}>
+        <Text style={[styles.summaryEyebrow, { color: colors.muted }]}>Your session</Text>
+        <Text style={[styles.summaryText, { color: colors.ink }]}>{summaryLine}</Text>
       </NbSurface>
 
       <NbButton label={saveLabel} onPress={handleSubmit} isLoading={submitting} />
@@ -528,7 +530,7 @@ const styles = StyleSheet.create({
     padding: NB_SPACING.medium,
   },
   avatar: { width: AVATAR_SIZE, height: AVATAR_SIZE, alignItems: 'center', justifyContent: 'center' },
-  avatarLetter: { fontSize: 20, fontWeight: '800', color: NB_TEXT_ON_LIGHT_GRADIENT },
+  avatarLetter: { fontSize: 20, fontWeight: '800', color: NB_TEXT_ON_ACCENT },
   bannerText: { flex: 1 },
   clientName: { fontSize: 18, fontWeight: '800' },
   bannerSub: { fontSize: 13, fontWeight: '500' },

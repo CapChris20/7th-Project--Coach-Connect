@@ -1,6 +1,6 @@
-// Full-width action button: gradient fill, thick outline, hard shadow that sinks when pressed.
-// Flow: pick the gradient and text color for the variant → draw the surface → move it down-right while pressed.
-// Used by screens for their one main action (variant brand) and for secondary actions (ink, plain).
+// Full-width action button: solid black (white in dark mode), thick outline, hard shadow that sinks when pressed.
+// Flow: pick the fill and text color for the variant → draw the surface → move it down-right while pressed.
+// Used by screens for their one main action (primary) and for secondary actions (plain, accent).
 
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
@@ -11,8 +11,7 @@ import {
   NB_RADIUS,
   NB_SHADOW_OFFSET,
   NB_SPACING,
-  NB_TEXT_ON_INK_GRADIENT,
-  NB_TEXT_ON_LIGHT_GRADIENT,
+  NB_TEXT_ON_ACCENT,
   getNbColors,
 } from './nbTokens';
 
@@ -24,12 +23,13 @@ const BUTTON_FONT_SIZE = 15;
 // ===== HELPER FUNCTIONS =====
 
 /**
- * @param {string} variant brand, ink or plain.
- * @returns {string|undefined} Gradient name, or nothing for a plain button.
+ * @param {string} variant primary, plain or accent.
+ * @param {object} colors
+ * @returns {string} Fill color for the button, or empty for a gradient accent.
  */
-function gradientForVariant(variant) {
-  if (variant === 'brand') return 'brand';
-  if (variant === 'ink') return 'ink';
+function fillForVariant(variant, colors) {
+  if (variant === 'primary') return colors.ink;
+  if (variant === 'plain') return colors.surface;
   return undefined;
 }
 
@@ -39,8 +39,8 @@ function gradientForVariant(variant) {
  * @returns {string}
  */
 function labelColorForVariant(variant, colors) {
-  if (variant === 'brand') return NB_TEXT_ON_LIGHT_GRADIENT;
-  if (variant === 'ink') return NB_TEXT_ON_INK_GRADIENT;
+  if (variant === 'primary') return colors.onInk;
+  if (variant === 'accent') return NB_TEXT_ON_ACCENT;
   return colors.ink;
 }
 
@@ -50,7 +50,8 @@ function labelColorForVariant(variant, colors) {
  * @param {object} props
  * @param {string} props.label
  * @param {Function} props.onPress
- * @param {string} [props.variant] brand (default), ink or plain.
+ * @param {string} [props.variant] primary (default), plain or accent.
+ * @param {string[]} [props.accent] Gradient pair for the accent variant.
  * @param {boolean} [props.isLoading]
  * @param {boolean} [props.isDisabled]
  * @param {string} [props.labelColor] Overrides the label color, for example a danger red.
@@ -60,7 +61,8 @@ function labelColorForVariant(variant, colors) {
 export function NbButton({
   label,
   onPress,
-  variant = 'brand',
+  variant = 'primary',
+  accent,
   isLoading = false,
   isDisabled = false,
   labelColor,
@@ -86,7 +88,8 @@ export function NbButton({
     >
       {({ pressed }) => (
         <NbSurface
-          gradient={gradientForVariant(variant)}
+          accent={variant === 'accent' ? accent : undefined}
+          fillColor={fillForVariant(variant, colors)}
           radius={NB_RADIUS.chip}
           hasShadow={!pressed}
           style={[style, pressed ? pressedShift : null, blocked ? styles.blocked : null]}

@@ -1,10 +1,10 @@
-// Neobrutalist design tokens: colors, gradients, outline width, hard-shadow offset, radii, spacing.
-// Flow: a screen asks getNbColors(isDark) for its palette → reads gradients and sizes from the named lists below.
+// Neobrutalist design tokens: black/white/gray base for light and dark, plus a rotating palette of small gradient accents.
+// Flow: a screen asks getNbColors(isDark) for its base palette → picks an accent pair with getNbAccent(index) for small details only.
 // Used by: every Nb component in this folder and every screen built on them. This is the only place these hex values live.
 
 // ===== NAMED CONSTANTS =====
 
-export const NB_BORDER_WIDTH = 2.5;
+export const NB_BORDER_WIDTH = 3;
 export const NB_SHADOW_OFFSET = 4;
 export const MINIMUM_TOUCH_SIZE = 44;
 
@@ -27,40 +27,50 @@ export const NB_SPACING = {
 export const NB_GRADIENT_START = { x: 0, y: 0 };
 export const NB_GRADIENT_END = { x: 1, y: 1 };
 
-export const NB_GRADIENTS = {
-  brand: ['#FF6B9D', '#FB923C'],
-  ink: ['#6B3AD9', '#BE185D'],
-  water: ['#67E8F9', '#60A5FA'],
-  sleep: ['#E9D5FF', '#A78BFA'],
-  energy: ['#BBF7D0', '#5EEAD4'],
-  soft: ['#FFF1F7', '#EDE4FF'],
-};
+// Text that sits on an accent gradient is always near-black, in light and dark mode.
+export const NB_TEXT_ON_ACCENT = '#0A0A0A';
 
-// Text that sits on a gradient is always near-black, except on the ink gradient, which uses white.
-export const NB_TEXT_ON_LIGHT_GRADIENT = '#0A0A0F';
-export const NB_TEXT_ON_INK_GRADIENT = '#FFFFFF';
-// Secondary text on a light gradient must stay dark in dark mode too, so it is not part of the theme palette.
-export const NB_MUTED_TEXT_ON_LIGHT_GRADIENT = '#3A3550';
+// Eleven gradient pairs. Color is for SMALL things only: avatars, pills, icon chips, bars, rings, strips.
+// No green on purpose. Big surfaces stay black, white or gray.
+export const NB_ACCENTS = [
+  ['#FF6B9D', '#FB923C'], // orange to pink
+  ['#FBBF24', '#EF4444'], // gold to red
+  ['#A78BFA', '#E879F9'], // purple to magenta
+  ['#60A5FA', '#818CF8'], // blue to indigo
+  ['#FDE047', '#FB923C'], // gold to orange
+  ['#FDA4AF', '#FB7185'], // rose
+  ['#7DD3FC', '#A78BFA'], // sky to violet
+  ['#FB7185', '#FBBF24'], // coral to gold
+  ['#FDBA74', '#C4B5FD'], // peach to lilac
+  ['#A78BFA', '#FB7185'], // violet to rose
+  ['#FCD34D', '#F472B6'], // gold to pink
+];
 
 const LIGHT_COLORS = {
-  background: '#F3EEFF',
+  background: '#F2F2F0',
   surface: '#FFFFFF',
   chip: '#FFFFFF',
-  ink: '#0A0A0F',
-  muted: '#55506B',
-  border: '#0A0A0F',
-  shadow: '#0A0A0F',
+  gray: '#E6E6E3',
+  ink: '#0A0A0A',
+  onInk: '#FFFFFF',
+  muted: '#5C5C5C',
+  border: '#0A0A0A',
+  shadow: '#0A0A0A',
+  line: 'rgba(10,10,10,0.16)',
   danger: '#DC2626',
 };
 
 const DARK_COLORS = {
-  background: '#0A0A0F',
-  surface: '#17171F',
-  chip: '#1F1F2A',
-  ink: '#F3EEFF',
-  muted: '#A7A1BE',
-  border: '#F3EEFF',
-  shadow: '#6B3AD9',
+  background: '#0B0B0B',
+  surface: '#161616',
+  chip: '#1F1F1F',
+  gray: '#262626',
+  ink: '#F2F2F2',
+  onInk: '#0A0A0A',
+  muted: '#A0A0A0',
+  border: '#F2F2F2',
+  shadow: '#8A8A8A',
+  line: 'rgba(255,255,255,0.18)',
   danger: '#F87171',
 };
 
@@ -70,9 +80,20 @@ const DARK_COLORS = {
 
 /**
  * @param {boolean} isDark
- * @returns {object} Palette for the current theme. Gradients do not change between themes.
+ * @returns {object} Black/white/gray palette for the current theme.
  */
 export function getNbColors(isDark) {
   if (isDark) return DARK_COLORS;
   return LIGHT_COLORS;
+}
+
+/**
+ * Pick one gradient pair by position, wrapping around. Neighbors use a step of 3 so they look different.
+ * @param {number} position
+ * @returns {string[]} Two hex colors, start then end.
+ */
+export function getNbAccent(position) {
+  const count = NB_ACCENTS.length;
+  const wrapped = ((position % count) + count) % count;
+  return NB_ACCENTS[wrapped];
 }
