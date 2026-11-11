@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Text, Modal, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, borderRadius, nb, gradients, spacing } from './colorPalette';
+import { borderRadius, nb, gradients, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Bottom sheet modal with neobrutalist styling.
@@ -22,8 +23,7 @@ import { lightColors, darkColors, borderRadius, nb, gradients, spacing } from '.
  * @param {object} [props.style] - additional content styles
  */
 export default function NbSheet({ visible, onClose, title, children, gradient = false, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const sheetContent = (
     <>

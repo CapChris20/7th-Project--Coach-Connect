@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, borderRadius, nb, gradients, spacing } from './colorPalette';
+import { borderRadius, nb, gradients, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Option row with icon, title, subtitle, and optional checkbox.
@@ -24,8 +25,7 @@ import { lightColors, darkColors, borderRadius, nb, gradients, spacing } from '.
  * @param {object} [props.style] - additional container styles
  */
 export default function NbOptionRow({ icon, title, subtitle, selected = false, showCheckbox = false, onPress, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const rowContent = (
     <>

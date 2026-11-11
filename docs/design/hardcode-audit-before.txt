@@ -1,0 +1,56 @@
+=== HEX outside look-and-feel (count) ===
+2840
+=== HEX by file (top 40) ===
+ 217 src/login-and-signup/NewUserSetupScreen.jsx
+ 211 src/workouts/create-plan/CreateWorkoutPlanScreen.js
+ 199 src/login-and-signup/LoginScreen.js
+ 133 src/client-app/home/TrainingHomeScreen.jsx
+ 107 src/client-app/home/homeLooks.js
+  90 src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx
+  80 src/for-both/workout-plans/SavedWorkoutsScreen.jsx
+  66 src/nutrition/daily-log/DailyFoodLogScreen.jsx
+  63 src/client-app/meals/LogTodaysMealsScreen.jsx
+  62 src/client-app/home/homeScreenPieces.jsx
+  59 src/nutrition/food-cards/foodCardColors.js
+  49 src/workouts/exercise-videos/ExerciseVideosTab.jsx
+  48 src/client-app/profile/MyProfileScreen.jsx
+  47 src/ai-coach/home-screen/CoachHomeScreen.jsx
+  46 src/ai-coach/coachColors.js
+  43 src/trainer-app/documents/editorColors.js
+  39 src/client-app/files-and-notes/MyFilesSection.jsx
+  34 src/messaging/ChatScreen.jsx
+  34 src/client-app/workout-plans/MyWorkoutPlanScreen.jsx
+  33 src/for-both/photo-gallery/MyProgressPhotosScreen.jsx
+  31 src/client-app/files-and-notes/FilesScreen.jsx
+  27 src/trainer-app/weekly-report/WeeklyReportBars.jsx
+  27 src/trainer-app/progress-tab/TrainerProgressTab.jsx
+  27 src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx
+  26 src/trainer-app/my-trainees/MyTraineesScreen.jsx
+  26 src/client-app/find-a-trainer/trainerFilters.js
+  25 src/trainer-app/scheduling/SessionCard.jsx
+  25 src/for-both/setup-steps/setupStepPieces.jsx
+  25 src/for-both/popups/RemoveTrainerPopup.js
+  25 src/for-both/files-and-notes/viewers/FilesSection.jsx
+  24 src/trainer-app/home/TrainerHomeContent.jsx
+  24 src/client-app/home/MyTrainerCard.jsx
+  22 src/for-both/files-and-notes/viewers/FileGrid.jsx
+  22 src/for-both/files-and-notes/viewers/AddFilePopup.js
+  21 src/nutrition/food-search/FoodSearchScreen.js
+  21 src/nutrition/food-search/ConfirmFoodPopup.jsx
+  21 src/nutrition/food-details/NutritionFactsScreen.jsx
+  20 src/trainer-app/home/trainerHomePieces.jsx
+  20 src/messaging/InboxScreen.jsx
+  18 src/for-both/setup-steps/TrainerProOfferStep.jsx
+=== rgba literals count ===
+613
+=== Glass/CardGlow imports outside look-and-feel ===
+src/ai-coach/conversation/CoachConversationScreen.jsx:90:import CoachGlassCard from '../reply-display/CoachGlassCard';
+src/for-both/home-cards/HomeTopBanner.jsx:18:import CardGlow from './CardGlow';
+src/login-and-signup/LoginScreen.js:38:import GlassBackgroundDark from '../look-and-feel/GlassBackgroundDark';
+src/login-and-signup/LoginScreen.js:39:import GlassBackgroundLight from '../look-and-feel/GlassBackgroundLight';
+src/login-and-signup/LoginScreen.js:42:import GlassButton from '../look-and-feel/GlassButton';
+src/login-and-signup/NewUserSetupScreen.jsx:60:import GlassBackgroundDark from '../look-and-feel/GlassBackgroundDark';
+src/login-and-signup/NewUserSetupScreen.jsx:61:import GlassBackgroundLight from '../look-and-feel/GlassBackgroundLight';
+=== inline LinearGradient colors={[ count ===
+87
+=== per-feature color files ===

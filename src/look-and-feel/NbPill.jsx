@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, nb, gradients, spacing } from './colorPalette';
+import { nb, gradients, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Small pill badge with optional gradient.
@@ -19,8 +20,7 @@ import { lightColors, darkColors, nb, gradients, spacing } from './colorPalette'
  * @param {object} [props.style] - additional container styles
  */
 export default function NbPill({ children, variant = 'plain', style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const gradient = variant !== 'plain' ? gradients[variant] : null;
   const textColor = variant === 'plain' ? colors.nbInk : '#0A0A0F';

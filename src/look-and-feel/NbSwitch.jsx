@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Pressable, StyleSheet, Animated } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, nb, gradients } from './colorPalette';
+import { nb, gradients } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Neobrutalist switch with brand gradient when on.
@@ -19,8 +20,7 @@ import { lightColors, darkColors, nb, gradients } from './colorPalette';
  * @param {object} [props.style] - additional container styles
  */
 export default function NbSwitch({ value, onValueChange, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const translateX = React.useRef(new Animated.Value(value ? 1 : 0)).current;
   

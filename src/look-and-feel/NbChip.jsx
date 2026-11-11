@@ -6,9 +6,10 @@
 
 import React, { useRef } from 'react';
 import { Text, StyleSheet, Pressable, Animated, Platform, View } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, borderRadius, nb, gradients } from './colorPalette';
+import { borderRadius, nb, gradients } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Single chip with optional gradient when selected.
@@ -22,8 +23,7 @@ import { lightColors, darkColors, borderRadius, nb, gradients } from './colorPal
  * @param {object} [props.style] - additional container styles
  */
 export default function NbChip({ children, selected = false, onPress, disabled = false, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const translateAnim = useRef(new Animated.Value(0)).current;
   

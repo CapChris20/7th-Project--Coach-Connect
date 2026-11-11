@@ -6,8 +6,9 @@
 
 import React from 'react';
 import { View, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors, spacing } from './colorPalette';
+
+import { spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Standard screen layout with safe area, scroll body, and sticky CTA.
@@ -21,8 +22,7 @@ import { lightColors, darkColors, spacing } from './colorPalette';
  * @param {object} [props.style] - additional outer container styles
  */
 export default function NbScreen({ children, footer, noScroll = false, contentStyle, scrollStyle, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const content = noScroll ? (
     <View style={[styles.content, contentStyle]}>

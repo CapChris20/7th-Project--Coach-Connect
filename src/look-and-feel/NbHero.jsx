@@ -6,10 +6,11 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
-import { lightColors, darkColors, gradients, spacing } from './colorPalette';
+import { gradients, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Hero section with gradient-masked title and subtitle.
@@ -21,8 +22,7 @@ import { lightColors, darkColors, gradients, spacing } from './colorPalette';
  * @param {object} [props.style] - additional container styles
  */
 export default function NbHero({ title, subtitle, children, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const titleGradient = colorScheme === 'dark' ? gradients.title.dark : gradients.title.light;
   

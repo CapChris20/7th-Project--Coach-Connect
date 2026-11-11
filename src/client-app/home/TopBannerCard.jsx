@@ -5,11 +5,12 @@
 // vocab: neobrutalist = thick borders, hard shadows, gradient only for primary button
 
 import React from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
@@ -82,9 +83,10 @@ function ExploreDashboardButton({ onPress, unreadMessageCount, colors }) {
  * Neobrutalist redesign: thick borders, hard shadows, gradient only on the CTA button.
  * @param {{ onPress?: function, unreadMessageCount?: number }} props
  */
-export default function TopBannerCard({ onPress, unreadMessageCount = 0 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark: _isDark }) {
+  // vocab: useTheme follows in-app light/dark toggle — NOT device useColorScheme alone
+  // (device scheme mismatch made this card unreadable / looked "broken" vs Settings)
+  const { colors } = useTheme();
 
   return (
     <View style={styles.wrapper}>
@@ -103,7 +105,7 @@ export default function TopBannerCard({ onPress, unreadMessageCount = 0 }) {
         <FeaturePills colors={colors} />
 
         <ExploreDashboardButton
-          onPress={onPress}
+          onPress={typeof onPress === 'function' ? onPress : () => {}}
           unreadMessageCount={unreadMessageCount}
           colors={colors}
         />
@@ -155,7 +157,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     height: 44,
     borderRadius: 12,
-    borderWidth: 2.5,
+    borderWidth: nb.borderWidth,
     paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -181,7 +183,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2.5,
+    borderWidth: nb.borderWidth,
   },
   badgeText: {
     color: '#FFFFFF',

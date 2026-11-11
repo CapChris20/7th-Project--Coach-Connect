@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
-import { lightColors, darkColors, gradients, nb } from './colorPalette';
+import { gradients, nb } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Circular progress ring with gradient stroke.
@@ -22,8 +23,7 @@ import { lightColors, darkColors, gradients, nb } from './colorPalette';
  * @param {object} [props.style] - additional container styles
  */
 export default function NbRing({ progress, size = 120, strokeWidth = 8, label, value, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;

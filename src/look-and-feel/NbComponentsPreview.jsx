@@ -8,7 +8,6 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Switch as RNSwitch } from 'react-native';
 import { useColorScheme } from 'react-native';
 import { lightColors, darkColors, spacing } from './colorPalette';
-
 import NbScreen from './NbScreen';
 import NbCard from './NbCard';
 import NbButton from './NbButton';

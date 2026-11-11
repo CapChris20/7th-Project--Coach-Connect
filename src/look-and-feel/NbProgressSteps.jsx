@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, nb, gradients, spacing } from './colorPalette';
+import { nb, gradients, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Segmented progress bar for multi-step flows.
@@ -19,8 +20,7 @@ import { lightColors, darkColors, nb, gradients, spacing } from './colorPalette'
  * @param {object} [props.style] - additional container styles
  */
 export default function NbProgressSteps({ total, current, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   return (
     <View style={[styles.container, style]}>

@@ -6,8 +6,9 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors, borderRadius, nb, spacing } from './colorPalette';
+
+import { borderRadius, nb, spacing } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Standard list row with title, subtitle, and right accessory.
@@ -20,8 +21,7 @@ import { lightColors, darkColors, borderRadius, nb, spacing } from './colorPalet
  * @param {object} [props.style] - additional container styles
  */
 export default function NbListRow({ title, subtitle, right, onPress, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   return (
     <Pressable onPress={onPress} style={style}>

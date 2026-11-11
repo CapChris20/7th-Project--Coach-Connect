@@ -1,10 +1,12 @@
-// Neobrutalist welcome hero at the top of client and trainer home: greeting, brand line, quote, live clock.
-// Flow: pick morning/afternoon/evening/night → paint the neobrutalist card → clock ticks every second.
-// Used by client home, trainer home, and any screen that wants the same banner.
+// Neobrutalist welcome hero for client + trainer home (greeting, brand, quote, live clock).
+// Flow: resolve day-part greeting → NbCard shell → brand title gradient → quote + clock.
+// Used by client home and trainer home. STYLE only — same content order as before.
+//
+// vocab: NbCard = thick ink border + hard 4/4 shadow (no glow, no aurora rim, no CardGlow)
+// Manipulate here: title sizes / lottie max — keep one gradient moment (Coach Connect title)
 
 import React, { useEffect, useState } from 'react';
 import {
-  Platform,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -14,38 +16,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { DailyQuotePill } from './DailyQuoteCard';
-import CardGlow from './CardGlow';
 import ColorText from '../../look-and-feel/ColorText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
+import NbCard from '../../look-and-feel/NbCard';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
+import { nb, gradients, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Dark purple → dark orange — Today/time card icon accent. */
-export const TODAY_CARD_TOP_STRIPE = ['#6D28D9', '#C2410C'];
-
-/** Hot pink → dark orange rim on welcome hero (client + trainer). */
-export const AURORA_HERO_BORDER = ['#FF6B9D', '#C2410C'];
-
-/** @deprecated Prefer AURORA_HERO_BORDER — kept so stale bundles/imports do not crash. */
-export const HERO_TOP_STRIPE = AURORA_HERO_BORDER;
-
-const HERO_INNER_BG_DARK = ['#1a0a2e', '#0f0a1a'];
-const HERO_INNER_BG_LIGHT = ['#F8FAFF', '#FFFFFF'];
 const DEFAULT_USER_NAME = 'User';
 const FALLBACK_FIRST_NAME = 'User';
 
-// Manipulate here: greeting windows. The clock icon uses a slightly earlier evening cutoff.
+// Manipulate here: greeting windows. Clock icon uses a slightly earlier evening cutoff.
 const MORNING_START_HOUR = 5;
 const NOON_HOUR = 12;
 const AFTERNOON_END_HOUR = 17;
 const GREETING_EVENING_END_HOUR = 23;
 const CLOCK_ICON_EVENING_END_HOUR = 21;
 const HOURS_ON_CLOCK = 12;
-// Manipulate here: how often the live clock redraws.
 const CLOCK_TICK_MS = 1000;
-const HERO_CORNER_RADIUS = 24;
+
 const WIDE_BANNER_MIN_WIDTH = 600;
 const HERO_HORIZONTAL_PAD = 32;
 const LOTTIE_MAX_WIDE = 150;
@@ -109,18 +98,16 @@ function firstNameFromUserName(userName) {
   return trimmed.split(/\s+/)[0] || FALLBACK_FIRST_NAME;
 }
 
-function clockTextColors(isDark) {
-  return {
-    overline: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
-    secondary: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(10,10,15,0.58)',
-    primary: isDark ? '#FFFFFF' : '#0A0A0F',
-    clockBg: isDark ? '#0A0A0F' : '#FFFFFF',
-    hairline: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
-    secondsColor: isDark ? 'rgba(255,255,255,0.40)' : 'rgba(10,10,15,0.40)',
-  };
+/**
+ * Title gradient colors for light vs dark (from shared tokens).
+ * @param {boolean} isDark
+ * @returns {string[]}
+ */
+function titleGradientColors(isDark) {
+  return isDark ? gradients.title.dark.colors : gradients.title.light.colors;
 }
 
-function AuroraHeroLiveClock({ isDark }) {
+function HeroLiveClock({ isDark, colors }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const tickId = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
@@ -135,103 +122,52 @@ function AuroraHeroLiveClock({ isDark }) {
   });
   const dayPart = dayPartForClockIcon(now.getHours());
   const dayPartLabel = dayPart.charAt(0).toUpperCase() + dayPart.slice(1);
-  const colors = clockTextColors(isDark);
 
   return (
-    <View style={[clockStyles.wrap, isDark ? clockStyles.wrapGlowDark : clockStyles.wrapGlowLight]}>
-      <View
-        style={[
-          clockStyles.frame,
-          {
-            backgroundColor: colors.clockBg,
-            borderWidth: 1,
-            borderColor: colors.hairline,
-          },
-        ]}
-      >
-        <View style={clockStyles.body}>
-            <View style={clockStyles.dateCol}>
-              <Text style={[clockStyles.overline, { color: colors.overline }]}>Today</Text>
-              <Text style={[clockStyles.dateText, { color: colors.primary }]} numberOfLines={2}>
-                {dateLine}
-              </Text>
-              <View style={clockStyles.segRow}>
-                <LinearGradient
-                  colors={TODAY_CARD_TOP_STRIPE}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={clockStyles.iconCircle}
-                >
-                  <Ionicons name={ioniconForDayPart(dayPart)} size={20} color="#FFFFFF" />
-                </LinearGradient>
-                <Text style={[clockStyles.segText, { color: colors.secondary }]}>{dayPartLabel}</Text>
-              </View>
-            </View>
-
-            <View style={clockStyles.timeCol}>
-              <View style={clockStyles.timeRow}>
-                <Text
-                  style={[clockStyles.timeMain, { color: colors.primary }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                >
-                  {main}
-                </Text>
-                <Text style={[clockStyles.timeSec, { color: colors.secondsColor }]}>
-                  :{seconds}
-                </Text>
-              </View>
-              <Text style={[clockStyles.timeAmPm, { color: colors.overline }]}>{ampm}</Text>
-            </View>
+    <View
+      style={[
+        clockStyles.frame,
+        {
+          backgroundColor: colors.nbSurfaceChip,
+          borderWidth: nb.borderWidth,
+          borderColor: colors.nbBorder,
+        },
+      ]}
+    >
+      <View style={clockStyles.body}>
+        <View style={clockStyles.dateCol}>
+          <Text style={[clockStyles.overline, { color: colors.nbMuted }]}>Today</Text>
+          <Text style={[clockStyles.dateText, { color: colors.nbInk }]} numberOfLines={2}>
+            {dateLine}
+          </Text>
+          <View style={clockStyles.segRow}>
+            <LinearGradient
+              colors={gradients.ink.colors}
+              start={gradients.ink.start}
+              end={gradients.ink.end}
+              style={clockStyles.iconCircle}
+            >
+              <Ionicons name={ioniconForDayPart(dayPart)} size={20} color={colors.white} />
+            </LinearGradient>
+            <Text style={[clockStyles.segText, { color: colors.nbMuted }]}>{dayPartLabel}</Text>
+          </View>
         </View>
-      </View>
-    </View>
-  );
-}
 
-function HeroGradientFrame({ isDark, layout, children }) {
-  const shellStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
-  const radius = shellStyle.borderRadius ?? HERO_CORNER_RADIUS;
-  const innerBg = isDark ? HERO_INNER_BG_DARK : HERO_INNER_BG_LIGHT;
-
-  return (
-    <View style={[shellStyle, styles.heroShell]}>
-      <CardGlow isDark={isDark} borderRadius={radius} />
-
-      <View
-        style={[
-          styles.cardShadow,
-          { borderRadius: radius },
-          Platform.select({
-            ios: {
-              shadowColor: '#C2410C',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: isDark ? 0.38 : 0.22,
-              shadowRadius: 18,
-            },
-            android: { elevation: 10 },
-          }),
-        ]}
-      >
-        <View style={[styles.cardClip, { borderRadius: radius }]}>
-          <LinearGradient
-            colors={AURORA_HERO_BORDER}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ padding: 1.5, borderRadius: radius }}
-          >
-            <View style={[styles.innerClip, { borderRadius: radius - 1.5 }]}>
-              <LinearGradient
-                colors={innerBg}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.inner}
-              >
-                {children}
-              </LinearGradient>
-            </View>
-          </LinearGradient>
+        <View style={clockStyles.timeCol}>
+          <View style={clockStyles.timeRow}>
+            <Text
+              style={[clockStyles.timeMain, { color: colors.nbInk }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {main}
+            </Text>
+            <Text style={[clockStyles.timeSec, { color: colors.nbMuted }]}>
+              :{seconds}
+            </Text>
+          </View>
+          <Text style={[clockStyles.timeAmPm, { color: colors.nbMuted }]}>{ampm}</Text>
         </View>
       </View>
     </View>
@@ -245,7 +181,7 @@ function HeroGradientFrame({ isDark, layout, children }) {
  * @param {object} props
  */
 export default function HomeTopBanner({
-  isDark,
+  isDark: isDarkProp,
   userId,
   userName = DEFAULT_USER_NAME,
   greetingPeriod,
@@ -253,6 +189,9 @@ export default function HomeTopBanner({
   showLiveClock = true,
   layout = 'client',
 }) {
+  const theme = useTheme();
+  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : theme.isDark;
+  const colors = theme.colors;
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BANNER_MIN_WIDTH;
   const titleSize = isWide ? TITLE_SIZE_WIDE : TITLE_SIZE_NARROW;
@@ -262,57 +201,45 @@ export default function HomeTopBanner({
   );
   const firstName = firstNameFromUserName(userName);
   const period = greetingPeriod || getAuroraHeroGreeting();
-  const greetingColor = textColor ?? (isDark ? '#FFFFFF' : '#111827');
+  const greetingColor = textColor ?? colors.nbInk;
+  const titleColors = titleGradientColors(isDark);
+  const shellStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
 
-  // 1. Greeting line, then the brand block, then the quote animation.
+  // Solid NbCard — same language as Settings. No CardGlow / neon rim / soft orange shadow.
   return (
-    <HeroGradientFrame isDark={isDark} layout={layout}>
-      <View style={{ marginBottom: layout === 'trainer' ? 6 : 4, alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
-          <Text
-            style={[
-              styles.greetingTitle,
-              { color: greetingColor, textAlign: 'center', fontWeight: layout === 'trainer' ? '900' : '800' },
-            ]}
-          >
-            Good {period},{' '}
-          </Text>
-          <ColorText
-            colors={HERO_TITLE_TEXT_GRADIENT}
-            style={{ fontWeight: layout === 'trainer' ? '900' : '800', fontSize: layout === 'trainer' ? 22 : 20 }}
-          >
-            {firstName}!
-          </ColorText>
-        </View>
+    <NbCard style={[shellStyle, styles.card]}>
+      <View style={styles.greetingRow}>
+        <Text style={[styles.greetingTitle, { color: greetingColor }]}>
+          Good {period},{' '}
+        </Text>
+        <ColorText
+          colors={titleColors}
+          style={[styles.greetingName, layout === 'trainer' && styles.greetingNameTrainer]}
+        >
+          {firstName}!
+        </ColorText>
       </View>
 
       <View
         style={[
           styles.contentRow,
-          { flexDirection: isWide ? 'row' : 'column', gap: isWide ? 28 : 18 },
+          { flexDirection: isWide ? 'row' : 'column', gap: isWide ? spacing.lg : spacing.md },
         ]}
       >
         <View style={[styles.left, { flex: isWide ? 0.6 : 1 }]}>
-          <View style={styles.welcomeWrap}>
-            <Text style={[styles.welcomeKicker, { color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(10,10,15,0.65)' }]}>
-              WELCOME TO
-            </Text>
-            <LinearGradient
-              colors={HERO_TITLE_TEXT_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.welcomeUnderline}
-            />
-          </View>
+          <Text style={[styles.welcomeKicker, { color: colors.nbMuted }]}>WELCOME TO</Text>
+          <LinearGradient
+            colors={titleColors}
+            start={gradients.title.light.start}
+            end={gradients.title.light.end}
+            style={styles.welcomeUnderline}
+          />
 
-          <ColorText
-            colors={HERO_TITLE_TEXT_GRADIENT}
-            style={[styles.heroTitle, { fontSize: titleSize }]}
-          >
+          <ColorText colors={titleColors} style={[styles.heroTitle, { fontSize: titleSize }]}>
             Coach Connect
           </ColorText>
 
-          <Text style={[styles.heroTagline, { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)' }]}>
+          <Text style={[styles.heroTagline, { color: colors.nbMuted }]}>
             YOUR TRAINER-CLIENT RELATIONSHIP GETS BETTER WITH CC
           </Text>
         </View>
@@ -325,7 +252,6 @@ export default function HomeTopBanner({
               loop
               style={{ width: lottieSize, height: lottieSize }}
             />
-
             <View style={styles.quoteWrap}>
               <DailyQuotePill userId={userId} isDarkOverride={isDark} embedded />
             </View>
@@ -333,42 +259,51 @@ export default function HomeTopBanner({
         </View>
       </View>
 
-      {showLiveClock ? <AuroraHeroLiveClock isDark={isDark} /> : null}
-    </HeroGradientFrame>
+      {showLiveClock ? <HeroLiveClock isDark={isDark} colors={colors} /> : null}
+    </NbCard>
   );
 }
 
+/** @deprecated Prefer gradients.brand — kept so stale imports do not crash. */
+export const TODAY_CARD_TOP_STRIPE = gradients.ink.colors;
+/** @deprecated Prefer gradients.brand — kept so stale imports do not crash. */
+export const AURORA_HERO_BORDER = gradients.brand.colors;
+/** @deprecated Prefer AURORA_HERO_BORDER */
+export const HERO_TOP_STRIPE = AURORA_HERO_BORDER;
+
 const styles = StyleSheet.create({
-  heroShell: {
-    position: 'relative',
-    overflow: 'visible',
-  },
-  cardShadow: {
-    position: 'relative',
-    zIndex: 1,
-    borderRadius: 24,
-  },
-  cardClip: {
-    overflow: 'hidden',
-  },
-  innerClip: {
+  card: {
     overflow: 'hidden',
   },
   outerClient: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 16,
-    borderRadius: 24,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   outerTrainer: {
-    marginTop: 10,
-    marginBottom: 8,
-    borderRadius: 24,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  inner: {
-    overflow: 'hidden',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+  greetingRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  greetingTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  greetingName: {
+    fontWeight: '800',
+    fontSize: 20,
+  },
+  greetingNameTrainer: {
+    fontWeight: '900',
+    fontSize: 22,
   },
   contentRow: {
     alignItems: 'center',
@@ -377,33 +312,30 @@ const styles = StyleSheet.create({
   left: {
     alignItems: 'center',
   },
-  welcomeWrap: {
-    alignItems: 'center',
-    marginBottom: 4,
-  },
   welcomeKicker: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 2.5,
+    textTransform: 'uppercase',
   },
   welcomeUnderline: {
-    marginTop: 6,
+    marginTop: spacing.xs,
     width: 72,
     height: 3,
-    borderRadius: 99,
-    opacity: 0.9,
+    borderRadius: borderRadius.round,
   },
   heroTitle: {
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: -0.5,
+    marginTop: spacing.xs,
   },
   heroTagline: {
-    marginTop: 6,
+    marginTop: spacing.xs,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
   right: {
     alignItems: 'center',
@@ -412,7 +344,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
     flexWrap: 'wrap',
   },
   quoteWrap: {
@@ -420,60 +352,22 @@ const styles = StyleSheet.create({
     minWidth: 120,
     maxWidth: 200,
   },
-  greetingTitle: {
-    fontSize: 22,
-    letterSpacing: -0.3,
-  },
 });
 
 const clockStyles = StyleSheet.create({
-  wrap: {
-    alignSelf: 'stretch',
-    marginTop: 14,
-    marginBottom: 2,
-  },
-  wrapGlowDark: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-      },
-      android: { elevation: 4 },
-      default: {},
-    }),
-  },
-  wrapGlowLight: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-      },
-      android: { elevation: 2 },
-      default: {},
-    }),
-  },
   frame: {
-    borderRadius: 16,
+    alignSelf: 'stretch',
+    marginTop: spacing.md,
+    marginBottom: 2,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    position: 'relative',
-  },
-  inner: {
-    overflow: 'hidden',
-  },
-  topStripe: {
-    height: 3,
-    width: '100%',
   },
   body: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    gap: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
   },
   dateCol: {
     flex: 1,
@@ -495,13 +389,13 @@ const clockStyles = StyleSheet.create({
   segRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },

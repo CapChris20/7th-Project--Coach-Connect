@@ -6,9 +6,10 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { useColorScheme } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, borderRadius, nb, gradients } from './colorPalette';
+import { borderRadius, nb, gradients } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Segmented control with neobrutalist styling.
@@ -21,8 +22,7 @@ import { lightColors, darkColors, borderRadius, nb, gradients } from './colorPal
  * @param {object} [props.style] - additional container styles
  */
 export default function NbSegmented({ segments, selected, onSelect, style }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   
   return (
     <View

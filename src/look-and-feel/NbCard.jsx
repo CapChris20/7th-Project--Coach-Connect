@@ -6,8 +6,9 @@
 
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors, borderRadius, nb } from './colorPalette';
+
+import { borderRadius, nb } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Neobrutalist card with thick border and hard offset shadow.
@@ -17,8 +18,7 @@ import { lightColors, darkColors, borderRadius, nb } from './colorPalette';
  * @param {boolean} [props.noShadow] - remove shadow (for nested or special cases)
  */
 export default function NbCard({ children, style, noShadow = false }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
 
   // Hard shadow: on iOS we use shadowRadius 0, on Android we duplicate the view
   const shadowStyle = Platform.select({
