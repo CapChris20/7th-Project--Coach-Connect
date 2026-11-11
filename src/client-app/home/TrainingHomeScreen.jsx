@@ -40,6 +40,7 @@ import {
   tickDailyDashboardDayRollover,
 } from '../../daily-stats/saveYesterdaysStats';
 import { useCardState } from './dashboardCardState';
+import { NewHomeLayout } from './new-home/NewHomeLayout';
 import { workoutDiary } from './workoutDiary';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,6 +78,9 @@ const DEFAULT_CALORIE_GOAL = 2000;
 const SHELL_NAV_PAD_EMBEDDED = 40;
 const SHELL_NAV_PAD_STANDALONE = 24;
 const BADGE_COUNT_CAP = 99;
+
+// Set to false to bring back the old home layout (the old layout code is still in this file).
+const USE_NEW_HOME_LAYOUT = true;
 
 const BENTO_VALUE_GRADIENT = {
   dashboard_sleep: HOME_STAT_WORKOUT_GRADIENT,
@@ -2541,6 +2545,19 @@ export const TrainingHomeScreen = ({
     handleWorkoutAfterSave,
     workoutLogState,
   };
+  if (USE_NEW_HOME_LAYOUT) {
+    const workoutLogSlot = (
+      <WorkoutLogCard
+        icon={<Ionicons name="barbell-outline" size={18} color={(isDark ? DARK : LIGHT).iconColor} />}
+        gradientFrom="#F97316"
+        gradientTo="#FF6B9D"
+        isDark={isDark}
+        onAfterSave={handleWorkoutAfterSave}
+        state={workoutLogState}
+      />
+    );
+    return <NewHomeLayout {...screenLayout} workoutLogSlot={workoutLogSlot} />;
+  }
   return <TrainingHomeScreenLayout {...screenLayout} />;
 };
 
